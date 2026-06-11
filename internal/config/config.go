@@ -51,7 +51,7 @@ func Load() Config {
 		EventDurable:             env("EVENT_DURABLE", "devfleet-mcp-events"),
 		EventQueue:               env("EVENT_QUEUE", "devfleet-mcp"),
 		Storage:                  env("JETSTREAM_STORAGE", "file"),
-		DefaultAgentImage:        env("DEFAULT_AGENT_IMAGE", "ghcr.io/devfleet/devfleet-runner:latest"),
+		DefaultAgentImage:        env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/devfleet-runner:latest"),
 		DefaultTaskTimeoutSec:    envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:          env("ARCANE_SERVER_URL", ""),
 		ArcaneAPIKey:             env("ARCANE_API_KEY", ""),

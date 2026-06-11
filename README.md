@@ -1,116 +1,122 @@
 # Devfleet
 
-Devfleet is a self-hosted MCP (Model Context Protocol) server for running
-autonomous AI development agents. It manages a fleet of task runners that can
-clone repositories, execute prompts using LLM-powered agents, and report
-results — all through standard MCP tools.
+Devfleet is a self-hosted MCP (Model Context Protocol) server for running autonomous AI development agents. It gives your AI tooling a way to submit software development work to a fleet of containerized runners.
 
-Think of it as a CI/CD system for AI development workflows: submit a task,
-and Devfleet dispatches it to a runner that spawns an LLM agent (via
-OpenCode) to perform code generation, review, testing, documentation, or
-any other development work you describe.
+A Devfleet runner can clone a repository, start an OpenCode agent, execute a prompt, stream progress events, and persist the final result. You interact with it through MCP tools from clients such as Claude Desktop, Cursor, Continue, or your own agent stack.
 
-## What can you do with it?
+## What It Can Do
 
-- **Submit development tasks** — Describe work in natural language, Devfleet
-  runs it in an isolated container with your tools and LLM provider.
-- **Schedule recurring tasks** — Cron-backed maintenance: daily code quality
-  audits, nightly vulnerability scans, changelog updates, PR reviews.
-- **Monitor fleet health** — Track running tasks, runner versions, heartbeat
-  staleness.
-- **Extend via MCP** — Plug Devfleet into any MCP-capable AI tool (Claude
-  Desktop, Cursor, VS Code + Continue, etc.) and let your AI assistant
-  delegate work to the runner fleet.
-- **Container vulnerability scanning** — Optional Arcane integration for
-  dependency and image vulnerability management.
+- Submit one-off development tasks against a Git repository.
+- Run LLM agents in isolated runner containers.
+- Track task status, logs, progress, and result details.
+- Run recurring cron-backed maintenance jobs.
+- Cancel pending or running tasks.
+- Inspect runner health and heartbeat freshness.
+- Expose the whole control plane through a standard HTTP MCP endpoint.
 
 ## Quick Start
 
-### Prerequisites
+These steps are intended for a fresh Linux cloud machine with Docker installed.
 
-- A Linux server with Docker and Docker Compose
-- A TiDB or MySQL database (or use TiDB Cloud free tier)
-- LLM provider API keys (OpenAI, DeepSeek, etc.)
-
-### 1. Clone and configure
+### 1. Clone
 
 ```bash
 git clone https://github.com/flatout-works/devfleet.git
 cd devfleet
 ```
 
-Create a `.env` file:
+### 2. Configure
 
 ```bash
-# Database
-DATABASE_DSN='user:password@tcp(your-db-host:4000)/devfleet?parseTime=true'
-
-# NATS
-NATS_TOKEN=change-me
-
-# LLM provider keys (runners need at least one)
-OPENAI_API_KEY=sk-...
-DEEPSEEK_API_KEY=...
+cp .env.example .env
 ```
 
-### 2. Start the fleet
+Edit `.env` and set at least:
+
+- `NATS_TOKEN`
+- `MYSQL_PASSWORD`
+- `MYSQL_ROOT_PASSWORD`
+- `DEVFLEET_MCP_AUTH_TOKEN`
+- At least one LLM provider key, such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SYNTHETIC_API_KEY`, or `OPENCODE_API_KEY`
+
+For public servers, always set `DEVFLEET_MCP_AUTH_TOKEN`.
+
+### 3. Start
 
 ```bash
-docker compose -f deploy/compose.yaml up -d
+docker compose --env-file .env -f deploy/compose.yaml up -d
 ```
 
 This starts:
-- A NATS server with JetStream for task messaging
-- The Devfleet MCP server (HTTP on port 18088)
-- Two runner containers that pick up and execute tasks
 
-### 3. Connect your AI tooling
+- MySQL for Devfleet state
+- NATS with JetStream for task messaging
+- The Devfleet MCP server on port `18088`
+- Two runner containers that pick up tasks
 
-Add the Devfleet MCP server to any MCP-compatible client:
+### 4. Check It
+
+```bash
+curl http://localhost:18088/healthz
+docker compose --env-file .env -f deploy/compose.yaml ps
+```
+
+### 5. Connect Your MCP Client
+
+Use this MCP server URL:
+
+```text
+http://YOUR_SERVER:18088/mcp
+```
+
+Example MCP client config:
 
 ```json
 {
   "mcpServers": {
     "devfleet": {
-      "url": "http://your-server:18088/mcp",
+      "url": "http://YOUR_SERVER:18088/mcp",
       "headers": {
-        "Authorization": "Bearer your-token"
+        "Authorization": "Bearer YOUR_DEVFLEET_MCP_AUTH_TOKEN"
       }
     }
   }
 }
 ```
 
-Set `MCP_AUTH_TOKEN` in your `.env` to require authentication, or leave it
-empty for open access (not recommended for production).
+### 6. Submit A Task
 
-### 4. Submit a task
-
-Use any MCP client to call `devfleet_submit_task`:
+Call the `devfleet_submit_task` MCP tool from your AI client:
 
 ```json
 {
-  "prompt": "Add input validation to all API handlers in src/handlers/",
+  "prompt": "Add input validation to all API handlers and run the tests.",
   "git_url": "https://github.com/my-org/my-repo",
-  "agent_image": "ghcr.io/devfleet/devfleet-runner:main"
+  "git_ref": "main",
+  "agent_image": "ghcr.io/flatout-works/devfleet-runner:main"
 }
 ```
 
-## Repository Layout
+Use `GITHUB_TOKEN` in `.env` if runners need access to private repositories or need to create branches and pull requests.
 
-| Path | Purpose |
-|---|---|
-| `main.go` | MCP/HTTP server entry point |
-| `internal/config/` | Environment-backed configuration |
-| `internal/store/` | TiDB/MySQL schema and persistence |
-| `internal/bus/` | NATS and JetStream transport |
-| `internal/service/` | MCP tools and task/schedule orchestration |
-| `internal/webhook/` | GitHub webhook handling for PR review automation |
-| `deploy/compose.yaml` | Docker Compose deployment |
-| `runner/` | Runner runtime — listens for tasks and executes them via OpenCode |
-| `schedules/` | Declarative cron task schedule definitions |
-| `docs/` | Implementation notes and guides |
-| `tools/` | Skills and templates baked into the runner image |
+## Common Commands
+
+```bash
+# Follow all service logs
+docker compose --env-file .env -f deploy/compose.yaml logs -f
+
+# Follow only the MCP server
+docker compose --env-file .env -f deploy/compose.yaml logs -f devfleet-mcp
+
+# Follow runner logs
+docker compose --env-file .env -f deploy/compose.yaml logs -f dev-runner dev-runner-2
+
+# Restart after editing .env
+docker compose --env-file .env -f deploy/compose.yaml up -d
+
+# Stop the stack
+docker compose --env-file .env -f deploy/compose.yaml down
+```
 
 ## MCP Tools
 
@@ -130,69 +136,57 @@ Use any MCP client to call `devfleet_submit_task`:
 | `devfleet_task_progress` | Fetch distilled task progress |
 | `devfleet_task_latest_event` | Fetch latest event for a task |
 | `devfleet_runner_health` | Derive fleet health and runner status |
-| `devfleet_arcane_scanner_status` | Query vulnerability scanner status |
-| `devfleet_arcane_environment_summary` | Environment vulnerability summary |
-| `devfleet_arcane_list_images` | List Docker images in environment |
-| `devfleet_arcane_image_summary` | Image vulnerability summary |
-| `devfleet_arcane_list_vulnerabilities` | List vulnerability findings |
 
 ## Configuration
 
-### MCP Server
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATABASE_DSN` | | TiDB/MySQL DSN. Required |
-| `MCP_AUTH_TOKEN` | | Optional bearer token for `/mcp` |
-| `NATS_URL` | `nats://localhost:4222` | NATS URL |
-| `JETSTREAM_ENABLED` | `true` | Enable JetStream |
-| `TASK_SUBJECT` | `devfleet.runner.tasks` | Runner task subject |
-| `EVENT_SUBJECT` | `devfleet.tasks.>` | Runner status subject wildcard |
-| `HTTP_ADDR` | `:8080` | HTTP bind address |
-| `DEFAULT_TASK_TIMEOUT_SEC` | `600` | Default task timeout |
-| `DEFAULT_AGENT_IMAGE` | `ghcr.io/devfleet/devfleet-runner:latest` | Default runner image |
-| `ARCANE_SERVER_URL` | | Arcane API URL for vulnerability scanning |
-| `ARCANE_API_KEY` | | Arcane API key |
-
-### Runner
+### Main Environment Variables
 
 | Variable | Description |
 |---|---|
-| `RUNNER_LOCAL` | `true` to run in Docker mode |
-| `NATS_URL` | NATS connection URL |
-| `TASK_SUBJECT` | Task subject to listen on |
-| `RESULT_SUBJECT` | Subject to publish results to |
-| `RUNNER_MAX_CONCURRENT` | Max concurrent tasks (default 1) |
-| `OPENAI_API_KEY` | OpenAI provider key |
-| `DEEPSEEK_API_KEY` | DeepSeek provider key |
-| `MEM9_API_KEY` | Mem9 memory provider key |
-| `GITHUB_TOKEN` | GitHub token for repository operations |
+| `DEVFLEET_MCP_AUTH_TOKEN` | Bearer token required by `/mcp` |
+| `NATS_TOKEN` | NATS auth token used by the local stack |
+| `MYSQL_PASSWORD` | Password for the local `devfleet` MySQL user |
+| `MYSQL_ROOT_PASSWORD` | Root password for the local MySQL container |
+| `DATABASE_DSN` | Optional external MySQL/TiDB DSN override |
+| `GITHUB_TOKEN` | Optional token for private repos and GitHub write operations |
+| `OPENAI_API_KEY` | Optional OpenAI key for runner agents |
+| `DEEPSEEK_API_KEY` | Optional DeepSeek key for runner agents |
+| `SYNTHETIC_API_KEY` | Optional Synthetic key for runner agents |
+| `OPENCODE_API_KEY` | Optional OpenCode provider key |
+| `MEM9_API_KEY` | Optional Mem9 memory provider key |
 
-## Building from source
+If `DATABASE_DSN` is not set, `deploy/compose.yaml` uses the included MySQL service.
+
+## Repository Layout
+
+| Path | Purpose |
+|---|---|
+| `main.go` | MCP/HTTP server entry point |
+| `internal/config/` | Environment-backed configuration |
+| `internal/store/` | MySQL/TiDB schema and persistence |
+| `internal/bus/` | NATS and JetStream transport |
+| `internal/service/` | MCP tools and task orchestration |
+| `internal/webhook/` | Optional GitHub webhook handling |
+| `deploy/compose.yaml` | Docker Compose stack |
+| `runner/` | Runner runtime, image Dockerfiles, and entrypoint |
+| `schedules/` | Example declarative schedules |
+| `tools/` | Skills and templates baked into the runner image |
+
+## Build From Source
 
 ```bash
 make check
 make build
 ```
 
-### Docker images
+Build images locally:
 
 ```bash
-make docker-build-mcp        # Build MCP server image
-make docker-build-runner      # Build runner image
-make docker-build-runner-base # Build base tooling image
+make docker-build-mcp
+make docker-build-runner-base
+make docker-build-runner
 ```
 
-## Deployment
+## License
 
-The CI workflow (`.github/workflows/devfleet.yml`) builds and pushes images to
-`ghcr.io/devfleet/`, then triggers a redeploy via webhook. For self-hosted
-deployments, use `deploy/compose.yaml` with your own registry or the prebuilt
-images from GHCR.
-
-## Environment
-
-Devfleet runners use OpenCode to execute tasks. Each runner container needs at
-least one LLM provider API key. Task-specific environment variables can be
-passed via `devfleet_submit_task.env` — but runner-owned secrets (API keys)
-should be configured on the runner container itself, not in task payloads.
+MIT

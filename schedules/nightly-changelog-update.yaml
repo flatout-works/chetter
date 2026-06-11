@@ -3,7 +3,7 @@ enabled: true
 cron_expr: "0 3 * * *"
 git_url: https://github.com/flatout-works/flatout
 git_ref: main
-agent_image: ghcr.io/devfleet/devfleet-runner:main
+agent_image: ghcr.io/flatout-works/devfleet-runner:main
 agent: changelog-maintainer
 timeout_sec: 3600
 prompt: |-

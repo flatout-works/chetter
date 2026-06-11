@@ -86,7 +86,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 // defaultReviewAgentImage is the runner image the webhook submitter fills in
 // for review tasks when the caller did not override AgentImage. It must match
 // the image used by the devfleet runners deployed alongside this service.
-const defaultReviewAgentImage = "ghcr.io/devfleet/devfleet-runner:main"
+const defaultReviewAgentImage = "ghcr.io/flatout-works/devfleet-runner:main"
 
 // reviewPromptTemplate is the prompt sent to the review agent. The agent
 // receives PR context via environment variables and uses gh CLI for

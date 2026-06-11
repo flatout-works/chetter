@@ -1,91 +1,113 @@
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: devfleet
+      MYSQL_USER: devfleet
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devfleet}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-devfleet-root}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u devfleet -p$${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - mysql-data:/var/lib/mysql
+
   nats:
     image: nats:2
-    command: ["-js", "-sd", "/data", "--auth", "${NATS_TOKEN}"]
+    command: ["-js", "-sd", "/data", "--auth", "${NATS_TOKEN:-devfleet-local}"]
     restart: unless-stopped
     volumes:
       - nats-data:/data
 
   devfleet-mcp:
-    image: ghcr.io/devfleet/devfleet-mcp:main
+    image: ghcr.io/flatout-works/devfleet-mcp:main
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      - nats
+      mysql:
+        condition: service_healthy
+      nats:
+        condition: service_started
     environment:
       HTTP_ADDR: :8080
-      DATABASE_DSN: ${DATABASE_DSN}
-      MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN}
-      ARCANE_SERVER_URL: ${ARCANE_SERVER_URL}
-      ARCANE_API_KEY: ${ARCANE_API_KEY}
-      GITHUB_APP_ID: ${GITHUB_APP_ID}
-      GITHUB_APP_PRIVATE_KEY_B64: ${GITHUB_APP_PRIVATE_KEY_B64}
-      GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID}
-      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
-      GITHUB_REVIEW_ALLOWED_REPOS: ${GITHUB_REVIEW_ALLOWED_REPOS}
-      NATS_URL: nats://${NATS_TOKEN}@nats:4222
+      DATABASE_DSN: ${DATABASE_DSN:-devfleet:${MYSQL_PASSWORD:-devfleet}@tcp(mysql:3306)/devfleet?parseTime=true}
+      MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN:-}
+      ARCANE_SERVER_URL: ${ARCANE_SERVER_URL:-}
+      ARCANE_API_KEY: ${ARCANE_API_KEY:-}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY_B64: ${GITHUB_APP_PRIVATE_KEY_B64:-}
+      GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      GITHUB_REVIEW_ALLOWED_REPOS: ${GITHUB_REVIEW_ALLOWED_REPOS:-}
+      NATS_URL: nats://${NATS_TOKEN:-devfleet-local}@nats:4222
       JETSTREAM_ENABLED: "true"
       TASK_SUBJECT: devfleet.runner.tasks
       EVENT_SUBJECT: devfleet.tasks.>
-      DEFAULT_AGENT_IMAGE: ghcr.io/devfleet/devfleet-runner:main
+      DEFAULT_AGENT_IMAGE: ghcr.io/flatout-works/devfleet-runner:main
     ports:
       - "18088:8080"
 
   dev-runner:
-    image: ghcr.io/devfleet/devfleet-runner:main
+    image: ghcr.io/flatout-works/devfleet-runner:main
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      - nats
+      nats:
+        condition: service_started
     environment:
       RUNNER_LOCAL: "true"
       JETSTREAM_ENABLED: "true"
       JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN}@nats:4222
+      NATS_URL: nats://${NATS_TOKEN:-devfleet-local}@nats:4222
       TASK_SUBJECT: devfleet.runner.tasks
       RESULT_SUBJECT: devfleet.tasks
       RUNNER_WORKSPACE_ROOT: /var/lib/devfleet-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      OPENCODE_API_KEY: ${OPENCODE_API_KEY}
-      MEM9_API_KEY: ${MEM9_API_KEY}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      MEM9_API_KEY: ${MEM9_API_KEY:-}
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
-      DEVFLEET_MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN}
+      DEVFLEET_MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN:-}
       DEVFLEET_MCP_URL: http://devfleet-mcp:8080
     volumes:
       - runner-data:/var/lib/devfleet-runner
 
   dev-runner-2:
-    image: ghcr.io/devfleet/devfleet-runner:main
+    image: ghcr.io/flatout-works/devfleet-runner:main
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      - nats
+      nats:
+        condition: service_started
     environment:
       RUNNER_LOCAL: "true"
       JETSTREAM_ENABLED: "true"
       JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN}@nats:4222
+      NATS_URL: nats://${NATS_TOKEN:-devfleet-local}@nats:4222
       TASK_SUBJECT: devfleet.runner.tasks
       RESULT_SUBJECT: devfleet.tasks
       RUNNER_WORKSPACE_ROOT: /var/lib/devfleet-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      OPENCODE_API_KEY: ${OPENCODE_API_KEY}
-      MEM9_API_KEY: ${MEM9_API_KEY}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      MEM9_API_KEY: ${MEM9_API_KEY:-}
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
-      DEVFLEET_MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN}
+      DEVFLEET_MCP_AUTH_TOKEN: ${DEVFLEET_MCP_AUTH_TOKEN:-}
       DEVFLEET_MCP_URL: http://devfleet-mcp:8080
     volumes:
       - runner-data-2:/var/lib/devfleet-runner
 
 volumes:
+  mysql-data:
   nats-data:
   runner-data:
   runner-data-2:

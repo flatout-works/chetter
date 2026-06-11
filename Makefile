@@ -1,8 +1,8 @@
 .PHONY: build test vet lint check runner-test runner-vet runner-lint runner-check docker-build-mcp docker-build-runner-base docker-build-runner
 
-MCP_IMAGE ?= ghcr.io/devfleet/devfleet-mcp:local
-RUNNER_BASE_IMAGE ?= ghcr.io/devfleet/devfleet-runner-base:local
-RUNNER_IMAGE ?= ghcr.io/devfleet/devfleet-runner:local
+MCP_IMAGE ?= ghcr.io/flatout-works/devfleet-mcp:local
+RUNNER_BASE_IMAGE ?= ghcr.io/flatout-works/devfleet-runner-base:local
+RUNNER_IMAGE ?= ghcr.io/flatout-works/devfleet-runner:local
 build:
 	mkdir -p bin
 	go build -o bin/devfleet .
