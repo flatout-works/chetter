@@ -1,0 +1,115 @@
+# syntax=docker/dockerfile:1.7
+
+# Devfleet Runner Base — Heavy Tooling Layer
+# =========================================================================
+# Contains all developer tooling: Go, buf, sqlc, gh, osv-scanner, hcloud,
+# goose, govulncheck, opencode, and npm packages. Built rarely — only when
+# tool versions change. The app Dockerfile layers the runner binary on top.
+# =========================================================================
+
+# --------------------------------------------------------------------------
+# Stage 1: Build Go-based CLI tools
+# --------------------------------------------------------------------------
+FROM golang:1.26-bookworm AS go-tools-builder
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/pressly/goose/v3/cmd/goose@latest \
+    && go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# --------------------------------------------------------------------------
+# Stage 2: Download standalone binaries
+# --------------------------------------------------------------------------
+FROM debian:bookworm-slim AS binary-downloader
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+
+ARG GO_VERSION=1.26.2
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xzf -
+
+ARG BUF_VERSION=v1.69.0
+RUN curl -fsSL "https://github.com/bufbuild/buf/releases/download/${BUF_VERSION}/buf-$(uname -s)-$(uname -m).tar.gz" \
+    | tar -C /usr/local --strip-components=1 -xzf -
+
+ARG SQLC_VERSION=v1.31.1
+RUN SQLC_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && curl -fsSL -o /tmp/sqlc.tar.gz \
+       "https://github.com/sqlc-dev/sqlc/releases/download/${SQLC_VERSION}/sqlc_${SQLC_VERSION#v}_linux_${SQLC_ARCH}.tar.gz" \
+    && tar -C /usr/local/bin -xzf /tmp/sqlc.tar.gz sqlc \
+    && rm /tmp/sqlc.tar.gz && chmod +x /usr/local/bin/sqlc
+
+ARG GH_VERSION=2.70.0
+RUN GH_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && curl -fsSL -o /tmp/gh.tar.gz \
+       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    && tar -C /usr/local/bin --strip-components=2 -xzf /tmp/gh.tar.gz "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" \
+    && rm /tmp/gh.tar.gz && chmod +x /usr/local/bin/gh
+
+ARG OSV_SCANNER_VERSION=v2.3.8
+RUN curl -sL "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
+    -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
+
+ARG HCLOUD_VERSION=v1.51.0
+RUN HCLOUD_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && curl -fsSL -o /tmp/hcloud.tar.gz \
+       "https://github.com/hetznercloud/cli/releases/download/${HCLOUD_VERSION}/hcloud-linux-${HCLOUD_ARCH}.tar.gz" \
+    && tar -C /usr/local/bin -xzf /tmp/hcloud.tar.gz hcloud \
+    && rm /tmp/hcloud.tar.gz && chmod +x /usr/local/bin/hcloud
+
+# --------------------------------------------------------------------------
+# Stage 3: Final base image — all runtime packages + tooling
+# --------------------------------------------------------------------------
+FROM debian:bookworm-slim
+
+# Core runtime packages
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    openssh-client \
+    socat \
+    make \
+    jq \
+    default-mysql-client \
+    ripgrep \
+    nodejs \
+    npm
+
+# Go toolchain
+ARG GO_VERSION=1.26.2
+ENV GOPATH=/go
+ENV PATH="/usr/local/go/bin:/go/bin:/usr/local/bin:${PATH}"
+COPY --from=binary-downloader /usr/local/go /usr/local/go
+RUN go version
+
+# Pre-built CLI binaries
+COPY --from=binary-downloader /usr/local/bin/buf /usr/local/bin/buf
+COPY --from=binary-downloader /usr/local/bin/sqlc /usr/local/bin/sqlc
+COPY --from=binary-downloader /usr/local/bin/osv-scanner /usr/local/bin/osv-scanner
+COPY --from=binary-downloader /usr/local/bin/gh /usr/local/bin/gh
+COPY --from=binary-downloader /usr/local/bin/hcloud /usr/local/bin/hcloud
+COPY --from=go-tools-builder /go/bin/goose /usr/local/bin/goose
+COPY --from=go-tools-builder /go/bin/govulncheck /usr/local/bin/govulncheck
+RUN govulncheck -h && osv-scanner --version && hcloud version
+
+# OpenCode
+RUN curl -fsSL https://opencode.ai/install | bash \
+    && ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
+
+# npm packages for OpenCode plugins
+RUN --mount=type=cache,target=/root/.npm \
+    mkdir -p /opt/opencode/.config/opencode \
+    && cd /opt/opencode/.config/opencode \
+    && npm init -y \
+    && npm install @mem9/opencode@0.1.3 @opencode-ai/plugin@1.14.19 zod@4.1.8
+
+# Environment variables for the dev runner
+ENV HOME=/opt/opencode
+ENV XDG_CONFIG_HOME=/opt/opencode/.config
+ENV GOMODCACHE=/var/lib/devfleet-runner/cache/go/pkg/mod
+ENV GOCACHE=/var/lib/devfleet-runner/cache/go/build
+ENV npm_config_cache=/var/lib/devfleet-runner/cache/npm

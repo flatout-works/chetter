@@ -1,0 +1,18 @@
+# Build artifacts
+bin/
+coverage.out
+*.test
+*.tmp
+
+# Git
+.git/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Go workspace
+vendor/

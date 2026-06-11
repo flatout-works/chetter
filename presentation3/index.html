@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Devfleet Technical Architecture</title>
+  <meta name="description" content="Devfleet technical design and architecture presentation." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="deck" class="deck" aria-live="polite">
+    <section class="slide hero-slide" data-title="Technical Architecture">
+      <div class="orb orb-one"></div>
+      <div class="orb orb-two"></div>
+      <div class="hero-grid">
+        <div>
+          <img class="logo-mark hero-logo" src="../website/devfleet-mark.svg" alt="Devfleet" />
+          <p class="eyebrow">Technical Architecture</p>
+          <h1>How Devfleet is built.</h1>
+          <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron schedules, fleet health, and a built-in path into vulnerability scanning.</p>
+          <div class="hero-actions">
+            <span class="pill strong">Go</span>
+            <span class="pill strong">Streamable HTTP MCP</span>
+            <span class="pill strong">NATS JetStream</span>
+            <span class="pill strong">TiDB / MySQL</span>
+            <span class="pill strong">robfig/cron</span>
+            <span class="pill strong">Arcane Trivy</span>
+          </div>
+        </div>
+        <div class="code-card glass">
+          <div class="window-bar"><span></span><span></span><span></span><b>devfleet surface</b></div>
+          <pre><code>main.go      HTTP /mcp + /healthz
+service/     tools, scheduler, reaper
+store/       TiDB schema + queries
+bus/         NATS JetStream client
+config/      env loader
+arcane/      Trivy client
+compose.yaml 1 MCP + 2 runners
+~3,000 lines of Go</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="What Devfleet Is">
+      <p class="eyebrow">What &amp; Why</p>
+      <h2>Devfleet is an MCP control plane that recruits AI agents as sub-contractors.</h2>
+      <div class="principle-grid">
+        <article><span>01</span><b>General purpose</b><p>Any MCP-capable client (Claude, ChatGPT, OpenCode, curl) can talk to it. Not tied to one product.</p></article>
+        <article><span>02</span><b>For AI, by AI</b><p>The control surface is tools, not a UI. An LLM is the typical operator.</p></article>
+        <article><span>03</span><b>Remote, not local</b><p>Tasks run inside runner containers somewhere else. The MCP server holds no execution responsibilities.</p></article>
+        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via JetStream. Schedules survive process restarts via MySQL.</p></article>
+        <article><span>05</span><b>Observable fleet</b><p>Every task carries provider, model, variant, session id, and runner image digest for end-to-end traceability.</p></article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="System Map">
+      <p class="eyebrow">System Map</p>
+      <h2>One Go process, one queue, one database, many runners.</h2>
+      <div class="system-map">
+        <div class="system-box devfleet">
+          <h3>devfleet/</h3>
+          <p>Stateless MCP server and scheduler</p>
+          <span>streamable HTTP</span><span>20 MCP tools</span><span>cron scheduler</span><span>event reaper</span><span>Arcane client</span>
+        </div>
+        <div class="system-box server">
+          <h3>store/</h3>
+          <p>TiDB / MySQL persistence</p>
+          <span>tasks</span><span>events</span><span>schedules</span><span>schedule_runs</span><span>schema probes</span>
+        </div>
+        <div class="system-box runner">
+          <h3>bus/</h3>
+          <p>NATS JetStream transport</p>
+          <span>WorkQueue tasks</span><span>Limits events</span><span>cancel publish</span><span>queue reset</span>
+        </div>
+        <div class="system-box local">
+          <h3>runner containers</h3>
+          <p>Workers that consume the task queue</p>
+          <span>queue group</span><span>durable consumer</span><span>opencode agent</span><span>status events</span>
+        </div>
+      </div>
+      <p class="center-note">Devfleet is the single point of truth for the queue. Runners are interchangeable; the control plane never knows how many exist.</p>
+    </section>
+
+    <section class="slide" data-title="Core Concept">
+      <p class="eyebrow">Core Concept</p>
+      <h2>MCP turns any LLM client into a fleet operator.</h2>
+      <div class="runtime-diagram">
+        <div class="boundary local-machine">
+          <div class="boundary-title">Caller</div>
+          <div class="node primary">MCP client<br><span>Claude, OpenCode, curl, custom agent</span></div>
+          <div class="node">MCP request<br><span>tool name + JSON args</span></div>
+          <div class="node accent">Devfleet tools<br><span>submit_task, run_schedule, runner_health, ...</span></div>
+          <div class="node">MCP response<br><span>JSON result with task record or fleet snapshot</span></div>
+        </div>
+        <div class="edge-column"><span>streamable HTTP / JSON-RPC</span></div>
+        <div class="provider-stack">
+          <div>devfleet MCP server</div>
+          <div>service layer</div>
+          <div>store + bus</div>
+          <div>NATS JetStream</div>
+          <div class="muted">MySQL / TiDB</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="MCP Tools">
+      <p class="eyebrow">Tool Surface</p>
+      <h2>Twenty tools, grouped by job. Schema-driven, no drift.</h2>
+      <div class="tool-categories">
+        <article>
+          <b>Tasks (5)</b>
+          <p>Submit, fetch, list, cancel, clear queue.</p>
+          <div class="tool-call"><span class="name">devfleet_submit_task</span></div>
+          <div class="tool-call"><span class="name">devfleet_task_status</span></div>
+          <div class="tool-call"><span class="name">devfleet_list_tasks</span></div>
+          <div class="tool-call"><span class="name">devfleet_cancel_task</span></div>
+          <div class="tool-call"><span class="name">devfleet_clear_queue</span></div>
+        </article>
+        <article>
+          <b>Events (3)</b>
+          <p>Inspect runner output, get the latest, distill progress.</p>
+          <div class="tool-call"><span class="name">devfleet_task_events</span></div>
+          <div class="tool-call"><span class="name">devfleet_task_progress</span></div>
+          <div class="tool-call"><span class="name">devfleet_task_latest_event</span></div>
+        </article>
+        <article>
+          <b>Schedules (6)</b>
+          <p>Cron jobs with YAML sync.</p>
+          <div class="tool-call"><span class="name">devfleet_schedule_task</span></div>
+          <div class="tool-call"><span class="name">devfleet_run_schedule</span></div>
+          <div class="tool-call"><span class="name">devfleet_list_schedules</span></div>
+          <div class="tool-call"><span class="name">devfleet_update_schedule</span></div>
+          <div class="tool-call"><span class="name">devfleet_delete_schedule</span></div>
+          <div class="tool-call"><span class="name">devfleet_sync_schedules</span></div>
+        </article>
+        <article>
+          <b>Fleet (1)</b>
+          <p>Health inferred from task activity.</p>
+          <div class="tool-call"><span class="name">devfleet_runner_health</span></div>
+        </article>
+        <article>
+          <b>Arcane (5)</b>
+          <p>Trivy-backed image scanning, registered only when creds are present.</p>
+          <div class="tool-call"><span class="name">devfleet_arcane_scanner_status</span></div>
+          <div class="tool-call"><span class="name">devfleet_arcane_environment_summary</span></div>
+          <div class="tool-call"><span class="name">devfleet_arcane_list_images</span></div>
+          <div class="tool-call"><span class="name">devfleet_arcane_image_summary</span></div>
+          <div class="tool-call"><span class="name">devfleet_arcane_list_vulnerabilities</span></div>
+        </article>
+        <article>
+          <b>Schema-driven</b>
+          <p>Every tool's input and output is a Go struct with <code>jsonschema</code> tags. <code>mcp.AddTool</code> reflects at startup, so the JSON schema and the Go types cannot drift.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Task Lifecycle">
+      <p class="eyebrow">Task Lifecycle</p>
+      <h2>From MCP tool call to runner event, in one linear flow.</h2>
+      <div class="lifecycle-flow">
+        <div class="lifecycle-step"><b>1. Submit</b><span>InsertTask + random task_ id, then PublishTask to JS WorkQueue stream</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>2. Queue</b><span>Message sits on devfleet.runner.tasks with WorkQueue policy; runners compete via queue group</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>3. Run</b><span>Runner acks, spawns OpenCode agent, periodically publishes status to devfleet.tasks.&lt;id&gt;.status</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>4. Ingest</b><span>Devfleet's event subscription decodes, persists raw payload, and updates the task row idempotently</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state (done, error, cancelled) written once; replays ignored. Caller reads via task_status / task_events.</span></div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Task Protocol">
+      <p class="eyebrow">Task Protocol</p>
+      <h2>What travels on the wire.</h2>
+      <div class="toolbox-card">
+        <div>
+          <h3>Request (MCP tool → runner)</h3>
+          <p style="color: var(--muted); margin-bottom: 1rem; line-height: 1.5;">Published to <span style="font-family: 'JetBrains Mono', monospace; color: var(--df-800);">devfleet.runner.tasks</span>.</p>
+<pre style="background: var(--df-900); border-radius: 1rem; padding: 1.1rem; margin: 0; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 0.86rem; line-height: 1.7; overflow: auto;">{
+  "task_id":       "task_a1b2c3d4...",
+  "agent_image":   "ghcr.io/.../devfleet-runner:main",
+  "prompt":        "...",
+  "git_url":       "https://github.com/.../myapp",
+  "git_ref":       "main",
+  "agent":         "code-quality-auditor",
+  "provider_id":   "deepseek",
+  "model_id":      "deepseek-chat",
+  "variant_id":    "high",
+  "skills":        ["vuln-scan"],
+  "timeout_sec":   7200,
+  "max_memory_mb": 4096,
+  "max_cpu":       2,
+  "env":           { ...sanitized }
+}</pre>
+        </div>
+        <div>
+          <h3>Response (runner → Devfleet)</h3>
+          <p style="color: var(--muted); margin-bottom: 1rem; line-height: 1.5;">Published to <span style="font-family: 'JetBrains Mono', monospace; color: var(--df-800);">devfleet.tasks.&lt;taskID&gt;.status</span>.</p>
+<pre style="background: var(--df-900); border-radius: 1rem; padding: 1.1rem; margin: 0; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 0.86rem; line-height: 1.7; overflow: auto;">{
+  "task_id":              "task_a1b2c3d4...",
+  "status":               "done | running | error | cancelled",
+  "summary":              "human-readable",
+  "error":                "message if status=error",
+  "artifacts":            ["https://github.com/.../pull/123"],
+  "provider_id":          "deepseek",
+  "model_id":             "deepseek-chat",
+  "variant_id":           "high",
+  "opencode_session_id":  "sess_...",
+  "runner_image_digest":  "sha256:...",
+  "started_at":           "...",
+  "ended_at":             "..."
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="NATS Design">
+      <p class="eyebrow">NATS JetStream</p>
+      <h2>Two streams, two retention policies, two jobs.</h2>
+      <div class="system-map" style="grid-template-columns: 1fr 1fr; margin-top: 2.2rem;">
+        <div class="system-box">
+          <h3>DEVFLEET_TASKS</h3>
+          <p>Durable task queue. WorkQueue retention — each task delivered to exactly one consumer.</p>
+          <span>subject: devfleet.runner.tasks</span>
+          <span>policy: work-queue</span>
+          <span>delivery: one-to-one</span>
+          <span>durable: devfleet-runner</span>
+          <span>queue group: devfleet-runners</span>
+        </div>
+        <div class="system-box">
+          <h3>DEVFLEET_EVENTS</h3>
+          <p>Replayable event log. Limits retention, manual ack, durable consumer per devfleet instance.</p>
+          <span>subject: devfleet.tasks.&gt;</span>
+          <span>policy: limits</span>
+          <span>delivery: one-to-all</span>
+          <span>durable: devfleet-mcp-events</span>
+          <span>ack: manual, 30s wait, 5 redeliveries</span>
+        </div>
+      </div>
+      <p class="center-note">Adding a third runner is just a new container with the same durable name — Devfleet never knows the fleet size.</p>
+    </section>
+
+    <section class="slide" data-title="Schedule System">
+      <p class="eyebrow">Schedules</p>
+      <h2>Cron in-process, schedules durable in MySQL, YAML for git.</h2>
+      <div class="schedule-flow">
+        <div class="lifecycle-flow" style="margin: 0; padding: 0; background: none; box-shadow: none; backdrop-filter: none; border: none; width: 100%;">
+          <div class="lifecycle-step"><b>YAML in git</b><span>schedules/*.yaml — declarative source of truth</span></div>
+          <i></i>
+          <div class="lifecycle-step"><b>Sync to DB</b><span>read YAML, call devfleet_schedule_task or devfleet_update_schedule per file</span></div>
+          <i></i>
+          <div class="lifecycle-step"><b>Activate</b><span>cron.AddFunc registers an in-process entry; entry id stored in memory map</span></div>
+          <i></i>
+          <div class="lifecycle-step"><b>Tick</b><span>cron callback calls SubmitTask + InsertScheduleRun; next_run_at updated</span></div>
+        </div>
+      </div>
+      <div class="protocol-cards">
+        <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors (hourly, daily, etc.) via the Descriptor parser flag.</p></article>
+        <article><b>Restart safe</b><p>Service.Start calls loadSchedules which re-activates every enabled schedule from MySQL.</p></article>
+        <article><b>GitOps ready</b><p>Edit YAML, commit, sync. No DB-only schedules drift away from the repo.</p></article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Database Schema">
+      <p class="eyebrow">Data Model</p>
+      <h2>Five tables. No secrets, no foreign keys, no migrations framework.</h2>
+      <div class="er-diagram">
+        <div class="er-cluster local-er">
+          <h3>Core tables</h3>
+          <div class="entity">devfleet_tasks <span>id, status, prompt, model, git, env, created_at, updated_at</span></div>
+          <div class="entity">devfleet_task_events <span>id, task_id, subject, status, payload (raw JSON), ts</span></div>
+          <div class="entity">devfleet_schedules <span>id, name, cron_expr, prompt, model, enabled, next_run_at</span></div>
+          <div class="entity">devfleet_schedule_runs <span>id, schedule_id, task_id, started_at, finished_at</span></div>
+          <div class="entity">devfleet_runners <span>id, status, last_seen_at, metadata (legacy, unused)</span></div>
+        </div>
+        <div class="er-link">10 max open / 5 idle connections</div>
+        <div class="er-cluster cloud-er">
+          <h3>Patterns</h3>
+          <div class="entity">idempotent updates <span>terminal states never overwritten</span></div>
+          <div class="entity">evs always raw <span>events table stores full JSON regardless of task update success</span></div>
+          <div class="entity">env redacted <span>SECRET / TOKEN / KEY / PASSWORD keys replaced with [redacted]</span></div>
+          <div class="entity">schema probes <span>information_schema lookups at startup; ALTER TABLE if missing</span></div>
+          <div class="entity encrypted">no plain creds <span>runner API keys live in container env, never in MySQL</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Reaper &amp; Health">
+      <p class="eyebrow">Reaper &amp; Health</p>
+      <h2>No runner heartbeats — fleet health is inferred from task activity.</h2>
+      <div class="lifecycle-flow">
+        <div class="lifecycle-step"><b>ReapStaleTasks</b><span>running tasks older than timeout + 5 min → error</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>ReapStalePendingTasks</b><span>pending tasks older than 30 min with no event → cancelled</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>GetRunnerFleetHealth</b><span>joins running tasks; is_stale = last_event_sec &gt; 600</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>FleetActive</b><span>running_tasks &gt; stale_tasks (idle fleet looks dead)</span></div>
+      </div>
+      <p class="center-note">Cheaper than heartbeats, but a fleet with no work reports zero active. Operators learn to read the absence-of-data as a sign of life.</p>
+    </section>
+
+    <section class="slide" data-title="Arcane Integration">
+      <p class="eyebrow">Arcane</p>
+      <h2>Five Trivy-backed tools surface image vulnerabilities through MCP.</h2>
+      <div class="runtime-diagram">
+        <div class="boundary local-machine">
+          <div class="boundary-title">Devfleet MCP server</div>
+          <div class="node primary">Arcane tools<br><span>registered when ARCANE_SERVER_URL + ARCANE_API_KEY are set</span></div>
+          <div class="node">ArcaneClient<br><span>30s timeout, X-API-Key auth, generic apiResponse[T] wrapper</span></div>
+          <div class="node accent">Generic over T<br><span>all tools share the same JSON parsing path</span></div>
+        </div>
+        <div class="edge-column"><span>HTTPS / X-API-Key</span></div>
+        <div class="provider-stack">
+          <div>Arcane (Trivy)</div>
+          <div>scanner-status</div>
+          <div>environment summary</div>
+          <div>list images</div>
+          <div>per-image summary</div>
+          <div>paginated CVEs</div>
+        </div>
+      </div>
+      <p class="center-note">Devfleet is the only component that knows the Arcane API. A nightly vulnerability-scan task running inside a runner calls the same MCP server as a sub-tool — meta-agent territory.</p>
+    </section>
+
+    <section class="slide" data-title="Deployment">
+      <p class="eyebrow">Deployment</p>
+      <h2>Docker Compose on Arcane. Three images, one NATS, one DB.</h2>
+      <div class="deployment-flow">
+        <div><b>NATS</b><span>nats:2 with -js, -sd, token auth</span></div><i></i>
+        <div><b>devfleet-mcp</b><span>the control plane, port 18088:8080</span></div><i></i>
+        <div><b>dev-runner</b><span>worker 1, shared durable consumer</span></div><i></i>
+        <div><b>dev-runner-2</b><span>worker 2, same image, separate workspace</span></div>
+      </div>
+      <div class="protocol-cards">
+        <article><b>Single process</b><p>Currently single-instance: cron entries, reaper, and JS subscription live in-process. Two instances would double-schedule.</p></article>
+        <article><b>Stateless MCP</b><p>The HTTP transport uses Stateless mode, so the MCP server <i>could</i> be scaled — the rest of the system cannot, yet.</p></article>
+        <article><b>CI redeploy</b><p>.github/workflows/devfleet.yml builds three images, then curls a single-purpose Arcane webhook to redeploy.</p></article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Notable Patterns">
+      <p class="eyebrow">Patterns &amp; Tradeoffs</p>
+      <h2>Choices that keep the codebase small and predictable.</h2>
+      <div class="choice-grid">
+        <article><b>Two-phase cancel</b><p>NATS cancel signal first, DB row update second. A failed publish is logged but the operator intent still persists.</p></article>
+        <article><b>ACK after write</b><p>Event subscription acks only after the DB write succeeds. Failed writes redeliver (up to 5 times). Idempotent updates keep replays safe.</p></article>
+        <article><b>Defensive env redaction</b><p>Keys matching SECRET|TOKEN|KEY|PASSWORD (case-insensitive) are scrubbed before both DB and wire paths. Users cannot smuggle secrets.</p></article>
+        <article><b>Timeouts on every call</b><p>NATS connect 10s, event handler 10s, schedule run 30s, Arcane 30s, HTTP read header 10s, shutdown 15s. No unbounded blocking.</p></article>
+        <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE if columns missing. Fine for add-only schema evolution on a small footprint.</p></article>
+        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, bus.go NATS, arcane.go HTTP. ~3k lines total. Easy to read end-to-end in a sitting.</p></article>
+      </div>
+    </section>
+
+    <section class="slide" data-title="Why These Choices">
+      <p class="eyebrow">Technical Choices</p>
+      <h2>Each technology is biased toward operational simplicity and at-least-once delivery.</h2>
+      <div class="choice-grid">
+        <article><b>MCP, not REST</b><p>The control surface is for AI agents, not humans. Tools are the native interface for any LLM client.</p></article>
+        <article><b>Streamable HTTP</b><p>Modern MCP transport. Stateless mode makes the server trivially load-balancer-friendly.</p></article>
+        <article><b>NATS JetStream</b><p>Durable task queue + replayable event log in one broker. WorkQueue policy gives free load balancing across runners.</p></article>
+        <article><b>MySQL / TiDB</b><p>Same wire protocol as the rest of the stack. Small, add-only schema, conservative pool.</p></article>
+        <article><b>robfig/cron v3</b><p>Battle-tested, tiny, descriptor parser for @hourly-style. In-process is fine for single-instance.</p></article>
+        <article><b>Distroless binary</b><p>Multi-stage build → static-debian12:nonroot. No shell, no package manager, small surface.</p></article>
+      </div>
+    </section>
+
+    <section class="slide closing-slide" data-title="Close">
+      <div class="orb orb-three"></div>
+      <img class="logo-mark close-logo" src="../website/devfleet-mark.svg" alt="Devfleet" />
+      <h2>Devfleet is a small MCP control plane for orchestrating remote AI coding agents.</h2>
+      <p class="lead">Twenty tools. One durable queue. One database. Many interchangeable runners.</p>
+      <div class="closing-grid">
+        <span>streamable HTTP</span>
+        <span>JetStream WorkQueue</span>
+        <span>cron schedules</span>
+        <span>Arcane Trivy</span>
+        <span>reaper-safe</span>
+        <span>~3,000 lines of Go</span>
+      </div>
+    </section>
+  </main>
+
+  <nav class="controls" aria-label="Slide controls">
+    <button id="prev" type="button" aria-label="Previous slide">Prev</button>
+    <div class="counter"><span id="current">1</span>/<span id="total">1</span></div>
+    <button id="next" type="button" aria-label="Next slide">Next</button>
+  </nav>
+
+  <div class="topbar">
+    <a href="#1" class="brand"><img src="../website/devfleet-text.svg" alt="" /> Devfleet Tech</a>
+    <div class="progress-shell"><div id="progress" class="progress"></div></div>
+    <button id="gridToggle" type="button" aria-label="Show slide overview">Overview</button>
+  </div>
+
+  <aside id="overview" class="overview" aria-label="Slide overview"></aside>
+
+  <script src="deck.js"></script>
+</body>
+</html>

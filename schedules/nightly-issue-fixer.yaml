@@ -1,0 +1,40 @@
+name: devfleet-nightly-issue-fixer
+enabled: true
+cron_expr: "30 3 * * *"
+git_url: https://github.com/flatout-works/flatout
+git_ref: main
+agent_image: ghcr.io/devfleet/devfleet-runner:main
+provider_id: deepseek
+model_id: deepseek-chat
+timeout_sec: 3600
+prompt: |-
+  Look at open GitHub issues in the target repository, find one that is clearly actionable and scoped (bug fix, small feature, documentation gap), implement a fix, and create a PR.
+
+  ## Procedure
+
+  1. List open issues:
+     ```bash
+     gh issue list --state open --limit 20 --json number,title,labels,body,state
+     ```
+  2. Review each issue's title, labels, and body. Pick one that:
+     - Has a clear, well-defined scope (not a feature request requiring design discussion)
+     - Is labeled "bug", "good first issue", "documentation", or has a clear reproduction
+     - Does NOT require infrastructure changes, database migrations, or cross-repo work
+     - Can be implemented, tested, and verified within the available time
+
+  3. If no suitable issue is found, report that and exit without creating a PR.
+
+  4. For the chosen issue:
+     - Read the relevant source code to understand what needs to change
+     - Implement the fix following the repository's code conventions
+     - Run the relevant tests to verify the fix:
+       ```bash
+        make -C server check
+        make -C runner check
+        make -C builder check
+        ```
+     - If tests fail, fix them. If you cannot fix them, abort without creating a PR.
+
+  5. Create a branch named `fix/issue-NNN-description` from `main`, commit the fix with a message referencing the issue (e.g., "fix: resolve X (fixes #NNN)"), push, and open a PR against `main`.
+
+  Do not push directly to main. Do not change files unrelated to the fix.

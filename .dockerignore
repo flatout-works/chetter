@@ -1,0 +1,21 @@
+# Build artifacts
+devfleet
+bin/
+runner/runner
+runner/mcp-bridge
+coverage.out
+*.test
+*.tmp
+
+# Git
+.git/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Go workspace
+vendor/

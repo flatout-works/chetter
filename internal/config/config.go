@@ -1,0 +1,148 @@
+// Package config loads devfleet service configuration from environment variables.
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+// Config holds all runtime settings for the devfleet MCP service.
+type Config struct {
+	HTTPAddr                 string
+	MCPAuthToken             string
+	DatabaseDSN              string
+	NATSURL                  string
+	JetStreamEnabled         bool
+	TaskStream               string
+	EventStream              string
+	TaskDurable              string
+	TaskSubject              string
+	EventSubject             string
+	EventDurable             string
+	EventQueue               string
+	Storage                  string
+	DefaultAgentImage        string
+	DefaultTaskTimeoutSec    int
+	ArcaneServerURL          string
+	ArcaneAPIKey             string
+	GitHubAppID              int64
+	GitHubAppPrivateKeyB64   string
+	GitHubWebhookSecret      string
+	GitHubWebhookDisabled    bool
+	GitHubReviewAllowedRepos []string
+	GitHubInstallationID     int64
+}
+
+// Load returns configuration using environment variables and safe defaults.
+func Load() Config {
+	return Config{
+		HTTPAddr:                 env("HTTP_ADDR", ":8080"),
+		MCPAuthToken:             os.Getenv("MCP_AUTH_TOKEN"),
+		DatabaseDSN:              os.Getenv("DATABASE_DSN"),
+		NATSURL:                  env("NATS_URL", "nats://localhost:4222"),
+		JetStreamEnabled:         envBool("JETSTREAM_ENABLED", true),
+		TaskStream:               env("JETSTREAM_TASK_STREAM", "DEVFLEET_TASKS"),
+		EventStream:              env("JETSTREAM_EVENT_STREAM", "DEVFLEET_EVENTS"),
+		TaskDurable:              env("JETSTREAM_TASK_DURABLE", "devfleet-runner"),
+		TaskSubject:              env("TASK_SUBJECT", "devfleet.runner.tasks"),
+		EventSubject:             env("EVENT_SUBJECT", "devfleet.tasks.>"),
+		EventDurable:             env("EVENT_DURABLE", "devfleet-mcp-events"),
+		EventQueue:               env("EVENT_QUEUE", "devfleet-mcp"),
+		Storage:                  env("JETSTREAM_STORAGE", "file"),
+		DefaultAgentImage:        env("DEFAULT_AGENT_IMAGE", "ghcr.io/devfleet/devfleet-runner:latest"),
+		DefaultTaskTimeoutSec:    envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
+		ArcaneServerURL:          env("ARCANE_SERVER_URL", ""),
+		ArcaneAPIKey:             env("ARCANE_API_KEY", ""),
+		GitHubAppID:              envInt64("GITHUB_APP_ID", 0),
+		GitHubAppPrivateKeyB64:   os.Getenv("GITHUB_APP_PRIVATE_KEY_B64"),
+		GitHubWebhookSecret:      os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubWebhookDisabled:    envBool("GITHUB_WEBHOOK_DISABLED", false),
+		GitHubReviewAllowedRepos: envList("GITHUB_REVIEW_ALLOWED_REPOS"),
+		GitHubInstallationID:     envInt64("GITHUB_INSTALLATION_ID", 0),
+	}
+}
+
+// Validate checks required configuration.
+func (c Config) Validate() error {
+	if c.DatabaseDSN == "" {
+		return fmt.Errorf("DATABASE_DSN is required")
+	}
+	if c.TaskSubject == "" {
+		return fmt.Errorf("TASK_SUBJECT is required")
+	}
+	if c.EventSubject == "" {
+		return fmt.Errorf("EVENT_SUBJECT is required")
+	}
+	return nil
+}
+
+// GitHubConfigured reports whether the GitHub App integration is enabled.
+// Returns true only if all required fields are present.
+func (c Config) GitHubConfigured() bool {
+	return !c.GitHubWebhookDisabled &&
+		c.GitHubWebhookSecret != "" &&
+		c.GitHubAppID > 0 &&
+		c.GitHubAppPrivateKeyB64 != "" &&
+		c.GitHubInstallationID > 0
+}
+
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt64(key string, fallback int64) int64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envList(key string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

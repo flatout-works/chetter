@@ -1,0 +1,37 @@
+nats:
+  url: nats://localhost:4223
+
+runner:
+  listen_subject: devfleet.runner.tasks
+  result_subject: devfleet.tasks
+  workspace_root: /tmp/runner-test
+  max_concurrent: 5
+
+proxy:
+  listen_addr: :18080
+  allowed_domains:
+    - api.openai.com
+    - html.duckduckgo.com
+    - raw.githubusercontent.com
+    - github.com
+    - api.mem9.ai
+    - api.osv.dev
+  blocked_domains:
+    - webhook.site
+    - pastebin.com
+
+dns:
+  listen_addr: :0
+  upstream: 8.8.8.8:53
+  blocked_domains:
+    - metadata.google.internal
+
+workspace: {}
+
+git:
+  ssh_key_path: ""
+  pat: ""
+
+devfleet_mcp:
+  url: ""
+  auth_token: ""

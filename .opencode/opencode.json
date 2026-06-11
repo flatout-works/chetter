@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "command": {
+    "devfleet-status": {
+      "description": "Show devfleet runner health, running/pending tasks, and schedules.",
+      "template": "Use the devfleet MCP tools to produce a concise devfleet operations status report. Call devfleet_runner_health with include_tasks=true, devfleet_list_tasks for status=running with limit=20, devfleet_list_tasks for status=pending with limit=20, and devfleet_list_schedules with enabled_only=false. Summarize fleet activity, runner image versions, running/stale/pending task counts, each active task, and all schedules. If an MCP call fails, include the exact error and continue. Do not edit files."
+    }
+  },
+  "mcp": {
+    "devfleet": {
+      "type": "remote",
+      "url": "https://devfleet.works/mcp",
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:DEVFLEET_MCP_TOKEN}"
+      },
+      "timeout": 30000
+    }
+  }
+}

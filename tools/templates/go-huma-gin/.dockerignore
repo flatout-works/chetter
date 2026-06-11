@@ -1,0 +1,10 @@
+.git
+.flatout
+bin
+tmp
+coverage.out
+*.test
+*.log
+.env
+.env.*
+!.env.example

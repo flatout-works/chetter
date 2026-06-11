@@ -1,0 +1,71 @@
+nats:
+  url: nats://localhost:4222
+
+jetstream:
+  enabled: false
+  task_stream: DEVFLEET_TASKS
+  event_stream: DEVFLEET_EVENTS
+  task_durable: devfleet-runner
+  task_queue: devfleet-runners
+  ack_wait_seconds: 7200
+  max_deliver: 3
+  storage: file
+
+runner:
+  listen_subject: devfleet.runner.tasks
+  result_subject: devfleet.tasks
+  workspace_root: /var/lib/runner
+  max_concurrent: 10
+
+proxy:
+  listen_addr: :18080
+  allowed_domains:
+    - api.openai.com
+    - api.anthropic.com
+    - api.groq.com
+    - api.mistral.ai
+    - html.duckduckgo.com
+    - lite.duckduckgo.com
+    - www.google.com
+    - bing.com
+    - raw.githubusercontent.com
+    - github.com
+    - docs.python.org
+    - pkg.go.dev
+    - developer.mozilla.org
+    - api.synthetic.new
+    - api.mem9.ai
+    - api.osv.dev
+    - registry.npmjs.org
+    - npmjs.org
+  blocked_domains:
+    - webhook.site
+    - requestbin.com
+    - paste.opendev.org
+    - pastebin.com
+    - discord.com
+    - hooks.slack.com
+    - zpr.io
+
+dns:
+  listen_addr: :5300
+  upstream: 8.8.8.8:53
+  blocked_domains:
+    - metadata.google.internal
+    - instance-data
+    - 169.254.169.254
+
+workspace: {}
+
+git:
+  ssh_key_path: ""
+  pat: ""
+
+deploy:
+  provider: local
+  registry: ""
+  devfleet_url: devfleet.works
+
+devfleet_mcp:
+  url: ""
+  auth_token: ""
