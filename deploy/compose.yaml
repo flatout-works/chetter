@@ -6,19 +6,9 @@ services:
     volumes:
       - nats-data:/data
 
-  chetter-runner-base:
-    build:
-      context: .
-      dockerfile: runner/Dockerfile.chetter-base
-    image: chetter-runner-base:latest
-    command: ["true"]
-
   chetter-mcp:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: chetter-mcp:latest
-    pull_policy: never
+    image: ghcr.io/flatout-works/chetter-mcp:main
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       chetter-nats:
@@ -38,22 +28,15 @@ services:
       JETSTREAM_ENABLED: "true"
       TASK_SUBJECT: chetter.runner.tasks
       EVENT_SUBJECT: chetter.tasks.>
-      DEFAULT_AGENT_IMAGE: chetter-runner:latest
+      DEFAULT_AGENT_IMAGE: ghcr.io/flatout-works/chetter-runner:main
     ports:
       - "18088:8080"
 
   chetter-runner:
-    build:
-      context: .
-      dockerfile: runner/Dockerfile.chetter
-      args:
-        BASE_IMAGE: chetter-runner-base:latest
-    image: chetter-runner:latest
-    pull_policy: never
+    image: ghcr.io/flatout-works/chetter-runner:main
+    pull_policy: always
     restart: unless-stopped
     depends_on:
-      chetter-runner-base:
-        condition: service_completed_successfully
       chetter-nats:
         condition: service_started
     environment:
@@ -74,17 +57,15 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: chetter-runner:latest
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
     volumes:
       - runner-data:/var/lib/chetter-runner
 
   chetter-runner-2:
-    image: chetter-runner:latest
-    pull_policy: never
+    image: ghcr.io/flatout-works/chetter-runner:main
+    pull_policy: always
     restart: unless-stopped
     depends_on:
-      chetter-runner:
-        condition: service_started
       chetter-nats:
         condition: service_started
     environment:
@@ -105,7 +86,7 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: chetter-runner:latest
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
     volumes:
       - runner-data-2:/var/lib/chetter-runner
 
