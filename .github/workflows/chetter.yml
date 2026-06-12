@@ -53,32 +53,54 @@ jobs:
             method="$1"
             path="$2"
             data="${3:-}"
+            response_file="$(mktemp)"
             if [ -n "$data" ]; then
-              curl --fail --silent --show-error --max-time 14400 \
+              status=$(curl --silent --show-error --max-time 14400 \
+                --write-out "%{http_code}" \
+                --output "$response_file" \
                 --request "$method" \
                 --header "X-Api-Key: $ARCANE_API_KEY" \
                 --header "Content-Type: application/json" \
                 --data "$data" \
-                "$arcane_url/api$path" >/dev/null
+                "$arcane_url/api$path")
             else
-              curl --fail --silent --show-error --max-time 14400 \
+              status=$(curl --silent --show-error --max-time 14400 \
+                --write-out "%{http_code}" \
+                --output "$response_file" \
                 --request "$method" \
                 --header "X-Api-Key: $ARCANE_API_KEY" \
-                "$arcane_url/api$path" >/dev/null
+                "$arcane_url/api$path")
             fi
+            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+              cat "$response_file" >&2
+              rm -f "$response_file"
+              return 1
+            fi
+            cat "$response_file"
+            rm -f "$response_file"
           }
 
           echo "Syncing Chetter GitOps project"
-          call_arcane POST "/environments/$env_id/gitops-syncs/$ARCANE_CHETTER_GITOPS_ID/sync"
+          call_arcane POST "/environments/$env_id/gitops-syncs/$ARCANE_CHETTER_GITOPS_ID/sync" >/dev/null
+
+          project_dir=$(call_arcane GET "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID" | jq -r '.path')
+          if [ -z "$project_dir" ] || [ "$project_dir" = "null" ]; then
+            echo "::error::Could not resolve Arcane project directory"
+            exit 1
+          fi
 
           echo "Building and pushing runner base image"
-          call_arcane POST "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID/build" \
-            '{"services":["chetter-runner-base"],"provider":"local","push":true,"load":true}'
+          call_arcane POST "/environments/$env_id/images/build" \
+            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter-base",tags:["ghcr.io/flatout-works/chetter-runner-base:main"],provider:"local",push:true,load:true}')" >/dev/null
 
-          echo "Building and pushing MCP and runner images"
-          call_arcane POST "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID/build" \
-            '{"services":["chetter-mcp","chetter-runner"],"provider":"local","push":true,"load":true}'
+          echo "Building and pushing MCP image"
+          call_arcane POST "/environments/$env_id/images/build" \
+            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],provider:"local",push:true,load:true}')" >/dev/null
+
+          echo "Building and pushing runner image"
+          call_arcane POST "/environments/$env_id/images/build" \
+            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main"},provider:"local",push:true,load:true}')" >/dev/null
 
           echo "Redeploying Chetter project"
           call_arcane POST "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" \
-            '{"forceRecreate":true,"pullPolicy":"always","removeOrphans":true}'
+            '{"forceRecreate":true,"pullPolicy":"always","removeOrphans":true}' >/dev/null

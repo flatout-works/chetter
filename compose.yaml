@@ -9,7 +9,7 @@ services:
   chetter-mcp:
     image: ghcr.io/flatout-works/chetter-mcp:main
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     pull_policy: always
     restart: unless-stopped
@@ -39,14 +39,14 @@ services:
     profiles: ["build"]
     image: ghcr.io/flatout-works/chetter-runner-base:main
     build:
-      context: ..
+      context: .
       dockerfile: runner/Dockerfile.chetter-base
     command: ["true"]
 
   chetter-runner:
     image: ghcr.io/flatout-works/chetter-runner:main
     build:
-      context: ..
+      context: .
       dockerfile: runner/Dockerfile.chetter
       args:
         BASE_IMAGE: ghcr.io/flatout-works/chetter-runner-base:main
