@@ -1,0 +1,113 @@
+# Sample schedule: nightly dependency upgrade
+#
+# Tries dependency upgrades across repository components, verifies each set with
+# the relevant tests/checks, and opens a PR with the upgrades that worked plus a
+# report for upgrades that were skipped or could not be completed safely.
+#
+# Customize before enabling:
+#   git_url      - your repository URL
+#   git_ref      - branch to work from (usually main)
+#   agent_image  - runner image (get from your Chetter admin or build your own)
+#   agent        - optional: custom dependency-maintenance agent if you have one
+#   timeout_sec  - adjust based on number of dependency manifests and test time
+#   prompt       - adapt package manager commands and verification steps
+#
+# The prompt below is ecosystem-agnostic. Tune the commands for your stack:
+# Go modules, npm/pnpm/yarn workspaces, Python, Rust, Java, Docker images,
+# GitHub Actions, Terraform providers, or other dependency manifests.
+#
+# To create: chetter_schedule_task with these fields.
+# To change later: chetter_update_schedule with changed fields.
+
+name: nightly-dependency-upgrade
+enabled: false
+cron_expr: "0 2 * * *"
+git_url: https://github.com/your-org/your-repo
+git_ref: main
+agent_image: ghcr.io/your-org/chetter-runner:main
+agent: dependency-maintainer
+provider_id: deepseek
+model_id: deepseek-chat
+timeout_sec: 10800
+prompt: |-
+  Perform a dependency upgrade pass for the target repository and create a pull
+  request containing only the upgrades that were verified to work.
+
+  Start from current `main`. First check for an existing open dependency upgrade
+  PR to avoid duplicate work:
+
+      gh pr list --state open --json number,headRefName,title,url --jq '.[] | select((.headRefName | startswith("maintenance/dependency-upgrades-")) or (.title | test("dependency upgrade|dependency updates|update dependencies"; "i")))'
+
+  If an existing dependency upgrade PR is open, report it and exit cleanly.
+
+  Discover the repository's components and dependency manifests before changing
+  anything. Look for language package manifests, lockfiles, Dockerfiles,
+  compose files, GitHub Actions, Terraform providers/modules, and other pinned
+  external versions. Group work by component so upgrades can be verified with
+  the smallest relevant test scope.
+
+  For each component:
+  - Identify available dependency updates using the package manager's normal
+    tooling where possible, such as `go list -m -u all`, `npm outdated`,
+    `pnpm outdated`, `yarn outdated`, `pip list --outdated`, `uv tree --outdated`,
+    `cargo update --dry-run`, `mvn versions:display-dependency-updates`,
+    `gradle dependencyUpdates`, or equivalent tools already available in the
+    runner image.
+  - Prefer patch and minor updates first. Consider major updates only when the
+    release notes, changelog, migration guide, or semver policy indicate the
+    change is low-risk and any required code/config tweaks are small and safe.
+  - Review release notes or changelogs for non-trivial upgrades. Capture links
+    or version references for important behavior changes, deprecations, security
+    fixes, migration requirements, or reasons an upgrade should be skipped.
+  - Apply upgrades in small coherent batches per component. Update the manifest
+    and lockfile together using the correct package manager. Do not hand-edit
+    lockfiles unless that is the repository's established practice.
+  - Run the smallest relevant verification first, then broader checks after all
+    accepted upgrades are combined. Use repository-native commands such as unit
+    tests, type checks, linters, builds, code generation checks, or container
+    builds. If the repo documents commands in README files, Makefiles, package
+    scripts, CI config, or contributing docs, prefer those.
+  - If an upgrade fails verification, inspect the failure. Make only minimal,
+    directly required compatibility tweaks. Do not refactor unrelated code,
+    change business logic, alter public APIs, or make speculative fixes.
+  - If the failure is not safely fixable, revert that upgrade and record the
+    dependency name, attempted version, failing command, error summary, and the
+    likely next step.
+
+  Keep the PR focused on dependency maintenance. Allowed changes are dependency
+  manifests, lockfiles, toolchain version pins, Docker/GitHub Action version
+  pins, and minimal compatibility fixes required by verified upgrades. Do not
+  edit generated files unless the repository normally commits them and the
+  relevant generation command was run successfully.
+
+  After component-level attempts, run the repository's broader verification
+  suite if feasible. If the full suite is too expensive or unavailable, run the
+  strongest practical subset and explain the limitation in the report.
+
+  If no upgrades can be completed safely, leave the working tree unchanged,
+  report the attempted upgrades and blockers in the task result, and do not
+  create an empty PR.
+
+  If one or more upgrades are verified, create a branch named
+  `maintenance/dependency-upgrades-YYYY-MM-DD-HHMM`, commit with message
+  `chore: update dependencies`, push, and open a pull request against `main`.
+
+  The pull request description must include:
+  - Summary of upgraded components and dependencies, including old and new
+    versions when practical.
+  - Verification commands run and whether each passed, failed, or was skipped.
+  - Release note or changelog highlights for notable upgrades, with links when
+    available.
+  - A report of attempted upgrades that were not included, with the reason each
+    was skipped or reverted and suggested follow-up.
+  - Any residual risks, manual review points, or verification gaps.
+
+  Add this footer to the pull request description, resolving the environment
+  variables $CHETTER_AGENT_NAME, $CHETTER_MODEL_ID, $CHETTER_RUNNER_IMAGE,
+  and $CHETTER_RUNNER_IMAGE_DIGEST:
+
+      ---
+      Generated by [Chetter](https://github.com/flatout-works/chetter)
+      Agent: $CHETTER_AGENT_NAME | Model: $CHETTER_MODEL_ID | Runner: $CHETTER_RUNNER_IMAGE ($CHETTER_RUNNER_IMAGE_DIGEST)
+
+  Do not push directly to `main`.

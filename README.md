@@ -217,17 +217,58 @@ If `DATABASE_DSN` is not set, use `deploy/compose.local.yaml` to add the bundled
 MySQL service. Production deployments should usually set `DATABASE_DSN` and run
 only `deploy/compose.yaml`.
 
+## Arcane Deployment
+
+Chetter's production deployment uses Arcane GitOps and Arcane image builds on
+wowbagger. GitHub Actions does not build Docker images.
+
+The deployment flow is:
+
+1. Push to `main`.
+2. GitHub Actions runs `make check`.
+3. The workflow calls Arcane's API to sync GitOps, build images on wowbagger,
+   push them to GHCR, and redeploy the Chetter project.
+4. Arcane redeploys containers from the GHCR images.
+
+Required GitHub repository secrets:
+
+| Secret | Description |
+|---|---|
+| `ARCANE_URL` | Arcane base URL, for example `https://wowbagger.krampe.se` |
+| `ARCANE_API_KEY` | Arcane API key with project build/deploy permissions |
+| `ARCANE_CHETTER_PROJECT_ID` | Arcane Chetter project ID |
+| `ARCANE_CHETTER_GITOPS_ID` | Arcane GitOps sync ID |
+
+Optional GitHub repository variable:
+
+| Variable | Description |
+|---|---|
+| `ARCANE_ENVIRONMENT_ID` | Arcane environment ID, defaults to `0` |
+
+Arcane must have GHCR registry credentials configured in Arcane's registry
+settings. Do not store `GHCR_TOKEN` in GitHub Actions for this deployment path.
+
+Arcane GitOps must use:
+
+- Compose path: `compose.yaml`
+- Directory sync: enabled
+
+The root `compose.yaml` is for Arcane GitOps and uses `build:` directives with
+explicit GHCR image tags. The `deploy/compose.yaml` file is the portable
+self-hosted compose stack that pulls the published GHCR images.
+
 ## Repository Layout
 
 | Path | Purpose |
 |---|---|
+| `compose.yaml` | Arcane GitOps compose file with build directives |
 | `main.go` | MCP/HTTP server entry point |
 | `internal/config/` | Environment-backed configuration |
 | `internal/store/` | MySQL/TiDB schema and persistence |
 | `internal/bus/` | NATS and JetStream transport |
 | `internal/service/` | MCP tools and task orchestration |
 | `internal/webhook/` | Optional GitHub webhook handling |
-| `deploy/compose.yaml` | Docker Compose stack |
+| `deploy/compose.yaml` | Portable Docker Compose stack using published GHCR images |
 | `runner/` | Runner runtime, image Dockerfiles, and entrypoint |
 | `schedules/` | Example declarative schedules |
 | `tools/` | Agent support files baked into the runner image |
