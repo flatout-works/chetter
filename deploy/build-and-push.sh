@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Build chetter images from the current checkout and push them to GHCR.
-# Run this on wowbagger after a git sync (e.g. from a webhook or cron).
+# Run this on wowbagger after a git sync. For the full webhook entrypoint,
+# use deploy/rebuild-on-wowbagger.sh.
 #
 # Environment:
 #   REGISTRY        GHCR registry (default: ghcr.io/flatout-works)
