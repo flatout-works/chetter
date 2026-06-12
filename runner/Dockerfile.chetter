@@ -36,7 +36,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # --------------------------------------------------------------------------
 # Stage 3: Final runtime image (base + app layer)
 # --------------------------------------------------------------------------
-FROM ghcr.io/flatout-works/chetter-runner-base:main
+ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
+FROM ${BASE_IMAGE}
 
 # App binaries
 COPY --from=runner-builder /out/runner /usr/local/bin/runner

@@ -6,9 +6,19 @@ services:
     volumes:
       - nats-data:/data
 
+  chetter-runner-base:
+    build:
+      context: .
+      dockerfile: runner/Dockerfile.chetter-base
+    image: chetter-runner-base:latest
+    command: ["true"]
+
   chetter-mcp:
-    image: ghcr.io/flatout-works/chetter-mcp:main
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chetter-mcp:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
       chetter-nats:
@@ -24,26 +34,33 @@ services:
       GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       GITHUB_REVIEW_ALLOWED_REPOS: ${GITHUB_REVIEW_ALLOWED_REPOS:-}
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@nats:4222
+      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
       JETSTREAM_ENABLED: "true"
       TASK_SUBJECT: chetter.runner.tasks
       EVENT_SUBJECT: chetter.tasks.>
-      DEFAULT_AGENT_IMAGE: ghcr.io/flatout-works/chetter-runner:main
+      DEFAULT_AGENT_IMAGE: chetter-runner:latest
     ports:
       - "18088:8080"
 
   chetter-runner:
-    image: ghcr.io/flatout-works/chetter-runner:main
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: runner/Dockerfile.chetter
+      args:
+        BASE_IMAGE: chetter-runner-base:latest
+    image: chetter-runner:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
+      chetter-runner-base:
+        condition: service_completed_successfully
       chetter-nats:
         condition: service_started
     environment:
       RUNNER_LOCAL: "true"
       JETSTREAM_ENABLED: "true"
       JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@nats:4222
+      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
       TASK_SUBJECT: chetter.runner.tasks
       RESULT_SUBJECT: chetter.tasks
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
@@ -57,22 +74,24 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
+      CHETTER_RUNNER_IMAGE: chetter-runner:latest
     volumes:
       - runner-data:/var/lib/chetter-runner
 
   chetter-runner-2:
-    image: ghcr.io/flatout-works/chetter-runner:main
-    pull_policy: always
+    image: chetter-runner:latest
+    pull_policy: never
     restart: unless-stopped
     depends_on:
+      chetter-runner:
+        condition: service_started
       chetter-nats:
         condition: service_started
     environment:
       RUNNER_LOCAL: "true"
       JETSTREAM_ENABLED: "true"
       JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@nats:4222
+      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
       TASK_SUBJECT: chetter.runner.tasks
       RESULT_SUBJECT: chetter.tasks
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
@@ -86,7 +105,7 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
+      CHETTER_RUNNER_IMAGE: chetter-runner:latest
     volumes:
       - runner-data-2:/var/lib/chetter-runner
 

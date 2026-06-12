@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-: "${NATS_URL:=nats://nats:4222}"
+: "${NATS_URL:=nats://chetter-nats:4222}"
 : "${TASK_SUBJECT:=chetter.runner.tasks}"
 : "${RESULT_SUBJECT:=chetter.tasks}"
 : "${RUNNER_WORKSPACE_ROOT:=/var/lib/chetter-runner/workspaces}"
