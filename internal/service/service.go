@@ -4,13 +4,10 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +17,6 @@ import (
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/nats-io/nats.go"
 	"github.com/robfig/cron/v3"
-	"gopkg.in/yaml.v3"
 )
 
 // TaskRequest is the JSON shape consumed by the existing runner.
@@ -274,23 +270,6 @@ func (s *Service) CreateSchedule(ctx context.Context, in store.ScheduleInput) (s
 	return s.store.GetSchedule(ctx, record.ID)
 }
 
-// ScheduleFile is the YAML shape for declarative schedule definitions.
-type ScheduleFile struct {
-	Name       string   `yaml:"name"`
-	Enabled    bool     `yaml:"enabled"`
-	CronExpr   string   `yaml:"cron_expr"`
-	Prompt     string   `yaml:"prompt"`
-	GitURL     string   `yaml:"git_url,omitempty"`
-	GitRef     string   `yaml:"git_ref,omitempty"`
-	AgentImage string   `yaml:"agent_image,omitempty"`
-	Agent      string   `yaml:"agent,omitempty"`
-	ProviderID string   `yaml:"provider_id,omitempty"`
-	ModelID    string   `yaml:"model_id,omitempty"`
-	VariantID  string   `yaml:"variant_id,omitempty"`
-	Skills     []string `yaml:"skills,omitempty"`
-	TimeoutSec int      `yaml:"timeout_sec,omitempty"`
-}
-
 // UpdateSchedule updates all mutable fields on an existing schedule.
 func (s *Service) UpdateSchedule(ctx context.Context, name string, in store.ScheduleInput, enabled bool) (store.ScheduleRecord, error) {
 	if in.Name == "" {
@@ -329,91 +308,6 @@ func (s *Service) UpdateSchedule(ctx context.Context, name string, in store.Sche
 		return store.ScheduleRecord{}, fmt.Errorf("reactivate schedule: %w", err)
 	}
 	return record, nil
-}
-
-// SyncSchedulesResult describes what changed during a schedule sync.
-type SyncSchedulesResult struct {
-	Created int `json:"created"`
-	Updated int `json:"updated"`
-	Deleted int `json:"deleted,omitempty"`
-}
-
-// SyncSchedules reads schedule YAML files from a directory, upserts them,
-// and optionally deletes DB schedules not present in the YAML set.
-func (s *Service) SyncSchedules(ctx context.Context, dir string, prune bool) (SyncSchedulesResult, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return SyncSchedulesResult{}, fmt.Errorf("read schedule dir %q: %w", dir, err)
-	}
-	var files []ScheduleFile
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(entry.Name(), ".yaml") && !strings.HasSuffix(entry.Name(), ".yml") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			return SyncSchedulesResult{}, fmt.Errorf("read %s: %w", entry.Name(), err)
-		}
-		var sf ScheduleFile
-		if err := yaml.Unmarshal(data, &sf); err != nil {
-			return SyncSchedulesResult{}, fmt.Errorf("parse %s: %w", entry.Name(), err)
-		}
-		if sf.Name == "" || sf.CronExpr == "" || sf.Prompt == "" {
-			return SyncSchedulesResult{}, fmt.Errorf("%s: name, cron_expr, and prompt are required", entry.Name())
-		}
-		files = append(files, sf)
-	}
-	var result SyncSchedulesResult
-	seen := make(map[string]bool, len(files))
-	for _, sf := range files {
-		seen[sf.Name] = true
-		in := store.ScheduleInput{
-			Name:       sf.Name,
-			CronExpr:   sf.CronExpr,
-			Prompt:     sf.Prompt,
-			GitURL:     sf.GitURL,
-			GitRef:     sf.GitRef,
-			AgentImage: sf.AgentImage,
-			Agent:      sf.Agent,
-			ProviderID: sf.ProviderID,
-			ModelID:    sf.ModelID,
-			VariantID:  sf.VariantID,
-			Skills:     sf.Skills,
-			TimeoutSec: sf.TimeoutSec,
-		}
-		_, err := s.store.GetScheduleByName(ctx, sf.Name)
-		if err == sql.ErrNoRows {
-			if _, err := s.CreateSchedule(ctx, in); err != nil {
-				return SyncSchedulesResult{}, fmt.Errorf("create %q: %w", sf.Name, err)
-			}
-			result.Created++
-		} else if err != nil {
-			return SyncSchedulesResult{}, fmt.Errorf("lookup %q: %w", sf.Name, err)
-		} else {
-			if _, err := s.UpdateSchedule(ctx, sf.Name, in, sf.Enabled); err != nil {
-				return SyncSchedulesResult{}, fmt.Errorf("update %q: %w", sf.Name, err)
-			}
-			result.Updated++
-		}
-	}
-	if prune {
-		all, err := s.store.ListSchedules(ctx, false)
-		if err != nil {
-			return SyncSchedulesResult{}, fmt.Errorf("list schedules: %w", err)
-		}
-		for _, rec := range all {
-			if !seen[rec.Name] {
-				if err := s.DeleteSchedule(ctx, rec.Name); err != nil {
-					return SyncSchedulesResult{}, fmt.Errorf("delete %q: %w", rec.Name, err)
-				}
-				result.Deleted++
-			}
-		}
-	}
-	return result, nil
 }
 
 // DeleteSchedule removes a schedule by name and stops its cron job.

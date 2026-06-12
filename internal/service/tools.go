@@ -150,19 +150,6 @@ type UpdateScheduleOutput struct {
 	Schedule store.ScheduleRecord `json:"schedule"`
 }
 
-// SyncSchedulesInput is the input for chetter_sync_schedules.
-type SyncSchedulesInput struct {
-	Directory string `json:"directory" jsonschema:"Path to a directory containing schedule YAML files"`
-	Prune     bool   `json:"prune,omitempty" jsonschema:"Delete DB schedules not present in the YAML files"`
-}
-
-// SyncSchedulesOutput is the output for chetter_sync_schedules.
-type SyncSchedulesOutput struct {
-	Created int `json:"created"`
-	Updated int `json:"updated"`
-	Deleted int `json:"deleted"`
-}
-
 // TaskEventsInput is the input for chetter_task_events.
 type TaskEventsInput struct {
 	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
@@ -262,7 +249,6 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedules", Description: "List chetter cron task schedules."}, svc.listSchedulesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_schedule", Description: "Delete a chetter cron task schedule by name."}, svc.deleteScheduleTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_schedule", Description: "Update a chetter cron task schedule by name. Only provided fields are changed."}, svc.updateScheduleTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_sync_schedules", Description: "Load schedule definitions from YAML files in a directory and upsert them into the database."}, svc.syncSchedulesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_events", Description: "Get the full event history for a chetter task."}, svc.taskEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_progress", Description: "Get a distilled progress timeline for a chetter task."}, svc.taskProgressTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
@@ -411,17 +397,6 @@ func (s *Service) updateScheduleTool(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, UpdateScheduleOutput{}, fmt.Errorf("update schedule: %w", err)
 	}
 	return nil, UpdateScheduleOutput{Schedule: schedule}, nil
-}
-
-func (s *Service) syncSchedulesTool(ctx context.Context, _ *mcp.CallToolRequest, in SyncSchedulesInput) (*mcp.CallToolResult, SyncSchedulesOutput, error) {
-	if in.Directory == "" {
-		return nil, SyncSchedulesOutput{}, fmt.Errorf("directory is required")
-	}
-	result, err := s.SyncSchedules(ctx, in.Directory, in.Prune)
-	if err != nil {
-		return nil, SyncSchedulesOutput{}, fmt.Errorf("sync schedules: %w", err)
-	}
-	return nil, SyncSchedulesOutput(result), nil
 }
 
 func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskEventsInput) (*mcp.CallToolResult, TaskEventsOutput, error) {

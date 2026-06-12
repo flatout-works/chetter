@@ -11,8 +11,8 @@
 #   timeout_sec  - adjust based on codebase size (large repos need more time)
 #   prompt       - adapt the source directories and quality criteria to your project
 #
-# To sync: chetter_sync_schedules("schedules/")
-# Or individually: chetter_schedule_task with these fields.
+# To create: chetter_schedule_task with these fields.
+# To change later: chetter_update_schedule with changed fields.
 
 name: code-quality-audit-daily
 enabled: false

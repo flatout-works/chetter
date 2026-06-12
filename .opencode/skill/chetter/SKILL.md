@@ -7,7 +7,7 @@ description: Use Chetter to submit, track, and manage remote agent tasks: runner
 
 Chetter is a self-hosted MCP server for running autonomous AI development agents. It gives your AI tooling a way to submit software development work to a fleet of containerized runners.
 
-- **MCP endpoint:** `https://chetter.flatout.works/mcp` (hosted) or your own instance
+- **MCP endpoint:** `https://some.ip.name/mcp` (hosted) or your own instance
 - **Source repo:** `https://github.com/flatout-works/chetter`
 
 ## Available MCP Tools
@@ -39,7 +39,6 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_update_schedule` | Update a schedule by name |
 | `chetter_run_schedule` | Run a schedule immediately |
 | `chetter_delete_schedule` | Delete a schedule by name |
-| `chetter_sync_schedules` | Load schedules from a YAML directory and upsert them |
 
 ### Arcane (Vulnerability Scanning, Optional)
 | Tool | Purpose |
@@ -77,13 +76,11 @@ Show the latest event for task task_<id>
 A running task is stale in fleet health when `last_event_sec > 600`. Check its events and progress to understand what step it is stuck on. Consider canceling and resubmitting.
 
 ### Manage Schedules
-Schedules are declarative YAML files. See `schedules/` for sample templates. The workflow:
+Schedules can be kept as YAML files in your repo for reviewability. Chetter does not read local YAML files directly; use the schedule tools to create or update each schedule.
 
 ```
-Use chetter_sync_schedules to sync schedules from schedules/
+Use chetter_schedule_task to create a schedule from schedules/nightly-changelog-update.yaml
 ```
-
-This calls `chetter_sync_schedules` which reads all YAML files and upserts them.
 
 ## Working with Schedules
 
@@ -91,9 +88,9 @@ This calls `chetter_sync_schedules` which reads all YAML files and upserts them.
 
 1. Copy an existing sample from `schedules/` as a starting point.
 2. Edit it with your repo details and prompt.
-3. Sync to Chetter:
+3. Create it in Chetter:
    ```
-   Use chetter_sync_schedules to sync schedules from schedules/
+   Use chetter_schedule_task with the fields from schedules/nightly-changelog-update.yaml
    ```
 
 ### Customizing a Schedule
@@ -121,11 +118,7 @@ Each schedule YAML supports these fields:
 To change a schedule's cron expression, prompt, model, or other fields:
 
 1. Edit the `schedules/*.yaml` file directly.
-2. Sync again:
-   ```
-   Use chetter_sync_schedules to sync schedules from schedules/
-   ```
-   Or update individually:
+2. Update Chetter with the changed fields:
    ```
    Use chetter_update_schedule to change nightly-changelog-update's model to opencode/minimax-m3
    ```
@@ -145,7 +138,7 @@ Use chetter_run_schedule to run the nightly-changelog-update schedule now
 ```
 Use chetter_delete_schedule to delete nightly-docs-update
 ```
-Remove the corresponding YAML file so `chetter_sync_schedules` doesn't recreate it.
+Remove the corresponding YAML file from your repo if it is no longer part of your desired schedule set.
 
 ### Keeping Schedules in Your Repo
 
@@ -154,7 +147,7 @@ The recommended pattern is to store schedule YAMLs in your own repo (not in chet
 1. Create a `schedules/` directory in your project repo.
 2. Copy the samples from chetter's `schedules/` as starting points.
 3. Customize for your project (repo URL, agent image, prompt details).
-4. Sync with Chetter pointing at your project's `schedules/` directory.
+4. Apply each schedule with `chetter_schedule_task` or `chetter_update_schedule`.
 
 This way your schedules are version-controlled alongside your code and can be reviewed in PRs.
 

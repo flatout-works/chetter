@@ -9,8 +9,8 @@
 #   timeout_sec  - adjust based on typical fix complexity
 #   prompt       - adapt issue labels and build/test commands to your project
 #
-# To sync: chetter_sync_schedules("schedules/")
-# Or individually: chetter_schedule_task with these fields.
+# To create: chetter_schedule_task with these fields.
+# To change later: chetter_update_schedule with changed fields.
 
 name: nightly-issue-fixer
 enabled: false
