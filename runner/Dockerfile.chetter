@@ -7,6 +7,8 @@
 # Fast rebuilds: only the COPY layers below rebuild on code changes.
 # =========================================================================
 
+ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
+
 # --------------------------------------------------------------------------
 # Stage 1: Build runner binary
 # --------------------------------------------------------------------------
@@ -36,7 +38,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # --------------------------------------------------------------------------
 # Stage 3: Final runtime image (base + app layer)
 # --------------------------------------------------------------------------
-ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
 FROM ${BASE_IMAGE}
 
 # App binaries
