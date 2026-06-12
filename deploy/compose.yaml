@@ -57,6 +57,7 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
     volumes:
       - runner-data:/var/lib/chetter-runner
 
@@ -85,6 +86,7 @@ services:
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
     volumes:
       - runner-data-2:/var/lib/chetter-runner
 

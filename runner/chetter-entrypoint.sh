@@ -15,6 +15,30 @@ set -eu
 : "${JETSTREAM_MAX_ACK_PENDING:=4}"
 : "${JETSTREAM_STORAGE:=file}"
 
+# Resolve runner image digest for OpenCode task signature footers.
+# If not already set, try Docker inspect via container ID from cgroup or hostname.
+if [ -z "${CHETTER_RUNNER_IMAGE_DIGEST:-}" ]; then
+  CID=""
+  if [ -r /proc/self/cgroup ]; then
+    CID=$(sed -n 's/.*\/docker[-/]\?\([[:xdigit:]]\{64\}\).*/\1/p' /proc/self/cgroup 2>/dev/null | head -1 || true)
+  fi
+  if [ -z "$CID" ] && [ -r /proc/1/cgroup ]; then
+    CID=$(sed -n 's/.*\/docker[-/]\?\([[:xdigit:]]\{64\}\).*/\1/p' /proc/1/cgroup 2>/dev/null | head -1 || true)
+  fi
+  if [ -z "$CID" ] && [ -n "${HOSTNAME:-}" ]; then
+    CID="$HOSTNAME"
+  fi
+  if [ -n "$CID" ] && command -v docker >/dev/null 2>&1; then
+    DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$CID" 2>/dev/null | cut -d@ -f2 || true)
+    if [ -n "${DIGEST:-}" ]; then
+      CHETTER_RUNNER_IMAGE_DIGEST="sha256:${DIGEST#sha256:}"
+    fi
+  fi
+fi
+: "${CHETTER_RUNNER_IMAGE_DIGEST:=unknown}"
+: "${CHETTER_RUNNER_IMAGE:=unknown}"
+export CHETTER_RUNNER_IMAGE CHETTER_RUNNER_IMAGE_DIGEST
+
 mkdir -p "$RUNNER_WORKSPACE_ROOT" /var/lib/chetter-runner/cache/go/pkg/mod /var/lib/chetter-runner/cache/go/build /var/lib/chetter-runner/cache/npm
 
 cat > /tmp/runner.yaml <<EOF
