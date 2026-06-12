@@ -809,6 +809,10 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"GIT_AUTHOR_EMAIL=devfleet@devfleet.works",
 		"GIT_COMMITTER_NAME=Devfleet Runner",
 		"GIT_COMMITTER_EMAIL=devfleet@devfleet.works",
+		"DEVFLEET_AGENT_NAME="+req.Agent,
+		"DEVFLEET_MODEL_ID="+req.ProviderID+"/"+req.ModelID,
+		"DEVFLEET_RUNNER_IMAGE="+os.Getenv("DEVFLEET_RUNNER_IMAGE"),
+		"DEVFLEET_RUNNER_IMAGE_DIGEST="+os.Getenv("DEVFLEET_RUNNER_IMAGE_DIGEST"),
 	)
 
 	secret := generatePassword()
@@ -944,6 +948,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
 		"-e", "OPENCODE_CONFIG=/opt/opencode/.config/opencode/config.json",
 		"-e", "OPENCODE_SERVER_PASSWORD=" + secret,
+		"-e", "DEVFLEET_AGENT_NAME=" + req.Agent,
+		"-e", "DEVFLEET_MODEL_ID=" + req.ProviderID + "/" + req.ModelID,
+		"-e", "DEVFLEET_RUNNER_IMAGE=" + os.Getenv("DEVFLEET_RUNNER_IMAGE"),
+		"-e", "DEVFLEET_RUNNER_IMAGE_DIGEST=" + os.Getenv("DEVFLEET_RUNNER_IMAGE_DIGEST"),
 	}
 
 	// Inject LLM env vars from the task request.
