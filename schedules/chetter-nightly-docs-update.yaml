@@ -11,7 +11,7 @@
 # To create: chetter_schedule_task with these fields.
 # To change later: chetter_update_schedule with changed fields.
 
-name: nightly-docs-update
+name: chetter-nightly-docs-update
 enabled: false
 cron_expr: "0 4 * * *"
 git_url: https://github.com/flatout-works/chetter

@@ -18,6 +18,21 @@ All notable changes to this project will be documented in this file.
 - Docker Compose quick start simplified; environment variables moved to `.env.example`.
 - Schedule YAML examples made generic and project-agnostic.
 
+### Added
+
+- Arcane-native CI builds: GitHub Actions workflow builds and pushes Docker images through the Arcane platform API, then redeploys the Chetter project.
+- Runner entrypoint auto-resolves `CHETTER_RUNNER_IMAGE_DIGEST` from Docker inspect for PR signature footers.
+
+### Changed
+
+- NATS service renamed from `nats` to `chetter-nats` in compose files for consistent service naming.
+- Bundled runner image pruned: removed templates and extra skills (`flatout-backend`, `go-mcp-server-generator`, `openapi`, `protobuf`, `sqlc`); only `golang-pro`, `mysql`, and `tidb-sql` skills remain.
+- CI builds migrated from manual Docker push to Arcane project build API.
+
+### Removed
+
+- Schedule sync tool (`chetter_sync_schedules`) removed from MCP tools. Use `chetter_schedule_task` and `chetter_update_schedule` to manage schedules individually.
+
 ### Fixed
 
 - Runner image references corrected across config, Dockerfile, compose, and schedule files.
