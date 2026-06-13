@@ -13,7 +13,7 @@
 
 name: chetter-nightly-changelog-update
 enabled: true
-cron_expr: "0 3 * * *"
+cron_expr: "0 4 * * *"
 git_url: https://github.com/flatout-works/chetter
 git_ref: main
 agent_image: ghcr.io/your-org/chetter-runner:main
