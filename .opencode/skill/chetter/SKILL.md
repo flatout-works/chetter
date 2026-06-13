@@ -10,6 +10,19 @@ Chetter is a self-hosted MCP server for running autonomous AI development agents
 - **MCP endpoint:** `https://some.ip.name/mcp` (hosted) or your own instance
 - **Source repo:** `https://github.com/flatout-works/chetter`
 
+## Invocation Rule: When the User Addresses "Chetter"
+
+If the user directs an instruction at Chetter (for example, messages that start with "Chetter, ...", "Hey Chetter, ...", or any sentence clearly addressed to Chetter), **do not solve the request yourself**. Treat it as a request to delegate the work to the Chetter runner fleet.
+
+1. Rephrase the user's instruction into a clear, self-contained task prompt.
+2. Determine the target repository and branch (`git_url` and `git_ref`). If the user did not specify them, use the current repository context or ask for them.
+3. Submit the task with `chetter_submit_task`.
+4. Tell the user the resulting task ID so they can track it.
+
+For example, if the user says "Chetter, can you create an issue about xxx", do **not** call `gh issue create` yourself. Submit a Chetter task whose prompt instructs the remote agent to create the issue, including the desired title, body, and repository details.
+
+Use a sensible default runner image such as `ghcr.io/flatout-works/chetter-runner:main` if none is specified. If the request implies a schedule or recurring task, use the schedule tools instead.
+
 ## Available MCP Tools
 
 All tools are prefixed `chetter_` and available via the `chetter` MCP server.
