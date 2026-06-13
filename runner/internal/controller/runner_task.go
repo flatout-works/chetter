@@ -34,7 +34,7 @@ const defaultMem9PluginSpec = "@mem9/opencode"
 // OpenCode event stream. OpenCode emits JSON events that can include large
 // payloads (PR diffs, file contents, tool outputs) on a single line, so the
 // default 64KB bufio.Scanner buffer is too small.
-const opencodeEventLineMax = 4 * 1024 * 1024 // 4 MiB
+const opencodeEventLineMax = 64 * 1024 * 1024 // 64 MiB
 
 // runTask is the main task lifecycle: workspace creation, optional git clone,
 // MCP server setup, network bridge creation, and agent spawn (local or Kata).
