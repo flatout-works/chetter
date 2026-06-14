@@ -1,16 +1,14 @@
 -- name: UpsertRunnerHeartbeat :exec
 INSERT INTO chetter_runners
-    (id, status, image_ref, image_digest, version, listen_subject, result_subject,
+    (id, status, image_ref, image_digest, version,
      max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     image_ref = VALUES(image_ref),
     image_digest = VALUES(image_digest),
     version = VALUES(version),
-    listen_subject = VALUES(listen_subject),
-    result_subject = VALUES(result_subject),
     max_concurrent = VALUES(max_concurrent),
     running_tasks = VALUES(running_tasks),
     available_slots = VALUES(available_slots),
@@ -23,6 +21,7 @@ ON DUPLICATE KEY UPDATE
     metadata = VALUES(metadata);
 
 -- name: ListLiveRunners :many
-SELECT * FROM chetter_runners
+SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
+FROM chetter_runners
 WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC;

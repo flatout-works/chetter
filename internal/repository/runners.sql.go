@@ -13,7 +13,8 @@ import (
 )
 
 const listLiveRunners = `-- name: ListLiveRunners :many
-SELECT id, status, image_ref, image_digest, version, listen_subject, result_subject, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata FROM chetter_runners
+SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
+FROM chetter_runners
 WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC
 `
@@ -33,8 +34,6 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 			&i.ImageRef,
 			&i.ImageDigest,
 			&i.Version,
-			&i.ListenSubject,
-			&i.ResultSubject,
 			&i.MaxConcurrent,
 			&i.RunningTasks,
 			&i.AvailableSlots,
@@ -62,17 +61,15 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 
 const upsertRunnerHeartbeat = `-- name: UpsertRunnerHeartbeat :exec
 INSERT INTO chetter_runners
-    (id, status, image_ref, image_digest, version, listen_subject, result_subject,
+    (id, status, image_ref, image_digest, version,
      max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     image_ref = VALUES(image_ref),
     image_digest = VALUES(image_digest),
     version = VALUES(version),
-    listen_subject = VALUES(listen_subject),
-    result_subject = VALUES(result_subject),
     max_concurrent = VALUES(max_concurrent),
     running_tasks = VALUES(running_tasks),
     available_slots = VALUES(available_slots),
@@ -91,8 +88,6 @@ type UpsertRunnerHeartbeatParams struct {
 	ImageRef       sql.NullString  `json:"image_ref"`
 	ImageDigest    sql.NullString  `json:"image_digest"`
 	Version        sql.NullString  `json:"version"`
-	ListenSubject  sql.NullString  `json:"listen_subject"`
-	ResultSubject  sql.NullString  `json:"result_subject"`
 	MaxConcurrent  int32           `json:"max_concurrent"`
 	RunningTasks   int32           `json:"running_tasks"`
 	AvailableSlots int32           `json:"available_slots"`
@@ -113,8 +108,6 @@ func (q *Queries) UpsertRunnerHeartbeat(ctx context.Context, arg UpsertRunnerHea
 		arg.ImageRef,
 		arg.ImageDigest,
 		arg.Version,
-		arg.ListenSubject,
-		arg.ResultSubject,
 		arg.MaxConcurrent,
 		arg.RunningTasks,
 		arg.AvailableSlots,

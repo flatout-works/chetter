@@ -16,8 +16,6 @@ type ChetterRunner struct {
 	ImageRef       sql.NullString  `json:"image_ref"`
 	ImageDigest    sql.NullString  `json:"image_digest"`
 	Version        sql.NullString  `json:"version"`
-	ListenSubject  sql.NullString  `json:"listen_subject"`
-	ResultSubject  sql.NullString  `json:"result_subject"`
 	MaxConcurrent  int32           `json:"max_concurrent"`
 	RunningTasks   int32           `json:"running_tasks"`
 	AvailableSlots int32           `json:"available_slots"`

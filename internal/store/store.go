@@ -231,9 +231,7 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		{"image_ref", "ALTER TABLE chetter_runners ADD COLUMN image_ref VARCHAR(512) NULL AFTER status"},
 		{"image_digest", "ALTER TABLE chetter_runners ADD COLUMN image_digest VARCHAR(255) NULL AFTER image_ref"},
 		{"version", "ALTER TABLE chetter_runners ADD COLUMN version VARCHAR(128) NULL AFTER image_digest"},
-		{"listen_subject", "ALTER TABLE chetter_runners ADD COLUMN listen_subject VARCHAR(255) NULL AFTER version"},
-		{"result_subject", "ALTER TABLE chetter_runners ADD COLUMN result_subject VARCHAR(255) NULL AFTER listen_subject"},
-		{"max_concurrent", "ALTER TABLE chetter_runners ADD COLUMN max_concurrent INT NOT NULL DEFAULT 0 AFTER result_subject"},
+		{"max_concurrent", "ALTER TABLE chetter_runners ADD COLUMN max_concurrent INT NOT NULL DEFAULT 0 AFTER version"},
 		{"running_tasks", "ALTER TABLE chetter_runners ADD COLUMN running_tasks INT NOT NULL DEFAULT 0 AFTER max_concurrent"},
 		{"available_slots", "ALTER TABLE chetter_runners ADD COLUMN available_slots INT NOT NULL DEFAULT 0 AFTER running_tasks"},
 		{"total_started", "ALTER TABLE chetter_runners ADD COLUMN total_started BIGINT NOT NULL DEFAULT 0 AFTER available_slots"},
@@ -322,8 +320,6 @@ type RunnerInfo struct {
 	ImageRef       string     `json:"image_ref,omitempty"`
 	ImageDigest    string     `json:"image_digest,omitempty"`
 	Version        string     `json:"version,omitempty"`
-	ListenSubject  string     `json:"listen_subject,omitempty"`
-	ResultSubject  string     `json:"result_subject,omitempty"`
 	MaxConcurrent  int        `json:"max_concurrent"`
 	RunningTasks   int        `json:"running_tasks"`
 	AvailableSlots int        `json:"available_slots"`
@@ -432,7 +428,7 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 
 	runnerImageCounts := map[string]RunnerImageInfo{}
 	runnerRows, err := s.db.QueryContext(ctx, `
-		SELECT id, status, image_ref, image_digest, version, listen_subject, result_subject,
+		SELECT id, status, image_ref, image_digest, version,
 		       max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
 		       first_seen_at, last_seen_at, started_at, metadata,
 		       TIMESTAMPDIFF(SECOND, last_seen_at, NOW()) AS last_seen_sec
@@ -445,11 +441,11 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 	defer runnerRows.Close()
 	for runnerRows.Next() {
 		var info RunnerInfo
-		var imageRef, imageDigest, version, listenSubject, resultSubject sql.NullString
+		var imageRef, imageDigest, version sql.NullString
 		var firstSeen, startedAt sql.NullTime
 		var metadata []byte
 		if err := runnerRows.Scan(
-			&info.ID, &info.Status, &imageRef, &imageDigest, &version, &listenSubject, &resultSubject,
+			&info.ID, &info.Status, &imageRef, &imageDigest, &version,
 			&info.MaxConcurrent, &info.RunningTasks, &info.AvailableSlots, &info.TotalStarted, &info.TotalCompleted, &info.TotalErrors,
 			&firstSeen, &info.LastSeenAt, &startedAt, &metadata, &info.LastSeenSec,
 		); err != nil {
@@ -458,8 +454,6 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		info.ImageRef = imageRef.String
 		info.ImageDigest = imageDigest.String
 		info.Version = version.String
-		info.ListenSubject = listenSubject.String
-		info.ResultSubject = resultSubject.String
 		info.FirstSeenAt = nullTimePtr(firstSeen)
 		info.StartedAt = nullTimePtr(startedAt)
 		info.IsStale = info.LastSeenSec > maxRunnerPresenceSec
