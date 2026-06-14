@@ -803,3 +803,70 @@ func TestOpenCodeEventScannerBuffer(t *testing.T) {
 		t.Fatalf("scanner.Err after long line: %v", err)
 	}
 }
+
+func TestAgentModelFromConfig(t *testing.T) {
+	wsDir := t.TempDir()
+	agentDir := filepath.Join(wsDir, ".opencode", "agent")
+	if err := os.MkdirAll(agentDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	writeAgent := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(agentDir, name+".md"), []byte(content), 0640); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("reads provider/model", func(t *testing.T) {
+		writeAgent("test-agent", "description: Does things\nmodel: opencode/deepseek-v4-flash-free\nmode: primary\n")
+		prov, mdl := agentModelFromConfig(wsDir, "test-agent")
+		if prov != "opencode" || mdl != "deepseek-v4-flash-free" {
+			t.Errorf("expected opencode/deepseek-v4-flash-free, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("model only without slash", func(t *testing.T) {
+		writeAgent("no-provider", "description: test\nmodel: deepseek-v4-flash-free\n")
+		prov, mdl := agentModelFromConfig(wsDir, "no-provider")
+		if prov != "" || mdl != "deepseek-v4-flash-free" {
+			t.Errorf("expected ''/deepseek-v4-flash-free, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("missing model field returns empty", func(t *testing.T) {
+		writeAgent("no-model", "description: just docs\nmode: primary\n")
+		prov, mdl := agentModelFromConfig(wsDir, "no-model")
+		if prov != "" || mdl != "" {
+			t.Errorf("expected empty, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("empty agent name returns empty", func(t *testing.T) {
+		prov, mdl := agentModelFromConfig(wsDir, "")
+		if prov != "" || mdl != "" {
+			t.Errorf("expected empty, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("nonexistent agent returns empty", func(t *testing.T) {
+		prov, mdl := agentModelFromConfig(wsDir, "nope")
+		if prov != "" || mdl != "" {
+			t.Errorf("expected empty, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("empty wsDir returns empty", func(t *testing.T) {
+		prov, mdl := agentModelFromConfig("", "test-agent")
+		if prov != "" || mdl != "" {
+			t.Errorf("expected empty, got %s/%s", prov, mdl)
+		}
+	})
+
+	t.Run("model with leading whitespace", func(t *testing.T) {
+		writeAgent("spaces", "description: test\n   model:   opencode/foo  \nmode: primary\n")
+		prov, mdl := agentModelFromConfig(wsDir, "spaces")
+		if prov != "opencode" || mdl != "foo" {
+			t.Errorf("expected opencode/foo, got %s/%s", prov, mdl)
+		}
+	})
+}

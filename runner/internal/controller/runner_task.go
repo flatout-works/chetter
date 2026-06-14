@@ -638,6 +638,33 @@ func resolvedChetterModelID(req task.TaskRequest) string {
 	return providerID + "/" + modelID
 }
 
+func agentModelFromConfig(wsDir, agentName string) (providerID, modelID string) {
+	if agentName == "" || wsDir == "" {
+		return "", ""
+	}
+	path := filepath.Join(wsDir, ".opencode", "agent", agentName+".md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "model:") {
+			continue
+		}
+		val := strings.TrimSpace(strings.TrimPrefix(line, "model:"))
+		if val == "" {
+			continue
+		}
+		if strings.Contains(val, "/") {
+			parts := strings.SplitN(val, "/", 2)
+			return parts[0], parts[1]
+		}
+		return "", val
+	}
+	return "", ""
+}
+
 func promptVariant(req task.TaskRequest) string {
 	if req.VariantID != "" {
 		return req.VariantID
@@ -903,7 +930,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	go r.watchOpenCodeEvents(eventsCtx, req.TaskID, baseURL, secret)
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := sendPromptAndWait(baseURL, sid, secret, req, taskPromptTimeout(req.TimeoutSec))
+	summary, err := sendPromptAndWait(baseURL, sid, secret, req, taskPromptTimeout(req.TimeoutSec), session.WorkspaceDir)
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
@@ -1021,7 +1048,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	go r.watchOpenCodeEvents(eventsCtx, req.TaskID, baseURL, secret)
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := sendPromptAndWait(baseURL, sid, secret, req, taskPromptTimeout(req.TimeoutSec))
+	summary, err := sendPromptAndWait(baseURL, sid, secret, req, taskPromptTimeout(req.TimeoutSec), session.WorkspaceDir)
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
@@ -1230,8 +1257,17 @@ func createOpenCodeSession(baseURL, secret string) (string, error) {
 	return result.ID, nil
 }
 
-func sendPromptAndWait(baseURL, sessionID, secret string, req task.TaskRequest, timeout time.Duration) (string, error) {
-	providerID, modelID := promptModel(req, "synthetic", "hf:zai-org/GLM-5.1")
+func sendPromptAndWait(baseURL, sessionID, secret string, req task.TaskRequest, timeout time.Duration, wsDir string) (string, error) {
+	agentProvider, agentModel := agentModelFromConfig(wsDir, req.Agent)
+	defaultProvider := agentProvider
+	if defaultProvider == "" {
+		defaultProvider = "synthetic"
+	}
+	defaultModel := agentModel
+	if defaultModel == "" {
+		defaultModel = "hf:zai-org/GLM-5.1"
+	}
+	providerID, modelID := promptModel(req, defaultProvider, defaultModel)
 	variantID := promptVariant(req)
 	slog.Info("sendPromptAndWait model", "provider", providerID, "model", modelID, "variant", variantID, "agent", req.Agent)
 	model := map[string]any{
