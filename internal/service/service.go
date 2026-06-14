@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
@@ -177,8 +178,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
+	teamID := teamIDFromContext(ctx)
 	if err := s.repo.InsertTask(ctx, repository.InsertTaskParams{
 		ID:                taskID,
+		TeamID:            nullString(teamID),
 		Prompt:            in.Prompt,
 		GitUrl:            nullString(in.GitURL),
 		GitRef:            nullString(in.GitRef),
@@ -219,6 +222,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	}
 	return store.TaskRecord{
 		ID:                task.ID,
+		TeamID:            task.TeamID.String,
 		Status:            task.Status,
 		Prompt:            task.Prompt,
 		GitURL:            task.GitUrl.String,
@@ -296,8 +300,10 @@ func (s *Service) CreateSchedule(ctx context.Context, in store.ScheduleInput) (s
 	if err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	teamID := teamIDFromContext(ctx)
 	if err := s.repo.CreateSchedule(ctx, repository.CreateScheduleParams{
 		ID:         in.ID,
+		TeamID:     nullString(teamID),
 		Name:       in.Name,
 		CronExpr:   in.CronExpr,
 		Prompt:     in.Prompt,
@@ -576,4 +582,12 @@ func randomID(prefix string) (string, error) {
 		return "", fmt.Errorf("generate id: %w", err)
 	}
 	return prefix + "_" + hex.EncodeToString(raw[:]), nil
+}
+
+func teamIDFromContext(ctx context.Context) string {
+	scope, ok := auth.GetScope(ctx)
+	if !ok || scope.Admin {
+		return ""
+	}
+	return scope.TeamID
 }

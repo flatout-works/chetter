@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +16,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/gen/proto/runner/v1/runnerv1connect"
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
@@ -83,9 +87,10 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, mcpHandler))
+	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
-	mux.Handle(runnerPath, authMiddleware(cfg.MCPAuthToken, runnerHandler))
+	mux.Handle(runnerPath, authMiddleware(cfg.MCPAuthToken, st.DB(), runnerHandler))
+	mux.Handle("/api/v1/", authMiddleware(cfg.MCPAuthToken, st.DB(), svc.TokenAPIHandler()))
 	if whHandler != nil {
 		mux.Handle("/webhook/github", whHandler)
 		slog.Info("github webhook handler registered", "path", "/webhook/github")
@@ -113,17 +118,46 @@ func run() error {
 	return nil
 }
 
-func authMiddleware(token string, next http.Handler) http.Handler {
+func authMiddleware(adminToken string, db *sql.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if token != "" {
-			auth := req.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != token {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+		authHeader := req.Header.Get("Authorization")
+		if adminToken != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			provided := strings.TrimPrefix(authHeader, "Bearer ")
+			if provided == adminToken {
+				next.ServeHTTP(w, req.WithContext(
+					auth.WithScope(req.Context(), auth.Scope{Admin: true}),
+				))
 				return
 			}
+			if db != nil {
+				scope := lookupTokenScope(req.Context(), db, provided)
+				if scope.TeamID != "" {
+					next.ServeHTTP(w, req.WithContext(
+						auth.WithScope(req.Context(), scope),
+					))
+					return
+				}
+			}
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
 		}
-		next.ServeHTTP(w, req)
+		if adminToken == "" {
+			next.ServeHTTP(w, req)
+			return
+		}
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
+}
+
+func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) auth.Scope {
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenHash := hex.EncodeToString(hash[:])
+	repo := repository.New(db)
+	row, err := repo.GetTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return auth.Scope{}
+	}
+	return auth.Scope{TeamID: row.TeamID}
 }
 
 // buildWebhookHandler constructs the GitHub webhook handler. Returns nil if

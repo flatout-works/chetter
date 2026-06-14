@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -57,6 +60,7 @@ type ListTasksOutput struct {
 // records may grow internal audit fields without breaking existing MCP clients.
 type TaskToolRecord struct {
 	ID         string            `json:"id"`
+	TeamID     string            `json:"team_id,omitempty"`
 	Status     string            `json:"status"`
 	Prompt     string            `json:"prompt"`
 	GitURL     string            `json:"git_url,omitempty"`
@@ -233,6 +237,48 @@ type ClearQueueOutput struct {
 	CancelledPendingTasks int  `json:"cancelled_pending_tasks"`
 }
 
+// CreateTokenInput is the input for chetter_create_token.
+type CreateTokenInput struct {
+	TeamName string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
+	UserName string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
+	TokenName string `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
+}
+
+// CreateTokenOutput is the output for chetter_create_token.
+type CreateTokenOutput struct {
+	Token    string `json:"token"`
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	UserID   string `json:"user_id"`
+	UserName string `json:"user_name"`
+}
+
+// ListTokensInput is the input for chetter_list_tokens.
+type ListTokensInput struct{}
+
+// TokenInfo is a single token entry in the list.
+type TokenInfo struct {
+	Name      string    `json:"name"`
+	UserName  string    `json:"user_name"`
+	TeamName  string    `json:"team_name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListTokensOutput is the output for chetter_list_tokens.
+type ListTokensOutput struct {
+	Tokens []TokenInfo `json:"tokens"`
+}
+
+// DeleteTokenInput is the input for chetter_delete_token.
+type DeleteTokenInput struct {
+	Name string `json:"name" jsonschema:"Name of the token to delete"`
+}
+
+// DeleteTokenOutput is the output for chetter_delete_token.
+type DeleteTokenOutput struct {
+	Deleted bool `json:"deleted"`
+}
+
 // RegisterTools registers chetter MCP tools.
 func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
@@ -256,6 +302,9 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_image_summary", Description: "Get vulnerability summary for a specific Docker image by its ID."}, svc.arcaneImageSummaryTool)
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_list_vulnerabilities", Description: "List detailed vulnerabilities for an image with optional severity filtering and pagination."}, svc.arcaneListVulnerabilitiesTool)
 	}
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_token", Description: "Create a new API token for a team and user. Admin only."}, svc.createTokenTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tokens", Description: "List all API tokens with user and team info. Admin only."}, svc.listTokensTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_token", Description: "Delete an API token by name. Admin only."}, svc.deleteTokenTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
@@ -278,10 +327,22 @@ func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	tasks, err := s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
-		StatusFilter: in.Status,
-		Limit:        clampListLimit(in.Limit),
-	})
+	scope, scoped := auth.GetScope(ctx)
+	limit := clampListLimit(in.Limit)
+	var tasks []repository.ChetterTask
+	var err error
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
+			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
+			StatusFilter: in.Status,
+			Limit:        limit,
+		})
+	} else {
+		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
+			StatusFilter: in.Status,
+			Limit:        limit,
+		})
+	}
 	if err != nil {
 		return nil, ListTasksOutput{}, fmt.Errorf("list tasks: %w", err)
 	}
@@ -302,6 +363,7 @@ func clampListLimit(limit int) int32 {
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	return TaskToolRecord{
 		ID:         task.ID,
+		TeamID:     task.TeamID,
 		Status:     task.Status,
 		Prompt:     task.Prompt,
 		GitURL:     task.GitURL,
@@ -330,6 +392,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	_ = json.Unmarshal(task.Env, &env)
 	return TaskToolRecord{
 		ID:         task.ID,
+		TeamID:     task.TeamID.String,
 		Status:     task.Status,
 		Prompt:     task.Prompt,
 		GitURL:     task.GitUrl.String,
@@ -388,12 +451,22 @@ func (s *Service) runScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (s *Service) listSchedulesTool(ctx context.Context, _ *mcp.CallToolRequest, in ListSchedulesInput) (*mcp.CallToolResult, ListSchedulesOutput, error) {
+	scope, scoped := auth.GetScope(ctx)
 	var repoRecords []repository.ChetterSchedule
 	var err error
-	if in.EnabledOnly {
-		repoRecords, err = s.repo.ListEnabledSchedules(ctx)
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		teamID := sql.NullString{String: scope.TeamID, Valid: true}
+		if in.EnabledOnly {
+			repoRecords, err = s.repo.ListEnabledSchedulesByTeam(ctx, teamID)
+		} else {
+			repoRecords, err = s.repo.ListSchedulesByTeam(ctx, teamID)
+		}
 	} else {
-		repoRecords, err = s.repo.ListSchedules(ctx)
+		if in.EnabledOnly {
+			repoRecords, err = s.repo.ListEnabledSchedules(ctx)
+		} else {
+			repoRecords, err = s.repo.ListSchedules(ctx)
+		}
 	}
 	if err != nil {
 		return nil, ListSchedulesOutput{}, fmt.Errorf("list schedules: %w", err)
@@ -410,6 +483,7 @@ func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
 	_ = json.Unmarshal(s.Skills, &skills)
 	return store.ScheduleRecord{
 		ID:         s.ID,
+		TeamID:     s.TeamID.String,
 		Name:       s.Name,
 		CronExpr:   s.CronExpr,
 		Prompt:     s.Prompt,
@@ -623,6 +697,126 @@ func (s *Service) clearQueueTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		Cleared:               true,
 		CancelledPendingTasks: int(cancelled),
 	}, nil
+}
+
+// --- Token Management Tools ---
+
+func (s *Service) createTokenTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTokenInput) (*mcp.CallToolResult, CreateTokenOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, CreateTokenOutput{}, fmt.Errorf("admin access required")
+	}
+	if in.TeamName == "" {
+		return nil, CreateTokenOutput{}, fmt.Errorf("team_name is required")
+	}
+	if in.UserName == "" {
+		return nil, CreateTokenOutput{}, fmt.Errorf("user_name is required")
+	}
+	if in.TokenName == "" {
+		return nil, CreateTokenOutput{}, fmt.Errorf("token_name is required")
+	}
+	now := time.Now().UTC()
+
+	team, err := s.repo.GetTeamByName(ctx, in.TeamName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			teamID, err := randomID("team")
+			if err != nil {
+				return nil, CreateTokenOutput{}, fmt.Errorf("generate team id: %w", err)
+			}
+			if err := s.repo.CreateTeam(ctx, repository.CreateTeamParams{
+				ID:        teamID,
+				Name:      in.TeamName,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}); err != nil {
+				return nil, CreateTokenOutput{}, fmt.Errorf("create team: %w", err)
+			}
+			team.ID = teamID
+			team.Name = in.TeamName
+		} else {
+			return nil, CreateTokenOutput{}, fmt.Errorf("look up team: %w", err)
+		}
+	}
+
+	userID, err := randomID("user")
+	if err != nil {
+		return nil, CreateTokenOutput{}, fmt.Errorf("generate user id: %w", err)
+	}
+	if err := s.repo.CreateUser(ctx, repository.CreateUserParams{
+		ID:        userID,
+		Name:      in.UserName,
+		TeamID:    team.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return nil, CreateTokenOutput{}, fmt.Errorf("create user: %w", err)
+	}
+
+	rawToken, err := randomID("chtr")
+	if err != nil {
+		return nil, CreateTokenOutput{}, fmt.Errorf("generate token: %w", err)
+	}
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenID, err := randomID("tok")
+	if err != nil {
+		return nil, CreateTokenOutput{}, fmt.Errorf("generate token id: %w", err)
+	}
+	if err := s.repo.CreateToken(ctx, repository.CreateTokenParams{
+		ID:        tokenID,
+		Name:      in.TokenName,
+		TokenHash: hex.EncodeToString(hash[:]),
+		UserID:    userID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return nil, CreateTokenOutput{}, fmt.Errorf("create token: %w", err)
+	}
+
+	return nil, CreateTokenOutput{
+		Token:    rawToken,
+		TeamID:   team.ID,
+		TeamName: team.Name,
+		UserID:   userID,
+		UserName: in.UserName,
+	}, nil
+}
+
+func (s *Service) listTokensTool(ctx context.Context, _ *mcp.CallToolRequest, _ ListTokensInput) (*mcp.CallToolResult, ListTokensOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, ListTokensOutput{}, fmt.Errorf("admin access required")
+	}
+	rows, err := s.repo.ListTokens(ctx)
+	if err != nil {
+		return nil, ListTokensOutput{}, fmt.Errorf("list tokens: %w", err)
+	}
+	out := make([]TokenInfo, len(rows))
+	for i, r := range rows {
+		out[i] = TokenInfo{
+			Name:      r.Name,
+			UserName:  r.UserName,
+			TeamName:  r.TeamName,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return nil, ListTokensOutput{Tokens: out}, nil
+}
+
+func (s *Service) deleteTokenTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteTokenInput) (*mcp.CallToolResult, DeleteTokenOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, DeleteTokenOutput{}, fmt.Errorf("admin access required")
+	}
+	if in.Name == "" {
+		return nil, DeleteTokenOutput{}, fmt.Errorf("name is required")
+	}
+	if err := s.repo.DeleteToken(ctx, in.Name); err != nil {
+		return nil, DeleteTokenOutput{}, fmt.Errorf("delete token: %w", err)
+	}
+	return nil, DeleteTokenOutput{Deleted: true}, nil
+}
+
+func isAdmin(ctx context.Context) bool {
+	scope, ok := auth.GetScope(ctx)
+	return ok && scope.Admin
 }
 
 // --- Arcane Vulnerability Scan Tools ---

@@ -15,7 +15,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("empty token passes through", func(t *testing.T) {
 		nextCalled = false
-		handler := authMiddleware("", next)
+		handler := authMiddleware("", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -29,7 +29,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("correct bearer token", func(t *testing.T) {
 		nextCalled = false
-		handler := authMiddleware("mytoken", next)
+		handler := authMiddleware("mytoken", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("Authorization", "Bearer mytoken")
 		rec := httptest.NewRecorder()
@@ -44,7 +44,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("wrong bearer token", func(t *testing.T) {
 		nextCalled = false
-		handler := authMiddleware("mytoken", next)
+		handler := authMiddleware("mytoken", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("Authorization", "Bearer wrong")
 		rec := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("missing authorization header", func(t *testing.T) {
 		nextCalled = false
-		handler := authMiddleware("mytoken", next)
+		handler := authMiddleware("mytoken", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -73,7 +73,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("non-bearer scheme", func(t *testing.T) {
 		nextCalled = false
-		handler := authMiddleware("mytoken", next)
+		handler := authMiddleware("mytoken", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 		rec := httptest.NewRecorder()
