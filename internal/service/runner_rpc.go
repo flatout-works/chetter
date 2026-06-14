@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultClaimWaitSec = 30
-	defaultTaskLeaseSec = 120
+	defaultTaskLeaseSec = 60
 	claimPollInterval   = time.Second
 	runnerEventSubject  = "connect.runner"
 )

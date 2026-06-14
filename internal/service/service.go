@@ -40,9 +40,9 @@ const (
 	defaultMaxCPU           = 2
 	scheduleRunTimeout      = 30 * time.Second
 	eventHandlerTimeout     = 10 * time.Second
-	reaperInterval          = 5 * time.Minute
-	reaperGrace             = 5 * time.Minute
-	reaperHealthMaxEventSec = 600
+	reaperInterval          = 30 * time.Second
+	reaperGrace             = 120 * time.Second
+	reaperHealthMaxEventSec = 120
 	runnerPresenceMaxSec    = 60
 )
 
