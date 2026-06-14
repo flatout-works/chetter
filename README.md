@@ -212,6 +212,7 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `SYNTHETIC_API_KEY` | Optional Synthetic key for runner agents |
 | `OPENCODE_API_KEY` | Optional OpenCode provider key |
 | `MEM9_API_KEY` | Optional Mem9 memory provider key |
+| `CHETTER_RUNNER_IMAGE_DIGEST` | Optional pinned image digest for PR signature footers |
 
 If `DATABASE_DSN` is not set, use `deploy/compose.local.yaml` to add the bundled
 MySQL service. Production deployments should usually set `DATABASE_DSN` and run
@@ -270,7 +271,8 @@ self-hosted compose stack that pulls the published GHCR images.
 | `internal/webhook/` | Optional GitHub webhook handling |
 | `deploy/compose.yaml` | Portable Docker Compose stack using published GHCR images |
 | `runner/` | Runner runtime, image Dockerfiles, and entrypoint |
-| `schedules/` | Example declarative schedules |
+| `schedules/` | Active production schedules |
+| `schedules-examples/` | Example schedule templates |
 | `tools/` | Agent support files baked into the runner image |
 
 ## Build From Source
