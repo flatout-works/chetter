@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+type ApiToken struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	TokenHash string    `json:"token_hash"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type ChetterRunner struct {
 	ID             string          `json:"id"`
 	Status         string          `json:"status"`
@@ -48,6 +57,7 @@ type ChetterSchedule struct {
 	UpdatedAt  time.Time       `json:"updated_at"`
 	LastRunAt  sql.NullTime    `json:"last_run_at"`
 	NextRunAt  sql.NullTime    `json:"next_run_at"`
+	TeamID     sql.NullString  `json:"team_id"`
 }
 
 type ChetterScheduleRun struct {
@@ -89,6 +99,7 @@ type ChetterTask struct {
 	LastEventAt       sql.NullTime    `json:"last_event_at"`
 	StartedAt         sql.NullTime    `json:"started_at"`
 	EndedAt           sql.NullTime    `json:"ended_at"`
+	TeamID            sql.NullString  `json:"team_id"`
 }
 
 type ChetterTaskEvent struct {
@@ -98,4 +109,19 @@ type ChetterTaskEvent struct {
 	Status    string          `json:"status"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"created_at"`
+}
+
+type Team struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type User struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	TeamID    string    `json:"team_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

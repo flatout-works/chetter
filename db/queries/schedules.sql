@@ -15,10 +15,21 @@ SELECT * FROM chetter_schedules
 WHERE enabled = TRUE
 ORDER BY created_at DESC;
 
+-- name: ListSchedulesByTeam :many
+SELECT * FROM chetter_schedules
+WHERE team_id = sqlc.arg(team_id)
+ORDER BY created_at DESC;
+
+-- name: ListEnabledSchedulesByTeam :many
+SELECT * FROM chetter_schedules
+WHERE team_id = sqlc.arg(team_id)
+  AND enabled = TRUE
+ORDER BY created_at DESC;
+
 -- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
+    (id, team_id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
 
 -- name: UpdateSchedule :exec
 UPDATE chetter_schedules

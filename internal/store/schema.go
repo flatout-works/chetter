@@ -103,4 +103,32 @@ var schemaStatements = []string{
 		KEY idx_chetter_schedule_runs_schedule_created (schedule_id, created_at),
 		KEY idx_chetter_schedule_runs_task (task_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS teams (
+		id VARCHAR(64) NOT NULL,
+		name VARCHAR(128) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		updated_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (id),
+		UNIQUE KEY uq_teams_name (name)
+	)`,
+	`CREATE TABLE IF NOT EXISTS users (
+		id VARCHAR(64) NOT NULL,
+		name VARCHAR(128) NOT NULL,
+		team_id VARCHAR(64) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		updated_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (id),
+		KEY idx_users_team (team_id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS api_tokens (
+		id VARCHAR(64) NOT NULL,
+		name VARCHAR(128) NOT NULL,
+		token_hash CHAR(64) NOT NULL,
+		user_id VARCHAR(64) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		updated_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (id),
+		UNIQUE KEY uq_api_tokens_hash (token_hash),
+		KEY idx_api_tokens_user (user_id)
+	)`,
 }

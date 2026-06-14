@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS chetter_runners (
     image_ref VARCHAR(512) NULL,
     image_digest VARCHAR(255) NULL,
     version VARCHAR(128) NULL,
+    listen_subject VARCHAR(255) NULL,
+    result_subject VARCHAR(255) NULL,
     max_concurrent INT NOT NULL DEFAULT 0,
     running_tasks INT NOT NULL DEFAULT 0,
     available_slots INT NOT NULL DEFAULT 0,

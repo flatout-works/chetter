@@ -99,7 +99,7 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const getClaimableTaskForUpdate = `-- name: GetClaimableTaskForUpdate :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id FROM chetter_tasks
 WHERE status = 'pending'
 ORDER BY created_at ASC
 LIMIT 1
@@ -139,6 +139,7 @@ func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context) (ChetterTask, e
 		&i.LastEventAt,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.TeamID,
 	)
 	return i, err
 }
@@ -165,7 +166,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id FROM chetter_tasks
 WHERE id = ?
 `
 
@@ -202,18 +203,20 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.LastEventAt,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.TeamID,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskParams struct {
 	ID                string          `json:"id"`
+	TeamID            sql.NullString  `json:"team_id"`
 	Prompt            string          `json:"prompt"`
 	GitUrl            sql.NullString  `json:"git_url"`
 	GitRef            sql.NullString  `json:"git_ref"`
@@ -234,6 +237,7 @@ type InsertTaskParams struct {
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	_, err := q.db.ExecContext(ctx, insertTask,
 		arg.ID,
+		arg.TeamID,
 		arg.Prompt,
 		arg.GitUrl,
 		arg.GitRef,
@@ -315,7 +319,7 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id FROM chetter_tasks
 WHERE (? = '' OR status = ?)
 ORDER BY created_at DESC
 LIMIT ?
@@ -365,6 +369,80 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.LastEventAt,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id FROM chetter_tasks
+WHERE team_id = ?
+  AND (? = '' OR status = ?)
+ORDER BY created_at DESC
+LIMIT ?
+`
+
+type ListTasksByStatusAndTeamParams struct {
+	TeamID       sql.NullString `json:"team_id"`
+	StatusFilter string         `json:"status_filter"`
+	Limit        int32          `json:"limit"`
+}
+
+func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByStatusAndTeamParams) ([]ChetterTask, error) {
+	rows, err := q.db.QueryContext(ctx, listTasksByStatusAndTeam,
+		arg.TeamID,
+		arg.StatusFilter,
+		arg.StatusFilter,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTask{}
+	for rows.Next() {
+		var i ChetterTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.OpencodeSessionID,
+			&i.RunnerImageDigest,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.RunnerID,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.Attempt,
+			&i.MaxAttempts,
+			&i.Skills,
+			&i.Env,
+			&i.TimeoutSec,
+			&i.Summary,
+			&i.Error,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastEventAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.TeamID,
 		); err != nil {
 			return nil, err
 		}

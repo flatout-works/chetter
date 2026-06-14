@@ -34,6 +34,7 @@ type Store struct {
 // TaskRecord is the persisted task state exposed by MCP tools.
 type TaskRecord struct {
 	ID                string            `json:"id"`
+	TeamID            string            `json:"team_id,omitempty"`
 	Status            string            `json:"status"`
 	Prompt            string            `json:"prompt"`
 	GitURL            string            `json:"git_url,omitempty"`
@@ -77,6 +78,7 @@ type TaskResponse struct {
 // ScheduleRecord is a cron-backed task template.
 type ScheduleRecord struct {
 	ID         string     `json:"id"`
+	TeamID     string     `json:"team_id,omitempty"`
 	Name       string     `json:"name"`
 	CronExpr   string     `json:"cron_expr"`
 	Prompt     string     `json:"prompt"`
@@ -99,6 +101,7 @@ type ScheduleRecord struct {
 // ScheduleInput contains fields needed to create a schedule.
 type ScheduleInput struct {
 	ID         string
+	TeamID     string
 	Name       string
 	CronExpr   string
 	Prompt     string
@@ -182,6 +185,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
 		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
 		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
+		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -207,6 +211,7 @@ func (s *Store) ensureScheduleMetadataColumns(ctx context.Context) error {
 		{"provider_id", "ALTER TABLE chetter_schedules ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
 		{"model_id", "ALTER TABLE chetter_schedules ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
 		{"variant_id", "ALTER TABLE chetter_schedules ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
+		{"team_id", "ALTER TABLE chetter_schedules ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_schedules", column.name)

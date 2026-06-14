@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks
@@ -123,3 +123,10 @@ SELECT * FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: ListTasksByStatusAndTeam :many
+SELECT * FROM chetter_tasks
+WHERE team_id = sqlc.arg(team_id)
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+ORDER BY created_at DESC
+LIMIT ?;

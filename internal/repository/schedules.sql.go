@@ -14,12 +14,13 @@ import (
 
 const createSchedule = `-- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+    (id, team_id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
 `
 
 type CreateScheduleParams struct {
 	ID         string          `json:"id"`
+	TeamID     sql.NullString  `json:"team_id"`
 	Name       string          `json:"name"`
 	CronExpr   string          `json:"cron_expr"`
 	Prompt     string          `json:"prompt"`
@@ -39,6 +40,7 @@ type CreateScheduleParams struct {
 func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) error {
 	_, err := q.db.ExecContext(ctx, createSchedule,
 		arg.ID,
+		arg.TeamID,
 		arg.Name,
 		arg.CronExpr,
 		arg.Prompt,
@@ -68,7 +70,7 @@ func (q *Queries) DeleteSchedule(ctx context.Context, name string) error {
 }
 
 const getScheduleByID = `-- name: GetScheduleByID :one
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at FROM chetter_schedules
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE id = ?
 `
 
@@ -94,12 +96,13 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 		&i.UpdatedAt,
 		&i.LastRunAt,
 		&i.NextRunAt,
+		&i.TeamID,
 	)
 	return i, err
 }
 
 const getScheduleByName = `-- name: GetScheduleByName :one
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at FROM chetter_schedules
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE name = ?
 `
 
@@ -125,6 +128,7 @@ func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSc
 		&i.UpdatedAt,
 		&i.LastRunAt,
 		&i.NextRunAt,
+		&i.TeamID,
 	)
 	return i, err
 }
@@ -156,7 +160,7 @@ func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunPa
 }
 
 const listEnabledSchedules = `-- name: ListEnabledSchedules :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at FROM chetter_schedules
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
@@ -189,6 +193,57 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 			&i.UpdatedAt,
 			&i.LastRunAt,
 			&i.NextRunAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnabledSchedulesByTeam = `-- name: ListEnabledSchedulesByTeam :many
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+WHERE team_id = ?
+  AND enabled = TRUE
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledSchedulesByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterSchedule{}
+	for rows.Next() {
+		var i ChetterSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
 		); err != nil {
 			return nil, err
 		}
@@ -204,7 +259,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 }
 
 const listSchedules = `-- name: ListSchedules :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at FROM chetter_schedules
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 ORDER BY created_at DESC
 `
 
@@ -236,6 +291,56 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 			&i.UpdatedAt,
 			&i.LastRunAt,
 			&i.NextRunAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSchedulesByTeam = `-- name: ListSchedulesByTeam :many
+SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+WHERE team_id = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listSchedulesByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterSchedule{}
+	for rows.Next() {
+		var i ChetterSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
 		); err != nil {
 			return nil, err
 		}
