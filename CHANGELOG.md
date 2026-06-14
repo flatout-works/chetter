@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-15
+
+### Added
+
+- Multi-team support: `teams`, `users`, and `api_tokens` database tables with `team_id` columns on tasks and schedules for team-scoped resource isolation.
+- Token-based authentication system supporting admin bypass (`MCP_AUTH_TOKEN`), SHA-256 hashed token lookup in the database, and automatic `team_id` injection into request contexts.
+- Token management MCP tools (`chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token`), REST API at `/api/v1/tokens`, and `chetterctl` CLI for creating, listing, and deleting tokens. Non-admin tokens see only resources scoped to their team.
+- Schedule `chetter-nightly-website-presentation-update` for automated website and presentation content updates (runs daily at 05:00 UTC).
+- `chetterctl` binary added to the default `make build` target.
+
+### Changed
+
+- Replaced NATS embedded server with a ConnectRPC-based task queue backed by the database, removing the NATS dependency (NATS SDK, embedded server, NATS bus, NATS-specific config, related test fixtures and smoke tests). Runners now communicate with the server via ConnectRPC for task assignment and heartbeats.
+- Runner agent execution refactored into a `harness.Harness` interface, decoupling agent backends from runner execution modes (local/Docker/Kata) for modular support of future agent runtimes.
+- Dropped unused `listen_subject` and `result_subject` columns from `chetter_runners` (migration 002).
+- `.env.example`, `Makefile`, `compose.yaml`, and runner configuration files updated following the NATS removal and ConnectRPC migration.
+
+### Fixed
+
+- Runner now resolves the model from the agent's `.opencode/agent/<agent>.md` config when `provider_id`/`model_id` are not specified in schedule or task requests, instead of falling back to hardcoded defaults.
+- Schedule YAML `agent_image` references corrected from `your-org` to `flatout-works`.
+
 ## 2026-06-14
 
 ### Added
