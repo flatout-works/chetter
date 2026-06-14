@@ -207,6 +207,13 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `MYSQL_ROOT_PASSWORD` | Root password for the local MySQL container |
 | `DATABASE_DSN` | Optional external MySQL/TiDB DSN override |
 | `GITHUB_TOKEN` | Optional token for private repos and GitHub write operations |
+| `GITHUB_APP_ID` | GitHub App ID for PR review webhooks |
+| `GITHUB_APP_PRIVATE_KEY_B64` | Base64-encoded GitHub App private key (PEM) |
+| `GITHUB_INSTALLATION_ID` | GitHub App installation ID |
+| `GITHUB_WEBHOOK_SECRET` | HMAC-SHA256 secret for webhook signature verification |
+| `GITHUB_REVIEW_ALLOWED_REPOS` | Comma-separated repos allowed for automated review |
+| `ARCANE_SERVER_URL` | Arcane platform API URL for image builds |
+| `ARCANE_API_KEY` | Arcane platform API key |
 | `OPENAI_API_KEY` | Optional OpenAI key for runner agents |
 | `DEEPSEEK_API_KEY` | Optional DeepSeek key for runner agents |
 | `SYNTHETIC_API_KEY` | Optional Synthetic key for runner agents |
@@ -273,7 +280,7 @@ self-hosted compose stack that pulls the published GHCR images.
 | `runner/` | Runner runtime, image Dockerfiles, and entrypoint |
 | `schedules/` | Active production schedules |
 | `schedules-examples/` | Example schedule templates |
-| `tools/` | Agent support files baked into the runner image |
+| `tools/skills/` | OpenCode skills baked into the runner image |
 
 ## Build From Source
 
