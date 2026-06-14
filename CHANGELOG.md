@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-14
+
+### Added
+
+- Nightly vulnerability scan schedule template (`schedules/chetter-nightly-vulnerability-scan.yaml`) that scans Go dependencies and Docker images and opens a PR with safe fixes.
+- Arcane deployment flow documentation in README, covering GitOps sync, image builds on wowbagger, and required GitHub repository secrets.
+- Invocation rule in the Chetter skill so that user messages addressed to "Chetter" are delegated to a runner task via `chetter_submit_task` instead of being solved locally.
+- Registry HTTP API V2 lookup in the runner entrypoint for resolving `CHETTER_RUNNER_IMAGE_DIGEST` when the Docker CLI is not available (supports Docker Hub, GHCR with `GITHUB_TOKEN`, and other V2 registries).
+
+### Changed
+
+- Health endpoint now reports only live (non-stale) runners; stale runners are excluded from the list.
+- Runner heartbeat interval reduced from 30s to 5s; runner presence timeout reduced from 120s to 60s.
+- Runner ID generation changed from hostname-based to random UUID to avoid collisions between runners.
+- `CHETTER_MODEL_ID` now uses the same model fallback chain as the OpenCode session, so it is never empty even when schedules omit `provider_id`/`model_id`.
+- `CHETTER_*` footer env vars (`CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, `CHETTER_RUNNER_IMAGE_DIGEST`) are now passed through in Kata mode.
+- Changelog update schedule cron changed from `0 3 * * *` to `0 4 * * *`; docs update schedule renamed to `chetter-nightly-docs-update`, enabled, and cron changed from `0 4 * * *` to `0 3 * * *`.
+
+### Fixed
+
+- Runner event scanner no longer silently drops events when a single SSE data line exceeds 4 MiB; `opencodeEventLineMax` increased from 4 MiB to 64 MiB, fixing tasks that appeared hung due to large payloads.
+
 ## 2026-06-12
 
 ### Added
