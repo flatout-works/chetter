@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-14
+
+### Added
+
+- Nightly vulnerability scan schedule (`chetter-nightly-vulnerability-scan`) scanning Go dependencies and Docker images.
+- Registry HTTP API V2 lookup for `CHETTER_RUNNER_IMAGE_DIGEST` resolution in runner images without Docker CLI (supports Docker Hub, GHCR, and other V2 registries).
+- `CHETTER_RUNNER_IMAGE_DIGEST` environment variable exposed in compose files for deployments that pin the image digest explicitly.
+- `schedules-examples/` directory for example schedule templates; `schedules/` now contains only active production schedules.
+
+### Changed
+
+- `CHETTER_MODEL_ID` now resolves using the runner's promptModel fallback chain instead of raw `provider_id/model_id` fields, so it is never empty even when schedules omit those fields.
+- Example schedules moved from `schedules/` to `schedules-examples/` (code-quality-audit-daily, nightly-dependency-upgrade, nightly-issue-fixer, nightly-vulnerability-scan, weekday-doc-review).
+- Schedule cron times adjusted: changelog update at :04, docs update at :03.
+- Runner heartbeat interval reduced from 30s to 5s; runner presence timeout reduced from 120s to 60s.
+- Runner IDs now generated as random UUIDs instead of HOSTNAME-based identifiers.
+- Health endpoint reports only live (non-stale) runners instead of including stale runners.
+
+### Fixed
+
+- Runner event line max increased from 4 MiB to 64 MiB to prevent silent event drops when OpenCode SSE payloads exceed the previous limit.
+
 ## 2026-06-12
 
 ### Added
