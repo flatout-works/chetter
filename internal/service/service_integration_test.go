@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
@@ -368,5 +369,319 @@ func TestServiceGetLatestEvent(t *testing.T) {
 	}
 	if ev.Status != "done" {
 		t.Errorf("expected status=done, got %s", ev.Status)
+	}
+}
+
+// --- Team / Auth test helpers ---
+
+func seedTeam(t *testing.T, db *sql.DB, teamName, userName string) (teamID, userID string) {
+	t.Helper()
+	ctx := context.Background()
+	q := repository.New(db)
+	now := time.Now().UTC()
+
+	teamID, err := randomID("team")
+	if err != nil {
+		t.Fatalf("random team id: %v", err)
+	}
+	if err := q.CreateTeam(ctx, repository.CreateTeamParams{
+		ID: teamID, Name: teamName, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+
+	userID, err = randomID("user")
+	if err != nil {
+		t.Fatalf("random user id: %v", err)
+	}
+	if err := q.CreateUser(ctx, repository.CreateUserParams{
+		ID: userID, Name: userName, TeamID: teamID, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	return teamID, userID
+}
+
+func ctxWithTeam(ctx context.Context, teamID string) context.Context {
+	return auth.WithScope(ctx, auth.Scope{TeamID: teamID})
+}
+
+func ctxWithAdmin(ctx context.Context) context.Context {
+	return auth.WithScope(ctx, auth.Scope{Admin: true})
+}
+
+// --- Team-scoped task tests ---
+
+func TestSubmitTaskWithTeamContextStampsTeamID(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+
+	rec, err := svc.SubmitTask(ctxWithTeam(ctx, teamID), SubmitTaskRequest{
+		Prompt: "fix bug", AgentImage: "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	if rec.TeamID != teamID {
+		t.Errorf("expected team_id=%s, got %s", teamID, rec.TeamID)
+	}
+
+	q := repository.New(tdb.DB)
+	row, err := q.GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if row.TeamID.String != teamID {
+		t.Errorf("db team_id=%s, want %s", row.TeamID.String, teamID)
+	}
+}
+
+func TestSubmitTaskWithoutTeamContextIsNull(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt: "fix bug", AgentImage: "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	if rec.TeamID != "" {
+		t.Errorf("expected empty team_id, got %s", rec.TeamID)
+	}
+
+	q := repository.New(tdb.DB)
+	row, err := q.GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if row.TeamID.Valid {
+		t.Errorf("expected NULL team_id, got %s", row.TeamID.String)
+	}
+}
+
+func TestListTasksByTeamScopesCorrectly(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
+
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{Prompt: "a1", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit a1: %v", err)
+	}
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{Prompt: "a2", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit a2: %v", err)
+	}
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamB), SubmitTaskRequest{Prompt: "b1", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit b1: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+
+	aTasks, err := q.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
+		TeamID:       sql.NullString{String: teamA, Valid: true},
+		StatusFilter: "pending",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("list team a: %v", err)
+	}
+	if len(aTasks) != 2 {
+		t.Errorf("team A: expected 2 tasks, got %d", len(aTasks))
+	}
+	for _, task := range aTasks {
+		if task.Prompt != "a1" && task.Prompt != "a2" {
+			t.Errorf("unexpected task in team A: %s", task.Prompt)
+		}
+	}
+
+	bTasks, err := q.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
+		TeamID:       sql.NullString{String: teamB, Valid: true},
+		StatusFilter: "pending",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("list team b: %v", err)
+	}
+	if len(bTasks) != 1 {
+		t.Errorf("team B: expected 1 task, got %d", len(bTasks))
+	}
+}
+
+// --- Team-scoped schedule tests ---
+
+func TestCreateScheduleWithTeamContextStampsTeamID(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+
+	ctx = ctxWithTeam(ctx, teamID)
+	rec, err := svc.CreateSchedule(ctx, store.ScheduleInput{
+		Name: "hourly-check", CronExpr: "@hourly", Prompt: "check the logs",
+		AgentImage: "runner:latest", TimeoutSec: 300,
+	})
+	if err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+	if rec.TeamID != teamID {
+		t.Errorf("expected team_id=%s, got %s", teamID, rec.TeamID)
+	}
+
+	q := repository.New(tdb.DB)
+	row, err := q.GetScheduleByName(ctx, "hourly-check")
+	if err != nil {
+		t.Fatalf("get schedule: %v", err)
+	}
+	if row.TeamID.String != teamID {
+		t.Errorf("db team_id=%s, want %s", row.TeamID.String, teamID)
+	}
+}
+
+func TestListSchedulesByTeamScopesCorrectly(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
+
+	if _, err := svc.CreateSchedule(ctxWithTeam(ctx, teamA), store.ScheduleInput{
+		Name: "a-check", CronExpr: "@hourly", Prompt: "a",
+		AgentImage: "runner:latest", TimeoutSec: 60,
+	}); err != nil {
+		t.Fatalf("create schedule a: %v", err)
+	}
+	if _, err := svc.CreateSchedule(ctxWithTeam(ctx, teamB), store.ScheduleInput{
+		Name: "b-check", CronExpr: "@daily", Prompt: "b",
+		AgentImage: "runner:latest", TimeoutSec: 60,
+	}); err != nil {
+		t.Fatalf("create schedule b: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+
+	aSchedules, err := q.ListSchedulesByTeam(ctx, sql.NullString{String: teamA, Valid: true})
+	if err != nil {
+		t.Fatalf("list team a: %v", err)
+	}
+	if len(aSchedules) != 1 || aSchedules[0].Name != "a-check" {
+		t.Errorf("team A: got %d schedules, expected 1 (a-check)", len(aSchedules))
+	}
+
+	bSchedules, err := q.ListSchedulesByTeam(ctx, sql.NullString{String: teamB, Valid: true})
+	if err != nil {
+		t.Fatalf("list team b: %v", err)
+	}
+	if len(bSchedules) != 1 || bSchedules[0].Name != "b-check" {
+		t.Errorf("team B: got %d schedules, expected 1 (b-check)", len(bSchedules))
+	}
+}
+
+// --- Token management tests ---
+
+func TestCreateTokenCreatesTeamUserAndToken(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, out, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName:  "engineering",
+		UserName:  "alice",
+		TokenName: "alice-cli",
+	})
+	if err != nil {
+		t.Fatalf("createTokenTool: %v", err)
+	}
+	if out.TeamName != "engineering" {
+		t.Errorf("team_name: %s", out.TeamName)
+	}
+	if out.UserName != "alice" {
+		t.Errorf("user_name: %s", out.UserName)
+	}
+	if out.Token == "" {
+		t.Error("expected non-empty token")
+	}
+
+	q := repository.New(tdb.DB)
+
+	team, err := q.GetTeamByName(ctx, "engineering")
+	if err != nil {
+		t.Fatalf("get team: %v", err)
+	}
+	if team.ID != out.TeamID {
+		t.Errorf("team id mismatch: %s vs %s", team.ID, out.TeamID)
+	}
+}
+
+func TestCreateTokenRequiresAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, _, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName: "engineering", UserName: "alice", TokenName: "alice-cli",
+	})
+	if err == nil {
+		t.Fatal("expected error for non-admin token creation")
+	}
+}
+
+func TestListTokensRequiresAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, _, err := svc.listTokensTool(ctx, nil, ListTokensInput{})
+	if err == nil {
+		t.Fatal("expected error for non-admin token listing")
+	}
+}
+
+func TestDeleteTokenRemovesRow(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, _, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName: "engineering", UserName: "alice", TokenName: "alice-cli",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	_, out, err := svc.deleteTokenTool(ctx, nil, DeleteTokenInput{Name: "alice-cli"})
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !out.Deleted {
+		t.Error("expected Deleted=true")
+	}
+
+	q := repository.New(tdb.DB)
+	tokens, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	if len(tokens) != 0 {
+		t.Errorf("expected 0 tokens, got %d", len(tokens))
+	}
+}
+
+func TestDeleteTokenRequiresAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, _, err := svc.deleteTokenTool(ctx, nil, DeleteTokenInput{Name: "foo"})
+	if err == nil {
+		t.Fatal("expected error for non-admin token deletion")
 	}
 }

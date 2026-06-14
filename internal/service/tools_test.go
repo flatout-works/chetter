@@ -19,6 +19,7 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	now := time.Now().UTC()
 	record := taskToolRecord(store.TaskRecord{
 		ID:                "task_1",
+		TeamID:            "team_123",
 		Status:            "done",
 		Prompt:            "prompt",
 		GitURL:            "https://example.com/repo.git",
@@ -40,7 +41,7 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		UpdatedAt:         now,
 	})
 
-	if record.ID != "task_1" || record.Status != "done" || record.TimeoutSec != 300 {
+	if record.ID != "task_1" || record.Status != "done" || record.TimeoutSec != 300 || record.TeamID != "team_123" {
 		t.Fatalf("unexpected task record: %+v", record)
 	}
 	if record.AgentImage != "image" || record.Agent != "changelog-maintainer" || len(record.Skills) != 1 || record.Env["SAFE"] != "value" {

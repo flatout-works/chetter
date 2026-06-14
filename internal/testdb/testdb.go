@@ -132,6 +132,9 @@ func (tdb *TestDB) Truncate(t *testing.T) {
 		"chetter_runners",
 		"chetter_task_events",
 		"chetter_tasks",
+		"api_tokens",
+		"users",
+		"teams",
 	} {
 		if _, err := tdb.DB.Exec("DELETE FROM " + table); err != nil {
 			t.Fatalf("truncate %s: %v", table, err)
