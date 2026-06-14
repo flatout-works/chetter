@@ -26,6 +26,7 @@ $(SQLC):
 build:
 	mkdir -p bin
 	go build -o bin/chetter .
+	go build -o bin/chetterctl ./cmd/chetterctl
 
 migrate:
 	go run github.com/pressly/goose/v3/cmd/goose@latest -dir db/migrations mysql "$(DB_DSN)" up
