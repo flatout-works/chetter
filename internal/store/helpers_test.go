@@ -107,29 +107,3 @@ func TestNonNilStrings(t *testing.T) {
 		}
 	})
 }
-
-func TestNonNilMap(t *testing.T) {
-	t.Run("nil", func(t *testing.T) {
-		got := nonNilMap(nil)
-		if got == nil {
-			t.Fatal("expected non-nil map")
-		}
-		if len(got) != 0 {
-			t.Errorf("expected empty map, got %v", got)
-		}
-	})
-	t.Run("empty non-nil", func(t *testing.T) {
-		in := map[string]string{}
-		got := nonNilMap(in)
-		if len(got) != 0 {
-			t.Errorf("expected empty map, got %v", got)
-		}
-	})
-	t.Run("non-empty", func(t *testing.T) {
-		in := map[string]string{"k": "v"}
-		got := nonNilMap(in)
-		if got["k"] != "v" {
-			t.Errorf("expected k=v, got %v", got)
-		}
-	})
-}

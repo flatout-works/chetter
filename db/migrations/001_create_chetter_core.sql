@@ -1,0 +1,116 @@
+-- +goose Up
+CREATE TABLE IF NOT EXISTS chetter_tasks (
+    id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    prompt TEXT NOT NULL,
+    git_url TEXT NULL,
+    git_ref VARCHAR(255) NULL,
+    agent_image VARCHAR(512) NULL,
+    agent VARCHAR(128) NULL,
+    provider_id VARCHAR(128) NULL,
+    model_id VARCHAR(255) NULL,
+    variant_id VARCHAR(128) NULL,
+    opencode_session_id VARCHAR(128) NULL,
+    runner_image_digest VARCHAR(255) NULL,
+    commit_author_name VARCHAR(128) NULL,
+    commit_author_email VARCHAR(255) NULL,
+    runner_id VARCHAR(64) NULL,
+    claimed_at DATETIME(6) NULL,
+    lease_expires_at DATETIME(6) NULL,
+    attempt INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    skills JSON NOT NULL,
+    env JSON NOT NULL,
+    timeout_sec INT NOT NULL,
+    summary TEXT NULL,
+    error TEXT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    last_event_at DATETIME(6) NULL,
+    started_at DATETIME(6) NULL,
+    ended_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    KEY idx_chetter_tasks_status_created (status, created_at),
+    KEY idx_chetter_tasks_created (created_at),
+    KEY idx_chetter_tasks_claim (status, lease_expires_at, created_at),
+    KEY idx_chetter_tasks_runner (runner_id, status)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chetter_task_events (
+    id VARCHAR(64) NOT NULL,
+    task_id VARCHAR(64) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    payload JSON NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_chetter_task_events_task_created (task_id, created_at),
+    KEY idx_chetter_task_events_created (created_at)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chetter_runners (
+    id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    image_ref VARCHAR(512) NULL,
+    image_digest VARCHAR(255) NULL,
+    version VARCHAR(128) NULL,
+    listen_subject VARCHAR(255) NULL,
+    result_subject VARCHAR(255) NULL,
+    max_concurrent INT NOT NULL DEFAULT 0,
+    running_tasks INT NOT NULL DEFAULT 0,
+    available_slots INT NOT NULL DEFAULT 0,
+    total_started BIGINT NOT NULL DEFAULT 0,
+    total_completed BIGINT NOT NULL DEFAULT 0,
+    total_errors BIGINT NOT NULL DEFAULT 0,
+    started_at DATETIME(6) NULL,
+    first_seen_at DATETIME(6) NOT NULL,
+    last_seen_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    metadata JSON NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_chetter_runners_status_seen (status, last_seen_at),
+    KEY idx_chetter_runners_digest_seen (image_digest, last_seen_at)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chetter_schedules (
+    id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    cron_expr VARCHAR(128) NOT NULL,
+    prompt TEXT NOT NULL,
+    git_url TEXT NULL,
+    git_ref VARCHAR(255) NULL,
+    agent_image VARCHAR(512) NULL,
+    agent VARCHAR(128) NULL,
+    provider_id VARCHAR(128) NULL,
+    model_id VARCHAR(255) NULL,
+    variant_id VARCHAR(128) NULL,
+    skills JSON NOT NULL,
+    timeout_sec INT NOT NULL,
+    enabled BOOL NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    last_run_at DATETIME(6) NULL,
+    next_run_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_chetter_schedules_name (name),
+    KEY idx_chetter_schedules_enabled_next (enabled, next_run_at)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chetter_schedule_runs (
+    id VARCHAR(64) NOT NULL,
+    schedule_id VARCHAR(64) NOT NULL,
+    task_id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    scheduled_for DATETIME(6) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_chetter_schedule_runs_schedule_created (schedule_id, created_at),
+    KEY idx_chetter_schedule_runs_task (task_id)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- +goose Down
+DROP TABLE IF EXISTS chetter_schedule_runs;
+DROP TABLE IF EXISTS chetter_schedules;
+DROP TABLE IF EXISTS chetter_runners;
+DROP TABLE IF EXISTS chetter_task_events;
+DROP TABLE IF EXISTS chetter_tasks;

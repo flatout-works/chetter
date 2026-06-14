@@ -3,36 +3,17 @@ package controller
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
+
+	"connectrpc.com/connect"
+	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 )
 
 const heartbeatInterval = 5 * time.Second
-
-type runnerHeartbeat struct {
-	EventType      string    `json:"event_type"`
-	RunnerID       string    `json:"runner_id"`
-	Status         string    `json:"status"`
-	ImageRef       string    `json:"image_ref,omitempty"`
-	ImageDigest    string    `json:"image_digest,omitempty"`
-	Version        string    `json:"version,omitempty"`
-	ListenSubject  string    `json:"listen_subject,omitempty"`
-	ResultSubject  string    `json:"result_subject,omitempty"`
-	MaxConcurrent  int       `json:"max_concurrent"`
-	RunningTasks   int       `json:"running_tasks"`
-	AvailableSlots int       `json:"available_slots"`
-	TotalStarted   int64     `json:"total_started"`
-	TotalCompleted int64     `json:"total_completed"`
-	TotalErrors    int64     `json:"total_errors"`
-	CurrentTaskIDs []string  `json:"current_task_ids,omitempty"`
-	ExecutionMode  string    `json:"execution_mode,omitempty"`
-	StartedAt      time.Time `json:"started_at,omitempty"`
-	SentAt         time.Time `json:"sent_at"`
-}
 
 func newRunnerID() (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
@@ -78,22 +59,10 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 }
 
 func (r *Runner) publishRunnerHeartbeat(status string) {
-	payload, err := json.Marshal(r.runnerHeartbeatSnapshot(status))
-	if err != nil {
-		slog.Error("failed to marshal runner heartbeat", "err", err)
-		return
-	}
-	subject := fmt.Sprintf("%s.runners.%s.heartbeat", r.cfg.Runner.ResultSubject, r.runnerID)
-	if err := r.natsClient.Publish(subject, payload); err != nil {
-		slog.Warn("failed to publish runner heartbeat", "runner_id", r.runnerID, "err", err)
-		return
-	}
-	if err := r.natsClient.Conn.Flush(); err != nil {
-		slog.Warn("failed to flush runner heartbeat", "runner_id", r.runnerID, "err", err)
-	}
+	r.publishRunnerHeartbeatRPC(status)
 }
 
-func (r *Runner) runnerHeartbeatSnapshot(status string) runnerHeartbeat {
+func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	r.mu.Lock()
 	taskIDs := make([]string, 0, len(r.tasks))
 	for taskID := range r.tasks {
@@ -102,53 +71,66 @@ func (r *Runner) runnerHeartbeatSnapshot(status string) runnerHeartbeat {
 	totalStarted := r.totalStarted
 	totalCompleted := r.totalCompleted
 	totalErrors := r.totalErrors
-	r.mu.Unlock()
-
 	maxConcurrent := r.cfg.Runner.MaxConcurrent
 	availableSlots := maxConcurrent - len(r.sem)
 	if availableSlots < 0 {
 		availableSlots = 0
 	}
-	return runnerHeartbeat{
-		EventType:      "runner_heartbeat",
-		RunnerID:       r.runnerID,
+	r.mu.Unlock()
+
+	return &runnerv1.RunnerInfo{
+		RunnerId:       r.runnerID,
 		Status:         status,
 		ImageRef:       firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
 		ImageDigest:    firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
 		Version:        firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
-		ListenSubject:  r.cfg.Runner.ListenSubject,
-		ResultSubject:  r.cfg.Runner.ResultSubject,
-		MaxConcurrent:  maxConcurrent,
-		RunningTasks:   len(taskIDs),
-		AvailableSlots: availableSlots,
+		MaxConcurrent:  int32(maxConcurrent),
+		RunningTasks:   int32(len(taskIDs)),
+		AvailableSlots: int32(availableSlots),
 		TotalStarted:   totalStarted,
 		TotalCompleted: totalCompleted,
 		TotalErrors:    totalErrors,
-		CurrentTaskIDs: taskIDs,
+		CurrentTaskIds: taskIDs,
 		ExecutionMode:  r.executionMode(),
-		StartedAt:      r.startedAt,
-		SentAt:         time.Now().UTC(),
+		StartedAt:      formatProtoTime(r.startedAt),
 	}
 }
 
-func (r *Runner) recordTerminalStatus(taskID, status string) {
-	if taskID == "" || (status != "done" && status != "error") {
+func (r *Runner) publishRunnerHeartbeatRPC(status string) {
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+	cmd, err := r.rpcClient.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: r.runnerInfoProto(status)}))
+	if err != nil {
+		slog.Warn("failed to publish runner heartbeat", "runner_id", r.runnerID, "err", err)
 		return
 	}
+	for _, command := range cmd.Msg.Commands {
+		if command.Type == "cancel" {
+			r.cancelTask(command.TaskId, command.Reason)
+		}
+	}
+}
+
+func (r *Runner) cancelTask(taskID, reason string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.terminalTasks == nil {
-		r.terminalTasks = make(map[string]struct{})
-	}
-	if _, ok := r.terminalTasks[taskID]; ok {
+	if _, seen := r.cancelledTasks[taskID]; seen {
+		r.mu.Unlock()
 		return
 	}
-	r.terminalTasks[taskID] = struct{}{}
-	if status == "done" {
-		r.totalCompleted++
+	session, ok := r.tasks[taskID]
+	if ok {
+		r.cancelledTasks[taskID] = struct{}{}
+	}
+	r.mu.Unlock()
+	if !ok {
 		return
 	}
-	r.totalErrors++
+	if reason == "" {
+		reason = "cancelled by operator"
+	}
+	slog.Info("cancelling task", "taskID", taskID, "reason", reason)
+	session.Cancel()
+	r.publishStatus(taskID, "cancelled", reason, nil)
 }
 
 func firstEnv(keys ...string) string {

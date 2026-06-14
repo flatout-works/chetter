@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package runner.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/flatout-works/chetter/gen/runner/v1;runnerv1";
+
+message RunnerInfo {
+  string runner_id = 1 [(buf.validate.field).string.min_len = 1];
+  string status = 2;
+  string image_ref = 3;
+  string image_digest = 4;
+  string version = 5;
+  int32 max_concurrent = 6;
+  int32 running_tasks = 7;
+  int32 available_slots = 8;
+  int64 total_started = 9;
+  int64 total_completed = 10;
+  int64 total_errors = 11;
+  repeated string current_task_ids = 12;
+  string execution_mode = 13;
+  string started_at = 14;
+}
+
+message RegisterRunnerRequest {
+  RunnerInfo runner = 1 [(buf.validate.field).required = true];
+}
+
+message RegisterRunnerResponse {}
+
+message HeartbeatRequest {
+  RunnerInfo runner = 1 [(buf.validate.field).required = true];
+}
+
+message RunnerCommand {
+  string type = 1;
+  string task_id = 2;
+  string reason = 3;
+}
+
+message HeartbeatResponse {
+  repeated RunnerCommand commands = 1;
+}
+
+message ClaimTaskRequest {
+  string runner_id = 1 [(buf.validate.field).string.min_len = 1];
+  int32 wait_seconds = 2 [(buf.validate.field).int32.lte = 30];
+  int32 lease_seconds = 3 [(buf.validate.field).int32.lte = 3600];
+}
+
+message Task {
+  string task_id = 1;
+  string agent_image = 2;
+  string prompt = 3;
+  string git_url = 4;
+  string git_ref = 5;
+  string agent = 6;
+  string provider_id = 7;
+  string model_id = 8;
+  string variant_id = 9;
+  repeated string skills = 10;
+  int32 timeout_seconds = 11;
+  int32 max_memory_mb = 12;
+  int32 max_cpu = 13;
+  map<string, string> env = 14;
+  int32 attempt = 15;
+}
+
+message ClaimTaskResponse {
+  Task task = 1;
+}
+
+message TaskEvent {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string status = 2 [(buf.validate.field).string.min_len = 1];
+  string summary = 3;
+  string error = 4;
+  repeated string artifacts = 5;
+  string provider_id = 6;
+  string model_id = 7;
+  string variant_id = 8;
+  string opencode_session_id = 9;
+  string runner_image_digest = 10;
+  string started_at = 11;
+  string ended_at = 12;
+  string payload_json = 13;
+}
+
+message ReportTaskEventsRequest {
+  string runner_id = 1 [(buf.validate.field).string.min_len = 1];
+  repeated TaskEvent events = 2 [(buf.validate.field).repeated.min_items = 1];
+}
+
+message ReportTaskEventsResponse {}
+
+service RunnerService {
+  rpc RegisterRunner(RegisterRunnerRequest) returns (RegisterRunnerResponse) {}
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
+  rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
+  rpc ReportTaskEvents(ReportTaskEventsRequest) returns (ReportTaskEventsResponse) {}
+}

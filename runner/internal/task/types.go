@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// TaskRequest is a task sent over NATS to spawn a new agent session.
+// TaskRequest is a task claimed from the control plane to spawn a new agent session.
 type TaskRequest struct {
 	TaskID      string            `json:"task_id"`
 	AgentImage  string            `json:"agent_image"`       // e.g. "ghcr.io/opencode-ai/opencode:latest"
@@ -27,7 +27,7 @@ type TaskRequest struct {
 	Env         map[string]string `json:"env,omitempty"`    // extra env vars for harness
 }
 
-// TaskResponse carries a task's status event published back to NATS.
+// TaskResponse carries a task status event reported back to the control plane.
 type TaskResponse struct {
 	TaskID            string    `json:"task_id"`
 	Status            string    `json:"status"` // pending, running, done, error, cancelled

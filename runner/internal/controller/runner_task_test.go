@@ -332,7 +332,6 @@ func TestGenerateOpenCodeConfig_UsesMCPKeyNotMCPservers(t *testing.T) {
 
 	r := &Runner{
 		cfg: &config.Config{
-			NATS:   config.NATSConfig{URL: "nats://localhost:4222"},
 			Runner: config.RunnerConfig{WorkspaceRoot: t.TempDir()},
 		},
 	}
@@ -372,7 +371,6 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 
 	r := &Runner{
 		cfg: &config.Config{
-			NATS:   config.NATSConfig{URL: "nats://localhost:4222"},
 			Runner: config.RunnerConfig{WorkspaceRoot: t.TempDir()},
 			ChetterMCP: config.ChetterMCPConfig{
 				URL:       "https://chetter.example.com/mcp",
@@ -435,7 +433,6 @@ func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 
 	r := &Runner{
 		cfg: &config.Config{
-			NATS:   config.NATSConfig{URL: "nats://localhost:4222"},
 			Runner: config.RunnerConfig{WorkspaceRoot: t.TempDir()},
 		},
 	}
@@ -486,7 +483,6 @@ func TestGenerateOpenCodeConfig_NoMCPBridgeWhenNotRequested(t *testing.T) {
 
 	r := &Runner{
 		cfg: &config.Config{
-			NATS:   config.NATSConfig{URL: "nats://localhost:4222"},
 			Runner: config.RunnerConfig{WorkspaceRoot: t.TempDir()},
 		},
 	}
@@ -546,7 +542,6 @@ func TestGenerateOpenCodeConfig_ValidatedByOpenCode(t *testing.T) {
 
 			r := &Runner{
 				cfg: &config.Config{
-					NATS:   config.NATSConfig{URL: "nats://localhost:4222"},
 					Runner: config.RunnerConfig{WorkspaceRoot: t.TempDir()},
 					ChetterMCP: config.ChetterMCPConfig{
 						URL:       tt.chetterURL,

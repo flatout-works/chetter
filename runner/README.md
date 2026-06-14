@@ -1,6 +1,6 @@
 # Chetter Runner
 
-Runs agent harnesses (OpenCode, Niffler) inside Kata Containers (micro-VMs) for strong isolation while proxying privileged operations (git, NATS, HTTP) through a runner-managed MCP server.
+Runs agent harnesses (OpenCode, Niffler) inside Kata Containers (micro-VMs) for strong isolation while proxying privileged operations (git and HTTP) through a runner-managed MCP server.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Worker Node (Ubuntu 24.04, KVM enabled, containerd + Kata pre-installed)
 ├── Kata 3.30.0 (/opt/kata, /dev/kvm)
 ├── iptables kernel modules
 └── Runner Container (--privileged, mounts host resources)
-    ├── NATS client → control plane
+    ├── ConnectRPC client → Chetter control plane
     ├── Git engine (SSH keys / PAT)
     ├── MCP Server (Unix socket per task)
     ├── Transparent HTTP Proxy (:18080)
@@ -127,17 +127,10 @@ Linux fc6eb5c2bf6a 6.18.15 #1 SMP ... x86_64 Linux
 sudo apt-get install -y iptables iproute2 socat
 ```
 
-#### 6. NATS Server (for control plane)
+#### 6. Chetter Control Plane
 
-```bash
-# Download NATS
-wget https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-amd64.tar.gz
-tar -xzf nats-server-v2.11.0-linux-amd64.tar.gz
-sudo mv nats-server-v2.11.0-linux-amd64/nats-server /usr/local/bin/
-
-# Start NATS (in background or systemd)
-nats-server -p 4222 &
-```
+Start the Chetter MCP server and configure `server.url` in `runner.yaml`, or set
+`CHETTER_SERVER_URL` when using the container entrypoint.
 
 ## Building the Runner
 
@@ -168,14 +161,13 @@ sudo ./runner -config runner.yaml
 Or as a privileged container:
 
 ```bash
-# Build image
-docker build -f Dockerfile.runner -t chetter/runner .
+# Build image from the repository root
+docker build -f runner/Dockerfile.runner -t chetter/runner .
 
 # Run with host containerd socket and KVM device.
-# host.docker.internal lets the container reach host NATS on Linux.
 docker run -d --name chetter-runner \
   --privileged \
-  --add-host=host.docker.internal:host-gateway \
+  -e CHETTER_SERVER_URL=http://host.docker.internal:8080 \
   -v /run/containerd/containerd.sock:/run/containerd/containerd.sock \
   -v /dev/kvm:/dev/kvm \
   -v /var/lib/runner:/var/lib/runner \
@@ -186,26 +178,21 @@ docker run -d --name chetter-runner \
 
 The image sets `TMPDIR=/var/lib/runner/tmp` because `ctr` creates temporary mount points before asking host containerd to mount snapshots. That temp path must live on a bind mount that exists on both the runner container and the host.
 
-If the container exits immediately, check `docker logs chetter-runner`. Common causes are NATS not listening on host port `4222`, a stale image that does not include `ctr`, or lack of access to the mounted containerd socket. If you see `ctr not found in PATH`, rebuild the image from the current `Dockerfile.runner`.
+If the container exits immediately, check `docker logs chetter-runner`. Common causes are a missing `server.url`, a stale image that does not include `ctr`, or lack of access to the mounted containerd socket. If you see `ctr not found in PATH`, rebuild the image from the current `Dockerfile.runner`.
 
 If a task fails with `failed to mount /tmp/containerd-mount...`, rebuild the image so it uses the shared `TMPDIR`, then recreate the container.
 
 ## Sending a Task
 
-```bash
-# Publish a NATS message
-nats pub chetter.runner.tasks '{"task_id":"test-001","agent_image":"docker.io/library/alpine:latest","timeout_sec":60}'
-
-# Or use the Go test client
-go run test/local_task.go
-```
+Submit tasks through the Chetter MCP server using `chetter_submit_task`. Runners
+claim queued tasks from the control plane over ConnectRPC.
 
 ## Supported Harnesses
 
 | Harness | Mode | Status |
 |---------|------|--------|
 | **OpenCode** | `opencode run` (non-interactive via model flag) | **In progress — local mode works** |
-| **Niffler** | NATS agent mode + MCP socket | Planned — library patch to add `--mcp-socket` agent mode |
+| **Niffler** | MCP socket integration | Planned — library patch to add `--mcp-socket` agent mode |
 
 Unmodified harnesses work for public workflows (HTTP through proxy, workspace access, bash). Private git push requires harness to call MCP tools (`git_push`).
 

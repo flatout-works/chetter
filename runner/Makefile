@@ -1,13 +1,12 @@
 IMAGE ?= chetter/runner
 CONTAINER ?= chetter-runner
 CONFIG ?= $(CURDIR)/runner.docker.yaml
-NATS_URL ?= nats://localhost:4222
-HOST_NATS ?= host.docker.internal
 PROXY_PORT ?= 18080
 STATICCHECK ?= $(shell go env GOPATH)/bin/staticcheck
 STATICCHECK_VERSION ?= latest
+ROOT := $(abspath $(CURDIR)/..)
 
-.PHONY: local build rebuild verify-image preflight-netns rm run restart wait logs follow ps smoke policy cycle policy-cycle test vet lint check coverage
+.PHONY: local build rebuild verify-image preflight-netns rm run restart wait logs follow ps test vet lint check coverage
 
 $(STATICCHECK):
 	go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
@@ -17,10 +16,10 @@ local:
 	go build -o mcp-bridge ./harness/mcp-bridge
 
 build:
-	docker build -f Dockerfile.runner -t $(IMAGE) .
+	docker build -f $(CURDIR)/Dockerfile.runner -t $(IMAGE) $(ROOT)
 
 rebuild:
-	docker build --no-cache -f Dockerfile.runner -t $(IMAGE) .
+	docker build --no-cache -f $(CURDIR)/Dockerfile.runner -t $(IMAGE) $(ROOT)
 
 verify-image:
 	docker run --rm \
@@ -41,7 +40,6 @@ rm:
 run: preflight-netns rm
 	docker run -d --name $(CONTAINER) \
 		--privileged \
-		--add-host=$(HOST_NATS):host-gateway \
 		-v /run/containerd:/run/containerd \
 		--mount type=bind,source=/run/netns,target=/run/netns,bind-propagation=rshared \
 		-v /var/lib/containerd:/var/lib/containerd \
@@ -67,16 +65,6 @@ follow:
 
 ps:
 	docker ps --filter name=$(CONTAINER)
-
-smoke:
-	NATS_URL=$(NATS_URL) go run test/smoke_task.go
-
-policy:
-	NATS_URL=$(NATS_URL) go run test/policy_task.go
-
-cycle: restart smoke
-
-policy-cycle: restart policy
 
 test:
 	go test ./...

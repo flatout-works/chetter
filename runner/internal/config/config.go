@@ -9,17 +9,6 @@ import (
 )
 
 const (
-	DefaultNATSURL          = "nats://localhost:4222"
-	DefaultTaskStream       = "CHETTER_TASKS"
-	DefaultEventStream      = "CHETTER_EVENTS"
-	DefaultTaskDurable      = "chetter-runner"
-	DefaultTaskQueue        = "chetter-runners"
-	DefaultAckWaitSeconds   = 10
-	DefaultMaxDeliver       = 3
-	DefaultMaxAckPending    = 4
-	DefaultStorage          = "file"
-	DefaultListenSubject    = "chetter.runner.tasks"
-	DefaultResultSubject    = "chetter.tasks"
 	DefaultWorkspaceRoot    = "/var/lib/runner"
 	DefaultMaxConcurrent    = 10
 	DefaultProxyAddr        = ":18080"
@@ -33,42 +22,22 @@ const (
 )
 
 type Config struct {
-	NATS         NATSConfig       `yaml:"nats"`
-	JetStream    JetStreamConfig  `yaml:"jetstream"`
-	Runner       RunnerConfig     `yaml:"runner"`
-	Proxy        ProxyConfig      `yaml:"proxy"`
-	DNS          DNSConfig        `yaml:"dns"`
-	Git          GitConfig        `yaml:"git"`
-	Execution    ExecutionConfig  `yaml:"execution"`
-	Deploy       DeployConfig     `yaml:"deploy"`
-	ChetterMCP   ChetterMCPConfig `yaml:"chetter_mcp"`
-	EmbeddedNATS bool             `yaml:"embedded_nats"`
+	Server     ServerConfig     `yaml:"server"`
+	Runner     RunnerConfig     `yaml:"runner"`
+	Proxy      ProxyConfig      `yaml:"proxy"`
+	DNS        DNSConfig        `yaml:"dns"`
+	Git        GitConfig        `yaml:"git"`
+	Execution  ExecutionConfig  `yaml:"execution"`
+	Deploy     DeployConfig     `yaml:"deploy"`
+	ChetterMCP ChetterMCPConfig `yaml:"chetter_mcp"`
 }
 
-// NATSConfig specifies the NATS connection URL and embedded server settings.
-type NATSConfig struct {
-	URL string `yaml:"url"`
+type ServerConfig struct {
+	URL       string `yaml:"url"`
+	AuthToken string `yaml:"auth_token"`
 }
 
-// JetStreamConfig enables durable task consumption and event publishing via
-// NATS JetStream. Plain NATS remains the default for local development.
-type JetStreamConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	TaskStream     string `yaml:"task_stream"`
-	EventStream    string `yaml:"event_stream"`
-	TaskDurable    string `yaml:"task_durable"`
-	TaskQueue      string `yaml:"task_queue"`
-	AckWaitSeconds int    `yaml:"ack_wait_seconds"`
-	MaxDeliver     int    `yaml:"max_deliver"`
-	MaxAckPending  int    `yaml:"max_ack_pending"`
-	Storage        string `yaml:"storage"`
-}
-
-// RunnerConfig configures runner behavior — subjects, workspace root, and
-// concurrency limits.
 type RunnerConfig struct {
-	ListenSubject string `yaml:"listen_subject"`
-	ResultSubject string `yaml:"result_subject"`
 	WorkspaceRoot string `yaml:"workspace_root"`
 	MaxConcurrent int    `yaml:"max_concurrent"`
 }
@@ -79,8 +48,6 @@ type ProxyConfig struct {
 	BlockedDomains []string `yaml:"blocked_domains"`
 }
 
-// DNSConfig configures the DNS proxy with upstream resolver and domain
-// blocklist for agent containers.
 type DNSConfig struct {
 	ListenAddr     string   `yaml:"listen_addr"`
 	Upstream       string   `yaml:"upstream"`
@@ -92,29 +59,22 @@ type GitConfig struct {
 	PAT        string `yaml:"pat"`
 }
 
-// ExecutionConfig selects the optional container runtime and agent harness image.
 type ExecutionConfig struct {
 	Runtime string `yaml:"runtime"`
 	Harness string `yaml:"harness"`
 }
 
-// DeployConfig configures the deployment provider and registry settings
-// for MCP deploy tools.
 type DeployConfig struct {
-	Provider   string `yaml:"provider"`    // "local" or "preview"
-	Registry   string `yaml:"registry"`    // Docker registry for push (e.g. "ghcr.io/chetter")
-	ChetterURL string `yaml:"chetter_url"` // Base URL for preview deployment (e.g. "chetter.flatout.works")
+	Provider   string `yaml:"provider"`
+	Registry   string `yaml:"registry"`
+	ChetterURL string `yaml:"chetter_url"`
 }
 
-// ChetterMCPConfig configures the remote chetter MCP server that exposes
-// infrastructure tools (e.g. Arcane vulnerability scans) to agents running
-// inside chetter task containers.
 type ChetterMCPConfig struct {
-	URL       string `yaml:"url"`        // Chetter MCP HTTP endpoint (e.g. https://chetter.flatout.works/mcp)
-	AuthToken string `yaml:"auth_token"` // Bearer token for authenticating to the chetter MCP
+	URL       string `yaml:"url"`
+	AuthToken string `yaml:"auth_token"`
 }
 
-// Load reads configuration from the given path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -129,38 +89,11 @@ func Load(path string) (*Config, error) {
 }
 
 func applyDefaults(cfg *Config) {
-	if cfg.NATS.URL == "" {
-		cfg.NATS.URL = DefaultNATSURL
+	if cfg.Server.URL == "" {
+		cfg.Server.URL = os.Getenv("CHETTER_SERVER_URL")
 	}
-	if cfg.JetStream.TaskStream == "" {
-		cfg.JetStream.TaskStream = DefaultTaskStream
-	}
-	if cfg.JetStream.EventStream == "" {
-		cfg.JetStream.EventStream = DefaultEventStream
-	}
-	if cfg.JetStream.TaskDurable == "" {
-		cfg.JetStream.TaskDurable = DefaultTaskDurable
-	}
-	if cfg.JetStream.TaskQueue == "" {
-		cfg.JetStream.TaskQueue = DefaultTaskQueue
-	}
-	if cfg.JetStream.AckWaitSeconds == 0 {
-		cfg.JetStream.AckWaitSeconds = DefaultAckWaitSeconds
-	}
-	if cfg.JetStream.MaxDeliver == 0 {
-		cfg.JetStream.MaxDeliver = DefaultMaxDeliver
-	}
-	if cfg.JetStream.MaxAckPending == 0 {
-		cfg.JetStream.MaxAckPending = DefaultMaxAckPending
-	}
-	if cfg.JetStream.Storage == "" {
-		cfg.JetStream.Storage = DefaultStorage
-	}
-	if cfg.Runner.ListenSubject == "" {
-		cfg.Runner.ListenSubject = DefaultListenSubject
-	}
-	if cfg.Runner.ResultSubject == "" {
-		cfg.Runner.ResultSubject = DefaultResultSubject
+	if cfg.Server.AuthToken == "" {
+		cfg.Server.AuthToken = firstEnv("CHETTER_RUNNER_AUTH_TOKEN", "MCP_AUTH_TOKEN", "CHETTER_MCP_AUTH_TOKEN")
 	}
 	if cfg.Runner.WorkspaceRoot == "" {
 		cfg.Runner.WorkspaceRoot = DefaultWorkspaceRoot
@@ -186,7 +119,13 @@ func applyDefaults(cfg *Config) {
 	if cfg.ChetterMCP.AuthToken == "" {
 		cfg.ChetterMCP.AuthToken = os.Getenv("CHETTER_MCP_AUTH_TOKEN")
 	}
-	if env := os.Getenv("JETSTREAM_ENABLED"); env != "" {
-		cfg.JetStream.Enabled = env == "true" || env == "1"
+}
+
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
+	return ""
 }

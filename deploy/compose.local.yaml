@@ -19,8 +19,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      nats:
-        condition: service_started
     environment:
       DATABASE_DSN: ${DATABASE_DSN:-chetter:${MYSQL_PASSWORD:-chetter}@tcp(mysql:3306)/chetter?parseTime=true}
 

@@ -58,22 +58,6 @@ type TaskRecord struct {
 	EndedAt           *time.Time        `json:"ended_at,omitempty"`
 }
 
-// TaskInput contains fields needed to insert a new task.
-type TaskInput struct {
-	ID         string
-	Prompt     string
-	GitURL     string
-	GitRef     string
-	AgentImage string
-	Agent      string
-	ProviderID string
-	ModelID    string
-	VariantID  string
-	Skills     []string
-	Env        map[string]string
-	TimeoutSec int
-}
-
 // TaskResponse is the runner status event shape.
 type TaskResponse struct {
 	TaskID            string    `json:"task_id"`
@@ -88,38 +72,6 @@ type TaskResponse struct {
 	RunnerImageDigest string    `json:"runner_image_digest,omitempty"`
 	StartedAt         time.Time `json:"started_at,omitempty"`
 	EndedAt           time.Time `json:"ended_at,omitempty"`
-}
-
-// RunnerHeartbeat is the runner presence event persisted from NATS.
-type RunnerHeartbeat struct {
-	EventType      string    `json:"event_type,omitempty"`
-	RunnerID       string    `json:"runner_id"`
-	Status         string    `json:"status"`
-	ImageRef       string    `json:"image_ref,omitempty"`
-	ImageDigest    string    `json:"image_digest,omitempty"`
-	Version        string    `json:"version,omitempty"`
-	ListenSubject  string    `json:"listen_subject,omitempty"`
-	ResultSubject  string    `json:"result_subject,omitempty"`
-	MaxConcurrent  int       `json:"max_concurrent,omitempty"`
-	RunningTasks   int       `json:"running_tasks"`
-	AvailableSlots int       `json:"available_slots"`
-	TotalStarted   int64     `json:"total_started"`
-	TotalCompleted int64     `json:"total_completed"`
-	TotalErrors    int64     `json:"total_errors"`
-	CurrentTaskIDs []string  `json:"current_task_ids,omitempty"`
-	ExecutionMode  string    `json:"execution_mode,omitempty"`
-	StartedAt      time.Time `json:"started_at,omitempty"`
-	SentAt         time.Time `json:"sent_at,omitempty"`
-}
-
-// EventRecord is a persisted runner message.
-type EventRecord struct {
-	ID        string
-	TaskID    string
-	Subject   string
-	Status    string
-	Payload   []byte
-	CreatedAt time.Time
 }
 
 // ScheduleRecord is a cron-backed task template.
@@ -182,6 +134,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// DB exposes the underlying database pool for generated sqlc repositories.
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 // Ping verifies database connectivity.
 func (s *Store) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
@@ -219,6 +176,12 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"runner_image_digest", "ALTER TABLE chetter_tasks ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER opencode_session_id"},
 		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER runner_image_digest"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
+		{"runner_id", "ALTER TABLE chetter_tasks ADD COLUMN runner_id VARCHAR(64) NULL AFTER commit_author_email"},
+		{"claimed_at", "ALTER TABLE chetter_tasks ADD COLUMN claimed_at DATETIME(6) NULL AFTER runner_id"},
+		{"lease_expires_at", "ALTER TABLE chetter_tasks ADD COLUMN lease_expires_at DATETIME(6) NULL AFTER claimed_at"},
+		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
+		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
+		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -307,110 +270,6 @@ func (s *Store) columnExists(ctx context.Context, table, column string) (bool, e
 	return count > 0, nil
 }
 
-// InsertTask stores a pending task before it is published to NATS.
-func (s *Store) InsertTask(ctx context.Context, in TaskInput) error {
-	skills, err := json.Marshal(nonNilStrings(in.Skills))
-	if err != nil {
-		return fmt.Errorf("marshal skills: %w", err)
-	}
-	env, err := json.Marshal(nonNilMap(in.Env))
-	if err != nil {
-		return fmt.Errorf("marshal env: %w", err)
-	}
-	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO chetter_tasks
-			(id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
-		VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, in.ID, in.Prompt, in.GitURL, in.GitRef, in.AgentImage, in.Agent, in.ProviderID, in.ModelID, in.VariantID, "Chetter", "chetter@chetter.flatout.works", string(skills), string(env), in.TimeoutSec, now, now)
-	if err != nil {
-		return fmt.Errorf("insert task: %w", err)
-	}
-	return nil
-}
-
-// GetTask returns one task by ID.
-func (s *Store) GetTask(ctx context.Context, id string) (TaskRecord, error) {
-	rows, err := s.queryTasks(ctx, `WHERE id = ?`, id)
-	if err != nil {
-		return TaskRecord{}, err
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		return TaskRecord{}, sql.ErrNoRows
-	}
-	return scanTask(rows)
-}
-
-// ListTasks returns recent tasks, optionally filtered by status.
-func (s *Store) ListTasks(ctx context.Context, status string, limit int) ([]TaskRecord, error) {
-	if limit <= 0 || limit > maxListTasksLimit {
-		limit = defaultListTasksLimit
-	}
-	var rows *sql.Rows
-	var err error
-	if status == "" {
-		rows, err = s.queryTasks(ctx, `ORDER BY created_at DESC LIMIT ?`, limit)
-	} else {
-		rows, err = s.queryTasks(ctx, `WHERE status = ? ORDER BY created_at DESC LIMIT ?`, status, limit)
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []TaskRecord
-	for rows.Next() {
-		record, err := scanTask(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, record)
-	}
-	return out, rows.Err()
-}
-
-// CancelTask marks a single task as cancelled by ID. It only allows
-// cancelling tasks that are pending or running (not already terminal).
-func (s *Store) CancelTask(ctx context.Context, taskID, reason string) (TaskRecord, error) {
-	if taskID == "" {
-		return TaskRecord{}, fmt.Errorf("task_id is required")
-	}
-	if reason == "" {
-		reason = "cancelled by operator"
-	}
-	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE chetter_tasks
-		SET status = 'cancelled', error = ?, ended_at = COALESCE(ended_at, ?), updated_at = ?
-		WHERE id = ? AND status IN ('pending', 'running')
-	`, reason, now, now, taskID)
-	if err != nil {
-		return TaskRecord{}, fmt.Errorf("cancel task: %w", err)
-	}
-	return s.GetTask(ctx, taskID)
-}
-
-// ClearPendingTasks moves queued DB tasks out of the pending queue.
-func (s *Store) ClearPendingTasks(ctx context.Context, reason string) (int, error) {
-	if reason == "" {
-		reason = "cancelled by chetter queue clear"
-	}
-	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE chetter_tasks
-		SET status = 'cancelled', error = ?, ended_at = COALESCE(ended_at, ?), updated_at = ?
-		WHERE status = 'pending'
-	`, reason, now, now)
-	if err != nil {
-		return 0, fmt.Errorf("clear pending tasks: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("rows affected: %w", err)
-	}
-	return int(affected), nil
-}
-
 // ReapStaleTasks finds running tasks that have not received a heartbeat
 // within their timeout + grace period and marks them as error.
 func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, error) {
@@ -425,31 +284,6 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 	`, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))
 	if err != nil {
 		return 0, fmt.Errorf("reap stale tasks: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("rows affected: %w", err)
-	}
-	return int(affected), nil
-}
-
-// ReapStalePendingTasks finds pending tasks that have not been picked up by a
-// runner within the grace period and cancels them. This handles the rare case
-// where a runner acked the NATS message but crashed before publishing a
-// "running" status event, leaving the DB row stuck in pending.
-func (s *Store) ReapStalePendingTasks(ctx context.Context, grace time.Duration) (int, error) {
-	now := time.Now().UTC()
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE chetter_tasks
-		SET status = 'cancelled',
-		    error = CONCAT('pending timeout: no runner picked up task within ', TIMESTAMPDIFF(SECOND, created_at, NOW()), ' seconds'),
-		    ended_at = ?,
-		    updated_at = ?
-		WHERE status = 'pending'
-		  AND TIMESTAMPDIFF(SECOND, created_at, NOW()) > ?
-	`, now, now, int(grace.Seconds()))
-	if err != nil {
-		return 0, fmt.Errorf("reap stale pending tasks: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
@@ -665,56 +499,6 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 	return health, nil
 }
 
-// UpsertRunnerHeartbeat stores the latest presence record for a runner.
-func (s *Store) UpsertRunnerHeartbeat(ctx context.Context, hb RunnerHeartbeat) error {
-	if hb.RunnerID == "" {
-		return fmt.Errorf("runner_id is required")
-	}
-	if hb.Status == "" {
-		hb.Status = "active"
-	}
-	seenAt := hb.SentAt
-	if seenAt.IsZero() {
-		seenAt = time.Now().UTC()
-	} else {
-		seenAt = seenAt.UTC()
-	}
-	metadata, err := json.Marshal(hb)
-	if err != nil {
-		return fmt.Errorf("marshal runner metadata: %w", err)
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO chetter_runners
-			(id, status, image_ref, image_digest, version, listen_subject, result_subject,
-			 max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
-			 started_at, first_seen_at, last_seen_at, updated_at, metadata)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE
-			status = VALUES(status),
-			image_ref = VALUES(image_ref),
-			image_digest = VALUES(image_digest),
-			version = VALUES(version),
-			listen_subject = VALUES(listen_subject),
-			result_subject = VALUES(result_subject),
-			max_concurrent = VALUES(max_concurrent),
-			running_tasks = VALUES(running_tasks),
-			available_slots = VALUES(available_slots),
-			total_started = VALUES(total_started),
-			total_completed = VALUES(total_completed),
-			total_errors = VALUES(total_errors),
-			started_at = COALESCE(VALUES(started_at), started_at),
-			last_seen_at = VALUES(last_seen_at),
-			updated_at = VALUES(updated_at),
-			metadata = VALUES(metadata)
-	`, hb.RunnerID, hb.Status, hb.ImageRef, hb.ImageDigest, hb.Version, hb.ListenSubject, hb.ResultSubject,
-		hb.MaxConcurrent, hb.RunningTasks, hb.AvailableSlots, hb.TotalStarted, hb.TotalCompleted, hb.TotalErrors,
-		nullableTime(hb.StartedAt), seenAt, seenAt, time.Now().UTC(), string(metadata))
-	if err != nil {
-		return fmt.Errorf("upsert runner heartbeat: %w", err)
-	}
-	return nil
-}
-
 func currentTaskIDsFromMetadata(data []byte) []string {
 	var meta struct {
 		CurrentTaskIDs []string `json:"current_task_ids"`
@@ -737,308 +521,6 @@ func firstLineOrNA(s string) string {
 		idx = 200
 	}
 	return s[:idx]
-}
-
-// UpdateTaskFromResponse persists a runner status event.
-func (s *Store) UpdateTaskFromResponse(ctx context.Context, resp TaskResponse) error {
-	if resp.TaskID == "" {
-		return fmt.Errorf("task_id is required")
-	}
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE chetter_tasks
-		SET status = ?, summary = ?, error = ?,
-			provider_id = COALESCE(NULLIF(?, ''), provider_id),
-			model_id = COALESCE(NULLIF(?, ''), model_id),
-			variant_id = COALESCE(NULLIF(?, ''), variant_id),
-			opencode_session_id = COALESCE(NULLIF(?, ''), opencode_session_id),
-			runner_image_digest = COALESCE(NULLIF(?, ''), runner_image_digest),
-			started_at = COALESCE(?, started_at), ended_at = COALESCE(?, ended_at), updated_at = ?
-		WHERE id = ? AND (status NOT IN ('done', 'error', 'cancelled') OR status = ?)
-	`, resp.Status, resp.Summary, resp.Error, resp.ProviderID, resp.ModelID, resp.VariantID, resp.OpenCodeSessionID, resp.RunnerImageDigest, nullableTime(resp.StartedAt), nullableTime(resp.EndedAt), time.Now().UTC(), resp.TaskID, resp.Status)
-	if err != nil {
-		return fmt.Errorf("update task status: %w", err)
-	}
-	return nil
-}
-
-// InsertEvent persists a raw task event payload.
-func (s *Store) InsertEvent(ctx context.Context, id, taskID, subject, status string, payload []byte) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO chetter_task_events (id, task_id, subject, status, payload, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, taskID, subject, status, string(payload), time.Now().UTC())
-	if err != nil {
-		return fmt.Errorf("insert task event: %w", err)
-	}
-	return nil
-}
-
-// CreateSchedule stores a new enabled schedule.
-func (s *Store) CreateSchedule(ctx context.Context, in ScheduleInput) (ScheduleRecord, error) {
-	skills, err := json.Marshal(nonNilStrings(in.Skills))
-	if err != nil {
-		return ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
-	}
-	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO chetter_schedules
-			(id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
-	`, in.ID, in.Name, in.CronExpr, in.Prompt, in.GitURL, in.GitRef, in.AgentImage, in.Agent, in.ProviderID, in.ModelID, in.VariantID, string(skills), in.TimeoutSec, now, now)
-	if err != nil {
-		return ScheduleRecord{}, fmt.Errorf("insert schedule: %w", err)
-	}
-	return s.GetSchedule(ctx, in.ID)
-}
-
-// GetScheduleByName returns one schedule by name.
-func (s *Store) GetScheduleByName(ctx context.Context, name string) (ScheduleRecord, error) {
-	rows, err := s.querySchedules(ctx, `WHERE name = ?`, name)
-	if err != nil {
-		return ScheduleRecord{}, err
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		return ScheduleRecord{}, sql.ErrNoRows
-	}
-	return scanSchedule(rows)
-}
-
-// UpdateSchedule updates all mutable fields on an existing schedule by name.
-func (s *Store) UpdateSchedule(ctx context.Context, name string, in ScheduleInput, enabled bool) (ScheduleRecord, error) {
-	skills, err := json.Marshal(nonNilStrings(in.Skills))
-	if err != nil {
-		return ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
-	}
-	now := time.Now().UTC()
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE chetter_schedules
-		SET name = ?, cron_expr = ?, prompt = ?,
-		    git_url = ?, git_ref = ?, agent_image = ?,
-		    agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
-		    skills = ?, timeout_sec = ?, enabled = ?,
-		    updated_at = ?
-		WHERE name = ?
-	`, in.Name, in.CronExpr, in.Prompt, in.GitURL, in.GitRef, in.AgentImage,
-		in.Agent, in.ProviderID, in.ModelID, in.VariantID,
-		string(skills), in.TimeoutSec, enabled, now, name)
-	if err != nil {
-		return ScheduleRecord{}, fmt.Errorf("update schedule: %w", err)
-	}
-	return s.GetScheduleByName(ctx, in.Name)
-}
-
-// GetSchedule returns one schedule by ID.
-func (s *Store) GetSchedule(ctx context.Context, id string) (ScheduleRecord, error) {
-	rows, err := s.querySchedules(ctx, `WHERE id = ?`, id)
-	if err != nil {
-		return ScheduleRecord{}, err
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		return ScheduleRecord{}, sql.ErrNoRows
-	}
-	return scanSchedule(rows)
-}
-
-// ListSchedules returns schedules, optionally only enabled ones.
-func (s *Store) ListSchedules(ctx context.Context, enabledOnly bool) ([]ScheduleRecord, error) {
-	filter := `ORDER BY created_at DESC`
-	if enabledOnly {
-		filter = `WHERE enabled = TRUE ORDER BY created_at DESC`
-	}
-	rows, err := s.querySchedules(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ScheduleRecord
-	for rows.Next() {
-		record, err := scanSchedule(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, record)
-	}
-	return out, rows.Err()
-}
-
-// SetScheduleNextRun records the next cron fire time for display.
-func (s *Store) SetScheduleNextRun(ctx context.Context, id string, next time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE chetter_schedules SET next_run_at = ?, updated_at = ? WHERE id = ?`, next.UTC(), time.Now().UTC(), id)
-	if err != nil {
-		return fmt.Errorf("update next run: %w", err)
-	}
-	return nil
-}
-
-// DeleteSchedule removes a schedule by name.
-func (s *Store) DeleteSchedule(ctx context.Context, name string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM chetter_schedules WHERE name = ?`, name)
-	if err != nil {
-		return fmt.Errorf("delete schedule: %w", err)
-	}
-	return nil
-}
-
-// InsertScheduleRun records that a schedule submitted a task.
-func (s *Store) InsertScheduleRun(ctx context.Context, id, scheduleID, taskID, status string, scheduledFor time.Time) error {
-	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO chetter_schedule_runs (id, schedule_id, task_id, status, scheduled_for, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, id, scheduleID, taskID, status, scheduledFor.UTC(), now)
-	if err != nil {
-		return fmt.Errorf("insert schedule run: %w", err)
-	}
-	_, err = s.db.ExecContext(ctx, `UPDATE chetter_schedules SET last_run_at = ?, updated_at = ? WHERE id = ?`, now, now, scheduleID)
-	if err != nil {
-		return fmt.Errorf("update schedule last run: %w", err)
-	}
-	return nil
-}
-
-func (s *Store) queryTasks(ctx context.Context, suffix string, args ...any) (*sql.Rows, error) {
-	query := `
-		SELECT id, status, prompt, git_url, git_ref, agent_image,
-			agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest,
-			commit_author_name, commit_author_email,
-			skills, env, timeout_sec,
-			summary, error, created_at, updated_at, started_at, ended_at
-		FROM chetter_tasks ` + suffix
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query tasks: %w", err)
-	}
-	return rows, nil
-}
-
-func scanTask(rows *sql.Rows) (TaskRecord, error) {
-	var record TaskRecord
-	var gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, opencodeSessionID, runnerImageDigest sql.NullString
-	var commitAuthorName, commitAuthorEmail, summary, errMsg sql.NullString
-	var skillsJSON, envJSON []byte
-	var startedAt, endedAt sql.NullTime
-	err := rows.Scan(
-		&record.ID, &record.Status, &record.Prompt, &gitURL, &gitRef, &agentImage,
-		&agent, &providerID, &modelID, &variantID, &opencodeSessionID, &runnerImageDigest,
-		&commitAuthorName, &commitAuthorEmail,
-		&skillsJSON, &envJSON,
-		&record.TimeoutSec, &summary, &errMsg, &record.CreatedAt, &record.UpdatedAt, &startedAt, &endedAt,
-	)
-	if err != nil {
-		return TaskRecord{}, fmt.Errorf("scan task: %w", err)
-	}
-	record.GitURL = gitURL.String
-	record.GitRef = gitRef.String
-	record.AgentImage = agentImage.String
-	record.Agent = agent.String
-	record.ProviderID = providerID.String
-	record.ModelID = modelID.String
-	record.VariantID = variantID.String
-	record.OpenCodeSessionID = opencodeSessionID.String
-	record.RunnerImageDigest = runnerImageDigest.String
-	record.CommitAuthorName = commitAuthorName.String
-	record.CommitAuthorEmail = commitAuthorEmail.String
-	record.Summary = summary.String
-	record.Error = errMsg.String
-	record.StartedAt = nullTimePtr(startedAt)
-	record.EndedAt = nullTimePtr(endedAt)
-	if err := json.Unmarshal(skillsJSON, &record.Skills); err != nil {
-		return TaskRecord{}, fmt.Errorf("unmarshal skills: %w", err)
-	}
-	if err := json.Unmarshal(envJSON, &record.Env); err != nil {
-		return TaskRecord{}, fmt.Errorf("unmarshal env: %w", err)
-	}
-	return record, nil
-}
-
-func (s *Store) querySchedules(ctx context.Context, suffix string, args ...any) (*sql.Rows, error) {
-	query := `
-		SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image,
-			agent, provider_id, model_id, variant_id, skills, timeout_sec,
-			enabled, created_at, updated_at, last_run_at, next_run_at
-		FROM chetter_schedules ` + suffix
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query schedules: %w", err)
-	}
-	return rows, nil
-}
-
-func scanSchedule(rows *sql.Rows) (ScheduleRecord, error) {
-	var record ScheduleRecord
-	var gitURL, gitRef, agentImage, agent, providerID, modelID, variantID sql.NullString
-	var skillsJSON []byte
-	var lastRunAt, nextRunAt sql.NullTime
-	err := rows.Scan(
-		&record.ID, &record.Name, &record.CronExpr, &record.Prompt, &gitURL, &gitRef, &agentImage,
-		&agent, &providerID, &modelID, &variantID, &skillsJSON,
-		&record.TimeoutSec, &record.Enabled, &record.CreatedAt, &record.UpdatedAt, &lastRunAt, &nextRunAt,
-	)
-	if err != nil {
-		return ScheduleRecord{}, fmt.Errorf("scan schedule: %w", err)
-	}
-	record.GitURL = gitURL.String
-	record.GitRef = gitRef.String
-	record.AgentImage = agentImage.String
-	record.Agent = agent.String
-	record.ProviderID = providerID.String
-	record.ModelID = modelID.String
-	record.VariantID = variantID.String
-	record.LastRunAt = nullTimePtr(lastRunAt)
-	record.NextRunAt = nullTimePtr(nextRunAt)
-	if err := json.Unmarshal(skillsJSON, &record.Skills); err != nil {
-		return ScheduleRecord{}, fmt.Errorf("unmarshal skills: %w", err)
-	}
-	return record, nil
-}
-
-// GetTaskEvents returns events for a task, newest first.
-func (s *Store) GetTaskEvents(ctx context.Context, taskID string, limit int) ([]EventRecord, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 50
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, task_id, subject, status, payload, created_at
-		FROM chetter_task_events
-		WHERE task_id = ?
-		ORDER BY created_at DESC
-		LIMIT ?
-	`, taskID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("query events: %w", err)
-	}
-	defer rows.Close()
-
-	var out []EventRecord
-	for rows.Next() {
-		var ev EventRecord
-		if err := rows.Scan(&ev.ID, &ev.TaskID, &ev.Subject, &ev.Status, &ev.Payload, &ev.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
-		}
-		out = append(out, ev)
-	}
-	return out, rows.Err()
-}
-
-// GetLatestTaskEvent returns the most recent event for a task.
-func (s *Store) GetLatestTaskEvent(ctx context.Context, taskID string) (EventRecord, error) {
-	var ev EventRecord
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, task_id, subject, status, payload, created_at
-		FROM chetter_task_events
-		WHERE task_id = ?
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, taskID).Scan(&ev.ID, &ev.TaskID, &ev.Subject, &ev.Status, &ev.Payload, &ev.CreatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return EventRecord{}, sql.ErrNoRows
-		}
-		return EventRecord{}, fmt.Errorf("query latest event: %w", err)
-	}
-	return ev, nil
 }
 
 func normalizeDSN(dsn string) string {
@@ -1131,13 +613,6 @@ func nullTimePtr(t sql.NullTime) *time.Time {
 func nonNilStrings(values []string) []string {
 	if values == nil {
 		return []string{}
-	}
-	return values
-}
-
-func nonNilMap(values map[string]string) map[string]string {
-	if values == nil {
-		return map[string]string{}
 	}
 	return values
 }

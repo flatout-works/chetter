@@ -1,6 +1,6 @@
 // Package mcp implements a minimal JSON-RPC 2.0 MCP (Model Context Protocol)
 // server over a Unix domain socket. Each task gets its own MCP server instance
-// that exposes tools (workspace I/O, git, NATS, fetch, result reporting) to
+// that exposes tools (workspace I/O, git, fetch, deploy) to
 // agent processes running inside the task environment.
 package mcp
 

@@ -10,11 +10,10 @@ func TestLoadValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.yaml")
 	data := `
-nats:
-  url: nats://example:4222
+server:
+  url: https://chetter.example.com
+  auth_token: test-token
 runner:
-  listen_subject: chetter.test.tasks
-  result_subject: chetter.test.results
   workspace_root: /tmp/ws
   max_concurrent: 5
 proxy:
@@ -31,7 +30,6 @@ git:
 execution:
   runtime: containerd
   harness: default
-embedded_nats: true
 `
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
 		t.Fatal(err)
@@ -42,11 +40,11 @@ embedded_nats: true
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.NATS.URL != "nats://example:4222" {
-		t.Errorf("NATS.URL = %q, want nats://example:4222", cfg.NATS.URL)
+	if cfg.Server.URL != "https://chetter.example.com" {
+		t.Errorf("Server.URL = %q", cfg.Server.URL)
 	}
-	if cfg.Runner.ListenSubject != "chetter.test.tasks" {
-		t.Errorf("Runner.ListenSubject = %q", cfg.Runner.ListenSubject)
+	if cfg.Server.AuthToken != "test-token" {
+		t.Errorf("Server.AuthToken = %q", cfg.Server.AuthToken)
 	}
 	if cfg.Runner.MaxConcurrent != 5 {
 		t.Errorf("Runner.MaxConcurrent = %d, want 5", cfg.Runner.MaxConcurrent)
@@ -66,9 +64,6 @@ embedded_nats: true
 	if cfg.Git.PAT != "ghp_token" {
 		t.Errorf("Git.PAT = %q", cfg.Git.PAT)
 	}
-	if !cfg.EmbeddedNATS {
-		t.Error("EmbeddedNATS = false, want true")
-	}
 }
 
 func TestLoadDefaultsAreApplied(t *testing.T) {
@@ -84,15 +79,6 @@ func TestLoadDefaultsAreApplied(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if cfg.NATS.URL != "nats://localhost:4222" {
-		t.Errorf("NATS.URL = %q, want default", cfg.NATS.URL)
-	}
-	if cfg.Runner.ListenSubject != "chetter.runner.tasks" {
-		t.Errorf("ListenSubject = %q", cfg.Runner.ListenSubject)
-	}
-	if cfg.Runner.ResultSubject != "chetter.tasks" {
-		t.Errorf("ResultSubject = %q", cfg.Runner.ResultSubject)
-	}
 	if cfg.Runner.WorkspaceRoot != "/var/lib/runner" {
 		t.Errorf("WorkspaceRoot = %q", cfg.Runner.WorkspaceRoot)
 	}

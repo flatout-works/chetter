@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,31 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flatout-works/chetter/internal/bus"
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
-	"github.com/nats-io/nats.go"
 	"github.com/robfig/cron/v3"
 )
-
-// TaskRequest is the JSON shape consumed by the existing runner.
-type TaskRequest struct {
-	TaskID      string            `json:"task_id"`
-	AgentImage  string            `json:"agent_image"`
-	Prompt      string            `json:"prompt,omitempty"`
-	Command     []string          `json:"command,omitempty"`
-	GitURL      string            `json:"git_url,omitempty"`
-	GitRef      string            `json:"git_ref,omitempty"`
-	Agent       string            `json:"agent,omitempty"`
-	ProviderID  string            `json:"provider_id,omitempty"`
-	ModelID     string            `json:"model_id,omitempty"`
-	VariantID   string            `json:"variant_id,omitempty"`
-	Skills      []string          `json:"skills,omitempty"`
-	TimeoutSec  int               `json:"timeout_sec"`
-	MaxMemoryMB int               `json:"max_memory_mb"`
-	MaxCPU      int               `json:"max_cpu"`
-	Env         map[string]string `json:"env,omitempty"`
-}
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
@@ -60,7 +41,6 @@ const (
 	eventHandlerTimeout     = 10 * time.Second
 	reaperInterval          = 5 * time.Minute
 	reaperGrace             = 5 * time.Minute
-	pendingReapGrace        = 30 * time.Minute
 	reaperHealthMaxEventSec = 600
 	runnerPresenceMaxSec    = 60
 )
@@ -70,7 +50,7 @@ var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron
 type Service struct {
 	cfg         config.Config
 	store       *store.Store
-	bus         *bus.Client
+	repo        *repository.Queries
 	arcane      *ArcaneClient
 	cron        *cron.Cron
 	cronMu      sync.Mutex
@@ -78,11 +58,11 @@ type Service struct {
 	reaperStop  chan struct{}
 }
 
-func New(cfg config.Config, st *store.Store, nc *bus.Client) *Service {
+func New(cfg config.Config, st *store.Store) *Service {
 	svc := &Service{
 		cfg:         cfg,
 		store:       st,
-		bus:         nc,
+		repo:        repository.New(st.DB()),
 		cron:        cron.New(cron.WithParser(defaultCronParser), cron.WithLocation(time.UTC)),
 		cronEntries: make(map[string]cron.EntryID),
 		reaperStop:  make(chan struct{}),
@@ -93,12 +73,8 @@ func New(cfg config.Config, st *store.Store, nc *bus.Client) *Service {
 	return svc
 }
 
-// Start subscribes to task events, loads schedules, starts cron, and starts
-// the stale-task reaper.
+// Start loads schedules, starts cron, and starts the stale-task reaper.
 func (s *Service) Start(ctx context.Context) error {
-	if _, err := s.bus.SubscribeEvents(s.handleEvent); err != nil {
-		return fmt.Errorf("subscribe events: %w", err)
-	}
 	s.cron.Start()
 	if err := s.loadSchedules(ctx); err != nil {
 		return err
@@ -116,21 +92,48 @@ func (s *Service) Stop() {
 
 // taskReaper periodically scans for tasks that have been running without a
 // heartbeat for longer than their configured timeout + grace period and marks
-// them as error so they do not stay as zombie "running" rows forever. It also
-// cancels pending tasks that have not been picked up within pendingReapGrace.
+// them as error so they do not stay as zombie "running" rows forever.
 func (s *Service) taskReaper() {
 	s.reapStaleTasks()
-	s.reapStalePending()
+	s.reapExpiredLeases()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			s.reapStaleTasks()
-			s.reapStalePending()
+			s.reapExpiredLeases()
 		case <-s.reaperStop:
 			return
 		}
+	}
+}
+
+func (s *Service) reapExpiredLeases() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	expiredBefore := sql.NullTime{Time: now, Valid: true}
+	reclaimed, err := s.repo.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
+		UpdatedAt:      now,
+		LeaseExpiresAt: expiredBefore,
+	})
+	if err != nil {
+		slog.Error("lease reaper reclaim failed", "error", err)
+		return
+	}
+	failed, err := s.repo.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
+		EndedAt:        sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now,
+		LastEventAt:    sql.NullTime{Time: now, Valid: true},
+		LeaseExpiresAt: expiredBefore,
+	})
+	if err != nil {
+		slog.Error("lease reaper fail failed", "error", err)
+		return
+	}
+	if reclaimed > 0 || failed > 0 {
+		slog.Info("reaped expired task leases", "reclaimed", reclaimed, "failed", failed)
 	}
 }
 
@@ -147,20 +150,7 @@ func (s *Service) reapStaleTasks() {
 	}
 }
 
-func (s *Service) reapStalePending() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-	defer cancel()
-	n, err := s.store.ReapStalePendingTasks(ctx, pendingReapGrace)
-	if err != nil {
-		slog.Error("pending task reaper failed", "error", err)
-		return
-	}
-	if n > 0 {
-		slog.Info("reaped stale pending tasks", "count", n)
-	}
-}
-
-// SubmitTask stores and publishes a task.
+// SubmitTask stores a pending task for runners to claim through ConnectRPC.
 func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.TaskRecord, error) {
 	if in.Prompt == "" {
 		return store.TaskRecord{}, fmt.Errorf("prompt is required")
@@ -178,46 +168,87 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
 	}
-	if err := s.store.InsertTask(ctx, store.TaskInput{
-		ID:         taskID,
-		Prompt:     in.Prompt,
-		GitURL:     in.GitURL,
-		GitRef:     in.GitRef,
-		AgentImage: in.AgentImage,
-		Agent:      in.Agent,
-		ProviderID: in.ProviderID,
-		ModelID:    in.ModelID,
-		VariantID:  in.VariantID,
-		Skills:     in.Skills,
-		Env:        sanitizeTaskEnv(in.Env),
-		TimeoutSec: in.TimeoutSec,
+	now := time.Now().UTC()
+	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
+	}
+	env, err := json.Marshal(sanitizeTaskEnv(in.Env))
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
+	}
+	if err := s.repo.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                taskID,
+		Prompt:            in.Prompt,
+		GitUrl:            nullString(in.GitURL),
+		GitRef:            nullString(in.GitRef),
+		AgentImage:        nullString(in.AgentImage),
+		Agent:             nullString(in.Agent),
+		ProviderID:        nullString(in.ProviderID),
+		ModelID:           nullString(in.ModelID),
+		VariantID:         nullString(in.VariantID),
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		Skills:            skills,
+		Env:               env,
+		TimeoutSec:        int32(in.TimeoutSec),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}); err != nil {
 		return store.TaskRecord{}, fmt.Errorf("insert task: %w", err)
 	}
-	payload, err := json.Marshal(TaskRequest{
-		TaskID:      taskID,
-		AgentImage:  in.AgentImage,
-		Prompt:      in.Prompt,
-		GitURL:      in.GitURL,
-		GitRef:      in.GitRef,
-		Agent:       in.Agent,
-		ProviderID:  in.ProviderID,
-		ModelID:     in.ModelID,
-		VariantID:   in.VariantID,
-		Skills:      in.Skills,
-		TimeoutSec:  in.TimeoutSec,
-		MaxMemoryMB: defaultMaxMemoryMB,
-		MaxCPU:      defaultMaxCPU,
-		Env:         in.Env,
-	})
+	slog.Info("task queued", "task_id", taskID)
+	task, err := s.repo.GetTaskByID(ctx, taskID)
 	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("marshal task: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("get task: %w", err)
 	}
-	if err := s.bus.PublishTask(payload); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("publish task: %w", err)
+	return repoTaskToStoreRecord(task), nil
+}
+
+func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
+	var skills []string
+	_ = json.Unmarshal(task.Skills, &skills)
+	env := map[string]string{}
+	_ = json.Unmarshal(task.Env, &env)
+	var startedAt, endedAt *time.Time
+	if task.StartedAt.Valid {
+		startedAt = &task.StartedAt.Time
 	}
-	slog.Info("task published to NATS", "task_id", taskID, "subject", s.cfg.TaskSubject)
-	return s.store.GetTask(ctx, taskID)
+	if task.EndedAt.Valid {
+		endedAt = &task.EndedAt.Time
+	}
+	return store.TaskRecord{
+		ID:                task.ID,
+		Status:            task.Status,
+		Prompt:            task.Prompt,
+		GitURL:            task.GitUrl.String,
+		GitRef:            task.GitRef.String,
+		AgentImage:        task.AgentImage.String,
+		Agent:             task.Agent.String,
+		ProviderID:        task.ProviderID.String,
+		ModelID:           task.ModelID.String,
+		VariantID:         task.VariantID.String,
+		OpenCodeSessionID: task.OpencodeSessionID.String,
+		RunnerImageDigest: task.RunnerImageDigest.String,
+		CommitAuthorName:  task.CommitAuthorName.String,
+		CommitAuthorEmail: task.CommitAuthorEmail.String,
+		Skills:            skills,
+		Env:               env,
+		TimeoutSec:        int(task.TimeoutSec),
+		Summary:           task.Summary.String,
+		Error:             task.Error.String,
+		CreatedAt:         task.CreatedAt,
+		UpdatedAt:         task.UpdatedAt,
+		StartedAt:         startedAt,
+		EndedAt:           endedAt,
+	}
+}
+
+func nonEmptyStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
 
 func sanitizeTaskEnv(env map[string]string) map[string]string {
@@ -260,14 +291,44 @@ func (s *Service) CreateSchedule(ctx context.Context, in store.ScheduleInput) (s
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
-	record, err := s.store.CreateSchedule(ctx, in)
+	now := time.Now().UTC()
+	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
+	}
+	if err := s.repo.CreateSchedule(ctx, repository.CreateScheduleParams{
+		ID:         in.ID,
+		Name:       in.Name,
+		CronExpr:   in.CronExpr,
+		Prompt:     in.Prompt,
+		GitUrl:     nullString(in.GitURL),
+		GitRef:     nullString(in.GitRef),
+		AgentImage: nullString(in.AgentImage),
+		Agent:      nullString(in.Agent),
+		ProviderID: nullString(in.ProviderID),
+		ModelID:    nullString(in.ModelID),
+		VariantID:  nullString(in.VariantID),
+		Skills:     skills,
+		TimeoutSec: int32(in.TimeoutSec),
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("create schedule: %w", err)
 	}
-	if err := s.activateSchedule(ctx, record); err != nil {
+	record, err := s.repo.GetScheduleByID(ctx, in.ID)
+	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("get schedule: %w", err)
+	}
+	sRecord := scheduleToStoreRecord(record)
+	if err := s.activateSchedule(ctx, sRecord); err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("activate schedule: %w", err)
 	}
-	return s.store.GetSchedule(ctx, record.ID)
+	// Re-fetch so the returned record reflects next_run_at set by activation.
+	updated, err := s.repo.GetScheduleByID(ctx, in.ID)
+	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("get schedule after activation: %w", err)
+	}
+	return scheduleToStoreRecord(updated), nil
 }
 
 // UpdateSchedule updates all mutable fields on an existing schedule.
@@ -290,9 +351,8 @@ func (s *Service) UpdateSchedule(ctx context.Context, name string, in store.Sche
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
-	// Deactivate old cron entry before updating DB.
 	s.cronMu.Lock()
-	existing, err := s.store.GetScheduleByName(ctx, name)
+	existing, err := s.repo.GetScheduleByName(ctx, name)
 	if err == nil {
 		if entryID, ok := s.cronEntries[existing.ID]; ok {
 			s.cron.Remove(entryID)
@@ -300,39 +360,67 @@ func (s *Service) UpdateSchedule(ctx context.Context, name string, in store.Sche
 		}
 	}
 	s.cronMu.Unlock()
-	record, err := s.store.UpdateSchedule(ctx, name, in, enabled)
+	now := time.Now().UTC()
+	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
+	}
+	if err := s.repo.UpdateSchedule(ctx, repository.UpdateScheduleParams{
+		NewName:    in.Name,
+		CronExpr:   in.CronExpr,
+		Prompt:     in.Prompt,
+		GitUrl:     nullString(in.GitURL),
+		GitRef:     nullString(in.GitRef),
+		AgentImage: nullString(in.AgentImage),
+		Agent:      nullString(in.Agent),
+		ProviderID: nullString(in.ProviderID),
+		ModelID:    nullString(in.ModelID),
+		VariantID:  nullString(in.VariantID),
+		Skills:     skills,
+		TimeoutSec: int32(in.TimeoutSec),
+		Enabled:    enabled,
+		UpdatedAt:  now,
+		OldName:    name,
+	}); err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("update schedule: %w", err)
 	}
-	if err := s.activateSchedule(ctx, record); err != nil {
+	record, err := s.repo.GetScheduleByName(ctx, in.Name)
+	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("get schedule: %w", err)
+	}
+	sRecord := scheduleToStoreRecord(record)
+	if !enabled {
+		return sRecord, nil
+	}
+	if err := s.activateSchedule(ctx, sRecord); err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("reactivate schedule: %w", err)
 	}
-	return record, nil
+	return sRecord, nil
 }
 
 // DeleteSchedule removes a schedule by name and stops its cron job.
 func (s *Service) DeleteSchedule(ctx context.Context, name string) error {
-	schedules, err := s.store.ListSchedules(ctx, false)
+	schedules, err := s.repo.ListSchedules(ctx)
 	if err != nil {
 		return fmt.Errorf("list schedules: %w", err)
 	}
-	var target *store.ScheduleRecord
+	var targetID string
 	for i := range schedules {
 		if schedules[i].Name == name {
-			target = &schedules[i]
+			targetID = schedules[i].ID
 			break
 		}
 	}
-	if target == nil {
+	if targetID == "" {
 		return fmt.Errorf("schedule %q not found", name)
 	}
 	s.cronMu.Lock()
-	if entryID, ok := s.cronEntries[target.ID]; ok {
+	if entryID, ok := s.cronEntries[targetID]; ok {
 		s.cron.Remove(entryID)
-		delete(s.cronEntries, target.ID)
+		delete(s.cronEntries, targetID)
 	}
 	s.cronMu.Unlock()
-	if err := s.store.DeleteSchedule(ctx, name); err != nil {
+	if err := s.repo.DeleteSchedule(ctx, name); err != nil {
 		return fmt.Errorf("delete schedule: %w", err)
 	}
 	return nil
@@ -343,30 +431,44 @@ func (s *Service) RunScheduleNow(ctx context.Context, name string) (store.TaskRe
 	if name == "" {
 		return store.TaskRecord{}, fmt.Errorf("name is required")
 	}
-	schedules, err := s.store.ListSchedules(ctx, false)
+	schedules, err := s.repo.ListSchedules(ctx)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("list schedules: %w", err)
 	}
-	var target *store.ScheduleRecord
-	for i := range schedules {
-		if schedules[i].Name == name {
-			target = &schedules[i]
+	var targetID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID string
+	targetSkills := []string(nil)
+	var targetTimeoutSec int
+	found := false
+	for _, sch := range schedules {
+		if sch.Name == name {
+			targetID = sch.ID
+			targetPrompt = sch.Prompt
+			targetGitURL = sch.GitUrl.String
+			targetGitRef = sch.GitRef.String
+			targetAgentImage = sch.AgentImage.String
+			targetAgent = sch.Agent.String
+			targetProviderID = sch.ProviderID.String
+			targetModelID = sch.ModelID.String
+			targetVariantID = sch.VariantID.String
+			_ = json.Unmarshal(sch.Skills, &targetSkills)
+			targetTimeoutSec = int(sch.TimeoutSec)
+			found = true
 			break
 		}
 	}
-	if target == nil {
+	if !found {
 		return store.TaskRecord{}, fmt.Errorf("schedule %q not found", name)
 	}
-	return s.submitScheduleTask(ctx, *target, time.Now().UTC())
+	return s.submitScheduleTask(ctx, targetID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID, targetSkills, targetTimeoutSec, time.Now().UTC())
 }
 
 func (s *Service) loadSchedules(ctx context.Context) error {
-	schedules, err := s.store.ListSchedules(ctx, true)
+	schedules, err := s.repo.ListEnabledSchedules(ctx)
 	if err != nil {
 		return fmt.Errorf("load schedules: %w", err)
 	}
 	for _, schedule := range schedules {
-		if err := s.activateSchedule(ctx, schedule); err != nil {
+		if err := s.activateSchedule(ctx, scheduleToStoreRecord(schedule)); err != nil {
 			return err
 		}
 	}
@@ -392,7 +494,11 @@ func (s *Service) activateSchedule(ctx context.Context, schedule store.ScheduleR
 	s.cronEntries[schedule.ID] = entryID
 	entry := s.cron.Entry(entryID)
 	if !entry.Next.IsZero() {
-		if err := s.store.SetScheduleNextRun(ctx, schedule.ID, entry.Next); err != nil {
+		if err := s.repo.SetScheduleNextRun(ctx, repository.SetScheduleNextRunParams{
+			NextRunAt: sql.NullTime{Time: entry.Next, Valid: true},
+			UpdatedAt: time.Now().UTC(),
+			ID:        schedule.ID,
+		}); err != nil {
 			return fmt.Errorf("set schedule next run: %w", err)
 		}
 	}
@@ -400,26 +506,30 @@ func (s *Service) activateSchedule(ctx context.Context, schedule store.ScheduleR
 }
 
 func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledFor time.Time) error {
-	schedule, err := s.store.GetSchedule(ctx, scheduleID)
+	schedule, err := s.repo.GetScheduleByID(ctx, scheduleID)
 	if err != nil {
 		return fmt.Errorf("get schedule %s: %w", scheduleID, err)
 	}
-	_, err = s.submitScheduleTask(ctx, schedule, scheduledFor)
+	var skills []string
+	_ = json.Unmarshal(schedule.Skills, &skills)
+	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
+		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
+		skills, int(schedule.TimeoutSec), scheduledFor)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, schedule store.ScheduleRecord, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     schedule.Prompt,
-		GitURL:     schedule.GitURL,
-		GitRef:     schedule.GitRef,
-		AgentImage: schedule.AgentImage,
-		Agent:      schedule.Agent,
-		ProviderID: schedule.ProviderID,
-		ModelID:    schedule.ModelID,
-		VariantID:  schedule.VariantID,
-		Skills:     schedule.Skills,
-		TimeoutSec: schedule.TimeoutSec,
+		Prompt:     prompt,
+		GitURL:     gitURL,
+		GitRef:     gitRef,
+		AgentImage: agentImage,
+		Agent:      agent,
+		ProviderID: providerID,
+		ModelID:    modelID,
+		VariantID:  variantID,
+		Skills:     skills,
+		TimeoutSec: timeoutSec,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit scheduled task: %w", err)
@@ -428,77 +538,36 @@ func (s *Service) submitScheduleTask(ctx context.Context, schedule store.Schedul
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate run id: %w", err)
 	}
-	if err := s.store.InsertScheduleRun(ctx, runID, schedule.ID, task.ID, "submitted", scheduledFor); err != nil {
+	if err := s.repo.InsertScheduleRun(ctx, repository.InsertScheduleRunParams{
+		ID:           runID,
+		ScheduleID:   scheduleID,
+		TaskID:       task.ID,
+		Status:       "submitted",
+		ScheduledFor: scheduledFor.UTC(),
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
 		return store.TaskRecord{}, fmt.Errorf("insert schedule run: %w", err)
 	}
-	if entryID, ok := s.cronEntries[schedule.ID]; ok {
+	if err := s.repo.SetScheduleLastRun(ctx, repository.SetScheduleLastRunParams{
+		LastRunAt: sql.NullTime{Time: scheduledFor.UTC(), Valid: true},
+		UpdatedAt: time.Now().UTC(),
+		ID:        scheduleID,
+	}); err != nil {
+		return store.TaskRecord{}, fmt.Errorf("set schedule last run: %w", err)
+	}
+	if entryID, ok := s.cronEntries[scheduleID]; ok {
 		entry := s.cron.Entry(entryID)
 		if !entry.Next.IsZero() {
-			if err := s.store.SetScheduleNextRun(ctx, schedule.ID, entry.Next); err != nil {
+			if err := s.repo.SetScheduleNextRun(ctx, repository.SetScheduleNextRunParams{
+				NextRunAt: sql.NullTime{Time: entry.Next, Valid: true},
+				UpdatedAt: time.Now().UTC(),
+				ID:        scheduleID,
+			}); err != nil {
 				return store.TaskRecord{}, err
 			}
 		}
 	}
 	return task, nil
-}
-
-func (s *Service) handleEvent(msg *nats.Msg) {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-	defer cancel()
-
-	if isRunnerHeartbeatSubject(msg.Subject) {
-		var heartbeat store.RunnerHeartbeat
-		if err := json.Unmarshal(msg.Data, &heartbeat); err != nil {
-			slog.Warn("ignored malformed runner heartbeat", "subject", msg.Subject, "err", err)
-			ackJetStreamMsg(msg)
-			return
-		}
-		if heartbeat.RunnerID == "" {
-			slog.Warn("ignored runner heartbeat without runner_id", "subject", msg.Subject)
-			ackJetStreamMsg(msg)
-			return
-		}
-		if err := s.store.UpsertRunnerHeartbeat(ctx, heartbeat); err != nil {
-			slog.Error("persist runner heartbeat", "runnerID", heartbeat.RunnerID, "error", err)
-			return
-		}
-		ackJetStreamMsg(msg)
-		return
-	}
-
-	var resp store.TaskResponse
-	if err := json.Unmarshal(msg.Data, &resp); err != nil {
-		slog.Warn("ignored malformed task event", "subject", msg.Subject, "err", err)
-		ackJetStreamMsg(msg)
-		return
-	}
-	eventID, err := randomID("evt")
-	if err != nil {
-		slog.Error("generate event id", "error", err)
-		return
-	}
-	if err := s.store.InsertEvent(ctx, eventID, resp.TaskID, msg.Subject, resp.Status, msg.Data); err != nil {
-		slog.Error("persist task event", "taskID", resp.TaskID, "error", err)
-		return
-	}
-	if err := s.store.UpdateTaskFromResponse(ctx, resp); err != nil {
-		slog.Error("update task from event", "taskID", resp.TaskID, "error", err)
-		return
-	}
-	ackJetStreamMsg(msg)
-}
-
-func isRunnerHeartbeatSubject(subject string) bool {
-	return strings.Contains(subject, ".runners.") && strings.HasSuffix(subject, ".heartbeat")
-}
-
-func ackJetStreamMsg(msg *nats.Msg) {
-	if _, err := msg.Metadata(); err != nil {
-		return
-	}
-	if err := msg.Ack(); err != nil {
-		slog.Warn("ack event", "err", err)
-	}
 }
 
 func randomID(prefix string) (string, error) {

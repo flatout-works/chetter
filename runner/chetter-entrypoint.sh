@@ -1,19 +1,9 @@
 #!/bin/sh
 set -eu
 
-: "${NATS_URL:=nats://chetter-nats:4222}"
-: "${TASK_SUBJECT:=chetter.runner.tasks}"
-: "${RESULT_SUBJECT:=chetter.tasks}"
+: "${CHETTER_SERVER_URL:=http://chetter-mcp:8080}"
 : "${RUNNER_WORKSPACE_ROOT:=/var/lib/chetter-runner/workspaces}"
 : "${RUNNER_MAX_CONCURRENT:=2}"
-: "${JETSTREAM_TASK_STREAM:=CHETTER_TASKS}"
-: "${JETSTREAM_EVENT_STREAM:=CHETTER_EVENTS}"
-: "${JETSTREAM_TASK_DURABLE:=chetter-runner}"
-: "${JETSTREAM_TASK_QUEUE:=chetter-runners}"
-: "${JETSTREAM_ACK_WAIT_SECONDS:=10}"
-: "${JETSTREAM_MAX_DELIVER:=3}"
-: "${JETSTREAM_MAX_ACK_PENDING:=4}"
-: "${JETSTREAM_STORAGE:=file}"
 
 # Parse a Docker image reference and query its registry for the manifest digest.
 # Supports docker.io, ghcr.io, and other registries implementing the Docker
@@ -158,23 +148,11 @@ export CHETTER_RUNNER_IMAGE CHETTER_RUNNER_IMAGE_DIGEST
 mkdir -p "$RUNNER_WORKSPACE_ROOT" /var/lib/chetter-runner/cache/go/pkg/mod /var/lib/chetter-runner/cache/go/build /var/lib/chetter-runner/cache/npm
 
 cat > /tmp/runner.yaml <<EOF
-nats:
-  url: ${NATS_URL}
-
-jetstream:
-  enabled: true
-  task_stream: ${JETSTREAM_TASK_STREAM}
-  event_stream: ${JETSTREAM_EVENT_STREAM}
-  task_durable: ${JETSTREAM_TASK_DURABLE}
-  task_queue: ${JETSTREAM_TASK_QUEUE}
-  ack_wait_seconds: ${JETSTREAM_ACK_WAIT_SECONDS}
-  max_deliver: ${JETSTREAM_MAX_DELIVER}
-  max_ack_pending: ${JETSTREAM_MAX_ACK_PENDING}
-  storage: ${JETSTREAM_STORAGE}
+server:
+  url: ${CHETTER_SERVER_URL}
+  auth_token: "${CHETTER_RUNNER_AUTH_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:-}}"
 
 runner:
-  listen_subject: ${TASK_SUBJECT}
-  result_subject: ${RESULT_SUBJECT}
   workspace_root: ${RUNNER_WORKSPACE_ROOT}
   max_concurrent: ${RUNNER_MAX_CONCURRENT}
 

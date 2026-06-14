@@ -7,42 +7,20 @@ import (
 func TestValidate(t *testing.T) {
 	t.Run("all required fields present", func(t *testing.T) {
 		cfg := Config{
-			DatabaseDSN:  "root@tcp(localhost:4000)/db",
-			TaskSubject:  "chetter.runner.tasks",
-			EventSubject: "chetter.tasks.>",
+			DatabaseDSN: "root@tcp(localhost:4000)/db",
 		}
 		if err := cfg.Validate(); err != nil {
 			t.Fatalf("expected nil, got %v", err)
 		}
 	})
 	t.Run("missing DatabaseDSN", func(t *testing.T) {
-		cfg := Config{TaskSubject: "t", EventSubject: "e"}
+		cfg := Config{}
 		err := cfg.Validate()
 		if err == nil {
 			t.Fatal("expected error")
 		}
 		if err.Error() != "DATABASE_DSN is required" {
 			t.Errorf("expected DATABASE_DSN error, got %q", err.Error())
-		}
-	})
-	t.Run("missing TaskSubject", func(t *testing.T) {
-		cfg := Config{DatabaseDSN: "dsn", EventSubject: "e"}
-		err := cfg.Validate()
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if err.Error() != "TASK_SUBJECT is required" {
-			t.Errorf("expected TASK_SUBJECT error, got %q", err.Error())
-		}
-	})
-	t.Run("missing EventSubject", func(t *testing.T) {
-		cfg := Config{DatabaseDSN: "dsn", TaskSubject: "t"}
-		err := cfg.Validate()
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if err.Error() != "EVENT_SUBJECT is required" {
-			t.Errorf("expected EVENT_SUBJECT error, got %q", err.Error())
 		}
 	})
 	t.Run("all missing", func(t *testing.T) {

@@ -33,7 +33,6 @@ cp .env.example .env
 
 Edit `.env` and set at least:
 
-- `NATS_TOKEN`
 - `MYSQL_PASSWORD`
 - `MYSQL_ROOT_PASSWORD`
 - `CHETTER_MCP_AUTH_TOKEN`
@@ -50,7 +49,6 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 This starts:
 
 - MySQL for Chetter state
-- NATS with JetStream for task messaging
 - The Chetter MCP server on port `18088`
 - Two runner containers that pick up tasks
 
@@ -202,7 +200,6 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | Variable | Description |
 |---|---|
 | `CHETTER_MCP_AUTH_TOKEN` | Bearer token required by `/mcp` |
-| `NATS_TOKEN` | NATS auth token used by the local stack |
 | `MYSQL_PASSWORD` | Password for the local `chetter` MySQL user |
 | `MYSQL_ROOT_PASSWORD` | Root password for the local MySQL container |
 | `DATABASE_DSN` | Optional external MySQL/TiDB DSN override |
@@ -265,7 +262,8 @@ self-hosted compose stack that pulls the published GHCR images.
 | `main.go` | MCP/HTTP server entry point |
 | `internal/config/` | Environment-backed configuration |
 | `internal/store/` | MySQL/TiDB schema and persistence |
-| `internal/bus/` | NATS and JetStream transport |
+| `internal/repository/` | sqlc-generated database queries |
+| `db/` | goose migrations and sqlc query files |
 | `internal/service/` | MCP tools and task orchestration |
 | `internal/webhook/` | Optional GitHub webhook handling |
 | `deploy/compose.yaml` | Portable Docker Compose stack using published GHCR images |
