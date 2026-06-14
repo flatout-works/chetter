@@ -13,16 +13,6 @@ type Config struct {
 	HTTPAddr                 string
 	MCPAuthToken             string
 	DatabaseDSN              string
-	NATSURL                  string
-	JetStreamEnabled         bool
-	TaskStream               string
-	EventStream              string
-	TaskDurable              string
-	TaskSubject              string
-	EventSubject             string
-	EventDurable             string
-	EventQueue               string
-	Storage                  string
 	DefaultAgentImage        string
 	DefaultTaskTimeoutSec    int
 	ArcaneServerURL          string
@@ -41,16 +31,6 @@ func Load() Config {
 		HTTPAddr:                 env("HTTP_ADDR", ":8080"),
 		MCPAuthToken:             os.Getenv("MCP_AUTH_TOKEN"),
 		DatabaseDSN:              os.Getenv("DATABASE_DSN"),
-		NATSURL:                  env("NATS_URL", "nats://localhost:4222"),
-		JetStreamEnabled:         envBool("JETSTREAM_ENABLED", true),
-		TaskStream:               env("JETSTREAM_TASK_STREAM", "CHETTER_TASKS"),
-		EventStream:              env("JETSTREAM_EVENT_STREAM", "CHETTER_EVENTS"),
-		TaskDurable:              env("JETSTREAM_TASK_DURABLE", "chetter-runner"),
-		TaskSubject:              env("TASK_SUBJECT", "chetter.runner.tasks"),
-		EventSubject:             env("EVENT_SUBJECT", "chetter.tasks.>"),
-		EventDurable:             env("EVENT_DURABLE", "chetter-mcp-events"),
-		EventQueue:               env("EVENT_QUEUE", "chetter-mcp"),
-		Storage:                  env("JETSTREAM_STORAGE", "file"),
 		DefaultAgentImage:        env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
 		DefaultTaskTimeoutSec:    envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:          env("ARCANE_SERVER_URL", ""),
@@ -68,12 +48,6 @@ func Load() Config {
 func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return fmt.Errorf("DATABASE_DSN is required")
-	}
-	if c.TaskSubject == "" {
-		return fmt.Errorf("TASK_SUBJECT is required")
-	}
-	if c.EventSubject == "" {
-		return fmt.Errorf("EVENT_SUBJECT is required")
 	}
 	return nil
 }

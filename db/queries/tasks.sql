@@ -1,0 +1,125 @@
+-- name: InsertTask :exec
+INSERT INTO chetter_tasks
+    (id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetTaskByID :one
+SELECT * FROM chetter_tasks
+WHERE id = ?;
+
+-- name: ListTasksByStatus :many
+SELECT * FROM chetter_tasks
+WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+ORDER BY created_at DESC
+LIMIT ?;
+
+-- name: GetClaimableTaskForUpdate :one
+SELECT * FROM chetter_tasks
+WHERE status = 'pending'
+ORDER BY created_at ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+
+-- name: MarkTaskClaimed :execrows
+UPDATE chetter_tasks
+SET status = 'running',
+    runner_id = ?,
+    claimed_at = ?,
+    lease_expires_at = ?,
+    started_at = COALESCE(started_at, ?),
+    updated_at = ?,
+    last_event_at = ?,
+    attempt = attempt + 1
+WHERE id = ? AND status = 'pending';
+
+-- name: UpdateTaskFromRunnerEvent :execrows
+UPDATE chetter_tasks
+SET status = sqlc.arg(status),
+    summary = ?,
+    error = ?,
+    provider_id = COALESCE(NULLIF(sqlc.arg(provider_id), ''), provider_id),
+    model_id = COALESCE(NULLIF(sqlc.arg(model_id), ''), model_id),
+    variant_id = COALESCE(NULLIF(sqlc.arg(variant_id), ''), variant_id),
+    opencode_session_id = COALESCE(NULLIF(sqlc.arg(opencode_session_id), ''), opencode_session_id),
+    runner_image_digest = COALESCE(NULLIF(sqlc.arg(runner_image_digest), ''), runner_image_digest),
+    lease_expires_at = ?,
+    started_at = COALESCE(?, started_at),
+    ended_at = COALESCE(?, ended_at),
+    updated_at = ?,
+    last_event_at = ?
+WHERE id = ?
+  AND runner_id = sqlc.arg(runner_id)
+  AND (status = 'running' OR status = sqlc.arg(status));
+
+-- name: RenewTaskLease :execrows
+UPDATE chetter_tasks
+SET lease_expires_at = ?,
+    updated_at = ?,
+    last_event_at = ?
+WHERE id = ?
+  AND runner_id = sqlc.arg(runner_id)
+  AND status = 'running';
+
+-- name: ListHeartbeatTasks :many
+SELECT id, status, runner_id, error FROM chetter_tasks
+WHERE id IN (sqlc.slice(ids))
+  AND (
+    runner_id = sqlc.arg(runner_id)
+    OR status = 'cancelled'
+    OR (status = 'pending' AND runner_id IS NULL)
+  );
+
+-- name: RenewRunningTaskLeases :execrows
+UPDATE chetter_tasks
+SET lease_expires_at = ?,
+    updated_at = ?,
+    last_event_at = ?
+WHERE runner_id = sqlc.arg(runner_id)
+  AND id IN (sqlc.slice(ids))
+  AND status = 'running';
+
+-- name: ReclaimExpiredLeases :execrows
+UPDATE chetter_tasks
+SET status = 'pending',
+    runner_id = NULL,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    updated_at = ?
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < ?
+  AND attempt < max_attempts;
+
+-- name: FailExpiredLeases :execrows
+UPDATE chetter_tasks
+SET status = 'error',
+    error = CONCAT('runner lease expired after ', attempt, ' attempts'),
+    ended_at = ?,
+    updated_at = ?,
+    last_event_at = ?
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < ?
+  AND attempt >= max_attempts;
+
+-- name: CancelTask :execrows
+UPDATE chetter_tasks
+SET status = 'cancelled',
+    error = ?,
+    ended_at = COALESCE(ended_at, ?),
+    updated_at = ?
+WHERE id = ? AND status IN ('pending', 'running');
+
+-- name: ClearPendingTasks :execrows
+UPDATE chetter_tasks
+SET status = 'cancelled',
+    error = ?,
+    ended_at = COALESCE(ended_at, ?),
+    updated_at = ?
+WHERE status = 'pending';
+
+-- name: GetLatestTaskEvent :one
+SELECT * FROM chetter_task_events
+WHERE task_id = ?
+ORDER BY created_at DESC
+LIMIT 1;

@@ -155,23 +155,3 @@ func TestRandomID(t *testing.T) {
 		}
 	})
 }
-
-func TestIsRunnerHeartbeatSubject(t *testing.T) {
-	tests := []struct {
-		subject string
-		want    bool
-	}{
-		{"chetter.tasks.runners.runner-1.heartbeat", true},
-		{"chetter.project.tasks.runners.runner-1.heartbeat", true},
-		{"chetter.tasks.task-1.status", false},
-		{"chetter.tasks.runners.runner-1.status", false},
-		{"chetter.tasks.runner-1.heartbeat", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.subject, func(t *testing.T) {
-			if got := isRunnerHeartbeatSubject(tt.subject); got != tt.want {
-				t.Fatalf("isRunnerHeartbeatSubject(%q) = %v, want %v", tt.subject, got, tt.want)
-			}
-		})
-	}
-}

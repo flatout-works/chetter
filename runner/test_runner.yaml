@@ -1,9 +1,8 @@
-nats:
-  url: nats://localhost:4223
+server:
+  url: http://localhost:8080
+  auth_token: ""
 
 runner:
-  listen_subject: chetter.runner.tasks
-  result_subject: chetter.tasks
   workspace_root: /tmp/runner-test
   max_concurrent: 5
 

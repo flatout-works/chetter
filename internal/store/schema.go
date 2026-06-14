@@ -16,6 +16,11 @@ var schemaStatements = []string{
 		runner_image_digest VARCHAR(255) NULL,
 		commit_author_name VARCHAR(128) NULL,
 		commit_author_email VARCHAR(255) NULL,
+		runner_id VARCHAR(64) NULL,
+		claimed_at DATETIME(6) NULL,
+		lease_expires_at DATETIME(6) NULL,
+		attempt INT NOT NULL DEFAULT 0,
+		max_attempts INT NOT NULL DEFAULT 3,
 		skills JSON NOT NULL,
 		env JSON NOT NULL,
 		timeout_sec INT NOT NULL,
@@ -23,11 +28,14 @@ var schemaStatements = []string{
 		error TEXT NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
+		last_event_at DATETIME(6) NULL,
 		started_at DATETIME(6) NULL,
 		ended_at DATETIME(6) NULL,
 		PRIMARY KEY (id),
 		KEY idx_chetter_tasks_status_created (status, created_at),
-		KEY idx_chetter_tasks_created (created_at)
+		KEY idx_chetter_tasks_created (created_at),
+		KEY idx_chetter_tasks_claim (status, lease_expires_at, created_at),
+		KEY idx_chetter_tasks_runner (runner_id, status)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_task_events (
 		id VARCHAR(64) NOT NULL,

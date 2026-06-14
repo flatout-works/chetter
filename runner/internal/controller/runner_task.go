@@ -25,7 +25,6 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/tools"
-	nats "github.com/nats-io/nats.go"
 )
 
 const defaultMem9PluginSpec = "@mem9/opencode"
@@ -39,7 +38,7 @@ const opencodeEventLineMax = 64 * 1024 * 1024 // 64 MiB
 // runTask is the main task lifecycle: workspace creation, optional git clone,
 // MCP server setup, network bridge creation, and agent spawn (local or Kata).
 // Results are published via publishStatus.
-func (r *Runner) runTask(req task.TaskRequest, msg *nats.Msg) {
+func (r *Runner) runTask(req task.TaskRequest) {
 	defer func() { <-r.sem }()
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -49,7 +48,11 @@ func (r *Runner) runTask(req task.TaskRequest, msg *nats.Msg) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.TimeoutSec)*time.Second)
+	parent := r.runCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, time.Duration(req.TimeoutSec)*time.Second)
 	defer cancel()
 
 	session := &task.TaskSession{
@@ -134,7 +137,6 @@ func (r *Runner) runTask(req task.TaskRequest, msg *nats.Msg) {
 
 	ws := tools.NewWorkspace(wsDir)
 	git := tools.NewGit(wsDir, r.cfg.Git.SSHKeyPath, r.cfg.Git.PAT)
-	nt := &tools.NatsTool{Client: r.natsClient}
 	deploy := tools.NewDeploy(
 		wsDir,
 		tools.DeployProvider(r.cfg.Deploy.Provider),
@@ -151,8 +153,6 @@ func (r *Runner) runTask(req task.TaskRequest, msg *nats.Msg) {
 	mcpServer.RegisterTool("git_pull", git.Pull)
 	mcpServer.RegisterTool("git_push", git.Push)
 	mcpServer.RegisterTool("git_commit", git.Commit)
-	mcpServer.RegisterTool("nats_publish", nt.Publish)
-	mcpServer.RegisterTool("nats_request", nt.Request)
 	mcpServer.RegisterTool("fetch_url", tools.Fetch)
 	mcpServer.RegisterTool("deploy_build", deploy.Build)
 	mcpServer.RegisterTool("deploy_push", deploy.Push)

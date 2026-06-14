@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -224,19 +224,13 @@ type CancelTaskOutput struct {
 
 // ClearQueueInput is the input for chetter_clear_queue.
 type ClearQueueInput struct {
-	Confirm          bool `json:"confirm" jsonschema:"Set true to clear queued task messages and cancel pending DB tasks"`
-	PreserveConsumer bool `json:"preserve_consumer,omitempty" jsonschema:"Set true to purge messages without resetting the JetStream durable task consumer"`
+	Confirm bool `json:"confirm" jsonschema:"Set true to cancel pending DB-backed tasks"`
 }
 
 // ClearQueueOutput is the output for chetter_clear_queue.
 type ClearQueueOutput struct {
-	Cleared               bool   `json:"cleared"`
-	CancelledPendingTasks int    `json:"cancelled_pending_tasks"`
-	Stream                string `json:"stream"`
-	Subject               string `json:"subject"`
-	MessagesBefore        uint64 `json:"messages_before"`
-	MessagesAfter         uint64 `json:"messages_after"`
-	ConsumerReset         bool   `json:"consumer_reset"`
+	Cleared               bool `json:"cleared"`
+	CancelledPendingTasks int  `json:"cancelled_pending_tasks"`
 }
 
 // RegisterTools registers chetter MCP tools.
@@ -254,7 +248,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_runner_health", Description: "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age."}, svc.runnerHealthTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by purging task messages, resetting the durable task consumer, and cancelling pending DB tasks. Requires confirm=true."}, svc.clearQueueTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_environment_summary", Description: "Get aggregated vulnerability counts across all images in the Arcane environment."}, svc.arcaneEnvironmentSummaryTool)
@@ -276,23 +270,33 @@ func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, TaskStatusOutput{}, fmt.Errorf("task_id is required")
 	}
-	task, err := s.store.GetTask(ctx, in.TaskID)
+	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
 	if err != nil {
 		return nil, TaskStatusOutput{}, fmt.Errorf("get task status: %w", err)
 	}
-	return nil, TaskStatusOutput{Task: taskToolRecord(task)}, nil
+	return nil, TaskStatusOutput{Task: repoTaskToToolRecord(task)}, nil
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	tasks, err := s.store.ListTasks(ctx, in.Status, in.Limit)
+	tasks, err := s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
+		StatusFilter: in.Status,
+		Limit:        clampListLimit(in.Limit),
+	})
 	if err != nil {
 		return nil, ListTasksOutput{}, fmt.Errorf("list tasks: %w", err)
 	}
 	out := make([]TaskToolRecord, 0, len(tasks))
 	for _, task := range tasks {
-		out = append(out, taskToolRecord(task))
+		out = append(out, repoTaskToToolRecord(task))
 	}
 	return nil, ListTasksOutput{Tasks: out}, nil
+}
+
+func clampListLimit(limit int) int32 {
+	if limit <= 0 || limit > 100 {
+		return 20
+	}
+	return int32(limit)
 }
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
@@ -317,6 +321,41 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		StartedAt:  task.StartedAt,
 		EndedAt:    task.EndedAt,
 	}
+}
+
+func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
+	var skills []string
+	_ = json.Unmarshal(task.Skills, &skills)
+	env := map[string]string{}
+	_ = json.Unmarshal(task.Env, &env)
+	return TaskToolRecord{
+		ID:         task.ID,
+		Status:     task.Status,
+		Prompt:     task.Prompt,
+		GitURL:     task.GitUrl.String,
+		GitRef:     task.GitRef.String,
+		AgentImage: task.AgentImage.String,
+		Agent:      task.Agent.String,
+		ProviderID: task.ProviderID.String,
+		ModelID:    task.ModelID.String,
+		VariantID:  task.VariantID.String,
+		Skills:     skills,
+		Env:        env,
+		TimeoutSec: int(task.TimeoutSec),
+		Summary:    task.Summary.String,
+		Error:      task.Error.String,
+		CreatedAt:  task.CreatedAt,
+		UpdatedAt:  task.UpdatedAt,
+		StartedAt:  nullTimePtr(task.StartedAt),
+		EndedAt:    nullTimePtr(task.EndedAt),
+	}
+}
+
+func nullTimePtr(nt sql.NullTime) *time.Time {
+	if nt.Valid {
+		return &nt.Time
+	}
+	return nil
 }
 
 func (s *Service) scheduleTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in ScheduleTaskInput) (*mcp.CallToolResult, ScheduleTaskOutput, error) {
@@ -349,11 +388,46 @@ func (s *Service) runScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (s *Service) listSchedulesTool(ctx context.Context, _ *mcp.CallToolRequest, in ListSchedulesInput) (*mcp.CallToolResult, ListSchedulesOutput, error) {
-	schedules, err := s.store.ListSchedules(ctx, in.EnabledOnly)
+	var repoRecords []repository.ChetterSchedule
+	var err error
+	if in.EnabledOnly {
+		repoRecords, err = s.repo.ListEnabledSchedules(ctx)
+	} else {
+		repoRecords, err = s.repo.ListSchedules(ctx)
+	}
 	if err != nil {
 		return nil, ListSchedulesOutput{}, fmt.Errorf("list schedules: %w", err)
 	}
+	schedules := make([]store.ScheduleRecord, len(repoRecords))
+	for i, r := range repoRecords {
+		schedules[i] = scheduleToStoreRecord(r)
+	}
 	return nil, ListSchedulesOutput{Schedules: schedules}, nil
+}
+
+func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
+	var skills []string
+	_ = json.Unmarshal(s.Skills, &skills)
+	return store.ScheduleRecord{
+		ID:         s.ID,
+		Name:       s.Name,
+		CronExpr:   s.CronExpr,
+		Prompt:     s.Prompt,
+		GitURL:     s.GitUrl.String,
+		GitRef:     s.GitRef.String,
+		AgentImage: s.AgentImage.String,
+		Agent:      s.Agent.String,
+		ProviderID: s.ProviderID.String,
+		ModelID:    s.ModelID.String,
+		VariantID:  s.VariantID.String,
+		Skills:     skills,
+		TimeoutSec: int(s.TimeoutSec),
+		Enabled:    s.Enabled,
+		CreatedAt:  s.CreatedAt,
+		UpdatedAt:  s.UpdatedAt,
+		LastRunAt:  nullTimePtr(s.LastRunAt),
+		NextRunAt:  nullTimePtr(s.NextRunAt),
+	}
 }
 
 func (s *Service) deleteScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteScheduleInput) (*mcp.CallToolResult, DeleteScheduleOutput, error) {
@@ -370,7 +444,7 @@ func (s *Service) updateScheduleTool(ctx context.Context, _ *mcp.CallToolRequest
 	if in.Name == "" {
 		return nil, UpdateScheduleOutput{}, fmt.Errorf("name is required")
 	}
-	existing, err := s.store.GetScheduleByName(ctx, in.Name)
+	existing, err := s.repo.GetScheduleByName(ctx, in.Name)
 	if err != nil {
 		return nil, UpdateScheduleOutput{}, fmt.Errorf("get schedule %q: %w", in.Name, err)
 	}
@@ -382,15 +456,15 @@ func (s *Service) updateScheduleTool(ctx context.Context, _ *mcp.CallToolRequest
 		Name:       in.Name,
 		CronExpr:   store.NonZero(in.CronExpr, existing.CronExpr),
 		Prompt:     store.NonZero(in.Prompt, existing.Prompt),
-		GitURL:     store.NonZero(in.GitURL, existing.GitURL),
-		GitRef:     store.NonZero(in.GitRef, existing.GitRef),
-		AgentImage: store.NonZero(in.AgentImage, existing.AgentImage),
-		Agent:      store.NonZero(in.Agent, existing.Agent),
-		ProviderID: store.NonZero(in.ProviderID, existing.ProviderID),
-		ModelID:    store.NonZero(in.ModelID, existing.ModelID),
-		VariantID:  store.NonZero(in.VariantID, existing.VariantID),
-		Skills:     store.NonNilSlice(in.Skills, existing.Skills),
-		TimeoutSec: store.NonZeroInt(in.TimeoutSec, existing.TimeoutSec),
+		GitURL:     store.NonZero(in.GitURL, existing.GitUrl.String),
+		GitRef:     store.NonZero(in.GitRef, existing.GitRef.String),
+		AgentImage: store.NonZero(in.AgentImage, existing.AgentImage.String),
+		Agent:      store.NonZero(in.Agent, existing.Agent.String),
+		ProviderID: store.NonZero(in.ProviderID, existing.ProviderID.String),
+		ModelID:    store.NonZero(in.ModelID, existing.ModelID.String),
+		VariantID:  store.NonZero(in.VariantID, existing.VariantID.String),
+		Skills:     store.NonNilSlice(in.Skills, scheduleSkillsToStrings(existing.Skills)),
+		TimeoutSec: store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
 	}
 	schedule, err := s.UpdateSchedule(ctx, in.Name, merged, enabled)
 	if err != nil {
@@ -399,11 +473,20 @@ func (s *Service) updateScheduleTool(ctx context.Context, _ *mcp.CallToolRequest
 	return nil, UpdateScheduleOutput{Schedule: schedule}, nil
 }
 
+func scheduleSkillsToStrings(skills json.RawMessage) []string {
+	var out []string
+	_ = json.Unmarshal(skills, &out)
+	return out
+}
+
 func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskEventsInput) (*mcp.CallToolResult, TaskEventsOutput, error) {
 	if in.TaskID == "" {
 		return nil, TaskEventsOutput{}, fmt.Errorf("task_id is required")
 	}
-	events, err := s.store.GetTaskEvents(ctx, in.TaskID, in.Limit)
+	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
+		TaskID: in.TaskID,
+		Limit:  clampEventLimit(in.Limit),
+	})
 	if err != nil {
 		return nil, TaskEventsOutput{}, fmt.Errorf("get events: %w", err)
 	}
@@ -420,11 +503,21 @@ func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	return nil, TaskEventsOutput{Events: out}, nil
 }
 
+func clampEventLimit(limit int) int32 {
+	if limit <= 0 || limit > 500 {
+		return 50
+	}
+	return int32(limit)
+}
+
 func (s *Service) taskProgressTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskProgressInput) (*mcp.CallToolResult, TaskProgressOutput, error) {
 	if in.TaskID == "" {
 		return nil, TaskProgressOutput{}, fmt.Errorf("task_id is required")
 	}
-	events, err := s.store.GetTaskEvents(ctx, in.TaskID, in.Limit)
+	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
+		TaskID: in.TaskID,
+		Limit:  clampEventLimit(in.Limit),
+	})
 	if err != nil {
 		return nil, TaskProgressOutput{}, fmt.Errorf("get events: %w", err)
 	}
@@ -454,7 +547,7 @@ func (s *Service) taskLatestEventTool(ctx context.Context, _ *mcp.CallToolReques
 	if in.TaskID == "" {
 		return nil, TaskLatestEventOutput{}, fmt.Errorf("task_id is required")
 	}
-	ev, err := s.store.GetLatestTaskEvent(ctx, in.TaskID)
+	ev, err := s.repo.GetLatestTaskEvent(ctx, in.TaskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, TaskLatestEventOutput{}, fmt.Errorf("no events found for task %s", in.TaskID)
@@ -490,37 +583,45 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, CancelTaskOutput{}, fmt.Errorf("task_id is required")
 	}
-	// Publish cancellation notification to the runner before updating DB.
-	if err := s.bus.PublishCancel(in.TaskID); err != nil {
-		slog.Warn("publish cancel notification failed (continuing)", "taskID", in.TaskID, "err", err)
+	if in.Reason == "" {
+		in.Reason = "cancelled by operator"
 	}
-	task, err := s.store.CancelTask(ctx, in.TaskID, in.Reason)
+	now := time.Now().UTC()
+	rows, err := s.repo.CancelTask(ctx, repository.CancelTaskParams{
+		Error:     sql.NullString{String: in.Reason, Valid: true},
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+		ID:        in.TaskID,
+	})
 	if err != nil {
 		return nil, CancelTaskOutput{}, fmt.Errorf("cancel task: %w", err)
 	}
-	return nil, CancelTaskOutput{Task: taskToolRecord(task)}, nil
+	if rows == 0 {
+		return nil, CancelTaskOutput{}, fmt.Errorf("task %s is not pending or running", in.TaskID)
+	}
+	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
+	if err != nil {
+		return nil, CancelTaskOutput{}, fmt.Errorf("get task after cancel: %w", err)
+	}
+	return nil, CancelTaskOutput{Task: repoTaskToToolRecord(task)}, nil
 }
 
 func (s *Service) clearQueueTool(ctx context.Context, _ *mcp.CallToolRequest, in ClearQueueInput) (*mcp.CallToolResult, ClearQueueOutput, error) {
 	if !in.Confirm {
 		return nil, ClearQueueOutput{}, fmt.Errorf("confirm must be true to clear the queue")
 	}
-	queue, err := s.bus.ClearTaskQueue(in.PreserveConsumer)
-	if err != nil {
-		return nil, ClearQueueOutput{}, fmt.Errorf("clear task messages: %w", err)
-	}
-	cancelled, err := s.store.ClearPendingTasks(ctx, "cancelled by chetter_clear_queue")
+	now := time.Now().UTC()
+	cancelled, err := s.repo.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
+		Error:     sql.NullString{String: "cancelled by chetter_clear_queue", Valid: true},
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+	})
 	if err != nil {
 		return nil, ClearQueueOutput{}, fmt.Errorf("cancel pending tasks: %w", err)
 	}
 	return nil, ClearQueueOutput{
 		Cleared:               true,
-		CancelledPendingTasks: cancelled,
-		Stream:                queue.Stream,
-		Subject:               queue.Subject,
-		MessagesBefore:        queue.MessagesBefore,
-		MessagesAfter:         queue.MessagesAfter,
-		ConsumerReset:         queue.ConsumerReset,
+		CancelledPendingTasks: int(cancelled),
 	}, nil
 }
 

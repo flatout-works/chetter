@@ -92,32 +92,6 @@ func ToolDefinitions() []map[string]any {
 			},
 		},
 		{
-			"name":        "nats_publish",
-			"description": "Publish a message to NATS via the runner.",
-			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"subject": map[string]string{"type": "string"},
-					"payload": map[string]string{"type": "string"},
-					"headers": map[string]string{"type": "object"},
-				},
-				"required": []string{"subject", "payload"},
-			},
-		},
-		{
-			"name":        "nats_request",
-			"description": "Send a NATS request-response via the runner.",
-			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"subject":     map[string]string{"type": "string"},
-					"payload":     map[string]string{"type": "string"},
-					"timeout_sec": map[string]string{"type": "integer", "default": "30"},
-				},
-				"required": []string{"subject", "payload"},
-			},
-		},
-		{
 			"name":        "fetch_url",
 			"description": "Fetch a URL via the runner's network egress with filtering.",
 			"inputSchema": map[string]any{

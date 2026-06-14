@@ -14,12 +14,17 @@ ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
 # --------------------------------------------------------------------------
 FROM golang:1.26-bookworm AS runner-builder
 
+WORKDIR /src
+COPY go.mod go.sum* ./
+COPY gen/ ./gen/
+COPY runner/go.mod runner/go.sum* ./runner/
 WORKDIR /src/runner
-COPY runner/go.mod runner/go.sum* ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
-COPY runner/ ./
+WORKDIR /src
+COPY runner/ ./runner/
+WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner

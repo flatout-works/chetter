@@ -5,10 +5,15 @@
 # --------------------------------------------------------------------------
 FROM golang:1.26-bookworm AS builder
 
-WORKDIR /app
+WORKDIR /src
 COPY go.mod go.sum* ./
+COPY gen/ ./gen/
+COPY runner/go.mod runner/go.sum* ./runner/
+WORKDIR /src/runner
 RUN go mod download 2>/dev/null || true
-COPY . .
+WORKDIR /src
+COPY runner/ ./runner/
+WORKDIR /src/runner
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o runner ./cmd/runner
 
 # --------------------------------------------------------------------------
@@ -42,8 +47,8 @@ RUN apt-get update \
 COPY --from=ctr-downloader /usr/local/bin/ctr /usr/local/bin/ctr
 
 ENV TMPDIR=/tmp/chetter-runner
-COPY --from=builder /app/runner /usr/local/bin/runner
-COPY runner.docker.yaml /etc/runner/runner.yaml
+COPY --from=builder /src/runner/runner /usr/local/bin/runner
+COPY runner/runner.docker.yaml /etc/runner/runner.yaml
 
 ENTRYPOINT ["runner"]
 CMD ["-config", "/etc/runner/runner.yaml"]

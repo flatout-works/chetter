@@ -1,19 +1,8 @@
-nats:
-  url: nats://localhost:4222
-
-jetstream:
-  enabled: false
-  task_stream: CHETTER_TASKS
-  event_stream: CHETTER_EVENTS
-  task_durable: chetter-runner
-  task_queue: chetter-runners
-  ack_wait_seconds: 7200
-  max_deliver: 3
-  storage: file
+server:
+  url: http://localhost:8080
+  auth_token: ""
 
 runner:
-  listen_subject: chetter.runner.tasks
-  result_subject: chetter.tasks
   workspace_root: /var/lib/runner
   max_concurrent: 10
 

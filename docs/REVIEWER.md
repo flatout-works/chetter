@@ -45,18 +45,18 @@ Route by event type:
 ### Sequence Diagram
 
 ```
-GitHub              Chetter              NATS              Runner             OpenCode
-  │                   │                    │                 │                  │
-  │──PR opened───────▶│                    │                 │                  │
-  │                   │──200 OK            │                 │                  │
-  │                   │──verify sig        │                 │                  │
-  │                   │──dedup check       │                 │                  │
-  │                   │──gen app token     │                 │                  │
-  │                   │──SubmitTask()─────▶│                 │                  │
-  │                   │                    │──publish task──▶│                  │
-  │                   │                    │                 │──start container▶│
-  │                   │                    │                 │──git clone        │
-  │                   │                    │                 │──gh pr view      │
+GitHub              Chetter                                Runner             OpenCode
+  │                   │                                      │                  │
+  │──PR opened───────▶│                                      │                  │
+  │                   │──200 OK                              │                  │
+  │                   │──verify sig                          │                  │
+  │                   │──dedup check                         │                  │
+  │                   │──gen app token                       │                  │
+  │                   │──SubmitTask()                        │                  │
+  │                   │◀──────────────ConnectRPC claim───────│                  │
+  │                   │                                      │──start container▶│
+  │                   │                                      │──git clone        │
+  │                   │                                      │──gh pr view      │
   │                   │                    │                 │──review changes  │
   │                   │                    │                 │──gh pr review────│──▶ GitHub
   │                   │                    │                 │                  │

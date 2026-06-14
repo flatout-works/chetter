@@ -12,8 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/flatout-works/chetter/internal/bus"
+	"github.com/flatout-works/chetter/gen/proto/runner/v1/runnerv1connect"
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webhook"
@@ -59,13 +60,8 @@ func run() error {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 
-	nc, err := bus.Connect(cfg)
-	if err != nil {
-		return fmt.Errorf("connect bus: %w", err)
-	}
-	defer nc.Close()
-
-	svc := service.New(cfg, st, nc)
+	svc := service.New(cfg, st)
+	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB())
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
 	}
@@ -88,6 +84,8 @@ func run() error {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, mcpHandler))
+	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
+	mux.Handle(runnerPath, authMiddleware(cfg.MCPAuthToken, runnerHandler))
 	if whHandler != nil {
 		mux.Handle("/webhook/github", whHandler)
 		slog.Info("github webhook handler registered", "path", "/webhook/github")

@@ -1,11 +1,4 @@
 services:
-  chetter-nats:
-    image: nats:2
-    command: ["-js", "-sd", "/data", "--auth", "${NATS_TOKEN:-chetter-local}"]
-    restart: unless-stopped
-    volumes:
-      - nats-data:/data
-
   chetter-mcp:
     image: ghcr.io/flatout-works/chetter-mcp:main
     build:
@@ -13,9 +6,6 @@ services:
       dockerfile: Dockerfile
     pull_policy: always
     restart: unless-stopped
-    depends_on:
-      chetter-nats:
-        condition: service_started
     environment:
       HTTP_ADDR: :8080
       DATABASE_DSN: ${DATABASE_DSN:-}
@@ -27,10 +17,6 @@ services:
       GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       GITHUB_REVIEW_ALLOWED_REPOS: ${GITHUB_REVIEW_ALLOWED_REPOS:-}
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
-      JETSTREAM_ENABLED: "true"
-      TASK_SUBJECT: chetter.runner.tasks
-      EVENT_SUBJECT: chetter.tasks.>
       DEFAULT_AGENT_IMAGE: ghcr.io/flatout-works/chetter-runner:main
     ports:
       - "18088:8080"
@@ -53,15 +39,11 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      chetter-nats:
-        condition: service_started
+      - chetter-mcp
     environment:
       RUNNER_LOCAL: "true"
-      JETSTREAM_ENABLED: "true"
-      JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
-      TASK_SUBJECT: chetter.runner.tasks
-      RESULT_SUBJECT: chetter.tasks
+      CHETTER_SERVER_URL: http://chetter-mcp:8080
+      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -83,15 +65,11 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      chetter-nats:
-        condition: service_started
+      - chetter-mcp
     environment:
       RUNNER_LOCAL: "true"
-      JETSTREAM_ENABLED: "true"
-      JETSTREAM_MAX_ACK_PENDING: "2"
-      NATS_URL: nats://${NATS_TOKEN:-chetter-local}@chetter-nats:4222
-      TASK_SUBJECT: chetter.runner.tasks
-      RESULT_SUBJECT: chetter.tasks
+      CHETTER_SERVER_URL: http://chetter-mcp:8080
+      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -109,6 +87,5 @@ services:
       - runner-data-2:/var/lib/chetter-runner
 
 volumes:
-  nats-data:
   runner-data:
   runner-data-2:

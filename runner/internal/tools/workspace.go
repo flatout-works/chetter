@@ -1,5 +1,5 @@
 // Package tools implements MCP tool handlers for workspace I/O, git
-// operations, NATS messaging, and URL fetching.
+// operations, and URL fetching.
 package tools
 
 import (
