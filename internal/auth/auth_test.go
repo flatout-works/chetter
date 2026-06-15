@@ -57,7 +57,8 @@ func TestGetScopeNotFound(t *testing.T) {
 
 func TestGetScopeFromDerivedContext(t *testing.T) {
 	parent := WithScope(context.Background(), Scope{TeamID: "t1"})
-	derived := context.WithValue(parent, struct{}{}, "unrelated")
+	derived, cancel := context.WithCancel(parent)
+	defer cancel()
 	got, ok := GetScope(derived)
 	if !ok {
 		t.Fatal("GetScope on derived context returned ok=false")
