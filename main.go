@@ -165,7 +165,7 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) auth.Sco
 // registered).
 func buildWebhookHandler(cfg config.Config, svc *service.Service) http.Handler {
 	if !cfg.GitHubConfigured() {
-		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, GITHUB_INSTALLATION_ID, or GITHUB_WEBHOOK_SECRET)")
+		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, GITHUB_INSTALLATION_ID, or GITHUB_WEBHOOK_SECRET); skipping /webhook/github route")
 		return nil
 	}
 	gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
@@ -175,14 +175,9 @@ func buildWebhookHandler(cfg config.Config, svc *service.Service) http.Handler {
 	}
 	submitter := webhook.NewServiceSubmitter(&serviceSubmitterAdapter{svc: svc})
 	return webhook.NewHandler(webhook.HandlerConfig{
-		Disabled:           cfg.GitHubWebhookDisabled,
-		WebhookSecret:      cfg.GitHubWebhookSecret,
-		ReviewerAgent:      "pr-reviewer",
-		ReviewerProviderID: "opencode-go",
-		ReviewerModelID:    "minimax-m3",
-		ReviewerTimeoutSec: 3600,
-		AllowedRepos:       cfg.GitHubReviewAllowedRepos,
-	}, gh, submitter)
+		Disabled:      cfg.GitHubWebhookDisabled,
+		WebhookSecret: cfg.GitHubWebhookSecret,
+	}, gh, submitter, svc)
 }
 
 // serviceSubmitterAdapter adapts service.Service to webhook.TaskSubmitterService.
