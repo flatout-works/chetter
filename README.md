@@ -177,7 +177,7 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 ## MCP Tools
 
 | Tool | Purpose |
-|---|---|
+|---|---|---|
 | `chetter_submit_task` | Submit a one-off development task |
 | `chetter_task_status` | Fetch persisted task status and result |
 | `chetter_list_tasks` | List recent tasks |
@@ -192,6 +192,9 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `chetter_task_progress` | Fetch distilled task progress |
 | `chetter_task_latest_event` | Fetch latest event for a task |
 | `chetter_runner_health` | Derive fleet health and runner status |
+| `chetter_create_token` | Create an API token for a team and user |
+| `chetter_list_tokens` | List API tokens with user and team info |
+| `chetter_delete_token` | Delete an API token by name |
 
 ## Configuration
 

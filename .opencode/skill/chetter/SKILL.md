@@ -45,6 +45,13 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_cancel_task` | Cancel a pending or running task |
 | `chetter_clear_queue` | Clear queued task messages (requires confirm) |
 
+### Tokens
+| Tool | Purpose |
+|---|---|---|
+| `chetter_create_token` | Create a new API token for a team and user (admin only) |
+| `chetter_list_tokens` | List all API tokens with user and team info (admin only) |
+| `chetter_delete_token` | Delete an API token by name (admin only) |
+
 ### Schedules
 | Tool | Purpose |
 |---|---|
