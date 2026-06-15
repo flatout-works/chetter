@@ -523,8 +523,8 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		info.ImageRef = imageRef.String
 		info.ImageDigest = imageDigest.String
 		info.Version = version.String
-		info.FirstSeenAt = nullTimePtr(firstSeen)
-		info.StartedAt = nullTimePtr(startedAt)
+		info.FirstSeenAt = NullTimePtr(firstSeen)
+		info.StartedAt = NullTimePtr(startedAt)
 		info.IsStale = info.LastSeenSec > maxRunnerPresenceSec
 		info.CurrentTaskIDs = currentTaskIDsFromMetadata(metadata)
 		if info.IsStale {
@@ -658,14 +658,7 @@ func hostFromDriverDSN(dsn string) (string, error) {
 	return host, nil
 }
 
-func nullableTime(t time.Time) any {
-	if t.IsZero() {
-		return nil
-	}
-	return t.UTC()
-}
-
-func nullTimePtr(t sql.NullTime) *time.Time {
+func NullTimePtr(t sql.NullTime) *time.Time {
 	if !t.Valid {
 		return nil
 	}

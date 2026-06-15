@@ -500,17 +500,12 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		Error:      task.Error.String,
 		CreatedAt:  task.CreatedAt,
 		UpdatedAt:  task.UpdatedAt,
-		StartedAt:  nullTimePtr(task.StartedAt),
-		EndedAt:    nullTimePtr(task.EndedAt),
+		StartedAt:  store.NullTimePtr(task.StartedAt),
+		EndedAt:    store.NullTimePtr(task.EndedAt),
 	}
 }
 
-func nullTimePtr(nt sql.NullTime) *time.Time {
-	if nt.Valid {
-		return &nt.Time
-	}
-	return nil
-}
+
 
 func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {
 	if in.TriggerType == "" {
@@ -622,8 +617,8 @@ func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
 		Enabled:       s.Enabled,
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
-		LastRunAt:     nullTimePtr(s.LastRunAt),
-		NextRunAt:     nullTimePtr(s.NextRunAt),
+		LastRunAt:     store.NullTimePtr(s.LastRunAt),
+		NextRunAt:     store.NullTimePtr(s.NextRunAt),
 	}
 }
 
@@ -774,7 +769,7 @@ func (s *Service) taskLatestEventTool(ctx context.Context, _ *mcp.CallToolReques
 			CreatedAt: ev.CreatedAt,
 		},
 		AgeSec:  ageSec,
-		IsStale: ageSec > 120,
+		IsStale: ageSec > reaperHealthMaxEventSec,
 	}, nil
 }
 
@@ -793,12 +788,13 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, CancelTaskOutput{}, fmt.Errorf("task_id is required")
 	}
-	if in.Reason == "" {
-		in.Reason = "cancelled by operator"
+	reason := in.Reason
+	if reason == "" {
+		reason = "cancelled by operator"
 	}
 	now := time.Now().UTC()
 	rows, err := s.repo.CancelTask(ctx, repository.CancelTaskParams{
-		Error:     sql.NullString{String: in.Reason, Valid: true},
+		Error:     sql.NullString{String: reason, Valid: true},
 		EndedAt:   sql.NullTime{Time: now, Valid: true},
 		UpdatedAt: now,
 		ID:        in.TaskID,

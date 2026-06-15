@@ -453,20 +453,11 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 
 // DeleteTrigger removes a trigger by name and stops its cron job if applicable.
 func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
-	triggers, err := s.repo.ListSchedules(ctx)
+	sch, err := s.repo.GetScheduleByName(ctx, name)
 	if err != nil {
-		return fmt.Errorf("list triggers: %w", err)
+		return fmt.Errorf("get trigger: %w", err)
 	}
-	var targetID string
-	for i := range triggers {
-		if triggers[i].Name == name {
-			targetID = triggers[i].ID
-			break
-		}
-	}
-	if targetID == "" {
-		return fmt.Errorf("trigger %q not found", name)
-	}
+	targetID := sch.ID
 	s.cronMu.Lock()
 	if entryID, ok := s.cronEntries[targetID]; ok {
 		s.cron.Remove(entryID)
@@ -484,37 +475,27 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if name == "" {
 		return store.TaskRecord{}, fmt.Errorf("name is required")
 	}
-	triggers, err := s.repo.ListSchedules(ctx)
+	sch, err := s.repo.GetScheduleByName(ctx, name)
 	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("list triggers: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
-	var targetID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID string
 	targetSkills := []string(nil)
-	var targetTimeoutSec int
-	var targetTeamID string
-	found := false
-	for _, sch := range triggers {
-		if sch.Name == name {
-			targetID = sch.ID
-			targetPrompt = sch.Prompt
-			targetGitURL = sch.GitUrl.String
-			targetGitRef = sch.GitRef.String
-			targetAgentImage = sch.AgentImage.String
-			targetAgent = sch.Agent.String
-			targetTeamID = sch.TeamID.String
-			targetProviderID = sch.ProviderID.String
-			targetModelID = sch.ModelID.String
-			targetVariantID = sch.VariantID.String
-			_ = json.Unmarshal(sch.Skills, &targetSkills)
-			targetTimeoutSec = int(sch.TimeoutSec)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return store.TaskRecord{}, fmt.Errorf("trigger %q not found", name)
-	}
-	return s.submitScheduleTask(ctx, targetID, targetTeamID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID, targetSkills, targetTimeoutSec, time.Now().UTC())
+	_ = json.Unmarshal(sch.Skills, &targetSkills)
+	return s.submitScheduleTask(ctx,
+		sch.ID,
+		sch.TeamID.String,
+		sch.Prompt,
+		sch.GitUrl.String,
+		sch.GitRef.String,
+		sch.AgentImage.String,
+		sch.Agent.String,
+		sch.ProviderID.String,
+		sch.ModelID.String,
+		sch.VariantID.String,
+		targetSkills,
+		int(sch.TimeoutSec),
+		time.Now().UTC(),
+	)
 }
 
 func (s *Service) loadSchedules(ctx context.Context) error {
