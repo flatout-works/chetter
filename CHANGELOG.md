@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.
 - Token management MCP tools (`chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token`), REST API at `/api/v1/tokens`, and `chetterctl` CLI for creating, listing, and deleting tokens. Non-admin tokens see only resources scoped to their team.
 - Schedule `chetter-nightly-website-presentation-update` for automated website and presentation content updates (runs daily at 05:00 UTC).
 - `chetterctl` binary added to the default `make build` target.
+- Trigger system: `trigger_type` (cron/pr_review) and `trigger_config` (JSON) columns on `chetter_schedules` replacing the purely-cron schedule model. Migration 004 adds columns with zero-downtime ALTER.
+- Trigger CRUD MCP tools: `chetter_create_trigger`, `chetter_update_trigger`, `chetter_list_triggers`, `chetter_delete_trigger`, `chetter_run_trigger`. Type-specific validation (cron requires `cron_expr`, pr_review requires `repo` and `agent`).
+- PR review dispatch via DB triggers: GitHub webhook queries `pr_review`-type triggers per repository and dispatches one review task per matching trigger, replacing hardcoded reviewer configuration.
+- `team_id` column on `chetter_schedule_runs` for team-scoped run tracking (migration 005).
+- Team/user CRUD MCP tools: `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team` (cascades tokens/users), `chetter_list_users` (optionally filtered by team_name).
+- Team-scoped MCP tool `chetter_list_schedule_runs` with optional `schedule_name` filter and team isolation checks.
+- New documentation: `AGENTS.md` (repo guidance for LLM agents), `MANUAL.md` (operation manual with env reference and MCP tools guide), `SCHEDULES.md` (schedule lifecycle and YAML reference), `REVIEWS.md` (PR review architecture), `TRIGGERS_PROPOSAL.md` (trigger design proposal).
 
 ### Changed
 
@@ -19,9 +26,17 @@ All notable changes to this project will be documented in this file.
 - Dropped unused `listen_subject` and `result_subject` columns from `chetter_runners` (migration 002).
 - `.env.example`, `Makefile`, `compose.yaml`, and runner configuration files updated following the NATS removal and ConnectRPC migration.
 - Reaper and lease timings tightened: reaper interval 5m → 30s, grace period 5m → 120s, health staleness threshold 600s → 120s, task lease 120s → 60s. Reduces zombie task recovery from ~12min to ~90s.
+- Schedule management migrated from cron-only `chetter_schedule_*` MCP tools to a generalized trigger system with `chetter_*trigger_*` tools. Cron engine now loads only `trigger_type='cron'` schedules.
+- Website and presentation slides updated to reflect ConnectRPC architecture, token management, trigger system, and schema changes.
+
+### Removed
+
+- `chetter_schedule_task`, `chetter_list_schedules`, `chetter_delete_schedule`, `chetter_update_schedule`, `chetter_run_schedule` MCP tools removed (replaced by trigger tools).
+- `GITHUB_REVIEW_ALLOWED_REPOS` environment variable and hardcoded `ReviewerAgent`/`ReviewerProviderID`/`ReviewerModelID`/`ReviewerTimeoutSec` config fields removed; repo allowlisting and reviewer configuration is now per-trigger via `trigger_config`.
 
 ### Fixed
 
+- Backfill `NULL` trigger_config in existing schedules after ALTER TABLE ADD COLUMN, preventing startup crash when sqlc's `json.RawMessage` scans a `NULL` value.
 - Runner now resolves the model from the agent's `.opencode/agent/<agent>.md` config when `provider_id`/`model_id` are not specified in schedule or task requests, instead of falling back to hardcoded defaults.
 - Schedule YAML `agent_image` references corrected from `your-org` to `flatout-works`.
 - Webhook reviewer configuration (`ReviewerAgent`, `ReviewerProviderID`, `ReviewerModelID`, `ReviewerTimeoutSec`) now actually flows from `HandlerConfig` to the review task submitter instead of being hardcoded.
