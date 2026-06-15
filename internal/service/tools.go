@@ -88,7 +88,7 @@ type CreateTriggerInput struct {
 	TriggerType string   `json:"trigger_type" jsonschema:"Trigger type: cron or pr_review"`
 	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly (required for cron)"`
 	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (required for pr_review, e.g. flatout-works/chetter)"`
-	Prompt      string   `json:"prompt" jsonschema:"Task prompt to submit when the trigger fires"`
+	Prompt      string   `json:"prompt,omitempty" jsonschema:"Task prompt to submit when the trigger fires (optional for pr_review; defaults to built-in review template)"`
 	GitURL      string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
 	GitRef      string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
 	AgentImage  string   `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
