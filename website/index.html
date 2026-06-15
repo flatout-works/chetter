@@ -57,7 +57,7 @@
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via a ConnectRPC task queue, and ingests runner events. Runners clone repositories, start coding agents, stream progress, and report results.</p>
+          <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via a ConnectRPC task queue, manages triggers (cron schedules and webhook events), and ingests runner events. Runners clone repositories, start coding agents, stream progress, and report results.</p>
       </div>
       <div class="flow-card">
         <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
@@ -79,7 +79,7 @@
         <article>
           <span>control plane</span>
           <h3>Stateless HTTP MCP server</h3>
-          <p>A small Go process exposes <code>/mcp</code> and <code>/healthz</code>, registers schema-driven tools, schedules cron jobs, and records events.</p>
+          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven tools, manages triggers (cron + webhook), orchestrates schedules, and records events.</p>
         </article>
         <article>
           <span>transport</span>
@@ -89,7 +89,7 @@
         <article>
           <span>state</span>
           <h3>MySQL or TiDB</h3>
-          <p>Tables hold tasks (with leases), raw events, schedules, schedule runs, runner heartbeats, teams, users, and API tokens. Secrets are redacted.</p>
+          <p>Tables hold tasks (with leases), raw events, schedules (with trigger_type + trigger_config), schedule runs, runner heartbeats, teams, users, and API tokens. Secrets are redacted.</p>
         </article>
       </div>
     </section>
@@ -108,12 +108,12 @@
         <p>Tasks survive runner restarts. Events are written before ack. Terminal task states are updated idempotently to make replays safe.</p>
       </article>
       <article>
-        <h3>GitOps schedules</h3>
-        <p>Recurring jobs live in <code>schedules/*.yaml</code>, sync into MySQL, and re-activate on restart. Nightly docs, changelogs, audits, and scans fit naturally.</p>
+        <h3>Triggers &amp; schedules</h3>
+        <p>Cron schedules and webhook-triggered PR reviews share the same DB-backed trigger system. Nightly docs, changelogs, audits, scans, and automated code reviews all fit naturally.</p>
       </article>
       <article>
         <h3>Readable codebase</h3>
-        <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, bus, config, and optional Arcane vulnerability scanning.</p>
+        <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, and optional Arcane vulnerability scanning.</p>
       </article>
       <article>
         <h3>Standard protocols</h3>
@@ -134,7 +134,7 @@
       <div class="tool-groups">
         <article><b>Tasks</b><span>submit, status, list, cancel, clear queue</span></article>
         <article><b>Events</b><span>full history, progress, latest event</span></article>
-        <article><b>Schedules</b><span>create, update, run now, list, sync, delete</span></article>
+        <article><b>Triggers</b><span>create, update, run, list, delete (cron + PR review webhook)</span></article>
         <article><b>Fleet</b><span>runner health inferred from task activity</span></article>
         <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
         <article><b>Arcane</b><span>optional Trivy-backed image vulnerability tools</span></article>
@@ -167,7 +167,7 @@ curl http://localhost:18088/healthz</code></pre>
         <h2>Small enough to understand, useful enough to automate real work.</h2>
       </div>
       <div class="deploy-row">
-        <div><b>chetter-mcp</b><span>Go server: MCP tools + ConnectRPC + cron</span></div>
+        <div><b>chetter-mcp</b><span>Go server: MCP tools + ConnectRPC + triggers + webhook</span></div>
         <div><b>MySQL / TiDB</b><span>task queue, events, schedules, runners, auth</span></div>
         <div><b>runners</b><span>one image, many workers</span></div>
       </div>
