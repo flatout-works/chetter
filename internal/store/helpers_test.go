@@ -107,3 +107,122 @@ func TestNonNilStrings(t *testing.T) {
 		}
 	})
 }
+
+func TestNonZero(t *testing.T) {
+	t.Run("a non-empty uses a", func(t *testing.T) {
+		got := NonZero("hello", "world")
+		if got != "hello" {
+			t.Errorf("expected hello, got %q", got)
+		}
+	})
+	t.Run("a empty uses b", func(t *testing.T) {
+		got := NonZero("", "fallback")
+		if got != "fallback" {
+			t.Errorf("expected fallback, got %q", got)
+		}
+	})
+}
+
+func TestNonZeroInt(t *testing.T) {
+	t.Run("a non-zero uses a", func(t *testing.T) {
+		got := NonZeroInt(42, 1)
+		if got != 42 {
+			t.Errorf("expected 42, got %d", got)
+		}
+	})
+	t.Run("a zero uses b", func(t *testing.T) {
+		got := NonZeroInt(0, 99)
+		if got != 99 {
+			t.Errorf("expected 99, got %d", got)
+		}
+	})
+}
+
+func TestNonNilSlice(t *testing.T) {
+	t.Run("nil returns b", func(t *testing.T) {
+		b := []string{"x", "y"}
+		got := NonNilSlice(nil, b)
+		if len(got) != 2 || got[0] != "x" {
+			t.Errorf("expected [x y], got %v", got)
+		}
+	})
+	t.Run("non-nil returns a", func(t *testing.T) {
+		a := []string{"a"}
+		b := []string{"x"}
+		got := NonNilSlice(a, b)
+		if len(got) != 1 || got[0] != "a" {
+			t.Errorf("expected [a], got %v", got)
+		}
+	})
+	t.Run("empty a returns a", func(t *testing.T) {
+		a := []string{}
+		b := []string{"x"}
+		got := NonNilSlice(a, b)
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+}
+
+func TestFirstLineOrNA(t *testing.T) {
+	t.Run("empty string", func(t *testing.T) {
+		got := firstLineOrNA("")
+		if got != "N/A" {
+			t.Errorf("expected N/A, got %q", got)
+		}
+	})
+	t.Run("single line", func(t *testing.T) {
+		got := firstLineOrNA("hello world")
+		if got != "hello world" {
+			t.Errorf("expected hello world, got %q", got)
+		}
+	})
+	t.Run("multi-line", func(t *testing.T) {
+		got := firstLineOrNA("first line\nsecond line")
+		if got != "first line" {
+			t.Errorf("expected first line, got %q", got)
+		}
+	})
+	t.Run("truncates long lines", func(t *testing.T) {
+		long := string(make([]byte, 300))
+		got := firstLineOrNA(long)
+		if len(got) != 200 {
+			t.Errorf("expected 200 chars, got %d", len(got))
+		}
+	})
+}
+
+func TestCurrentTaskIDsFromMetadata(t *testing.T) {
+	t.Run("nil data", func(t *testing.T) {
+		got := currentTaskIDsFromMetadata(nil)
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+	t.Run("empty data", func(t *testing.T) {
+		got := currentTaskIDsFromMetadata([]byte{})
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+	t.Run("invalid json", func(t *testing.T) {
+		got := currentTaskIDsFromMetadata([]byte(`not json`))
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+	t.Run("valid with task ids", func(t *testing.T) {
+		data := []byte(`{"current_task_ids": ["task_1", "task_2"]}`)
+		got := currentTaskIDsFromMetadata(data)
+		if len(got) != 2 || got[0] != "task_1" || got[1] != "task_2" {
+			t.Errorf("expected [task_1 task_2], got %v", got)
+		}
+	})
+	t.Run("valid without task ids", func(t *testing.T) {
+		data := []byte(`{"status": "active"}`)
+		got := currentTaskIDsFromMetadata(data)
+		if len(got) != 0 {
+			t.Errorf("expected empty, got %v", got)
+		}
+	})
+}

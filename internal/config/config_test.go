@@ -110,3 +110,154 @@ func TestEnvInt(t *testing.T) {
 		}
 	})
 }
+
+func TestEnvInt64(t *testing.T) {
+	t.Run("valid int64", func(t *testing.T) {
+		t.Setenv("TEST_INT64_KEY", "123456789012")
+		got := envInt64("TEST_INT64_KEY", 0)
+		if got != 123456789012 {
+			t.Errorf("expected 123456789012, got %d", got)
+		}
+	})
+	t.Run("invalid value returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_INT64_KEY2", "notanumber")
+		got := envInt64("TEST_INT64_KEY2", 42)
+		if got != 42 {
+			t.Errorf("expected fallback 42, got %d", got)
+		}
+	})
+	t.Run("not set returns fallback", func(t *testing.T) {
+		got := envInt64("TEST_INT64_MISSING", 42)
+		if got != 42 {
+			t.Errorf("expected 42, got %d", got)
+		}
+	})
+}
+
+func TestEnvList(t *testing.T) {
+	t.Run("single value", func(t *testing.T) {
+		t.Setenv("TEST_LIST_KEY", "a")
+		got := envList("TEST_LIST_KEY")
+		if len(got) != 1 || got[0] != "a" {
+			t.Errorf("expected [a], got %v", got)
+		}
+	})
+	t.Run("multiple values", func(t *testing.T) {
+		t.Setenv("TEST_LIST_KEY2", "a,b,c")
+		got := envList("TEST_LIST_KEY2")
+		if len(got) != 3 || got[0] != "a" || got[2] != "c" {
+			t.Errorf("expected [a b c], got %v", got)
+		}
+	})
+	t.Run("trims spaces", func(t *testing.T) {
+		t.Setenv("TEST_LIST_KEY3", " a , b ")
+		got := envList("TEST_LIST_KEY3")
+		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+			t.Errorf("expected [a b], got %v", got)
+		}
+	})
+	t.Run("not set returns nil", func(t *testing.T) {
+		got := envList("TEST_LIST_MISSING_XYZ")
+		if got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+}
+
+func TestLoad(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		cfg := Load()
+		if cfg.HTTPAddr != ":8080" {
+			t.Errorf("expected :8080, got %q", cfg.HTTPAddr)
+		}
+		if cfg.DefaultTaskTimeoutSec != 600 {
+			t.Errorf("expected 600, got %d", cfg.DefaultTaskTimeoutSec)
+		}
+	})
+	t.Run("env overrides", func(t *testing.T) {
+		t.Setenv("HTTP_ADDR", ":9090")
+		t.Setenv("DEFAULT_AGENT_IMAGE", "custom:latest")
+		t.Setenv("DEFAULT_TASK_TIMEOUT_SEC", "300")
+		cfg := Load()
+		if cfg.HTTPAddr != ":9090" {
+			t.Errorf("expected :9090, got %q", cfg.HTTPAddr)
+		}
+		if cfg.DefaultAgentImage != "custom:latest" {
+			t.Errorf("expected custom:latest, got %q", cfg.DefaultAgentImage)
+		}
+		if cfg.DefaultTaskTimeoutSec != 300 {
+			t.Errorf("expected 300, got %d", cfg.DefaultTaskTimeoutSec)
+		}
+	})
+	t.Run("github fields", func(t *testing.T) {
+		t.Setenv("GITHUB_APP_ID", "12345")
+		t.Setenv("GITHUB_INSTALLATION_ID", "67890")
+		t.Setenv("GITHUB_APP_PRIVATE_KEY_B64", "cHJpdmF0ZSBrZXk=")
+		t.Setenv("GITHUB_WEBHOOK_SECRET", "secret123")
+		cfg := Load()
+		if cfg.GitHubAppID != 12345 {
+			t.Errorf("expected 12345, got %d", cfg.GitHubAppID)
+		}
+		if cfg.GitHubInstallationID != 67890 {
+			t.Errorf("expected 67890, got %d", cfg.GitHubInstallationID)
+		}
+		if cfg.GitHubAppPrivateKeyB64 != "cHJpdmF0ZSBrZXk=" {
+			t.Errorf("private key mismatch")
+		}
+		if cfg.GitHubWebhookSecret != "secret123" {
+			t.Errorf("webhook secret mismatch")
+		}
+	})
+	t.Run("github not configured by default", func(t *testing.T) {
+		cfg := Load()
+		if cfg.GitHubConfigured() {
+			t.Error("expected GitHub not configured")
+		}
+	})
+}
+
+func TestGitHubConfigured(t *testing.T) {
+	t.Run("all required fields present", func(t *testing.T) {
+		cfg := Config{
+			GitHubWebhookSecret:    "secret",
+			GitHubAppID:            1,
+			GitHubAppPrivateKeyB64: "key",
+			GitHubInstallationID:   1,
+		}
+		if !cfg.GitHubConfigured() {
+			t.Error("expected configured")
+		}
+	})
+	t.Run("missing webhook secret", func(t *testing.T) {
+		cfg := Config{
+			GitHubAppID:             1,
+			GitHubAppPrivateKeyB64:  "key",
+			GitHubInstallationID:    1,
+		}
+		if cfg.GitHubConfigured() {
+			t.Error("expected not configured")
+		}
+	})
+	t.Run("missing app id", func(t *testing.T) {
+		cfg := Config{
+			GitHubWebhookSecret:    "secret",
+			GitHubAppPrivateKeyB64: "key",
+			GitHubInstallationID:   1,
+		}
+		if cfg.GitHubConfigured() {
+			t.Error("expected not configured")
+		}
+	})
+	t.Run("disabled by flag", func(t *testing.T) {
+		cfg := Config{
+			GitHubWebhookDisabled:   true,
+			GitHubWebhookSecret:     "secret",
+			GitHubAppID:             1,
+			GitHubAppPrivateKeyB64:  "key",
+			GitHubInstallationID:    1,
+		}
+		if cfg.GitHubConfigured() {
+			t.Error("expected not configured when disabled")
+		}
+	})
+}
