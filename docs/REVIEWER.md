@@ -115,8 +115,7 @@ After creation, install the app on your GitHub organization. Note the Installati
 | `GITHUB_APP_PRIVATE_KEY` | PEM private key (raw, with newlines) | Required. Or use `GITHUB_APP_PRIVATE_KEY_FILE` for file path. |
 | `GITHUB_WEBHOOK_SECRET` | HMAC-SHA256 secret | Required |
 | `GITHUB_WEBHOOK_DISABLED` | `true` to kill switch the webhook | Optional, default `false` |
-| `GITHUB_REVIEW_ALLOWED_REPOS` | Comma-separated list of repos allowed for review | Optional, default: all |
-| `GITHUB_INSTALLATION_ID` | Pre-configured installation ID (skips discovery) | Optional |
+| `GITHUB_INSTALLATION_ID` | Pre-configured installation ID (skips discovery) | Required |
 
 ### Config Struct
 
@@ -130,7 +129,6 @@ type Config struct {
     GitHubAppPrivateKeyFile string
     GitHubWebhookSecret  string
     GitHubWebhookDisabled bool
-    GitHubReviewAllowedRepos []string
     GitHubInstallationID  int64
 }
 ```
@@ -265,25 +263,10 @@ type Comment struct {
 ### Filter Logic
 
 ```go
-func shouldReview(pr *PullRequest, repo string, cfg Config) (bool, string) {
-    // Allowed repos check
-    if len(cfg.AllowedRepos) > 0 && !contains(cfg.AllowedRepos, repo) {
-        return false, ""
-    }
-    // Label check (explicit request)
-    if hasLabel(pr.Labels, "chetter-review") {
-        return true, "label"
-    }
-    // Auto-trigger: from fork
-    if pr.User.Login != repoOwner(repo) {
-        return true, "fork"
-    }
-    // Auto-trigger: modifies Go/proto/migrations files
-    files := listPRFiles(token, repo, pr.Number)
-    if anyMatches(files, `**/*.go`, `**/*.proto`, `**/server/db/migrations/**`) {
-        return true, "file-pattern"
-    }
-    return false, ""
+func (h *Handler) matchingTriggers(repo string) []store.ScheduleRecord {
+    ctx := context.Background()
+    triggers, _ := h.svc.ListEnabledPRReviewTriggersByRepo(ctx, repo)
+    return triggers
 }
 ```
 
@@ -638,7 +621,7 @@ If the feature needs to be disabled quickly:
 
 | File | Action | Description |
 |---|---|---|
-| `internal/config/config.go` | Edit | Add GitHubAppID, GitHubAppPrivateKey, GitHubWebhookSecret, GitHubWebhookDisabled, GitHubReviewAllowedRepos, GitHubInstallationID |
+| `internal/config/config.go` | Edit | Add GitHubAppID, GitHubAppPrivateKeyB64, GitHubWebhookSecret, GitHubWebhookDisabled, GitHubInstallationID |
 | `internal/webhook/handler.go` | **New** | HTTP handler, signature verification, event routing |
 | `internal/webhook/events.go` | **New** | Event payload structs |
 | `internal/webhook/dedup.go` | **New** | Recent deliveries dedup |

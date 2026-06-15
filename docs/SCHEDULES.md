@@ -1,6 +1,6 @@
 # Chetter Schedules
 
-Chetter supports cron-backed schedules that automatically submit tasks at recurring intervals.
+Chetter supports cron-backed schedules (a `cron`-type trigger) that automatically submit tasks at recurring intervals. Schedules are created and managed using the same trigger tools used for PR review webhooks.
 
 ---
 
@@ -35,17 +35,18 @@ A schedule is a **persisted task template** with a cron expression. On each cron
 
 ---
 
-## MCP Tools
+## Managing Schedules via Trigger Tools
 
-### Create a Schedule
+### Create a Schedule (Cron Trigger)
 
-**Tool:** `chetter_schedule_task`
+**Tool:** `chetter_create_trigger` (with `trigger_type: cron`)
 
 Example input:
 
 ```json
 {
   "name": "nightly-docs-update",
+  "trigger_type": "cron",
   "cron_expr": "0 4 * * *",
   "prompt": "Review recent repository changes and update documentation...",
   "git_url": "https://github.com/flatout-works/chetter",
@@ -56,26 +57,26 @@ Example input:
 }
 ```
 
-### List Schedules
+### List Schedules (Cron Triggers)
 
-**Tool:** `chetter_list_schedules`
+**Tool:** `chetter_list_triggers` (with `trigger_type: cron`)
 
-- `enabled_only: true` — returns only enabled schedules
-- `enabled_only: false` — returns all schedules
+- `trigger_type: "cron"` — returns only cron schedules
+- `enabled_only: true` — returns only enabled triggers
 
 ### Run a Schedule Immediately
 
-**Tool:** `chetter_run_schedule`
+**Tool:** `chetter_run_trigger`
 
 ```json
 {"name": "nightly-docs-update"}
 ```
 
-This submits one task from the schedule right now, without waiting for the cron expression.
+This submits one task from the cron trigger right now, without waiting for the cron expression.
 
 ### Update a Schedule
 
-**Tool:** `chetter_update_schedule`
+**Tool:** `chetter_update_trigger`
 
 ```json
 {
@@ -85,11 +86,11 @@ This submits one task from the schedule right now, without waiting for the cron 
 }
 ```
 
-Only provided fields are changed. The schedule is re-registered in the cron runner after update.
+Only provided fields are changed. The trigger is re-registered in the cron runner after update.
 
 ### Delete a Schedule
 
-**Tool:** `chetter_delete_schedule`
+**Tool:** `chetter_delete_trigger`
 
 ```json
 {"name": "nightly-docs-update"}
@@ -99,7 +100,7 @@ Only provided fields are changed. The schedule is re-registered in the cron runn
 
 ## Production Schedules
 
-Schedule definitions live as YAML files in `/schedules/` for version control. They are **documentation** — not auto-loaded. To activate a schedule, create it via `chetter_schedule_task`.
+Schedule definitions live as YAML files in `/schedules/` for version control. They are **documentation** — not auto-loaded. To activate a schedule, create it via `chetter_create_trigger` with `trigger_type: cron`.
 
 ### Included Schedules
 
@@ -186,6 +187,6 @@ This lets you trace which task was created by which schedule fire.
 
 - Use `enabled: false` to pause a schedule without deleting it.
 - Update `cron_expr` to change the schedule without losing the rest of the template.
-- Schedules created with a team-scoped token only appear in `chetter_list_schedules` for that team.
+- Schedules created with a team-scoped token only appear in `chetter_list_triggers` for that team.
 - The `next_run_at` field is computed and updated automatically after each activation.
-- If a schedule's name already exists, `chetter_schedule_task` will fail — use `chetter_update_schedule` instead.
+- If a schedule's name already exists, `chetter_create_trigger` will fail — use `chetter_update_trigger` instead.
