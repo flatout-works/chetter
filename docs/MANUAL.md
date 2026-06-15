@@ -224,11 +224,11 @@ See `cmd/chetterctl/main.go` for CLI usage or use the MCP tools:
 | `chetter_submit_task` | Submit a one-off development task |
 | `chetter_task_status` | Get task status and result |
 | `chetter_list_tasks` | List recent tasks (filtered by team scope) |
-| `chetter_schedule_task` | Create a cron-backed schedule |
-| `chetter_run_schedule` | Trigger a schedule immediately |
-| `chetter_list_schedules` | List schedules (filtered by team scope) |
-| `chetter_delete_schedule` | Delete a schedule by name |
-| `chetter_update_schedule` | Update a schedule |
+| `chetter_create_trigger` | Create a trigger (cron schedule or PR review webhook) |
+| `chetter_update_trigger` | Update a trigger by name |
+| `chetter_list_triggers` | List triggers, optionally filtered by type |
+| `chetter_delete_trigger` | Delete a trigger by name |
+| `chetter_run_trigger` | Run a cron trigger immediately |
 | `chetter_cancel_task` | Cancel a pending or running task |
 | `chetter_clear_queue` | Cancel all pending tasks |
 | `chetter_task_events` | Full event history for a task |

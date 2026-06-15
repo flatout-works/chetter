@@ -162,7 +162,7 @@ Multiple PR review triggers for the same repo are allowed. Each trigger submits 
 | Env Var | Purpose | Required |
 |---|---|---|
 | `GITHUB_APP_ID` | GitHub App ID | Yes |
-| `GITHUB_APP_PRIVATE_KEY` | PEM private key (raw, with newlines) | Yes |
+| `GITHUB_APP_PRIVATE_KEY_B64` | PEM private key, base64-encoded | Yes |
 | `GITHUB_WEBHOOK_SECRET` | HMAC-SHA256 secret for signature verification | Yes |
 | `GITHUB_WEBHOOK_DISABLED` | `true` to disable the webhook (kill switch) | No |
 | `GITHUB_INSTALLATION_ID` | Pre-configured installation ID | No |

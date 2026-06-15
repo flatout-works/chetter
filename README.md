@@ -70,7 +70,7 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 This repo includes ready-to-use OpenCode configuration at `.opencode/opencode.json`. It defines:
 
 - **MCP connection** to the Chetter server
-- **Slash commands:** `/chetter-status`, `/chetter-tasks`, `/chetter-submit`, `/chetter-schedules`, `/chetter-cancel`
+- **Slash commands:** `/chetter-status`, `/chetter-tasks`, `/chetter-submit`, `/chetter-triggers`, `/chetter-cancel`
 - **Skill** at `.opencode/skill/chetter/SKILL.md` with workflows and schedule management guidance
 
 To set up in your own OpenCode project:
@@ -181,11 +181,11 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `chetter_submit_task` | Submit a one-off development task |
 | `chetter_task_status` | Fetch persisted task status and result |
 | `chetter_list_tasks` | List recent tasks |
-| `chetter_schedule_task` | Create a cron-backed task schedule |
-| `chetter_run_schedule` | Run a schedule immediately |
-| `chetter_list_schedules` | List cron task schedules |
-| `chetter_delete_schedule` | Delete a schedule by name |
-| `chetter_update_schedule` | Update a schedule |
+| `chetter_create_trigger` | Create a trigger (cron schedule or PR review webhook) |
+| `chetter_update_trigger` | Update a trigger by name |
+| `chetter_list_triggers` | List triggers, optionally filtered by type |
+| `chetter_delete_trigger` | Delete a trigger by name |
+| `chetter_run_trigger` | Run a cron trigger immediately |
 | `chetter_cancel_task` | Cancel a pending or running task |
 | `chetter_clear_queue` | Clear queued tasks |
 | `chetter_task_events` | Fetch full event history for a task |
@@ -211,7 +211,6 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `GITHUB_APP_PRIVATE_KEY_B64` | Base64-encoded GitHub App private key (PEM) |
 | `GITHUB_INSTALLATION_ID` | GitHub App installation ID |
 | `GITHUB_WEBHOOK_SECRET` | HMAC-SHA256 secret for webhook signature verification |
-| `GITHUB_REVIEW_ALLOWED_REPOS` | Comma-separated repos allowed for automated review |
 | `ARCANE_SERVER_URL` | Arcane platform API URL for image builds |
 | `ARCANE_API_KEY` | Arcane platform API key |
 | `OPENAI_API_KEY` | Optional OpenAI key for runner agents |
