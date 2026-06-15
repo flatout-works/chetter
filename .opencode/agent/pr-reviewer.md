@@ -1,6 +1,6 @@
 ---
 description: Deep PR review — correctness, security, performance, error handling, style. Posts structured review and approves or requests changes.
-model: opencode-go/minimax-m3
+model: opencode/deepseek-v4-flash-free
 mode: primary
 permission:
   edit: allow
