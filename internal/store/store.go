@@ -304,6 +304,9 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 			return fmt.Errorf("add chetter_schedules.%s: %w", column.name, err)
 		}
 	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_schedules SET trigger_config = '{}' WHERE trigger_config IS NULL"); err != nil {
+		return fmt.Errorf("backfill trigger_config: %w", err)
+	}
 	return nil
 }
 
