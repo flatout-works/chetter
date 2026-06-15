@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS chetter_runners (
 CREATE TABLE IF NOT EXISTS chetter_schedules (
     id VARCHAR(64) NOT NULL,
     name VARCHAR(128) NOT NULL,
+    trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron',
+    trigger_config JSON NOT NULL,
     cron_expr VARCHAR(128) NOT NULL,
     prompt TEXT NOT NULL,
     git_url TEXT NULL,

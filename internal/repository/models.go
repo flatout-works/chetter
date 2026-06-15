@@ -39,25 +39,27 @@ type ChetterRunner struct {
 }
 
 type ChetterSchedule struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	CronExpr   string          `json:"cron_expr"`
-	Prompt     string          `json:"prompt"`
-	GitUrl     sql.NullString  `json:"git_url"`
-	GitRef     sql.NullString  `json:"git_ref"`
-	AgentImage sql.NullString  `json:"agent_image"`
-	Agent      sql.NullString  `json:"agent"`
-	ProviderID sql.NullString  `json:"provider_id"`
-	ModelID    sql.NullString  `json:"model_id"`
-	VariantID  sql.NullString  `json:"variant_id"`
-	Skills     json.RawMessage `json:"skills"`
-	TimeoutSec int32           `json:"timeout_sec"`
-	Enabled    bool            `json:"enabled"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	LastRunAt  sql.NullTime    `json:"last_run_at"`
-	NextRunAt  sql.NullTime    `json:"next_run_at"`
-	TeamID     sql.NullString  `json:"team_id"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	TriggerType   string          `json:"trigger_type"`
+	TriggerConfig json.RawMessage `json:"trigger_config"`
+	CronExpr      string          `json:"cron_expr"`
+	Prompt        string          `json:"prompt"`
+	GitUrl        sql.NullString  `json:"git_url"`
+	GitRef        sql.NullString  `json:"git_ref"`
+	AgentImage    sql.NullString  `json:"agent_image"`
+	Agent         sql.NullString  `json:"agent"`
+	ProviderID    sql.NullString  `json:"provider_id"`
+	ModelID       sql.NullString  `json:"model_id"`
+	VariantID     sql.NullString  `json:"variant_id"`
+	Skills        json.RawMessage `json:"skills"`
+	TimeoutSec    int32           `json:"timeout_sec"`
+	Enabled       bool            `json:"enabled"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	LastRunAt     sql.NullTime    `json:"last_run_at"`
+	NextRunAt     sql.NullTime    `json:"next_run_at"`
+	TeamID        sql.NullString  `json:"team_id"`
 }
 
 type ChetterScheduleRun struct {

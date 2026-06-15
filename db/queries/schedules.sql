@@ -26,14 +26,27 @@ WHERE team_id = sqlc.arg(team_id)
   AND enabled = TRUE
 ORDER BY created_at DESC;
 
+-- name: ListEnabledTriggersByType :many
+SELECT * FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = sqlc.arg(trigger_type)
+ORDER BY created_at DESC;
+
+-- name: ListEnabledPRReviewTriggersByRepo :many
+SELECT * FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = 'pr_review'
+  AND trigger_config->>'$.repo' = sqlc.arg(repo)
+ORDER BY created_at DESC;
+
 -- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, team_id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
 
 -- name: UpdateSchedule :exec
 UPDATE chetter_schedules
-SET name = sqlc.arg(new_name), cron_expr = ?, prompt = ?,
+SET name = sqlc.arg(new_name), trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
     skills = ?, timeout_sec = ?, enabled = ?,
