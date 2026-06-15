@@ -47,7 +47,7 @@
     </section>
 
     <section class="metrics" aria-label="Chetter summary">
-      <div><strong>20</strong><span>MCP tools</span></div>
+      <div><strong>22</strong><span>MCP tools</span></div>
       <div><strong>1</strong><span>durable queue</span></div>
       <div><strong>1</strong><span>database</span></div>
       <div><strong>many</strong><span>interchangeable runners</span></div>
@@ -57,11 +57,11 @@
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, stores task state, publishes work to NATS JetStream, and ingests runner events. Runners clone repositories, start coding agents, stream progress, and report results.</p>
+        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via a ConnectRPC task queue, and ingests runner events. Runners clone repositories, start coding agents, stream progress, and report results.</p>
       </div>
       <div class="flow-card">
-        <div><b>1. Submit</b><span>MCP tool call creates a task row and publishes to JetStream.</span></div>
-        <div><b>2. Queue</b><span>WorkQueue retention delivers each task to one runner.</span></div>
+        <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
+        <div><b>2. Claim</b><span>Runners poll the ConnectRPC endpoint; one claims the task via lease.</span></div>
         <div><b>3. Run</b><span>A containerized runner executes OpenCode against the repository.</span></div>
         <div><b>4. Observe</b><span>Events are persisted for status, progress, and audit trails.</span></div>
       </div>
@@ -83,13 +83,13 @@
         </article>
         <article>
           <span>transport</span>
-          <h3>NATS JetStream</h3>
-          <p>One stream for durable tasks, one stream for replayable events. Add runners without teaching the server how many exist.</p>
+          <h3>ConnectRPC</h3>
+          <p>Runners claim tasks and report events directly to the MCP server via ConnectRPC (HTTP/gRPC). No separate message broker needed.</p>
         </article>
         <article>
           <span>state</span>
           <h3>MySQL or TiDB</h3>
-          <p>Five straightforward tables hold tasks, raw events, schedules, schedule runs, and runner metadata. Secrets are redacted.</p>
+          <p>Tables hold tasks (with leases), raw events, schedules, schedule runs, runner heartbeats, teams, users, and API tokens. Secrets are redacted.</p>
         </article>
       </div>
     </section>
@@ -117,7 +117,7 @@
       </article>
       <article>
         <h3>Standard protocols</h3>
-        <p>Streamable HTTP MCP, JSON-RPC semantics, NATS, MySQL wire compatibility, Docker Compose, and cron. No proprietary agent protocol required.</p>
+        <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), MySQL wire compatibility, Docker Compose, and cron. No proprietary agent protocol required.</p>
       </article>
       <article>
         <h3>Built for operators</h3>
@@ -136,6 +136,7 @@
         <article><b>Events</b><span>full history, progress, latest event</span></article>
         <article><b>Schedules</b><span>create, update, run now, list, sync, delete</span></article>
         <article><b>Fleet</b><span>runner health inferred from task activity</span></article>
+        <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
         <article><b>Arcane</b><span>optional Trivy-backed image vulnerability tools</span></article>
       </div>
     </section>
@@ -166,9 +167,8 @@ curl http://localhost:18088/healthz</code></pre>
         <h2>Small enough to understand, useful enough to automate real work.</h2>
       </div>
       <div class="deploy-row">
-        <div><b>NATS</b><span>JetStream enabled, token auth</span></div>
-        <div><b>chetter-mcp</b><span>Go MCP server on port 18088</span></div>
-        <div><b>MySQL / TiDB</b><span>task state, schedules, event log</span></div>
+        <div><b>chetter-mcp</b><span>Go server: MCP tools + ConnectRPC + cron</span></div>
+        <div><b>MySQL / TiDB</b><span>task queue, events, schedules, runners, auth</span></div>
         <div><b>runners</b><span>one image, many workers</span></div>
       </div>
       <p class="note">Production can use an external MySQL or TiDB by setting <code>DATABASE_DSN</code>. The bundled local compose override is there for fast evaluation.</p>

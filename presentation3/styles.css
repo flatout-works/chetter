@@ -122,6 +122,7 @@ code { color: var(--df-50); display: block; font-family: "JetBrains Mono", monos
 .tool-categories { display: grid; gap: 0.7rem; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 1.8rem; }
 .principle-grid article, .generated-grid article, .choice-grid article { border-radius: 1.5rem; min-height: 190px; padding: 1.25rem; }
 .tool-categories article { border-radius: 1.5rem; padding: 0.85rem 1rem; }
+.tool-categories article:last-child { grid-column: 1 / -1; }
 .tool-categories article > b { font-size: 1rem; margin-bottom: 0.3rem; }
 .tool-categories article > p { font-size: 0.8rem; margin-bottom: 0.5rem; }
 .principle-grid span { color: var(--accent-500); display: block; font-weight: 900; margin-bottom: 1.4rem; }
