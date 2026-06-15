@@ -47,7 +47,7 @@
     </section>
 
     <section class="metrics" aria-label="Chetter summary">
-      <div><strong>22</strong><span>MCP tools</span></div>
+      <div><strong>27</strong><span>MCP tools</span></div>
       <div><strong>1</strong><span>durable queue</span></div>
       <div><strong>1</strong><span>database</span></div>
       <div><strong>many</strong><span>interchangeable runners</span></div>
@@ -132,11 +132,12 @@
         <p>Chetter is designed for AI clients first. Tool schemas are generated from Go structs, so the implementation and JSON contracts stay aligned.</p>
       </div>
       <div class="tool-groups">
-        <article><b>Tasks</b><span>submit, status, list, cancel, clear queue</span></article>
+        <article><b>Tasks</b><span>submit, status, list, cancel, clear queue, list schedule runs</span></article>
         <article><b>Events</b><span>full history, progress, latest event</span></article>
         <article><b>Triggers</b><span>create, update, run, list, delete (cron + PR review webhook)</span></article>
         <article><b>Fleet</b><span>runner health inferred from task activity</span></article>
         <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
+        <article><b>Teams</b><span>create, list, delete teams; list users for team-scoped access</span></article>
         <article><b>Arcane</b><span>optional Trivy-backed image vulnerability tools</span></article>
       </div>
     </section>

@@ -63,7 +63,7 @@ compose.yaml 1 MCP + 2 runners
         <div class="system-box chetter">
           <h3>chetter/</h3>
           <p>MCP server, scheduler, trigger dispatcher, and ConnectRPC endpoint</p>
-          <span>streamable HTTP</span><span>22 MCP tools</span><span>triggers (cron + webhook)</span><span>event reaper</span><span>Arcane client</span>
+          <span>streamable HTTP</span><span>27 MCP tools</span><span>triggers (cron + webhook)</span><span>event reaper</span><span>Arcane client</span>
         </div>
         <div class="system-box server">
           <h3>store/</h3>
@@ -108,16 +108,17 @@ compose.yaml 1 MCP + 2 runners
 
     <section class="slide" data-title="MCP Tools">
       <p class="eyebrow">Tool Surface</p>
-      <h2>Twenty-two tools, grouped by job. Schema-driven, no drift.</h2>
+      <h2>Twenty-seven tools, grouped by job. Schema-driven, no drift.</h2>
       <div class="tool-categories">
         <article>
-          <b>Tasks (5)</b>
-          <p>Submit, fetch, list, cancel, clear queue.</p>
+          <b>Tasks (6)</b>
+          <p>Submit, fetch, list, cancel, clear queue, list schedule runs.</p>
           <div class="tool-call"><span class="name">chetter_submit_task</span></div>
           <div class="tool-call"><span class="name">chetter_task_status</span></div>
           <div class="tool-call"><span class="name">chetter_list_tasks</span></div>
           <div class="tool-call"><span class="name">chetter_cancel_task</span></div>
           <div class="tool-call"><span class="name">chetter_clear_queue</span></div>
+          <div class="tool-call"><span class="name">chetter_list_schedule_runs</span></div>
         </article>
         <article>
           <b>Events (3)</b>
@@ -146,6 +147,14 @@ compose.yaml 1 MCP + 2 runners
           <div class="tool-call"><span class="name">chetter_create_token</span></div>
           <div class="tool-call"><span class="name">chetter_list_tokens</span></div>
           <div class="tool-call"><span class="name">chetter_delete_token</span></div>
+        </article>
+        <article>
+          <b>Teams (4)</b>
+          <p>Team and user CRUD for team-scoped access control.</p>
+          <div class="tool-call"><span class="name">chetter_create_team</span></div>
+          <div class="tool-call"><span class="name">chetter_list_teams</span></div>
+          <div class="tool-call"><span class="name">chetter_delete_team</span></div>
+          <div class="tool-call"><span class="name">chetter_list_users</span></div>
         </article>
         <article>
           <b>Arcane (5)</b>
@@ -271,7 +280,7 @@ compose.yaml 1 MCP + 2 runners
       </div>
       <div class="protocol-cards">
         <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors for cron triggers. In-process, single-instance.</p></article>
-        <article><b>Webhook dispatch</b><p>Startup loads enabled pr_review triggers; webhook handler queries matching triggers by repo per event. No hardcoded reviewer config.</p></article>
+        <article><b>Webhook dispatch</b><p>Startup loads enabled pr_review triggers; webhook handler queries matching triggers by repo per event. /chetter-review comments are acknowledged via label + comment reply. No hardcoded reviewer config.</p></article>
         <article><b>DB-backed config</b><p>trigger_type + trigger_config (JSON) columns on chetter_schedules eliminate the old hardcoded reviewer pattern. Add triggers at runtime.</p></article>
       </div>
     </section>
@@ -285,7 +294,7 @@ compose.yaml 1 MCP + 2 runners
           <div class="entity">chetter_tasks <span>id, team_id, status, prompt, lease, runner_id, attempt</span></div>
           <div class="entity">chetter_task_events <span>id, task_id, subject, status, payload (raw JSON), ts</span></div>
           <div class="entity">chetter_schedules <span>id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, model, enabled</span></div>
-          <div class="entity">chetter_schedule_runs <span>id, schedule_id, task_id, status, scheduled_for</span></div>
+          <div class="entity">chetter_schedule_runs <span>id, schedule_id, task_id, team_id, status, scheduled_for</span></div>
           <div class="entity">chetter_runners <span>id, status, image, capacity, heartbeat metadata</span></div>
         </div>
         <div class="er-link">team-scoped auth</div>
@@ -385,7 +394,7 @@ compose.yaml 1 MCP + 2 runners
       <div class="orb orb-three"></div>
       <img class="logo-mark close-logo" src="../website/chetter-mark.svg" alt="Chetter" />
       <h2>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</h2>
-      <p class="lead">Twenty-two tools. ConnectRPC task queue. Unified trigger system. Many interchangeable runners.</p>
+      <p class="lead">Twenty-seven tools. ConnectRPC task queue. Unified trigger system. Many interchangeable runners.</p>
       <div class="closing-grid">
         <span>streamable HTTP</span>
         <span>ConnectRPC task queue</span>
