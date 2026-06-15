@@ -491,6 +491,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	var targetID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID string
 	targetSkills := []string(nil)
 	var targetTimeoutSec int
+	var targetTeamID string
 	found := false
 	for _, sch := range triggers {
 		if sch.Name == name {
@@ -500,6 +501,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 			targetGitRef = sch.GitRef.String
 			targetAgentImage = sch.AgentImage.String
 			targetAgent = sch.Agent.String
+			targetTeamID = sch.TeamID.String
 			targetProviderID = sch.ProviderID.String
 			targetModelID = sch.ModelID.String
 			targetVariantID = sch.VariantID.String
@@ -512,7 +514,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if !found {
 		return store.TaskRecord{}, fmt.Errorf("trigger %q not found", name)
 	}
-	return s.submitScheduleTask(ctx, targetID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID, targetSkills, targetTimeoutSec, time.Now().UTC())
+	return s.submitScheduleTask(ctx, targetID, targetTeamID, targetPrompt, targetGitURL, targetGitRef, targetAgentImage, targetAgent, targetProviderID, targetModelID, targetVariantID, targetSkills, targetTimeoutSec, time.Now().UTC())
 }
 
 func (s *Service) loadSchedules(ctx context.Context) error {
@@ -565,13 +567,13 @@ func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledF
 	}
 	var skills []string
 	_ = json.Unmarshal(schedule.Skills, &skills)
-	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
+	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
 		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
 		skills, int(schedule.TimeoutSec), scheduledFor)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:     prompt,
 		GitURL:     gitURL,
@@ -594,6 +596,7 @@ func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, prompt, gi
 	if err := s.repo.InsertScheduleRun(ctx, repository.InsertScheduleRunParams{
 		ID:           runID,
 		ScheduleID:   scheduleID,
+		TeamID:       nullString(teamID),
 		TaskID:       task.ID,
 		Status:       "submitted",
 		ScheduledFor: scheduledFor.UTC(),

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
@@ -284,6 +285,86 @@ type DeleteTokenOutput struct {
 	Deleted bool `json:"deleted"`
 }
 
+// --- Team Management Tools ---
+
+// CreateTeamInput is the input for chetter_create_team.
+type CreateTeamInput struct {
+	Name string `json:"name" jsonschema:"Name of the team to create"`
+}
+
+// CreateTeamOutput is the output for chetter_create_team.
+type CreateTeamOutput struct {
+	TeamID    string    `json:"team_id"`
+	TeamName  string    `json:"team_name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListTeamsInput is the input for chetter_list_teams.
+type ListTeamsInput struct{}
+
+// TeamInfo is a single team entry in the list.
+type TeamInfo struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListTeamsOutput is the output for chetter_list_teams.
+type ListTeamsOutput struct {
+	Teams []TeamInfo `json:"teams"`
+}
+
+// DeleteTeamInput is the input for chetter_delete_team.
+type DeleteTeamInput struct {
+	Name string `json:"name" jsonschema:"Name of the team to delete. Cascades to users, tokens, tasks, and schedules."`
+}
+
+// DeleteTeamOutput is the output for chetter_delete_team.
+type DeleteTeamOutput struct {
+	Deleted bool `json:"deleted"`
+}
+
+// ListUsersInput is the input for chetter_list_users.
+type ListUsersInput struct {
+	TeamName string `json:"team_name,omitempty" jsonschema:"Optional team name to filter users by"`
+}
+
+// UserInfo is a single user entry in the list.
+type UserInfo struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	TeamName  string    `json:"team_name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListUsersOutput is the output for chetter_list_users.
+type ListUsersOutput struct {
+	Users []UserInfo `json:"users"`
+}
+
+// --- Schedule Run Tools ---
+
+// ListScheduleRunsInput is the input for chetter_list_schedule_runs.
+type ListScheduleRunsInput struct {
+	ScheduleName string `json:"schedule_name,omitempty" jsonschema:"Optional schedule name to filter runs by"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"Maximum runs to return, capped at 100"`
+}
+
+// ScheduleRunInfo is a single schedule run entry in the list.
+type ScheduleRunInfo struct {
+	ID           string    `json:"id"`
+	ScheduleName string    `json:"schedule_name"`
+	TaskID       string    `json:"task_id"`
+	Status       string    `json:"status"`
+	ScheduledFor time.Time `json:"scheduled_for"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// ListScheduleRunsOutput is the output for chetter_list_schedule_runs.
+type ListScheduleRunsOutput struct {
+	Runs []ScheduleRunInfo `json:"runs"`
+}
+
 // RegisterTools registers chetter MCP tools.
 func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
@@ -310,6 +391,11 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_token", Description: "Create a new API token for a team and user. Admin only."}, svc.createTokenTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tokens", Description: "List all API tokens with user and team info. Admin only."}, svc.listTokensTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_token", Description: "Delete an API token by name. Admin only."}, svc.deleteTokenTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only."}, svc.createTeamTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and schedules. Admin only."}, svc.deleteTeamTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedule_runs", Description: "List schedule runs for the current team, optionally filtered by schedule name."}, svc.listScheduleRunsTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
@@ -862,6 +948,167 @@ func (s *Service) deleteTokenTool(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, DeleteTokenOutput{}, fmt.Errorf("delete token: %w", err)
 	}
 	return nil, DeleteTokenOutput{Deleted: true}, nil
+}
+
+// --- Team Management Tool Handlers ---
+
+func (s *Service) createTeamTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTeamInput) (*mcp.CallToolResult, CreateTeamOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, CreateTeamOutput{}, fmt.Errorf("admin access required")
+	}
+	if in.Name == "" {
+		return nil, CreateTeamOutput{}, fmt.Errorf("name is required")
+	}
+	now := time.Now().UTC()
+	teamID, err := randomID("team")
+	if err != nil {
+		return nil, CreateTeamOutput{}, fmt.Errorf("generate team id: %w", err)
+	}
+	if err := s.repo.CreateTeam(ctx, repository.CreateTeamParams{
+		ID:        teamID,
+		Name:      in.Name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return nil, CreateTeamOutput{}, fmt.Errorf("create team: %w", err)
+	}
+	return nil, CreateTeamOutput{
+		TeamID:    teamID,
+		TeamName:  in.Name,
+		CreatedAt: now,
+	}, nil
+}
+
+func (s *Service) listTeamsTool(ctx context.Context, _ *mcp.CallToolRequest, _ ListTeamsInput) (*mcp.CallToolResult, ListTeamsOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, ListTeamsOutput{}, fmt.Errorf("admin access required")
+	}
+	teams, err := s.repo.ListTeams(ctx)
+	if err != nil {
+		return nil, ListTeamsOutput{}, fmt.Errorf("list teams: %w", err)
+	}
+	out := make([]TeamInfo, len(teams))
+	for i, t := range teams {
+		out[i] = TeamInfo{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt}
+	}
+	return nil, ListTeamsOutput{Teams: out}, nil
+}
+
+func (s *Service) deleteTeamTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteTeamInput) (*mcp.CallToolResult, DeleteTeamOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("admin access required")
+	}
+	if in.Name == "" {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("name is required")
+	}
+	team, err := s.repo.GetTeamByName(ctx, in.Name)
+	if err != nil {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("team %q not found", in.Name)
+	}
+	if err := s.repo.DeleteTokensByTeam(ctx, team.ID); err != nil {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("delete tokens for team: %w", err)
+	}
+	if err := s.repo.DeleteUsersByTeam(ctx, team.ID); err != nil {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("delete users for team: %w", err)
+	}
+	if err := s.repo.DeleteSchedule(ctx, in.Name); err != nil {
+		// Schedule deletion is best-effort — the schedule may not exist.
+		slog.Debug("delete team: schedule not deleted", "team", in.Name, "err", err)
+	}
+	if err := s.repo.DeleteTeam(ctx, in.Name); err != nil {
+		return nil, DeleteTeamOutput{}, fmt.Errorf("delete team: %w", err)
+	}
+	return nil, DeleteTeamOutput{Deleted: true}, nil
+}
+
+func (s *Service) listUsersTool(ctx context.Context, _ *mcp.CallToolRequest, in ListUsersInput) (*mcp.CallToolResult, ListUsersOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, ListUsersOutput{}, fmt.Errorf("admin access required")
+	}
+	if in.TeamName != "" {
+		team, err := s.repo.GetTeamByName(ctx, in.TeamName)
+		if err != nil {
+			return nil, ListUsersOutput{}, fmt.Errorf("team %q not found", in.TeamName)
+		}
+		teamRows, err := s.repo.ListUsersByTeam(ctx, team.ID)
+		if err != nil {
+			return nil, ListUsersOutput{}, fmt.Errorf("list users: %w", err)
+		}
+		out := make([]UserInfo, len(teamRows))
+		for i, r := range teamRows {
+			out[i] = UserInfo{ID: r.ID, Name: r.Name, TeamName: r.TeamName, CreatedAt: r.CreatedAt}
+		}
+		return nil, ListUsersOutput{Users: out}, nil
+	}
+	allRows, err := s.repo.ListUsers(ctx)
+	if err != nil {
+		return nil, ListUsersOutput{}, fmt.Errorf("list users: %w", err)
+	}
+	out := make([]UserInfo, len(allRows))
+	for i, r := range allRows {
+		out[i] = UserInfo{ID: r.ID, Name: r.Name, TeamName: r.TeamName, CreatedAt: r.CreatedAt}
+	}
+	return nil, ListUsersOutput{Users: out}, nil
+}
+
+// --- Schedule Run Tool Handlers ---
+
+func (s *Service) listScheduleRunsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListScheduleRunsInput) (*mcp.CallToolResult, ListScheduleRunsOutput, error) {
+	scope, scoped := auth.GetScope(ctx)
+	limit := clampListLimit(in.Limit)
+
+	if in.ScheduleName != "" {
+		schedule, err := s.repo.GetScheduleByName(ctx, in.ScheduleName)
+		if err != nil {
+			return nil, ListScheduleRunsOutput{}, fmt.Errorf("schedule %q not found", in.ScheduleName)
+		}
+		if scoped && !scope.Admin && scope.TeamID != "" && schedule.TeamID.String != scope.TeamID {
+			return nil, ListScheduleRunsOutput{}, fmt.Errorf("schedule %q not found", in.ScheduleName)
+		}
+		rows, err := s.repo.ListScheduleRunsBySchedule(ctx, repository.ListScheduleRunsByScheduleParams{
+			ScheduleID: schedule.ID,
+			Limit:      limit,
+		})
+		if err != nil {
+			return nil, ListScheduleRunsOutput{}, fmt.Errorf("list schedule runs: %w", err)
+		}
+		out := make([]ScheduleRunInfo, len(rows))
+		for i, r := range rows {
+			out[i] = ScheduleRunInfo{
+				ID:           r.ID,
+				ScheduleName: r.ScheduleName,
+				TaskID:       r.TaskID,
+				Status:       r.Status,
+				ScheduledFor: r.ScheduledFor,
+				CreatedAt:    r.CreatedAt,
+			}
+		}
+		return nil, ListScheduleRunsOutput{Runs: out}, nil
+	}
+
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		rows, err := s.repo.ListScheduleRunsByTeam(ctx, repository.ListScheduleRunsByTeamParams{
+			TeamID: sql.NullString{String: scope.TeamID, Valid: true},
+			Limit:  limit,
+		})
+		if err != nil {
+			return nil, ListScheduleRunsOutput{}, fmt.Errorf("list schedule runs: %w", err)
+		}
+		out := make([]ScheduleRunInfo, len(rows))
+		for i, r := range rows {
+			out[i] = ScheduleRunInfo{
+				ID:           r.ID,
+				ScheduleName: r.ScheduleName,
+				TaskID:       r.TaskID,
+				Status:       r.Status,
+				ScheduledFor: r.ScheduledFor,
+				CreatedAt:    r.CreatedAt,
+			}
+		}
+		return nil, ListScheduleRunsOutput{Runs: out}, nil
+	}
+
+	return nil, ListScheduleRunsOutput{}, fmt.Errorf("admin access required to list all schedule runs without a schedule_name filter")
 }
 
 func isAdmin(ctx context.Context) bool {
