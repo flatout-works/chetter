@@ -258,9 +258,6 @@ func (h *Handler) handleIssueComment(body []byte) {
 
 	ackCtx, ackCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer ackCancel()
-	if err := h.gh.AddIssueLabel(ackCtx, repo, ev.Issue.Number, ChetterReviewLabel); err != nil {
-		slog.Warn("webhook: add review label for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
-	}
 	ackComment := fmt.Sprintf("@%s requested a review — Chetter is on it.", ev.Comment.User.Login)
 	if err := h.gh.CreateIssueComment(ackCtx, repo, ev.Issue.Number, ackComment); err != nil {
 		slog.Warn("webhook: post ack comment for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
