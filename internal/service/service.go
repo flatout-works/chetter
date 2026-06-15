@@ -283,7 +283,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 	if in.TriggerType == "" {
 		in.TriggerType = store.TriggerTypeCron
 	}
-	if in.Prompt == "" {
+	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview {
 		return store.ScheduleRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.ID == "" {
@@ -371,7 +371,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 	if in.Name == "" {
 		return store.ScheduleRecord{}, fmt.Errorf("name is required")
 	}
-	if in.Prompt == "" {
+	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview {
 		return store.ScheduleRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.TriggerType == "" {

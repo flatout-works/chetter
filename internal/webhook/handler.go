@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -189,20 +188,6 @@ func (h *Handler) handlePullRequest(body []byte) {
 		return
 	}
 
-	// Auto-label if triggered by something other than the label itself.
-	if trigger != "label" {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		has, err := h.gh.HasLabel(ctx, repo, ev.Number, ChetterReviewLabel)
-		if err != nil {
-			slog.Warn("webhook: check label", "repo", repo, "pr", ev.Number, "err", err)
-		} else if !has {
-			if err := h.gh.AddIssueLabel(ctx, repo, ev.Number, ChetterReviewLabel); err != nil {
-				slog.Warn("webhook: add label", "repo", repo, "pr", ev.Number, "err", err)
-			}
-		}
-	}
-
 	h.submitReview(ReviewContext{
 		Trigger:      trigger,
 		Repo:         repo,
@@ -227,62 +212,7 @@ func (h *Handler) shouldReview(ev PullRequestEvent, repo string) (string, bool) 
 		return "fork", true
 	}
 
-	// 3. Modifies Go/proto/migrations files.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	files, err := h.gh.ListPRFiles(ctx, repo, ev.Number)
-	return h.shouldReviewWithFiles(ev, repo, files, err)
-}
-
-// shouldReviewWithFiles is the testable inner part of shouldReview. Given a
-// pre-fetched list of files (or an error), it returns the trigger and whether
-// review is needed. Extracted so tests don't need to mock the GitHub client.
-func (h *Handler) shouldReviewWithFiles(ev PullRequestEvent, repo string, files []string, filesErr error) (string, bool) {
-	// 1. Explicit label request.
-	for _, l := range ev.PullRequest.Labels {
-		if l.Name == ChetterReviewLabel {
-			return "label", true
-		}
-	}
-
-	// 2. PR from a fork (external contributor).
-	if ev.PullRequest.Head.Repo.FullName != "" && ev.PullRequest.Head.Repo.FullName != repo {
-		return "fork", true
-	}
-
-	// 3. Modifies Go/proto/migrations files.
-	if filesErr != nil {
-		slog.Warn("webhook: list files (in testable path)", "err", filesErr)
-		return "", false
-	}
-	if matchesCodePaths(files) {
-		return "file-pattern", true
-	}
-
 	return "", false
-}
-
-// matchesCodePaths returns true if any file matches a Go/proto/migrations pattern.
-func matchesCodePaths(files []string) bool {
-	for _, f := range files {
-		if matchesCodePath(f) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchesCodePath checks if a single file path matches the patterns
-// that warrant a review.
-func matchesCodePath(path string) bool {
-	base := filepath.Base(path)
-	if strings.HasSuffix(base, ".go") || strings.HasSuffix(base, ".proto") {
-		return true
-	}
-	if strings.HasPrefix(path, "server/db/migrations/") || strings.Contains(path, "/db/migrations/") {
-		return true
-	}
-	return false
 }
 
 func (h *Handler) handleIssueComment(body []byte) {
@@ -370,6 +300,22 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		slog.Info("webhook: no PR review triggers configured for repo; skipping review",
 			"repo", ctx.Repo, "pr", ctx.PRNumber)
 		return
+	}
+
+	// Add the review label to indicate a review is in progress.
+	// Only reached when at least one trigger matched, so the label always
+	// means a review task was actually submitted.
+	if ctx.Trigger != "label" {
+		labelCtx, labelCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer labelCancel()
+		has, err := h.gh.HasLabel(labelCtx, ctx.Repo, ctx.PRNumber, ChetterReviewLabel)
+		if err != nil {
+			slog.Warn("webhook: check label", "repo", ctx.Repo, "pr", ctx.PRNumber, "err", err)
+		} else if !has {
+			if err := h.gh.AddIssueLabel(labelCtx, ctx.Repo, ctx.PRNumber, ChetterReviewLabel); err != nil {
+				slog.Warn("webhook: add label", "repo", ctx.Repo, "pr", ctx.PRNumber, "err", err)
+			}
+		}
 	}
 
 	for _, t := range triggers {

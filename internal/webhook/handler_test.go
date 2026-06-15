@@ -80,29 +80,60 @@ func TestRecentDeliveries_Expiry(t *testing.T) {
 	}
 }
 
-// TestMatchesCodePath checks the file-pattern filter that decides whether
-// a PR is eligible for review.
-func TestMatchesCodePath(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
+// TestShouldReview_FilterLogic checks the filter that determines whether a
+// PR should be reviewed, using a mocked GitHub client.
+func TestShouldReview_FilterLogic(t *testing.T) {
+	cases := []struct {
+		name        string
+		pr          PullRequest
+		repo        string
+		wantOK      bool
+		wantTrigger string
 	}{
-		{"server/internal/foo.go", true},
-		{"builder/frontend/src/main.ts", false},
-		{"runner/internal/controller/runner.go", true},
-		{"server/proto/user/v1/user.proto", true},
-		{"server/db/migrations/0001_init.sql", true},
-		{"runner/db/migrations/abc.sql", true},
-		{"docs/README.md", false},
-		{"tools/skills/x/SKILL.md", false},
-		{"README.md", false},
-		{"foo.txt", false},
-		{"some/path/file.go.bak", false}, // .bak ending is a different suffix
+		{
+			name: "label triggers review",
+			pr: PullRequest{
+				Labels: []Label{{Name: "chetter-review"}},
+			},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "label",
+		},
+		{
+			name: "fork triggers review",
+			pr: PullRequest{
+				Head: PRBranch{
+					Ref: "feat",
+					Repo: struct {
+						FullName string `json:"full_name"`
+						CloneURL string `json:"clone_url"`
+					}{
+						FullName: "fork/repo",
+						CloneURL: "https://github.com/fork/repo.git",
+					},
+				},
+			},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "fork",
+		},
+		{
+			name:   "internal PR with no label - no review",
+			pr:     PullRequest{},
+			repo:   "org/repo",
+			wantOK: false, wantTrigger: "",
+		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.path, func(t *testing.T) {
-			if got := matchesCodePath(tc.path); got != tc.want {
-				t.Errorf("matchesCodePath(%q) = %v, want %v", tc.path, got, tc.want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &Handler{gh: nil, cfg: HandlerConfig{}}
+			ev := PullRequestEvent{
+				PullRequest: tc.pr,
+			}
+			trigger, ok := h.shouldReview(ev, tc.repo)
+			if ok != tc.wantOK {
+				t.Errorf("shouldReview returned ok=%v, want %v", ok, tc.wantOK)
+			}
+			if trigger != tc.wantTrigger {
+				t.Errorf("shouldReview returned trigger=%q, want %q", trigger, tc.wantTrigger)
 			}
 		})
 	}
@@ -257,99 +288,5 @@ func TestBuildReviewTaskRequest_FallsBackToTemplateWhenNoPrompt(t *testing.T) {
 	}
 	if req.AgentImage == "" {
 		t.Error("AgentImage should fall back to the default runner image")
-	}
-}
-
-// TestShouldReview_FilterLogic checks the filter that determines whether a
-// PR should be reviewed, using a mocked GitHub client.
-func TestShouldReview_FilterLogic(t *testing.T) {
-	cases := []struct {
-		name        string
-		pr          PullRequest
-		repo        string
-		files       []string // files listed from API
-		filesErr    error
-		wantOK      bool
-		wantTrigger string
-	}{
-		{
-			name: "label triggers review",
-			pr: PullRequest{
-				Labels: []Label{{Name: "chetter-review"}},
-			},
-			repo:   "org/repo",
-			files:  nil,
-			wantOK: true, wantTrigger: "label",
-		},
-		{
-			name: "fork triggers review",
-			pr: PullRequest{
-				Head: PRBranch{
-					Ref: "feat",
-					Repo: struct {
-						FullName string `json:"full_name"`
-						CloneURL string `json:"clone_url"`
-					}{
-						FullName: "fork/repo",
-						CloneURL: "https://github.com/fork/repo.git",
-					},
-				},
-			},
-			repo:   "org/repo",
-			files:  nil,
-			wantOK: true, wantTrigger: "fork",
-		},
-		{
-			name: "Go file change triggers review",
-			pr:   PullRequest{},
-			repo: "org/repo",
-			files: []string{
-				"server/internal/foo.go",
-			},
-			wantOK: true, wantTrigger: "file-pattern",
-		},
-		{
-			name: "proto file change triggers review",
-			pr:   PullRequest{},
-			repo: "org/repo",
-			files: []string{
-				"server/proto/user/v1/user.proto",
-			},
-			wantOK: true, wantTrigger: "file-pattern",
-		},
-		{
-			name: "migration file triggers review",
-			pr:   PullRequest{},
-			repo: "org/repo",
-			files: []string{
-				"server/db/migrations/0001_init.sql",
-			},
-			wantOK: true, wantTrigger: "file-pattern",
-		},
-		{
-			name: "docs only - no review",
-			pr:   PullRequest{},
-			repo: "org/repo",
-			files: []string{
-				"docs/README.md",
-				"website/index.html",
-			},
-			wantOK: false, wantTrigger: "",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := &Handler{gh: nil, cfg: HandlerConfig{}}
-			ev := PullRequestEvent{
-				PullRequest: tc.pr,
-			}
-			trigger, ok := h.shouldReviewWithFiles(ev, tc.repo, tc.files, tc.filesErr)
-			if ok != tc.wantOK {
-				t.Errorf("shouldReview returned ok=%v, want %v", ok, tc.wantOK)
-			}
-			if trigger != tc.wantTrigger {
-				t.Errorf("shouldReview returned trigger=%q, want %q", trigger, tc.wantTrigger)
-			}
-		})
 	}
 }
