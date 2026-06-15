@@ -129,7 +129,7 @@ compose.yaml 1 MCP + 2 runners
         </article>
         <article>
           <b>Triggers (5)</b>
-          <p>Unified trigger system: cron schedules and PR review webhooks managed through the same tools.</p>
+          <p>Unified trigger system: cron schedules and PR review webhooks managed through the same tools. Prompt is optional for pr_review triggers — falls back to a built-in review template.</p>
           <div class="tool-call"><span class="name">chetter_create_trigger</span></div>
           <div class="tool-call"><span class="name">chetter_update_trigger</span></div>
           <div class="tool-call"><span class="name">chetter_list_triggers</span></div>
@@ -272,7 +272,7 @@ compose.yaml 1 MCP + 2 runners
       <div class="lifecycle-flow" style="margin-top: 1.4rem;">
         <div class="lifecycle-step"><b>cron triggers</b><span>Five-field expressions + descriptors; fired by in-process robfig/cron</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; dispatches review tasks automatically</span></div>
+        <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; built-in review template when prompt omitted; dispatches review tasks + PR label</span></div>
         <i></i>
         <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from MySQL on startup</span></div>
         <i></i>
@@ -280,7 +280,7 @@ compose.yaml 1 MCP + 2 runners
       </div>
       <div class="protocol-cards">
         <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors for cron triggers. In-process, single-instance.</p></article>
-        <article><b>Webhook dispatch</b><p>Startup loads enabled pr_review triggers; webhook handler queries matching triggers by repo per event. /chetter-review comments are acknowledged via label + comment reply. No hardcoded reviewer config.</p></article>
+        <article><b>Webhook dispatch</b><p>Startup loads enabled pr_review triggers; webhook handler queries matching triggers by repo per event. PRs receive a label when a trigger fires; /chetter-review comments are acknowledged via label + comment reply. No hardcoded reviewer config.</p></article>
         <article><b>DB-backed config</b><p>trigger_type + trigger_config (JSON) columns on chetter_schedules eliminate the old hardcoded reviewer pattern. Add triggers at runtime.</p></article>
       </div>
     </section>
