@@ -38,8 +38,9 @@ type Runner struct {
 	dnsProxy   *network.DNSProxy
 	bridgeMgr  *network.BridgeManager
 	containerd *containerd.Client
-	rpcClient  runnerRPCClient
-	runCtx     context.Context
+	rpcClient   runnerRPCClient
+	claimClient runnerRPCClient
+	runCtx      context.Context
 	mu         sync.Mutex
 	tasks      map[string]*task.TaskSession
 	runnerID   string

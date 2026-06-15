@@ -17,6 +17,7 @@ import (
 
 const (
 	rpcTimeout                = 10 * time.Second
+	claimTimeout              = 45 * time.Second
 	terminalReportRetryWindow = time.Minute
 )
 
@@ -37,10 +38,13 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	}
 
 	client := &http.Client{Timeout: rpcTimeout}
+	claimHTTP := &http.Client{Timeout: claimTimeout}
 	if r.cfg.Server.AuthToken != "" {
 		client.Transport = bearerRoundTripper{token: r.cfg.Server.AuthToken, next: http.DefaultTransport}
+		claimHTTP.Transport = bearerRoundTripper{token: r.cfg.Server.AuthToken, next: http.DefaultTransport}
 	}
 	r.rpcClient = runnerv1connect.NewRunnerServiceClient(client, strings.TrimRight(r.cfg.Server.URL, "/"))
+	r.claimClient = runnerv1connect.NewRunnerServiceClient(claimHTTP, strings.TrimRight(r.cfg.Server.URL, "/"))
 	r.runCtx = ctx
 	if _, err := r.rpcClient.RegisterRunner(ctx, connect.NewRequest(&runnerv1.RegisterRunnerRequest{Runner: r.runnerInfoProto("active")})); err != nil {
 		return fmt.Errorf("register runner: %w", err)
@@ -60,7 +64,7 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 
 func (r *Runner) claimLoop(ctx context.Context) {
 	for {
-		resp, err := r.rpcClient.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		resp, err := r.claimClient.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 			RunnerId:     r.runnerID,
 			WaitSeconds:  30,
 			LeaseSeconds: 120,
