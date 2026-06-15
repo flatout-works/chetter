@@ -72,16 +72,33 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		env["COMMENT_AUTHOR"] = review.CommentAuthor
 	}
 
+	agent := review.Agent
+	if agent == "" {
+		agent = "pr-reviewer"
+	}
+	providerID := review.ProviderID
+	if providerID == "" {
+		providerID = "opencode-go"
+	}
+	modelID := review.ModelID
+	if modelID == "" {
+		modelID = "minimax-m3"
+	}
+	timeoutSec := review.TimeoutSec
+	if timeoutSec == 0 {
+		timeoutSec = 3600
+	}
+
 	return SubmitTaskRequest{
 		Prompt:     prompt,
 		GitURL:     review.HeadCloneURL,
 		GitRef:     review.HeadRef,
 		AgentImage: defaultReviewAgentImage,
-		Agent:      "pr-reviewer",
-		ProviderID: "opencode-go",
-		ModelID:    "minimax-m3",
+		Agent:      agent,
+		ProviderID: providerID,
+		ModelID:    modelID,
 		Env:        env,
-		TimeoutSec: 3600,
+		TimeoutSec: timeoutSec,
 	}
 }
 

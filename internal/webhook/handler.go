@@ -32,6 +32,10 @@ type ReviewContext struct {
 	HeadCloneURL  string
 	CommentAuthor string // only set for comment triggers
 	GitHubToken   string // installation token for the review agent
+	Agent         string // reviewer agent name (from HandlerConfig)
+	ProviderID    string // reviewer provider ID (from HandlerConfig)
+	ModelID       string // reviewer model ID (from HandlerConfig)
+	TimeoutSec    int    // reviewer task timeout (from HandlerConfig)
 }
 
 // Handler serves GitHub webhook events. Implements http.Handler.
@@ -339,6 +343,10 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		return
 	}
 	ctx.GitHubToken = token
+	ctx.Agent = h.cfg.ReviewerAgent
+	ctx.ProviderID = h.cfg.ReviewerProviderID
+	ctx.ModelID = h.cfg.ReviewerModelID
+	ctx.TimeoutSec = h.cfg.ReviewerTimeoutSec
 
 	if err := h.submitter.SubmitReviewTask(context.Background(), ctx); err != nil {
 		slog.Error("webhook: submit review task", "err", err,
