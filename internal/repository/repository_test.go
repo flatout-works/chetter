@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -744,5 +745,159 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 	}
 	if len(teamATasks) != 2 {
 		t.Errorf("expected 2 tasks for team-a, got %d", len(teamATasks))
+	}
+}
+
+func TestListTeamsAndDeleteTeam(t *testing.T) {
+	q, cleanup := newRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t1", Name: "alpha", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateTeam(alpha): %v", err)
+	}
+	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t2", Name: "beta", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateTeam(beta): %v", err)
+	}
+
+	teams, err := q.ListTeams(ctx)
+	if err != nil {
+		t.Fatalf("ListTeams: %v", err)
+	}
+	if len(teams) != 2 {
+		t.Fatalf("expected 2 teams, got %d", len(teams))
+	}
+	if teams[0].Name != "alpha" || teams[1].Name != "beta" {
+		t.Errorf("ListTeams order: %+v", teams)
+	}
+
+	if err := q.DeleteTeam(ctx, "alpha"); err != nil {
+		t.Fatalf("DeleteTeam(alpha): %v", err)
+	}
+	teams, _ = q.ListTeams(ctx)
+	if len(teams) != 1 || teams[0].Name != "beta" {
+		t.Errorf("expected 1 team (beta) after delete, got %+v", teams)
+	}
+}
+
+func TestListUsersAndCascadeDelete(t *testing.T) {
+	q, cleanup := newRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t1", Name: "eng", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t2", Name: "ops", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if err := q.CreateUser(ctx, CreateUserParams{ID: "u1", Name: "alice", TeamID: "t1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateUser(alice): %v", err)
+	}
+	if err := q.CreateUser(ctx, CreateUserParams{ID: "u2", Name: "bob", TeamID: "t1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateUser(bob): %v", err)
+	}
+	if err := q.CreateUser(ctx, CreateUserParams{ID: "u3", Name: "carol", TeamID: "t2", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateUser(carol): %v", err)
+	}
+	if err := q.CreateToken(ctx, CreateTokenParams{ID: "tok1", Name: "alice-cli", TokenHash: "h1", UserID: "u1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+
+	allUsers, err := q.ListUsers(ctx)
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	if len(allUsers) != 3 {
+		t.Fatalf("expected 3 users, got %d", len(allUsers))
+	}
+
+	engUsers, err := q.ListUsersByTeam(ctx, "t1")
+	if err != nil {
+		t.Fatalf("ListUsersByTeam: %v", err)
+	}
+	if len(engUsers) != 2 {
+		t.Fatalf("expected 2 eng users, got %d", len(engUsers))
+	}
+	if engUsers[0].Name != "alice" || engUsers[1].Name != "bob" {
+		t.Errorf("ListUsersByTeam = %+v", engUsers)
+	}
+
+	if err := q.DeleteTokensByTeam(ctx, "t1"); err != nil {
+		t.Fatalf("DeleteTokensByTeam: %v", err)
+	}
+	tokens, _ := q.ListTokens(ctx)
+	if len(tokens) != 0 {
+		t.Errorf("expected 0 tokens after DeleteTokensByTeam, got %d", len(tokens))
+	}
+
+	if err := q.DeleteUsersByTeam(ctx, "t1"); err != nil {
+		t.Fatalf("DeleteUsersByTeam: %v", err)
+	}
+	allUsers, _ = q.ListUsers(ctx)
+	if len(allUsers) != 1 || allUsers[0].Name != "carol" {
+		t.Errorf("expected 1 user (carol) after DeleteUsersByTeam, got %+v", allUsers)
+	}
+}
+
+func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
+	q, cleanup := newRepo(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	nullJSON := json.RawMessage("null")
+
+	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t1", Name: "eng", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+		ID: "s1", Name: "daily", CronExpr: "0 9 * * *",
+		Prompt: "daily report", TeamID: sql.NullString{String: "t1", Valid: true},
+		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+		ID: "s2", Name: "weekly", CronExpr: "0 9 * * 1",
+		Prompt: "weekly report", TeamID: sql.NullString{String: "t1", Valid: true},
+		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	for i, sid := range []string{"s1", "s1", "s2"} {
+		rid := fmt.Sprintf("run-%d", i)
+		if err := q.InsertScheduleRun(ctx, InsertScheduleRunParams{
+			ID: rid, ScheduleID: sid, TeamID: sql.NullString{String: "t1", Valid: true},
+			TaskID: "task-" + rid, Status: "submitted",
+			ScheduledFor: now, CreatedAt: now,
+		}); err != nil {
+			t.Fatalf("InsertScheduleRun(%s): %v", rid, err)
+		}
+	}
+
+	teamRuns, err := q.ListScheduleRunsByTeam(ctx, ListScheduleRunsByTeamParams{
+		TeamID: sql.NullString{String: "t1", Valid: true}, Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduleRunsByTeam: %v", err)
+	}
+	if len(teamRuns) != 3 {
+		t.Fatalf("expected 3 schedule runs for team t1, got %d", len(teamRuns))
+	}
+
+	schedRuns, err := q.ListScheduleRunsBySchedule(ctx, ListScheduleRunsByScheduleParams{
+		ScheduleID: "s1", Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("ListScheduleRunsBySchedule: %v", err)
+	}
+	if len(schedRuns) != 2 {
+		t.Fatalf("expected 2 runs for schedule s1, got %d", len(schedRuns))
+	}
+	if schedRuns[0].ScheduleName != "daily" || schedRuns[1].ScheduleName != "daily" {
+		t.Errorf("ListScheduleRunsBySchedule names: %+v", schedRuns)
 	}
 }
