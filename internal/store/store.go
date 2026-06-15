@@ -21,6 +21,7 @@ const (
 	maxOpenConns          = 10
 	maxIdleConns          = 5
 	connMaxLifetime       = 30 * time.Minute
+	connMaxIdleTime       = 5 * time.Minute
 	maxListTasksLimit     = 100
 	defaultListTasksLimit = 20
 )
@@ -129,6 +130,7 @@ func Open(dsn string) (*Store, error) {
 	db.SetMaxOpenConns(maxOpenConns)
 	db.SetMaxIdleConns(maxIdleConns)
 	db.SetConnMaxLifetime(connMaxLifetime)
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 	return &Store{db: db}, nil
 }
 
