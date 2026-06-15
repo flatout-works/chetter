@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 )
 
 // Config holds all runtime settings for the chetter MCP service.
@@ -103,18 +102,4 @@ func envInt64(key string, fallback int64) int64 {
 	return parsed
 }
 
-func envList(key string) []string {
-	value := os.Getenv(key)
-	if value == "" {
-		return nil
-	}
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+

@@ -37,36 +37,16 @@ func TestHostFromDriverDSN(t *testing.T) {
 	}
 }
 
-func TestNullableTime(t *testing.T) {
-	t.Run("zero time", func(t *testing.T) {
-		got := nullableTime(time.Time{})
-		if got != nil {
-			t.Errorf("expected nil for zero time, got %v", got)
-		}
-	})
-	t.Run("non-zero time", func(t *testing.T) {
-		now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.FixedZone("EST", -5*3600))
-		got := nullableTime(now)
-		utc, ok := got.(time.Time)
-		if !ok {
-			t.Fatalf("expected time.Time, got %T", got)
-		}
-		if utc.Location() != time.UTC {
-			t.Errorf("expected UTC, got %v", utc.Location())
-		}
-	})
-}
-
 func TestNullTimePtr(t *testing.T) {
 	t.Run("invalid nulltime", func(t *testing.T) {
-		got := nullTimePtr(sql.NullTime{Valid: false})
+		got := NullTimePtr(sql.NullTime{Valid: false})
 		if got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 	t.Run("valid nulltime", func(t *testing.T) {
 		now := time.Date(2025, 6, 1, 0, 0, 0, 0, time.FixedZone("PST", -8*3600))
-		got := nullTimePtr(sql.NullTime{Time: now, Valid: true})
+		got := NullTimePtr(sql.NullTime{Time: now, Valid: true})
 		if got == nil {
 			t.Fatal("expected non-nil, got nil")
 		}
@@ -75,7 +55,7 @@ func TestNullTimePtr(t *testing.T) {
 		}
 	})
 	t.Run("zero valid time", func(t *testing.T) {
-		got := nullTimePtr(sql.NullTime{Time: time.Time{}, Valid: true})
+		got := NullTimePtr(sql.NullTime{Time: time.Time{}, Valid: true})
 		if got == nil {
 			t.Fatal("expected non-nil for valid zero time, got nil")
 		}

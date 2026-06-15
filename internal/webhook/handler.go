@@ -359,7 +359,7 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 	}
 	ctx.GitHubToken = token
 
-	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(context.Background(), ctx.Repo)
+	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), ctx.Repo)
 	if err != nil {
 		slog.Error("webhook: list pr review triggers", "err", err, "repo", ctx.Repo)
 		h.postCommentOnFailure(ctx, CommentReviewFailed)
@@ -394,7 +394,7 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		rc.ModelID = t.ModelID
 		rc.VariantID = t.VariantID
 		rc.TimeoutSec = t.TimeoutSec
-		if err := h.submitter.SubmitReviewTask(context.Background(), rc); err != nil {
+		if err := h.submitter.SubmitReviewTask(asyncCtx(30*time.Second), rc); err != nil {
 			slog.Error("webhook: submit review task", "err", err,
 				"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
 			h.postCommentOnFailure(rc, CommentReviewFailed)
@@ -411,4 +411,9 @@ func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {
 	if err := h.gh.CreateIssueComment(c, ctx.Repo, ctx.PRNumber, body); err != nil {
 		slog.Warn("webhook: post failure comment", "err", err)
 	}
+}
+
+func asyncCtx(d time.Duration) context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), d)
+	return ctx
 }

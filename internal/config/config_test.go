@@ -134,36 +134,6 @@ func TestEnvInt64(t *testing.T) {
 	})
 }
 
-func TestEnvList(t *testing.T) {
-	t.Run("single value", func(t *testing.T) {
-		t.Setenv("TEST_LIST_KEY", "a")
-		got := envList("TEST_LIST_KEY")
-		if len(got) != 1 || got[0] != "a" {
-			t.Errorf("expected [a], got %v", got)
-		}
-	})
-	t.Run("multiple values", func(t *testing.T) {
-		t.Setenv("TEST_LIST_KEY2", "a,b,c")
-		got := envList("TEST_LIST_KEY2")
-		if len(got) != 3 || got[0] != "a" || got[2] != "c" {
-			t.Errorf("expected [a b c], got %v", got)
-		}
-	})
-	t.Run("trims spaces", func(t *testing.T) {
-		t.Setenv("TEST_LIST_KEY3", " a , b ")
-		got := envList("TEST_LIST_KEY3")
-		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
-			t.Errorf("expected [a b], got %v", got)
-		}
-	})
-	t.Run("not set returns nil", func(t *testing.T) {
-		got := envList("TEST_LIST_MISSING_XYZ")
-		if got != nil {
-			t.Errorf("expected nil, got %v", got)
-		}
-	})
-}
-
 func TestLoad(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		cfg := Load()
