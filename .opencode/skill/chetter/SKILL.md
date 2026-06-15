@@ -32,7 +32,7 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 |---|---|
 | `chetter_runner_health` | Runner fleet health, running/stale tasks, image versions, and latest task event age |
 | `chetter_list_tasks` | List recent tasks, optional status filter |
-| `chetter_list_schedules` | List cron task schedules |
+| `chetter_list_triggers` | List triggers (cron schedules and PR review configs) |
 
 ### Task Lifecycle
 | Tool | Purpose |
@@ -52,13 +52,14 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_list_tokens` | List all API tokens with user and team info (admin only) |
 | `chetter_delete_token` | Delete an API token by name (admin only) |
 
-### Schedules
+### Triggers
 | Tool | Purpose |
 |---|---|
-| `chetter_schedule_task` | Create/activate a cron schedule |
-| `chetter_update_schedule` | Update a schedule by name |
-| `chetter_run_schedule` | Run a schedule immediately |
-| `chetter_delete_schedule` | Delete a schedule by name |
+| `chetter_create_trigger` | Create a trigger (cron schedule or PR review) |
+| `chetter_update_trigger` | Update a trigger by name |
+| `chetter_list_triggers` | List triggers, optionally by type |
+| `chetter_delete_trigger` | Delete a trigger by name |
+| `chetter_run_trigger` | Run a cron trigger immediately |
 
 ### Arcane (Vulnerability Scanning, Optional)
 | Tool | Purpose |
@@ -95,35 +96,46 @@ Show the latest event for task task_<id>
 ### Diagnose Stale Tasks
 A running task is stale in fleet health when `last_event_sec > 600`. Check its events and progress to understand what step it is stuck on. Consider canceling and resubmitting.
 
-### Manage Schedules
-Schedules can be kept as YAML files in your repo for reviewability. Chetter does not read local YAML files directly; use the schedule tools to create or update each schedule.
+### Manage Triggers
+Triggers (cron schedules and PR review configs) can be kept as YAML files in your repo for reviewability. Chetter does not read local YAML files directly; use the trigger tools to create or update each trigger.
 
 ```
-Use chetter_schedule_task to create a schedule from schedules/nightly-changelog-update.yaml
+Use chetter_create_trigger with trigger_type=cron to create a schedule from schedules/nightly-changelog-update.yaml
 ```
 
-## Working with Schedules
+## Working with Triggers
 
-### Adding a New Schedule
+### Adding a New Cron Trigger
 
 1. Copy an existing sample from `schedules/` as a starting point.
 2. Edit it with your repo details and prompt.
 3. Create it in Chetter:
    ```
-   Use chetter_schedule_task with the fields from schedules/nightly-changelog-update.yaml
+   Use chetter_create_trigger with trigger_type=cron and the fields from schedules/nightly-changelog-update.yaml
    ```
 
-### Customizing a Schedule
+### Adding a New PR Review Trigger
 
-Each schedule YAML supports these fields:
+PR review triggers watch a GitHub repository for new pull requests:
+
+```
+Use chetter_create_trigger to create a pr_review trigger for flatout-works/chetter
+with agent=pr-reviewer, model=opencode-go/minimax-m3, and prompt "You are performing a deep code review..."
+```
+
+### Customizing a Trigger
+
+Each trigger supports these fields:
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | yes | Unique schedule name (slug) |
-| `enabled` | no | `true` to activate, `false` to pause (default false) |
-| `cron_expr` | yes | Five-field cron or `@hourly`, `@daily` |
-| `prompt` | yes | Task prompt run on each cron fire |
-| `git_url` | yes | Repository URL to clone |
+| `name` | yes | Unique trigger name (slug) |
+| `trigger_type` | yes | `cron` or `pr_review` |
+| `enabled` | no | `true` to activate, `false` to pause (default `true`) |
+| `cron_expr` | for `cron` | Five-field cron or `@hourly`, `@daily` |
+| `repo` | for `pr_review` | Repository to watch (e.g. `flatout-works/chetter`) |
+| `prompt` | yes | Task prompt run on each trigger fire |
+| `git_url` | no | Repository URL to clone |
 | `git_ref` | no | Branch/tag/commit (default main) |
 | `agent_image` | no | Runner image override |
 | `agent` | no | OpenCode agent to use |
@@ -133,43 +145,43 @@ Each schedule YAML supports these fields:
 | `skills` | no | List of skill names to load |
 | `timeout_sec` | no | Task timeout in seconds |
 
-### Tweaking an Existing Schedule
+### Tweaking an Existing Trigger
 
-To change a schedule's cron expression, prompt, model, or other fields:
+To change a trigger's cron expression, prompt, model, or other fields:
 
 1. Edit the `schedules/*.yaml` file directly.
 2. Update Chetter with the changed fields:
    ```
-   Use chetter_update_schedule to change nightly-changelog-update's model to opencode/minimax-m3
+   Use chetter_update_trigger to change nightly-changelog-update's model to opencode/minimax-m3
    ```
 
-### Pausing a Schedule
+### Pausing a Trigger
 Set `enabled: false` in the YAML and sync, or:
 ```
-Use chetter_update_schedule to disable nightly-issue-fixer
+Use chetter_update_trigger to disable nightly-issue-fixer
 ```
 
-### Running a Schedule Manually
+### Running a Cron Trigger Manually
 ```
-Use chetter_run_schedule to run the nightly-changelog-update schedule now
+Use chetter_run_trigger to run the nightly-changelog-update trigger now
 ```
 
-### Deleting a Schedule
+### Deleting a Trigger
 ```
-Use chetter_delete_schedule to delete nightly-docs-update
+Use chetter_delete_trigger to delete nightly-docs-update
 ```
-Remove the corresponding YAML file from your repo if it is no longer part of your desired schedule set.
+Remove the corresponding YAML file from your repo if it is no longer part of your desired trigger set.
 
-### Keeping Schedules in Your Repo
+### Keeping Triggers in Your Repo
 
-The recommended pattern is to store schedule YAMLs in your own repo (not in chetter's `schedules/` directory). When you set up your project:
+The recommended pattern is to store trigger YAMLs in your own repo (not in chetter's `schedules/` directory). When you set up your project:
 
 1. Create a `schedules/` directory in your project repo.
 2. Copy the samples from chetter's `schedules/` as starting points.
 3. Customize for your project (repo URL, agent image, prompt details).
-4. Apply each schedule with `chetter_schedule_task` or `chetter_update_schedule`.
+4. Apply each trigger with `chetter_create_trigger`, or update with `chetter_update_trigger`.
 
-This way your schedules are version-controlled alongside your code and can be reviewed in PRs.
+This way your triggers are version-controlled alongside your code and can be reviewed in PRs.
 
 ## Safety Rules
 

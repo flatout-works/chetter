@@ -124,7 +124,6 @@ If both are set, five `chetter_arcane_*` MCP tools are registered.
 | `GITHUB_APP_PRIVATE_KEY_B64` | Yes* | Base64-encoded PEM private key |
 | `GITHUB_WEBHOOK_SECRET` | Yes* | HMAC-SHA256 secret for webhook signature verification |
 | `GITHUB_WEBHOOK_DISABLED` | No | `true` to disable the webhook (kill switch) |
-| `GITHUB_REVIEW_ALLOWED_REPOS` | No | Comma-separated repo allowlist. Empty = all repos allowed |
 
 \* Only required if you want PR review automation via GitHub webhook. See [docs/REVIEWS.md](REVIEWS.md) for full setup.
 

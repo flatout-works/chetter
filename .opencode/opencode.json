@@ -3,7 +3,7 @@
   "command": {
     "chetter-status": {
       "description": "Show chetter runner health, running/pending tasks, and schedules.",
-      "template": "Use the chetter MCP tools to produce a concise chetter operations status report. Call chetter_runner_health with include_tasks=true, chetter_list_tasks for status=running with limit=20, chetter_list_tasks for status=pending with limit=20, and chetter_list_schedules with enabled_only=false. Summarize fleet activity, runner image versions, running/stale/pending task counts, each active task, and all schedules. If an MCP call fails, include the exact error and continue. Do not edit files."
+      "template": "Use the chetter MCP tools to produce a concise chetter operations status report. Call chetter_runner_health with include_tasks=true, chetter_list_tasks for status=running with limit=20, chetter_list_tasks for status=pending with limit=20, and chetter_list_triggers. Summarize fleet activity, runner image versions, running/stale/pending task counts, each active task, and all triggers. If an MCP call fails, include the exact error and continue. Do not edit files."
     },
     "chetter-tasks": {
       "description": "List recent Chetter tasks with status summary.",
@@ -13,9 +13,9 @@
       "description": "Submit a new task to the Chetter runner fleet.",
       "template": "Ask the user for the task prompt, then submit via chetter_submit_task. Ask for git_url if not obvious, default git_ref to main. Suggest agent_image if known. Let the user optionally specify agent, provider_id, model_id, and timeout_sec. Return the task ID."
     },
-    "chetter-schedules": {
-      "description": "List Chetter cron task schedules.",
-      "template": "Run chetter_list_schedules to list all cron task schedules. Compare enabled vs disabled counts and show the name, cron expression, and prompt summary for each schedule. Keep output concise."
+    "chetter-triggers": {
+      "description": "List Chetter triggers (cron schedules and PR review webhooks).",
+      "template": "Run chetter_list_triggers to list all triggers. Compare enabled vs disabled counts and show the name, trigger_type, and prompt summary for each trigger. Keep output concise."
     },
     "chetter-cancel": {
       "description": "Cancel a pending or running Chetter task.",
