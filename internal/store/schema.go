@@ -97,6 +97,7 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS chetter_schedule_runs (
 		id VARCHAR(64) NOT NULL,
 		schedule_id VARCHAR(64) NOT NULL,
+		team_id VARCHAR(64) NULL,
 		task_id VARCHAR(64) NOT NULL,
 		status VARCHAR(32) NOT NULL,
 		scheduled_for DATETIME(6) NOT NULL,

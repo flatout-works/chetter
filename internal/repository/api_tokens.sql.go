@@ -82,6 +82,16 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const deleteTeam = `-- name: DeleteTeam :exec
+DELETE FROM teams
+WHERE name = ?
+`
+
+func (q *Queries) DeleteTeam(ctx context.Context, name string) error {
+	_, err := q.db.ExecContext(ctx, deleteTeam, name)
+	return err
+}
+
 const deleteToken = `-- name: DeleteToken :exec
 DELETE FROM api_tokens
 WHERE name = ?
@@ -89,6 +99,26 @@ WHERE name = ?
 
 func (q *Queries) DeleteToken(ctx context.Context, name string) error {
 	_, err := q.db.ExecContext(ctx, deleteToken, name)
+	return err
+}
+
+const deleteTokensByTeam = `-- name: DeleteTokensByTeam :exec
+DELETE FROM api_tokens
+WHERE user_id IN (SELECT id FROM users WHERE team_id = ?)
+`
+
+func (q *Queries) DeleteTokensByTeam(ctx context.Context, teamID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTokensByTeam, teamID)
+	return err
+}
+
+const deleteUsersByTeam = `-- name: DeleteUsersByTeam :exec
+DELETE FROM users
+WHERE team_id = ?
+`
+
+func (q *Queries) DeleteUsersByTeam(ctx context.Context, teamID string) error {
+	_, err := q.db.ExecContext(ctx, deleteUsersByTeam, teamID)
 	return err
 }
 
@@ -182,6 +212,39 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	return i, err
 }
 
+const listTeams = `-- name: ListTeams :many
+SELECT id, name, created_at, updated_at FROM teams
+ORDER BY name ASC
+`
+
+func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
+	rows, err := q.db.QueryContext(ctx, listTeams)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Team{}
+	for rows.Next() {
+		var i Team
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTokens = `-- name: ListTokens :many
 SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name
@@ -222,6 +285,99 @@ func (q *Queries) ListTokens(ctx context.Context) ([]ListTokensRow, error) {
 			&i.UserName,
 			&i.TeamID,
 			&i.TeamName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT u.id, u.name, u.team_id, tm.name AS team_name, u.created_at, u.updated_at
+FROM users u
+JOIN teams tm ON tm.id = u.team_id
+ORDER BY u.name ASC
+`
+
+type ListUsersRow struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	TeamID    string    `json:"team_id"`
+	TeamName  string    `json:"team_name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersRow{}
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TeamID,
+			&i.TeamName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersByTeam = `-- name: ListUsersByTeam :many
+SELECT u.id, u.name, u.team_id, tm.name AS team_name, u.created_at, u.updated_at
+FROM users u
+JOIN teams tm ON tm.id = u.team_id
+WHERE u.team_id = ?
+ORDER BY u.name ASC
+`
+
+type ListUsersByTeamRow struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	TeamID    string    `json:"team_id"`
+	TeamName  string    `json:"team_name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ListUsersByTeam(ctx context.Context, teamID string) ([]ListUsersByTeamRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUsersByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersByTeamRow{}
+	for rows.Next() {
+		var i ListUsersByTeamRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TeamID,
+			&i.TeamName,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -183,6 +183,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureScheduleRunTeamIDColumn(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -300,6 +303,21 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_schedules.%s: %w", column.name, err)
 		}
+	}
+	return nil
+}
+
+func (s *Store) ensureScheduleRunTeamIDColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "chetter_schedule_runs", "team_id")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_schedule_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER schedule_id")
+	if err != nil {
+		return fmt.Errorf("add chetter_schedule_runs.team_id: %w", err)
 	}
 	return nil
 }

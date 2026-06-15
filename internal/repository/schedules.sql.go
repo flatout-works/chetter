@@ -142,23 +142,25 @@ func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSc
 }
 
 const insertScheduleRun = `-- name: InsertScheduleRun :exec
-INSERT INTO chetter_schedule_runs (id, schedule_id, task_id, status, scheduled_for, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_schedule_runs (id, schedule_id, team_id, task_id, status, scheduled_for, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertScheduleRunParams struct {
-	ID           string    `json:"id"`
-	ScheduleID   string    `json:"schedule_id"`
-	TaskID       string    `json:"task_id"`
-	Status       string    `json:"status"`
-	ScheduledFor time.Time `json:"scheduled_for"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string         `json:"id"`
+	ScheduleID   string         `json:"schedule_id"`
+	TeamID       sql.NullString `json:"team_id"`
+	TaskID       string         `json:"task_id"`
+	Status       string         `json:"status"`
+	ScheduledFor time.Time      `json:"scheduled_for"`
+	CreatedAt    time.Time      `json:"created_at"`
 }
 
 func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunParams) error {
 	_, err := q.db.ExecContext(ctx, insertScheduleRun,
 		arg.ID,
 		arg.ScheduleID,
+		arg.TeamID,
 		arg.TaskID,
 		arg.Status,
 		arg.ScheduledFor,
@@ -361,6 +363,116 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScheduleRunsBySchedule = `-- name: ListScheduleRunsBySchedule :many
+SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
+FROM chetter_schedule_runs sr
+JOIN chetter_schedules s ON s.id = sr.schedule_id
+WHERE sr.schedule_id = ?
+ORDER BY sr.created_at DESC
+LIMIT ?
+`
+
+type ListScheduleRunsByScheduleParams struct {
+	ScheduleID string `json:"schedule_id"`
+	Limit      int32  `json:"limit"`
+}
+
+type ListScheduleRunsByScheduleRow struct {
+	ID           string    `json:"id"`
+	ScheduleID   string    `json:"schedule_id"`
+	ScheduleName string    `json:"schedule_name"`
+	TaskID       string    `json:"task_id"`
+	Status       string    `json:"status"`
+	ScheduledFor time.Time `json:"scheduled_for"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListScheduleRunsBySchedule(ctx context.Context, arg ListScheduleRunsByScheduleParams) ([]ListScheduleRunsByScheduleRow, error) {
+	rows, err := q.db.QueryContext(ctx, listScheduleRunsBySchedule, arg.ScheduleID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListScheduleRunsByScheduleRow{}
+	for rows.Next() {
+		var i ListScheduleRunsByScheduleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScheduleID,
+			&i.ScheduleName,
+			&i.TaskID,
+			&i.Status,
+			&i.ScheduledFor,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScheduleRunsByTeam = `-- name: ListScheduleRunsByTeam :many
+SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
+FROM chetter_schedule_runs sr
+JOIN chetter_schedules s ON s.id = sr.schedule_id
+WHERE s.team_id = ?
+ORDER BY sr.created_at DESC
+LIMIT ?
+`
+
+type ListScheduleRunsByTeamParams struct {
+	TeamID sql.NullString `json:"team_id"`
+	Limit  int32          `json:"limit"`
+}
+
+type ListScheduleRunsByTeamRow struct {
+	ID           string    `json:"id"`
+	ScheduleID   string    `json:"schedule_id"`
+	ScheduleName string    `json:"schedule_name"`
+	TaskID       string    `json:"task_id"`
+	Status       string    `json:"status"`
+	ScheduledFor time.Time `json:"scheduled_for"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListScheduleRunsByTeam(ctx context.Context, arg ListScheduleRunsByTeamParams) ([]ListScheduleRunsByTeamRow, error) {
+	rows, err := q.db.QueryContext(ctx, listScheduleRunsByTeam, arg.TeamID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListScheduleRunsByTeamRow{}
+	for rows.Next() {
+		var i ListScheduleRunsByTeamRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScheduleID,
+			&i.ScheduleName,
+			&i.TaskID,
+			&i.Status,
+			&i.ScheduledFor,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -63,12 +63,13 @@ type ChetterSchedule struct {
 }
 
 type ChetterScheduleRun struct {
-	ID           string    `json:"id"`
-	ScheduleID   string    `json:"schedule_id"`
-	TaskID       string    `json:"task_id"`
-	Status       string    `json:"status"`
-	ScheduledFor time.Time `json:"scheduled_for"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string         `json:"id"`
+	ScheduleID   string         `json:"schedule_id"`
+	TaskID       string         `json:"task_id"`
+	Status       string         `json:"status"`
+	ScheduledFor time.Time      `json:"scheduled_for"`
+	CreatedAt    time.Time      `json:"created_at"`
+	TeamID       sql.NullString `json:"team_id"`
 }
 
 type ChetterTask struct {

@@ -38,6 +38,35 @@ JOIN users u ON u.id = t.user_id
 JOIN teams tm ON tm.id = u.team_id
 ORDER BY t.created_at DESC;
 
+-- name: ListTeams :many
+SELECT * FROM teams
+ORDER BY name ASC;
+
+-- name: DeleteTeam :exec
+DELETE FROM teams
+WHERE name = ?;
+
+-- name: ListUsers :many
+SELECT u.id, u.name, u.team_id, tm.name AS team_name, u.created_at, u.updated_at
+FROM users u
+JOIN teams tm ON tm.id = u.team_id
+ORDER BY u.name ASC;
+
+-- name: ListUsersByTeam :many
+SELECT u.id, u.name, u.team_id, tm.name AS team_name, u.created_at, u.updated_at
+FROM users u
+JOIN teams tm ON tm.id = u.team_id
+WHERE u.team_id = ?
+ORDER BY u.name ASC;
+
+-- name: DeleteUsersByTeam :exec
+DELETE FROM users
+WHERE team_id = ?;
+
+-- name: DeleteTokensByTeam :exec
+DELETE FROM api_tokens
+WHERE user_id IN (SELECT id FROM users WHERE team_id = ?);
+
 -- name: DeleteToken :exec
 DELETE FROM api_tokens
 WHERE name = ?;
