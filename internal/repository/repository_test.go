@@ -853,14 +853,18 @@ func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
 		t.Fatalf("CreateTeam: %v", err)
 	}
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s1", Name: "daily", CronExpr: "0 9 * * *",
+		ID: "s1", Name: "daily",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 9 * * *",
 		Prompt: "daily report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s2", Name: "weekly", CronExpr: "0 9 * * 1",
+		ID: "s2", Name: "weekly",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 9 * * 1",
 		Prompt: "weekly report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
