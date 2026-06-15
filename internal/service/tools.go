@@ -81,77 +81,82 @@ type TaskToolRecord struct {
 	EndedAt    *time.Time        `json:"ended_at,omitempty"`
 }
 
-// ScheduleTaskInput is the input for chetter_schedule_task.
-type ScheduleTaskInput struct {
-	Name       string   `json:"name" jsonschema:"Unique schedule name"`
-	CronExpr   string   `json:"cron_expr" jsonschema:"Five-field cron expression or descriptor like @hourly"`
-	Prompt     string   `json:"prompt" jsonschema:"Task prompt to submit on each cron fire"`
-	GitURL     string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
-	GitRef     string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
-	AgentImage string   `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
-	Agent      string   `json:"agent,omitempty" jsonschema:"OpenCode agent to use for each task"`
-	ProviderID string   `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
-	ModelID    string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
-	VariantID  string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
-	Skills     []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	TimeoutSec int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+// CreateTriggerInput is the input for chetter_create_trigger.
+type CreateTriggerInput struct {
+	Name        string   `json:"name" jsonschema:"Unique trigger name"`
+	TriggerType string   `json:"trigger_type" jsonschema:"Trigger type: cron or pr_review"`
+	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly (required for cron)"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (required for pr_review, e.g. flatout-works/chetter)"`
+	Prompt      string   `json:"prompt" jsonschema:"Task prompt to submit when the trigger fires"`
+	GitURL      string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
+	GitRef      string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	AgentImage  string   `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
+	Agent       string   `json:"agent,omitempty" jsonschema:"OpenCode agent to use"`
+	ProviderID  string   `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
+	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
+	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
+	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 }
 
-// ScheduleTaskOutput is the output for chetter_schedule_task.
-type ScheduleTaskOutput struct {
-	Schedule store.ScheduleRecord `json:"schedule"`
+// CreateTriggerOutput is the output for chetter_create_trigger.
+type CreateTriggerOutput struct {
+	Trigger store.ScheduleRecord `json:"trigger"`
 }
 
-// RunScheduleInput is the input for chetter_run_schedule.
-type RunScheduleInput struct {
-	Name string `json:"name" jsonschema:"Name of the schedule to run immediately"`
+// UpdateTriggerInput is the input for chetter_update_trigger.
+type UpdateTriggerInput struct {
+	Name        string   `json:"name" jsonschema:"Name of the trigger to update"`
+	TriggerType string   `json:"trigger_type,omitempty" jsonschema:"Trigger type: cron or pr_review"`
+	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (for pr_review)"`
+	Prompt      string   `json:"prompt,omitempty" jsonschema:"Task prompt to submit when the trigger fires"`
+	GitURL      string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
+	GitRef      string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	AgentImage  string   `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
+	Agent       string   `json:"agent,omitempty" jsonschema:"OpenCode agent to use"`
+	ProviderID  string   `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
+	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
+	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
+	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
+	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 }
 
-// RunScheduleOutput is the output for chetter_run_schedule.
-type RunScheduleOutput struct {
-	Task TaskToolRecord `json:"task"`
+// UpdateTriggerOutput is the output for chetter_update_trigger.
+type UpdateTriggerOutput struct {
+	Trigger store.ScheduleRecord `json:"trigger"`
 }
 
-// ListSchedulesInput is the input for chetter_list_schedules.
-type ListSchedulesInput struct {
-	EnabledOnly bool `json:"enabled_only,omitempty" jsonschema:"Only return enabled schedules"`
+// ListTriggersInput is the input for chetter_list_triggers.
+type ListTriggersInput struct {
+	EnabledOnly bool   `json:"enabled_only,omitempty" jsonschema:"Only return enabled triggers"`
+	TriggerType string `json:"trigger_type,omitempty" jsonschema:"Filter by trigger type (cron, pr_review)"`
 }
 
-// ListSchedulesOutput is the output for chetter_list_schedules.
-type ListSchedulesOutput struct {
-	Schedules []store.ScheduleRecord `json:"schedules"`
+// ListTriggersOutput is the output for chetter_list_triggers.
+type ListTriggersOutput struct {
+	Triggers []store.ScheduleRecord `json:"triggers"`
 }
 
-// DeleteScheduleInput is the input for chetter_delete_schedule.
-type DeleteScheduleInput struct {
-	Name string `json:"name" jsonschema:"Name of the schedule to delete"`
+// DeleteTriggerInput is the input for chetter_delete_trigger.
+type DeleteTriggerInput struct {
+	Name string `json:"name" jsonschema:"Name of the trigger to delete"`
 }
 
-// DeleteScheduleOutput is the output for chetter_delete_schedule.
-type DeleteScheduleOutput struct {
+// DeleteTriggerOutput is the output for chetter_delete_trigger.
+type DeleteTriggerOutput struct {
 	Deleted bool `json:"deleted"`
 }
 
-// UpdateScheduleInput is the input for chetter_update_schedule.
-type UpdateScheduleInput struct {
-	Name       string   `json:"name" jsonschema:"Name of the schedule to update"`
-	CronExpr   string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly"`
-	Prompt     string   `json:"prompt,omitempty" jsonschema:"Task prompt to submit on each cron fire"`
-	GitURL     string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
-	GitRef     string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
-	AgentImage string   `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
-	Agent      string   `json:"agent,omitempty" jsonschema:"OpenCode agent to use for each task"`
-	ProviderID string   `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
-	ModelID    string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
-	VariantID  string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
-	Skills     []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	Enabled    *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the schedule"`
-	TimeoutSec int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+// RunTriggerInput is the input for chetter_run_trigger.
+type RunTriggerInput struct {
+	Name string `json:"name" jsonschema:"Name of the cron trigger to run immediately"`
 }
 
-// UpdateScheduleOutput is the output for chetter_update_schedule.
-type UpdateScheduleOutput struct {
-	Schedule store.ScheduleRecord `json:"schedule"`
+// RunTriggerOutput is the output for chetter_run_trigger.
+type RunTriggerOutput struct {
+	Task TaskToolRecord `json:"task"`
 }
 
 // TaskEventsInput is the input for chetter_task_events.
@@ -284,11 +289,11 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_status", Description: "Get current status and result details for a chetter task."}, svc.taskStatusTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tasks", Description: "List recent chetter tasks, optionally filtered by status."}, svc.listTasksTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_schedule_task", Description: "Create and activate a cron schedule that submits chetter tasks."}, svc.scheduleTaskTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_run_schedule", Description: "Run a chetter cron task schedule immediately by name."}, svc.runScheduleTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedules", Description: "List chetter cron task schedules."}, svc.listSchedulesTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_schedule", Description: "Delete a chetter cron task schedule by name."}, svc.deleteScheduleTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_schedule", Description: "Update a chetter cron task schedule by name. Only provided fields are changed."}, svc.updateScheduleTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron schedule or PR review webhook)."}, svc.createTriggerTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_trigger", Description: "Update a trigger by name. Only provided fields are changed."}, svc.updateTriggerTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_triggers", Description: "List triggers, optionally filtered by type and enabled status."}, svc.listTriggersTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_trigger", Description: "Delete a trigger by name."}, svc.deleteTriggerTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_run_trigger", Description: "Run a cron trigger immediately by name."}, svc.runTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_events", Description: "Get the full event history for a chetter task."}, svc.taskEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_progress", Description: "Get a distilled progress timeline for a chetter task."}, svc.taskProgressTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
@@ -421,36 +426,56 @@ func nullTimePtr(nt sql.NullTime) *time.Time {
 	return nil
 }
 
-func (s *Service) scheduleTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in ScheduleTaskInput) (*mcp.CallToolResult, ScheduleTaskOutput, error) {
-	schedule, err := s.CreateSchedule(ctx, store.ScheduleInput{
-		Name:       in.Name,
-		CronExpr:   in.CronExpr,
-		Prompt:     in.Prompt,
-		GitURL:     in.GitURL,
-		GitRef:     in.GitRef,
-		AgentImage: in.AgentImage,
-		Agent:      in.Agent,
-		ProviderID: in.ProviderID,
-		ModelID:    in.ModelID,
-		VariantID:  in.VariantID,
-		Skills:     in.Skills,
-		TimeoutSec: in.TimeoutSec,
+func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {
+	if in.TriggerType == "" {
+		return nil, CreateTriggerOutput{}, fmt.Errorf("trigger_type is required (cron or pr_review)")
+	}
+	triggerConfig := ""
+	if in.TriggerType == store.TriggerTypePRReview {
+		if in.Repo == "" {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("repo is required for pr_review triggers")
+		}
+		if in.Agent == "" {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for pr_review triggers")
+		}
+		cfg := store.PRReviewTriggerConfig{Repo: in.Repo}
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
+		}
+		triggerConfig = string(data)
+	}
+	trigger, err := s.CreateTrigger(ctx, store.ScheduleInput{
+		Name:          in.Name,
+		TriggerType:   in.TriggerType,
+		TriggerConfig: triggerConfig,
+		CronExpr:      in.CronExpr,
+		Prompt:        in.Prompt,
+		GitURL:        in.GitURL,
+		GitRef:        in.GitRef,
+		AgentImage:    in.AgentImage,
+		Agent:         in.Agent,
+		ProviderID:    in.ProviderID,
+		ModelID:       in.ModelID,
+		VariantID:     in.VariantID,
+		Skills:        in.Skills,
+		TimeoutSec:    in.TimeoutSec,
 	})
 	if err != nil {
-		return nil, ScheduleTaskOutput{}, fmt.Errorf("create schedule: %w", err)
+		return nil, CreateTriggerOutput{}, fmt.Errorf("create trigger: %w", err)
 	}
-	return nil, ScheduleTaskOutput{Schedule: schedule}, nil
+	return nil, CreateTriggerOutput{Trigger: trigger}, nil
 }
 
-func (s *Service) runScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, in RunScheduleInput) (*mcp.CallToolResult, RunScheduleOutput, error) {
-	task, err := s.RunScheduleNow(ctx, in.Name)
+func (s *Service) runTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in RunTriggerInput) (*mcp.CallToolResult, RunTriggerOutput, error) {
+	task, err := s.RunTriggerNow(ctx, in.Name)
 	if err != nil {
-		return nil, RunScheduleOutput{}, fmt.Errorf("run schedule: %w", err)
+		return nil, RunTriggerOutput{}, fmt.Errorf("run trigger: %w", err)
 	}
-	return nil, RunScheduleOutput{Task: taskToolRecord(task)}, nil
+	return nil, RunTriggerOutput{Task: taskToolRecord(task)}, nil
 }
 
-func (s *Service) listSchedulesTool(ctx context.Context, _ *mcp.CallToolRequest, in ListSchedulesInput) (*mcp.CallToolResult, ListSchedulesOutput, error) {
+func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTriggersInput) (*mcp.CallToolResult, ListTriggersOutput, error) {
 	scope, scoped := auth.GetScope(ctx)
 	var repoRecords []repository.ChetterSchedule
 	var err error
@@ -469,82 +494,107 @@ func (s *Service) listSchedulesTool(ctx context.Context, _ *mcp.CallToolRequest,
 		}
 	}
 	if err != nil {
-		return nil, ListSchedulesOutput{}, fmt.Errorf("list schedules: %w", err)
+		return nil, ListTriggersOutput{}, fmt.Errorf("list triggers: %w", err)
 	}
-	schedules := make([]store.ScheduleRecord, len(repoRecords))
+	// Apply type filter after team scoping so team isolation is always enforced.
+	if in.TriggerType != "" {
+		filtered := repoRecords[:0]
+		for _, r := range repoRecords {
+			if r.TriggerType == in.TriggerType {
+				filtered = append(filtered, r)
+			}
+		}
+		repoRecords = filtered
+	}
+	triggers := make([]store.ScheduleRecord, len(repoRecords))
 	for i, r := range repoRecords {
-		schedules[i] = scheduleToStoreRecord(r)
+		triggers[i] = scheduleToStoreRecord(r)
 	}
-	return nil, ListSchedulesOutput{Schedules: schedules}, nil
+	return nil, ListTriggersOutput{Triggers: triggers}, nil
 }
 
 func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
 	var skills []string
 	_ = json.Unmarshal(s.Skills, &skills)
 	return store.ScheduleRecord{
-		ID:         s.ID,
-		TeamID:     s.TeamID.String,
-		Name:       s.Name,
-		CronExpr:   s.CronExpr,
-		Prompt:     s.Prompt,
-		GitURL:     s.GitUrl.String,
-		GitRef:     s.GitRef.String,
-		AgentImage: s.AgentImage.String,
-		Agent:      s.Agent.String,
-		ProviderID: s.ProviderID.String,
-		ModelID:    s.ModelID.String,
-		VariantID:  s.VariantID.String,
-		Skills:     skills,
-		TimeoutSec: int(s.TimeoutSec),
-		Enabled:    s.Enabled,
-		CreatedAt:  s.CreatedAt,
-		UpdatedAt:  s.UpdatedAt,
-		LastRunAt:  nullTimePtr(s.LastRunAt),
-		NextRunAt:  nullTimePtr(s.NextRunAt),
+		ID:            s.ID,
+		TeamID:        s.TeamID.String,
+		Name:          s.Name,
+		TriggerType:   s.TriggerType,
+		TriggerConfig: string(s.TriggerConfig),
+		CronExpr:      s.CronExpr,
+		Prompt:        s.Prompt,
+		GitURL:        s.GitUrl.String,
+		GitRef:        s.GitRef.String,
+		AgentImage:    s.AgentImage.String,
+		Agent:         s.Agent.String,
+		ProviderID:    s.ProviderID.String,
+		ModelID:       s.ModelID.String,
+		VariantID:     s.VariantID.String,
+		Skills:        skills,
+		TimeoutSec:    int(s.TimeoutSec),
+		Enabled:       s.Enabled,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+		LastRunAt:     nullTimePtr(s.LastRunAt),
+		NextRunAt:     nullTimePtr(s.NextRunAt),
 	}
 }
 
-func (s *Service) deleteScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteScheduleInput) (*mcp.CallToolResult, DeleteScheduleOutput, error) {
+func (s *Service) deleteTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteTriggerInput) (*mcp.CallToolResult, DeleteTriggerOutput, error) {
 	if in.Name == "" {
-		return nil, DeleteScheduleOutput{}, fmt.Errorf("name is required")
+		return nil, DeleteTriggerOutput{}, fmt.Errorf("name is required")
 	}
-	if err := s.DeleteSchedule(ctx, in.Name); err != nil {
-		return nil, DeleteScheduleOutput{}, fmt.Errorf("delete schedule: %w", err)
+	if err := s.DeleteTrigger(ctx, in.Name); err != nil {
+		return nil, DeleteTriggerOutput{}, fmt.Errorf("delete trigger: %w", err)
 	}
-	return nil, DeleteScheduleOutput{Deleted: true}, nil
+	return nil, DeleteTriggerOutput{Deleted: true}, nil
 }
 
-func (s *Service) updateScheduleTool(ctx context.Context, _ *mcp.CallToolRequest, in UpdateScheduleInput) (*mcp.CallToolResult, UpdateScheduleOutput, error) {
+func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in UpdateTriggerInput) (*mcp.CallToolResult, UpdateTriggerOutput, error) {
 	if in.Name == "" {
-		return nil, UpdateScheduleOutput{}, fmt.Errorf("name is required")
+		return nil, UpdateTriggerOutput{}, fmt.Errorf("name is required")
 	}
 	existing, err := s.repo.GetScheduleByName(ctx, in.Name)
 	if err != nil {
-		return nil, UpdateScheduleOutput{}, fmt.Errorf("get schedule %q: %w", in.Name, err)
+		return nil, UpdateTriggerOutput{}, fmt.Errorf("get trigger %q: %w", in.Name, err)
 	}
 	enabled := existing.Enabled
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
+	triggerType := store.NonZero(in.TriggerType, existing.TriggerType)
+	triggerConfig := existing.TriggerConfig
+	if in.Repo != "" {
+		var cfg store.PRReviewTriggerConfig
+		if len(existing.TriggerConfig) > 0 {
+			_ = json.Unmarshal(existing.TriggerConfig, &cfg)
+		}
+		cfg.Repo = in.Repo
+		data, _ := json.Marshal(cfg)
+		triggerConfig = data
+	}
 	merged := store.ScheduleInput{
-		Name:       in.Name,
-		CronExpr:   store.NonZero(in.CronExpr, existing.CronExpr),
-		Prompt:     store.NonZero(in.Prompt, existing.Prompt),
-		GitURL:     store.NonZero(in.GitURL, existing.GitUrl.String),
-		GitRef:     store.NonZero(in.GitRef, existing.GitRef.String),
-		AgentImage: store.NonZero(in.AgentImage, existing.AgentImage.String),
-		Agent:      store.NonZero(in.Agent, existing.Agent.String),
-		ProviderID: store.NonZero(in.ProviderID, existing.ProviderID.String),
-		ModelID:    store.NonZero(in.ModelID, existing.ModelID.String),
-		VariantID:  store.NonZero(in.VariantID, existing.VariantID.String),
-		Skills:     store.NonNilSlice(in.Skills, scheduleSkillsToStrings(existing.Skills)),
-		TimeoutSec: store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
+		Name:          in.Name,
+		TriggerType:   triggerType,
+		TriggerConfig: string(triggerConfig),
+		CronExpr:      store.NonZero(in.CronExpr, existing.CronExpr),
+		Prompt:        store.NonZero(in.Prompt, existing.Prompt),
+		GitURL:        store.NonZero(in.GitURL, existing.GitUrl.String),
+		GitRef:        store.NonZero(in.GitRef, existing.GitRef.String),
+		AgentImage:    store.NonZero(in.AgentImage, existing.AgentImage.String),
+		Agent:         store.NonZero(in.Agent, existing.Agent.String),
+		ProviderID:    store.NonZero(in.ProviderID, existing.ProviderID.String),
+		ModelID:       store.NonZero(in.ModelID, existing.ModelID.String),
+		VariantID:     store.NonZero(in.VariantID, existing.VariantID.String),
+		Skills:        store.NonNilSlice(in.Skills, scheduleSkillsToStrings(existing.Skills)),
+		TimeoutSec:    store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
 	}
-	schedule, err := s.UpdateSchedule(ctx, in.Name, merged, enabled)
+	trigger, err := s.UpdateTrigger(ctx, in.Name, merged, enabled)
 	if err != nil {
-		return nil, UpdateScheduleOutput{}, fmt.Errorf("update schedule: %w", err)
+		return nil, UpdateTriggerOutput{}, fmt.Errorf("update trigger: %w", err)
 	}
-	return nil, UpdateScheduleOutput{Schedule: schedule}, nil
+	return nil, UpdateTriggerOutput{Trigger: trigger}, nil
 }
 
 func scheduleSkillsToStrings(skills json.RawMessage) []string {

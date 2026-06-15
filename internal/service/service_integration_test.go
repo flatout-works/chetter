@@ -196,15 +196,16 @@ func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
 	}
 	defer svc.Stop()
 
-	rec, err := svc.CreateSchedule(ctx, store.ScheduleInput{
-		Name:       "hourly-check",
-		CronExpr:   "@hourly",
-		Prompt:     "check the logs",
-		AgentImage: "runner:latest",
-		TimeoutSec: 300,
+	rec, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name:        "hourly-check",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "check the logs",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  300,
 	})
 	if err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 	if rec.Name != "hourly-check" {
 		t.Errorf("name: %s", rec.Name)
@@ -229,12 +230,13 @@ func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
 func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	_, err := svc.CreateSchedule(context.Background(), store.ScheduleInput{
-		Name:       "bad",
-		CronExpr:   "not a cron",
-		Prompt:     "x",
-		AgentImage: "runner:latest",
-		TimeoutSec: 60,
+	_, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+		Name:        "bad",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "not a cron",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  60,
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid cron")
@@ -244,11 +246,12 @@ func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
 func TestServiceCreateScheduleRequiresPrompt(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	_, err := svc.CreateSchedule(context.Background(), store.ScheduleInput{
-		Name:       "no-prompt",
-		CronExpr:   "@hourly",
-		AgentImage: "runner:latest",
-		TimeoutSec: 60,
+	_, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+		Name:        "no-prompt",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  60,
 	})
 	if err == nil {
 		t.Fatal("expected error for missing prompt")
@@ -260,20 +263,20 @@ func TestServiceListSchedulesReturnsEnabled(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	if _, err := svc.CreateSchedule(ctx, store.ScheduleInput{
-		Name: "enabled", CronExpr: "@hourly", Prompt: "x",
+	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name: "enabled", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "x",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svc.CreateSchedule(ctx, store.ScheduleInput{
-		Name: "disabled", CronExpr: "@daily", Prompt: "y",
+	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name: "disabled", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "y",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svc.UpdateSchedule(ctx, "disabled", store.ScheduleInput{
-		Name: "disabled", CronExpr: "@daily", Prompt: "y",
+	if _, err := svc.UpdateTrigger(ctx, "disabled", store.ScheduleInput{
+		Name: "disabled", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "y",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}, false); err != nil {
 		t.Fatalf("update: %v", err)
@@ -289,18 +292,79 @@ func TestServiceListSchedulesReturnsEnabled(t *testing.T) {
 	}
 }
 
+// TestListEnabledPRReviewTriggersByRepoMatchesRepo verifies the webhook
+// trigger lookup returns the right triggers for a given repo. This guards
+// against the bug where the repo string was wrapped in JSON quotes and
+// the query's `->>` operator compared against an unquoted string.
+func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	cfg := store.PRReviewTriggerConfig{Repo: "flatout-works/chetter"}
+	triggerConfig, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal trigger config: %v", err)
+	}
+
+	// Create one pr_review trigger for our repo.
+	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name:          "deep-review",
+		TriggerType:   store.TriggerTypePRReview,
+		TriggerConfig: string(triggerConfig),
+		Prompt:        "review please",
+		AgentImage:    "runner:latest",
+		Agent:         "pr-reviewer",
+		ProviderID:    "opencode-go",
+		ModelID:       "minimax-m3",
+		TimeoutSec:    3600,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Create a pr_review trigger for a different repo to confirm filtering.
+	cfg2 := store.PRReviewTriggerConfig{Repo: "flatout-works/other"}
+	triggerConfig2, _ := json.Marshal(cfg2)
+	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name:          "other-review",
+		TriggerType:   store.TriggerTypePRReview,
+		TriggerConfig: string(triggerConfig2),
+		Prompt:        "review please",
+		AgentImage:    "runner:latest",
+		Agent:         "pr-reviewer",
+		ProviderID:    "opencode-go",
+		ModelID:       "minimax-m3",
+		TimeoutSec:    3600,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	matches, err := svc.ListEnabledPRReviewTriggersByRepo(ctx, "flatout-works/chetter")
+	if err != nil {
+		t.Fatalf("list by repo: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 trigger for flatout-works/chetter, got %d", len(matches))
+	}
+	if matches[0].Name != "deep-review" {
+		t.Errorf("match name = %q, want deep-review", matches[0].Name)
+	}
+	if matches[0].Agent != "pr-reviewer" {
+		t.Errorf("match agent = %q, want pr-reviewer", matches[0].Agent)
+	}
+}
+
 func TestServiceDeleteScheduleRemovesRow(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	if _, err := svc.CreateSchedule(ctx, store.ScheduleInput{
-		Name: "doomed", CronExpr: "@hourly", Prompt: "x",
+	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name: "doomed", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "x",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := svc.DeleteSchedule(ctx, "doomed"); err != nil {
+	if err := svc.DeleteTrigger(ctx, "doomed"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	q := repository.New(svc.repo.DB())
@@ -524,12 +588,12 @@ func TestCreateScheduleWithTeamContextStampsTeamID(t *testing.T) {
 	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
 
 	ctx = ctxWithTeam(ctx, teamID)
-	rec, err := svc.CreateSchedule(ctx, store.ScheduleInput{
-		Name: "hourly-check", CronExpr: "@hourly", Prompt: "check the logs",
+	rec, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+		Name: "hourly-check", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "check the logs",
 		AgentImage: "runner:latest", TimeoutSec: 300,
 	})
 	if err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 	if rec.TeamID != teamID {
 		t.Errorf("expected team_id=%s, got %s", teamID, rec.TeamID)
@@ -553,17 +617,17 @@ func TestListSchedulesByTeamScopesCorrectly(t *testing.T) {
 	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
 	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
 
-	if _, err := svc.CreateSchedule(ctxWithTeam(ctx, teamA), store.ScheduleInput{
-		Name: "a-check", CronExpr: "@hourly", Prompt: "a",
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamA), store.ScheduleInput{
+		Name: "a-check", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "a",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
-		t.Fatalf("create schedule a: %v", err)
+		t.Fatalf("create trigger a: %v", err)
 	}
-	if _, err := svc.CreateSchedule(ctxWithTeam(ctx, teamB), store.ScheduleInput{
-		Name: "b-check", CronExpr: "@daily", Prompt: "b",
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamB), store.ScheduleInput{
+		Name: "b-check", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "b",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
-		t.Fatalf("create schedule b: %v", err)
+		t.Fatalf("create trigger b: %v", err)
 	}
 
 	q := repository.New(tdb.DB)
