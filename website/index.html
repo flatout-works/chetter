@@ -79,7 +79,7 @@
         <article>
           <span>control plane</span>
           <h3>Stateless HTTP MCP server</h3>
-          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven tools, manages triggers (cron + webhook), orchestrates schedules, and records events.</p>
+          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven tools, manages triggers (cron + webhook), orchestrates schedules, delivers PR labels on trigger fire, and records events.</p>
         </article>
         <article>
           <span>transport</span>
@@ -107,10 +107,10 @@
         <h3>Durable by default</h3>
         <p>Tasks survive runner restarts. Events are written before ack. Terminal task states are updated idempotently to make replays safe.</p>
       </article>
-      <article>
-        <h3>Triggers &amp; schedules</h3>
-        <p>Cron schedules and webhook-triggered PR reviews share the same DB-backed trigger system. Nightly docs, changelogs, audits, scans, and automated code reviews all fit naturally.</p>
-      </article>
+        <article>
+          <h3>Triggers &amp; schedules</h3>
+          <p>Cron schedules and webhook-triggered PR reviews share the same DB-backed trigger system. PR review triggers have a built-in review template, so <code>prompt</code> is optional. Nightly docs, changelogs, audits, scans, and automated code reviews all fit naturally.</p>
+        </article>
       <article>
         <h3>Readable codebase</h3>
         <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, and optional Arcane vulnerability scanning.</p>
@@ -134,7 +134,7 @@
       <div class="tool-groups">
         <article><b>Tasks</b><span>submit, status, list, cancel, clear queue, list schedule runs</span></article>
         <article><b>Events</b><span>full history, progress, latest event</span></article>
-        <article><b>Triggers</b><span>create, update, run, list, delete (cron + PR review webhook)</span></article>
+        <article><b>Triggers</b><span>create, update, run, list, delete (cron + PR review webhook; prompt optional for pr_review — built-in template)</span></article>
         <article><b>Fleet</b><span>runner health inferred from task activity</span></article>
         <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
         <article><b>Teams</b><span>create, list, delete teams; list users for team-scoped access</span></article>
