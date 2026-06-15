@@ -18,11 +18,14 @@ All notable changes to this project will be documented in this file.
 - Runner agent execution refactored into a `harness.Harness` interface, decoupling agent backends from runner execution modes (local/Docker/Kata) for modular support of future agent runtimes.
 - Dropped unused `listen_subject` and `result_subject` columns from `chetter_runners` (migration 002).
 - `.env.example`, `Makefile`, `compose.yaml`, and runner configuration files updated following the NATS removal and ConnectRPC migration.
+- Reaper and lease timings tightened: reaper interval 5m → 30s, grace period 5m → 120s, health staleness threshold 600s → 120s, task lease 120s → 60s. Reduces zombie task recovery from ~12min to ~90s.
 
 ### Fixed
 
 - Runner now resolves the model from the agent's `.opencode/agent/<agent>.md` config when `provider_id`/`model_id` are not specified in schedule or task requests, instead of falling back to hardcoded defaults.
 - Schedule YAML `agent_image` references corrected from `your-org` to `flatout-works`.
+- Webhook reviewer configuration (`ReviewerAgent`, `ReviewerProviderID`, `ReviewerModelID`, `ReviewerTimeoutSec`) now actually flows from `HandlerConfig` to the review task submitter instead of being hardcoded.
+- Database connection pool sets `SetConnMaxIdleTime(5m)` to recycle idle connections before TiDB's server-side `wait_timeout` kills them, eliminating noisy `broken pipe` / `closing bad idle connection` log spam.
 
 ## 2026-06-14
 
