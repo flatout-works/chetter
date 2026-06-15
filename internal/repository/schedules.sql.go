@@ -14,27 +14,29 @@ import (
 
 const createSchedule = `-- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, team_id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
 `
 
 type CreateScheduleParams struct {
-	ID         string          `json:"id"`
-	TeamID     sql.NullString  `json:"team_id"`
-	Name       string          `json:"name"`
-	CronExpr   string          `json:"cron_expr"`
-	Prompt     string          `json:"prompt"`
-	GitUrl     sql.NullString  `json:"git_url"`
-	GitRef     sql.NullString  `json:"git_ref"`
-	AgentImage sql.NullString  `json:"agent_image"`
-	Agent      sql.NullString  `json:"agent"`
-	ProviderID sql.NullString  `json:"provider_id"`
-	ModelID    sql.NullString  `json:"model_id"`
-	VariantID  sql.NullString  `json:"variant_id"`
-	Skills     json.RawMessage `json:"skills"`
-	TimeoutSec int32           `json:"timeout_sec"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	ID            string          `json:"id"`
+	TeamID        sql.NullString  `json:"team_id"`
+	Name          string          `json:"name"`
+	TriggerType   string          `json:"trigger_type"`
+	TriggerConfig json.RawMessage `json:"trigger_config"`
+	CronExpr      string          `json:"cron_expr"`
+	Prompt        string          `json:"prompt"`
+	GitUrl        sql.NullString  `json:"git_url"`
+	GitRef        sql.NullString  `json:"git_ref"`
+	AgentImage    sql.NullString  `json:"agent_image"`
+	Agent         sql.NullString  `json:"agent"`
+	ProviderID    sql.NullString  `json:"provider_id"`
+	ModelID       sql.NullString  `json:"model_id"`
+	VariantID     sql.NullString  `json:"variant_id"`
+	Skills        json.RawMessage `json:"skills"`
+	TimeoutSec    int32           `json:"timeout_sec"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) error {
@@ -42,6 +44,8 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		arg.ID,
 		arg.TeamID,
 		arg.Name,
+		arg.TriggerType,
+		arg.TriggerConfig,
 		arg.CronExpr,
 		arg.Prompt,
 		arg.GitUrl,
@@ -70,7 +74,7 @@ func (q *Queries) DeleteSchedule(ctx context.Context, name string) error {
 }
 
 const getScheduleByID = `-- name: GetScheduleByID :one
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE id = ?
 `
 
@@ -80,6 +84,8 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.TriggerType,
+		&i.TriggerConfig,
 		&i.CronExpr,
 		&i.Prompt,
 		&i.GitUrl,
@@ -102,7 +108,7 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 }
 
 const getScheduleByName = `-- name: GetScheduleByName :one
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE name = ?
 `
 
@@ -112,6 +118,8 @@ func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSc
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.TriggerType,
+		&i.TriggerConfig,
 		&i.CronExpr,
 		&i.Prompt,
 		&i.GitUrl,
@@ -159,8 +167,61 @@ func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunPa
 	return err
 }
 
+const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = 'pr_review'
+  AND trigger_config->>'$.repo' = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledPRReviewTriggersByRepo, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterSchedule{}
+	for rows.Next() {
+		var i ChetterSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEnabledSchedules = `-- name: ListEnabledSchedules :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
@@ -177,6 +238,8 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
 			&i.CronExpr,
 			&i.Prompt,
 			&i.GitUrl,
@@ -209,7 +272,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 }
 
 const listEnabledSchedulesByTeam = `-- name: ListEnabledSchedulesByTeam :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE team_id = ?
   AND enabled = TRUE
 ORDER BY created_at DESC
@@ -227,6 +290,60 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]ChetterSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledTriggersByType, triggerType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterSchedule{}
+	for rows.Next() {
+		var i ChetterSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
 			&i.CronExpr,
 			&i.Prompt,
 			&i.GitUrl,
@@ -259,7 +376,7 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 }
 
 const listSchedules = `-- name: ListSchedules :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 ORDER BY created_at DESC
 `
 
@@ -275,6 +392,8 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
 			&i.CronExpr,
 			&i.Prompt,
 			&i.GitUrl,
@@ -307,7 +426,7 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 }
 
 const listSchedulesByTeam = `-- name: ListSchedulesByTeam :many
-SELECT id, name, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE team_id = ?
 ORDER BY created_at DESC
 `
@@ -324,6 +443,8 @@ func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
 			&i.CronExpr,
 			&i.Prompt,
 			&i.GitUrl,
@@ -391,7 +512,7 @@ func (q *Queries) SetScheduleNextRun(ctx context.Context, arg SetScheduleNextRun
 
 const updateSchedule = `-- name: UpdateSchedule :exec
 UPDATE chetter_schedules
-SET name = ?, cron_expr = ?, prompt = ?,
+SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
     skills = ?, timeout_sec = ?, enabled = ?,
@@ -400,26 +521,30 @@ WHERE name = ?
 `
 
 type UpdateScheduleParams struct {
-	NewName    string          `json:"new_name"`
-	CronExpr   string          `json:"cron_expr"`
-	Prompt     string          `json:"prompt"`
-	GitUrl     sql.NullString  `json:"git_url"`
-	GitRef     sql.NullString  `json:"git_ref"`
-	AgentImage sql.NullString  `json:"agent_image"`
-	Agent      sql.NullString  `json:"agent"`
-	ProviderID sql.NullString  `json:"provider_id"`
-	ModelID    sql.NullString  `json:"model_id"`
-	VariantID  sql.NullString  `json:"variant_id"`
-	Skills     json.RawMessage `json:"skills"`
-	TimeoutSec int32           `json:"timeout_sec"`
-	Enabled    bool            `json:"enabled"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	OldName    string          `json:"old_name"`
+	NewName       string          `json:"new_name"`
+	TriggerType   string          `json:"trigger_type"`
+	TriggerConfig json.RawMessage `json:"trigger_config"`
+	CronExpr      string          `json:"cron_expr"`
+	Prompt        string          `json:"prompt"`
+	GitUrl        sql.NullString  `json:"git_url"`
+	GitRef        sql.NullString  `json:"git_ref"`
+	AgentImage    sql.NullString  `json:"agent_image"`
+	Agent         sql.NullString  `json:"agent"`
+	ProviderID    sql.NullString  `json:"provider_id"`
+	ModelID       sql.NullString  `json:"model_id"`
+	VariantID     sql.NullString  `json:"variant_id"`
+	Skills        json.RawMessage `json:"skills"`
+	TimeoutSec    int32           `json:"timeout_sec"`
+	Enabled       bool            `json:"enabled"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	OldName       string          `json:"old_name"`
 }
 
 func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) error {
 	_, err := q.db.ExecContext(ctx, updateSchedule,
 		arg.NewName,
+		arg.TriggerType,
+		arg.TriggerConfig,
 		arg.CronExpr,
 		arg.Prompt,
 		arg.GitUrl,

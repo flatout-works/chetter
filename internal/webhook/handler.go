@@ -16,6 +16,28 @@ import (
 	"time"
 )
 
+// TriggerResolver is the subset of the service that the webhook needs to
+// resolve PR review triggers for a given repo. Defined as an interface to
+// allow mocking in tests.
+type TriggerResolver interface {
+	ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo string) ([]ReviewTrigger, error)
+}
+
+// ReviewTrigger is the resolved data from a single PR review trigger.
+type ReviewTrigger struct {
+	Name        string
+	Prompt      string
+	AgentImage  string
+	Agent       string
+	ProviderID  string
+	ModelID     string
+	VariantID   string
+	TimeoutSec  int
+	GitURL      string
+	GitRef      string
+	Skills      []string
+}
+
 // TaskSubmitter is the subset of service.Service that the webhook needs to
 // submit review tasks. Defined as an interface to allow mocking in tests.
 type TaskSubmitter interface {
@@ -32,10 +54,14 @@ type ReviewContext struct {
 	HeadCloneURL  string
 	CommentAuthor string // only set for comment triggers
 	GitHubToken   string // installation token for the review agent
-	Agent         string // reviewer agent name (from HandlerConfig)
-	ProviderID    string // reviewer provider ID (from HandlerConfig)
-	ModelID       string // reviewer model ID (from HandlerConfig)
-	TimeoutSec    int    // reviewer task timeout (from HandlerConfig)
+	Prompt        string // trigger-supplied prompt; empty falls back to the built-in template
+	AgentImage    string // trigger-supplied agent image; empty falls back to the default
+	Agent         string // reviewer agent name (from the trigger config)
+	ProviderID    string // reviewer provider ID (from the trigger config)
+	ModelID       string // reviewer model ID (from the trigger config)
+	VariantID     string // reviewer variant ID (from the trigger config)
+	Skills        []string
+	TimeoutSec    int // reviewer task timeout (from the trigger config)
 }
 
 // Handler serves GitHub webhook events. Implements http.Handler.
@@ -43,29 +69,26 @@ type Handler struct {
 	cfg       HandlerConfig
 	gh        *Client
 	submitter TaskSubmitter
+	triggers  TriggerResolver
 	recent    *RecentDeliveries
 }
 
 // HandlerConfig is the configuration for the webhook handler.
 type HandlerConfig struct {
-	Disabled           bool
-	WebhookSecret      string
-	ReviewerAgent      string
-	ReviewerProviderID string
-	ReviewerModelID    string
-	ReviewerTimeoutSec int
-	AllowedRepos       []string
-	MaxBodyBytes       int64
+	Disabled      bool
+	WebhookSecret string
+	MaxBodyBytes  int64
 }
 
 // NewHandler creates a webhook Handler. If the configuration is incomplete,
 // the returned handler will accept requests but log "webhook disabled" for
 // every event (kill switch behavior).
-func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter) *Handler {
+func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver) *Handler {
 	return &Handler{
 		cfg:       cfg,
 		gh:        gh,
 		submitter: submitter,
+		triggers:  triggers,
 		recent:    NewRecentDeliveries(5*time.Minute, 4096),
 	}
 }
@@ -159,10 +182,6 @@ func (h *Handler) handlePullRequest(body []byte) {
 	}
 
 	repo := ev.Repository.FullName
-	if !h.isAllowedRepo(repo) {
-		slog.Debug("webhook: repo not in allowlist", "repo", repo)
-		return
-	}
 
 	trigger, ok := h.shouldReview(ev, repo)
 	if !ok {
@@ -266,18 +285,6 @@ func matchesCodePath(path string) bool {
 	return false
 }
 
-func (h *Handler) isAllowedRepo(repo string) bool {
-	if len(h.cfg.AllowedRepos) == 0 {
-		return true
-	}
-	for _, r := range h.cfg.AllowedRepos {
-		if r == repo {
-			return true
-		}
-	}
-	return false
-}
-
 func (h *Handler) handleIssueComment(body []byte) {
 	var ev IssueCommentEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
@@ -295,9 +302,6 @@ func (h *Handler) handleIssueComment(body []byte) {
 	}
 
 	repo := ev.Repository.FullName
-	if !h.isAllowedRepo(repo) {
-		return
-	}
 
 	// Verify the commenter has write access (anti-abuse).
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -333,8 +337,9 @@ func (h *Handler) handleIssueComment(body []byte) {
 	})
 }
 
-// submitReview gets an installation token and forwards the review context
-// to the TaskSubmitter. On failure, posts a comment to the PR.
+// submitReview gets an installation token, finds matching PR review triggers,
+// and forwards the review context to the TaskSubmitter for each match.
+// Fails closed: if no triggers are configured for the repo, the PR is not reviewed.
 func (h *Handler) submitReview(ctx ReviewContext) {
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
@@ -343,19 +348,51 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		return
 	}
 	ctx.GitHubToken = token
-	ctx.Agent = h.cfg.ReviewerAgent
-	ctx.ProviderID = h.cfg.ReviewerProviderID
-	ctx.ModelID = h.cfg.ReviewerModelID
-	ctx.TimeoutSec = h.cfg.ReviewerTimeoutSec
 
-	if err := h.submitter.SubmitReviewTask(context.Background(), ctx); err != nil {
-		slog.Error("webhook: submit review task", "err", err,
-			"repo", ctx.Repo, "pr", ctx.PRNumber, "trigger", ctx.Trigger)
+	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(context.Background(), ctx.Repo)
+	if err != nil {
+		slog.Error("webhook: list pr review triggers", "err", err, "repo", ctx.Repo)
 		h.postCommentOnFailure(ctx, CommentReviewFailed)
 		return
 	}
-	slog.Info("webhook: review task submitted",
-		"repo", ctx.Repo, "pr", ctx.PRNumber, "trigger", ctx.Trigger)
+
+	if len(triggers) == 0 {
+		slog.Info("webhook: no PR review triggers configured for repo; skipping review",
+			"repo", ctx.Repo, "pr", ctx.PRNumber)
+		return
+	}
+
+	for _, t := range triggers {
+		rc := ctx
+		if t.Prompt != "" {
+			rc.Prompt = t.Prompt
+		}
+		if t.AgentImage != "" {
+			rc.AgentImage = t.AgentImage
+		}
+		if t.GitURL != "" {
+			rc.HeadCloneURL = t.GitURL
+		}
+		if t.GitRef != "" {
+			rc.HeadRef = t.GitRef
+		}
+		if len(t.Skills) > 0 {
+			rc.Skills = t.Skills
+		}
+		rc.Agent = t.Agent
+		rc.ProviderID = t.ProviderID
+		rc.ModelID = t.ModelID
+		rc.VariantID = t.VariantID
+		rc.TimeoutSec = t.TimeoutSec
+		if err := h.submitter.SubmitReviewTask(context.Background(), rc); err != nil {
+			slog.Error("webhook: submit review task", "err", err,
+				"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
+			h.postCommentOnFailure(rc, CommentReviewFailed)
+			continue
+		}
+		slog.Info("webhook: review task submitted",
+			"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
+	}
 }
 
 func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {

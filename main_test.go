@@ -255,11 +255,10 @@ func TestBuildWebhookHandlerReturnsNilWhenNotConfigured(t *testing.T) {
 
 func TestBuildWebhookHandlerReturnsNilWithBadCredentials(t *testing.T) {
 	cfg := config.Config{
-		GitHubAppID:              12345,
-		GitHubInstallationID:     67890,
-		GitHubAppPrivateKeyB64:   "aW52YWxpZC1rZXk=",
-		GitHubWebhookSecret:      "secret",
-		GitHubReviewAllowedRepos: []string{"org/repo"},
+		GitHubAppID:            12345,
+		GitHubInstallationID:   67890,
+		GitHubAppPrivateKeyB64: "aW52YWxpZC1rZXk=",
+		GitHubWebhookSecret:    "secret",
 	}
 	handler := buildWebhookHandler(cfg, nil)
 	if handler != nil {

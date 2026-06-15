@@ -120,6 +120,10 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 		HeadCloneURL:  "https://github.com/someone/myapp.git",
 		CommentAuthor: "",
 		GitHubToken:   "ghs_test_token",
+		Agent:         "pr-reviewer",
+		ProviderID:    "opencode-go",
+		ModelID:       "minimax-m3",
+		TimeoutSec:    3600,
 	}
 	req := buildReviewTaskRequest(review)
 
@@ -171,10 +175,88 @@ func TestBuildReviewTaskRequest_WithComment(t *testing.T) {
 		HeadRef:       "fix/x",
 		HeadCloneURL:  "https://github.com/x.git",
 		GitHubToken:   "t",
+		Agent:         "pr-reviewer",
+		ProviderID:    "opencode-go",
+		ModelID:       "minimax-m3",
+		TimeoutSec:    3600,
 	}
 	req := buildReviewTaskRequest(review)
 	if got := req.Env["COMMENT_AUTHOR"]; got != "someuser" {
 		t.Errorf("Env[COMMENT_AUTHOR] = %q, want someuser", got)
+	}
+}
+
+// TestBuildReviewTaskRequest_TriggerOverridesPromptAndImage checks that when
+// the trigger supplies a custom prompt and agent image, those are used in
+// preference to the built-in template and the default image.
+func TestBuildReviewTaskRequest_TriggerOverridesPromptAndImage(t *testing.T) {
+	review := ReviewContext{
+		Trigger:      "label",
+		Repo:         "flatout-works/chetter",
+		PRNumber:     9,
+		BaseRef:      "main",
+		HeadRef:      "feat/x",
+		HeadCloneURL: "https://github.com/owner/repo.git",
+		GitHubToken:  "t",
+		Prompt:       "Custom trigger-supplied prompt",
+		AgentImage:   "ghcr.io/custom/runner:v1",
+		Agent:        "security-reviewer",
+		ProviderID:   "custom-provider",
+		ModelID:      "custom-model",
+		TimeoutSec:   600,
+		Skills:       []string{"secretscan"},
+	}
+	req := buildReviewTaskRequest(review)
+
+	if req.Prompt != "Custom trigger-supplied prompt" {
+		t.Errorf("Prompt = %q, want trigger-supplied prompt", req.Prompt)
+	}
+	if req.AgentImage != "ghcr.io/custom/runner:v1" {
+		t.Errorf("AgentImage = %q, want trigger-supplied image", req.AgentImage)
+	}
+	if req.Agent != "security-reviewer" {
+		t.Errorf("Agent = %q, want security-reviewer", req.Agent)
+	}
+	if req.ProviderID != "custom-provider" {
+		t.Errorf("ProviderID = %q, want custom-provider", req.ProviderID)
+	}
+	if req.ModelID != "custom-model" {
+		t.Errorf("ModelID = %q, want custom-model", req.ModelID)
+	}
+	if req.TimeoutSec != 600 {
+		t.Errorf("TimeoutSec = %d, want 600", req.TimeoutSec)
+	}
+	if len(req.Skills) != 1 || req.Skills[0] != "secretscan" {
+		t.Errorf("Skills = %v, want [secretscan]", req.Skills)
+	}
+}
+
+// TestBuildReviewTaskRequest_FallsBackToTemplateWhenNoPrompt checks that the
+// built-in prompt template is used when the trigger did not supply a prompt.
+func TestBuildReviewTaskRequest_FallsBackToTemplateWhenNoPrompt(t *testing.T) {
+	review := ReviewContext{
+		Trigger:      "label",
+		Repo:         "flatout-works/chetter",
+		PRNumber:     1,
+		BaseRef:      "main",
+		HeadRef:      "feat/x",
+		HeadCloneURL: "https://github.com/o/r.git",
+		GitHubToken:  "t",
+		Agent:        "pr-reviewer",
+		ProviderID:   "opencode-go",
+		ModelID:      "minimax-m3",
+		TimeoutSec:   3600,
+		// Prompt and AgentImage are intentionally left empty
+	}
+	req := buildReviewTaskRequest(review)
+	if req.Prompt == "" {
+		t.Fatal("Prompt should fall back to the built-in template")
+	}
+	if req.Prompt == "Custom trigger-supplied prompt" {
+		t.Error("Prompt should be the built-in template, not a trigger value")
+	}
+	if req.AgentImage == "" {
+		t.Error("AgentImage should fall back to the default runner image")
 	}
 }
 

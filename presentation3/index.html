@@ -20,13 +20,13 @@
           <img class="logo-mark hero-logo" src="../website/chetter-mark.svg" alt="Chetter" />
           <p class="eyebrow">Technical Architecture</p>
           <h1>How Chetter is built.</h1>
-          <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron schedules, fleet health, and a built-in path into vulnerability scanning.</p>
+          <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, triggers (cron + webhook), fleet health, and a built-in path into vulnerability scanning.</p>
           <div class="hero-actions">
             <span class="pill strong">Go</span>
             <span class="pill strong">Streamable HTTP MCP</span>
-            <span class="pill strong">NATS JetStream</span>
+            <span class="pill strong">ConnectRPC</span>
             <span class="pill strong">TiDB / MySQL</span>
-            <span class="pill strong">robfig/cron</span>
+            <span class="pill strong">Triggers (cron + webhook)</span>
             <span class="pill strong">Arcane Trivy</span>
           </div>
         </div>
@@ -35,11 +35,11 @@
           <pre><code>main.go      HTTP /mcp + /healthz
 service/     tools, scheduler, reaper
 store/       TiDB schema + queries
-bus/         NATS JetStream client
+runner_rpc/  ConnectRPC service
 config/      env loader
 arcane/      Trivy client
 compose.yaml 1 MCP + 2 runners
-~3,000 lines of Go</code></pre>
+~3,500 lines of Go</code></pre>
         </div>
       </div>
     </section>
@@ -51,37 +51,37 @@ compose.yaml 1 MCP + 2 runners
         <article><span>01</span><b>General purpose</b><p>Any MCP-capable client (Claude, ChatGPT, OpenCode, curl) can talk to it. Not tied to one product.</p></article>
         <article><span>02</span><b>For AI, by AI</b><p>The control surface is tools, not a UI. An LLM is the typical operator.</p></article>
         <article><span>03</span><b>Remote, not local</b><p>Tasks run inside runner containers somewhere else. The MCP server holds no execution responsibilities.</p></article>
-        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via JetStream. Schedules survive process restarts via MySQL.</p></article>
+        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers (cron + PR review webhook) survive restarts via MySQL. No separate broker required.</p></article>
         <article><span>05</span><b>Observable fleet</b><p>Every task carries provider, model, variant, session id, and runner image digest for end-to-end traceability.</p></article>
       </div>
     </section>
 
     <section class="slide" data-title="System Map">
       <p class="eyebrow">System Map</p>
-      <h2>One Go process, one queue, one database, many runners.</h2>
+      <h2>One Go process, one database, many runners.</h2>
       <div class="system-map">
         <div class="system-box chetter">
           <h3>chetter/</h3>
-          <p>Stateless MCP server and scheduler</p>
-          <span>streamable HTTP</span><span>20 MCP tools</span><span>cron scheduler</span><span>event reaper</span><span>Arcane client</span>
+          <p>MCP server, scheduler, trigger dispatcher, and ConnectRPC endpoint</p>
+          <span>streamable HTTP</span><span>22 MCP tools</span><span>triggers (cron + webhook)</span><span>event reaper</span><span>Arcane client</span>
         </div>
         <div class="system-box server">
           <h3>store/</h3>
           <p>TiDB / MySQL persistence</p>
-          <span>tasks</span><span>events</span><span>schedules</span><span>schedule_runs</span><span>schema probes</span>
+          <span>tasks + leases</span><span>events</span><span>schedules (trigger_type + trigger_config)</span><span>runners</span><span>teams + tokens</span>
         </div>
         <div class="system-box runner">
-          <h3>bus/</h3>
-          <p>NATS JetStream transport</p>
-          <span>WorkQueue tasks</span><span>Limits events</span><span>cancel publish</span><span>queue reset</span>
+          <h3>runner_rpc/</h3>
+          <p>ConnectRPC task queue service</p>
+          <span>ClaimTask</span><span>Heartbeat</span><span>ReportTaskEvents</span><span>lease renewal</span><span>cancel commands</span>
         </div>
         <div class="system-box local">
           <h3>runner containers</h3>
-          <p>Workers that consume the task queue</p>
-          <span>queue group</span><span>durable consumer</span><span>opencode agent</span><span>status events</span>
+          <p>Workers that claim tasks via ConnectRPC</p>
+          <span>lease-based claim</span><span>harness interface</span><span>opencode agent</span><span>status events</span>
         </div>
       </div>
-      <p class="center-note">Chetter is the single point of truth for the queue. Runners are interchangeable; the control plane never knows how many exist.</p>
+      <p class="center-note">Chetter is the single point of truth. Runners are interchangeable; the control plane never knows how many exist.</p>
     </section>
 
     <section class="slide" data-title="Core Concept">
@@ -92,15 +92,15 @@ compose.yaml 1 MCP + 2 runners
           <div class="boundary-title">Caller</div>
           <div class="node primary">MCP client<br><span>Claude, OpenCode, curl, custom agent</span></div>
           <div class="node">MCP request<br><span>tool name + JSON args</span></div>
-          <div class="node accent">Chetter tools<br><span>submit_task, run_schedule, runner_health, ...</span></div>
+          <div class="node accent">Chetter tools<br><span>submit_task, create_trigger, runner_health, ...</span></div>
           <div class="node">MCP response<br><span>JSON result with task record or fleet snapshot</span></div>
         </div>
         <div class="edge-column"><span>streamable HTTP / JSON-RPC</span></div>
         <div class="provider-stack">
           <div>chetter MCP server</div>
           <div>service layer</div>
-          <div>store + bus</div>
-          <div>NATS JetStream</div>
+          <div>ConnectRPC task queue</div>
+          <div>lease-based runner communication</div>
           <div class="muted">MySQL / TiDB</div>
         </div>
       </div>
@@ -108,7 +108,7 @@ compose.yaml 1 MCP + 2 runners
 
     <section class="slide" data-title="MCP Tools">
       <p class="eyebrow">Tool Surface</p>
-      <h2>Twenty tools, grouped by job. Schema-driven, no drift.</h2>
+      <h2>Twenty-two tools, grouped by job. Schema-driven, no drift.</h2>
       <div class="tool-categories">
         <article>
           <b>Tasks (5)</b>
@@ -127,18 +127,25 @@ compose.yaml 1 MCP + 2 runners
           <div class="tool-call"><span class="name">chetter_task_latest_event</span></div>
         </article>
         <article>
-          <b>Schedules (5)</b>
-          <p>Cron jobs managed through explicit create/update tools.</p>
-          <div class="tool-call"><span class="name">chetter_schedule_task</span></div>
-          <div class="tool-call"><span class="name">chetter_run_schedule</span></div>
-          <div class="tool-call"><span class="name">chetter_list_schedules</span></div>
-          <div class="tool-call"><span class="name">chetter_update_schedule</span></div>
-          <div class="tool-call"><span class="name">chetter_delete_schedule</span></div>
+          <b>Triggers (5)</b>
+          <p>Unified trigger system: cron schedules and PR review webhooks managed through the same tools.</p>
+          <div class="tool-call"><span class="name">chetter_create_trigger</span></div>
+          <div class="tool-call"><span class="name">chetter_update_trigger</span></div>
+          <div class="tool-call"><span class="name">chetter_list_triggers</span></div>
+          <div class="tool-call"><span class="name">chetter_run_trigger</span></div>
+          <div class="tool-call"><span class="name">chetter_delete_trigger</span></div>
         </article>
         <article>
           <b>Fleet (1)</b>
           <p>Health inferred from task activity.</p>
           <div class="tool-call"><span class="name">chetter_runner_health</span></div>
+        </article>
+        <article>
+          <b>Tokens (3)</b>
+          <p>Team-scoped API token management.</p>
+          <div class="tool-call"><span class="name">chetter_create_token</span></div>
+          <div class="tool-call"><span class="name">chetter_list_tokens</span></div>
+          <div class="tool-call"><span class="name">chetter_delete_token</span></div>
         </article>
         <article>
           <b>Arcane (5)</b>
@@ -153,6 +160,10 @@ compose.yaml 1 MCP + 2 runners
           <b>Schema-driven</b>
           <p>Every tool's input and output is a Go struct with <code>jsonschema</code> tags. <code>mcp.AddTool</code> reflects at startup, so the JSON schema and the Go types cannot drift.</p>
         </article>
+        <article>
+          <b>Two trigger types</b>
+          <p><code>cron</code> triggers fire on a schedule; <code>pr_review</code> triggers fire on GitHub pull_request / issue_comment webhook events matching a repo. Both share the same prompt, agent, model, and timeout machinery.</p>
+        </article>
       </div>
     </section>
 
@@ -160,15 +171,15 @@ compose.yaml 1 MCP + 2 runners
       <p class="eyebrow">Task Lifecycle</p>
       <h2>From MCP tool call to runner event, in one linear flow.</h2>
       <div class="lifecycle-flow">
-        <div class="lifecycle-step"><b>1. Submit</b><span>InsertTask + random task_ id, then PublishTask to JS WorkQueue stream</span></div>
+        <div class="lifecycle-step"><b>1. Submit</b><span>InsertTask with random task_id; status = pending; lease columns null</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>2. Queue</b><span>Message sits on chetter.runner.tasks with WorkQueue policy; runners compete via queue group</span></div>
+        <div class="lifecycle-step"><b>2. Claim</b><span>Runner polls ClaimTask via ConnectRPC; SELECT ... FOR UPDATE picks one pending task, sets lease + status = running</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>3. Run</b><span>Runner acks, spawns OpenCode agent, periodically publishes status to chetter.tasks.&lt;id&gt;.status</span></div>
+        <div class="lifecycle-step"><b>3. Run</b><span>Runner spawns agent via harness interface, sends status via ReportTaskEvents RPC every heartbeat</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>4. Ingest</b><span>Chetter's event subscription decodes, persists raw payload, and updates the task row idempotently</span></div>
+        <div class="lifecycle-step"><b>4. Renew / Reap</b><span>Heartbeat RPC renews lease; reaper reclaims expired leases and fails orphaned tasks</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state (done, error, cancelled) written once; replays ignored. Caller reads via task_status / task_events.</span></div>
+        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state (done, error, cancelled) written once; replay-safe. Cancel commands delivered via heartbeat response.</span></div>
       </div>
     </section>
 
@@ -177,8 +188,7 @@ compose.yaml 1 MCP + 2 runners
       <h2>What travels on the wire.</h2>
       <div class="toolbox-card">
         <div>
-          <h3>Request (MCP tool → runner)</h3>
-          <p style="color: var(--muted); margin-bottom: 1rem; line-height: 1.5;">Published to <span style="font-family: 'JetBrains Mono', monospace; color: var(--df-800);">chetter.runner.tasks</span>.</p>
+          <h3>ClaimTask response (runner receives via ConnectRPC)</h3>
 <pre style="background: var(--df-900); border-radius: 1rem; padding: 1.1rem; margin: 0; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 0.86rem; line-height: 1.7; overflow: auto;">{
   "task_id":       "task_a1b2c3d4...",
   "agent_image":   "ghcr.io/.../chetter-runner:main",
@@ -193,96 +203,98 @@ compose.yaml 1 MCP + 2 runners
   "timeout_sec":   7200,
   "max_memory_mb": 4096,
   "max_cpu":       2,
-  "env":           { ...sanitized }
+  "env":           { ...sanitized },
+  "attempt":       1
 }</pre>
         </div>
         <div>
-          <h3>Response (runner → Chetter)</h3>
-          <p style="color: var(--muted); margin-bottom: 1rem; line-height: 1.5;">Published to <span style="font-family: 'JetBrains Mono', monospace; color: var(--df-800);">chetter.tasks.&lt;taskID&gt;.status</span>.</p>
+          <h3>ReportTaskEvents request (runner → Chetter)</h3>
 <pre style="background: var(--df-900); border-radius: 1rem; padding: 1.1rem; margin: 0; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 0.86rem; line-height: 1.7; overflow: auto;">{
-  "task_id":              "task_a1b2c3d4...",
-  "status":               "done | running | error | cancelled",
-  "summary":              "human-readable",
-  "error":                "message if status=error",
-  "artifacts":            ["https://github.com/.../pull/123"],
-  "provider_id":          "deepseek",
-  "model_id":             "deepseek-chat",
-  "variant_id":           "high",
-  "opencode_session_id":  "sess_...",
-  "runner_image_digest":  "sha256:...",
-  "started_at":           "...",
-  "ended_at":             "..."
+  "runner_id":            "runner_uuid...",
+  "events": [{
+    "task_id":            "task_a1b2c3d4...",
+    "status":             "done | running | error",
+    "summary":            "human-readable",
+    "error":              "message if status=error",
+    "artifacts":          ["https://github.com/.../pull/123"],
+    "provider_id":        "deepseek",
+    "model_id":           "deepseek-chat",
+    "variant_id":         "high",
+    "opencode_session_id":"sess_...",
+    "runner_image_digest":"sha256:...",
+    "started_at":         "...",
+    "ended_at":           "...",
+    "payload_json":       "{...raw...}"
+  }]
 }</pre>
         </div>
       </div>
     </section>
 
-    <section class="slide" data-title="NATS Design">
-      <p class="eyebrow">NATS JetStream</p>
-      <h2>Two streams, two retention policies, two jobs.</h2>
+    <section class="slide" data-title="ConnectRPC Design">
+      <p class="eyebrow">ConnectRPC Task Queue</p>
+      <h2>Four RPCs replace the message broker. The database is the queue.</h2>
       <div class="system-map" style="grid-template-columns: 1fr 1fr; margin-top: 2.2rem;">
         <div class="system-box">
-          <h3>CHETTER_TASKS</h3>
-          <p>Durable task queue. WorkQueue retention — each task delivered to exactly one consumer.</p>
-          <span>subject: chetter.runner.tasks</span>
-          <span>policy: work-queue</span>
-          <span>delivery: one-to-one</span>
-          <span>durable: chetter-runner</span>
-          <span>queue group: chetter-runners</span>
+          <h3>Runner lifecycle</h3>
+          <p>Runners connect directly to the Chetter MCP server via ConnectRPC over HTTP.</p>
+          <span>RegisterRunner — announce presence</span>
+          <span>Heartbeat — renew lease, get commands</span>
+          <span>ClaimTask — poll pending tasks</span>
+          <span>ReportTaskEvents — stream status updates</span>
+          <span>lease renewal on each heartbeat</span>
         </div>
         <div class="system-box">
-          <h3>CHETTER_EVENTS</h3>
-          <p>Replayable event log. Limits retention, manual ack, durable consumer per chetter instance.</p>
-          <span>subject: chetter.tasks.&gt;</span>
-          <span>policy: limits</span>
-          <span>delivery: one-to-all</span>
-          <span>durable: chetter-mcp-events</span>
-          <span>ack: manual, 30s wait, 5 redeliveries</span>
+          <h3>Database-backed queue</h3>
+          <p>Tasks stored in chetter_tasks; SELECT ... FOR UPDATE with lease-based claiming.</p>
+          <span>pending → claimed → running</span>
+          <span>lease via lease_expires_at column</span>
+          <span>reaper reclaims expired leases</span>
+          <span>cancel commands flow in HeartbeatResponse</span>
+          <span>no separate broker to operate</span>
         </div>
       </div>
-      <p class="center-note">Adding a third runner is just a new container with the same durable name — Chetter never knows the fleet size.</p>
+      <p class="center-note">Adding a third runner is just another container pointing at the same MCP server — no broker, no queue groups, no durable consumers.</p>
     </section>
 
-    <section class="slide" data-title="Schedule System">
-      <p class="eyebrow">Schedules</p>
-      <h2>Cron in-process, schedules durable in MySQL, YAML for git.</h2>
-      <div class="schedule-flow">
-        <div class="lifecycle-flow" style="margin: 0; padding: 0; background: none; box-shadow: none; backdrop-filter: none; border: none; width: 100%;">
-          <div class="lifecycle-step"><b>YAML in git</b><span>schedules/*.yaml — declarative source of truth</span></div>
-          <i></i>
-          <div class="lifecycle-step"><b>Sync to DB</b><span>read YAML, call chetter_schedule_task or chetter_update_schedule per file</span></div>
-          <i></i>
-          <div class="lifecycle-step"><b>Activate</b><span>cron.AddFunc registers an in-process entry; entry id stored in memory map</span></div>
-          <i></i>
-          <div class="lifecycle-step"><b>Tick</b><span>cron callback calls SubmitTask + InsertScheduleRun; next_run_at updated</span></div>
-        </div>
+    <section class="slide" data-title="Trigger System">
+      <p class="eyebrow">Triggers</p>
+      <h2>Unified trigger system: cron schedules and PR review webhooks share the same DB-backed machinery.</h2>
+      <div class="lifecycle-flow" style="margin-top: 1.4rem;">
+        <div class="lifecycle-step"><b>cron triggers</b><span>Five-field expressions + descriptors; fired by in-process robfig/cron</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; dispatches review tasks automatically</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from MySQL on startup</span></div>
+        <i></i>
+        <div class="lifecycle-step"><b>Individual mgmt</b><span>Create, update, delete per trigger via MCP tools; no bulk sync</span></div>
       </div>
       <div class="protocol-cards">
-        <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors (hourly, daily, etc.) via the Descriptor parser flag.</p></article>
-        <article><b>Restart safe</b><p>Service.Start calls loadSchedules which re-activates every enabled schedule from MySQL.</p></article>
-        <article><b>GitOps ready</b><p>Edit YAML, commit, sync. No DB-only schedules drift away from the repo.</p></article>
+        <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors for cron triggers. In-process, single-instance.</p></article>
+        <article><b>Webhook dispatch</b><p>Startup loads enabled pr_review triggers; webhook handler queries matching triggers by repo per event. No hardcoded reviewer config.</p></article>
+        <article><b>DB-backed config</b><p>trigger_type + trigger_config (JSON) columns on chetter_schedules eliminate the old hardcoded reviewer pattern. Add triggers at runtime.</p></article>
       </div>
     </section>
 
     <section class="slide" data-title="Database Schema">
       <p class="eyebrow">Data Model</p>
-      <h2>Five tables. No secrets, no foreign keys, no migrations framework.</h2>
+      <h2>Eight tables. Lease-based claiming. Team-scoped auth.</h2>
       <div class="er-diagram">
         <div class="er-cluster local-er">
           <h3>Core tables</h3>
-          <div class="entity">chetter_tasks <span>id, status, prompt, model, git, env, created_at, updated_at</span></div>
+          <div class="entity">chetter_tasks <span>id, team_id, status, prompt, lease, runner_id, attempt</span></div>
           <div class="entity">chetter_task_events <span>id, task_id, subject, status, payload (raw JSON), ts</span></div>
-          <div class="entity">chetter_schedules <span>id, name, cron_expr, prompt, model, enabled, next_run_at</span></div>
-          <div class="entity">chetter_schedule_runs <span>id, schedule_id, task_id, started_at, finished_at</span></div>
-          <div class="entity">chetter_runners <span>id, status, last_seen_at, metadata (legacy, unused)</span></div>
+          <div class="entity">chetter_schedules <span>id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, model, enabled</span></div>
+          <div class="entity">chetter_schedule_runs <span>id, schedule_id, task_id, status, scheduled_for</span></div>
+          <div class="entity">chetter_runners <span>id, status, image, capacity, heartbeat metadata</span></div>
         </div>
-        <div class="er-link">10 max open / 5 idle connections</div>
+        <div class="er-link">team-scoped auth</div>
         <div class="er-cluster cloud-er">
-          <h3>Patterns</h3>
-          <div class="entity">idempotent updates <span>terminal states never overwritten</span></div>
-          <div class="entity">evs always raw <span>events table stores full JSON regardless of task update success</span></div>
+          <h3>Auth tables</h3>
+          <div class="entity">teams <span>id, name</span></div>
+          <div class="entity">users <span>id, name, team_id</span></div>
+          <div class="entity">api_tokens <span>id, name, token_hash, user_id</span></div>
           <div class="entity">env redacted <span>SECRET / TOKEN / KEY / PASSWORD keys replaced with [redacted]</span></div>
-          <div class="entity">schema probes <span>information_schema lookups at startup; ALTER TABLE if missing</span></div>
           <div class="entity encrypted">no plain creds <span>runner API keys live in container env, never in MySQL</span></div>
         </div>
       </div>
@@ -290,17 +302,17 @@ compose.yaml 1 MCP + 2 runners
 
     <section class="slide" data-title="Reaper &amp; Health">
       <p class="eyebrow">Reaper &amp; Health</p>
-      <h2>No runner heartbeats — fleet health is inferred from task activity.</h2>
+      <h2>Runner heartbeats every 5s; fleet health inferred from ConnectRPC activity.</h2>
       <div class="lifecycle-flow">
-        <div class="lifecycle-step"><b>ReapStaleTasks</b><span>running tasks older than timeout + 5 min → error</span></div>
+        <div class="lifecycle-step"><b>ReapStaleTasks</b><span>running tasks older than timeout + 120s grace → error</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>ReapStalePendingTasks</b><span>pending tasks older than 30 min with no event → cancelled</span></div>
+        <div class="lifecycle-step"><b>ReapExpiredLeases</b><span>leases past lease_expires_at → reclaimed; tasks → failed</span></div>
         <i></i>
-        <div class="lifecycle-step"><b>GetRunnerFleetHealth</b><span>joins running tasks; is_stale = last_event_sec &gt; 600</span></div>
+        <div class="lifecycle-step"><b>GetRunnerFleetHealth</b><span>joins runner heartbeats; is_stale = last_seen_at &gt; 60s ago</span></div>
         <i></i>
         <div class="lifecycle-step"><b>FleetActive</b><span>running_tasks &gt; stale_tasks (idle fleet looks dead)</span></div>
       </div>
-      <p class="center-note">Cheaper than heartbeats, but a fleet with no work reports zero active. Operators learn to read the absence-of-data as a sign of life.</p>
+      <p class="center-note">Runners send heartbeats via ConnectRPC every 5s (configurable). Lease renewal is baked into the heartbeat response. No separate broker health to monitor.</p>
     </section>
 
     <section class="slide" data-title="Arcane Integration">
@@ -323,22 +335,22 @@ compose.yaml 1 MCP + 2 runners
           <div>paginated CVEs</div>
         </div>
       </div>
-      <p class="center-note">Chetter is the only component that knows the Arcane API. A nightly vulnerability-scan task running inside a runner calls the same MCP server as a sub-tool — meta-agent territory.</p>
+      <p class="center-note">Chetter is the only component that knows the Arcane API. A nightly vulnerability-scan task running inside a runner calls the same MCP server via ConnectRPC as a sub-tool — meta-agent territory.</p>
     </section>
 
     <section class="slide" data-title="Deployment">
       <p class="eyebrow">Deployment</p>
-      <h2>Docker Compose on Arcane. Three images, one NATS, one DB.</h2>
+      <h2>Docker Compose on Arcane. Two images, one DB.</h2>
       <div class="deployment-flow">
-        <div><b>NATS</b><span>nats:2 with -js, -sd, token auth</span></div><i></i>
+        <div><b>MySQL / TiDB</b><span>external or bundled via compose.local.yaml</span></div><i></i>
         <div><b>chetter-mcp</b><span>the control plane, port 18088:8080</span></div><i></i>
-        <div><b>chetter-runner</b><span>worker 1, shared durable consumer</span></div><i></i>
+        <div><b>chetter-runner</b><span>worker 1, connects via ConnectRPC</span></div><i></i>
         <div><b>chetter-runner-2</b><span>worker 2, same image, separate workspace</span></div>
       </div>
       <div class="protocol-cards">
-        <article><b>Single process</b><p>Currently single-instance: cron entries, reaper, and JS subscription live in-process. Two instances would double-schedule.</p></article>
+        <article><b>Single process</b><p>Currently single-instance: cron entries, reaper, trigger dispatcher, and ConnectRPC endpoint live in-process. Two instances would double-trigger.</p></article>
         <article><b>Stateless MCP</b><p>The HTTP transport uses Stateless mode, so the MCP server <i>could</i> be scaled — the rest of the system cannot, yet.</p></article>
-        <article><b>CI redeploy</b><p>.github/workflows/chetter.yml builds three images, then curls a single-purpose Arcane webhook to redeploy.</p></article>
+        <article><b>CI redeploy</b><p>.github/workflows/chetter.yml builds images, then curls a single-purpose Arcane webhook to redeploy.</p></article>
       </div>
     </section>
 
@@ -346,12 +358,13 @@ compose.yaml 1 MCP + 2 runners
       <p class="eyebrow">Patterns &amp; Tradeoffs</p>
       <h2>Choices that keep the codebase small and predictable.</h2>
       <div class="choice-grid">
-        <article><b>Two-phase cancel</b><p>NATS cancel signal first, DB row update second. A failed publish is logged but the operator intent still persists.</p></article>
-        <article><b>ACK after write</b><p>Event subscription acks only after the DB write succeeds. Failed writes redeliver (up to 5 times). Idempotent updates keep replays safe.</p></article>
+        <article><b>Cancel via heartbeat</b><p>Cancel sets DB row to cancelled; runner receives cancel command in next HeartbeatResponse. No separate signal path needed.</p></article>
+        <article><b>Event write then ack</b><p>ReportTaskEvents writes to DB inside a transaction; error responses trigger runner retries. Idempotent updates keep replays safe.</p></article>
         <article><b>Defensive env redaction</b><p>Keys matching SECRET|TOKEN|KEY|PASSWORD (case-insensitive) are scrubbed before both DB and wire paths. Users cannot smuggle secrets.</p></article>
-        <article><b>Timeouts on every call</b><p>NATS connect 10s, event handler 10s, schedule run 30s, Arcane 30s, HTTP read header 10s, shutdown 15s. No unbounded blocking.</p></article>
-        <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE if columns missing. Fine for add-only schema evolution on a small footprint.</p></article>
-        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, bus.go NATS, arcane.go HTTP. ~3k lines total. Easy to read end-to-end in a sitting.</p></article>
+        <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, schedule run 30s, Arcane 30s, HTTP read header 10s, shutdown 15s. No unbounded blocking.</p></article>
+        <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE IF NOT EXISTS for add-only schema evolution on a small footprint.</p></article>
+        <article><b>Trigger-based webhook dispatch</b><p>GitHub PR reviews no longer use hardcoded config. pr_review triggers in the DB are matched by repo at event time. Add, remove, or reconfigure reviewers without redeploying.</p></article>
+        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, runner_rpc.go ConnectRPC, arcane.go HTTP. ~3.5k lines total. Easy to read end-to-end in a sitting.</p></article>
       </div>
     </section>
 
@@ -361,7 +374,7 @@ compose.yaml 1 MCP + 2 runners
       <div class="choice-grid">
         <article><b>MCP, not REST</b><p>The control surface is for AI agents, not humans. Tools are the native interface for any LLM client.</p></article>
         <article><b>Streamable HTTP</b><p>Modern MCP transport. Stateless mode makes the server trivially load-balancer-friendly.</p></article>
-        <article><b>NATS JetStream</b><p>Durable task queue + replayable event log in one broker. WorkQueue policy gives free load balancing across runners.</p></article>
+        <article><b>ConnectRPC</b><p>Task queue via server-streaming RPC over HTTP; lease-based claiming; cancel commands piggyback on heartbeats. No separate broker.</p></article>
         <article><b>MySQL / TiDB</b><p>Same wire protocol as the rest of the stack. Small, add-only schema, conservative pool.</p></article>
         <article><b>robfig/cron v3</b><p>Battle-tested, tiny, descriptor parser for @hourly-style. In-process is fine for single-instance.</p></article>
         <article><b>Distroless binary</b><p>Multi-stage build → static-debian12:nonroot. No shell, no package manager, small surface.</p></article>
@@ -372,14 +385,14 @@ compose.yaml 1 MCP + 2 runners
       <div class="orb orb-three"></div>
       <img class="logo-mark close-logo" src="../website/chetter-mark.svg" alt="Chetter" />
       <h2>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</h2>
-      <p class="lead">Twenty tools. One durable queue. One database. Many interchangeable runners.</p>
+      <p class="lead">Twenty-two tools. ConnectRPC task queue. Unified trigger system. Many interchangeable runners.</p>
       <div class="closing-grid">
         <span>streamable HTTP</span>
-        <span>JetStream WorkQueue</span>
-        <span>cron schedules</span>
+        <span>ConnectRPC task queue</span>
+        <span>triggers (cron + webhook)</span>
         <span>Arcane Trivy</span>
-        <span>reaper-safe</span>
-        <span>~3,000 lines of Go</span>
+        <span>lease-based claiming</span>
+        <span>~3,500 lines of Go</span>
       </div>
     </section>
   </main>

@@ -54,51 +54,44 @@ func (s *serviceSubmitter) SubmitReviewTask(ctx context.Context, review ReviewCo
 
 // buildReviewTaskRequest creates a SubmitTaskRequest for a PR review.
 func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
-	prompt := reviewPromptTemplate
-	prompt = replaceAll(prompt, "{{REPO}}", review.Repo)
-	prompt = replaceAll(prompt, "{{PR_NUMBER}}", fmt.Sprintf("%d", review.PRNumber))
-	prompt = replaceAll(prompt, "{{BASE_REF}}", review.BaseRef)
-	prompt = replaceAll(prompt, "{{HEAD_REF}}", review.HeadRef)
-	prompt = replaceAll(prompt, "{{TRIGGER}}", review.Trigger)
+	prompt := review.Prompt
+	if prompt == "" {
+		prompt = reviewPromptTemplate
+		prompt = replaceAll(prompt, "{{REPO}}", review.Repo)
+		prompt = replaceAll(prompt, "{{PR_NUMBER}}", fmt.Sprintf("%d", review.PRNumber))
+		prompt = replaceAll(prompt, "{{BASE_REF}}", review.BaseRef)
+		prompt = replaceAll(prompt, "{{HEAD_REF}}", review.HeadRef)
+		prompt = replaceAll(prompt, "{{TRIGGER}}", review.Trigger)
+	}
+
+	agentImage := review.AgentImage
+	if agentImage == "" {
+		agentImage = defaultReviewAgentImage
+	}
 
 	env := map[string]string{
-		"PR_NUMBER":          fmt.Sprintf("%d", review.PRNumber),
-		"GITHUB_TOKEN":       review.GitHubToken,
-		"GITHUB_REPO":        review.Repo,
-		"CHETTER_AGENT_NAME": "pr-reviewer",
-		"CHETTER_MODEL_ID":   "opencode-go/minimax-m3",
+		"PR_NUMBER":    fmt.Sprintf("%d", review.PRNumber),
+		"GITHUB_TOKEN": review.GitHubToken,
+		"GITHUB_REPO":  review.Repo,
 	}
+	env["CHETTER_AGENT_NAME"] = review.Agent
+	env["CHETTER_MODEL_ID"] = review.ModelID
 	if review.CommentAuthor != "" {
 		env["COMMENT_AUTHOR"] = review.CommentAuthor
-	}
-
-	agent := review.Agent
-	if agent == "" {
-		agent = "pr-reviewer"
-	}
-	providerID := review.ProviderID
-	if providerID == "" {
-		providerID = "opencode-go"
-	}
-	modelID := review.ModelID
-	if modelID == "" {
-		modelID = "minimax-m3"
-	}
-	timeoutSec := review.TimeoutSec
-	if timeoutSec == 0 {
-		timeoutSec = 3600
 	}
 
 	return SubmitTaskRequest{
 		Prompt:     prompt,
 		GitURL:     review.HeadCloneURL,
 		GitRef:     review.HeadRef,
-		AgentImage: defaultReviewAgentImage,
-		Agent:      agent,
-		ProviderID: providerID,
-		ModelID:    modelID,
+		AgentImage: agentImage,
+		Agent:      review.Agent,
+		ProviderID: review.ProviderID,
+		ModelID:    review.ModelID,
+		VariantID:  review.VariantID,
+		Skills:     review.Skills,
 		Env:        env,
-		TimeoutSec: timeoutSec,
+		TimeoutSec: review.TimeoutSec,
 	}
 }
 

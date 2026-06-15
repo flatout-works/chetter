@@ -410,7 +410,9 @@ func TestSchedulesCRUD(t *testing.T) {
 	null := sql.NullString{}
 	nullJSON := json.RawMessage("null")
 	err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "sched-1", Name: "daily-report", CronExpr: "0 9 * * *",
+		ID: "sched-1", Name: "daily-report",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 9 * * *",
 		Prompt: "generate report", TeamID: null,
 		GitUrl: null, GitRef: null, AgentImage: null, Agent: null,
 		ProviderID: null, ModelID: null, VariantID: null,
@@ -470,14 +472,18 @@ func TestScheduleTeamScoping(t *testing.T) {
 
 	nullJSON := json.RawMessage("null")
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s1", Name: "team-a-sched", CronExpr: "0 * * * *",
+		ID: "s1", Name: "team-a-sched",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 * * * *",
 		Prompt: "a", TeamID: sql.NullString{String: "team-a", Valid: true},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s2", Name: "global-sched", CronExpr: "0 * * * *",
+		ID: "s2", Name: "global-sched",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 * * * *",
 		Prompt: "global", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -509,7 +515,9 @@ func TestScheduleLastAndNextRun(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s1", Name: "test-sched", CronExpr: "*/5 * * * *",
+		ID: "s1", Name: "test-sched",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "*/5 * * * *",
 		Prompt: "test", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -547,7 +555,9 @@ func TestUpdateSchedule(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s1", Name: "old-name", CronExpr: "0 * * * *",
+		ID: "s1", Name: "old-name",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 * * * *",
 		Prompt: "old", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -555,7 +565,8 @@ func TestUpdateSchedule(t *testing.T) {
 	}
 
 	if err := q.UpdateSchedule(ctx, UpdateScheduleParams{
-		NewName: "new-name", CronExpr: "*/30 * * * *", Prompt: "new",
+		NewName: "new-name", TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "*/30 * * * *", Prompt: "new",
 		Skills: nullJSON, TimeoutSec: 600, Enabled: true,
 		UpdatedAt: now, OldName: "old-name",
 	}); err != nil {
@@ -579,7 +590,9 @@ func TestInsertScheduleRun(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 
 	if err := q.CreateSchedule(ctx, CreateScheduleParams{
-		ID: "s1", Name: "my-sched", CronExpr: "0 * * * *",
+		ID: "s1", Name: "my-sched",
+		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
+		CronExpr: "0 * * * *",
 		Prompt: "run", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {

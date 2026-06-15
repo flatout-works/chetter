@@ -17,12 +17,11 @@ type Config struct {
 	DefaultTaskTimeoutSec    int
 	ArcaneServerURL          string
 	ArcaneAPIKey             string
-	GitHubAppID              int64
-	GitHubAppPrivateKeyB64   string
-	GitHubWebhookSecret      string
-	GitHubWebhookDisabled    bool
-	GitHubReviewAllowedRepos []string
-	GitHubInstallationID     int64
+	GitHubAppID            int64
+	GitHubAppPrivateKeyB64 string
+	GitHubWebhookSecret    string
+	GitHubWebhookDisabled  bool
+	GitHubInstallationID   int64
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -35,12 +34,11 @@ func Load() Config {
 		DefaultTaskTimeoutSec:    envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:          env("ARCANE_SERVER_URL", ""),
 		ArcaneAPIKey:             env("ARCANE_API_KEY", ""),
-		GitHubAppID:              envInt64("GITHUB_APP_ID", 0),
-		GitHubAppPrivateKeyB64:   os.Getenv("GITHUB_APP_PRIVATE_KEY_B64"),
-		GitHubWebhookSecret:      os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		GitHubWebhookDisabled:    envBool("GITHUB_WEBHOOK_DISABLED", false),
-		GitHubReviewAllowedRepos: envList("GITHUB_REVIEW_ALLOWED_REPOS"),
-		GitHubInstallationID:     envInt64("GITHUB_INSTALLATION_ID", 0),
+		GitHubAppID:            envInt64("GITHUB_APP_ID", 0),
+		GitHubAppPrivateKeyB64: os.Getenv("GITHUB_APP_PRIVATE_KEY_B64"),
+		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubWebhookDisabled:  envBool("GITHUB_WEBHOOK_DISABLED", false),
+		GitHubInstallationID:   envInt64("GITHUB_INSTALLATION_ID", 0),
 	}
 }
 

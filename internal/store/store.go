@@ -76,45 +76,60 @@ type TaskResponse struct {
 	EndedAt           time.Time `json:"ended_at,omitempty"`
 }
 
-// ScheduleRecord is a cron-backed task template.
-type ScheduleRecord struct {
-	ID         string     `json:"id"`
-	TeamID     string     `json:"team_id,omitempty"`
-	Name       string     `json:"name"`
-	CronExpr   string     `json:"cron_expr"`
-	Prompt     string     `json:"prompt"`
-	GitURL     string     `json:"git_url,omitempty"`
-	GitRef     string     `json:"git_ref,omitempty"`
-	AgentImage string     `json:"agent_image,omitempty"`
-	Agent      string     `json:"agent,omitempty"`
-	ProviderID string     `json:"provider_id,omitempty"`
-	ModelID    string     `json:"model_id,omitempty"`
-	VariantID  string     `json:"variant_id,omitempty"`
-	Skills     []string   `json:"skills"`
-	TimeoutSec int        `json:"timeout_sec"`
-	Enabled    bool       `json:"enabled"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
-	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+const (
+	TriggerTypeCron     = "cron"
+	TriggerTypePRReview = "pr_review"
+)
+
+// PRReviewTriggerConfig is stored in the trigger_config JSON column for
+// PR review triggers. It carries the repository to watch.
+type PRReviewTriggerConfig struct {
+	Repo string `json:"repo"`
 }
 
-// ScheduleInput contains fields needed to create a schedule.
+// ScheduleRecord is a persisted task trigger (cron, pr_review, etc.).
+type ScheduleRecord struct {
+	ID            string     `json:"id"`
+	TeamID        string     `json:"team_id,omitempty"`
+	Name          string     `json:"name"`
+	TriggerType   string     `json:"trigger_type"`
+	TriggerConfig string     `json:"trigger_config"`
+	CronExpr      string     `json:"cron_expr"`
+	Prompt        string     `json:"prompt"`
+	GitURL        string     `json:"git_url,omitempty"`
+	GitRef        string     `json:"git_ref,omitempty"`
+	AgentImage    string     `json:"agent_image,omitempty"`
+	Agent         string     `json:"agent,omitempty"`
+	ProviderID    string     `json:"provider_id,omitempty"`
+	ModelID       string     `json:"model_id,omitempty"`
+	VariantID     string     `json:"variant_id,omitempty"`
+	Skills        []string   `json:"skills"`
+	TimeoutSec    int        `json:"timeout_sec"`
+	Enabled       bool       `json:"enabled"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
+}
+
+// ScheduleInput contains fields needed to create a trigger.
 type ScheduleInput struct {
-	ID         string
-	TeamID     string
-	Name       string
-	CronExpr   string
-	Prompt     string
-	GitURL     string
-	GitRef     string
-	AgentImage string
-	Agent      string
-	ProviderID string
-	ModelID    string
-	VariantID  string
-	Skills     []string
-	TimeoutSec int
+	ID            string
+	TeamID        string
+	Name          string
+	TriggerType   string
+	TriggerConfig string
+	CronExpr      string
+	Prompt        string
+	GitURL        string
+	GitRef        string
+	AgentImage    string
+	Agent         string
+	ProviderID    string
+	ModelID       string
+	VariantID     string
+	Skills        []string
+	TimeoutSec    int
 }
 
 // Open creates a database pool and applies conservative connection limits.
@@ -163,6 +178,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -258,6 +276,29 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_runners.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTriggerColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"trigger_type", "ALTER TABLE chetter_schedules ADD COLUMN trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron' AFTER name"},
+		{"trigger_config", "ALTER TABLE chetter_schedules ADD COLUMN trigger_config JSON NULL AFTER trigger_type"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "chetter_schedules", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add chetter_schedules.%s: %w", column.name, err)
 		}
 	}
 	return nil
