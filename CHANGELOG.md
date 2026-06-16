@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Claude Code harness: runners can use Claude Code instead of OpenCode by setting `execution.harness: claude-code` in task configs. Requires `ANTHROPIC_API_KEY`. Adds `SupportsServe()` to the `Harness` interface to distinguish HTTP-serve harnesses (OpenCode) from batch-only harnesses (Claude Code).
 - Session export for completed tasks: `chetter_task_export` MCP tool returns the markdown transcript from a completed OpenCode session, stored in a new `session_export` column on `chetter_tasks` with zero-downtime auto-migration (migration 007). Corresponding `chetter-export` command added to `.opencode/opencode.json`.
 - Webhook `/chetter-review` comment trigger now adds the review label and posts an acknowledgment comment before dispatching the review task.
 
@@ -20,7 +21,10 @@ All notable changes to this project will be documented in this file.
 
 - Webhook `/chetter-review` handler no longer adds the label before dispatching the review, preventing duplicate tasks triggered by the resulting `pull_request.labeled` webhook event.
 - Webhook async context cancel function now properly released, eliminating a context leak.
-- Refactor: dead code removed (`nullableTime`, `envList`), `NullTimePtr` exported from `store` package, schedule lookups in `DeleteTrigger`/`RunTriggerNow` optimized from linear search to direct SQL query, and async webhook background calls given proper timeouts.
+- Session export rewritten to read opencode's SQLite database directly, replacing the broken HTTP /export endpoint. Compatible with opencode v1.17.4's schema (message/part tables, XDG data directory).
+- Task `started_at` preserved from claim time; `ended_at` only set on terminal statuses instead of on every heartbeat.
+- Compose file variable interpolation syntax corrected for deployment compatibility. CI workflow adds retry logic to Arcane deploy step and `CACHEBUST` build arg to prevent stale Docker cache layers.
+- Refactor: dead code removed (`nullableTime`, `envList`, `extractStatusFromLine`), `NullTimePtr` exported from `store` package, schedule lookups in `DeleteTrigger`/`RunTriggerNow` optimized from linear search to direct SQL query, and async webhook background calls given proper timeouts.
 
 ### Removed
 
