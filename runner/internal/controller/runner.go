@@ -1,5 +1,5 @@
 // Package controller orchestrates agent execution — claiming tasks via
-// ConnectRPC, provisioning isolated workspaces and Kata Containers,
+// ConnectRPC, provisioning isolated workspaces and Docker containers,
 // exposing MCP tools, and publishing results.
 package controller
 
@@ -16,7 +16,6 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/internal/config"
-	"github.com/flatout-works/chetter/runner/internal/containerd"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/workspace"
@@ -28,7 +27,6 @@ const (
 	serveReadyTimeout     = 15 * time.Second
 	servePollInterval     = 500 * time.Millisecond
 	serveHTTPTimeout      = 2 * time.Second
-	opencodePluginNS      = "chetter-runner"
 )
 
 type Runner struct {
@@ -38,7 +36,6 @@ type Runner struct {
 	proxy      *network.TransparentProxy
 	dnsProxy   *network.DNSProxy
 	bridgeMgr  *network.BridgeManager
-	containerd *containerd.Client
 	rpcClient   runnerRPCClient
 	claimClient runnerRPCClient
 	runCtx      context.Context
@@ -56,7 +53,6 @@ type Runner struct {
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
-	cd := containerd.NewClient(opencodePluginNS)
 	runnerID, err := newRunnerID()
 	if err != nil {
 		return nil, err
@@ -65,7 +61,6 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		cfg:            cfg,
 		h:              selectHarness(cfg),
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
-		containerd:     cd,
 		bridgeMgr:      network.NewBridgeManager(cfg.Proxy.ListenAddr, cfg.DNS.ListenAddr),
 		tasks:          make(map[string]*task.TaskSession),
 		runnerID:       runnerID,
@@ -94,7 +89,7 @@ func (r *Runner) executionMode() string {
 	if mode := os.Getenv("RUNNER_MODE"); mode != "" {
 		return mode
 	}
-	return "kata"
+	return "docker"
 }
 
 func truncateSummary(s string) string {
@@ -105,7 +100,8 @@ func truncateSummary(s string) string {
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	if r.executionMode() == "kata" {
+	mode := r.executionMode()
+	if mode != "local" {
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {
@@ -131,7 +127,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			slog.Warn("could not enable IP forwarding", "err", err)
 		}
 	} else {
-		slog.Info("skipping proxy/dns (non-kata mode)")
+		slog.Info("skipping proxy/dns (local mode)")
 	}
 
 	return r.startConnectRPC(ctx)

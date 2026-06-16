@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
@@ -43,30 +42,6 @@ func TestInjectPATIntoURL(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestKataRunCommand(t *testing.T) {
-	t.Run("command with args", func(t *testing.T) {
-		cmd := kataRunCommand([]string{"opencode", "run"})
-		if len(cmd) != 3 {
-			t.Fatalf("expected 3 elements, got %d", len(cmd))
-		}
-		if cmd[0] != "sh" || cmd[1] != "-c" {
-			t.Fatalf("expected [sh -c ...], got %v", cmd[:2])
-		}
-		if !strings.Contains(cmd[2], "cd /tmp") {
-			t.Errorf("expected 'cd /tmp' in command, got %q", cmd[2])
-		}
-		if !strings.Contains(cmd[2], "exec") {
-			t.Errorf("expected 'exec' in command, got %q", cmd[2])
-		}
-	})
-	t.Run("single arg", func(t *testing.T) {
-		cmd := kataRunCommand([]string{"opencode"})
-		if !strings.Contains(cmd[2], "opencode") {
-			t.Errorf("expected 'opencode' in command, got %q", cmd[2])
-		}
-	})
 }
 
 func TestTaskPromptTimeout(t *testing.T) {

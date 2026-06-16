@@ -31,7 +31,7 @@ type Harness interface {
 	// Output piping for serve mode stdout/stderr.
 	PipeOutput(taskID, stream string, reader io.Reader)
 
-	// Batch mode (Kata).
+	// Batch mode.
 	RunBatchCommand(req task.TaskRequest) []string
 	SummarizeBatchOutput(raw string) string
 

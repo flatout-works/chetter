@@ -11,7 +11,6 @@ import (
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/gen/proto/runner/v1/runnerv1connect"
-	"github.com/flatout-works/chetter/runner/internal/containerd"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -29,14 +28,6 @@ type runnerRPCClient interface {
 }
 
 func (r *Runner) startConnectRPC(ctx context.Context) error {
-	if r.executionMode() == "kata" {
-		if err := containerd.CheckInstall(); err != nil {
-			return fmt.Errorf("prerequisites check failed: %w. "+
-				"Install containerd + Kata Containers: see README.md", err)
-		}
-		slog.Info("containerd + Kata runtime verified")
-	}
-
 	client := &http.Client{Timeout: rpcTimeout}
 	claimHTTP := &http.Client{Timeout: claimTimeout}
 	if r.cfg.Server.AuthToken != "" {

@@ -9,7 +9,7 @@ import (
 )
 
 // DNSProxy is a UDP DNS forwarder that blocks forbidden domains and
-// suppresses AAAA (IPv6) responses to avoid stalls inside Kata VMs.
+// suppresses AAAA (IPv6) responses to avoid stalls inside isolated containers.
 type DNSProxy struct {
 	ListenAddr     string
 	Upstream       string
@@ -55,7 +55,7 @@ func (d *DNSProxy) handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	name := strings.TrimSuffix(q.Name, ".")
 
 	// Strip AAAA records to force IPv4-only and avoid Happy Eyeballs
-	// stalls inside Kata where IPv6 is un-routed. Return NOERROR with
+	// stalls inside containers where IPv6 is un-routed. Return NOERROR with
 	// an empty answer section so resolvers don't treat it as a cacheable
 	// negative for all record types (RFC 2308).
 	if q.Qtype == dns.TypeAAAA {

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flatout-works/chetter/runner/internal/containerd"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -153,7 +152,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	slog.Info("MCP server started", "taskID", req.TaskID, "socket", socketPath)
 
 	var taskNet *network.TaskNetwork
-	if r.executionMode() == "kata" {
+	if r.executionMode() == "docker" {
 		taskNet, err = r.bridgeMgr.Setup(ctx, req.TaskID)
 		if err != nil {
 			slog.Error("bridge setup error", "taskID", req.TaskID, "err", err)
@@ -180,14 +179,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			return
 		}
 		r.runLocalAgent(ctx, session, req, socketPath)
-	case "docker":
+	default:
 		if !r.h.SupportsServe() {
 			r.runBatchAgent(ctx, session, req, socketPath)
 			return
 		}
 		r.runDockerAgent(ctx, session, req, socketPath)
-	default:
-		r.runKataAgent(ctx, session, req, socketPath, taskNet)
 	}
 }
 
@@ -257,106 +254,6 @@ func injectPATIntoURL(raw, pat string) string {
 		return raw
 	}
 	return "https://" + pat + "@" + raw[len("https://"):]
-}
-
-func (r *Runner) runKataAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, taskNet *network.TaskNetwork) {
-	if taskNet == nil {
-		r.publishStatusForRequest(req, "error", "network isolation is required in Kata mode", nil)
-		return
-	}
-
-	slog.Info("pulling image", "taskID", req.TaskID, "image", req.AgentImage)
-	if err := r.containerd.Pull(ctx, req.AgentImage); err != nil {
-		slog.Warn("pull warning", "taskID", req.TaskID, "err", err)
-	}
-
-	env := map[string]string{
-		"TASK_ID":         req.TaskID,
-		"WORKSPACE":       "/workspace",
-		"MCP_SOCKET_PATH": "/run/mcp/agent.sock",
-		"HOME":            "/opt/opencode",
-		"XDG_CONFIG_HOME": "/opt/opencode/.config",
-		"XDG_DATA_HOME":   "/workspace/.local/share",
-		"XDG_STATE_HOME":  "/workspace/.local/state",
-		"XDG_CACHE_HOME":  "/workspace/.cache",
-		"PATH":            "/workspace/.local/share/opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-	}
-	if taskNet != nil {
-		proxyHost := taskNet.GatewayIP + r.cfg.Proxy.ListenAddr
-		env["CHETTER_PROXY"] = proxyHost
-		env["HTTP_PROXY"] = "http://" + proxyHost
-		env["HTTPS_PROXY"] = "http://" + proxyHost
-		env["NO_PROXY"] = "localhost,127.0.0.1,.local"
-	}
-	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
-			continue
-		}
-		env[k] = v
-	}
-	addRunnerOwnedEnv(env)
-	env["CHETTER_AGENT_NAME"] = req.Agent
-	env["CHETTER_MODEL_ID"] = r.h.ResolvedModelID(req)
-	env["CHETTER_RUNNER_IMAGE"] = os.Getenv("CHETTER_RUNNER_IMAGE")
-	env["CHETTER_RUNNER_IMAGE_DIGEST"] = os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST")
-	resolvConfPath := session.WorkspaceDir + "/.chetter-resolv.conf"
-	if err := os.WriteFile(resolvConfPath, []byte("nameserver "+taskNet.GatewayIP+"\noptions timeout:2 attempts:2\n"), 0644); err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("write task resolv.conf: %v", err), nil)
-		return
-	}
-
-	mounts := []containerd.Mount{
-		{
-			Type:        "bind",
-			Source:      session.WorkspaceDir,
-			Destination: "/workspace",
-			Options:     []string{"rbind", "rw"},
-		},
-		{
-			Type:        "bind",
-			Source:      resolvConfPath,
-			Destination: "/etc/resolv.conf",
-			Options:     []string{"rbind", "ro"},
-		},
-		{
-			Type:        "bind",
-			Source:      session.WorkspaceDir + "/.config/opencode/config.json",
-			Destination: "/opt/opencode/.config/opencode/config.json",
-			Options:     []string{"rbind", "ro"},
-		},
-	}
-
-	cmd := r.h.RunBatchCommand(req)
-	if os.Getenv("CHETTER_KATA_PREFLIGHT") == "1" && len(req.Command) == 0 && req.Prompt != "" {
-		mounts = append(mounts,
-			containerd.Mount{Type: "bind", Source: "/usr/bin/strace", Destination: "/usr/bin/strace", Options: []string{"rbind", "ro"}},
-			containerd.Mount{Type: "bind", Source: "/lib/x86_64-linux-gnu", Destination: "/lib/x86_64-linux-gnu", Options: []string{"rbind", "ro"}},
-			containerd.Mount{Type: "bind", Source: "/lib64", Destination: "/lib64", Options: []string{"rbind", "ro"}},
-			containerd.Mount{Type: "bind", Source: "/tmp", Destination: "/host-tmp", Options: []string{"rbind", "rw"}},
-		)
-		cmd = kataPreflightCommand(cmd)
-	} else if len(req.Command) == 0 && req.Prompt != "" {
-		cmd = kataRunCommand(cmd)
-	}
-	slog.Info("starting Kata container", "taskID", req.TaskID, "command", cmd)
-	out, err := r.containerd.RunKata(ctx, req.TaskID, req.AgentImage, mounts, env, taskNet.NetNSPath, cmd)
-	if err != nil {
-		slog.Error("kata run error", "taskID", req.TaskID, "err", err)
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("kata run: %v\n%s", err, out), nil)
-		return
-	}
-
-	slog.Info("kata container exited", "taskID", req.TaskID)
-	summary := out
-	if len(req.Command) == 0 && req.Prompt != "" {
-		summary = r.h.SummarizeBatchOutput(out)
-	}
-	r.publishStatusForRequest(req, "done", truncateSummary(summary), nil)
-	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
-}
-
-func kataRunCommand(cmd []string) []string {
-	return []string{"sh", "-c", "cd /tmp && exec " + shellQuoteArgs(cmd) + " < /dev/null"}
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
@@ -498,24 +395,29 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	dockerArgs := []string{
 		"run", "-d",
 		"--name", containerName,
+	}
+	if r.cfg.Execution.UseGVisor {
+		dockerArgs = append(dockerArgs, "--runtime", "runsc")
+	}
+	dockerArgs = append(dockerArgs,
 		"-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort),
-		"-v", session.WorkspaceDir + ":/workspace",
-		"-v", socketPath + ":" + socketPath,
-		"-v", configPath + ":/opt/opencode/.config/opencode/config.json:ro",
+		"-v", session.WorkspaceDir+":/workspace",
+		"-v", socketPath+":"+socketPath,
+		"-v", configPath+":/opt/opencode/.config/opencode/config.json:ro",
 		"-w", "/workspace",
-		"-e", "TASK_ID=" + req.TaskID,
+		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
-		"-e", "MCP_SOCKET_PATH=" + socketPath,
+		"-e", "MCP_SOCKET_PATH="+socketPath,
 		"-e", "HOME=/opt/opencode",
 		"-e", "XDG_CONFIG_HOME=/opt/opencode/.config",
 		"-e", "XDG_DATA_HOME=/workspace/.local/share",
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
-		"-e", "CHETTER_AGENT_NAME=" + req.Agent,
-		"-e", "CHETTER_MODEL_ID=" + r.h.ResolvedModelID(req),
-		"-e", "CHETTER_RUNNER_IMAGE=" + os.Getenv("CHETTER_RUNNER_IMAGE"),
-		"-e", "CHETTER_RUNNER_IMAGE_DIGEST=" + os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
-	}
+		"-e", "CHETTER_AGENT_NAME="+req.Agent,
+		"-e", "CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
+		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
+	)
 
 	for k, v := range r.h.Env("/opt/opencode/.config/opencode", secret) {
 		key := k
@@ -545,7 +447,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	dockerArgs = append(dockerArgs, r.h.Name())
 	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
 
-	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort)
+	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
