@@ -100,6 +100,10 @@ RUN govulncheck -h && osv-scanner --version && hcloud version
 RUN curl -fsSL https://opencode.ai/install | bash \
     && ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
 
+# Claude Code (via npm)
+RUN npm install -g @anthropic-ai/claude-code \
+    && ln -sf "$(npm root -g)/node_modules/.bin/claude" /usr/local/bin/claude
+
 # npm packages for OpenCode plugins
 RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /opt/opencode/.config/opencode \

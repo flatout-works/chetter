@@ -1,0 +1,33 @@
+package claude
+
+import (
+	"bufio"
+	"io"
+	"log/slog"
+	"strings"
+)
+
+func pipeOutput(taskID, stream string, reader io.Reader) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) > 4096 {
+			line = line[:4096] + "... (truncated)"
+		}
+		slog.Info("claude output", "taskID", taskID, "stream", stream, "line", line)
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("claude read error", "taskID", taskID, "stream", stream, "err", err)
+	}
+}
+
+func extractStatusFromLine(line string) string {
+	if strings.Contains(line, "error") {
+		return "error"
+	}
+	if strings.Contains(line, "complete") || strings.Contains(line, "result") {
+		return "done"
+	}
+	return "running"
+}

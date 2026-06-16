@@ -75,6 +75,8 @@ func (oc *OpenCode) SummarizeBatchOutput(raw string) string {
 	return summarizeJSONL(raw)
 }
 
+func (oc *OpenCode) SupportsServe() bool { return true }
+
 func (oc *OpenCode) ResolvedModelID(req task.TaskRequest) string {
 	return resolvedChetterModelID(req)
 }

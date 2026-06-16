@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
+	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/containerd"
@@ -78,7 +79,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 func selectHarness(cfg *config.Config) harness.Harness {
 	switch cfg.Execution.Harness {
 	case "claude-code":
-		return opencode.New()
+		return claude.New()
 	case "codex":
 		return opencode.New()
 	default:
