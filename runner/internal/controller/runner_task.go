@@ -455,7 +455,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ExportSession(context.Background(), baseURL, sid, secret); exportErr != nil {
+		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
 			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
 		} else {
 			sessionExport = export
@@ -585,7 +585,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ExportSession(context.Background(), baseURL, sid, secret); exportErr != nil {
+		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
 			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
 		} else {
 			sessionExport = export

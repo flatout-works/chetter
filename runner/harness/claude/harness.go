@@ -60,6 +60,10 @@ func (cc *ClaudeCode) ExportSession(ctx context.Context, baseURL, sessionID, sec
 	return "", nil
 }
 
+func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
+	return "", nil
+}
+
 func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {}
 
 func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
