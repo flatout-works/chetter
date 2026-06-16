@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1.7
+
+# Chetter Runner — Python Variant
+# =========================================================================
+# Python development environment with opencode, claude-code, python3, pip,
+# venv, and common Python tooling. Inherits the shared base for git, curl,
+# gh, and agent infrastructure.
+# =========================================================================
+
+ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
+
+FROM golang:1.26-bookworm AS runner-builder
+
+ARG CACHEBUST
+WORKDIR /src
+COPY go.mod go.sum* ./
+COPY gen/ ./gen/
+COPY runner/go.mod runner/go.sum* ./runner/
+WORKDIR /src/runner
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+WORKDIR /src
+COPY runner/ ./runner/
+WORKDIR /src/runner
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner
+
+FROM golang:1.26-bookworm AS mcp-bridge-builder
+
+WORKDIR /build
+COPY runner/harness/mcp-bridge/main.go ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/mcp-bridge ./main.go
+
+FROM ${BASE_IMAGE}
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python
+
+RUN pip3 install --no-cache-dir --break-system-packages \
+    ruff \
+    mypy \
+    pytest \
+    black \
+    httpx
+
+COPY --from=runner-builder /out/runner /usr/local/bin/runner
+COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
+COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
+
+COPY tools/skills/ /opt/opencode/.agents/skills/
+COPY .opencode/agent/ /opt/opencode/.config/opencode/agent/
+
+RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
+    && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent
+
+ENV RUNNER_LOCAL=true
+ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces
+
+WORKDIR /var/lib/chetter-runner/workspaces
+ENTRYPOINT ["chetter-entrypoint"]

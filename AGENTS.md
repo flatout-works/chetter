@@ -6,6 +6,7 @@ Repo-local guidance for OpenCode sessions working on Chetter.
 
 - **Root** (`main.go`, `internal/*`): The MCP server and control plane.
 - **Runner** (`runner/`): The containerized agent harness. Separate Go module with its own `go.mod` and `Makefile`.
+- **Runner Images** (`runner/images/`): Dockerfile variants for agent execution environments (golang, python, node, rust, minimal). All inherit from `Dockerfile.chetter-base` except `minimal` which builds from `debian:bookworm-slim`.
 - **CLI** (`cmd/chetterctl/`): Token management CLI.
 - **DB** (`db/`): Goose migrations and sqlc query files.
 - **Proto** (`proto/`): ConnectRPC service between server and runner.
@@ -31,6 +32,16 @@ make vet            # go vet ./...
 make lint           # staticcheck ./...
 make check          # test + vet + lint
 make local          # build runner + mcp-bridge binaries
+
+# Docker images (from repo root)
+make docker-build-mcp            # build MCP server image
+make docker-build-runner-base    # build heavy base image (Go, opencode, claude, tools)
+make docker-build-runner         # build default runner image (base + app layer)
+make docker-build-golang         # build golang variant
+make docker-build-python         # build python variant
+make docker-build-node           # build node variant
+make docker-build-rust           # build rust variant
+make docker-build-minimal        # build minimal variant (no language toolchain)
 ```
 
 **Order matters for schema changes:** `sqlc generate` reads from `db/migrations/`, so always update migrations **before** running `make generate`.

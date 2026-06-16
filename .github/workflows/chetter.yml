@@ -20,9 +20,61 @@ jobs:
       - name: Check chetter
         run: make check
 
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runner-base: ${{ steps.filter.outputs.runner-base }}
+      mcp: ${{ steps.filter.outputs.mcp }}
+      runner: ${{ steps.filter.outputs.runner }}
+      variant-golang: ${{ steps.filter.outputs.variant-golang }}
+      variant-python: ${{ steps.filter.outputs.variant-python }}
+      variant-node: ${{ steps.filter.outputs.variant-node }}
+      variant-rust: ${{ steps.filter.outputs.variant-rust }}
+      variant-minimal: ${{ steps.filter.outputs.variant-minimal }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            runner-base:
+              - runner/Dockerfile.chetter-base
+            mcp:
+              - Dockerfile
+              - main.go
+              - internal/**
+              - db/**
+              - go.mod
+              - go.sum
+              - proto/**
+              - gen/**
+              - cmd/**
+            runner:
+              - runner/Dockerfile.chetter
+              - runner/cmd/**
+              - runner/harness/**
+              - runner/internal/**
+              - runner/go.mod
+              - runner/go.sum
+              - runner/chetter-entrypoint.sh
+              - tools/skills/**
+              - .opencode/agent/**
+            variant-golang:
+              - runner/images/golang/Dockerfile
+            variant-python:
+              - runner/images/python/Dockerfile
+            variant-node:
+              - runner/images/node/Dockerfile
+            variant-rust:
+              - runner/images/rust/Dockerfile
+            variant-minimal:
+              - runner/images/minimal/Dockerfile
+
   arcane-build-deploy:
     runs-on: ubuntu-latest
-    needs: check
+    needs: [check, detect-changes]
     timeout-minutes: 240
     steps:
       - name: Build and deploy with Arcane
@@ -32,6 +84,14 @@ jobs:
           ARCANE_CHETTER_PROJECT_ID: ${{ secrets.ARCANE_CHETTER_PROJECT_ID }}
           ARCANE_CHETTER_GITOPS_ID: ${{ secrets.ARCANE_CHETTER_GITOPS_ID }}
           ARCANE_ENVIRONMENT_ID: ${{ vars.ARCANE_ENVIRONMENT_ID }}
+          CHANGED_RUNNER_BASE: ${{ needs.detect-changes.outputs.runner-base }}
+          CHANGED_MCP: ${{ needs.detect-changes.outputs.mcp }}
+          CHANGED_RUNNER: ${{ needs.detect-changes.outputs.runner }}
+          CHANGED_VARIANT_GOLANG: ${{ needs.detect-changes.outputs.variant-golang }}
+          CHANGED_VARIANT_PYTHON: ${{ needs.detect-changes.outputs.variant-python }}
+          CHANGED_VARIANT_NODE: ${{ needs.detect-changes.outputs.variant-node }}
+          CHANGED_VARIANT_RUST: ${{ needs.detect-changes.outputs.variant-rust }}
+          CHANGED_VARIANT_MINIMAL: ${{ needs.detect-changes.outputs.variant-minimal }}
         run: |
           set -euo pipefail
 
@@ -100,17 +160,58 @@ jobs:
             exit 1
           fi
 
-          echo "Building and pushing runner base image"
-          call_arcane POST "/environments/$env_id/images/build" \
-            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter-base",tags:["ghcr.io/flatout-works/chetter-runner-base:main"],provider:"local",push:true,load:true}')" >/dev/null
+          # Runner base image — only rebuild if Dockerfile changed
+          if [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            echo "Building and pushing runner base image"
+            call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter-base",tags:["ghcr.io/flatout-works/chetter-runner-base:main"],provider:"local",push:true,load:true}')" >/dev/null
+          else
+            echo "Runner base image unchanged, skipping build"
+          fi
 
-          echo "Building and pushing MCP image"
-          call_arcane POST "/environments/$env_id/images/build" \
-            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],provider:"local",push:true,load:true}')" >/dev/null
+          # MCP image — only rebuild if server code changed
+          if [ "$CHANGED_MCP" = "true" ]; then
+            echo "Building and pushing MCP image"
+            call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],provider:"local",push:true,load:true}')" >/dev/null
+          else
+            echo "MCP image unchanged, skipping build"
+          fi
 
-          echo "Building and pushing runner image"
-          call_arcane POST "/environments/$env_id/images/build" \
-            "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
+          # Runner app image — rebuild if runner code, skills, or base changed
+          if [ "$CHANGED_RUNNER" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            echo "Building and pushing runner image"
+            call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
+          else
+            echo "Runner image unchanged, skipping build"
+          fi
+
+          # Variant images
+          build_variant() {
+            local variant="$1"
+            local dockerfile="runner/images/$variant/Dockerfile"
+            local tag="ghcr.io/flatout-works/chetter-runner:main-${variant}"
+            echo "Building and pushing ${variant} variant"
+            call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" --arg dockerfile "$dockerfile" --arg tag "$tag" '{contextDir:$contextDir,dockerfile:$dockerfile,tags:[$tag],provider:"local",push:true,load:true}')" >/dev/null
+          }
+
+          if [ "$CHANGED_VARIANT_GOLANG" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            build_variant golang
+          fi
+          if [ "$CHANGED_VARIANT_PYTHON" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            build_variant python
+          fi
+          if [ "$CHANGED_VARIANT_NODE" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            build_variant node
+          fi
+          if [ "$CHANGED_VARIANT_RUST" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
+            build_variant rust
+          fi
+          if [ "$CHANGED_VARIANT_MINIMAL" = "true" ]; then
+            build_variant minimal
+          fi
 
           echo "Redeploying Chetter project"
           call_arcane POST "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" \
