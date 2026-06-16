@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chetter-mcp
+  namespace: chetter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: chetter-mcp
+  template:
+    metadata:
+      labels:
+        app: chetter-mcp
+    spec:
+      containers:
+      - name: mcp
+        image: ghcr.io/flatout-works/chetter-mcp:main
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - secretRef:
+            name: chetter-secrets
+        env:
+        - name: HTTP_ADDR
+          value: ":8080"
+        - name: DEFAULT_AGENT_IMAGE
+          value: ghcr.io/flatout-works/chetter-runner:main
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
