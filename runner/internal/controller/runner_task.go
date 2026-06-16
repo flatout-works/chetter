@@ -1,8 +1,12 @@
 package controller
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -171,8 +175,16 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	switch r.executionMode() {
 	case "local":
+		if !r.h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath)
+			return
+		}
 		r.runLocalAgent(ctx, session, req, socketPath)
 	case "docker":
+		if !r.h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath)
+			return
+		}
 		r.runDockerAgent(ctx, session, req, socketPath)
 	default:
 		r.runKataAgent(ctx, session, req, socketPath, taskNet)
@@ -208,12 +220,12 @@ func addRunnerOwnedEnv(env map[string]string) {
 }
 
 func runnerOwnedEnvKeys() []string {
-	return []string{"GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY"}
+	return []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY"}
 }
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY":
+	case "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY":
 		return true
 	default:
 		return false
@@ -614,4 +626,128 @@ func taskPromptTimeout(timeoutSec int) time.Duration {
 		timeoutSec = 3600
 	}
 	return time.Duration(timeoutSec) * time.Second
+}
+
+func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+	args := r.h.RunBatchCommand(req)
+	name := r.h.Name()
+	slog.Info("starting batch harness", "taskID", req.TaskID, "harness", name, "args", args)
+	r.publishStatusForRequest(req, "running", "Starting agent (batch mode)...", nil)
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Dir = session.WorkspaceDir
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("stdout pipe: %v", err), nil)
+		return
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("stderr pipe: %v", err), nil)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s: %v", name, err), nil)
+		return
+	}
+
+	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+
+	var summary string
+	readCtx, readCancel := context.WithCancel(ctx)
+	defer readCancel()
+	if out, err := readBatchOutput(readCtx, stdout, req.TaskID, func(detail string) {
+		r.publishEvent(req.TaskID, fmt.Sprintf("%s: %s", name, detail))
+	}); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s: %v", name, err), nil)
+		return
+	} else {
+		summary = out
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("%s timed out", name), nil)
+			return
+		}
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil)
+		return
+	}
+
+	slog.Info("batch agent completed", "taskID", req.TaskID)
+	r.publishStatusForRequest(req, "done", truncateSummary(summary), nil)
+}
+
+func (r *Runner) publishEvent(taskID, detail string) {
+	resp := task.TaskResponse{
+		TaskID:  taskID,
+		Status:  "running",
+		Summary: detail,
+	}
+	r.decorateTaskResponse(&resp, nil, "")
+	resp.StartedAt = time.Now()
+	r.reportTaskResponse(resp)
+}
+
+func readBatchOutput(ctx context.Context, reader io.Reader, taskID string, onEvent func(detail string)) (string, error) {
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
+
+	var lastDetail string
+	lastPublished := time.Now()
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return buf.String(), ctx.Err()
+		default:
+		}
+		line := scanner.Text()
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			continue
+		}
+		if detail := eventDetail(ev); detail != "" {
+			lastDetail = detail
+		}
+		if time.Since(lastPublished) >= 3*time.Second && lastDetail != "" {
+			onEvent(lastDetail)
+			lastPublished = time.Now()
+		}
+	}
+	return buf.String(), scanner.Err()
+}
+
+func eventDetail(ev map[string]any) string {
+	typ, _ := ev["type"].(string)
+	if typ == "system" {
+		sub, _ := ev["subtype"].(string)
+		return "system." + sub
+	}
+	if typ == "stream_event" {
+		if event, ok := ev["event"].(map[string]any); ok {
+			if delta, ok := event["delta"].(map[string]any); ok {
+				if t, _ := delta["type"].(string); t == "text_delta" {
+					if text, _ := delta["text"].(string); text != "" {
+						return text
+					}
+				}
+			}
+			return "stream_event"
+		}
+	}
+	if typ == "user" {
+		if msg, ok := ev["message"].(map[string]any); ok {
+			if text, _ := msg["text"].(string); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
 }

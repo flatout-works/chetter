@@ -6,24 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Comment trigger on `/chetter-review` now posts an acknowledgment comment and auto-adds the `chetter-review` label when triggers match.
-- Runner uses a dedicated HTTP client with a longer timeout for the `ClaimTask` long-poll, improving reliability under network latency.
+- Session export for completed tasks: `chetter_task_export` MCP tool returns the markdown transcript from a completed OpenCode session, stored in a new `session_export` column on `chetter_tasks` with zero-downtime auto-migration (migration 007). Corresponding `chetter-export` command added to `.opencode/opencode.json`.
+- Webhook `/chetter-review` comment trigger now adds the review label and posts an acknowledgment comment before dispatching the review task.
 
 ### Changed
 
-- `prompt` is now optional for `pr_review` triggers; when omitted, the request falls back to the built-in review template prompt.
-- Label auto-add moved from `handlePullRequest` to `submitReview` — the label is now added only after at least one matching trigger is found, so every labeled PR is guaranteed to have a review task submitted.
-- `shouldReview` no longer fetches PR files from the GitHub API — the file-pattern trigger path (Go/proto/migrations) has been removed. Reviews are now triggered only by label, fork, or comment.
-
-### Removed
-
-- File-pattern auto-review trigger removed: the `matchesCodePaths` / `shouldReviewWithFiles` functions and the `file-pattern` trigger reason are gone. PRs that only modify Go, proto, or migration files without a label or fork no longer auto-trigger a review.
-- `ListPRFiles` GitHub API call removed from `handlePullRequest` — the webhook handler no longer queries the PR diff to decide eligibility.
+- Webhook file-pattern auto-review removed; PRs are labeled only when a trigger actually fires, preventing stale labels on non-matching PRs.
+- `prompt` field made optional in `chetter_create_trigger` and `chetter_update_trigger` — `pr_review` triggers fall back to a built-in review template when no prompt is supplied.
+- Runner forwards `GITHUB_TOKEN` and `SYNTHETIC_API_KEY` to task containers alongside provider API keys, enabling `gh` CLI usage (e.g. PR creation) from docs/changelog/website task containers.
+- Runner uses a dedicated HTTP client with 45s timeout for `ClaimTask` long-poll (was sharing the 10s RPC client, causing timeout warnings on every idle poll).
 
 ### Fixed
 
-- `/chetter-review` comment no longer adds the `chetter-review` label in `handleIssueComment`, preventing a spurious `pull_request.labeled` webhook that would create a duplicate review task.
-- Backfill `NULL trigger_config` in existing schedules after `ALTER TABLE ADD COLUMN`, preventing startup crash when sqlc's `json.RawMessage` scans a `NULL` value.
+- Webhook `/chetter-review` handler no longer adds the label before dispatching the review, preventing duplicate tasks triggered by the resulting `pull_request.labeled` webhook event.
+- Webhook async context cancel function now properly released, eliminating a context leak.
+- Refactor: dead code removed (`nullableTime`, `envList`), `NullTimePtr` exported from `store` package, schedule lookups in `DeleteTrigger`/`RunTriggerNow` optimized from linear search to direct SQL query, and async webhook background calls given proper timeouts.
+
+### Removed
+
+- File-pattern auto-review logic (`matchesCodePaths`/`matchesCodePath`) removed from webhook handler, simplifying the PR review decision tree.
 
 ## 2026-06-15
 
