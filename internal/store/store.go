@@ -186,6 +186,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureScheduleRunTeamIDColumn(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureSessionExportColumn(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -321,6 +324,21 @@ func (s *Store) ensureScheduleRunTeamIDColumn(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_schedule_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER schedule_id")
 	if err != nil {
 		return fmt.Errorf("add chetter_schedule_runs.team_id: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureSessionExportColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "chetter_tasks", "session_export")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN session_export MEDIUMTEXT NULL AFTER error")
+	if err != nil {
+		return fmt.Errorf("add chetter_tasks.session_export: %w", err)
 	}
 	return nil
 }

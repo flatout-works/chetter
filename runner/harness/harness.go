@@ -24,6 +24,7 @@ type Harness interface {
 	WaitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error
 	CreateSession(ctx context.Context, baseURL, secret string) (string, error)
 	SendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error)
+	ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error)
 	WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string))
 
 	// Output piping for serve mode stdout/stderr.

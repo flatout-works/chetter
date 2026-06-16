@@ -31,6 +31,7 @@ var schemaStatements = []string{
 		last_event_at DATETIME(6) NULL,
 		started_at DATETIME(6) NULL,
 		ended_at DATETIME(6) NULL,
+		session_export MEDIUMTEXT NULL,
 		PRIMARY KEY (id),
 		KEY idx_chetter_tasks_status_created (status, created_at),
 		KEY idx_chetter_tasks_created (created_at),

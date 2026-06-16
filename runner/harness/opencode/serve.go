@@ -155,6 +155,51 @@ func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, r
 	return strings.Join(summaryLines, "\n"), nil
 }
 
+func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	exportCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	payload, _ := json.Marshal(map[string]any{
+		"parts": []map[string]any{
+			{"type": "text", "text": "/export"},
+		},
+	})
+	url := baseURL + "/session/" + sessionID + "/message"
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(exportCtx, "POST", url, bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("create export request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if secret != "" {
+		req.Header.Set("Authorization", basicAuthHeader(secret))
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("POST /message /export: %w", err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("POST /message /export: status %d: %s", resp.StatusCode, string(respBody))
+	}
+	var msg struct {
+		Parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"parts"`
+	}
+	if err := json.Unmarshal(respBody, &msg); err != nil {
+		return "", fmt.Errorf("parse export response: %w", err)
+	}
+	var lines []string
+	for _, part := range msg.Parts {
+		if part.Type == "text" {
+			lines = append(lines, part.Text)
+		}
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
 func opencodeServeArgs(port int) []string {
 	args := []string{"serve"}
 	if !mem9Enabled() {

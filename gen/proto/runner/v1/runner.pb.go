@@ -673,6 +673,7 @@ type TaskEvent struct {
 	StartedAt         string                 `protobuf:"bytes,11,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	EndedAt           string                 `protobuf:"bytes,12,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
 	PayloadJson       string                 `protobuf:"bytes,13,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
+	SessionExport     string                 `protobuf:"bytes,14,opt,name=session_export,json=sessionExport,proto3" json:"session_export,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -794,6 +795,13 @@ func (x *TaskEvent) GetEndedAt() string {
 func (x *TaskEvent) GetPayloadJson() string {
 	if x != nil {
 		return x.PayloadJson
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetSessionExport() string {
+	if x != nil {
+		return x.SessionExport
 	}
 	return ""
 }
@@ -948,7 +956,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
-	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xb4\x03\n" +
+	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xdb\x03\n" +
 	"\tTaskEvent\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1f\n" +
 	"\x06status\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06status\x12\x18\n" +
@@ -966,7 +974,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\v \x01(\tR\tstartedAt\x12\x19\n" +
 	"\bended_at\x18\f \x01(\tR\aendedAt\x12!\n" +
-	"\fpayload_json\x18\r \x01(\tR\vpayloadJson\"w\n" +
+	"\fpayload_json\x18\r \x01(\tR\vpayloadJson\x12%\n" +
+	"\x0esession_export\x18\x0e \x01(\tR\rsessionExport\"w\n" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +

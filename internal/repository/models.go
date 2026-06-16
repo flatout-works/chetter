@@ -103,6 +103,7 @@ type ChetterTask struct {
 	StartedAt         sql.NullTime    `json:"started_at"`
 	EndedAt           sql.NullTime    `json:"ended_at"`
 	TeamID            sql.NullString  `json:"team_id"`
+	SessionExport     sql.NullString  `json:"session_export"`
 }
 
 type ChetterTaskEvent struct {
