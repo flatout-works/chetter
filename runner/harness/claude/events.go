@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"log/slog"
-	"strings"
 )
 
 func pipeOutput(taskID, stream string, reader io.Reader) {
@@ -22,12 +21,3 @@ func pipeOutput(taskID, stream string, reader io.Reader) {
 	}
 }
 
-func extractStatusFromLine(line string) string {
-	if strings.Contains(line, "error") {
-		return "error"
-	}
-	if strings.Contains(line, "complete") || strings.Contains(line, "result") {
-		return "done"
-	}
-	return "running"
-}
