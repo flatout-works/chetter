@@ -155,6 +155,163 @@ Call the `chetter_submit_task` MCP tool from your AI client, or use `/chetter-su
 
 Set `GITHUB_TOKEN` in `.env` if runners need access to private repositories or need to create branches and pull requests.
 
+## Trying Chetter Locally with k3s
+
+[k3s](https://k3s.io/) is the most widely used lightweight Kubernetes distribution for local development. It's a single binary, installs in seconds, and supports all standard Kubernetes APIs. If you want to test Chetter on Kubernetes without a cloud cluster, k3s is the recommended path.
+
+Other options exist — [kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker) and [minikube](https://minikube.sigs.k8s.io/) — but k3s is preferred because it runs actual containers (not nested Docker-in-Docker), making Docker socket passthrough and gVisor work naturally.
+
+### Prerequisites
+
+- A Linux machine (bare metal or VM) with at least 4 GB RAM and Docker installed
+- (Optional) KVM support if you want gVisor
+
+### Step 1: Install k3s
+
+```bash
+curl -sfL https://get.k3s.io | sh -
+
+# k3s writes kubeconfig to /etc/rancher/k3s/k3s.yaml
+# For non-root access:
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(id -u):$(id -g) ~/.kube/config
+
+# Verify
+kubectl get nodes
+```
+
+k3s automatically includes Traefik as an ingress controller and its own container runtime. It uses Docker as the default runtime if Docker is installed on the host, which is what we want for the runner's Docker socket passthrough.
+
+### Step 2: Create the namespace and secrets
+
+```bash
+kubectl apply -f deploy/k8s/namespace.yaml
+
+kubectl create secret generic chetter-secrets \
+  --namespace=chetter \
+  --from-literal=CHETTER_MCP_AUTH_TOKEN=your-token \
+  --from-literal=DATABASE_DSN='chetter:password@tcp(mysql:3306)/chetter?parseTime=true' \
+  --from-literal=GITHUB_TOKEN=your-gh-token \
+  --from-literal=DEEPSEEK_API_KEY=your-key
+```
+
+### Step 3: Deploy MySQL
+
+For local testing, run MySQL in the cluster:
+
+```bash
+kubectl apply -n chetter -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
+        - name: MYSQL_DATABASE
+          value: chetter
+        - name: MYSQL_USER
+          value: chetter
+        - name: MYSQL_PASSWORD
+          value: password
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command: ["mysqladmin", "ping", "-h", "localhost"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+EOF
+```
+
+### Step 4: Deploy Chetter
+
+```bash
+# Apply the MCP server and runner manifests
+kubectl apply -f deploy/k8s/mcp-service.yaml
+kubectl apply -f deploy/k8s/mcp-deployment.yaml
+kubectl apply -f deploy/k8s/runner-deployment.yaml
+
+# Wait for everything to come up
+kubectl -n chetter rollout status deployment/chetter-mcp
+kubectl -n chetter rollout status deployment/chetter-runner
+```
+
+### Step 5: Verify
+
+```bash
+# Check all pods are running
+kubectl -n chetter get pods
+
+# Check MCP server health
+kubectl -n chetter port-forward deployment/chetter-mcp 18088:8080 &
+curl http://localhost:18088/healthz
+
+# Watch runner logs
+kubectl -n chetter logs -f deployment/chetter-runner
+```
+
+### Step 6: Connect your AI client
+
+Port-forward the MCP server and use `http://localhost:18088/mcp` as your MCP endpoint. See [Quick Start](#quick-start) step 5 for client-specific setup.
+
+### Optional: Enable gVisor
+
+If you want sandbox isolation on your k3s node:
+
+```bash
+# Install gVisor on the host (not inside k3s)
+curl -fsSL https://gvisor.dev/archive.key | \
+  sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
+  sudo tee /etc/apt/sources.list.d/gvisor.list
+sudo apt-get update && sudo apt-get install -y runsc
+
+# Register runsc with the container runtime
+sudo /usr/bin/runsc install
+sudo systemctl restart docker
+
+# Apply the RuntimeClass (optional — only if you want runner pods under gVisor too)
+kubectl apply -f deploy/k8s/gvisor-runtimeclass.yaml
+
+# Enable gVisor for agent containers by setting the env var
+kubectl -n chetter set env deployment/chetter-runner USE_GVISOR=true
+```
+
+### Cleaning up
+
+```bash
+# Remove Chetter
+kubectl delete namespace chetter
+
+# Uninstall k3s
+/usr/local/bin/k3s-uninstall.sh
+```
+
 ## Common Commands
 
 ```bash
@@ -349,32 +506,9 @@ Scaling is just `kubectl scale`. Each runner pod independently polls for tasks. 
 
 See the [Sandbox Isolation](#sandbox-isolation) section for the DaemonSet that installs gVisor on cluster nodes and the RuntimeClass registration. On GKE, use [GKE Sandbox](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) instead — no DaemonSet needed.
 
-When `runtimeClassName: gvisor` is set on the runner pod, the runner container itself runs under gVisor. When `USE_GVISOR=true` is also set, agent containers spawned by the runner (via Docker or containerd) also use the `runsc` runtime. These are independent: you can run the runner under gVisor while agents use runc, or vice versa.
+When `runtimeClassName: gvisor` is set on the runner pod, the runner container itself runs under gVisor. When `USE_GVISOR=true` is also set, agent containers spawned by the runner (via Docker) also use the `runsc` runtime. These are independent: you can run the runner under gVisor while agents use runc, or vice versa.
 
-### Local testing with k3s
-
-For testing on a single machine (e.g. wowbagger):
-
-```bash
-# Install k3s (lightweight Kubernetes)
-curl -sfL https://get.k3s.io | sh -
-
-# Verify
-kubectl get nodes
-
-# Copy the GHCR credentials
-kubectl create secret generic chetter-secrets \
-  --from-literal=CHETTER_MCP_AUTH_TOKEN=your-token \
-  --from-literal=DATABASE_DSN='chetter:password@tcp(mysql:3306)/chetter?parseTime=true' \
-  --from-literal=GITHUB_TOKEN=your-gh-token \
-  --from-literal=DEEPSEEK_API_KEY=your-key
-
-# Apply the manifests
-kubectl apply -f deploy/k8s/
-
-# Watch
-kubectl logs -f deployment/chetter-runner
-```
+For local Kubernetes testing, see [Trying Chetter Locally with k3s](#trying-chetter-locally-with-k3s).
 
 ## Deploying with Docker + gVisor
 
