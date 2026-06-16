@@ -154,6 +154,7 @@ server:
 
 execution:
   harness: "${CHETTER_HARNESS:-opencode}"
+  use_gvisor: ${USE_GVISOR:-false}
 
 runner:
   workspace_root: ${RUNNER_WORKSPACE_ROOT}

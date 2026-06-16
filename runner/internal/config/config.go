@@ -60,8 +60,9 @@ type GitConfig struct {
 }
 
 type ExecutionConfig struct {
-	Runtime string `yaml:"runtime"`
-	Harness string `yaml:"harness"`
+	Runtime  string `yaml:"runtime"`
+	Harness  string `yaml:"harness"`
+	UseGVisor bool `yaml:"use_gvisor"`
 }
 
 type DeployConfig struct {
@@ -118,6 +119,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ChetterMCP.AuthToken == "" {
 		cfg.ChetterMCP.AuthToken = os.Getenv("CHETTER_MCP_AUTH_TOKEN")
+	}
+	if !cfg.Execution.UseGVisor {
+		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"
 	}
 }
 
