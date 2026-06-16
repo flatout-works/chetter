@@ -238,6 +238,11 @@ See `cmd/chetterctl/main.go` for CLI usage or use the MCP tools:
 | `chetter_create_token` | Create team/user token (admin only) |
 | `chetter_list_tokens` | List tokens (admin only) |
 | `chetter_delete_token` | Delete a token (admin only) |
+| `chetter_create_team` | Create a team (admin only) |
+| `chetter_list_teams` | List all teams (admin only) |
+| `chetter_delete_team` | Delete a team and cascade users/tokens/tasks/schedules (admin only) |
+| `chetter_list_users` | List users, optionally filtered by team name (admin only) |
+| `chetter_list_schedule_runs` | List schedule runs for the current team, optionally filtered by schedule name |
 | `chetter_arcane_scanner_status` | Arcane scanner availability |
 | `chetter_arcane_environment_summary` | Vulnerability counts across images |
 | `chetter_arcane_list_images` | Docker images in Arcane |
@@ -269,7 +274,7 @@ Quick example:
 
 ## PR Reviews
 
-Chetter can automatically review GitHub pull requests via webhook integration. Five trigger paths: label, fork, file-pattern, `/chetter-review` comment, and manual MCP submission.
+Chetter can automatically review GitHub pull requests via webhook integration. Four trigger paths: label, fork, `/chetter-review` comment, and manual MCP submission.
 
 See [docs/REVIEWS.md](REVIEWS.md) for full setup.
 

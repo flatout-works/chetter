@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
 
 - Webhook `/chetter-review` handler no longer adds the label before dispatching the review, preventing duplicate tasks triggered by the resulting `pull_request.labeled` webhook event.
 - Webhook async context cancel function now properly released, eliminating a context leak.
-- `Refactor` dead code removed (`nullableTime`, `envList`), `NullTimePtr` exported from `store` package, schedule lookups in `DeleteTrigger`/`RunTriggerNow` optimized from linear search to direct SQL query, and async webhook background calls given proper timeouts.
+- Refactor: dead code removed (`nullableTime`, `envList`), `NullTimePtr` exported from `store` package, schedule lookups in `DeleteTrigger`/`RunTriggerNow` optimized from linear search to direct SQL query, and async webhook background calls given proper timeouts.
 
 ### Removed
 

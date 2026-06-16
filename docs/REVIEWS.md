@@ -25,16 +25,20 @@ Check X-GitHub-Delivery (replay/dedup protection)
        ▼
 Route by event type:
   ├─ pull_request (opened/synchronize/reopened/labeled)
-  │     ├─ Evaluate eligibility (see triggers below)
+  │     ├─ Evaluate eligibility (label or fork)
   │     ├─ If eligible:
-  │     │     ├─ Auto-add chetter-review label (if not label-triggered)
   │     │     ├─ Generate GitHub App installation token
-  │     │     └─ Submit review task
+  │     │     ├─ Look up matching PR review triggers in DB
+  │     │     ├─ Auto-add chetter-review label (after trigger match, skip if label-triggered)
+  │     │     └─ Submit one review task per matching trigger
   │     └─ If not → ignore
   │
   └─ issue_comment (created)
         ├─ If body == "/chetter-review" AND commenter has write access:
-        │     └─ Submit review task for the PR
+        │     ├─ Post acknowledgment comment
+        │     ├─ Look up matching PR review triggers in DB
+        │     ├─ Auto-add chetter-review label
+        │     └─ Submit one review task per matching trigger
         └─ Otherwise → ignore
 ```
 
@@ -48,6 +52,8 @@ GitHub              Chetter                                Runner             Op
   │                   │──verify sig                          │                  │
   │                   │──dedup check                         │                  │
   │                   │──gen app token                       │                  │
+  │                   │──query DB triggers for repo          │                  │
+  │                   │──add label (if not label-triggered)  │                  │
   │                   │──SubmitReviewTask()                  │                  │
   │                   │◀──────────────ConnectRPC claim───────│                  │
   │                   │                                      │──start container▶│
@@ -69,39 +75,25 @@ Repo-level filtering is now done at trigger level: a trigger's `trigger_config->
 
 PR has the `chetter-review` label applied. Evaluated on all watched PR actions (`opened`, `synchronize`, `reopened`, `labeled`). For the `labeled` action specifically, only the `chetter-review` label triggers — other labels are ignored.
 
-- **Checked in:** `shouldReview()` / `shouldReviewWithFiles()` — scans `ev.PullRequest.Labels`
-- **Auto-labeling:** When a review is triggered by fork or file-pattern, Chetter auto-adds the `chetter-review` label so the user can see why a review was triggered.
+- **Checked in:** `shouldReview()` — scans `ev.PullRequest.Labels`
+- **Auto-labeling:** When a review is triggered by fork or comment, Chetter auto-adds the `chetter-review` label in `submitReview` after confirming at least one matching trigger exists, so the label always indicates a review task was actually submitted. Label-triggered reviews skip auto-labeling.
 
 ### 2. Fork (`pull_request` event)
 
 PR comes from an external fork (head repo full name differs from base repo). Automatic review for outside contributors.
 
-- **Checked in:** `shouldReview()` / `shouldReviewWithFiles()` — compares `ev.PullRequest.Head.Repo.FullName` to `repo`
+- **Checked in:** `shouldReview()` — compares `ev.PullRequest.Head.Repo.FullName` to `repo`
 
-### 3. File Pattern (`pull_request` event)
-
-PR modifies files matching review-worthy patterns:
-
-| Pattern | Scope |
-|---|---|
-| `*.go` | Go source files |
-| `*.proto` | Protobuf definitions |
-| `**/db/migrations/*` | Database migrations |
-
-Only the filename is checked for `.go` and `.proto`. For migrations, the path must contain `/db/migrations/`.
-
-- **Checked in:** `shouldReview()` — fetches PR files from GitHub API, then `matchesCodePaths()` checks each file
-- **Edge case:** If the GitHub API call fails (timeout, rate limit), the review is skipped entirely.
-
-### 4. Comment (`issue_comment` event)
+### 3. Comment (`issue_comment` event)
 
 A user with **write access** to the repo posts `/chetter-review` on a PR.
 
 - **Action filter:** `created` only
 - **Anti-abuse:** requires write access via `CheckUserHasWriteAccess()` (collaborator or team member with push/triage/admin permissions)
-- **Does not auto-label** the PR
+- **Acknowledgment:** Posts a comment `@user requested a review — Chetter is on it.` to the PR
+- **Auto-labeling:** Adds the `chetter-review` label via `submitReview` when at least one matching trigger is found
 
-### 5. Manual Task Submission (MCP tool)
+### 4. Manual Task Submission (MCP tool)
 
 Anyone with `chetter_submit_task` access can submit a review directly. This bypasses the webhook entirely — no label, no fork check, no file patterns, no comment parsing, no write-access check.
 
@@ -137,9 +129,11 @@ Required fields for `pr_review` triggers:
 - `name` — unique trigger name
 - `trigger_type` — must be `pr_review`
 - `repo` — full repository name (e.g. `flatout-works/chetter`)
-- `prompt` — instructions sent to the agent
-- `agent_image` — runner harness image
 - `agent` — agent definition name (e.g. `pr-reviewer`)
+
+Optional fields:
+- `prompt` — instructions sent to the agent; falls back to the built-in review template if omitted
+- `agent_image` — runner harness image; falls back to `DEFAULT_AGENT_IMAGE` if omitted
 
 ### Managing Triggers
 
