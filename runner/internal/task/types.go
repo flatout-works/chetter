@@ -39,6 +39,7 @@ type TaskResponse struct {
 	VariantID         string    `json:"variant_id,omitempty"`
 	OpenCodeSessionID string    `json:"opencode_session_id,omitempty"`
 	RunnerImageDigest string    `json:"runner_image_digest,omitempty"`
+	SessionExport     string    `json:"session_export,omitempty"`
 	StartedAt         time.Time `json:"started_at,omitempty"`
 	EndedAt           time.Time `json:"ended_at,omitempty"`
 }

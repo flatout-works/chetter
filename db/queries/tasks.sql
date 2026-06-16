@@ -37,6 +37,7 @@ UPDATE chetter_tasks
 SET status = sqlc.arg(status),
     summary = ?,
     error = ?,
+    session_export = COALESCE(?, session_export),
     provider_id = COALESCE(NULLIF(sqlc.arg(provider_id), ''), provider_id),
     model_id = COALESCE(NULLIF(sqlc.arg(model_id), ''), model_id),
     variant_id = COALESCE(NULLIF(sqlc.arg(variant_id), ''), variant_id),

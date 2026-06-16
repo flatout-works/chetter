@@ -136,6 +136,7 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		VariantId:         resp.VariantID,
 		OpencodeSessionId: resp.OpenCodeSessionID,
 		RunnerImageDigest: resp.RunnerImageDigest,
+		SessionExport:     resp.SessionExport,
 		StartedAt:         formatProtoTime(resp.StartedAt),
 		EndedAt:           formatProtoTime(resp.EndedAt),
 	}

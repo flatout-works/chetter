@@ -365,6 +365,16 @@ type ListScheduleRunsOutput struct {
 	Runs []ScheduleRunInfo `json:"runs"`
 }
 
+// TaskExportInput is the input for chetter_task_export.
+type TaskExportInput struct {
+	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
+}
+
+// TaskExportOutput is the output for chetter_task_export.
+type TaskExportOutput struct {
+	Export string `json:"export"`
+}
+
 // RegisterTools registers chetter MCP tools.
 func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
@@ -380,6 +390,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_runner_health", Description: "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age."}, svc.runnerHealthTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)
@@ -415,6 +426,20 @@ func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, TaskStatusOutput{}, fmt.Errorf("get task status: %w", err)
 	}
 	return nil, TaskStatusOutput{Task: repoTaskToToolRecord(task)}, nil
+}
+
+func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, TaskExportOutput, error) {
+	if in.TaskID == "" {
+		return nil, TaskExportOutput{}, fmt.Errorf("task_id is required")
+	}
+	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
+	if err != nil {
+		return nil, TaskExportOutput{}, fmt.Errorf("get task: %w", err)
+	}
+	if !task.SessionExport.Valid {
+		return nil, TaskExportOutput{}, fmt.Errorf("no session export available for task %s", in.TaskID)
+	}
+	return nil, TaskExportOutput{Export: task.SessionExport.String}, nil
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {

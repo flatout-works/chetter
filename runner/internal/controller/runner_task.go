@@ -208,12 +208,12 @@ func addRunnerOwnedEnv(env map[string]string) {
 }
 
 func runnerOwnedEnvKeys() []string {
-	return []string{"MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY"}
+	return []string{"GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY"}
 }
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY":
+	case "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY":
 		return true
 	default:
 		return false
@@ -441,13 +441,21 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	var sessionExport string
+	if sid != "" {
+		if export, exportErr := r.h.ExportSession(context.Background(), baseURL, sid, secret); exportErr != nil {
+			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
+		} else {
+			sessionExport = export
+		}
+	}
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid)
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid)
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -563,21 +571,30 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	var sessionExport string
+	if sid != "" {
+		if export, exportErr := r.h.ExportSession(context.Background(), baseURL, sid, secret); exportErr != nil {
+			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
+		} else {
+			sessionExport = export
+		}
+	}
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid)
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid)
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID string) {
+func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string) {
 	resp := task.TaskResponse{
-		TaskID:    req.TaskID,
-		Status:    status,
-		Artifacts: artifacts,
+		TaskID:        req.TaskID,
+		Status:        status,
+		Artifacts:     artifacts,
+		SessionExport: sessionExport,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, sessionID)
 	if status != "running" {

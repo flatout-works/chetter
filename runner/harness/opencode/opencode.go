@@ -55,6 +55,10 @@ func (oc *OpenCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret s
 	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
 }
 
+func (oc *OpenCode) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	return exportSession(ctx, baseURL, sessionID, secret)
+}
+
 func (oc *OpenCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
 	watchEvents(ctx, taskID, baseURL, secret, publishFn)
 }

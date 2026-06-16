@@ -357,6 +357,7 @@ func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {
 }
 
 func asyncCtx(d time.Duration) context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), d)
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	go func() { <-ctx.Done(); cancel() }()
 	return ctx
 }

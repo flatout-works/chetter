@@ -85,6 +85,7 @@ message TaskEvent {
   string started_at = 11;
   string ended_at = 12;
   string payload_json = 13;
+  string session_export = 14;
 }
 
 message ReportTaskEventsRequest {
