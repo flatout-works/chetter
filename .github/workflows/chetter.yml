@@ -110,7 +110,7 @@ jobs:
 
           echo "Building and pushing runner image"
           call_arcane POST "/environments/$env_id/images/build" \
-            "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main"},provider:"local",push:true,load:true}')" >/dev/null
+            "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
 
           echo "Redeploying Chetter project"
           call_arcane POST "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" \
