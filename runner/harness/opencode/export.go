@@ -74,10 +74,10 @@ func (oc *OpenCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 func renderMessage(role, model, partsJSON string, createdAt int64) string {
 	var parts []partWrapper
 	if err := json.Unmarshal([]byte(partsJSON), &parts); err != nil {
-		return fmt.Sprintf("**%s** (failed to parse parts: %v)\n", strings.Title(role), err)
+		return fmt.Sprintf("**%s** (failed to parse parts: %v)\n", titleCase(role), err)
 	}
 
-	header := fmt.Sprintf("## %s", strings.Title(role))
+	header := fmt.Sprintf("## %s", titleCase(role))
 	if model != "" {
 		header += fmt.Sprintf(" (%s)", model)
 	}
@@ -159,4 +159,15 @@ func renderPart(part partWrapper) string {
 type partWrapper struct {
 	Type string          `json:"type"`
 	Raw  json.RawMessage `json:"data"`
+}
+
+func titleCase(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	if r[0] >= 'a' && r[0] <= 'z' {
+		r[0] = r[0] - 'a' + 'A'
+	}
+	return string(r)
 }
