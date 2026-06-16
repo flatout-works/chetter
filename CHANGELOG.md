@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-17
+
+### Added
+
+- Claude Code harness integration: runners can now use Claude Code instead of OpenCode via `execution.harness: claude-code` config. Adds `SupportsServe()` interface method to distinguish HTTP-serve harnesses (OpenCode) from batch-only harnesses (Claude Code), with MCP config generation (`.claude/mcp.json`), event streaming via stream-json line parsing, and `ANTHROPIC_API_KEY` forwarding. `@anthropic-ai/claude-code` installed in the runner base image.
+
+### Changed
+
+- Session export rewritten to read directly from the opencode SQLite database (`opencode.db`), replacing the broken HTTP `/export` endpoint. `ReadSessionExport` method added to the `Harness` interface with a no-op implementation for Claude Code.
+- Arcane API calls in CI deploy workflow now retry up to 3 times with 5s backoff on server errors (5xx), instead of failing on the first attempt.
+
+### Fixed
+
+- Runner no longer overwrites `started_at` on intermediate status updates; `ended_at` is now set only on terminal statuses (completed, error, cancelled), preventing premature end timestamps on running tasks.
+- Deploy compose interpolation fixed: empty-string variable defaults are now quoted (`${VAR:-""}`) everywhere to prevent Docker Compose from treating them as null.
+- CI build workflow: `CACHEBUST` build arg added to force full Docker layer rebuilds, ensuring runner images pick up the latest base image on each deployment.
+
 ## 2026-06-16
 
 ### Added
