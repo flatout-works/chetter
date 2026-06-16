@@ -160,8 +160,7 @@ func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message s
 }
 
 func (r *Runner) finishStatusResponse(resp *task.TaskResponse, status, message string) {
-	if status != "running" {
-		resp.StartedAt = time.Now()
+	if isTerminalStatus(status) {
 		resp.EndedAt = time.Now()
 	}
 	if status == "error" || status == "cancelled" {

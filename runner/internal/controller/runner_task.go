@@ -609,8 +609,7 @@ func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message
 		SessionExport: sessionExport,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, sessionID)
-	if status != "running" {
-		resp.StartedAt = time.Now()
+	if isTerminalStatus(status) {
 		resp.EndedAt = time.Now()
 	}
 	if status == "error" || status == "cancelled" {
@@ -687,7 +686,6 @@ func (r *Runner) publishEvent(taskID, detail string) {
 		Summary: detail,
 	}
 	r.decorateTaskResponse(&resp, nil, "")
-	resp.StartedAt = time.Now()
 	r.reportTaskResponse(resp)
 }
 
