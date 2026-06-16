@@ -195,6 +195,11 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `chetter_create_token` | Create an API token for a team and user |
 | `chetter_list_tokens` | List API tokens with user and team info |
 | `chetter_delete_token` | Delete an API token by name |
+| `chetter_create_team` | Create a new team (admin only) |
+| `chetter_list_teams` | List all teams (admin only) |
+| `chetter_delete_team` | Delete a team and cascade to its users, tokens, tasks, and schedules (admin only) |
+| `chetter_list_users` | List users, optionally filtered by team name (admin only) |
+| `chetter_list_schedule_runs` | List schedule runs for the current team, optionally filtered by schedule name |
 
 ## Configuration
 

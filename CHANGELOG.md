@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-16
+
+### Added
+
+- Comment trigger on `/chetter-review` now posts an acknowledgment comment and auto-adds the `chetter-review` label when triggers match.
+- Runner uses a dedicated HTTP client with a longer timeout for the `ClaimTask` long-poll, improving reliability under network latency.
+
+### Changed
+
+- `prompt` is now optional for `pr_review` triggers; when omitted, the request falls back to the built-in review template prompt.
+- Label auto-add moved from `handlePullRequest` to `submitReview` — the label is now added only after at least one matching trigger is found, so every labeled PR is guaranteed to have a review task submitted.
+- `shouldReview` no longer fetches PR files from the GitHub API — the file-pattern trigger path (Go/proto/migrations) has been removed. Reviews are now triggered only by label, fork, or comment.
+
+### Removed
+
+- File-pattern auto-review trigger removed: the `matchesCodePaths` / `shouldReviewWithFiles` functions and the `file-pattern` trigger reason are gone. PRs that only modify Go, proto, or migration files without a label or fork no longer auto-trigger a review.
+- `ListPRFiles` GitHub API call removed from `handlePullRequest` — the webhook handler no longer queries the PR diff to decide eligibility.
+
+### Fixed
+
+- `/chetter-review` comment no longer adds the `chetter-review` label in `handleIssueComment`, preventing a spurious `pull_request.labeled` webhook that would create a duplicate review task.
+- Backfill `NULL trigger_config` in existing schedules after `ALTER TABLE ADD COLUMN`, preventing startup crash when sqlc's `json.RawMessage` scans a `NULL` value.
+
 ## 2026-06-15
 
 ### Added
