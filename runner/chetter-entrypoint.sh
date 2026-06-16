@@ -152,6 +152,9 @@ server:
   url: ${CHETTER_SERVER_URL}
   auth_token: "${CHETTER_RUNNER_AUTH_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:-}}"
 
+execution:
+  harness: "${CHETTER_HARNESS:-opencode}"
+
 runner:
   workspace_root: ${RUNNER_WORKSPACE_ROOT}
   max_concurrent: ${RUNNER_MAX_CONCURRENT}

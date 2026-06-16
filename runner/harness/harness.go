@@ -36,4 +36,9 @@ type Harness interface {
 
 	// ResolvedModelID returns the provider-qualified model identifier.
 	ResolvedModelID(req task.TaskRequest) string
+
+	// SupportsServe returns true if the harness has an HTTP serve mode
+	// (WaitForReady, CreateSession, SendPrompt, WatchEvents, ExportSession).
+	// Harnesses without serve mode fall back to batch execution.
+	SupportsServe() bool
 }
