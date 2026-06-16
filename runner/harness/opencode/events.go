@@ -11,20 +11,21 @@ import (
 	"time"
 )
 
-const opencodeEventLineMax = 64 * 1024 * 1024
-
-func pipeOutput(taskID, stream string, reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), opencodeEventLineMax)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+func pipeOutput(taskID, stream string, r io.Reader) {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				slog.Warn("opencode output read failed", "taskID", taskID, "stream", stream, "err", err)
+			}
+			return
+		}
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		slog.Info("opencode output", "taskID", taskID, "stream", stream, "line", truncate(line))
-	}
-	if err := scanner.Err(); err != nil {
-		slog.Warn("opencode output read failed", "taskID", taskID, "stream", stream, "err", err)
 	}
 }
 
@@ -51,12 +52,18 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		return
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), opencodeEventLineMax)
+	br := bufio.NewReader(resp.Body)
 	var dataLines []string
 	lastPublished := time.Time{}
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, readErr := br.ReadString('\n')
+		if readErr != nil {
+			if readErr != io.EOF && ctx.Err() == nil {
+				slog.Warn("opencode event stream read failed", "taskID", taskID, "err", readErr)
+			}
+			return
+		}
+		line = strings.TrimRight(line, "\n\r")
 		if strings.TrimSpace(line) == "" {
 			if len(dataLines) > 0 {
 				detail := summarizeEvent(strings.Join(dataLines, "\n"))
@@ -74,9 +81,6 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		if strings.HasPrefix(line, "data:") {
 			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
-	}
-	if err := scanner.Err(); err != nil && ctx.Err() == nil {
-		slog.Warn("opencode event stream read failed", "taskID", taskID, "err", err)
 	}
 }
 

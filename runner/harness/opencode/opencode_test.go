@@ -215,20 +215,17 @@ func TestOpenCodeEventScannerBuffer(t *testing.T) {
 	longLine := strings.Repeat("x", longLineSize)
 	input := "data: " + longLine + "\n\n"
 
-	scanner := bufio.NewScanner(strings.NewReader(input))
-	scanner.Buffer(make([]byte, 0, 64*1024), opencodeEventLineMax)
-	if !scanner.Scan() {
-		t.Fatalf("scanner.Scan failed: %v", scanner.Err())
+	br := bufio.NewReader(strings.NewReader(input))
+	got, err := br.ReadString('\n')
+	if err != nil {
+		t.Fatalf("ReadString failed: %v", err)
 	}
-	got := scanner.Text()
+	got = strings.TrimRight(got, "\n\r")
 	if !strings.HasPrefix(got, "data: ") {
 		t.Fatalf("unexpected first line: %q", got)
 	}
 	if len(got) < longLineSize {
 		t.Fatalf("expected line >= %d bytes, got %d", longLineSize, len(got))
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatalf("scanner.Err after long line: %v", err)
 	}
 }
 
