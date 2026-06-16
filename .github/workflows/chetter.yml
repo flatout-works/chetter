@@ -53,31 +53,42 @@ jobs:
             method="$1"
             path="$2"
             data="${3:-}"
-            response_file="$(mktemp)"
-            if [ -n "$data" ]; then
-              status=$(curl --silent --show-error --max-time 14400 \
-                --write-out "%{http_code}" \
-                --output "$response_file" \
-                --request "$method" \
-                --header "X-Api-Key: $ARCANE_API_KEY" \
-                --header "Content-Type: application/json" \
-                --data "$data" \
-                "$arcane_url/api$path")
-            else
-              status=$(curl --silent --show-error --max-time 14400 \
-                --write-out "%{http_code}" \
-                --output "$response_file" \
-                --request "$method" \
-                --header "X-Api-Key: $ARCANE_API_KEY" \
-                "$arcane_url/api$path")
-            fi
-            if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-              cat "$response_file" >&2
+            max_retries=3
+            retry=0
+            while true; do
+              response_file="$(mktemp)"
+              if [ -n "$data" ]; then
+                status=$(curl --silent --show-error --max-time 14400 \
+                  --write-out "%{http_code}" \
+                  --output "$response_file" \
+                  --request "$method" \
+                  --header "X-Api-Key: $ARCANE_API_KEY" \
+                  --header "Content-Type: application/json" \
+                  --data "$data" \
+                  "$arcane_url/api$path")
+              else
+                status=$(curl --silent --show-error --max-time 14400 \
+                  --write-out "%{http_code}" \
+                  --output "$response_file" \
+                  --request "$method" \
+                  --header "X-Api-Key: $ARCANE_API_KEY" \
+                  "$arcane_url/api$path")
+              fi
+              if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+                cat "$response_file"
+                rm -f "$response_file"
+                return 0
+              fi
+              retry=$((retry + 1))
+              if [ "$retry" -ge "$max_retries" ] || [ "$status" -lt 500 ]; then
+                cat "$response_file" >&2
+                rm -f "$response_file"
+                return 1
+              fi
+              echo "::warning::Arcane API returned $status, retrying ($retry/$max_retries)..."
               rm -f "$response_file"
-              return 1
-            fi
-            cat "$response_file"
-            rm -f "$response_file"
+              sleep 5
+            done
           }
 
           echo "Syncing Chetter GitOps project"
