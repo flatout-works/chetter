@@ -134,23 +134,20 @@ A tiny binary that bridges stdio MCP to a Unix socket, enabling OpenCode to use 
 
 ## Execution Environments
 
-### Kata Containers (default)
+### Docker (default)
 
-Tasks run in Kata Containers via containerd with full network isolation:
+Tasks run in standard Docker containers with the runner's Docker daemon. This is the default execution mode.
 
-- Linux bridges, veth pairs, and network namespaces per task.
+- Linux bridges, veth pairs, and network namespaces per task for network isolation.
 - Subnet allocation from `10.200.X.0/24` (200 subnets available).
 - iptables rules block cloud metadata (169.254.169.254) and restrict egress.
 - Transparent HTTP/HTTPS proxy with domain allowlist/blocklist.
-- DNS proxy with domain filtering and IPv6 suppression (avoids Kata VM stalls).
-
-### Docker
-
-Tasks run in standard Docker containers with the runner's Docker daemon.
+- DNS proxy with domain filtering.
+- Optional gVisor sandboxing: set `USE_GVISOR=true` to run agent containers under `runsc` (`--runtime=runsc`).
 
 ### Local
 
-Tasks run directly on the host (no containerization). Useful for development.
+Tasks run directly on the host (no containerization). Useful for development. No network isolation.
 
 ---
 
@@ -285,7 +282,7 @@ Server URL and auth token can be set via flags or env vars (`CHETTER_SERVER_URL`
 
 ---
 
-## MCP Tool Reference (26 tools)
+## MCP Tool Reference (28 tools)
 
 ### Task Management (7)
 

@@ -622,7 +622,7 @@ Chetter runners execute AI-generated code. The isolation strategy is driven by t
 
 Chetter uses [gVisor](https://gvisor.dev/) (`runsc`) as its sandboxed execution runtime. gVisor provides an application kernel (the Sentry) written in Go that intercepts every system call the container makes and implements the Linux ABI in userspace. The application never touches the host kernel directly. This gives kernel-level isolation without VMs, without custom AMIs, and without sacrificing streaming interaction.
 
-The runner integrates gVisor through containerd — the same `ctr` interface already used for other runtimes, just with `--runtime io.containerd.runsc.v1` instead of `--runtime io.containerd.runc.v2`. Normal container networking works, so the interactive `opencode serve` flow (create session, send prompt, watch events, export session) functions exactly as it does with plain Docker.
+The runner integrates gVisor through Docker — when `USE_GVISOR=true`, the runner passes `--runtime=runsc` to `docker run` when starting agent containers. Normal container networking works, so the interactive `opencode serve` flow (create session, send prompt, watch events, export session) functions exactly as it does with plain Docker.
 
 ### Why gVisor over alternatives
 

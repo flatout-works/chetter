@@ -6,19 +6,19 @@ Status: **Proposal — not implemented**
 
 [Daytona](https://daytona.io) is a managed sandbox platform that provides API-driven ephemeral VMs ("sandboxes") with full OS isolation, dedicated kernels, filesystem, network stacks, and resource allocation. Sandboxes spin up in <90ms from snapshots.
 
-Integrating Daytona as an **optional execution backend** would replace the runner's Kata Containers + containerd infrastructure with Daytona API calls, eliminating the need to manage containerd, iptables, veth pairs, DNS proxies, and network bridges.
+Integrating Daytona as an **optional execution backend** would replace the runner's Docker + network isolation infrastructure with Daytona API calls, eliminating the need to manage iptables, veth pairs, DNS proxies, and network bridges.
 
 ## Why Consider Daytona
 
 | Benefit | Detail |
 |---------|--------|
-| **Eliminates infra management** | Removes ~1500 lines of runner code (`containerd/`, `network/`, bridge management). No more `ctr`, Kata, iptables, veth pairs. |
+| **Eliminates infra management** | Removes network isolation code (`network/`, bridge management). No more iptables, veth pairs. |
 | **Elastic scaling** | Sandboxes spin up in <90ms. No need to pre-provision runner capacity for peak load. |
 | **Snapshots** | Pre-bake a snapshot with Go, opencode, claude — sandboxes start instantly instead of pulling images. |
 | **Multi-region** | Daytona supports `us`, `eu`, `android` regions. Current runners are single-region. |
 | **Built-in MCP** | Each sandbox exposes file system, git, and process execution via MCP. Overlaps with runner-local tools. |
 | **Network isolation** | Per-sandbox firewall with domain allowlist/blocklist. Replaces custom iptables + DNS proxy. |
-| **GPU sandboxes** | NVIDIA H100 and RTX Pro 6000 available on demand. Not possible with current Kata setup. |
+| **GPU sandboxes** | NVIDIA H100 and RTX Pro 6000 available on demand. Not possible with current Docker setup. |
 | **Go SDK** | Daytona has a Go SDK — natural fit for the Chetter runner. |
 | **Self-hosted option** | Daytona is open source and can be self-hosted. Not locked into managed service. |
 
@@ -26,7 +26,7 @@ Integrating Daytona as an **optional execution backend** would replace the runne
 
 | Risk | Detail |
 |------|--------|
-| **Vendor dependency** | Even self-hosted, you depend on Daytona's API stability and roadmap. Kata stack is fully under your control. |
+| **Vendor dependency** | Even self-hosted, you depend on Daytona's API stability and roadmap. Current Docker stack is fully under your control. |
 | **Cost** | Managed Daytona bills per sandbox-hour. Current Kata runners run on your own infra. Cost comparison depends on scale. |
 | **Loss of fine-grained control** | Current network stack does specific things (IPv6 suppression for Kata VM stalls, custom iptables chains, metadata endpoint blocking). Daytona's network limits are coarser. |
 | **Tool overlap** | Daytona's built-in MCP (file system, git, process) overlaps with `runner/internal/tools/`. Your deploy tools (build/push/run/rollback) go beyond what Daytona offers. |
@@ -59,10 +59,9 @@ Implementations:
 
 | Backend | `execution.runtime` | Description |
 |---------|---------------------|-------------|
-| Kata | `kata` (default) | Current containerd + Kata Containers. Full control, requires privileged runner. |
-| Docker | `docker` | Current Docker mode. Simpler, less isolation. |
+| Docker | `docker` (default) | Current Docker mode. Network isolation via bridges, optional gVisor sandboxing. |
 | Local | `local` | Agent runs directly on host. No isolation. |
-| Daytona | `daytona` | New. Creates Daytona sandboxes via API. No local containerd needed. |
+| Daytona | `daytona` | New. Creates Daytona sandboxes via API. No local Docker daemon needed. |
 
 ### Daytona Backend Implementation
 
@@ -90,7 +89,7 @@ type DaytonaConfig struct {
 
 ```yaml
 execution:
-  runtime: daytona  # "kata" (default), "docker", "local", "daytona"
+  runtime: daytona  # "docker" (default), "local", "daytona"
   daytona:
     api_key: "${DAYTONA_API_KEY}"
     api_url: "${DAYTONA_API_URL}"
@@ -108,7 +107,7 @@ execution:
 
 ### Phase 1: Interface Abstraction (1 week)
 
-Extract `ExecutionBackend` from the existing `controller.go`. Implement for Kata, Docker, and Local. No behavior change — just refactoring.
+Extract `ExecutionBackend` from the existing `controller.go`. Implement for Docker and Local. No behavior change — just refactoring.
 
 ### Phase 2: Daytona Backend (1-2 weeks)
 
@@ -121,9 +120,9 @@ Create Daytona snapshots for each image variant. Add CI step to rebuild snapshot
 ### Phase 4: Gradual Rollout (ongoing)
 
 - Start with non-critical workloads on Daytona.
-- Keep Kata as default for production tasks.
+- Keep Docker as default for production tasks.
 - Monitor cost, latency, and reliability.
-- Consider Daytona for GPU workloads (not possible with Kata today).
+- Consider Daytona for GPU workloads (not possible with Docker today).
 
 ## What Does NOT Change
 
