@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
@@ -439,7 +440,8 @@ func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if !task.SessionExport.Valid {
 		return nil, TaskExportOutput{}, fmt.Errorf("no session export available for task %s", in.TaskID)
 	}
-	return nil, TaskExportOutput{Export: task.SessionExport.String}, nil
+	export := strings.ReplaceAll(task.SessionExport.String, "\\n", "\n")
+	return nil, TaskExportOutput{Export: export}, nil
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
