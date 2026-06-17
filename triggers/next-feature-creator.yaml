@@ -4,7 +4,7 @@ cron_expr: "*/30 * * * *"
 git_url: https://github.com/flatout-works/chetter
 git_ref: main
 agent_image: ghcr.io/flatout-works/chetter-runner:golang
-timeout_sec: 600
+timeout_sec: 1800
 prompt: |-
   Analyze this repository's documentation, CHANGELOG.md, open GitHub issues, codebase gaps, and recent development trajectory to propose and create a GitHub issue for the next most impactful feature, fix, or refactoring the project should focus on.
 
