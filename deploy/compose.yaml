@@ -41,12 +41,12 @@ services:
     depends_on:
       - chetter-mcp
     environment:
-      RUNNER_LOCAL: "true"
+      RUNNER_LOCAL: "false"
       CHETTER_SERVER_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-""}
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
-      USE_GVISOR: ${USE_GVISOR:-false}
+      USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
@@ -70,12 +70,12 @@ services:
     depends_on:
       - chetter-mcp
     environment:
-      RUNNER_LOCAL: "true"
+      RUNNER_LOCAL: "false"
       CHETTER_SERVER_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
-      USE_GVISOR: ${USE_GVISOR:-false}
+      USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-""}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-""}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-""}
