@@ -136,14 +136,17 @@ A tiny binary that bridges stdio MCP to a Unix socket, enabling OpenCode to use 
 
 ### Docker (default)
 
-Tasks run in standard Docker containers with the runner's Docker daemon. This is the default execution mode.
+Tasks run in standard Docker containers with full network isolation:
 
-- Linux bridges, veth pairs, and network namespaces per task for network isolation.
+- Linux bridges, veth pairs, and network namespaces per task.
 - Subnet allocation from `10.200.X.0/24` (200 subnets available).
 - iptables rules block cloud metadata (169.254.169.254) and restrict egress.
 - Transparent HTTP/HTTPS proxy with domain allowlist/blocklist.
 - DNS proxy with domain filtering.
-- Optional gVisor sandboxing: set `USE_GVISOR=true` to run agent containers under `runsc` (`--runtime=runsc`).
+
+### gVisor Sandbox (optional)
+
+When `USE_GVISOR=true` is set, the runner passes `--runtime=runsc` to `docker run` for kernel-level syscall interception. gVisor provides stronger isolation without the streaming limitations of full VMs. See the [Sandbox Isolation section in README](../README.md#sandbox-isolation) for details.
 
 ### Local
 
@@ -389,6 +392,7 @@ Configured via YAML (`runner.yaml`) with env var fallbacks:
 | `dns.listen_addr` | — | `:53` | DNS proxy address |
 | `dns.upstream` | — | `8.8.8.8:53` | Upstream DNS |
 | `execution.harness` | — | (empty) | `claude-code`, `codex`, or default=opencode |
+| `execution.use_gvisor` | `USE_GVISOR` | `false` | Use gVisor `runsc` runtime for agent containers |
 | `deploy.provider` | — | `local` | `local` or `preview` |
 | `deploy.registry` | — | (empty) | Container registry |
 | `chetter_mcp.url` | — | (empty) | MCP server URL injected into agents |
