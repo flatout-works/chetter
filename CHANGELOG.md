@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Claude Code harness integration: runners can now use Claude Code instead of OpenCode via `execution.harness: claude-code` config. Adds `SupportsServe()` interface method to distinguish HTTP-serve harnesses (OpenCode) from batch-only harnesses (Claude Code), with MCP config generation (`.claude/mcp.json`), event streaming via stream-json line parsing, and `ANTHROPIC_API_KEY` forwarding. `@anthropic-ai/claude-code` installed in the runner base image.
+- Runner image variants for golang, python, node, rust, and minimal environments under `runner/images/`, with CI change detection (`dorny/paths-filter`) to only rebuild images whose inputs changed.
+- gVisor sandbox execution support via `USE_GVISOR` config option, providing kernel-level isolation for Docker task containers without the port mapping limitations of Kata Containers.
+- Docker socket mount and `USE_GVISOR` flag in deployment compose configuration (`deploy/compose.yaml`).
+- Kubernetes deployment manifests under `deploy/k8s/` with namespace, secrets, MCP deployment+service, runner deployment, and gVisor RuntimeClass.
+- k3s local testing guide and gVisor sandbox isolation documentation in `README.md`.
 
 ### Changed
 
@@ -18,6 +23,11 @@ All notable changes to this project will be documented in this file.
 - Runner no longer overwrites `started_at` on intermediate status updates; `ended_at` is now set only on terminal statuses (completed, error, cancelled), preventing premature end timestamps on running tasks.
 - Deploy compose interpolation fixed: empty-string variable defaults are now quoted (`${VAR:-""}`) everywhere to prevent Docker Compose from treating them as null.
 - CI build workflow: `CACHEBUST` build arg added to force full Docker layer rebuilds, ensuring runner images pick up the latest base image on each deployment.
+- Runner SSE event parsing uses `bufio.Reader` instead of `bufio.Scanner`, preventing "token too long" errors when opencode emits large event payloads.
+
+### Removed
+
+- Kata Containers/containerd execution backend. gVisor replaces it as the optional sandbox isolation layer without port mapping limitations from the micro-VM.
 
 ## 2026-06-16
 
