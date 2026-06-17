@@ -102,7 +102,10 @@ type Comment struct {
 
 // Issue is the issue/PR object (PRs come through the issues API).
 type Issue struct {
-	Number      int `json:"number"`
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	HTMLURL     string `json:"html_url"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request,omitempty"`

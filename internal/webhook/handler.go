@@ -236,54 +236,108 @@ func (h *Handler) handleIssueComment(body []byte) {
 	if ev.Action != "created" {
 		return
 	}
-	if !ev.IsPullRequest() {
-		return // not a PR comment
-	}
-	if strings.TrimSpace(ev.Comment.Body) != ReviewTriggerCommand {
-		return
-	}
 
 	repo := ev.Repository.FullName
 
-	// Verify the commenter has write access (anti-abuse).
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	hasAccess, err := h.gh.CheckUserHasWriteAccess(ctx, repo, ev.Comment.User.Login)
+	if ev.IsPullRequest() {
+		// PR comment — handle /chetter-review trigger.
+		if strings.TrimSpace(ev.Comment.Body) != ReviewTriggerCommand {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		hasAccess, err := h.gh.CheckUserHasWriteAccess(ctx, repo, ev.Comment.User.Login)
+		if err != nil {
+			slog.Warn("webhook: check write access", "user", ev.Comment.User.Login, "err", err)
+			return
+		}
+		if !hasAccess {
+			slog.Info("webhook: ignoring /chetter-review from non-writer",
+				"user", ev.Comment.User.Login, "repo", repo)
+			return
+		}
+		prCtx, prCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer prCancel()
+		head, base, cloneURL, err := h.gh.GetPullRequest(prCtx, repo, ev.Issue.Number)
+		if err != nil {
+			slog.Warn("webhook: fetch PR", "err", err)
+			return
+		}
+		ackCtx, ackCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer ackCancel()
+		ackComment := fmt.Sprintf("@%s requested a review — Chetter is on it.", ev.Comment.User.Login)
+		if err := h.gh.CreateIssueComment(ackCtx, repo, ev.Issue.Number, ackComment); err != nil {
+			slog.Warn("webhook: post ack comment for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
+		}
+		h.submitReviewForTrigger(ReviewContext{
+			Trigger:       "comment",
+			Repo:          repo,
+			PRNumber:      ev.Issue.Number,
+			BaseRef:       base,
+			HeadRef:       head,
+			HeadCloneURL:  cloneURL,
+			CommentAuthor: ev.Comment.User.Login,
+		}, nil, "comment")
+		return
+	}
+
+	// Issue comment — check for issue triggers with event "comment".
+	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
-		slog.Warn("webhook: check write access", "user", ev.Comment.User.Login, "err", err)
+		slog.Error("webhook: list issue triggers for comment", "err", err, "repo", repo)
 		return
 	}
-	if !hasAccess {
-		slog.Info("webhook: ignoring /chetter-review from non-writer",
-			"user", ev.Comment.User.Login, "repo", repo)
+	var matching []ReviewTrigger
+	for _, t := range triggers {
+		if t.Event == "" || t.Event == "comment" {
+			matching = append(matching, t)
+		}
+	}
+	if len(matching) == 0 {
 		return
 	}
-
-	// Fetch the PR to get the head ref + clone URL.
-	prCtx, prCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer prCancel()
-	head, base, cloneURL, err := h.gh.GetPullRequest(prCtx, repo, ev.Issue.Number)
+	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
-		slog.Warn("webhook: fetch PR", "err", err)
+		slog.Error("webhook: get GitHub token for issue comment", "err", err)
 		return
 	}
-
-	ackCtx, ackCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer ackCancel()
-	ackComment := fmt.Sprintf("@%s requested a review — Chetter is on it.", ev.Comment.User.Login)
-	if err := h.gh.CreateIssueComment(ackCtx, repo, ev.Issue.Number, ackComment); err != nil {
-		slog.Warn("webhook: post ack comment for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
+	for _, t := range matching {
+		prompt := t.Prompt
+		if prompt == "" {
+			prompt = fmt.Sprintf(
+				"A comment was added to issue #%d in %s.\n\nTitle: %s\nURL: %s\n\nComment by %s:\n%s",
+				ev.Issue.Number, repo, ev.Issue.Title, ev.Issue.HTMLURL,
+				ev.Comment.User.Login, ev.Comment.Body)
+		}
+		req := SubmitTaskRequest{
+			Prompt:     prompt,
+			GitURL:     t.GitURL,
+			GitRef:     t.GitRef,
+			AgentImage: t.AgentImage,
+			Agent:      t.Agent,
+			ProviderID: t.ProviderID,
+			ModelID:    t.ModelID,
+			VariantID:  t.VariantID,
+			Skills:     t.Skills,
+			TimeoutSec: t.TimeoutSec,
+			Env: map[string]string{
+				"GITHUB_TOKEN": token,
+				"GITHUB_REPO":  repo,
+				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
+				"ISSUE_TITLE":  ev.Issue.Title,
+				"ISSUE_URL":    ev.Issue.HTMLURL,
+				"COMMENT_BODY": ev.Comment.Body,
+				"COMMENT_USER": ev.Comment.User.Login,
+			},
+		}
+		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
+			slog.Error("webhook: submit issue comment task", "err", err,
+				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+			continue
+		}
+		slog.Info("webhook: issue comment task submitted",
+			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
 	}
-
-	h.submitReviewForTrigger(ReviewContext{
-		Trigger:       "comment",
-		Repo:          repo,
-		PRNumber:      ev.Issue.Number,
-		BaseRef:       base,
-		HeadRef:       head,
-		HeadCloneURL:  cloneURL,
-		CommentAuthor: ev.Comment.User.Login,
-	}, nil, "comment")
 }
 
 // submitReviewForTrigger gets an installation token, filters triggers by event,
