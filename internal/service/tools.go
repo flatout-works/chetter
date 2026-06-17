@@ -86,9 +86,10 @@ type TaskToolRecord struct {
 // CreateTriggerInput is the input for chetter_create_trigger.
 type CreateTriggerInput struct {
 	Name        string   `json:"name" jsonschema:"Unique trigger name"`
-	TriggerType string   `json:"trigger_type" jsonschema:"Trigger type: cron or pr_review"`
+	TriggerType string   `json:"trigger_type" jsonschema:"Trigger type: cron, pr_review, or issue"`
 	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly (required for cron)"`
-	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (required for pr_review, e.g. flatout-works/chetter)"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (required for pr_review and issue, e.g. flatout-works/chetter)"`
+	Event       string   `json:"event,omitempty" jsonschema:"Webhook event to respond to (for issue triggers: opened, comment; optional, defaults to all)"`
 	Prompt      string   `json:"prompt,omitempty" jsonschema:"Task prompt to submit when the trigger fires (optional for pr_review; defaults to built-in review template)"`
 	GitURL      string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
 	GitRef      string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
@@ -536,10 +537,11 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 
 func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {
 	if in.TriggerType == "" {
-		return nil, CreateTriggerOutput{}, fmt.Errorf("trigger_type is required (cron or pr_review)")
+		return nil, CreateTriggerOutput{}, fmt.Errorf("trigger_type is required (cron, pr_review, or issue)")
 	}
 	triggerConfig := ""
-	if in.TriggerType == store.TriggerTypePRReview {
+	switch in.TriggerType {
+	case store.TriggerTypePRReview:
 		if in.Repo == "" {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("repo is required for pr_review triggers")
 		}
@@ -547,6 +549,22 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for pr_review triggers")
 		}
 		cfg := store.PRReviewTriggerConfig{Repo: in.Repo}
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
+		}
+		triggerConfig = string(data)
+	case store.TriggerTypeIssue:
+		if in.Repo == "" {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("repo is required for issue triggers")
+		}
+		if in.Agent == "" {
+			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for issue triggers")
+		}
+		cfg := map[string]string{"repo": in.Repo}
+		if in.Event != "" {
+			cfg["event"] = in.Event
+		}
 		data, err := json.Marshal(cfg)
 		if err != nil {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)

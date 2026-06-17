@@ -79,6 +79,7 @@ type TaskResponse struct {
 const (
 	TriggerTypeCron     = "cron"
 	TriggerTypePRReview = "pr_review"
+	TriggerTypeIssue    = "issue"
 )
 
 // PRReviewTriggerConfig is stored in the trigger_config JSON column for

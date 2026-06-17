@@ -275,7 +275,7 @@ func emptyTriggerConfig() json.RawMessage {
 	return json.RawMessage("{}")
 }
 
-// CreateTrigger persists and activates a trigger (cron, pr_review, etc.).
+// CreateTrigger persists and activates a trigger (cron, pr_review, issue).
 func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (store.ScheduleRecord, error) {
 	if in.Name == "" {
 		return store.ScheduleRecord{}, fmt.Errorf("name is required")
@@ -283,7 +283,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 	if in.TriggerType == "" {
 		in.TriggerType = store.TriggerTypeCron
 	}
-	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview {
+	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview && in.TriggerType != store.TriggerTypeIssue {
 		return store.ScheduleRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.ID == "" {
@@ -308,10 +308,14 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 			return store.ScheduleRecord{}, fmt.Errorf("parse cron: %w", err)
 		}
 	case store.TriggerTypePRReview:
-		// repo is validated on creation; it must be non-empty.
 		var cfg store.PRReviewTriggerConfig
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
 			return store.ScheduleRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
+		}
+	case store.TriggerTypeIssue:
+		var cfg struct{ Repo string }
+		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
+			return store.ScheduleRecord{}, fmt.Errorf("repo is required in trigger_config for issue triggers")
 		}
 	default:
 		return store.ScheduleRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
