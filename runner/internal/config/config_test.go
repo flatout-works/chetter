@@ -28,7 +28,7 @@ git:
   ssh_key_path: /home/user/.ssh/id_rsa
   pat: ghp_token
 execution:
-  runtime: containerd
+  runtime: docker
   harness: default
 `
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {

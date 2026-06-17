@@ -23,12 +23,11 @@ rebuild:
 
 verify-image:
 	docker run --rm \
-		-v /run/containerd:/run/containerd \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		--mount type=bind,source=/run/netns,target=/run/netns,bind-propagation=rshared \
-		-v /var/lib/containerd:/var/lib/containerd \
 		-v /tmp:/tmp \
 		--entrypoint sh $(IMAGE) \
-		-lc 'which ctr && ctr version && test "$${TMPDIR}" = "/tmp/chetter-runner"'
+		-lc 'which docker || echo "no docker cli"; test "$${TMPDIR}" = "/tmp/chetter-runner"'
 
 preflight-netns:
 	@test -d /run/netns || { echo '/run/netns does not exist; run: sudo mkdir -p /run/netns'; exit 1; }
@@ -40,10 +39,8 @@ rm:
 run: preflight-netns rm
 	docker run -d --name $(CONTAINER) \
 		--privileged \
-		-v /run/containerd:/run/containerd \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		--mount type=bind,source=/run/netns,target=/run/netns,bind-propagation=rshared \
-		-v /var/lib/containerd:/var/lib/containerd \
-		-v /dev/kvm:/dev/kvm \
 		-v /tmp:/tmp \
 		-v /var/lib/runner:/var/lib/runner \
 		-v "$(CONFIG):/etc/runner/runner.yaml:ro" \

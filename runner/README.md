@@ -1,14 +1,14 @@
 # Chetter Runner
 
-Runs agent harnesses (OpenCode, Niffler) inside Kata Containers (micro-VMs) for strong isolation while proxying privileged operations (git and HTTP) through a runner-managed MCP server.
+Runs agent harnesses (OpenCode) inside Docker containers with optional gVisor sandboxing for strong isolation, while proxying privileged operations (git and HTTP) through a runner-managed MCP server.
 
 ## Architecture
 
 ```
-Worker Node (Ubuntu 24.04, KVM enabled, containerd + Kata pre-installed)
+Worker Node (Docker installed, optional gVisor/runsc)
 │
-├── containerd (systemd service, /run/containerd/containerd.sock)
-├── Kata 3.30.0 (/opt/kata, /dev/kvm)
+├── Docker daemon (/var/run/docker.sock)
+├── [optional] runsc runtime (gVisor, installed via DaemonSet)
 ├── iptables kernel modules
 └── Runner Container (--privileged, mounts host resources)
     ├── ConnectRPC client → Chetter control plane
@@ -16,16 +16,15 @@ Worker Node (Ubuntu 24.04, KVM enabled, containerd + Kata pre-installed)
     ├── MCP Server (Unix socket per task)
     ├── Transparent HTTP Proxy (:18080)
     │
-    └── ctr → host containerd → containerd-shim-kata-v2 → QEMU/KVM VM
-                                           │
-                                    ┌──────┴──────┐
-                                    │   Agent     │ (OpenCode serve / Niffler)
-                                    │ inside Kata │
-                                    │  micro-VM   │
-                                    └─────────────┘
+    └── docker → Docker daemon → [runsc | runc] → Agent Container
+                                          │
+                                   ┌──────┴──────┐
+                                   │   Agent     │ (OpenCode serve)
+                                   │  Container  │
+                                   └─────────────┘
 ```
 
-> **Important:** The runner **does not bundle** containerd or Kata. It uses the **host node's** containerd socket and KVM device. Every worker node must have these installed before the runner starts. See "Worker Node Requirements" below.
+> **Important:** The runner requires Docker on the host. In Kubernetes, mount the Docker socket from the node. For sandbox isolation, install gVisor (`runsc`) on worker nodes — the runner passes `--runtime=runsc` when `USE_GVISOR=true`.
 
 ## Prerequisites
 
@@ -33,101 +32,55 @@ Worker Node (Ubuntu 24.04, KVM enabled, containerd + Kata pre-installed)
 
 | Requirement | Why |
 |-------------|-----|
-| **KVM** (`/dev/kvm`) | Kata uses QEMU/KVM micro-VMs |
-| >4 GB RAM free per task | Each Kata VM needs memory |
-| x86_64 or ARM64 | Kata supported architectures |
-
-Verify KVM:
-```bash
-ls /dev/kvm && echo "KVM available" || echo "KVM missing — enable in BIOS and load kvm_intel/kvm_amd module"
-```
+| >2 GB RAM free per task | Each agent container needs memory |
+| x86_64 or ARM64 | Docker supported architectures |
+| **gVisor**: x86_64 or ARM64 Linux only | `runsc` does not support macOS/Windows |
 
 ### Software Prerequisites (Host Installation)
 
-The following must be installed on the **host machine** (not inside the runner container). The runner must run as **root** (or with `CAP_NET_ADMIN` + access to `/run/containerd/containerd.sock`).
+The following must be installed on the **host machine** (not inside the runner container). The runner must run as **root** (or with `CAP_NET_ADMIN` + access to `/var/run/docker.sock`).
 
-#### 1. containerd
+#### 1. Docker
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y containerd
-
-# Configure containerd for systemd cgroups
-sudo mkdir -p /etc/containerd
-sudo containerd config default | sudo tee /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-
-# Start and enable
-sudo systemctl restart containerd
-sudo systemctl enable containerd
+curl -fsSL https://get.docker.com | sh
+sudo systemctl enable docker
 ```
 
 Verify:
 ```bash
-sudo ctr version
+docker version
 ```
 
-#### 2. Kata Containers (via GitHub Release)
+#### 2. gVisor (Optional — for sandbox isolation)
+
+gVisor provides kernel-level isolation by intercepting syscalls in userspace. No KVM required.
 
 ```bash
-cd /tmp
-KATA_VERSION=3.30.0
+# Install runsc
+curl -fsSL https://gvisor.dev/archive.key | sudo gcr-keyring add -
+sudo add-apt-repository "deb https://storage.googleapis.com/gvisor/releases stable main"
+sudo apt-get update && sudo apt-get install -y runsc
 
-# Download static release (correct URL: amd64, .tar.zst)
-wget https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-amd64.tar.zst
-
-# Install zstd if needed
-sudo apt-get install -y zstd
-
-# Extract to /opt/kata
-sudo tar --zstd -xvf kata-static-${KATA_VERSION}-amd64.tar.zst -C /
-
-# Create symlinks
-sudo mkdir -p /usr/local/bin
-sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2
-sudo ln -sf /opt/kata/bin/kata-runtime /usr/local/bin/kata-runtime
+# Configure Docker to use runsc
+sudo runsc install
+sudo systemctl restart docker
 ```
 
 Verify:
 ```bash
-kata-runtime version
+docker run --runtime=runsc --rm alpine uname -a
 ```
 
-#### 3. Configure containerd for Kata Runtime
+For Kubernetes, install gVisor via DaemonSet (see `deploy/k8s/gvisor-runtimeclass.yaml`).
 
-```bash
-sudo tee -a /etc/containerd/config.toml << 'EOF'
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
-  runtime_type = "io.containerd.kata.v2"
-  privileged_without_host_devices = true
-EOF
-
-sudo systemctl restart containerd
-```
-
-#### 4. Pull Test Image and Verify Kata
-
-```bash
-# Pull an image first (ctr does not auto-pull)
-sudo ctr image pull docker.io/library/alpine:latest
-
-# Run a test container inside a Kata VM
-sudo ctr run --runtime io.containerd.kata.v2 --rm docker.io/library/alpine:latest test-kata uname -a
-```
-
-Expected output includes a Kata guest kernel (version will vary):
-```
-Linux fc6eb5c2bf6a 6.18.15 #1 SMP ... x86_64 Linux
-```
-
-#### 5. Network Tools (for runner)
+#### 3. Network Tools (for runner)
 
 ```bash
 sudo apt-get install -y iptables iproute2 socat
 ```
 
-#### 6. Chetter Control Plane
+#### 4. Chetter Control Plane
 
 Start the Chetter MCP server and configure `server.url` in `runner.yaml`, or set
 `CHETTER_SERVER_URL` when using the container entrypoint.
@@ -142,45 +95,58 @@ go build -o runner ./cmd/runner
 
 ## Running the Runner (Development / Local Mode)
 
-For testing **without Kata** (spawns plain local processes, no VM isolation):
+For testing **without Docker** (spawns plain local processes, no container isolation):
 
 ```bash
 export RUNNER_LOCAL=true
 ./runner -config runner.yaml
 ```
 
-Useful for development and CI smoke tests where Kata is not available.
+Useful for development and CI smoke tests where Docker is not available.
 
-## Running the Runner (Production / Kata Mode)
+## Running the Runner (Production / Docker Mode)
+
+### Without gVisor (default)
 
 ```bash
-# MUST run as root (for iptables, containerd socket, network namespaces)
 sudo ./runner -config runner.yaml
 ```
 
 Or as a privileged container:
-
 ```bash
 # Build image from the repository root
 docker build -f runner/Dockerfile.runner -t chetter/runner .
 
-# Run with host containerd socket and KVM device.
+# Run with host Docker socket.
 docker run -d --name chetter-runner \
   --privileged \
   -e CHETTER_SERVER_URL=http://host.docker.internal:8080 \
-  -v /run/containerd/containerd.sock:/run/containerd/containerd.sock \
-  -v /dev/kvm:/dev/kvm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/runner:/var/lib/runner \
   -v "$PWD/runner.docker.yaml:/etc/runner/runner.yaml:ro" \
   -p 18080:18080 \
   chetter/runner
 ```
 
-The image sets `TMPDIR=/var/lib/runner/tmp` because `ctr` creates temporary mount points before asking host containerd to mount snapshots. That temp path must live on a bind mount that exists on both the runner container and the host.
+### With gVisor sandboxing
 
-If the container exits immediately, check `docker logs chetter-runner`. Common causes are a missing `server.url`, a stale image that does not include `ctr`, or lack of access to the mounted containerd socket. If you see `ctr not found in PATH`, rebuild the image from the current `Dockerfile.runner`.
+Set `USE_GVISOR=true` to make the runner pass `--runtime=runsc` to Docker. This runs each agent container inside a gVisor sandbox with its own userspace kernel.
 
-If a task fails with `failed to mount /tmp/containerd-mount...`, rebuild the image so it uses the shared `TMPDIR`, then recreate the container.
+```bash
+docker run -d --name chetter-runner \
+  --privileged \
+  -e CHETTER_SERVER_URL=http://host.docker.internal:8080 \
+  -e USE_GVISOR=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/runner:/var/lib/runner \
+  -v "$PWD/runner.docker.yaml:/etc/runner/runner.yaml:ro" \
+  -p 18080:18080 \
+  chetter/runner
+```
+
+> **Note:** gVisor only works on Linux hosts. It is not available on Docker Desktop for macOS or Windows.
+
+If the container exits immediately, check `docker logs chetter-runner`. Common causes are a missing `server.url` or lack of access to the mounted Docker socket.
 
 ## Sending a Task
 
@@ -191,53 +157,73 @@ claim queued tasks from the control plane over ConnectRPC.
 
 | Harness | Mode | Status |
 |---------|------|--------|
-| **OpenCode** | `opencode run` (non-interactive via model flag) | **In progress — local mode works** |
+| **OpenCode** | `opencode serve` (interactive, HTTP API) | **Working — Docker + local mode** |
 | **Niffler** | MCP socket integration | Planned — library patch to add `--mcp-socket` agent mode |
 
 Unmodified harnesses work for public workflows (HTTP through proxy, workspace access, bash). Private git push requires harness to call MCP tools (`git_push`).
+
+## Execution Modes
+
+| Mode | Runtime | Isolation | Interactive | Platform |
+|------|---------|-----------|-------------|----------|
+| `local` | Subprocess | None | Yes (opencode serve) | Any |
+| `docker` | Docker CLI + runc | Process | Yes (opencode serve) | Any |
+| `docker` + gVisor | Docker CLI + runsc | Kernel (syscall filter) | Yes (opencode serve) | Linux only |
 
 ## Security Model
 
 | Layer | Implementation |
 |-------|---------------|
-| VM Isolation | Kata micro-VM (QEMU/KVM) |
+| Container Isolation | Docker (runc) or gVisor (runsc) |
 | Network Lockdown | iptables REDIRECT + DNS proxy |
-| No Credentials in VM | Git/SSH keys stay in runner |
-| LLM Key | Inside VM (known tradeoff: prompt exfiltration possible) |
+| No Credentials in Container | Git/SSH keys stay in runner |
+| LLM Key | Inside container (known tradeoff: prompt exfiltration possible) |
 | Proxy Filtering | SNI-based allowlist/blocklist |
+
+## Runner Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHETTER_SERVER_URL` | (required) | Control plane URL |
+| `CHETTER_RUNNER_AUTH_TOKEN` | | Auth token (also checks `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN`) |
+| `RUNNER_LOCAL` | `false` | Run agents as local subprocesses (no Docker) |
+| `USE_GVISOR` | `false` | Pass `--runtime=runsc` to Docker for gVisor sandboxing |
+| `MAX_CONCURRENT` | `10` | Max parallel tasks |
 
 ## Troubleshooting
 
-**`ctr: runtime "io.containerd.kata.v2" not supported`**
-→ Check `containerd-shim-kata-v2` is installed on the host and visible to the host containerd service: `which containerd-shim-kata-v2`
-
-**`qemu-system-x86_64: could not open /dev/kvm`**
-→ Ensure KVM is enabled in BIOS and modules loaded:
+**`Cannot connect to the Docker daemon`**
+→ Ensure Docker is running and the socket is mounted:
 ```bash
-sudo modprobe kvm_intel  # or kvm_amd
-sudo usermod -aG kvm $USER
+docker info
+ls -la /var/run/docker.sock
 ```
 
-**`ctr: image "...": not found`**
-→ Pull the image first: `sudo ctr image pull docker.io/library/alpine:latest`
-
-**`ctr: connection error: dial unix /run/containerd/containerd.sock: permission denied`**
-→ Run as root, or add your user to the group that owns the socket:
+**`docker: Error: runtime "runsc" not found`**
+→ Install gVisor on the host:
 ```bash
-ls -la /run/containerd/containerd.sock  # check group
-sudo usermod -aG <group> $USER
+sudo apt-get install -y runsc
+sudo runsc install
+sudo systemctl restart docker
 ```
 
 **`iptables: Permission denied` in runner**
-→ Runner must run as root.
+→ Runner must run as root or with `CAP_NET_ADMIN`.
+
+**Agent container cannot reach proxy**
+→ Check iptables rules and that the proxy is listening on `:18080`:
+```bash
+sudo iptables -t nat -L -n | grep 18080
+```
 
 ## Development Plan
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 1 — Core + Proxy | Done | MCP server, workspace, proxy, config |
-| 2 — containerd/Kata client | Done | `ctr` wrapper, VM spawn, wait-for-exit |
+| 2 — Docker execution | Done | Docker CLI, container spawn, interactive serve |
 | 3 — Network isolation | Done | Per-task bridge, iptables REDIRECT, DNS proxy |
-| 4 — OpenCode Adapter | Done | `opencode run` in local + Docker + Kata mode |
+| 4 — OpenCode Adapter | Done | `opencode serve` in local + Docker mode |
 | 5 — Skills + Backend Harness | Done | Agent skill injection, backend developer Docker image |
-| 6 — Niffler Patch | Planned | MCP client agent mode |
+| 6 — gVisor Sandbox | Done | `--runtime=runsc` flag, K8s DaemonSet installer |
+| 7 — Niffler Patch | Planned | MCP client agent mode |

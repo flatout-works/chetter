@@ -17,20 +17,7 @@ WORKDIR /src/runner
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o runner ./cmd/runner
 
 # --------------------------------------------------------------------------
-# Stage 2: Fetch containerd ctr client (avoids full daemon package in image)
-# --------------------------------------------------------------------------
-FROM debian:bookworm-slim AS ctr-downloader
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
-ARG CONTAINERD_VERSION=2.0.5
-RUN curl -fsSL \
-    "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz" \
-    | tar -C /tmp -xzf - bin/ctr \
-    && install -m 755 /tmp/bin/ctr /usr/local/bin/ctr \
-    && rm -rf /tmp/bin \
-    && ctr --version
-
-# --------------------------------------------------------------------------
-# Stage 3: Final runtime image
+# Stage 2: Final runtime image
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
@@ -43,8 +30,6 @@ RUN apt-get update \
         procps \
         socat \
     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ctr-downloader /usr/local/bin/ctr /usr/local/bin/ctr
 
 ENV TMPDIR=/tmp/chetter-runner
 COPY --from=builder /src/runner/runner /usr/local/bin/runner
