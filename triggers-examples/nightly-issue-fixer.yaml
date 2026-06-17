@@ -1,4 +1,4 @@
-# Sample schedule: nightly issue fixer
+# Example trigger: nightly issue fixer
 #
 # Picks a well-scoped open issue and implements a fix automatically.
 #
@@ -9,8 +9,8 @@
 #   timeout_sec  - adjust based on typical fix complexity
 #   prompt       - adapt issue labels and build/test commands to your project
 #
-# To create: chetter_schedule_task with these fields.
-# To change later: chetter_update_schedule with changed fields.
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
 
 name: nightly-issue-fixer
 enabled: false

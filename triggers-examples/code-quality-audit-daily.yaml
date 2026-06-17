@@ -1,4 +1,4 @@
-# Sample schedule: code quality audit
+# Example trigger: code quality audit
 #
 # Scrubs the codebase for DRY violations, long functions, hardcoded values,
 # unclear naming, missing error wrapping, and dead code.
@@ -11,8 +11,8 @@
 #   timeout_sec  - adjust based on codebase size (large repos need more time)
 #   prompt       - adapt the source directories and quality criteria to your project
 #
-# To create: chetter_schedule_task with these fields.
-# To change later: chetter_update_schedule with changed fields.
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
 
 name: code-quality-audit-daily
 enabled: false

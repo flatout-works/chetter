@@ -15,12 +15,21 @@ const (
 	// EventType values for the X-GitHub-Event header.
 	EventTypePullRequest  = "pull_request"
 	EventTypeIssueComment = "issue_comment"
+	EventTypeIssues       = "issues"
 
 	// ChetterReviewLabel is the label we add to PRs that should be reviewed.
 	ChetterReviewLabel = "chetter-review"
 
 	// ReviewTrigger comment that users post to request a review.
 	ReviewTriggerCommand = "/chetter-review"
+
+	// Trigger event values for trigger_config's "event" field.
+	TriggerEventOpened      = "opened"
+	TriggerEventLabeled     = "labeled"
+	TriggerEventComment     = "comment"
+	TriggerEventFork        = "fork"
+	TriggerEventCreated     = "created"  // issue created
+	TriggerEventSynchronize = "synchronize"
 )
 
 // PullRequestEvent is the top-level payload for a pull_request webhook event.
@@ -102,4 +111,23 @@ type Issue struct {
 // IsPullRequest returns true if the issue is actually a pull request.
 func (e *IssueCommentEvent) IsPullRequest() bool {
 	return e.Issue.PullRequest != nil
+}
+
+// IssueEvent is the top-level payload for an issues webhook event.
+type IssueEvent struct {
+	Action     string     `json:"action"`
+	Issue      IssueData  `json:"issue"`
+	Repository Repository `json:"repository"`
+}
+
+// IssueData is the relevant subset of the issue object.
+type IssueData struct {
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	State   string `json:"state"`
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
+	User    struct {
+		Login string `json:"login"`
+	} `json:"user"`
 }

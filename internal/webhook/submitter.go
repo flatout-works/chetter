@@ -52,6 +52,11 @@ func (s *serviceSubmitter) SubmitReviewTask(ctx context.Context, review ReviewCo
 	return err
 }
 
+// SubmitTask submits an arbitrary task via the service.
+func (s *serviceSubmitter) SubmitTask(ctx context.Context, req SubmitTaskRequest) (any, error) {
+	return s.svc.SubmitTask(ctx, req)
+}
+
 // buildReviewTaskRequest creates a SubmitTaskRequest for a PR review.
 func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	prompt := review.Prompt

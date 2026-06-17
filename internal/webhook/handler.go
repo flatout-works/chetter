@@ -16,13 +16,14 @@ import (
 )
 
 // TriggerResolver is the subset of the service that the webhook needs to
-// resolve PR review triggers for a given repo. Defined as an interface to
-// allow mocking in tests.
+// resolve triggers for a given repo. Defined as an interface to allow
+// mocking in tests.
 type TriggerResolver interface {
 	ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo string) ([]ReviewTrigger, error)
+	ListEnabledIssueTriggersByRepo(ctx context.Context, repo string) ([]ReviewTrigger, error)
 }
 
-// ReviewTrigger is the resolved data from a single PR review trigger.
+// ReviewTrigger is the resolved data from a single trigger.
 type ReviewTrigger struct {
 	Name        string
 	Prompt      string
@@ -35,12 +36,14 @@ type ReviewTrigger struct {
 	GitURL      string
 	GitRef      string
 	Skills      []string
+	Event       string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
-// submit review tasks. Defined as an interface to allow mocking in tests.
+// submit tasks. Defined as an interface to allow mocking in tests.
 type TaskSubmitter interface {
 	SubmitReviewTask(ctx context.Context, review ReviewContext) error
+	SubmitTask(ctx context.Context, req SubmitTaskRequest) (any, error)
 }
 
 // ReviewContext is the data passed to TaskSubmitter for a single review.
@@ -137,6 +140,8 @@ func (h *Handler) handle(event string, body []byte) {
 		h.handlePullRequest(body)
 	case EventTypeIssueComment:
 		h.handleIssueComment(body)
+	case EventTypeIssues:
+		h.handleIssues(body)
 	default:
 		slog.Debug("webhook: ignoring unsupported event", "event", event)
 	}
@@ -181,38 +186,45 @@ func (h *Handler) handlePullRequest(body []byte) {
 	}
 
 	repo := ev.Repository.FullName
-
-	trigger, ok := h.shouldReview(ev, repo)
-	if !ok {
+	triggerAction := triggerActionFromPR(ev, repo)
+	if triggerAction == "" {
 		slog.Debug("webhook: PR not eligible for review", "repo", repo, "pr", ev.Number)
 		return
 	}
 
-	h.submitReview(ReviewContext{
-		Trigger:      trigger,
+	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), repo)
+	if err != nil {
+		slog.Error("webhook: list pr review triggers", "err", err, "repo", repo)
+		return
+	}
+
+	h.submitReviewForTrigger(ReviewContext{
+		Trigger:      triggerAction,
 		Repo:         repo,
 		PRNumber:     ev.Number,
 		BaseRef:      ev.PullRequest.Base.Ref,
 		HeadRef:      ev.PullRequest.Head.Ref,
 		HeadCloneURL: ev.PullRequest.Head.Repo.CloneURL,
-	})
+	}, triggers, triggerAction)
 }
 
-// shouldReview determines whether a PR needs a review and returns the trigger reason.
-func (h *Handler) shouldReview(ev PullRequestEvent, repo string) (string, bool) {
-	// 1. Explicit label request.
+// triggerActionFromPR returns the trigger action string for a PR event, or empty if not eligible.
+func triggerActionFromPR(ev PullRequestEvent, repo string) string {
+	// Label trigger.
 	for _, l := range ev.PullRequest.Labels {
 		if l.Name == ChetterReviewLabel {
-			return "label", true
+			return TriggerEventLabeled
 		}
 	}
-
-	// 2. PR from a fork (external contributor).
+	// Fork trigger.
 	if ev.PullRequest.Head.Repo.FullName != "" && ev.PullRequest.Head.Repo.FullName != repo {
-		return "fork", true
+		return TriggerEventFork
 	}
-
-	return "", false
+	// Opened trigger.
+	if ev.Action == PullRequestActionOpened {
+		return TriggerEventOpened
+	}
+	return ""
 }
 
 func (h *Handler) handleIssueComment(body []byte) {
@@ -263,7 +275,7 @@ func (h *Handler) handleIssueComment(body []byte) {
 		slog.Warn("webhook: post ack comment for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
 	}
 
-	h.submitReview(ReviewContext{
+	h.submitReviewForTrigger(ReviewContext{
 		Trigger:       "comment",
 		Repo:          repo,
 		PRNumber:      ev.Issue.Number,
@@ -271,13 +283,13 @@ func (h *Handler) handleIssueComment(body []byte) {
 		HeadRef:       head,
 		HeadCloneURL:  cloneURL,
 		CommentAuthor: ev.Comment.User.Login,
-	})
+	}, nil, "comment")
 }
 
-// submitReview gets an installation token, finds matching PR review triggers,
+// submitReviewForTrigger gets an installation token, filters triggers by event,
 // and forwards the review context to the TaskSubmitter for each match.
-// Fails closed: if no triggers are configured for the repo, the PR is not reviewed.
-func (h *Handler) submitReview(ctx ReviewContext) {
+// If triggers is nil, it fetches them from the resolver.
+func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTrigger, event string) {
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token", "err", err)
@@ -286,22 +298,29 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 	}
 	ctx.GitHubToken = token
 
-	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), ctx.Repo)
-	if err != nil {
-		slog.Error("webhook: list pr review triggers", "err", err, "repo", ctx.Repo)
-		h.postCommentOnFailure(ctx, CommentReviewFailed)
-		return
+	if triggers == nil {
+		triggers, err = h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), ctx.Repo)
+		if err != nil {
+			slog.Error("webhook: list pr review triggers", "err", err, "repo", ctx.Repo)
+			h.postCommentOnFailure(ctx, CommentReviewFailed)
+			return
+		}
 	}
 
-	if len(triggers) == 0 {
-		slog.Info("webhook: no PR review triggers configured for repo; skipping review",
-			"repo", ctx.Repo, "pr", ctx.PRNumber)
+	// Filter triggers by event. A trigger with no Event set matches all events.
+	var matching []ReviewTrigger
+	for _, t := range triggers {
+		if t.Event == "" || t.Event == event {
+			matching = append(matching, t)
+		}
+	}
+
+	if len(matching) == 0 {
+		slog.Info("webhook: no triggers match event", "event", event, "repo", ctx.Repo, "pr", ctx.PRNumber)
 		return
 	}
 
 	// Add the review label to indicate a review is in progress.
-	// Only reached when at least one trigger matched, so the label always
-	// means a review task was actually submitted.
 	if ctx.Trigger != "label" {
 		labelCtx, labelCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer labelCancel()
@@ -315,7 +334,7 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		}
 	}
 
-	for _, t := range triggers {
+	for _, t := range matching {
 		rc := ctx
 		if t.Prompt != "" {
 			rc.Prompt = t.Prompt
@@ -345,6 +364,83 @@ func (h *Handler) submitReview(ctx ReviewContext) {
 		}
 		slog.Info("webhook: review task submitted",
 			"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
+	}
+}
+
+// handleIssues handles an issues webhook event.
+func (h *Handler) handleIssues(body []byte) {
+	var ev IssueEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		slog.Warn("webhook: parse issues", "err", err)
+		return
+	}
+
+	// Only act on the actions we care about.
+	switch ev.Action {
+	case "opened", "labeled", "reopened":
+		// continue
+	default:
+		slog.Debug("webhook: ignoring issues action", "action", ev.Action)
+		return
+	}
+
+	repo := ev.Repository.FullName
+	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
+	if err != nil {
+		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
+		return
+	}
+
+	// Filter triggers by event.
+	var matching []ReviewTrigger
+	for _, t := range triggers {
+		if t.Event == "" || t.Event == ev.Action {
+			matching = append(matching, t)
+		}
+	}
+	if len(matching) == 0 {
+		return
+	}
+
+	token, err := h.gh.tokenCache.get(h.gh)
+	if err != nil {
+		slog.Error("webhook: get GitHub token", "err", err)
+		return
+	}
+
+	for _, t := range matching {
+		prompt := t.Prompt
+		if prompt == "" {
+			prompt = fmt.Sprintf("A GitHub issue was %s in %s.\n\nTitle: %s\nURL: %s\n\nBody:\n%s",
+				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
+		}
+		req := SubmitTaskRequest{
+			Prompt:     prompt,
+			GitURL:     t.GitURL,
+			GitRef:     t.GitRef,
+			AgentImage: t.AgentImage,
+			Agent:      t.Agent,
+			ProviderID: t.ProviderID,
+			ModelID:    t.ModelID,
+			VariantID:  t.VariantID,
+			Skills:     t.Skills,
+			TimeoutSec: t.TimeoutSec,
+			Env: map[string]string{
+				"GITHUB_TOKEN": token,
+				"GITHUB_REPO":  repo,
+				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
+				"ISSUE_TITLE":  ev.Issue.Title,
+				"ISSUE_URL":    ev.Issue.HTMLURL,
+				"ISSUE_ACTION": ev.Action,
+			},
+		}
+		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
+			slog.Error("webhook: submit issue task", "err", err,
+				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+			continue
+		}
+		slog.Info("webhook: issue task submitted",
+			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number, "action", ev.Action)
 	}
 }
 

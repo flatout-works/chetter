@@ -39,6 +39,13 @@ WHERE enabled = TRUE
   AND trigger_config->>'$.repo' = sqlc.arg(repo)
 ORDER BY created_at DESC;
 
+-- name: ListEnabledIssueTriggersByRepo :many
+SELECT * FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = 'issue'
+  AND trigger_config->>'$.repo' = sqlc.arg(repo)
+ORDER BY created_at DESC;
+
 -- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
     (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)

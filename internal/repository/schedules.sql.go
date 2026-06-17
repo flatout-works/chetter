@@ -169,6 +169,59 @@ func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunPa
 	return err
 }
 
+const listEnabledIssueTriggersByRepo = `-- name: ListEnabledIssueTriggersByRepo :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+WHERE enabled = TRUE
+  AND trigger_type = 'issue'
+  AND trigger_config->>'$.repo' = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterSchedule, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledIssueTriggersByRepo, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterSchedule{}
+	for rows.Next() {
+		var i ChetterSchedule
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
 SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE

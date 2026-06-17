@@ -1,4 +1,4 @@
-# Sample schedule: nightly documentation update from recent git changes
+# Trigger: nightly documentation update from recent git changes
 #
 # Customize before enabling:
 #   git_url      - your repository URL
@@ -8,8 +8,8 @@
 #   timeout_sec  - adjust based on repo size and number of docs
 #   prompt       - adapt the doc paths and conventions to your project
 #
-# To create: chetter_schedule_task with these fields.
-# To change later: chetter_update_schedule with changed fields.
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
 
 name: chetter-nightly-docs-update
 enabled: true

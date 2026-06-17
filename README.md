@@ -155,33 +155,36 @@ Call the `chetter_submit_task` MCP tool from your AI client, or use `/chetter-su
 
 Set `GITHUB_TOKEN` in `.env` if runners need access to private repositories or need to create branches and pull requests.
 
-## Trying Chetter Locally with k3s
+## Trying Chetter Locally with k3d
 
-[k3s](https://k3s.io/) is the most widely used lightweight Kubernetes distribution for local development. It's a single binary, installs in seconds, and supports all standard Kubernetes APIs. If you want to test Chetter on Kubernetes without a cloud cluster, k3s is the recommended path.
+[k3d](https://k3d.io/) runs [k3s](https://k3s.io/) (lightweight Kubernetes) inside Docker containers. It works on Linux, macOS, and Windows, installs in seconds, and cleans up with one command. It's the easiest way to test Chetter on Kubernetes locally.
 
-Other options exist — [kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker) and [minikube](https://minikube.sigs.k8s.io/) — but k3s is preferred because it runs actual containers (not nested Docker-in-Docker), making Docker socket passthrough and gVisor work naturally.
+Why k3d over alternatives:
+- **k3s** (bare metal) — Linux-only, installs as a systemd service. Great for servers, but requires root and a Linux host.
+- **kind** — Runs Kubernetes in Docker like k3d, but uses nested containerd (no Docker socket passthrough by default). Chetter runners need the Docker socket to launch agent containers.
+- **minikube** — Heavier, runs in a VM by default. Works but slower to start and uses more resources.
+- **k3d** — Best fit: k3s in Docker, Docker socket passthrough is straightforward, cross-platform, fast.
 
 ### Prerequisites
 
-- A Linux machine (bare metal or VM) with at least 4 GB RAM and Docker installed
-- (Optional) KVM support if you want gVisor
+- [Docker](https://docs.docker.com/get-docker/) (with 4+ GB RAM allocated)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [k3d](https://k3d.io/#installation) (`brew install k3d` or `curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash`)
 
-### Step 1: Install k3s
+### Step 1: Create a cluster
 
 ```bash
-curl -sfL https://get.k3s.io | sh -
-
-# k3s writes kubeconfig to /etc/rancher/k3s/k3s.yaml
-# For non-root access:
-mkdir -p ~/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $(id -u):$(id -g) ~/.kube/config
+# Create a cluster with Docker socket mounted into agent nodes
+k3d cluster create chetter \
+  --agents 1 \
+  -p "18088:80@loadbalancer" \
+  --volume /var/run/docker.sock:/var/run/docker.sock@agent:0
 
 # Verify
 kubectl get nodes
 ```
 
-k3s automatically includes Traefik as an ingress controller and its own container runtime. It uses Docker as the default runtime if Docker is installed on the host, which is what we want for the runner's Docker socket passthrough.
+This creates a 1-server + 1-agent cluster. The Docker socket is mounted into the agent node so the runner can spawn agent containers. Port 18088 on your host maps to the k3d load balancer (Traefik ingress).
 
 ### Step 2: Create the namespace and secrets
 
@@ -261,56 +264,99 @@ kubectl -n chetter rollout status deployment/chetter-mcp
 kubectl -n chetter rollout status deployment/chetter-runner
 ```
 
-### Step 5: Verify
+### Step 5: Expose the MCP server
+
+For quick testing, use port-forward:
+
+```bash
+kubectl -n chetter port-forward deployment/chetter-mcp 18088:8080 &
+curl http://localhost:18088/healthz
+```
+
+For a persistent setup, add an Ingress:
+
+```bash
+kubectl apply -n chetter -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chetter-mcp
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: chetter-mcp
+            port:
+              number: 8080
+EOF
+```
+
+Then the MCP server is available at `http://localhost:18088/mcp` (via the load balancer port mapped in step 1).
+
+### Step 6: Verify
 
 ```bash
 # Check all pods are running
 kubectl -n chetter get pods
 
-# Check MCP server health
-kubectl -n chetter port-forward deployment/chetter-mcp 18088:8080 &
+# Health check
 curl http://localhost:18088/healthz
 
 # Watch runner logs
 kubectl -n chetter logs -f deployment/chetter-runner
 ```
 
-### Step 6: Connect your AI client
+### Step 7: Connect your AI client
 
-Port-forward the MCP server and use `http://localhost:18088/mcp` as your MCP endpoint. See [Quick Start](#quick-start) step 5 for client-specific setup.
+Use `http://localhost:18088/mcp` as your MCP endpoint. See [Quick Start](#quick-start) step 5 for client-specific setup.
 
 ### Optional: Enable gVisor
 
-If you want sandbox isolation on your k3s node:
+gVisor requires `runsc` installed on the host. This only works on Linux hosts (not Docker Desktop on macOS/Windows):
 
 ```bash
-# Install gVisor on the host (not inside k3s)
+# Install gVisor on the host
 curl -fsSL https://gvisor.dev/archive.key | \
   sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
   sudo tee /etc/apt/sources.list.d/gvisor.list
 sudo apt-get update && sudo apt-get install -y runsc
 
-# Register runsc with the container runtime
+# Register runsc with Docker
 sudo /usr/bin/runsc install
 sudo systemctl restart docker
 
-# Apply the RuntimeClass (optional — only if you want runner pods under gVisor too)
-kubectl apply -f deploy/k8s/gvisor-runtimeclass.yaml
+# Restart the k3d cluster so it picks up the new runtime
+k3d cluster stop chetter && k3d cluster start chetter
 
-# Enable gVisor for agent containers by setting the env var
+# Enable gVisor for agent containers
 kubectl -n chetter set env deployment/chetter-runner USE_GVISOR=true
 ```
 
 ### Cleaning up
 
 ```bash
-# Remove Chetter
-kubectl delete namespace chetter
-
-# Uninstall k3s
-/usr/local/bin/k3s-uninstall.sh
+# Delete the entire cluster (removes all resources)
+k3d cluster delete chetter
 ```
+
+### Using bare k3s instead
+
+If you're on a Linux machine and prefer k3s as a systemd service (e.g., a home server or CI VM):
+
+```bash
+curl -sfL https://get.k3s.io | sh -
+mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown $(id -u):$(id -g) ~/.kube/config
+kubectl get nodes
+```
+
+Then follow steps 2–7 above. The manifests are the same. To uninstall: `/usr/local/bin/k3s-uninstall.sh`.
 
 ## Common Commands
 
@@ -508,7 +554,7 @@ See the [Sandbox Isolation](#sandbox-isolation) section for the DaemonSet that i
 
 When `runtimeClassName: gvisor` is set on the runner pod, the runner container itself runs under gVisor. When `USE_GVISOR=true` is also set, agent containers spawned by the runner (via Docker) also use the `runsc` runtime. These are independent: you can run the runner under gVisor while agents use runc, or vice versa.
 
-For local Kubernetes testing, see [Trying Chetter Locally with k3s](#trying-chetter-locally-with-k3s).
+For local Kubernetes testing, see [Trying Chetter Locally with k3d](#trying-chetter-locally-with-k3d).
 
 ## Deploying with Docker + gVisor
 
@@ -606,8 +652,8 @@ self-hosted compose stack that pulls the published GHCR images.
 | `internal/webhook/` | Optional GitHub webhook handling |
 | `deploy/compose.yaml` | Portable Docker Compose stack using published GHCR images |
 | `runner/` | Runner runtime, image Dockerfiles, and entrypoint |
-| `schedules/` | Active production schedules |
-| `schedules-examples/` | Example schedule templates |
+| `triggers/` | Active production triggers |
+| `triggers-examples/` | Example trigger templates |
 | `tools/skills/` | OpenCode skills baked into the runner image |
 
 ## Sandbox Isolation

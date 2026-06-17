@@ -620,6 +620,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	for i, t := range triggers {
 		var skills []string
 		_ = json.Unmarshal(t.Skills, &skills)
+		ev := triggerEventFromConfig(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			Name:       t.Name,
 			Prompt:     t.Prompt,
@@ -632,9 +633,50 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			GitURL:     t.GitUrl.String,
 			GitRef:     t.GitRef.String,
 			Skills:     skills,
+			Event:      ev,
 		}
 	}
 	return out, nil
+}
+
+// ListEnabledIssueTriggersByRepo finds all enabled issue triggers for a repo.
+func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo string) ([]webhook.ReviewTrigger, error) {
+	triggers, err := s.repo.ListEnabledIssueTriggersByRepo(ctx, json.RawMessage(repo))
+	if err != nil {
+		return nil, fmt.Errorf("list issue triggers: %w", err)
+	}
+	out := make([]webhook.ReviewTrigger, len(triggers))
+	for i, t := range triggers {
+		var skills []string
+		_ = json.Unmarshal(t.Skills, &skills)
+		ev := triggerEventFromConfig(t.TriggerConfig)
+		out[i] = webhook.ReviewTrigger{
+			Name:       t.Name,
+			Prompt:     t.Prompt,
+			AgentImage: t.AgentImage.String,
+			Agent:      t.Agent.String,
+			ProviderID: t.ProviderID.String,
+			ModelID:    t.ModelID.String,
+			VariantID:  t.VariantID.String,
+			TimeoutSec: int(t.TimeoutSec),
+			GitURL:     t.GitUrl.String,
+			GitRef:     t.GitRef.String,
+			Skills:     skills,
+			Event:      ev,
+		}
+	}
+	return out, nil
+}
+
+// triggerEventFromConfig extracts the "event" field from a trigger_config JSON.
+func triggerEventFromConfig(cfg json.RawMessage) string {
+	var parsed struct {
+		Event string `json:"event"`
+	}
+	if err := json.Unmarshal(cfg, &parsed); err != nil {
+		return ""
+	}
+	return parsed.Event
 }
 
 func randomID(prefix string) (string, error) {

@@ -100,7 +100,7 @@ Only provided fields are changed. The trigger is re-registered in the cron runne
 
 ## Production Schedules
 
-Schedule definitions live as YAML files in `/schedules/` for version control. They are **documentation** — not auto-loaded. To activate a schedule, create it via `chetter_create_trigger` with `trigger_type: cron`.
+Trigger definitions live as YAML files in `/triggers/` for version control. They are **documentation** — not auto-loaded. To activate a trigger, create it via `chetter_create_trigger` with `trigger_type: cron`.
 
 ### Included Schedules
 
@@ -110,6 +110,7 @@ Schedule definitions live as YAML files in `/schedules/` for version control. Th
 | `chetter-nightly-changelog-update` | `0 3 * * *` | Update `CHANGELOG.md` from recent commits |
 | `chetter-nightly-docs-update` | `0 4 * * *` | Update project documentation to match implementation |
 | `chetter-nightly-website-presentation-update` | `0 5 * * *` | Update marketing website and architecture presentation |
+| `next-feature-creator` | `*/30 * * * *` | Analyze repo and create GitHub issue for next feature/fix |
 
 ### Vulnerability Scan Schedule
 

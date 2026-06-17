@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How we think about agents — and how we use sys9</title>
+<style>
+  :root {
+    --ink:#1C1B19; --muted:#6B6760; --faint:#8D877D;
+    --line:#E7E3DB; --line-soft:#EFEBE3; --paper:#FFFFFF; --surface:#FBFAF7;
+    --g:#3A6E5E; --g-bg:#EAF1ED; --g-line:#CBE0D6; --g-ink:#2C5446;
+    --c:#B5713A; --c-bg:#F6EDE2; --c-line:#ECDCC9; --c-ink:#8A4F22;
+    --radius:14px; --wrap:960px;
+    --font:"Anthropic Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Helvetica,Arial,sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Fira Code",ui-monospace,"Menlo",Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--surface); color:var(--ink); font-family:var(--font);
+    line-height:1.7; font-size:17px; font-weight:400; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:var(--wrap); margin:0 auto; padding:72px 28px 100px; }
+  .eyebrow { font-family:var(--mono); font-size:12.5px; letter-spacing:0.16em; text-transform:uppercase;
+    color:var(--faint); font-weight:500; margin:0 0 16px; }
+  h1 { font-size:38px; line-height:1.16; font-weight:500; letter-spacing:-0.02em; margin:0 0 16px; max-width:20ch; }
+  .lede { font-size:20px; line-height:1.5; color:var(--muted); margin:0; max-width:54ch; }
+
+  .beat { margin:56px 0 0; }
+  .beat-no { font-family:var(--mono); font-size:13px; color:var(--g); font-weight:500; letter-spacing:0.04em; }
+  .beat h2 { font-size:24px; font-weight:500; letter-spacing:-0.01em; margin:6px 0 16px; }
+  .figure { background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:24px 22px; }
+  .figure svg { display:block; width:100%; height:auto; }
+  .duo { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .take { font-size:16px; line-height:1.6; color:var(--muted); margin:14px 2px 0; max-width:70ch; }
+  .take b { color:var(--ink); font-weight:500; }
+  .take .gg { color:var(--g-ink); font-weight:500; }
+  .take .cc { color:var(--c-ink); font-weight:500; }
+
+  .legend { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:14px 0 0; }
+  .lrow { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:13px 15px; }
+  .lrow .k { font-family:var(--mono); font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--faint); }
+  .lrow .v { margin-top:5px; font-family:var(--mono); font-size:15px; color:var(--ink); font-weight:500; }
+  .lrow .v .soon { font-family:var(--font); font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--c-ink); background:var(--c-bg); border-radius:999px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+  .plumbing { background:var(--surface); border:1px solid var(--line-soft); border-radius:8px;
+    padding:14px 18px; font-size:14.5px; color:var(--muted); margin:12px 0 0; }
+  .plumbing b { color:var(--ink); font-weight:500; }
+  .plumbing code { font-family:var(--mono); font-size:13px; color:var(--ink); }
+  .steps { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:16px 0 0; }
+  .step { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:9px 13px; }
+  .step b { font-family:var(--mono); font-size:13.5px; font-weight:500; color:var(--ink); display:block; }
+  .step small { display:block; color:var(--faint); font-size:11px; margin-top:2px; }
+  .step.g { border-color:var(--g-line); background:var(--g-bg); }
+  .step.g b { color:var(--g-ink); }
+  .sarrow { color:#C2BDB3; font-size:15px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:4px 0 0; }
+  .stat { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:18px; }
+  .stat .n { font-size:34px; font-weight:500; letter-spacing:-0.02em; color:var(--g-ink); line-height:1.05; }
+  .stat .l { font-size:13px; color:var(--muted); margin-top:7px; line-height:1.4; }
+  @media (max-width:620px){ .wrap{padding:48px 20px 72px} h1{font-size:30px} .duo{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">the model, at a glance</p>
+  <h1>How we think about agents</h1>
+
+  <!-- BEAT 1 -->
+  <section class="beat">
+    <span class="beat-no">01</span>
+    <h2>An agent is a loop with one gate</h2>
+    <div class="figure">
+      <svg viewBox="0 0 800 300" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>An agent loop: task and context go into execution, pass a gate, become output, and feed back to improve.</title>
+        <defs>
+          <marker id="m1" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#B0A99E"/></marker>
+          <marker id="m1g" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#3A6E5E"/></marker>
+          <marker id="m1r" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#C0533B"/></marker>
+        </defs>
+
+        <path d="M696,92 C696,62 686,52 648,52 L372,52 C338,52 326,62 326,90" fill="none" stroke="#3A6E5E" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#m1g)"/>
+        <text x="430" y="44" font-size="13" fill="#2C5446">observe → improve  ·  next run is better</text>
+
+        <rect x="20" y="92" width="152" height="108" rx="11" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="96" y="140" font-size="16" fill="#1C1B19" text-anchor="middle">task</text>
+        <text x="96" y="164" font-size="13.5" fill="#6B6760" text-anchor="middle">+ context</text>
+
+        <line x1="176" y1="146" x2="200" y2="146" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#m1)"/>
+
+        <rect x="208" y="92" width="236" height="108" rx="11" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="226" y="120" font-size="15" fill="#1C1B19">execution</text>
+        <path d="M226,164 C258,144 288,184 320,162 C352,142 392,182 422,160" fill="none" stroke="#CDC7BC" stroke-width="1.6"/>
+        <text x="226" y="190" font-size="12.5" fill="#8D877D">however the agent works</text>
+
+        <line x1="448" y1="146" x2="474" y2="146" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#m1)"/>
+
+        <rect x="484" y="92" width="84" height="108" rx="11" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.4"/>
+        <text x="526" y="116" font-size="14" fill="#2C5446" text-anchor="middle">gate</text>
+        <circle cx="526" cy="158" r="17" fill="#3A6E5E"/>
+        <path d="M518,158 l5,6 l11,-13" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <line x1="572" y1="146" x2="612" y2="146" stroke="#3A6E5E" stroke-width="1.8" marker-end="url(#m1g)"/>
+        <text x="592" y="134" font-size="11.5" fill="#2C5446" text-anchor="middle">pass</text>
+
+        <rect x="620" y="92" width="152" height="108" rx="11" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="696" y="151" font-size="16" fill="#1C1B19" text-anchor="middle">output</text>
+
+        <path d="M526,200 C526,240 520,250 470,250 L382,250 C342,250 326,240 326,202" fill="none" stroke="#C0533B" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#m1r)"/>
+        <text x="426" y="270" font-size="11.5" fill="#A8482F" text-anchor="middle">fails → back to work</text>
+      </svg>
+    </div>
+    <p class="take">An agent takes a <b>task + context</b> and works however it likes. Whatever it does inside, the result must clear <b>one fixed gate</b> — your tests and reviews — before it counts as <b>output</b>. Because the gate never changes, quality is judged the same way every time. And every run is observed and fed back, so the next one improves — that’s what makes it <b>trainable</b>.</p>
+  </section>
+
+  <!-- BEAT 2 -->
+  <section class="beat">
+    <span class="beat-no">02</span>
+    <h2>“Execution” is five parts — and two owners</h2>
+    <div class="figure">
+      <svg viewBox="0 0 820 380" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>Execution breaks into five parts in two lanes: teams own workflow and pattern; the platform owns environment, observability and improvement.</title>
+        <defs>
+          <marker id="m2g" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#3A6E5E"/></marker>
+        </defs>
+        <rect x="14" y="12" width="792" height="356" rx="14" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="34" y="46" font-size="17" fill="#1C1B19">execution<tspan font-size="15" fill="#8D877D">  —  five parts, two owners</tspan></text>
+
+        <rect x="30" y="66" width="700" height="126" rx="12" fill="#F1F6F3" stroke="#DCEAE3"/>
+        <text x="50" y="120" font-size="15" fill="#2C5446">you / teams</text>
+        <text x="50" y="142" font-size="12.5" fill="#8D877D">define the work</text>
+        <rect x="300" y="92" width="200" height="74" rx="10" fill="#FFFFFF" stroke="#CBE0D6"/>
+        <text x="316" y="126" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#2C5446">workflow</text>
+        <text x="316" y="150" font-size="12.5" fill="#6B6760">the steps, in order</text>
+        <rect x="514" y="92" width="200" height="74" rx="10" fill="#FFFFFF" stroke="#CBE0D6"/>
+        <text x="530" y="126" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="16" fill="#2C5446">pattern</text>
+        <text x="530" y="150" font-size="12.5" fill="#6B6760">how agents team up</text>
+
+        <rect x="30" y="208" width="700" height="146" rx="12" fill="#F8F1E9" stroke="#ECDCC9"/>
+        <text x="50" y="272" font-size="15" fill="#8A4F22">the platform</text>
+        <text x="50" y="294" font-size="12.5" fill="#8D877D">provides the rails</text>
+        <rect x="300" y="236" width="132" height="90" rx="10" fill="#FFFFFF" stroke="#ECDCC9"/>
+        <text x="314" y="270" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13.5" fill="#8A4F22">environment</text>
+        <text x="314" y="293" font-size="12" fill="#6B6760">where it runs</text>
+        <rect x="446" y="236" width="132" height="90" rx="10" fill="#FFFFFF" stroke="#ECDCC9"/>
+        <text x="460" y="270" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#8A4F22">observability</text>
+        <text x="460" y="293" font-size="12" fill="#6B6760">what happened</text>
+        <rect x="592" y="236" width="132" height="90" rx="10" fill="#FFFFFF" stroke="#ECDCC9"/>
+        <text x="606" y="270" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13.5" fill="#8A4F22">improvement</text>
+        <text x="606" y="293" font-size="12" fill="#6B6760">learn from it</text>
+
+        <path d="M658,236 C792,206 792,150 738,150" fill="none" stroke="#3A6E5E" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#m2g)"/>
+        <text x="726" y="200" font-size="12" fill="#2C5446" text-anchor="end">↻ feeds back</text>
+      </svg>
+    </div>
+    <p class="take"><b>“Execution” isn’t one thing — it’s five.</b> <span class="gg">You and your teams</span> own how the work is shaped: the <b>workflow</b> and the <b>pattern</b>. <span class="cc">The platform</span> owns the rails that stay the same every time: the <b>environment</b> it runs in, the <b>observability</b> that records it, and the <b>improvement</b> loop that learns from it.</p>
+  </section>
+
+  <!-- BEAT 3 -->
+  <section class="beat">
+    <span class="beat-no">03</span>
+    <h2>Workflow vs. Pattern — the two people mix up</h2>
+    <div class="duo">
+      <div class="figure">
+        <svg viewBox="0 0 360 430" role="img" xmlns="http://www.w3.org/2000/svg">
+          <title>Workflow is a straight sequence of phases: plan, design, develop, review, test, deploy.</title>
+          <defs><marker id="mw" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#B0A99E"/></marker></defs>
+          <text x="24" y="40" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#1C1B19">workflow</text>
+          <text x="24" y="62" font-size="13" fill="#8D877D">the order — when</text>
+          <g>
+            <rect x="90" y="86" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="111" font-size="14.5" fill="#1C1B19" text-anchor="middle">plan</text>
+            <rect x="90" y="140" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="165" font-size="14.5" fill="#1C1B19" text-anchor="middle">design</text>
+            <rect x="90" y="194" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="219" font-size="14.5" fill="#1C1B19" text-anchor="middle">develop</text>
+            <rect x="90" y="248" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="273" font-size="14.5" fill="#1C1B19" text-anchor="middle">review</text>
+            <rect x="90" y="302" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="327" font-size="14.5" fill="#1C1B19" text-anchor="middle">test</text>
+            <rect x="90" y="356" width="180" height="40" rx="9" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="381" font-size="14.5" fill="#1C1B19" text-anchor="middle">deploy</text>
+          </g>
+          <line x1="180" y1="126" x2="180" y2="140" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#mw)"/>
+          <line x1="180" y1="180" x2="180" y2="194" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#mw)"/>
+          <line x1="180" y1="234" x2="180" y2="248" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#mw)"/>
+          <line x1="180" y1="288" x2="180" y2="302" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#mw)"/>
+          <line x1="180" y1="342" x2="180" y2="356" stroke="#B0A99E" stroke-width="1.6" marker-end="url(#mw)"/>
+          <text x="180" y="418" font-size="12.5" fill="#8D877D" text-anchor="middle">a fixed sequence of steps</text>
+        </svg>
+      </div>
+      <div class="figure">
+        <svg viewBox="0 0 360 430" role="img" xmlns="http://www.w3.org/2000/svg">
+          <title>Pattern is how agents collaborate: a coordinator splitting work to workers, or map-reduce fanning out then combining.</title>
+          <text x="24" y="40" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="17" fill="#1C1B19">pattern</text>
+          <text x="24" y="62" font-size="13" fill="#8D877D">the structure — who</text>
+
+          <text x="24" y="94" font-size="12.5" fill="#2C5446">coordinator + workers</text>
+          <line x1="180" y1="142" x2="80" y2="176" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="180" y1="142" x2="180" y2="176" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="180" y1="142" x2="280" y2="176" stroke="#B0A99E" stroke-width="1.3"/>
+          <rect x="110" y="104" width="140" height="38" rx="9" fill="#EAF1ED" stroke="#3A6E5E"/><text x="180" y="128" font-size="13" fill="#2C5446" text-anchor="middle">coordinator</text>
+          <rect x="40" y="176" width="80" height="34" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="80" y="198" font-size="12" fill="#1C1B19" text-anchor="middle">worker</text>
+          <rect x="140" y="176" width="80" height="34" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="198" font-size="12" fill="#1C1B19" text-anchor="middle">worker</text>
+          <rect x="240" y="176" width="80" height="34" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="280" y="198" font-size="12" fill="#1C1B19" text-anchor="middle">worker</text>
+
+          <line x1="20" y1="236" x2="340" y2="236" stroke="#EFEBE3" stroke-width="1"/>
+          <text x="24" y="262" font-size="12.5" fill="#2C5446">map-reduce</text>
+          <line x1="96" y1="318" x2="138" y2="291" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="96" y1="318" x2="138" y2="318" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="96" y1="318" x2="138" y2="345" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="220" y1="291" x2="262" y2="318" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="220" y1="318" x2="262" y2="318" stroke="#B0A99E" stroke-width="1.3"/>
+          <line x1="220" y1="345" x2="262" y2="318" stroke="#B0A99E" stroke-width="1.3"/>
+          <rect x="22" y="301" width="74" height="34" rx="8" fill="#EAF1ED" stroke="#3A6E5E"/><text x="59" y="323" font-size="12" fill="#2C5446" text-anchor="middle">task</text>
+          <rect x="140" y="277" width="80" height="28" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="296" font-size="11.5" fill="#1C1B19" text-anchor="middle">agent</text>
+          <rect x="140" y="311" width="80" height="28" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="330" font-size="11.5" fill="#1C1B19" text-anchor="middle">agent</text>
+          <rect x="140" y="345" width="80" height="28" rx="8" fill="#FBFAF7" stroke="#E2DDD3"/><text x="180" y="364" font-size="11.5" fill="#1C1B19" text-anchor="middle">agent</text>
+          <rect x="262" y="301" width="86" height="34" rx="8" fill="#EAF1ED" stroke="#3A6E5E"/><text x="305" y="323" font-size="12" fill="#2C5446" text-anchor="middle">combine</text>
+          <text x="180" y="414" font-size="12.5" fill="#8D877D" text-anchor="middle">explore in parallel, then merge</text>
+        </svg>
+      </div>
+    </div>
+    <p class="take">These are the two words people confuse. <b>Workflow</b> is the order of phases — <b>when</b> things happen (a straight line). <b>Pattern</b> is how agents collaborate — <b>who</b> does what (a branching shape). The same workflow can run under very different patterns.</p>
+  </section>
+
+  <!-- BEAT 4 -->
+  <section class="beat">
+    <span class="beat-no">04</span>
+    <h2>sys9 — the platform underneath</h2>
+    <div class="figure">
+      <svg viewBox="0 0 920 520" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>The sys9 agent fleet: a row of run9 sandboxes, each running one agent, backed by db9, fs9, mem9 and model9, with owl9 observing every run.</title>
+        <defs><marker id="mf" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#B8B2A8"/></marker></defs>
+
+        <rect x="16" y="48" width="680" height="332" rx="14" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="36" y="82" font-family="ui-monospace,Menlo,monospace" font-size="16" fill="#1C1B19">the new app · an agent fleet</text>
+        <text x="36" y="104" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#9A948A">each box = a run9 sandbox · one agent · ~50ms · ×1,000,000</text>
+
+        <text x="28" y="160" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#6B6760">task9</text>
+        <line x1="28" y1="170" x2="104" y2="170" stroke="#CFC9BD" stroke-width="1.5"/>
+        <line x1="28" y1="178" x2="104" y2="178" stroke="#CFC9BD" stroke-width="1.5"/>
+        <line x1="28" y1="186" x2="104" y2="186" stroke="#CFC9BD" stroke-width="1.5"/>
+        <line x1="110" y1="180" x2="134" y2="180" stroke="#B8B2A8" stroke-width="1.5" marker-end="url(#mf)"/>
+
+        <g font-family="ui-monospace,Menlo,monospace">
+          <rect x="140" y="130" width="98" height="98" rx="10" fill="#FBFAF7" stroke="#ECE7DD"/><text x="149" y="153" font-size="12.5" fill="#9A948A">run9</text><circle cx="227" cy="143" r="3" fill="#3A6E5E"/><rect x="149" y="164" width="80" height="30" rx="7" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.3"/><text x="189" y="184" font-size="14.5" fill="#2C5446" text-anchor="middle">agent</text>
+          <rect x="252" y="130" width="98" height="98" rx="10" fill="#FBFAF7" stroke="#ECE7DD"/><text x="261" y="153" font-size="12.5" fill="#9A948A">run9</text><rect x="261" y="164" width="80" height="30" rx="7" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.3"/><text x="301" y="184" font-size="14.5" fill="#2C5446" text-anchor="middle">agent</text>
+          <rect x="364" y="130" width="98" height="98" rx="10" fill="#FBFAF7" stroke="#ECE7DD"/><text x="373" y="153" font-size="12.5" fill="#9A948A">run9</text><circle cx="451" cy="143" r="3" fill="#3A6E5E"/><rect x="373" y="164" width="80" height="30" rx="7" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.3"/><text x="413" y="184" font-size="14.5" fill="#2C5446" text-anchor="middle">agent</text>
+          <rect x="476" y="130" width="98" height="98" rx="10" fill="#FBFAF7" stroke="#ECE7DD"/><text x="485" y="153" font-size="12.5" fill="#9A948A">run9</text><rect x="485" y="164" width="80" height="30" rx="7" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.3"/><text x="525" y="184" font-size="14.5" fill="#2C5446" text-anchor="middle">agent</text>
+          <rect x="588" y="130" width="98" height="98" rx="10" fill="#FBFAF7" stroke="#ECE7DD"/><text x="597" y="153" font-size="12.5" fill="#9A948A">run9</text><rect x="597" y="164" width="80" height="30" rx="7" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.3"/><text x="637" y="184" font-size="14.5" fill="#2C5446" text-anchor="middle">agent</text>
+        </g>
+        <line x1="240" y1="179" x2="250" y2="179" stroke="#B8B2A8" stroke-width="1.5" marker-end="url(#mf)"/>
+        <line x1="352" y1="179" x2="362" y2="179" stroke="#B8B2A8" stroke-width="1.5" marker-end="url(#mf)"/>
+        <line x1="464" y1="179" x2="474" y2="179" stroke="#B8B2A8" stroke-width="1.5" marker-end="url(#mf)"/>
+        <line x1="576" y1="179" x2="586" y2="179" stroke="#B8B2A8" stroke-width="1.5" marker-end="url(#mf)"/>
+
+        <text x="140" y="356" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#9A948A">task9 claim work · inbox9 coordinate · pulse9 liveness</text>
+
+        <line x1="97" y1="380" x2="97" y2="404" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+        <line x1="275" y1="380" x2="275" y2="404" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+        <line x1="453" y1="380" x2="453" y2="404" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+        <line x1="631" y1="380" x2="631" y2="404" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+
+        <g font-family="ui-monospace,Menlo,monospace">
+          <rect x="16" y="404" width="162" height="74" rx="10" fill="#FFFFFF" stroke="#E7E3DB"/><text x="30" y="434" font-size="19" fill="#1C1B19">db9</text><text x="30" y="456" font-size="13" fill="#8D877D">SQL state · branch</text>
+          <rect x="194" y="404" width="162" height="74" rx="10" fill="#FFFFFF" stroke="#E7E3DB"/><text x="208" y="434" font-size="19" fill="#1C1B19">fs9</text><text x="208" y="456" font-size="13" fill="#8D877D">files · one FS</text>
+          <rect x="372" y="404" width="162" height="74" rx="10" fill="#FFFFFF" stroke="#E7E3DB"/><text x="386" y="434" font-size="19" fill="#1C1B19">mem9</text><text x="386" y="456" font-size="13" fill="#8D877D">memory</text>
+          <rect x="550" y="404" width="162" height="74" rx="10" fill="none" stroke="#D8D3C9" stroke-dasharray="4 4"/><text x="564" y="434" font-size="19" fill="#9A948A">model9</text><text x="564" y="456" font-size="13" fill="#A9A296">gateway · soon</text>
+        </g>
+
+        <line x1="696" y1="148" x2="726" y2="148" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+        <line x1="696" y1="188" x2="726" y2="188" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+        <line x1="696" y1="228" x2="726" y2="228" stroke="#D8D3C9" stroke-width="1.4" stroke-dasharray="2 4"/>
+
+        <rect x="730" y="48" width="174" height="430" rx="14" fill="#FBFAF7" stroke="#E7E3DB"/>
+        <text x="748" y="90" font-family="ui-monospace,Menlo,monospace" font-size="19" fill="#1C1B19">owl9</text>
+        <text x="748" y="120" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#6B6760">observes &amp;</text>
+        <text x="748" y="142" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#6B6760">traces every</text>
+        <text x="748" y="164" font-family="ui-monospace,Menlo,monospace" font-size="13.5" fill="#6B6760">run</text>
+      </svg>
+    </div>
+    <p class="take">Those platform rails are concrete on sys9: every agent runs in its own <b>run9</b> sandbox; <b>db9 / fs9 / mem9</b> hold its state, files and memory; <b>owl9</b> watches every run; <b>model9</b> (soon) is the gateway to the models they call. You bring the workflow and the pattern — sys9 brings everything else.</p>
+    <div class="legend">
+      <div class="lrow"><div class="k">where it runs</div><div class="v">run9</div></div>
+      <div class="lrow"><div class="k">what it remembers</div><div class="v">db9 · fs9 · mem9</div></div>
+      <div class="lrow"><div class="k">what watches</div><div class="v">owl9</div></div>
+      <div class="lrow"><div class="k">what it calls</div><div class="v">model9<span class="soon">soon</span></div></div>
+    </div>
+    <div class="plumbing"><b>Underneath:</b> <code>task9</code> hands out the work, <code>inbox9</code> lets agents message each other, and <code>pulse9</code> keeps a heartbeat on each one — plumbing that just has to be there.</div>
+  </section>
+
+  <p class="eyebrow" style="margin:72px 0 0;color:var(--g)">in practice — a real run</p>
+  <section class="beat" style="margin-top:18px">
+    <span class="beat-no">05</span>
+    <h2>How I actually use sys9</h2>
+    <div class="figure">
+      <svg viewBox="0 0 820 290" role="img" xmlns="http://www.w3.org/2000/svg">
+        <title>I use Claude Code as the master agent; its sub-agents are run9 sandboxes running codex. The master fans work out to the run9 fleet, which ships PRs.</title>
+        <defs>
+          <marker id="mo" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#B0A99E"/></marker>
+          <marker id="mog" markerWidth="8" markerHeight="8" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="#3A6E5E"/></marker>
+        </defs>
+        <rect x="20" y="116" width="92" height="68" rx="12" fill="#FFFFFF" stroke="#E7E3DB"/>
+        <text x="66" y="156" font-size="16" fill="#1C1B19" text-anchor="middle">you</text>
+        <line x1="116" y1="142" x2="152" y2="142" stroke="#B0A99E" stroke-width="1.5" marker-end="url(#mo)"/>
+        <line x1="152" y1="162" x2="116" y2="162" stroke="#B0A99E" stroke-width="1.5" marker-end="url(#mo)"/>
+        <rect x="160" y="112" width="196" height="80" rx="12" fill="#EAF1ED" stroke="#3A6E5E" stroke-width="1.4"/>
+        <text x="180" y="146" font-size="15.5" fill="#2C5446">master agent</text>
+        <text x="180" y="170" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#2C5446">Claude Code</text>
+        <text x="180" y="212" font-size="11.5" fill="#8D877D">sub-agents → run9 · codex</text>
+        <line x1="356" y1="152" x2="468" y2="69" stroke="#B0A99E" stroke-width="1.3" marker-end="url(#mo)"/>
+        <line x1="356" y1="152" x2="468" y2="123" stroke="#B0A99E" stroke-width="1.3" marker-end="url(#mo)"/>
+        <line x1="356" y1="152" x2="468" y2="177" stroke="#B0A99E" stroke-width="1.3" marker-end="url(#mo)"/>
+        <line x1="356" y1="152" x2="468" y2="231" stroke="#B0A99E" stroke-width="1.3" marker-end="url(#mo)"/>
+        <g font-family="ui-monospace,Menlo,Consolas,monospace">
+          <rect x="470" y="46" width="158" height="46" rx="9" fill="#FBFAF7" stroke="#ECE7DD"/><text x="482" y="66" font-size="13" fill="#1C1B19">run9 · codex</text><text x="482" y="83" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#8D877D">sub-agent</text>
+          <rect x="470" y="100" width="158" height="46" rx="9" fill="#FBFAF7" stroke="#ECE7DD"/><text x="482" y="120" font-size="13" fill="#1C1B19">run9 · codex</text><text x="482" y="137" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#8D877D">sub-agent</text>
+          <rect x="470" y="154" width="158" height="46" rx="9" fill="#FBFAF7" stroke="#ECE7DD"/><text x="482" y="174" font-size="13" fill="#1C1B19">run9 · codex</text><text x="482" y="191" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#8D877D">sub-agent</text>
+          <rect x="470" y="208" width="158" height="46" rx="9" fill="#FBFAF7" stroke="#ECE7DD"/><text x="482" y="228" font-size="13" fill="#1C1B19">run9 · codex</text><text x="482" y="245" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#8D877D">sub-agent</text>
+        </g>
+        <text x="549" y="274" font-size="11" fill="#8D877D" text-anchor="middle">a fleet — run in parallel, by dependency</text>
+        <line x1="628" y1="69" x2="688" y2="150" stroke="#3A6E5E" stroke-width="1.3" marker-end="url(#mog)"/>
+        <line x1="628" y1="123" x2="688" y2="150" stroke="#3A6E5E" stroke-width="1.3" marker-end="url(#mog)"/>
+        <line x1="628" y1="177" x2="688" y2="154" stroke="#3A6E5E" stroke-width="1.3" marker-end="url(#mog)"/>
+        <line x1="628" y1="231" x2="688" y2="154" stroke="#3A6E5E" stroke-width="1.3" marker-end="url(#mog)"/>
+        <rect x="690" y="112" width="110" height="80" rx="12" fill="#FFFFFF" stroke="#CBE0D6"/>
+        <text x="745" y="150" font-size="24" fill="#2C5446" text-anchor="middle">200+</text>
+        <text x="745" y="172" font-size="12" fill="#6B6760" text-anchor="middle">PRs</text>
+      </svg>
+    </div>
+    <div class="steps">
+      <div class="step"><b>sprint plan</b><small>goals · acceptance criteria · tasks</small></div>
+      <span class="sarrow">→</span>
+      <div class="step"><b>/goal</b><small>master self-drives</small></div>
+      <span class="sarrow">→</span>
+      <div class="step"><b>dispatch</b><small>by dependency, in waves</small></div>
+      <span class="sarrow">→</span>
+      <div class="step g"><b>PR · gate</b><small>must meet acceptance criteria</small></div>
+      <span class="sarrow">→</span>
+      <div class="step"><b>refactored</b><small>first round done</small></div>
+    </div>
+    <p class="take">Here’s the model running for real. I use <b>Claude Code</b> as the master agent — but instead of its built-in sub-agents, each one is a <b>run9</b> sandbox running codex. The master plans a sprint (goals, acceptance criteria, task breakdown), then in <b>/goal</b> mode it drives the work, dispatching tasks to the run9 fleet <b>by dependency</b> and shipping each as a <b>PR that must meet its acceptance criteria</b> — the gate from beat 1.</p>
+  </section>
+
+  <section class="beat">
+    <span class="beat-no">06</span>
+    <h2>What it produced — in 4 days</h2>
+    <div class="stats">
+      <div class="stat"><div class="n">200+</div><div class="l">PRs shipped, one continuous run</div></div>
+      <div class="stat"><div class="n">4 days</div><div class="l">running continuously, autonomously</div></div>
+      <div class="stat"><div class="n">300–400</div><div class="l">lines per PR</div></div>
+      <div class="stat"><div class="n">~70k</div><div class="l">lines of reviewed change (≈ 200 × 350)</div></div>
+    </div>
+    <p class="take">One service, <b>fully refactored</b> in its first round — one master agent, a fleet of <b>run9</b> sub-agents, and every change shipped as a PR that had to clear its gate. This is beats 1–4, running for real.</p>
+  </section>
+
+</div>
+</body>
+</html>

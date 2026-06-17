@@ -96,7 +96,7 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 				Labels: []Label{{Name: "chetter-review"}},
 			},
 			repo:   "org/repo",
-			wantOK: true, wantTrigger: "label",
+			wantOK: true, wantTrigger: "labeled",
 		},
 		{
 			name: "fork triggers review",
@@ -116,24 +116,37 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			wantOK: true, wantTrigger: "fork",
 		},
 		{
-			name:   "internal PR with no label - no review",
+			name:   "internal PR with no label or action - no review",
 			pr:     PullRequest{},
 			repo:   "org/repo",
 			wantOK: false, wantTrigger: "",
 		},
+		{
+			name: "opened triggers review",
+			pr:   PullRequest{},
+			repo: "org/repo",
+			wantOK: true, wantTrigger: "opened",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := &Handler{gh: nil, cfg: HandlerConfig{}}
 			ev := PullRequestEvent{
+				Action:      "opened",
 				PullRequest: tc.pr,
 			}
-			trigger, ok := h.shouldReview(ev, tc.repo)
+			if tc.name == "internal PR with no label or action - no review" {
+				ev.Action = ""
+			}
+			if tc.name == "label triggers review" {
+				ev.Action = "labeled"
+			}
+			trigger := triggerActionFromPR(ev, tc.repo)
+			ok := trigger != ""
 			if ok != tc.wantOK {
-				t.Errorf("shouldReview returned ok=%v, want %v", ok, tc.wantOK)
+				t.Errorf("triggerActionFromPR returned ok=%v, want %v", ok, tc.wantOK)
 			}
 			if trigger != tc.wantTrigger {
-				t.Errorf("shouldReview returned trigger=%q, want %q", trigger, tc.wantTrigger)
+				t.Errorf("triggerActionFromPR returned trigger=%q, want %q", trigger, tc.wantTrigger)
 			}
 		})
 	}

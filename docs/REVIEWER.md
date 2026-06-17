@@ -631,7 +631,7 @@ If the feature needs to be disabled quickly:
 | `main.go` | Edit | Add `/webhook/github` route, wire up handler |
 | `go.mod` | Edit | Ensure `github.com/golang-jwt/jwt/v5` dependency |
 | `.opencode/agent/pr-reviewer.md` | **New** | PR review agent definition |
-| `schedules/*.yaml` | Edit | Add chetter footer to all PR-creating schedules |
+| `triggers/*.yaml` | Edit | Add chetter footer to all PR-creating triggers |
 | `builder/Makefile` | Optional | Add `webhook-test` target |
 
 ---

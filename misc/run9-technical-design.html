@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>run9 — Technical Design</title>
+<style>
+  :root{
+    --bg:#f6f8fa; --card:#ffffff; --ink:#1f2933; --ink2:#5b6770; --line:#e3e8ee;
+    --blue:#2f6fb0; --blue-ink:#1c4e80; --blue-bg:#e8f1fc;
+    --teal:#1d9e75; --teal-ink:#0f6e56; --teal-bg:#e4f5ef;
+    --amber:#cf8a1a; --amber-ink:#87560a; --amber-bg:#fbf0db;
+    --purple:#6b5fce; --purple-ink:#443a8e; --purple-bg:#efedfb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:48px 22px 80px}
+  header{margin-bottom:8px}
+  h1{font-size:30px;font-weight:650;letter-spacing:-.4px;margin:0 0 6px}
+  .sub{color:var(--ink2);font-size:16px;margin:0 0 4px}
+  .lede{font-size:16px;color:var(--ink);background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:18px 20px;margin:22px 0 8px}
+  .lede b{font-weight:620}
+  h2{font-size:21px;font-weight:620;letter-spacing:-.2px;margin:46px 0 4px;
+    padding-top:18px;border-top:1px solid var(--line)}
+  h2 .n{color:var(--ink2);font-weight:500;margin-right:8px}
+  .tag{display:inline-block;font-size:12px;color:var(--ink2);margin:0 0 14px}
+  p{margin:10px 0;font-size:15.5px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:18px 0}
+  ul{margin:8px 0 8px;padding-left:20px}
+  li{margin:5px 0;font-size:15px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;
+    background:#eef1f4;padding:1px 5px;border-radius:4px;color:#33404a}
+  .stack{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+  .chip{font-size:12.5px;border-radius:999px;padding:4px 11px;border:1px solid var(--line);background:#fff;color:var(--ink2)}
+  .chip b{color:var(--ink);font-weight:600}
+  svg{display:block;width:100%;height:auto;margin:14px 0 6px}
+  .note{font-size:13.5px;color:var(--ink2);margin:6px 2px 0}
+  footer{margin-top:54px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink2);font-size:13px}
+  .key{background:#fff7e6;border:1px solid #f0d399;border-radius:10px;padding:12px 15px;margin:16px 0;font-size:14.5px;color:#7a5708}
+  .key b{color:#5c4206}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>run9 — Technical Design</h1>
+  <p class="sub">A multi-tenant, serverless remote execution platform for coding agents.</p>
+</header>
+
+<div class="lede">
+  run9 lets a user or an AI agent get an <b>isolated Linux box</b> on demand, run commands in it,
+  save its disk as a <b>snap</b>, and <b>fork</b> a fresh box from any snap — with <b>no servers to manage</b>.
+  It runs in production on AWS (Tokyo). The mental model is small:
+  <b>a box runs execs; a snap is the box's saved disk; a box always boots from a snap.</b>
+</div>
+
+<div class="stack">
+  <span class="chip"><b>org</b> → tenant &amp; isolation unit</span>
+  <span class="chip"><b>box</b> → an isolated container you run in</span>
+  <span class="chip"><b>exec</b> → one run inside a box</span>
+  <span class="chip"><b>snap</b> → the box's saved disk (fork-able)</span>
+</div>
+
+<!-- ============ ARCHITECTURE ============ -->
+<h2><span class="n">0</span>The big picture</h2>
+<div class="tag">control plane decides &amp; remembers · data plane runs the boxes · storage is shared</div>
+
+<svg viewBox="0 0 900 476" role="img" aria-label="run9 architecture: client to control plane to data plane to shared storage">
+  <defs>
+    <marker id="aG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9aa5b1"/></marker>
+    <marker id="aT" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#1d9e75"/></marker>
+  </defs>
+
+  <rect x="330" y="14" width="240" height="44" rx="8" fill="#eef1f4" stroke="#9aa5b1"/>
+  <text x="450" y="41" text-anchor="middle" font-size="13.5" fill="#46505a">Browser / run9 CLI  ·  <tspan font-family="ui-monospace,Menlo,monospace" font-size="12">sys9 run …</tspan></text>
+  <line x1="450" y1="58" x2="450" y2="86" stroke="#9aa5b1" stroke-width="1.5" marker-end="url(#aG)"/>
+  <text x="460" y="76" font-size="11.5" fill="#5b6770">HTTPS 443</text>
+
+  <rect x="30" y="90" width="840" height="130" rx="10" fill="#e8f1fc" stroke="#2f6fb0"/>
+  <text x="48" y="112" font-size="13" font-weight="600" fill="#1c4e80">Control plane VPC</text>
+  <g font-size="12.5" fill="#1c4e80">
+    <rect x="48"  y="120" width="192" height="58" rx="6" fill="#fff" stroke="#2f6fb0"/>
+    <text x="144" y="144" text-anchor="middle" font-weight="600">portal-api</text>
+    <text x="144" y="164" text-anchor="middle" font-size="11.5">the product API</text>
+    <rect x="252" y="120" width="192" height="58" rx="6" fill="#fff" stroke="#2f6fb0"/>
+    <text x="348" y="144" text-anchor="middle" font-weight="600">transfer-gateway</text>
+    <text x="348" y="164" text-anchor="middle" font-size="11.5">exec / file sessions</text>
+    <rect x="456" y="120" width="192" height="58" rx="6" fill="#fff" stroke="#2f6fb0"/>
+    <text x="552" y="144" text-anchor="middle" font-weight="600">elasticity-service</text>
+    <text x="552" y="164" text-anchor="middle" font-size="11.5">host fleet &amp; scaling</text>
+    <rect x="660" y="120" width="192" height="58" rx="6" fill="#fff" stroke="#2f6fb0"/>
+    <text x="756" y="144" text-anchor="middle" font-weight="600">ai-relay</text>
+    <text x="756" y="164" text-anchor="middle" font-size="11.5">trusted AI gateway</text>
+  </g>
+  <text x="48" y="204" font-size="11.5" fill="#1c4e80">durable state → RDS PostgreSQL</text>
+
+  <line x1="552" y1="220" x2="552" y2="252" stroke="#1d9e75" stroke-width="1.5" marker-end="url(#aT)"/>
+  <text x="560" y="242" font-size="11.5" fill="#0f6e56">gRPC (host control)</text>
+
+  <rect x="30" y="256" width="840" height="118" rx="10" fill="#e4f5ef" stroke="#1d9e75"/>
+  <text x="48" y="278" font-size="13" font-weight="600" fill="#0f6e56">Data plane VPC — EC2 runtime hosts (one org per host)</text>
+  <g font-size="12.5" fill="#0f6e56">
+    <rect x="48"  y="288" width="252" height="70" rx="6" fill="#fff" stroke="#1d9e75"/>
+    <text x="174" y="314" text-anchor="middle" font-weight="600">run9vma</text>
+    <text x="174" y="334" text-anchor="middle" font-size="11.5">host agent ↔ control plane</text>
+    <rect x="318" y="288" width="252" height="70" rx="6" fill="#fff" stroke="#1d9e75"/>
+    <text x="444" y="314" text-anchor="middle" font-weight="600">run9rt</text>
+    <text x="444" y="334" text-anchor="middle" font-size="11.5">snap storage (mount / fork)</text>
+    <rect x="588" y="288" width="264" height="70" rx="6" fill="#fff" stroke="#1d9e75"/>
+    <text x="720" y="314" text-anchor="middle" font-weight="600">run9ch + Podman</text>
+    <text x="720" y="334" text-anchor="middle" font-size="11.5">runs the box container</text>
+  </g>
+
+  <line x1="450" y1="374" x2="450" y2="404" stroke="#9aa5b1" stroke-width="1.5" marker-end="url(#aG)"/>
+
+  <rect x="30" y="408" width="840" height="56" rx="10" fill="#efedfb" stroke="#6b5fce"/>
+  <text x="48" y="430" font-size="13" font-weight="600" fill="#443a8e">Shared storage</text>
+  <text x="48" y="450" font-size="12.5" fill="#443a8e">JuiceFS filesystem  ·  S3 (file data)  ·  MemoryDB (shared metadata)</text>
+</svg>
+<p class="note">The control plane (stateful, in Postgres) is separated from the data plane (stateless hosts). The single remote entry point on each host is <code>run9vma</code>, which dials out to the control plane over a long-lived gRPC stream.</p>
+
+<!-- ============ 1. SANDBOX STACK ============ -->
+<h2><span class="n">1</span>The sandbox: what runs a box</h2>
+<div class="tag">a box is an OCI container, not a virtual machine</div>
+
+<p>A box is a <b>Podman container</b> on the <code>crun</code> runtime. <code>run9ch</code> ("run9 <b>container helper</b>")
+is a thin local CLI that binds a root filesystem into a temporary container and tears it down afterward. Isolation
+inside a host is standard <b>Linux namespaces + cgroups</b>. Tenants are kept apart at a stronger boundary:
+<b>one org never shares an EC2 host with another</b>, so the VM boundary separates orgs.</p>
+
+<svg viewBox="0 0 900 432" role="img" aria-label="the box stack: an EC2 host dedicated to one org running Podman containers">
+  <rect x="20" y="18" width="860" height="398" rx="12" fill="#e4f5ef" stroke="#1d9e75"/>
+  <text x="40" y="44" font-size="13.5" font-weight="600" fill="#0f6e56">EC2 host — dedicated to ONE org   ·   AWS VM isolation between orgs</text>
+  <rect x="40" y="56" width="820" height="34" rx="6" fill="#fff" stroke="#1d9e75"/>
+  <text x="52" y="78" font-size="12.5" fill="#0f6e56">run9vma — receives box / exec requests over gRPC and drives run9rt + run9ch</text>
+
+  <!-- box 1 detailed -->
+  <rect x="40" y="102" width="500" height="300" rx="9" fill="#fbf0db" stroke="#cf8a1a"/>
+  <text x="56" y="126" font-size="13" font-weight="600" fill="#87560a">box = Podman container (crun)</text>
+  <g font-size="12">
+    <rect x="56" y="136" width="468" height="48" rx="6" fill="#fff" stroke="#cf8a1a"/>
+    <text x="68" y="156" fill="#87560a" font-weight="600">run9ch-holder — PID 1</text>
+    <text x="68" y="174" fill="#87560a" font-size="11.5">reaps zombies · brokers each exec (process group + cancel-fd)</text>
+
+    <rect x="56" y="190" width="468" height="40" rx="6" fill="#fff" stroke="#cf8a1a"/>
+    <text x="68" y="215" fill="#87560a">your command runs here</text>
+
+    <rect x="56" y="236" width="468" height="48" rx="6" fill="#fff" stroke="#cf8a1a"/>
+    <text x="68" y="256" fill="#87560a" font-weight="600">rootfs = run9rt <tspan font-family="ui-monospace,Menlo,monospace" font-size="11">snap mount</tspan></text>
+    <text x="68" y="274" fill="#87560a" font-size="11.5">JuiceFS FUSE mount, copy-on-write over a snap</text>
+
+    <rect x="56" y="290" width="468" height="48" rx="6" fill="#fff" stroke="#cf8a1a"/>
+    <text x="68" y="310" fill="#87560a" font-weight="600">network = slirp4netns + nftables guardrail</text>
+    <text x="68" y="328" fill="#87560a" font-size="11.5">only :1000 egress · cloud metadata (IMDS) &amp; host loopback blocked</text>
+
+    <rect x="56" y="344" width="468" height="36" rx="6" fill="#fff" stroke="#cf8a1a"/>
+    <text x="68" y="367" fill="#87560a">resources = cgroups v2 (CPU / memory)</text>
+  </g>
+
+  <!-- box 2 placeholder -->
+  <rect x="560" y="102" width="300" height="300" rx="9" fill="#fdf7ea" stroke="#e0b466" stroke-dasharray="5 4"/>
+  <text x="576" y="126" font-size="12.5" font-weight="600" fill="#9a7320">another box (same org)</text>
+  <text x="576" y="150" font-size="12" fill="#9a7320">one host can hold many</text>
+  <text x="576" y="168" font-size="12" fill="#9a7320">boxes of the SAME org —</text>
+  <text x="576" y="186" font-size="12" fill="#9a7320">they share the host kernel</text>
+  <text x="576" y="216" font-size="12" fill="#9a7320">Isolation here is container-</text>
+  <text x="576" y="234" font-size="12" fill="#9a7320">level (namespaces + cgroups),</text>
+  <text x="576" y="252" font-size="12" fill="#9a7320">NOT a microVM.</text>
+</svg>
+
+<div class="stack">
+  <span class="chip"><b>Podman</b> + <b>crun</b> — OCI container</span>
+  <span class="chip"><b>JuiceFS FUSE</b> — box rootfs (CoW)</span>
+  <span class="chip"><b>slirp4netns</b> + <b>nftables</b> — network + egress lock</span>
+  <span class="chip"><b>cgroups v2</b> — CPU / memory</span>
+  <span class="chip"><b>run9ch-holder</b> — static Go init / exec broker</span>
+</div>
+
+<!-- ============ 2. SERVERLESS ============ -->
+<h2><span class="n">2</span>Serverless: how elasticity works</h2>
+<div class="tag">no servers to manage · pay for what you run · scale to zero</div>
+
+<p>The <code>elasticity-service</code> keeps a <b>global warm pool</b> of pre-started EC2 hosts. When a box needs to run,
+it is placed with a simple ladder, always onto an <b>org-exclusive</b> host. Cold start targets <b>~1&nbsp;second</b>,
+because the host is already warm and the box <b>boots from a snap</b> instead of pulling an image.</p>
+
+<svg viewBox="0 0 900 372" role="img" aria-label="serverless elasticity: warm pool of EC2 hosts, org-exclusive placement">
+  <defs>
+    <marker id="bB" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#2f6fb0"/></marker>
+  </defs>
+
+  <rect x="20" y="22" width="250" height="64" rx="8" fill="#e8f1fc" stroke="#2f6fb0"/>
+  <text x="145" y="48" text-anchor="middle" font-size="13" font-weight="600" fill="#1c4e80">elasticity-service</text>
+  <text x="145" y="68" text-anchor="middle" font-size="11.5" fill="#1c4e80">places boxes · scales the fleet</text>
+
+  <text x="20" y="118" font-size="12.5" font-weight="600" fill="#1f2933">Placement order</text>
+  <g font-size="12" fill="#46505a">
+    <rect x="20" y="126" width="250" height="30" rx="5" fill="#fff" stroke="#cdd5de"/><text x="33" y="146">1 · reuse the box's claimed host</text>
+    <rect x="20" y="162" width="250" height="30" rx="5" fill="#fff" stroke="#cdd5de"/><text x="33" y="182">2 · an org-ready host</text>
+    <rect x="20" y="198" width="250" height="30" rx="5" fill="#fff" stroke="#cdd5de"/><text x="33" y="218">3 · take a warm host</text>
+    <rect x="20" y="234" width="250" height="30" rx="5" fill="#fff" stroke="#cdd5de"/><text x="33" y="254">4 · bootstrap a new EC2</text>
+  </g>
+
+  <!-- warm pool -->
+  <rect x="320" y="22" width="560" height="92" rx="9" fill="#eef7f3" stroke="#1d9e75" stroke-dasharray="5 4"/>
+  <text x="338" y="44" font-size="12.5" font-weight="600" fill="#0f6e56">global warm pool — pre-started, ready</text>
+  <rect x="338" y="54" width="250" height="46" rx="6" fill="#fff" stroke="#1d9e75"/><text x="463" y="82" text-anchor="middle" font-size="12" fill="#0f6e56">warm host (idle)</text>
+  <rect x="610" y="54" width="250" height="46" rx="6" fill="#fff" stroke="#1d9e75"/><text x="735" y="82" text-anchor="middle" font-size="12" fill="#0f6e56">warm host (idle)</text>
+
+  <line x1="463" y1="114" x2="463" y2="150" stroke="#2f6fb0" stroke-width="1.5" marker-end="url(#bB)"/>
+  <text x="472" y="138" font-size="11" fill="#1c4e80">consumed on demand</text>
+
+  <!-- org hosts -->
+  <rect x="320" y="154" width="270" height="118" rx="9" fill="#e4f5ef" stroke="#1d9e75"/>
+  <text x="336" y="176" font-size="12.5" font-weight="600" fill="#0f6e56">EC2 host → org A</text>
+  <rect x="336" y="186" width="110" height="70" rx="6" fill="#fbf0db" stroke="#cf8a1a"/><text x="391" y="225" text-anchor="middle" font-size="11.5" fill="#87560a">box</text>
+  <rect x="462" y="186" width="110" height="70" rx="6" fill="#fbf0db" stroke="#cf8a1a"/><text x="517" y="225" text-anchor="middle" font-size="11.5" fill="#87560a">box</text>
+
+  <rect x="610" y="154" width="270" height="118" rx="9" fill="#e4f5ef" stroke="#1d9e75"/>
+  <text x="626" y="176" font-size="12.5" font-weight="600" fill="#0f6e56">EC2 host → org B</text>
+  <rect x="626" y="186" width="110" height="70" rx="6" fill="#fbf0db" stroke="#cf8a1a"/><text x="681" y="225" text-anchor="middle" font-size="11.5" fill="#87560a">box</text>
+
+  <text x="320" y="300" font-size="12.5" fill="#46505a"><tspan font-weight="600" fill="#1f2933">Stop / idle:</tspan> the box releases its claim; its snap persists in storage.</text>
+  <text x="320" y="322" font-size="12.5" fill="#46505a">A host drains &amp; terminates only once it is <tspan font-weight="600">completely empty</tspan>.</text>
+  <text x="320" y="344" font-size="12.5" fill="#46505a">Compute scales to zero; storage lives on independently.</text>
+</svg>
+
+<div class="stack">
+  <span class="chip"><b>AWS EC2</b> (c6g) — host fleet</span>
+  <span class="chip"><b>warm pool</b> + bootstrap + idle reclaim</span>
+  <span class="chip"><b>org-exclusive hosts</b> — hard tenant isolation</span>
+  <span class="chip"><b>gRPC</b> — vma ↔ elasticity-service</span>
+  <span class="chip"><b>PostgreSQL</b> — durable fleet state</span>
+</div>
+
+<!-- ============ 3. SNAPSHOT / FORK ============ -->
+<h2><span class="n">3</span>Snapshot &amp; fork</h2>
+<div class="tag">a snap is a filesystem; fork is a metadata-only copy-on-write clone</div>
+
+<p>A <b>snap</b> is an immutable snapshot of a box's <b>disk filesystem only</b>. <b>Fork</b> is cheap because it
+copies just the JuiceFS <b>metadata</b> directory, not the data — so it is effectively <b>O(1)</b>. Parent and child
+share the same underlying objects in S3; each gets a fixed "owned epoch" so their later writes never collide.</p>
+
+<svg viewBox="0 0 900 400" role="img" aria-label="snapshot and fork: OCI image imported to a snap, forked into child snaps, a box boots from a snap">
+  <defs>
+    <marker id="cP" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6b5fce"/></marker>
+    <marker id="cA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#cf8a1a"/></marker>
+  </defs>
+
+  <rect x="20" y="36" width="150" height="46" rx="7" fill="#eef1f4" stroke="#9aa5b1"/>
+  <text x="95" y="64" text-anchor="middle" font-size="12.5" fill="#46505a">OCI image</text>
+  <line x1="170" y1="59" x2="214" y2="59" stroke="#6b5fce" stroke-width="1.5" marker-end="url(#cP)"/>
+  <text x="178" y="50" font-size="11" fill="#443a8e">import</text>
+
+  <rect x="220" y="36" width="150" height="46" rx="7" fill="#efedfb" stroke="#6b5fce"/>
+  <text x="295" y="64" text-anchor="middle" font-size="12.5" font-weight="600" fill="#443a8e">snap A</text>
+
+  <line x1="295" y1="82" x2="295" y2="120" stroke="#6b5fce" stroke-width="1.5"/>
+  <line x1="120" y1="120" x2="295" y2="120" stroke="#6b5fce" stroke-width="1.5"/>
+  <line x1="295" y1="120" x2="295" y2="146" stroke="#6b5fce" stroke-width="1.5" marker-end="url(#cP)"/>
+  <line x1="120" y1="120" x2="120" y2="146" stroke="#6b5fce" stroke-width="1.5" marker-end="url(#cP)"/>
+  <text x="312" y="112" font-size="11" fill="#443a8e">fork = juicefs clone meta/  (O(1) CoW)</text>
+
+  <rect x="220" y="150" width="150" height="44" rx="7" fill="#efedfb" stroke="#6b5fce"/>
+  <text x="295" y="177" text-anchor="middle" font-size="12.5" font-weight="600" fill="#443a8e">snap B</text>
+  <rect x="45" y="150" width="150" height="44" rx="7" fill="#efedfb" stroke="#6b5fce"/>
+  <text x="120" y="177" text-anchor="middle" font-size="12.5" font-weight="600" fill="#443a8e">snap C</text>
+
+  <line x1="370" y1="172" x2="414" y2="172" stroke="#cf8a1a" stroke-width="1.5" marker-end="url(#cA)"/>
+  <text x="378" y="163" font-size="11" fill="#87560a">boot</text>
+  <rect x="420" y="150" width="160" height="44" rx="7" fill="#fbf0db" stroke="#cf8a1a"/>
+  <text x="500" y="177" text-anchor="middle" font-size="12.5" font-weight="600" fill="#87560a">box (ephemeral)</text>
+
+  <!-- info panel -->
+  <rect x="620" y="30" width="260" height="232" rx="10" fill="#fff" stroke="#e3e8ee"/>
+  <text x="638" y="54" font-size="13" font-weight="600" fill="#1f2933">A snap captures…</text>
+  <text x="638" y="78" font-size="12.5" fill="#0f6e56">✓ directory tree, files</text>
+  <text x="638" y="100" font-size="12.5" fill="#0f6e56">✓ permissions, symlinks</text>
+  <text x="638" y="130" font-size="13" font-weight="600" fill="#1f2933">…and NOT</text>
+  <text x="638" y="154" font-size="12.5" fill="#a32d2d">✗ memory / running processes</text>
+  <text x="638" y="176" font-size="12.5" fill="#a32d2d">✗ network / exit codes</text>
+  <text x="638" y="206" font-size="13" font-weight="600" fill="#1f2933">Stored as</text>
+  <text x="638" y="230" font-size="12.5" fill="#443a8e">metadata → MemoryDB</text>
+  <text x="638" y="250" font-size="12.5" fill="#443a8e">data chunks → S3</text>
+
+  <!-- tape note -->
+  <rect x="20" y="300" width="860" height="74" rx="10" fill="#f6f3ec" stroke="#cf8a1a"/>
+  <text x="40" y="328" font-size="13" font-weight="600" fill="#87560a">run9tape is separate</text>
+  <text x="40" y="352" font-size="12.5" fill="#87560a">An append-only log of exec <tspan font-family="ui-monospace,Menlo,monospace" font-size="11">stdout/stderr</tspan> bytes (Postgres + S3). It records output — it does NOT store snapshots.</text>
+</svg>
+
+<div class="card">
+  <b>End-to-end happy path</b>
+  <ul>
+    <li><b>create</b> — a box is placed on an org host; <code>run9rt</code> mounts the chosen snap as the box rootfs.</li>
+    <li><b>exec</b> — commands run inside the Podman container; output streams back (foreground) or appends to a tape (background).</li>
+    <li><b>save</b> — the box's current disk becomes a new immutable snap.</li>
+    <li><b>fork</b> — <code>juicefs clone meta/</code> makes a child snap instantly; a new box boots from it. The tree of snaps is tracked by <code>parent_snap_id</code>.</li>
+  </ul>
+</div>
+
+<div class="key">
+  <b>Two names that mislead:</b> <code>run9ch</code> is "container helper" (Podman/crun), <b>not</b> cloud-hypervisor — there is no microVM.
+  And <code>run9tape</code> stores exec output, <b>not</b> snapshots. The fast, cheap part of fork is that JuiceFS clones
+  <b>metadata only</b>; the bytes stay shared in S3 until written.
+</div>
+
+<footer>
+  Compiled from a source read of the <code>sys9-ai/run9</code> repository (docs + Go): data plane
+  (<code>run9ch</code>, <code>run9rt</code>, <code>run9vma</code>, <code>run9tape</code>), control plane
+  (<code>portal-api</code>, <code>elasticity-service</code>, <code>transfer-gateway</code>), and the custom JuiceFS fork.
+  Isolation, serverless, and snapshot/fork claims were independently verified against the code.
+</footer>
+
+</div>
+</body>
+</html>

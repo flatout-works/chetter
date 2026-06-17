@@ -1,4 +1,4 @@
-# Sample schedule: nightly changelog update
+# Trigger: nightly changelog update
 #
 # Customize before enabling:
 #   git_url      - your repository URL
@@ -8,8 +8,8 @@
 #   timeout_sec  - adjust based on repo size
 #   prompt       - adapt the changelog style to your project conventions
 #
-# To create: chetter_schedule_task with these fields.
-# To change later: chetter_update_schedule with changed fields.
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
 
 name: chetter-nightly-changelog-update
 enabled: true
