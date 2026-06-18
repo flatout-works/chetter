@@ -586,3 +586,63 @@ func TestRPCHeartbeatCancelsReclaimedTask(t *testing.T) {
 		t.Errorf("expected reclaim reason, got %q", cmd.Reason)
 	}
 }
+
+func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
+	harnessJSON, _ := json.Marshal(map[string]string{
+		"__chetter_harness": "pi",
+		"CUSTOM_VAR":        "val",
+	})
+	task := repository.ChetterTask{
+		ID:                "task-1",
+		Prompt:            "test prompt",
+		AgentImage:        sql.NullString{String: "img", Valid: true},
+		TimeoutSec:        300,
+		Env:               harnessJSON,
+		Skills:            []byte(`[]`),
+		ProviderID:        sql.NullString{},
+		ModelID:           sql.NullString{},
+		VariantID:         sql.NullString{},
+		Agent:             sql.NullString{},
+		GitUrl:            sql.NullString{},
+		GitRef:            sql.NullString{},
+		CommitAuthorName:  sql.NullString{},
+		CommitAuthorEmail: sql.NullString{},
+	}
+	proto := taskToProto(task)
+	if proto.Harness != "pi" {
+		t.Fatalf("expected harness='pi', got %q", proto.Harness)
+	}
+	if v, ok := proto.Env["__chetter_harness"]; ok {
+		t.Fatalf("__chetter_harness should be removed from env, got %q", v)
+	}
+	if proto.Env["CUSTOM_VAR"] != "val" {
+		t.Fatalf("CUSTOM_VAR should be preserved, got %q", proto.Env["CUSTOM_VAR"])
+	}
+	if proto.Env["__chetter_harness"] != "" {
+		t.Fatal("__chetter_harness key should not exist in env map")
+	}
+}
+
+func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
+	envJSON, _ := json.Marshal(map[string]string{"FOO": "bar"})
+	task := repository.ChetterTask{
+		ID:                "task-2",
+		Prompt:            "test",
+		TimeoutSec:        300,
+		Env:               envJSON,
+		Skills:            []byte(`[]`),
+		ProviderID:        sql.NullString{},
+		ModelID:           sql.NullString{},
+		VariantID:         sql.NullString{},
+		Agent:             sql.NullString{},
+		AgentImage:        sql.NullString{String: "img", Valid: true},
+		GitUrl:            sql.NullString{},
+		GitRef:            sql.NullString{},
+		CommitAuthorName:  sql.NullString{},
+		CommitAuthorEmail: sql.NullString{},
+	}
+	proto := taskToProto(task)
+	if proto.Harness != "" {
+		t.Fatalf("expected empty harness, got %q", proto.Harness)
+	}
+}
