@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -18,14 +20,16 @@ const (
 	defaultTaskLeaseSec = 60
 	claimPollInterval   = time.Second
 	runnerEventSubject  = "connect.runner"
+	heartbeatEventMinInterval = 60 * time.Second
 )
 
 var errNoClaimableTask = errors.New("no claimable task")
 var errTaskNotClaimed = errors.New("task is not claimed by runner")
 
 type RunnerRPCService struct {
-	db    *repository.Queries
-	rawDB *sql.DB
+	db            *repository.Queries
+	rawDB         *sql.DB
+	heartbeatSeen sync.Map
 }
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
@@ -289,6 +293,8 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		ID:                event.TaskId,
 		RunnerID:          sql.NullString{String: runnerID, Valid: true},
 	}
+	isHeartbeat := status == "running" && isHeartbeatSummary(event.Summary)
+	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
 		rows, err := q.UpdateTaskFromRunnerEvent(ctx, updateParams)
 		if err != nil {
@@ -296,6 +302,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		}
 		if rows == 0 {
 			return errTaskNotClaimed
+		}
+		if skipEventRow {
+			return nil
 		}
 		return q.InsertTaskEvent(ctx, eventInsert)
 	})
@@ -345,4 +354,19 @@ func parseOptionalTime(value string) sql.NullTime {
 		return sql.NullTime{}
 	}
 	return sql.NullTime{Time: parsed.UTC(), Valid: true}
+}
+
+func isHeartbeatSummary(summary string) bool {
+	return strings.Contains(summary, "server.heartbeat")
+}
+
+func (s *RunnerRPCService) shouldStoreHeartbeat(taskID string) bool {
+	now := time.Now()
+	if v, ok := s.heartbeatSeen.Load(taskID); ok {
+		if last, ok := v.(time.Time); ok && now.Sub(last) < heartbeatEventMinInterval {
+			return false
+		}
+	}
+	s.heartbeatSeen.Store(taskID, now)
+	return true
 }

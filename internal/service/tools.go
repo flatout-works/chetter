@@ -166,6 +166,7 @@ type RunTriggerOutput struct {
 type TaskEventsInput struct {
 	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum events to return, capped at 500"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Number of events to skip for pagination (default 0)"`
 }
 
 // TaskEventsOutput is the output for chetter_task_events.
@@ -186,6 +187,7 @@ type TaskEventRecord struct {
 type TaskProgressInput struct {
 	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum progress entries to return"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Number of entries to skip for pagination (default 0)"`
 }
 
 // TaskProgressOutput is the output for chetter_task_progress.
@@ -409,10 +411,24 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and schedules. Admin only."}, svc.deleteTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedule_runs", Description: "List schedule runs for the current team, optionally filtered by schedule name."}, svc.listScheduleRunsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters."}, svc.listAuditEventsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks."}, svc.listTaskArtifactsTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
-	task, err := s.SubmitTask(ctx, SubmitTaskRequest(in))
+	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     in.Prompt,
+		GitURL:     in.GitURL,
+		GitRef:     in.GitRef,
+		AgentImage: in.AgentImage,
+		Agent:      in.Agent,
+		ProviderID: in.ProviderID,
+		ModelID:    in.ModelID,
+		VariantID:  in.VariantID,
+		Skills:     in.Skills,
+		Env:        in.Env,
+		TimeoutSec: in.TimeoutSec,
+	})
 	if err != nil {
 		return nil, SubmitTaskOutput{}, fmt.Errorf("submit task: %w", err)
 	}
@@ -736,6 +752,7 @@ func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
 		TaskID: in.TaskID,
 		Limit:  clampEventLimit(in.Limit),
+		Offset: int32(in.Offset),
 	})
 	if err != nil {
 		return nil, TaskEventsOutput{}, fmt.Errorf("get events: %w", err)
@@ -767,6 +784,7 @@ func (s *Service) taskProgressTool(ctx context.Context, _ *mcp.CallToolRequest, 
 	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
 		TaskID: in.TaskID,
 		Limit:  clampEventLimit(in.Limit),
+		Offset: int32(in.Offset),
 	})
 	if err != nil {
 		return nil, TaskProgressOutput{}, fmt.Errorf("get events: %w", err)
@@ -1320,4 +1338,149 @@ func (s *Service) arcaneListVulnerabilitiesTool(ctx context.Context, _ *mcp.Call
 		})
 	}
 	return nil, ArcaneListVulnerabilitiesOutput{Vulnerabilities: out, TotalItems: total}, nil
+}
+
+type AuditEventFilterInput struct {
+	EventType   string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
+	SourceType  string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
+	SourceID    string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
+	TargetType  string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
+	TargetID    string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
+	Repo        string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	SinceHours  int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+}
+
+type AuditEventRecord struct {
+	ID               string    `json:"id"`
+	EventType        string    `json:"event_type"`
+	CreatedAt        time.Time `json:"created_at"`
+	SourceType       string    `json:"source_type,omitempty"`
+	SourceID         string    `json:"source_id,omitempty"`
+	TargetType       string    `json:"target_type,omitempty"`
+	TargetID         string    `json:"target_id,omitempty"`
+	Repo             string    `json:"repo,omitempty"`
+	GitHubEvent      string    `json:"github_event,omitempty"`
+	GitHubAction     string    `json:"github_action,omitempty"`
+	GitHubDeliveryID string    `json:"github_delivery_id,omitempty"`
+	ParentEventID    string    `json:"parent_event_id,omitempty"`
+	Detail           string    `json:"detail,omitempty"`
+}
+
+type AuditEventsOutput struct {
+	Events []AuditEventRecord `json:"events"`
+}
+
+func (s *Service) listAuditEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in AuditEventFilterInput) (*mcp.CallToolResult, AuditEventsOutput, error) {
+	limit := in.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var sinceTime sql.NullTime
+	if in.SinceHours > 0 {
+		sinceTime = sql.NullTime{Time: time.Now().UTC().Add(-time.Duration(in.SinceHours) * time.Hour), Valid: true}
+	}
+
+	repoNS := nullString(in.Repo)
+	rows, err := s.repo.ListAuditLog(ctx, repository.ListAuditLogParams{
+		EventType:  in.EventType,
+		Column2:    in.EventType,
+		SourceType: nullString(in.SourceType),
+		Column4:    in.SourceType,
+		SourceID:   nullString(in.SourceID),
+		Column6:    in.SourceID,
+		TargetType: nullString(in.TargetType),
+		Column8:    in.TargetType,
+		TargetID:   nullString(in.TargetID),
+		Column10:   in.TargetID,
+		Repo:       repoNS,
+		Column12:   in.Repo,
+		CreatedAt:  sinceTime.Time,
+		Column14:   sinceTime,
+		Limit:      int32(limit),
+	})
+	if err != nil {
+		return nil, AuditEventsOutput{}, fmt.Errorf("list audit log: %w", err)
+	}
+	out := make([]AuditEventRecord, len(rows))
+	for i, r := range rows {
+		out[i] = AuditEventRecord{
+			ID:               r.ID,
+			EventType:        r.EventType,
+			CreatedAt:        r.CreatedAt,
+			SourceType:       r.SourceType.String,
+			SourceID:         r.SourceID.String,
+			TargetType:       r.TargetType.String,
+			TargetID:         r.TargetID.String,
+			Repo:             r.Repo.String,
+			GitHubEvent:      r.GithubEvent.String,
+			GitHubAction:     r.GithubAction.String,
+			GitHubDeliveryID: r.GithubDeliveryID.String,
+			ParentEventID:    r.ParentEventID.String,
+			Detail:           r.Detail.String,
+		}
+	}
+	return nil, AuditEventsOutput{Events: out}, nil
+}
+
+type TaskArtifactFilterInput struct {
+	TaskID       string `json:"task_id,omitempty" jsonschema:"Filter by task ID"`
+	ArtifactType string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
+	Repo         string `json:"repo,omitempty" jsonschema:"Filter by repository"`
+	Limit        int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
+}
+
+type TaskArtifactRecord struct {
+	ID              string    `json:"id"`
+	TaskID          string    `json:"task_id"`
+	ArtifactType    string    `json:"artifact_type"`
+	Repo            string    `json:"repo"`
+	Number          int       `json:"number,omitempty"`
+	URL             string    `json:"url,omitempty"`
+	Ref             string    `json:"ref,omitempty"`
+	SHA             string    `json:"sha,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	DiscoveredAt    time.Time `json:"discovered_at"`
+	DiscoverySource string    `json:"discovery_source"`
+}
+
+type TaskArtifactsOutput struct {
+	Artifacts []TaskArtifactRecord `json:"artifacts"`
+}
+
+func (s *Service) listTaskArtifactsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskArtifactFilterInput) (*mcp.CallToolResult, TaskArtifactsOutput, error) {
+	limit := in.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+
+	rows, err := s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
+		TaskID:       in.TaskID,
+		Column2:      in.TaskID,
+		ArtifactType: in.ArtifactType,
+		Column4:      in.ArtifactType,
+		Repo:         in.Repo,
+		Column6:      in.Repo,
+		Limit:        int32(limit),
+	})
+	if err != nil {
+		return nil, TaskArtifactsOutput{}, fmt.Errorf("list task artifacts: %w", err)
+	}
+	out := make([]TaskArtifactRecord, len(rows))
+	for i, r := range rows {
+		out[i] = TaskArtifactRecord{
+			ID:              r.ID,
+			TaskID:          r.TaskID,
+			ArtifactType:    r.ArtifactType,
+			Repo:            r.Repo,
+			Number:          int(r.Number.Int32),
+			URL:             r.Url.String,
+			Ref:             r.Ref.String,
+			SHA:             r.Sha.String,
+			CreatedAt:       r.CreatedAt,
+			DiscoveredAt:    r.DiscoveredAt,
+			DiscoverySource: r.DiscoverySource,
+		}
+	}
+	return nil, TaskArtifactsOutput{Artifacts: out}, nil
 }

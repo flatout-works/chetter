@@ -23,17 +23,45 @@ import (
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
-	Prompt     string
-	GitURL     string
-	GitRef     string
-	AgentImage string
-	Agent      string
-	ProviderID string
-	ModelID    string
-	VariantID  string
-	Skills     []string
-	Env        map[string]string
-	TimeoutSec int
+	Prompt      string
+	GitURL      string
+	GitRef      string
+	AgentImage  string
+	Agent       string
+	ProviderID  string
+	ModelID     string
+	VariantID   string
+	Skills      []string
+	Env         map[string]string
+	TimeoutSec  int
+	TriggerName string
+	TriggerType string
+}
+
+type AuditEventParams struct {
+	EventType        string
+	SourceType       string
+	SourceID         string
+	TargetType       string
+	TargetID         string
+	Repo             string
+	GitHubEvent      string
+	GitHubAction     string
+	GitHubDeliveryID string
+	ParentEventID    string
+	Detail           string
+	Payload          json.RawMessage
+}
+
+type RecordArtifactParams struct {
+	TaskID          string
+	ArtifactType    string
+	Repo            string
+	Number          int
+	URL             string
+	Ref             string
+	SHA             string
+	DiscoverySource string
 }
 
 const (
@@ -193,6 +221,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		VariantID:         nullString(in.VariantID),
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
 		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		TriggerName:       nullString(in.TriggerName),
+		TriggerType:       nullString(in.TriggerType),
 		Skills:            skills,
 		Env:               env,
 		TimeoutSec:        int32(in.TimeoutSec),
@@ -697,4 +727,53 @@ func teamIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	return scope.TeamID
+}
+
+func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) error {
+	id, err := randomID("aud")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	return s.repo.InsertAuditLog(ctx, repository.InsertAuditLogParams{
+		ID:               id,
+		EventType:        params.EventType,
+		CreatedAt:        now,
+		SourceType:       nullString(params.SourceType),
+		SourceID:         nullString(params.SourceID),
+		TargetType:       nullString(params.TargetType),
+		TargetID:         nullString(params.TargetID),
+		Repo:             nullString(params.Repo),
+		GithubEvent:      nullString(params.GitHubEvent),
+		GithubAction:     nullString(params.GitHubAction),
+		GithubDeliveryID: nullString(params.GitHubDeliveryID),
+		ParentEventID:    nullString(params.ParentEventID),
+		Detail:           nullString(params.Detail),
+		Payload:          (*json.RawMessage)(&params.Payload),
+	})
+}
+
+func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParams) error {
+	id, err := randomID("art")
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	number := sql.NullInt32{}
+	if params.Number > 0 {
+		number = sql.NullInt32{Int32: int32(params.Number), Valid: true}
+	}
+	return s.repo.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
+		ID:              id,
+		TaskID:          params.TaskID,
+		ArtifactType:    params.ArtifactType,
+		Repo:            params.Repo,
+		Number:          number,
+		Url:             nullString(params.URL),
+		Ref:             nullString(params.Ref),
+		Sha:             nullString(params.SHA),
+		CreatedAt:       now,
+		DiscoveredAt:    now,
+		DiscoverySource: params.DiscoverySource,
+	})
 }

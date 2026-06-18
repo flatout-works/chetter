@@ -33,6 +33,8 @@ type Client struct {
 	PrivateKey     *rsa.PrivateKey
 	HTTPClient     *http.Client
 	tokenCache     *tokenCache
+	appLoginOnce   sync.Once
+	appLogin       string
 }
 
 // NewClient creates a Client from the given configuration. The private key
@@ -224,6 +226,29 @@ func (c *Client) CheckUserHasWriteAccess(ctx context.Context, repo, username str
 		return true, nil
 	}
 	return false, nil
+}
+
+// GetAppLogin returns the GitHub App's bot login (e.g. "chetter[bot]").
+// The result is cached on first call.
+func (c *Client) GetAppLogin(ctx context.Context) (string, error) {
+	c.appLoginOnce.Do(func() {
+		url := fmt.Sprintf("%s/app", githubAPIBase)
+		req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return
+		}
+		var resp struct {
+			Slug string `json:"slug"`
+		}
+		if err := c.do(req, &resp); err != nil {
+			return
+		}
+		c.appLogin = resp.Slug + "[bot]"
+	})
+	if c.appLogin == "" {
+		return "", fmt.Errorf("could not determine app login")
+	}
+	return c.appLogin, nil
 }
 
 // tokenCache holds the installation token with TTL, refreshes before expiry.

@@ -177,7 +177,41 @@ func buildWebhookHandler(cfg config.Config, svc *service.Service) http.Handler {
 	return webhook.NewHandler(webhook.HandlerConfig{
 		Disabled:      cfg.GitHubWebhookDisabled,
 		WebhookSecret: cfg.GitHubWebhookSecret,
-	}, gh, submitter, svc)
+	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc})
+}
+
+type auditLoggerAdapter struct{ svc *service.Service }
+
+func (a *auditLoggerAdapter) LogAuditEvent(ctx context.Context, params webhook.AuditEventParams) error {
+	return a.svc.LogAuditEvent(ctx, service.AuditEventParams{
+		EventType:        params.EventType,
+		SourceType:       params.SourceType,
+		SourceID:         params.SourceID,
+		TargetType:       params.TargetType,
+		TargetID:         params.TargetID,
+		Repo:             params.Repo,
+		GitHubEvent:      params.GitHubEvent,
+		GitHubAction:     params.GitHubAction,
+		GitHubDeliveryID: params.GitHubDeliveryID,
+		ParentEventID:    params.ParentEventID,
+		Detail:           params.Detail,
+		Payload:          params.Payload,
+	})
+}
+
+type artifactRecorderAdapter struct{ svc *service.Service }
+
+func (a *artifactRecorderAdapter) RecordArtifact(ctx context.Context, params webhook.RecordArtifactParams) error {
+	return a.svc.RecordArtifact(ctx, service.RecordArtifactParams{
+		TaskID:          params.TaskID,
+		ArtifactType:    params.ArtifactType,
+		Repo:            params.Repo,
+		Number:          params.Number,
+		URL:             params.URL,
+		Ref:             params.Ref,
+		SHA:             params.SHA,
+		DiscoverySource: params.DiscoverySource,
+	})
 }
 
 // serviceSubmitterAdapter adapts service.Service to webhook.TaskSubmitterService.
@@ -189,16 +223,18 @@ type serviceSubmitterAdapter struct {
 // format and calls service.SubmitTask. The TaskRecord return value is ignored.
 func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.SubmitTaskRequest) (any, error) {
 	return a.svc.SubmitTask(ctx, service.SubmitTaskRequest{
-		Prompt:     req.Prompt,
-		GitURL:     req.GitURL,
-		GitRef:     req.GitRef,
-		AgentImage: req.AgentImage,
-		Agent:      req.Agent,
-		ProviderID: req.ProviderID,
-		ModelID:    req.ModelID,
-		VariantID:  req.VariantID,
-		Skills:     req.Skills,
-		Env:        req.Env,
-		TimeoutSec: req.TimeoutSec,
+		Prompt:      req.Prompt,
+		GitURL:      req.GitURL,
+		GitRef:      req.GitRef,
+		AgentImage:  req.AgentImage,
+		Agent:       req.Agent,
+		ProviderID:  req.ProviderID,
+		ModelID:     req.ModelID,
+		VariantID:   req.VariantID,
+		Skills:      req.Skills,
+		Env:         req.Env,
+		TimeoutSec:  req.TimeoutSec,
+		TriggerName: req.TriggerName,
+		TriggerType: req.TriggerType,
 	})
 }

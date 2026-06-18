@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -21,6 +22,45 @@ import (
 type TriggerResolver interface {
 	ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo string) ([]ReviewTrigger, error)
 	ListEnabledIssueTriggersByRepo(ctx context.Context, repo string) ([]ReviewTrigger, error)
+}
+
+// AuditLogger is the interface for recording server-side audit events.
+type AuditLogger interface {
+	LogAuditEvent(ctx context.Context, params AuditEventParams) error
+}
+
+// AuditEventParams holds the data for a single audit log entry.
+type AuditEventParams struct {
+	EventType        string
+	SourceType       string
+	SourceID         string
+	TargetType       string
+	TargetID         string
+	Repo             string
+	GitHubEvent      string
+	GitHubAction     string
+	GitHubDeliveryID string
+	ParentEventID    string
+	Detail           string
+	Payload          json.RawMessage
+}
+
+// ArtifactRecorder is the interface for recording task artifacts discovered
+// from webhook events (issues, PRs, comments with Chetter footer signatures).
+type ArtifactRecorder interface {
+	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
+}
+
+// RecordArtifactParams holds the data for a single task artifact entry.
+type RecordArtifactParams struct {
+	TaskID          string
+	ArtifactType    string
+	Repo            string
+	Number          int
+	URL             string
+	Ref             string
+	SHA             string
+	DiscoverySource string
 }
 
 // ReviewTrigger is the resolved data from a single trigger.
@@ -72,6 +112,8 @@ type Handler struct {
 	gh        *Client
 	submitter TaskSubmitter
 	triggers  TriggerResolver
+	audit     AuditLogger
+	artifacts ArtifactRecorder
 	recent    *RecentDeliveries
 }
 
@@ -85,12 +127,14 @@ type HandlerConfig struct {
 // NewHandler creates a webhook Handler. If the configuration is incomplete,
 // the returned handler will accept requests but log "webhook disabled" for
 // every event (kill switch behavior).
-func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver) *Handler {
+func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver, audit AuditLogger, artifacts ArtifactRecorder) *Handler {
 	return &Handler{
 		cfg:       cfg,
 		gh:        gh,
 		submitter: submitter,
 		triggers:  triggers,
+		audit:     audit,
+		artifacts: artifacts,
 		recent:    NewRecentDeliveries(5*time.Minute, 4096),
 	}
 }
@@ -131,17 +175,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Respond 200 immediately; process async so GitHub doesn't retry on slowness.
 	w.WriteHeader(http.StatusOK)
 
-	go h.handle(event, body)
+	go h.handle(event, body, deliveryID)
 }
 
-func (h *Handler) handle(event string, body []byte) {
+func (h *Handler) handle(event string, body []byte, deliveryID string) {
 	switch event {
 	case EventTypePullRequest:
-		h.handlePullRequest(body)
+		h.handlePullRequest(body, deliveryID)
 	case EventTypeIssueComment:
-		h.handleIssueComment(body)
+		h.handleIssueComment(body, deliveryID)
 	case EventTypeIssues:
-		h.handleIssues(body)
+		h.handleIssues(body, deliveryID)
 	default:
 		slog.Debug("webhook: ignoring unsupported event", "event", event)
 	}
@@ -161,7 +205,7 @@ func verifySignature(secret string, body []byte, header string) bool {
 	return hmac.Equal([]byte(expected), []byte(header))
 }
 
-func (h *Handler) handlePullRequest(body []byte) {
+func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 	var ev PullRequestEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse pull_request", "err", err)
@@ -227,7 +271,7 @@ func triggerActionFromPR(ev PullRequestEvent, repo string) string {
 	return ""
 }
 
-func (h *Handler) handleIssueComment(body []byte) {
+func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	var ev IssueCommentEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse issue_comment", "err", err)
@@ -238,6 +282,21 @@ func (h *Handler) handleIssueComment(body []byte) {
 	}
 
 	repo := ev.Repository.FullName
+
+	h.logAudit(AuditEventParams{
+		EventType:        "webhook_received",
+		SourceType:       "webhook",
+		SourceID:         deliveryID,
+		TargetType:       "issue",
+		TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+		Repo:             repo,
+		GitHubEvent:      EventTypeIssueComment,
+		GitHubAction:     ev.Action,
+		GitHubDeliveryID: deliveryID,
+		Detail:           fmt.Sprintf("issue_comment/%s for %s#%d", ev.Action, repo, ev.Issue.Number),
+	})
+
+	h.discoverArtifacts(ev.Comment.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue_comment")
 
 	if ev.IsPullRequest() {
 		// PR comment — handle /chetter-review trigger.
@@ -296,12 +355,22 @@ func (h *Handler) handleIssueComment(body []byte) {
 	if len(matching) == 0 {
 		return
 	}
+
+	// Bot-comment filtering: skip comments from the Chetter App itself unless
+	// the trigger explicitly allows bot comments.
+	appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
+	isBotComment := appLogin != "" && ev.Comment.User.Login == appLogin
+
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token for issue comment", "err", err)
 		return
 	}
 	for _, t := range matching {
+		if isBotComment && !triggerAllowsBotComments(t) {
+			slog.Info("webhook: skipping bot comment for trigger", "trigger", t.Name, "issue", ev.Issue.Number)
+			continue
+		}
 		prompt := t.Prompt
 		if prompt == "" {
 			prompt = fmt.Sprintf(
@@ -310,22 +379,25 @@ func (h *Handler) handleIssueComment(body []byte) {
 				ev.Comment.User.Login, ev.Comment.Body)
 		}
 		req := SubmitTaskRequest{
-			Prompt:     prompt,
-			GitURL:     t.GitURL,
-			GitRef:     t.GitRef,
-			AgentImage: t.AgentImage,
-			Agent:      t.Agent,
-			ProviderID: t.ProviderID,
-			ModelID:    t.ModelID,
-			VariantID:  t.VariantID,
-			Skills:     t.Skills,
-			TimeoutSec: t.TimeoutSec,
+			Prompt:      prompt,
+			GitURL:      t.GitURL,
+			GitRef:      t.GitRef,
+			AgentImage:  t.AgentImage,
+			Agent:       t.Agent,
+			ProviderID:  t.ProviderID,
+			ModelID:     t.ModelID,
+			VariantID:   t.VariantID,
+			Skills:      t.Skills,
+			TimeoutSec:  t.TimeoutSec,
+			TriggerName: t.Name,
+			TriggerType: "issue",
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
 				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
 				"ISSUE_TITLE":  ev.Issue.Title,
 				"ISSUE_URL":    ev.Issue.HTMLURL,
+				"ISSUE_BODY":   ev.Issue.Body,
 				"COMMENT_BODY": ev.Comment.Body,
 				"COMMENT_USER": ev.Comment.User.Login,
 			},
@@ -333,10 +405,30 @@ func (h *Handler) handleIssueComment(body []byte) {
 		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
 			slog.Error("webhook: submit issue comment task", "err", err,
 				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+			h.logAudit(AuditEventParams{
+				EventType:        "task_submit_failed",
+				SourceType:       "trigger",
+				SourceID:         t.Name,
+				TargetType:       "issue",
+				TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+				Repo:             repo,
+				GitHubDeliveryID: deliveryID,
+				Detail:           fmt.Sprintf("failed to submit task for issue #%d via trigger %s: %v", ev.Issue.Number, t.Name, err),
+			})
 			continue
 		}
 		slog.Info("webhook: issue comment task submitted",
 			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+		h.logAudit(AuditEventParams{
+			EventType:        "task_submitted",
+			SourceType:       "trigger",
+			SourceID:         t.Name,
+			TargetType:       "issue",
+			TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+			Repo:             repo,
+			GitHubDeliveryID: deliveryID,
+			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s (bot_comment=%v)", ev.Issue.Number, t.Name, isBotComment),
+		})
 	}
 }
 
@@ -422,7 +514,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 }
 
 // handleIssues handles an issues webhook event.
-func (h *Handler) handleIssues(body []byte) {
+func (h *Handler) handleIssues(body []byte, deliveryID string) {
 	var ev IssueEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse issues", "err", err)
@@ -439,6 +531,24 @@ func (h *Handler) handleIssues(body []byte) {
 	}
 
 	repo := ev.Repository.FullName
+
+	h.logAudit(AuditEventParams{
+		EventType:        "webhook_received",
+		SourceType:       "webhook",
+		SourceID:         deliveryID,
+		TargetType:       "issue",
+		TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+		Repo:             repo,
+		GitHubEvent:      EventTypeIssues,
+		GitHubAction:     ev.Action,
+		GitHubDeliveryID: deliveryID,
+		Detail:           fmt.Sprintf("issues/%s for %s#%d", ev.Action, repo, ev.Issue.Number),
+	})
+
+	if ev.Action == "opened" {
+		h.discoverArtifacts(ev.Issue.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue")
+	}
+
 	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
@@ -469,32 +579,55 @@ func (h *Handler) handleIssues(body []byte) {
 				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
 		}
 		req := SubmitTaskRequest{
-			Prompt:     prompt,
-			GitURL:     t.GitURL,
-			GitRef:     t.GitRef,
-			AgentImage: t.AgentImage,
-			Agent:      t.Agent,
-			ProviderID: t.ProviderID,
-			ModelID:    t.ModelID,
-			VariantID:  t.VariantID,
-			Skills:     t.Skills,
-			TimeoutSec: t.TimeoutSec,
+			Prompt:      prompt,
+			GitURL:      t.GitURL,
+			GitRef:      t.GitRef,
+			AgentImage:  t.AgentImage,
+			Agent:       t.Agent,
+			ProviderID:  t.ProviderID,
+			ModelID:     t.ModelID,
+			VariantID:   t.VariantID,
+			Skills:      t.Skills,
+			TimeoutSec:  t.TimeoutSec,
+			TriggerName: t.Name,
+			TriggerType: "issue",
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
 				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
 				"ISSUE_TITLE":  ev.Issue.Title,
 				"ISSUE_URL":    ev.Issue.HTMLURL,
+				"ISSUE_BODY":   ev.Issue.Body,
 				"ISSUE_ACTION": ev.Action,
 			},
 		}
 		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
 			slog.Error("webhook: submit issue task", "err", err,
 				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+			h.logAudit(AuditEventParams{
+				EventType:        "task_submit_failed",
+				SourceType:       "trigger",
+				SourceID:         t.Name,
+				TargetType:       "issue",
+				TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+				Repo:             repo,
+				GitHubDeliveryID: deliveryID,
+				Detail:           fmt.Sprintf("failed to submit task for issue #%d via trigger %s: %v", ev.Issue.Number, t.Name, err),
+			})
 			continue
 		}
 		slog.Info("webhook: issue task submitted",
 			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number, "action", ev.Action)
+		h.logAudit(AuditEventParams{
+			EventType:        "task_submitted",
+			SourceType:       "trigger",
+			SourceID:         t.Name,
+			TargetType:       "issue",
+			TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+			Repo:             repo,
+			GitHubDeliveryID: deliveryID,
+			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s on action %s", ev.Issue.Number, t.Name, ev.Action),
+		})
 	}
 }
 
@@ -510,4 +643,40 @@ func asyncCtx(d time.Duration) context.Context {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	go func() { <-ctx.Done(); cancel() }()
 	return ctx
+}
+
+func (h *Handler) logAudit(params AuditEventParams) {
+	if h.audit == nil {
+		return
+	}
+	if err := h.audit.LogAuditEvent(asyncCtx(10*time.Second), params); err != nil {
+		slog.Warn("webhook: log audit event", "err", err, "event_type", params.EventType)
+	}
+}
+
+var taskIDFooterRe = regexp.MustCompile(`Task:\s*(task_[a-f0-9]+)`)
+
+func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifactType string) {
+	if h.artifacts == nil {
+		return
+	}
+	matches := taskIDFooterRe.FindStringSubmatch(text)
+	if len(matches) < 2 {
+		return
+	}
+	taskID := matches[1]
+	if err := h.artifacts.RecordArtifact(asyncCtx(10*time.Second), RecordArtifactParams{
+		TaskID:          taskID,
+		ArtifactType:    artifactType,
+		Repo:            repo,
+		Number:          number,
+		URL:             url,
+		DiscoverySource: "webhook",
+	}); err != nil {
+		slog.Warn("webhook: record artifact", "err", err, "taskID", taskID, "type", artifactType)
+	}
+}
+
+func triggerAllowsBotComments(t ReviewTrigger) bool {
+	return strings.Contains(t.Event, "bot_comments:true")
 }
