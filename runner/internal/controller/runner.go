@@ -16,6 +16,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
+	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -31,18 +32,18 @@ const (
 )
 
 type Runner struct {
-	cfg        *config.Config
-	h          harness.Harness
-	wsManager  *workspace.Manager
-	proxy    *network.TransparentProxy
-	dnsProxy *network.DNSProxy
-	rpcClient   runnerRPCClient
-	claimClient runnerRPCClient
-	runCtx      context.Context
-	mu         sync.Mutex
-	tasks      map[string]*task.TaskSession
-	runnerID   string
-	startedAt  time.Time
+	cfg            *config.Config
+	defaultHarness string
+	wsManager      *workspace.Manager
+	proxy          *network.TransparentProxy
+	dnsProxy       *network.DNSProxy
+	rpcClient      runnerRPCClient
+	claimClient    runnerRPCClient
+	runCtx         context.Context
+	mu             sync.Mutex
+	tasks          map[string]*task.TaskSession
+	runnerID       string
+	startedAt      time.Time
 
 	totalStarted   int64
 	totalCompleted int64
@@ -59,7 +60,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	}
 	return &Runner{
 		cfg:            cfg,
-		h:              selectHarness(cfg),
+		defaultHarness: cfg.Execution.Harness,
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
 		tasks:          make(map[string]*task.TaskSession),
 		runnerID:       runnerID,
@@ -70,15 +71,24 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	}, nil
 }
 
-func selectHarness(cfg *config.Config) harness.Harness {
-	switch cfg.Execution.Harness {
+func selectHarnessByName(name string) harness.Harness {
+	switch name {
 	case "claude-code":
 		return claude.New()
+	case "pi":
+		return pi.New()
 	case "codex":
 		return opencode.New()
 	default:
 		return opencode.New()
 	}
+}
+
+func (r *Runner) harnessFor(name string) harness.Harness {
+	if name == "" {
+		name = r.defaultHarness
+	}
+	return selectHarnessByName(name)
 }
 
 func (r *Runner) executionMode() string {

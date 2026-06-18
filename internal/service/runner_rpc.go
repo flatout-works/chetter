@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	defaultClaimWaitSec = 30
-	defaultTaskLeaseSec = 60
-	claimPollInterval   = time.Second
-	runnerEventSubject  = "connect.runner"
+	defaultClaimWaitSec       = 30
+	defaultTaskLeaseSec       = 60
+	claimPollInterval         = time.Second
+	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
 )
 
@@ -322,6 +322,8 @@ func taskToProto(task repository.ChetterTask) *runnerv1.Task {
 	_ = json.Unmarshal(task.Skills, &skills)
 	env := map[string]string{}
 	_ = json.Unmarshal(task.Env, &env)
+	harness := env["__chetter_harness"]
+	delete(env, "__chetter_harness")
 	return &runnerv1.Task{
 		TaskId:         task.ID,
 		AgentImage:     task.AgentImage.String,
@@ -338,6 +340,7 @@ func taskToProto(task repository.ChetterTask) *runnerv1.Task {
 		MaxCpu:         defaultMaxCPU,
 		Env:            env,
 		Attempt:        task.Attempt,
+		Harness:        harness,
 	}
 }
 

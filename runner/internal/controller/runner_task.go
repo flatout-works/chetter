@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/tools"
@@ -64,6 +65,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 	session.WorkspaceDir = wsDir
 
+	h := r.harnessFor(req.Harness)
+
 	defer func() {
 		if err := r.wsManager.Destroy(req.TaskID); err != nil {
 			slog.Warn("cleanup error", "taskID", req.TaskID, "err", err)
@@ -107,7 +110,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	if r.executionMode() == "docker" {
 		bridgeCmd = "/usr/local/bin/mcp-bridge"
 	}
-	if err := r.h.GenerateConfig(wsDir, socketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, socketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 
@@ -157,17 +160,25 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	switch r.executionMode() {
 	case "local":
-		if !r.h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, socketPath)
+		if h.SupportsRpc() {
+			r.runRpcAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		r.runLocalAgent(ctx, session, req, socketPath)
+		if !h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath, h)
+			return
+		}
+		r.runLocalAgent(ctx, session, req, socketPath, h)
 	default:
-		if !r.h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, socketPath)
+		if h.SupportsRpc() {
+			r.runRpcAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		r.runDockerAgent(ctx, session, req, socketPath)
+		if !h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath, h)
+			return
+		}
+		r.runDockerAgent(ctx, session, req, socketPath, h)
 	}
 }
 
@@ -200,12 +211,12 @@ func addRunnerOwnedEnv(env map[string]string) {
 }
 
 func runnerOwnedEnvKeys() []string {
-	return []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY"}
+	return []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY"}
 }
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY":
+	case "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
 		return true
 	default:
 		return false
@@ -301,7 +312,7 @@ func gvisorHostAliases() []string {
 	return aliases
 }
 
-func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
 	env := os.Environ()
 	for k, v := range req.Env {
 		if isRunnerOwnedEnv(k) {
@@ -316,19 +327,19 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"GIT_COMMITTER_NAME=Chetter Runner",
 		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
-		"CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
 
-	secret := r.h.ServerPassword()
+	secret := h.ServerPassword()
 	env = append(env,
 		"TASK_ID="+req.TaskID,
 		"WORKSPACE="+session.WorkspaceDir,
 		"MCP_SOCKET_PATH="+socketPath,
 	)
-	for k, v := range r.h.Env(session.WorkspaceDir, secret) {
+	for k, v := range h.Env(session.WorkspaceDir, secret) {
 		env = append(env, k+"="+v)
 	}
 	env = append(env, "HOME="+session.WorkspaceDir)
@@ -347,7 +358,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	ln.Close()
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	serveCmd := exec.CommandContext(ctx, r.h.Name(), r.h.ServeArgs(port)...)
+	serveCmd := exec.CommandContext(ctx, h.Name(), h.ServeArgs(port)...)
 	serveCmd.Dir = session.WorkspaceDir
 	serveCmd.Env = env
 	stdout, err := serveCmd.StdoutPipe()
@@ -365,8 +376,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("start opencode serve: %v", err), nil)
 		return
 	}
-	go r.h.PipeOutput(req.TaskID, "stdout", stdout)
-	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+	go h.PipeOutput(req.TaskID, "stdout", stdout)
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
 	defer func() {
 		if serveCmd.Process != nil {
@@ -375,13 +386,13 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		}
 	}()
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
+	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness serve not ready: %v", err), nil)
 		return
 	}
 	slog.Info("harness serve ready", "taskID", req.TaskID, "url", baseURL)
 
-	sid, err := r.h.CreateSession(ctx, baseURL, secret)
+	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("create session: %v", err), nil)
 		return
@@ -390,15 +401,15 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	go r.h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
+	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid)
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -410,7 +421,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -434,7 +445,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	exec.Command("docker", "rm", "-f", containerName).Run()
 
-	secret := r.h.ServerPassword()
+	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
@@ -464,7 +475,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
-		"-e", "CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"-e", "CHETTER_TASK_ID="+req.TaskID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
@@ -484,7 +495,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		)
 	}
 
-	for k, v := range r.h.Env("/workspace", secret) {
+	for k, v := range h.Env("/workspace", secret) {
 		key := k
 		switch key {
 		case "OPENCODE_CONFIG":
@@ -510,7 +521,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, "--dir", "/workspace")
-	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
+	dockerArgs = append(dockerArgs, h.ServeArgs(containerPort)...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
@@ -544,7 +555,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		}
 	}
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
+	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
 		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "logs", string(logs))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
@@ -553,7 +564,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
 
-	sid, err := r.h.CreateSession(ctx, baseURL, secret)
+	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("create session: %v", err), nil)
 		return
@@ -562,15 +573,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	go r.h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
+	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid)
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -582,8 +593,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) readSessionExport(taskID, wsDir, sid string) string {
-	if export, err := r.h.ReadSessionExport(wsDir, sid); err == nil {
+func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
+	if export, err := h.ReadSessionExport(wsDir, sid); err == nil {
 		return export
 	} else {
 		slog.Warn("session export failed", "taskID", taskID, "err", err)
@@ -618,9 +629,404 @@ func taskPromptTimeout(timeoutSec int) time.Duration {
 	return time.Duration(timeoutSec) * time.Second
 }
 
-func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
-	args := r.h.RunBatchCommand(req)
-	name := r.h.Name()
+type rpcAgentState struct {
+	summary       strings.Builder
+	lastDetail    string
+	lastPublished time.Time
+	sessionID     string
+	terminal      bool
+	errorMessage  string
+}
+
+func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
+	if req.Prompt == "" {
+		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
+		return
+	}
+
+	args := h.RpcCommand(req)
+	if len(args) == 0 {
+		r.publishStatusForRequest(req, "error", "harness does not provide an RPC command", nil)
+		return
+	}
+
+	name := h.Name()
+	slog.Info("starting RPC harness", "taskID", req.TaskID, "harness", name, "args", args)
+	r.publishStatusForRequest(req, "running", "Starting agent (RPC mode)...", nil)
+
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Dir = session.WorkspaceDir
+	cmd.Env = r.agentEnv(req, session.WorkspaceDir, socketPath, "", h)
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("stdin pipe: %v", err), nil)
+		return
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("stdout pipe: %v", err), nil)
+		return
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("stderr pipe: %v", err), nil)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s: %v", name, err), nil)
+		return
+	}
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
+
+	exited := false
+	defer func() {
+		if !exited && cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	}()
+
+	reader := bufio.NewReader(stdout)
+	state := &rpcAgentState{lastPublished: time.Now()}
+
+	readyCmd := map[string]any{"id": "ready", "type": "get_state"}
+	if err := writeRPCCommand(stdin, readyCmd); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("write ready probe: %v", err), nil)
+		return
+	}
+	readyResp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "ready", state)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s ready: %v", name, err), nil)
+		return
+	}
+	state.sessionID = rpcSessionID(readyResp)
+
+	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
+	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
+	if err := writeRPCCommand(stdin, promptCmd); err != nil {
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("write prompt: %v", err), nil, state.sessionID, "")
+		return
+	}
+	if _, err := r.waitForRPCResponse(ctx, req, reader, stdin, "prompt", state); err != nil {
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s prompt: %v", name, err), nil, state.sessionID, "")
+		return
+	}
+
+	for !state.terminal {
+		line, err := readRPCLine(ctx, reader)
+		if err != nil {
+			if ctx.Err() != nil {
+				r.abortRPC(ctx, req, stdin, reader, state)
+				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, "")
+				return
+			}
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "")
+			return
+		}
+		if err := r.handleRPCLine(req, stdin, line, state); err != nil {
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s event: %v", name, err), nil, state.sessionID, "")
+			return
+		}
+	}
+
+	resultText := strings.TrimSpace(state.summary.String())
+	resultCmd := map[string]any{"id": "result", "type": "get_last_assistant_text"}
+	if err := writeRPCCommand(stdin, resultCmd); err == nil {
+		if resp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "result", state); err == nil {
+			if text := rpcLastAssistantText(resp); text != "" {
+				resultText = text
+			}
+		} else {
+			r.publishEvent(req.TaskID, fmt.Sprintf("%s result: %v", name, err))
+		}
+	} else {
+		r.publishEvent(req.TaskID, fmt.Sprintf("%s result write: %v", name, err))
+	}
+
+	var sessionExport string
+	messagesCmd := map[string]any{"id": "messages", "type": "get_messages"}
+	if err := writeRPCCommand(stdin, messagesCmd); err == nil {
+		if resp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "messages", state); err == nil {
+			sessionExport = renderRPCMessages(resp)
+			if err := writeRPCSessionExport(session.WorkspaceDir, sessionExport); err != nil {
+				slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
+				r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", err))
+			}
+		} else {
+			r.publishEvent(req.TaskID, fmt.Sprintf("%s messages: %v", name, err))
+		}
+	} else {
+		r.publishEvent(req.TaskID, fmt.Sprintf("%s messages write: %v", name, err))
+	}
+
+	_ = stdin.Close()
+	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, state.sessionID, sessionExport)
+		exited = true
+		return
+	}
+	exited = true
+
+	if state.errorMessage != "" {
+		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport)
+		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s failed", req.TaskID), "failed", state.errorMessage, time.Since(session.StartedAt).Milliseconds())
+		return
+	}
+	if resultText == "" {
+		resultText = "Pi completed without assistant text."
+	}
+	slog.Info("RPC agent completed", "taskID", req.TaskID)
+	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport)
+	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (rpc)", req.TaskID), "success", truncateSummary(resultText), time.Since(session.StartedAt).Milliseconds())
+}
+
+func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string, h harness.Harness) []string {
+	env := os.Environ()
+	for k, v := range req.Env {
+		if isRunnerOwnedEnv(k) {
+			continue
+		}
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	env = appendRunnerOwnedEnv(env)
+	env = append(env,
+		"GIT_AUTHOR_NAME=Chetter Runner",
+		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
+		"GIT_COMMITTER_NAME=Chetter Runner",
+		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
+		"CHETTER_AGENT_NAME="+req.Agent,
+		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
+		"CHETTER_TASK_ID="+req.TaskID,
+		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
+		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
+		"TASK_ID="+req.TaskID,
+		"WORKSPACE="+wsDir,
+		"MCP_SOCKET_PATH="+socketPath,
+		"HOME="+wsDir,
+	)
+	for k, v := range h.Env(wsDir, secret) {
+		env = append(env, k+"="+v)
+	}
+	return env
+}
+
+func writeRPCCommand(w io.Writer, cmd map[string]any) error {
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	_, err = w.Write(data)
+	return err
+}
+
+func readRPCLine(ctx context.Context, reader *bufio.Reader) ([]byte, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	return []byte(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")), nil
+}
+
+func (r *Runner) waitForRPCResponse(ctx context.Context, req task.TaskRequest, reader *bufio.Reader, stdin io.Writer, id string, state *rpcAgentState) (map[string]any, error) {
+	for {
+		line, err := readRPCLine(ctx, reader)
+		if err != nil {
+			return nil, err
+		}
+		var ev map[string]any
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		if typ, _ := ev["type"].(string); typ == "response" {
+			if respID, _ := ev["id"].(string); respID == id {
+				if success, _ := ev["success"].(bool); !success {
+					if msg, _ := ev["error"].(string); msg != "" {
+						return nil, fmt.Errorf("%s", msg)
+					}
+					return nil, fmt.Errorf("RPC command %s failed", id)
+				}
+				return ev, nil
+			}
+		}
+		if err := r.handleRPCEvent(req, stdin, ev, state); err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (r *Runner) handleRPCLine(req task.TaskRequest, stdin io.Writer, line []byte, state *rpcAgentState) error {
+	var ev map[string]any
+	if err := json.Unmarshal(line, &ev); err != nil {
+		return nil
+	}
+	return r.handleRPCEvent(req, stdin, ev, state)
+}
+
+func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[string]any, state *rpcAgentState) error {
+	typ, _ := ev["type"].(string)
+	switch typ {
+	case "message_update":
+		if ame, ok := ev["assistantMessageEvent"].(map[string]any); ok {
+			switch eventType, _ := ame["type"].(string); eventType {
+			case "text_delta":
+				if delta, _ := ame["delta"].(string); delta != "" {
+					state.summary.WriteString(delta)
+					state.lastDetail = delta
+				}
+			case "error":
+				if reason, _ := ame["reason"].(string); reason != "" {
+					state.errorMessage = reason
+				}
+			}
+		}
+	case "tool_execution_start":
+		if toolName, _ := ev["toolName"].(string); toolName != "" {
+			state.lastDetail = "tool: " + toolName
+		}
+	case "tool_execution_end":
+		if isError, _ := ev["isError"].(bool); isError {
+			if toolName, _ := ev["toolName"].(string); toolName != "" {
+				state.lastDetail = "tool error: " + toolName
+			}
+		}
+	case "auto_retry_start":
+		if msg, _ := ev["errorMessage"].(string); msg != "" {
+			state.lastDetail = "retrying: " + msg
+		}
+	case "auto_retry_end":
+		if success, _ := ev["success"].(bool); !success {
+			if msg, _ := ev["finalError"].(string); msg != "" {
+				state.errorMessage = msg
+			}
+		}
+	case "extension_error":
+		if msg, _ := ev["error"].(string); msg != "" {
+			state.lastDetail = "extension error: " + msg
+		}
+	case "extension_ui_request":
+		if resp := rpcUIResponse(ev); resp != nil {
+			return writeRPCCommand(stdin, resp)
+		}
+	case "agent_end":
+		if willRetry, _ := ev["willRetry"].(bool); !willRetry {
+			state.terminal = true
+		}
+	}
+	if time.Since(state.lastPublished) >= 3*time.Second && state.lastDetail != "" {
+		r.publishEvent(req.TaskID, "pi: "+state.lastDetail)
+		state.lastPublished = time.Now()
+	}
+	return nil
+}
+
+func rpcUIResponse(ev map[string]any) map[string]any {
+	method, _ := ev["method"].(string)
+	switch method {
+	case "select", "confirm", "input", "editor":
+		id, _ := ev["id"].(string)
+		if id == "" {
+			return nil
+		}
+		return map[string]any{"type": "extension_ui_response", "id": id, "cancelled": true}
+	default:
+		return nil
+	}
+}
+
+func (r *Runner) abortRPC(ctx context.Context, req task.TaskRequest, stdin io.Writer, reader *bufio.Reader, state *rpcAgentState) {
+	_ = writeRPCCommand(stdin, map[string]any{"id": "abort", "type": "abort"})
+	_, _ = r.waitForRPCResponse(ctx, req, reader, stdin, "abort", state)
+}
+
+func rpcPrompt(req task.TaskRequest) string {
+	if len(req.Skills) == 0 {
+		return req.Prompt
+	}
+	return fmt.Sprintf("You have access to the following skills: %s. Use them when relevant.\n\n%s", strings.Join(req.Skills, ", "), req.Prompt)
+}
+
+func rpcSessionID(resp map[string]any) string {
+	data, _ := resp["data"].(map[string]any)
+	sessionID, _ := data["sessionId"].(string)
+	return sessionID
+}
+
+func rpcLastAssistantText(resp map[string]any) string {
+	data, _ := resp["data"].(map[string]any)
+	text, _ := data["text"].(string)
+	return strings.TrimSpace(text)
+}
+
+func renderRPCMessages(resp map[string]any) string {
+	data, _ := resp["data"].(map[string]any)
+	messages, _ := data["messages"].([]any)
+	if len(messages) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("# Pi Session Export\n\n")
+	for i, raw := range messages {
+		msg, _ := raw.(map[string]any)
+		role, _ := msg["role"].(string)
+		if role == "" {
+			role = "message"
+		}
+		b.WriteString(fmt.Sprintf("## %d. %s\n\n", i+1, role))
+		text := rpcMessageText(msg)
+		if text == "" {
+			if data, err := json.MarshalIndent(msg, "", "  "); err == nil {
+				text = "```json\n" + string(data) + "\n```"
+			}
+		}
+		b.WriteString(strings.TrimSpace(text))
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+func rpcMessageText(msg map[string]any) string {
+	content := msg["content"]
+	switch v := content.(type) {
+	case string:
+		return v
+	case []any:
+		var parts []string
+		for _, raw := range v {
+			block, _ := raw.(map[string]any)
+			if text, _ := block["text"].(string); text != "" {
+				parts = append(parts, text)
+				continue
+			}
+			if text, _ := block["content"].(string); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n\n")
+	default:
+		return ""
+	}
+}
+
+func writeRPCSessionExport(wsDir, export string) error {
+	if export == "" {
+		return nil
+	}
+	path := filepath.Join(wsDir, ".pi", "session-export.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(export), 0644)
+}
+
+func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
+	args := h.RunBatchCommand(req)
+	name := h.Name()
 	slog.Info("starting batch harness", "taskID", req.TaskID, "harness", name, "args", args)
 	r.publishStatusForRequest(req, "running", "Starting agent (batch mode)...", nil)
 
@@ -643,7 +1049,7 @@ func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 
-	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
 	var summary string
 	readCtx, readCancel := context.WithCancel(ctx)
