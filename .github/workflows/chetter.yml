@@ -77,6 +77,13 @@ jobs:
     needs: [check, detect-changes]
     timeout-minutes: 240
     steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and deploy with Arcane
         env:
           ARCANE_URL: ${{ secrets.ARCANE_URL }}
@@ -161,31 +168,31 @@ jobs:
             exit 1
           fi
 
-          # Runner base image — only rebuild if Dockerfile changed
+          # Build and push images directly from the CI runner (which has the full source).
+          # The Arcane build API's contextDir only has deploy files (compose.yaml, k8s/),
+          # not the full source tree needed for 'COPY . .' in the Dockerfiles.
+          # We build here, push to GHCR, then let the Arcane redeploy pull the new images.
+
           if [ "$CHANGED_RUNNER_BASE" = "true" ]; then
             echo "Building and pushing runner base image"
-            call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter-base",tags:["ghcr.io/flatout-works/chetter-runner-base:main"],provider:"local",push:true,load:true}')" >/dev/null
+            docker build -f runner/Dockerfile.chetter-base -t ghcr.io/flatout-works/chetter-runner-base:main .
+            docker push ghcr.io/flatout-works/chetter-runner-base:main
           else
             echo "Runner base image unchanged, skipping build"
           fi
 
-          # MCP image — only rebuild if server code changed
           if [ "$CHANGED_MCP" = "true" ]; then
             echo "Building and pushing MCP image"
-            mcp_build_response=$(call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],buildArgs:{CACHEBUST:$cachebust},provider:"local",push:true,load:true}')")
-            echo "MCP build response: $mcp_build_response"
+            docker build --build-arg "CACHEBUST=${GITHUB_SHA:0:7}" -f Dockerfile -t ghcr.io/flatout-works/chetter-mcp:main .
+            docker push ghcr.io/flatout-works/chetter-mcp:main
           else
             echo "MCP image unchanged, skipping build"
           fi
 
-          # Runner app image — rebuild if runner code, skills, or base changed
           if [ "$CHANGED_RUNNER" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
             echo "Building and pushing runner image"
-            runner_build_response=$(call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')")
-            echo "Runner build response: $runner_build_response"
+            docker build --build-arg "BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main" --build-arg "CACHEBUST=${GITHUB_SHA:0:7}" -f runner/Dockerfile.chetter -t ghcr.io/flatout-works/chetter-runner:main .
+            docker push ghcr.io/flatout-works/chetter-runner:main
           else
             echo "Runner image unchanged, skipping build"
           fi
@@ -194,10 +201,10 @@ jobs:
           build_variant() {
             local variant="$1"
             local dockerfile="runner/images/$variant/Dockerfile"
-            local tag="ghcr.io/flatout-works/chetter-runner:main-${variant}"
+            local tag="ghcr.io/flatout-works/chetter-runner:${variant}"
             echo "Building and pushing ${variant} variant"
-            call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" --arg dockerfile "$dockerfile" --arg tag "$tag" '{contextDir:$contextDir,dockerfile:$dockerfile,tags:[$tag],provider:"local",push:true,load:true}')" >/dev/null
+            docker build --build-arg "BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main" -f "$dockerfile" -t "$tag" .
+            docker push "$tag"
           }
 
           if [ "$CHANGED_VARIANT_GOLANG" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
