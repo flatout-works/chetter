@@ -11,6 +11,9 @@ proxy:
   allowed_domains:
     - api.openai.com
     - api.anthropic.com
+    - api.deepseek.com
+    - opencode.ai
+    - api.synthetic.new
     - api.groq.com
     - api.mistral.ai
     - html.duckduckgo.com

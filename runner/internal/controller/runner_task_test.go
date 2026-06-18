@@ -89,6 +89,26 @@ func TestShellQuoteArgs(t *testing.T) {
 	}
 }
 
+func TestFirstField(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "single", in: "172.18.0.4\n", want: "172.18.0.4"},
+		{name: "multiple", in: "172.18.0.4 172.19.0.6\n", want: "172.18.0.4"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := firstField(tc.in); got != tc.want {
+				t.Fatalf("firstField(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEnvValue_FromMap(t *testing.T) {
 	env := map[string]string{"KEY": "val"}
 	if v := envValue(env, "KEY", "fallback"); v != "val" {

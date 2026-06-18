@@ -242,12 +242,63 @@ func injectPATIntoURL(raw, pat string) string {
 // runcNetwork returns the Docker network name for the runner container,
 // used to attach gVisor agent containers to the same network.
 func runcNetwork() string {
-	out, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}", os.Getenv("HOSTNAME")).CombinedOutput()
-	net := strings.TrimSpace(string(out))
-	if net != "" {
+	out, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}", os.Getenv("HOSTNAME")).CombinedOutput()
+	if net := firstField(string(out)); net != "" {
 		return net
 	}
 	return "bridge"
+}
+
+// hostIP returns the runner container's IP address on network.
+func hostIP(network string) string {
+	if ip := os.Getenv("RUNNER_HOST_IP"); ip != "" {
+		return ip
+	}
+	if network != "" {
+		format := fmt.Sprintf("{{with index .NetworkSettings.Networks %q}}{{.IPAddress}}{{end}}", network)
+		out, _ := exec.Command("docker", "inspect", "-f", format, os.Getenv("HOSTNAME")).CombinedOutput()
+		if ip := strings.TrimSpace(string(out)); ip != "" {
+			return ip
+		}
+	}
+	out, _ := exec.Command("hostname", "-i").CombinedOutput()
+	if ip := firstField(string(out)); ip != "" {
+		return ip
+	}
+	return "127.0.0.1"
+}
+
+func firstField(s string) string {
+	fields := strings.Fields(strings.TrimSpace(s))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func gvisorHostAliases() []string {
+	domains := []string{
+		"opencode.ai",
+		"api.deepseek.com",
+		"api.openai.com",
+		"api.anthropic.com",
+		"api.synthetic.new",
+	}
+	aliases := make([]string, 0, len(domains)*2)
+	for _, domain := range domains {
+		ips, err := net.LookupIP(domain)
+		if err != nil {
+			slog.Warn("resolve gvisor host alias", "host", domain, "err", err)
+			continue
+		}
+		for _, ip := range ips {
+			if v4 := ip.To4(); v4 != nil {
+				aliases = append(aliases, "--add-host", domain+":"+v4.String())
+				break
+			}
+		}
+	}
+	return aliases
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
@@ -386,14 +437,18 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	secret := r.h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
+	netName := ""
+	runnerIP := ""
 	dockerArgs := []string{
 		"run", "-d",
 		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
 	}
 	if gvisor {
-		netName := runcNetwork()
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--network", netName)
+		netName = runcNetwork()
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--network", netName)
+		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	} else {
 		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort))
 	}
@@ -415,6 +470,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+
+	if gvisor {
+		runnerIP = hostIP(netName)
+		dockerArgs = append(dockerArgs,
+			"-e", "CHETTER_PROXY="+runnerIP+":18080",
+			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
+			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
+		)
+	}
 
 	for k, v := range r.h.Env("/workspace", secret) {
 		key := k

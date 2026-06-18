@@ -92,11 +92,11 @@ func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, r
 	agentProvider, agentModel := agentModelFromConfig(wsDir, req.Agent)
 	defaultProvider := agentProvider
 	if defaultProvider == "" {
-		defaultProvider = "synthetic"
+		defaultProvider = "opencode"
 	}
 	defaultModel := agentModel
 	if defaultModel == "" {
-		defaultModel = "hf:zai-org/GLM-5.1"
+		defaultModel = "deepseek-v4-flash-free"
 	}
 	providerID, modelID := promptModel(req, defaultProvider, defaultModel)
 	variantID := promptVariant(req)
@@ -207,5 +207,3 @@ func opencodeServeArgs(port int) []string {
 	}
 	return append(args, "--port", strconv.Itoa(port))
 }
-
-

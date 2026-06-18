@@ -113,7 +113,7 @@ func TestResolvedChetterModelID_FallsBackToEnv(t *testing.T) {
 
 func TestResolvedChetterModelID_DefaultsWhenEmpty(t *testing.T) {
 	req := task.TaskRequest{}
-	if got := resolvedChetterModelID(req); got != "synthetic/hf:zai-org/GLM-5.1" {
+	if got := resolvedChetterModelID(req); got != "opencode/deepseek-v4-flash-free" {
 		t.Fatalf("expected default model, got %q", got)
 	}
 }

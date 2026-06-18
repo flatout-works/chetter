@@ -33,7 +33,7 @@ func promptModel(req task.TaskRequest, defaultProvider, defaultModel string) (st
 }
 
 func resolvedChetterModelID(req task.TaskRequest) string {
-	providerID, modelID := promptModel(req, "synthetic", "hf:zai-org/GLM-5.1")
+	providerID, modelID := promptModel(req, "opencode", "deepseek-v4-flash-free")
 	return providerID + "/" + modelID
 }
 
