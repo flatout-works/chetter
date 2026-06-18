@@ -19,6 +19,23 @@ type ApiToken struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type ChetterAuditLog struct {
+	ID               string           `json:"id"`
+	EventType        string           `json:"event_type"`
+	CreatedAt        time.Time        `json:"created_at"`
+	SourceType       sql.NullString   `json:"source_type"`
+	SourceID         sql.NullString   `json:"source_id"`
+	TargetType       sql.NullString   `json:"target_type"`
+	TargetID         sql.NullString   `json:"target_id"`
+	Repo             sql.NullString   `json:"repo"`
+	GithubEvent      sql.NullString   `json:"github_event"`
+	GithubAction     sql.NullString   `json:"github_action"`
+	GithubDeliveryID sql.NullString   `json:"github_delivery_id"`
+	ParentEventID    sql.NullString   `json:"parent_event_id"`
+	Detail           sql.NullString   `json:"detail"`
+	Payload          *json.RawMessage `json:"payload"`
+}
+
 type ChetterRunner struct {
 	ID             string          `json:"id"`
 	Status         string          `json:"status"`
@@ -91,7 +108,6 @@ type ChetterTask struct {
 	ClaimedAt         sql.NullTime    `json:"claimed_at"`
 	LeaseExpiresAt    sql.NullTime    `json:"lease_expires_at"`
 	Attempt           int32           `json:"attempt"`
-	MaxAttempts       int32           `json:"max_attempts"`
 	Skills            json.RawMessage `json:"skills"`
 	Env               json.RawMessage `json:"env"`
 	TimeoutSec        int32           `json:"timeout_sec"`
@@ -104,6 +120,23 @@ type ChetterTask struct {
 	EndedAt           sql.NullTime    `json:"ended_at"`
 	TeamID            sql.NullString  `json:"team_id"`
 	SessionExport     sql.NullString  `json:"session_export"`
+	TriggerName       sql.NullString  `json:"trigger_name"`
+	TriggerType       sql.NullString  `json:"trigger_type"`
+	MaxAttempts       int32           `json:"max_attempts"`
+}
+
+type ChetterTaskArtifact struct {
+	ID              string         `json:"id"`
+	TaskID          string         `json:"task_id"`
+	ArtifactType    string         `json:"artifact_type"`
+	Repo            string         `json:"repo"`
+	Number          sql.NullInt32  `json:"number"`
+	Url             sql.NullString `json:"url"`
+	Ref             sql.NullString `json:"ref"`
+	Sha             sql.NullString `json:"sha"`
+	CreatedAt       time.Time      `json:"created_at"`
+	DiscoveredAt    time.Time      `json:"discovered_at"`
+	DiscoverySource string         `json:"discovery_source"`
 }
 
 type ChetterTaskEvent struct {

@@ -213,6 +213,8 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
 		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
+		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
+		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)

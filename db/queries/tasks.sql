@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks
