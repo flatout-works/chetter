@@ -441,12 +441,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	runnerIP := ""
 	dockerArgs := []string{
 		"run", "-d",
+		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs, "--entrypoint", "sh")
-	} else {
-		dockerArgs = append(dockerArgs, "--entrypoint", "/usr/local/bin/opencode")
 	}
 	if gvisor {
 		netName = runcNetwork()
@@ -513,12 +509,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	if gvisor {
-		serveCmd := "exec " + shellQuoteArgs(append([]string{"/usr/local/bin/opencode"}, r.h.ServeArgs(containerPort)...))
-		dockerArgs = append(dockerArgs, "-c", "ln -sf /opt/opencode/.agents /workspace/.agents && ln -sfn /opt/opencode/.config /workspace/.config && "+serveCmd)
-	} else {
-		dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
-	}
+	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
