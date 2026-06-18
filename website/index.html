@@ -27,7 +27,7 @@
       <div class="hero-copy">
         <p class="eyebrow">Self-hosted MCP control plane</p>
         <h1>Run AI coding agents like a small, observable fleet.</h1>
-        <p class="lead">Chetter gives Claude, OpenCode, ChatGPT, curl, or your own agent stack a simple MCP tool surface for submitting development work to remote containerized runners.</p>
+        <p class="lead">Chetter exposes an MCP tool surface so your AI agent — whether you use OpenCode, Claude Code, or another MCP client — can submit development work to remote gVisor-sandboxed runners. One server. Docker Compose or Kubernetes. No message broker.</p>
         <div class="hero-actions" aria-label="Primary actions">
           <a class="button primary" href="https://github.com/flatout-works/chetter">View on GitHub</a>
           <a class="button secondary" href="#quick-start">Quick start</a>
@@ -48,22 +48,22 @@
     </section>
 
     <section class="metrics" aria-label="Chetter summary">
-      <div><strong>27</strong><span>MCP tools</span></div>
-      <div><strong>1</strong><span>durable queue</span></div>
+      <div><strong>28</strong><span>MCP tools</span></div>
+      <div><strong>no</strong><span>message broker</span></div>
       <div><strong>1</strong><span>database</span></div>
-      <div><strong>many</strong><span>interchangeable runners</span></div>
+      <div><strong>N</strong><span>runners (poll for work)</span></div>
     </section>
 
     <section class="section-shell split" id="how-it-works">
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-          <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via a ConnectRPC task queue, manages triggers (cron schedules and webhook events), and ingests runner events. Runners clone repositories, start coding agents, stream progress, and report results.</p>
+        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via ConnectRPC, manages triggers (cron schedules and webhook events), and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode or Claude Code inside plain Docker containers (optionally under gVisor sandboxing), stream progress, and report results. Kubernetes-friendly with included manifests.</p>
       </div>
       <div class="flow-card">
         <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
         <div><b>2. Claim</b><span>Runners poll the ConnectRPC endpoint; one claims the task via lease.</span></div>
-        <div><b>3. Run</b><span>A containerized runner executes OpenCode against the repository.</span></div>
+        <div><b>3. Run</b><span>A runner starts OpenCode or Claude Code inside a Docker container (with optional gVisor sandboxing).</span></div>
         <div><b>4. Observe</b><span>Events are persisted for status, progress, and audit trails.</span></div>
       </div>
     </section>
@@ -74,8 +74,8 @@
       <div class="architecture-grid">
         <article>
           <span>client</span>
-          <h3>Any MCP-capable caller</h3>
-          <p>Use Claude, OpenCode, Cursor-style clients, curl, or custom automation. The interface is tools plus JSON, not a custom dashboard.</p>
+          <h3>OpenCode &amp; Claude Code</h3>
+          <p>The runner ships with integrated harnesses for the two leading open-source AI agent tools. Both run the stock CLI — no forks, no custom agent protocol. Just standard serve mode or batch execution inside Docker containers.</p>
         </article>
         <article>
           <span>control plane</span>
@@ -83,9 +83,9 @@
           <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven tools, manages triggers (cron + webhook), orchestrates schedules, delivers PR labels on trigger fire, and records events.</p>
         </article>
         <article>
-          <span>transport</span>
-          <h3>ConnectRPC</h3>
-          <p>Runners claim tasks and report events directly to the MCP server via ConnectRPC (HTTP/gRPC). No separate message broker needed.</p>
+          <span>execution</span>
+          <h3>Plain Docker + optional gVisor</h3>
+          <p>Agents run inside standard Docker containers built from normal Dockerfiles. Enable kernel-level sandboxing with <code>USE_GVISOR=true</code> and the <code>runsc</code> runtime for defense-in-depth isolation without VMs or custom AMIs.</p>
         </article>
         <article>
           <span>state</span>
@@ -102,7 +102,7 @@
       </div>
       <article>
         <h3>Remote, isolated execution</h3>
-        <p>Keep agent work off your laptop. Runners execute inside containers with explicit CPU, memory, timeout, image, model, and provider settings.</p>
+        <p>Keep agent work off your laptop. Runners execute inside Docker containers — optionally under gVisor sandboxing — with explicit CPU, memory, timeout, image, model, and provider settings.</p>
       </article>
       <article>
         <h3>Durable by default</h3>
@@ -170,10 +170,10 @@ curl http://localhost:18088/healthz</code></pre>
       </div>
       <div class="deploy-row">
         <div><b>chetter-mcp</b><span>Go server: MCP tools + ConnectRPC + triggers + webhook</span></div>
-        <div><b>MySQL / TiDB</b><span>task queue, events, schedules, runners, auth</span></div>
-        <div><b>runners</b><span>one image, many workers</span></div>
+        <div><b>chetter-runner</b><span>plain Dockerfile-based containers, optionally gVisor-sandboxed via <code>USE_GVISOR=true</code></span></div>
+        <div><b>MySQL / TiDB</b><span>task state, events, schedules, runners, auth</span></div>
       </div>
-      <p class="note">Production can use an external MySQL or TiDB by setting <code>DATABASE_DSN</code>. The bundled local compose override is there for fast evaluation.</p>
+      <p class="note">Comes with Docker Compose and Kubernetes manifests. Production can use an external MySQL or TiDB by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing by installing gVisor (<code>runsc</code>) on the Docker host and setting <code>USE_GVISOR=true</code>.</p>
     </section>
   </main>
 
