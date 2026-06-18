@@ -509,6 +509,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, "--dir", "/workspace")
 	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
