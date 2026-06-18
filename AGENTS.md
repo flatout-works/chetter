@@ -98,9 +98,14 @@ chetter/
 
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.
 - **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
-- **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`.
+- **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
 - **GitHub webhook** is optional. If `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, and `GITHUB_WEBHOOK_SECRET` are set, the webhook handler is registered.
 - **Arcane tools** are conditionally registered only if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.
+- **Audit log** (`chetter_audit_log` table) records server-side events: webhook receipts, trigger matches, task submissions. Queryable via `chetter_list_audit_events` MCP tool.
+- **Task artifacts** (`chetter_task_artifacts` table) tracks GitHub artifacts (issues, PRs, comments) created by tasks, discovered passively via the `Task: task_XXX` footer signature. Queryable via `chetter_list_task_artifacts` MCP tool.
+- **Bot-comment filtering**: the webhook handler skips comments from the Chetter GitHub App itself unless the trigger config includes `bot_comments:true`.
+- **Heartbeat events**: `opencode: server.heartbeat` events update the task lease on every occurrence, but are stored as event rows at most once per minute per task (`heartbeatEventMinInterval`). This preserves the ability to trace when a runner went silent without flooding `chetter_task_events`.
+- **Network isolation**: gVisor (`--runtime runsc`) provides sandboxing in Docker mode. The legacy bridge/netns/iptables code has been removed.
 
 ## Environment & Config
 

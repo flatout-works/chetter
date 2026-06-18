@@ -239,6 +239,17 @@ func injectPATIntoURL(raw, pat string) string {
 	return "https://" + pat + "@" + raw[len("https://"):]
 }
 
+// runcNetwork returns the Docker network name for the runner container,
+// used to attach gVisor agent containers to the same network.
+func runcNetwork() string {
+	out, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}", os.Getenv("HOSTNAME")).CombinedOutput()
+	net := strings.TrimSpace(string(out))
+	if net != "" {
+		return net
+	}
+	return "bridge"
+}
+
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
 	env := os.Environ()
 	for k, v := range req.Env {
@@ -255,6 +266,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"CHETTER_TASK_ID="+req.TaskID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -358,8 +370,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 
-	configPath := r.h.ConfigFilePathGlobal(session.WorkspaceDir)
-
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
@@ -375,40 +385,43 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	secret := r.h.ServerPassword()
 
+	gvisor := r.cfg.Execution.UseGVisor
 	dockerArgs := []string{
 		"run", "-d",
 		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
 	}
-	if r.cfg.Execution.UseGVisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc")
+	if gvisor {
+		netName := runcNetwork()
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--network", netName)
+	} else {
+		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort))
 	}
 	dockerArgs = append(dockerArgs,
-		"-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort),
 		"-v", session.WorkspaceDir+":/workspace",
-		"-v", socketPath+":"+socketPath,
-		"-v", configPath+":/opt/opencode/.config/opencode/config.json:ro",
+		"-v", socketPath+":/workspace/.chetter.sock",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
-		"-e", "MCP_SOCKET_PATH="+socketPath,
+		"-e", "MCP_SOCKET_PATH=/workspace/.chetter.sock",
 		"-e", "HOME=/opt/opencode",
-		"-e", "XDG_CONFIG_HOME=/opt/opencode/.config",
+		"-e", "XDG_CONFIG_HOME=/workspace/.config",
 		"-e", "XDG_DATA_HOME=/workspace/.local/share",
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
 		"-e", "CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"-e", "CHETTER_TASK_ID="+req.TaskID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
 
-	for k, v := range r.h.Env("/opt/opencode/.config/opencode", secret) {
+	for k, v := range r.h.Env("/workspace", secret) {
 		key := k
 		switch key {
 		case "OPENCODE_CONFIG":
 			key = "OPENCODE_CONFIG"
-			v = "/opt/opencode/.config/opencode/config.json"
+			v = "/workspace/.opencode.json"
 		case "OPENCODE_SERVER_PASSWORD":
 			v = secret
 		}
@@ -428,7 +441,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, r.h.Name())
 	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
@@ -446,6 +458,14 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}()
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	if gvisor {
+		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{.NetworkSettings.IPAddress}}", containerName).CombinedOutput()
+		containerIP := strings.TrimSpace(string(ipOut))
+		if containerIP != "" {
+			baseURL = fmt.Sprintf("http://%s:%d", containerIP, containerPort)
+			hostPort = containerPort
+		}
+	}
 
 	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
