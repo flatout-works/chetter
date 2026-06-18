@@ -436,16 +436,17 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	secret := r.h.ServerPassword()
 
-	opencodeDBDir := filepath.Join(session.WorkspaceDir, ".opencode-db")
-	os.MkdirAll(opencodeDBDir, 0755)
-
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
 	runnerIP := ""
 	dockerArgs := []string{
 		"run", "-d",
-		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
+	}
+	if gvisor {
+		dockerArgs = append(dockerArgs, "--entrypoint", "sh")
+	} else {
+		dockerArgs = append(dockerArgs, "--entrypoint", "/usr/local/bin/opencode")
 	}
 	if gvisor {
 		netName = runcNetwork()
@@ -458,12 +459,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	dockerArgs = append(dockerArgs,
 		"-v", session.WorkspaceDir+":/workspace",
 		"-v", socketPath+":/workspace/.chetter.sock",
-		"-v", filepath.Join(session.WorkspaceDir, ".opencode-db")+":/opt/opencode/.local/share/opencode",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
 		"-e", "MCP_SOCKET_PATH=/workspace/.chetter.sock",
-		"-e", "HOME=/opt/opencode",
 		"-e", "XDG_CONFIG_HOME=/workspace/.config",
 		"-e", "XDG_DATA_HOME=/workspace/.local/share",
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
@@ -474,6 +473,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
+	} else {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+	}
 
 	if gvisor {
 		runnerIP = hostIP(netName)
@@ -509,7 +513,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
+	if gvisor {
+		serveCmd := "exec " + shellQuoteArgs(append([]string{"/usr/local/bin/opencode"}, r.h.ServeArgs(containerPort)...))
+		dockerArgs = append(dockerArgs, "-c", "ln -sf /opt/opencode/.agents /workspace/.agents && ln -sfn /opt/opencode/.config /workspace/.config && "+serveCmd)
+	} else {
+		dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
+	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
