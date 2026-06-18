@@ -61,7 +61,12 @@ relying on the runner container for isolation.
 
 ## Selection
 
-Harness is fixed per-runner at startup:
+Harness can be set at two levels:
+
+### Runner Default
+
+The runner's YAML config sets a default harness for tasks that don't specify
+one explicitly:
 
 ```yaml
 # runner.yaml
@@ -70,8 +75,29 @@ execution:
 ```
 
 In Docker, the entrypoint reads `CHETTER_HARNESS` and writes the YAML.
-The `selectHarness()` switch in `runner/internal/controller/runner.go` maps
-the string to a constructor.
+
+### Per-Task Override
+
+Tasks submitted via MCP can override the harness per-task:
+
+```
+chetter_submit_task prompt="..." harness="pi"
+chetter_create_trigger name="..." trigger_type="cron" cron_expr="@daily" harness="pi" ...
+```
+
+The `harness` field is optional. When omitted or empty, the runner's
+`execution.harness` config is used as the default.
+
+**How it flows:**
+- Server receives `harness` in the MCP input -> embeds it as
+  `__chetter_harness` in the task's env JSON
+- Runner claims task -> proto `Task.Harness` field -> `harnessFor(req.Harness)`
+  selects the right harness strategy
+- Each task picks its harness independently; concurrent tasks can use different
+  harnesses on the same runner
+
+The `selectHarnessByName()` function in `runner/internal/controller/runner.go`
+maps the string to a constructor.
 
 ## OpenCode (default)
 
@@ -232,6 +258,7 @@ for long-running tasks that may need course correction.
 | Provider breadth | Multiple | Anthropic only | 30+ |
 | Permission system | Config-based | `bypassPermissions` | None (container-reliant) |
 | Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh |
+| Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) |
 | License | Apache 2.0 | Proprietary (CLI) | MIT |
 
 ## Adding a New Harness
@@ -239,14 +266,22 @@ for long-running tasks that may need course correction.
 1. Create `runner/harness/<name>/` with a struct implementing all
    `Harness` interface methods. Use Claude's `harness.go` as a template
    for batch harnesses, or Pi's for RPC harnesses.
-2. Add `case "<name>": return <pkg>.New()` in `selectHarness()` in
+2. Add `case "<name>": return <pkg>.New()` in `selectHarnessByName()` in
    `runner/internal/controller/runner.go`.
 3. If the harness needs env var passthrough, add keys to
    `runnerOwnedEnvKeys()` and `isRunnerOwnedEnv()` in
    `runner/internal/controller/runner_task.go`.
-4. Install the binary in `runner/Dockerfile.chetter-base` (and
+4. Install the harness binary in `runner/Dockerfile.chetter-base` (and
    `runner/images/minimal/Dockerfile` if applicable).
-5. Update `docs/HARNESSES.md` with the new harness's section.
+5. Add `Harness` to MCP input schemas in `internal/service/tools.go`
+   (`SubmitTaskInput`, `CreateTriggerInput`, `UpdateTriggerInput`).
+6. Add `Harness` to `store.ScheduleInput` and `store.ScheduleRecord`
+   in `internal/store/store.go`.
+7. Wire the field through `CreateTrigger`, `UpdateTrigger`, and
+   `runSchedule` in `internal/service/service.go`.
+8. Add harness column to `chetter_schedules` via `ensureScheduleMetadataColumns`
+   in `internal/store/store.go`.
+9. Update `docs/HARNESSES.md` with the new harness's section.
 6. Run `make check` in `runner/` (vet + lint + test).
 
 ## Future Harness Candidates

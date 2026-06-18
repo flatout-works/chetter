@@ -380,6 +380,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 		ProviderID:    nullString(in.ProviderID),
 		ModelID:       nullString(in.ModelID),
 		VariantID:     nullString(in.VariantID),
+		Harness:       nullString(in.Harness),
 		Skills:        skills,
 		TimeoutSec:    int32(in.TimeoutSec),
 		CreatedAt:     now,
@@ -468,6 +469,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 		ProviderID:    nullString(in.ProviderID),
 		ModelID:       nullString(in.ModelID),
 		VariantID:     nullString(in.VariantID),
+		Harness:       nullString(in.Harness),
 		Skills:        skills,
 		TimeoutSec:    int32(in.TimeoutSec),
 		Enabled:       enabled,
@@ -531,6 +533,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		sch.ProviderID.String,
 		sch.ModelID.String,
 		sch.VariantID.String,
+		sch.Harness.String,
 		targetSkills,
 		int(sch.TimeoutSec),
 		time.Now().UTC(),
@@ -589,11 +592,11 @@ func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledF
 	_ = json.Unmarshal(schedule.Skills, &skills)
 	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
 		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
-		skills, int(schedule.TimeoutSec), scheduledFor)
+		schedule.Harness.String, skills, int(schedule.TimeoutSec), scheduledFor)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:     prompt,
 		GitURL:     gitURL,
@@ -603,6 +606,7 @@ func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, teamID, pr
 		ProviderID: providerID,
 		ModelID:    modelID,
 		VariantID:  variantID,
+		Harness:    harness,
 		Skills:     skills,
 		TimeoutSec: timeoutSec,
 	})

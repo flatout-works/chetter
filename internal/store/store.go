@@ -104,6 +104,7 @@ type ScheduleRecord struct {
 	ProviderID    string     `json:"provider_id,omitempty"`
 	ModelID       string     `json:"model_id,omitempty"`
 	VariantID     string     `json:"variant_id,omitempty"`
+	Harness       string     `json:"harness,omitempty"`
 	Skills        []string   `json:"skills"`
 	TimeoutSec    int        `json:"timeout_sec"`
 	Enabled       bool       `json:"enabled"`
@@ -129,6 +130,7 @@ type ScheduleInput struct {
 	ProviderID    string
 	ModelID       string
 	VariantID     string
+	Harness       string
 	Skills        []string
 	TimeoutSec    int
 }
@@ -240,6 +242,7 @@ func (s *Store) ensureScheduleMetadataColumns(ctx context.Context) error {
 		{"provider_id", "ALTER TABLE chetter_schedules ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
 		{"model_id", "ALTER TABLE chetter_schedules ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
 		{"variant_id", "ALTER TABLE chetter_schedules ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
+		{"harness", "ALTER TABLE chetter_schedules ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
 		{"team_id", "ALTER TABLE chetter_schedules ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 	}
 	for _, column := range columns {

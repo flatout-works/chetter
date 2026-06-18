@@ -14,8 +14,8 @@ import (
 
 const createSchedule = `-- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
 `
 
 type CreateScheduleParams struct {
@@ -33,6 +33,7 @@ type CreateScheduleParams struct {
 	ProviderID    sql.NullString  `json:"provider_id"`
 	ModelID       sql.NullString  `json:"model_id"`
 	VariantID     sql.NullString  `json:"variant_id"`
+	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	CreatedAt     time.Time       `json:"created_at"`
@@ -55,6 +56,7 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		arg.ProviderID,
 		arg.ModelID,
 		arg.VariantID,
+		arg.Harness,
 		arg.Skills,
 		arg.TimeoutSec,
 		arg.CreatedAt,
@@ -680,7 +682,7 @@ UPDATE chetter_schedules
 SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
-    skills = ?, timeout_sec = ?, enabled = ?,
+    harness = ?, skills = ?, timeout_sec = ?, enabled = ?,
     updated_at = ?
 WHERE name = ?
 `
@@ -698,6 +700,7 @@ type UpdateScheduleParams struct {
 	ProviderID    sql.NullString  `json:"provider_id"`
 	ModelID       sql.NullString  `json:"model_id"`
 	VariantID     sql.NullString  `json:"variant_id"`
+	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	Enabled       bool            `json:"enabled"`
@@ -719,6 +722,7 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 		arg.ProviderID,
 		arg.ModelID,
 		arg.VariantID,
+		arg.Harness,
 		arg.Skills,
 		arg.TimeoutSec,
 		arg.Enabled,
