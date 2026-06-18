@@ -40,6 +40,11 @@ FROM debian:bookworm-slim
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -50,7 +55,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     jq \
     ripgrep \
     nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://opencode.ai/install | bash \
@@ -58,6 +62,15 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 
 RUN npm install -g @anthropic-ai/claude-code \
     && ln -sf "$(npm root -g)/node_modules/.bin/claude" /usr/local/bin/claude
+
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
+    && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi
+
+RUN npm install -g --ignore-scripts pi-mcp-adapter \
+    && mkdir -p /opt/pi-extensions \
+    && ln -sf "$(npm root -g)/pi-mcp-adapter" /opt/pi-extensions/pi-mcp-adapter
+
+ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/pi-mcp-adapter
 
 RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /opt/opencode/.config/opencode \

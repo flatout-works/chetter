@@ -15,6 +15,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
+	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -30,18 +31,18 @@ const (
 )
 
 type Runner struct {
-	cfg        *config.Config
-	h          harness.Harness
-	wsManager  *workspace.Manager
-	proxy    *network.TransparentProxy
-	dnsProxy *network.DNSProxy
+	cfg         *config.Config
+	h           harness.Harness
+	wsManager   *workspace.Manager
+	proxy       *network.TransparentProxy
+	dnsProxy    *network.DNSProxy
 	rpcClient   runnerRPCClient
 	claimClient runnerRPCClient
 	runCtx      context.Context
-	mu         sync.Mutex
-	tasks      map[string]*task.TaskSession
-	runnerID   string
-	startedAt  time.Time
+	mu          sync.Mutex
+	tasks       map[string]*task.TaskSession
+	runnerID    string
+	startedAt   time.Time
 
 	totalStarted   int64
 	totalCompleted int64
@@ -73,6 +74,8 @@ func selectHarness(cfg *config.Config) harness.Harness {
 	switch cfg.Execution.Harness {
 	case "claude-code":
 		return claude.New()
+	case "pi":
+		return pi.New()
 	case "codex":
 		return opencode.New()
 	default:

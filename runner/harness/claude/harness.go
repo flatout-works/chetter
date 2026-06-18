@@ -18,6 +18,8 @@ func (cc *ClaudeCode) Name() string { return "claude" }
 
 func (cc *ClaudeCode) SupportsServe() bool { return false }
 
+func (cc *ClaudeCode) SupportsRpc() bool { return false }
+
 func (cc *ClaudeCode) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
 	return GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, isLocal)
 }
@@ -64,7 +66,8 @@ func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error)
 	return "", nil
 }
 
-func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {}
+func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
+}
 
 func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
 	pipeOutput(taskID, stream, reader)
@@ -73,6 +76,8 @@ func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
 func (cc *ClaudeCode) RunBatchCommand(req task.TaskRequest) []string {
 	return buildClaudeCommand(req)
 }
+
+func (cc *ClaudeCode) RpcCommand(req task.TaskRequest) []string { return nil }
 
 func (cc *ClaudeCode) SummarizeBatchOutput(raw string) string {
 	return summarizeStreamJSON(raw)
