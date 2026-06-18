@@ -94,7 +94,7 @@ jobs:
           curl --silent --show-error --request POST \
             --header "X-Api-Key: $ARCANE_API_KEY" \
             --header "Content-Type: application/json" \
-            --data '{"forceRecreate":true,"pullPolicy":"always","removeOrphans":true}' \
+            --data '{"forceRecreate":true,"removeOrphans":true}' \
             "${ARCANE_URL%/}/api/environments/0/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" >/dev/null
 
   # -----------------------------------------------------------------------

@@ -4,7 +4,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    pull_policy: always
     restart: unless-stopped
     environment:
       HTTP_ADDR: :8080
@@ -36,7 +35,6 @@ services:
       dockerfile: runner/Dockerfile.chetter
       args:
         BASE_IMAGE: ghcr.io/flatout-works/chetter-runner-base:main
-    pull_policy: always
     restart: unless-stopped
     depends_on:
       - chetter-mcp
@@ -65,7 +63,6 @@ services:
 
   chetter-runner-2:
     image: ghcr.io/flatout-works/chetter-runner:main
-    pull_policy: always
     restart: unless-stopped
     depends_on:
       - chetter-mcp
