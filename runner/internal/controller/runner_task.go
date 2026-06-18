@@ -398,7 +398,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		sessionExport = r.captureSessionExport(ctx, req.TaskID, session.WorkspaceDir, sid, baseURL, secret)
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -416,7 +416,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
+	}
+
+	ln, err := net.Listen("tcp", bindAddr+":0")
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
 		return
@@ -445,7 +450,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	} else {
-		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort))
+		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", bindAddr, hostPort, containerPort))
 	}
 	dockerArgs = append(dockerArgs,
 		"-v", session.WorkspaceDir+":/workspace",
@@ -519,7 +524,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		exec.Command("docker", "rm", "-f", containerName).Run()
 	}()
 
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	baseURL := fmt.Sprintf("http://%s:%d", bindAddr, hostPort)
 	if gvisor {
 		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$v.IPAddress}} {{end}}", containerName).CombinedOutput()
 		containerIP := ""
@@ -560,7 +565,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		sessionExport = r.captureSessionExport(ctx, req.TaskID, session.WorkspaceDir, sid, baseURL, secret)
+		dbDir := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
+		os.MkdirAll(dbDir, 0755)
+		_ = exec.Command("docker", "cp", containerName+":/opt/opencode/.local/share/opencode/opencode.db", filepath.Join(dbDir, "opencode.db")).Run()
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -572,16 +580,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) captureSessionExport(ctx context.Context, taskID, wsDir, sid, baseURL, secret string) string {
+func (r *Runner) readSessionExport(taskID, wsDir, sid string) string {
 	if export, err := r.h.ReadSessionExport(wsDir, sid); err == nil {
 		return export
 	} else {
-		slog.Warn("session export db read failed, trying HTTP API", "taskID", taskID, "err", err)
-	}
-	if apiExport, err := r.h.ExportSession(ctx, baseURL, sid, secret); err == nil {
-		return apiExport
-	} else {
-		slog.Warn("session export HTTP API also failed", "taskID", taskID, "err", err)
+		slog.Warn("session export failed", "taskID", taskID, "err", err)
 		r.publishEvent(taskID, fmt.Sprintf("session export: %v", err))
 	}
 	return ""
