@@ -152,7 +152,8 @@ jobs:
           }
 
           echo "Syncing Chetter GitOps project"
-          call_arcane POST "/environments/$env_id/gitops-syncs/$ARCANE_CHETTER_GITOPS_ID/sync" >/dev/null
+          sync_response=$(call_arcane POST "/environments/$env_id/gitops-syncs/$ARCANE_CHETTER_GITOPS_ID/sync")
+          echo "GitOps sync response: $sync_response"
 
           project_dir=$(call_arcane GET "/environments/$env_id/projects/$ARCANE_CHETTER_PROJECT_ID" | jq -r '.data.path // .path')
           if [ -z "$project_dir" ] || [ "$project_dir" = "null" ]; then
@@ -172,8 +173,9 @@ jobs:
           # MCP image — only rebuild if server code changed
           if [ "$CHANGED_MCP" = "true" ]; then
             echo "Building and pushing MCP image"
-            call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],buildArgs:{CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
+            mcp_build_response=$(call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],buildArgs:{CACHEBUST:$cachebust},provider:"local",push:true,load:true}')")
+            echo "MCP build response: $mcp_build_response"
           else
             echo "MCP image unchanged, skipping build"
           fi
@@ -181,8 +183,9 @@ jobs:
           # Runner app image — rebuild if runner code, skills, or base changed
           if [ "$CHANGED_RUNNER" = "true" ] || [ "$CHANGED_RUNNER_BASE" = "true" ]; then
             echo "Building and pushing runner image"
-            call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
+            runner_build_response=$(call_arcane POST "/environments/$env_id/images/build" \
+              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"runner/Dockerfile.chetter",tags:["ghcr.io/flatout-works/chetter-runner:main"],buildArgs:{BASE_IMAGE:"ghcr.io/flatout-works/chetter-runner-base:main",CACHEBUST:$cachebust},provider:"local",push:true,load:true}')")
+            echo "Runner build response: $runner_build_response"
           else
             echo "Runner image unchanged, skipping build"
           fi
