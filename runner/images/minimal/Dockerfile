@@ -66,11 +66,12 @@ RUN npm install -g @anthropic-ai/claude-code \
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
     && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi
 
-RUN npm install -g --ignore-scripts pi-mcp-adapter \
-    && mkdir -p /opt/pi-extensions \
-    && ln -sf "$(npm root -g)/pi-mcp-adapter" /opt/pi-extensions/pi-mcp-adapter
+RUN mkdir -p /opt/pi-extensions \
+    && cd /opt/pi-extensions \
+    && npm init -y \
+    && npm install --ignore-scripts pi-mcp-adapter
 
-ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/pi-mcp-adapter
+ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
 
 RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /opt/opencode/.config/opencode \
