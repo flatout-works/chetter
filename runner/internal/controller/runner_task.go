@@ -442,6 +442,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
+	}
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -459,11 +462,16 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
 	if gvisor {
-		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{.NetworkSettings.IPAddress}}", containerName).CombinedOutput()
-		containerIP := strings.TrimSpace(string(ipOut))
+		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$v.IPAddress}} {{end}}", containerName).CombinedOutput()
+		containerIP := ""
+		for _, ip := range strings.Fields(strings.TrimSpace(string(ipOut))) {
+			if ip != "" && ip != "127.0.0.1" {
+				containerIP = ip
+				break
+			}
+		}
 		if containerIP != "" {
 			baseURL = fmt.Sprintf("http://%s:%d", containerIP, containerPort)
-			hostPort = containerPort
 		}
 	}
 
