@@ -173,7 +173,7 @@ jobs:
           if [ "$CHANGED_MCP" = "true" ]; then
             echo "Building and pushing MCP image"
             call_arcane POST "/environments/$env_id/images/build" \
-              "$(jq -nc --arg contextDir "$project_dir" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],provider:"local",push:true,load:true}')" >/dev/null
+              "$(jq -nc --arg contextDir "$project_dir" --arg cachebust "${GITHUB_SHA:0:7}" '{contextDir:$contextDir,dockerfile:"Dockerfile",tags:["ghcr.io/flatout-works/chetter-mcp:main"],buildArgs:{CACHEBUST:$cachebust},provider:"local",push:true,load:true}')" >/dev/null
           else
             echo "MCP image unchanged, skipping build"
           fi
