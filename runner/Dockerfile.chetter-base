@@ -58,6 +58,11 @@ RUN HCLOUD_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
     && tar -C /usr/local/bin -xzf /tmp/hcloud.tar.gz hcloud \
     && rm /tmp/hcloud.tar.gz && chmod +x /usr/local/bin/hcloud
 
+ARG DOCKER_VERSION=27.5.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+    | tar -C /usr/local/bin --strip-components=1 -xzf - docker/docker \
+    && chmod +x /usr/local/bin/docker
+
 # --------------------------------------------------------------------------
 # Stage 3: Final base image — all runtime packages + tooling
 # --------------------------------------------------------------------------
@@ -92,6 +97,7 @@ COPY --from=binary-downloader /usr/local/bin/sqlc /usr/local/bin/sqlc
 COPY --from=binary-downloader /usr/local/bin/osv-scanner /usr/local/bin/osv-scanner
 COPY --from=binary-downloader /usr/local/bin/gh /usr/local/bin/gh
 COPY --from=binary-downloader /usr/local/bin/hcloud /usr/local/bin/hcloud
+COPY --from=binary-downloader /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=go-tools-builder /go/bin/goose /usr/local/bin/goose
 COPY --from=go-tools-builder /go/bin/govulncheck /usr/local/bin/govulncheck
 RUN govulncheck -h && osv-scanner --version && hcloud version
