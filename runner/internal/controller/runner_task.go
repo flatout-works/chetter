@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/tools"
@@ -64,6 +65,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 	session.WorkspaceDir = wsDir
 
+	h := r.harnessFor(req.Harness)
+
 	defer func() {
 		if err := r.wsManager.Destroy(req.TaskID); err != nil {
 			slog.Warn("cleanup error", "taskID", req.TaskID, "err", err)
@@ -107,7 +110,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	if r.executionMode() == "docker" {
 		bridgeCmd = "/usr/local/bin/mcp-bridge"
 	}
-	if err := r.h.GenerateConfig(wsDir, socketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, socketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 
@@ -157,25 +160,25 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	switch r.executionMode() {
 	case "local":
-		if r.h.SupportsRpc() {
-			r.runRpcAgent(ctx, session, req, socketPath)
+		if h.SupportsRpc() {
+			r.runRpcAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		if !r.h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, socketPath)
+		if !h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		r.runLocalAgent(ctx, session, req, socketPath)
+		r.runLocalAgent(ctx, session, req, socketPath, h)
 	default:
-		if r.h.SupportsRpc() {
-			r.runRpcAgent(ctx, session, req, socketPath)
+		if h.SupportsRpc() {
+			r.runRpcAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		if !r.h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, socketPath)
+		if !h.SupportsServe() {
+			r.runBatchAgent(ctx, session, req, socketPath, h)
 			return
 		}
-		r.runDockerAgent(ctx, session, req, socketPath)
+		r.runDockerAgent(ctx, session, req, socketPath, h)
 	}
 }
 
@@ -258,7 +261,7 @@ func runcNetwork() string {
 	return "bridge"
 }
 
-func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
 	env := os.Environ()
 	for k, v := range req.Env {
 		if isRunnerOwnedEnv(k) {
@@ -273,19 +276,19 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"GIT_COMMITTER_NAME=Chetter Runner",
 		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
-		"CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
 
-	secret := r.h.ServerPassword()
+	secret := h.ServerPassword()
 	env = append(env,
 		"TASK_ID="+req.TaskID,
 		"WORKSPACE="+session.WorkspaceDir,
 		"MCP_SOCKET_PATH="+socketPath,
 	)
-	for k, v := range r.h.Env(session.WorkspaceDir, secret) {
+	for k, v := range h.Env(session.WorkspaceDir, secret) {
 		env = append(env, k+"="+v)
 	}
 	env = append(env, "HOME="+session.WorkspaceDir)
@@ -304,7 +307,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	ln.Close()
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	serveCmd := exec.CommandContext(ctx, r.h.Name(), r.h.ServeArgs(port)...)
+	serveCmd := exec.CommandContext(ctx, h.Name(), h.ServeArgs(port)...)
 	serveCmd.Dir = session.WorkspaceDir
 	serveCmd.Env = env
 	stdout, err := serveCmd.StdoutPipe()
@@ -322,8 +325,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("start opencode serve: %v", err), nil)
 		return
 	}
-	go r.h.PipeOutput(req.TaskID, "stdout", stdout)
-	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+	go h.PipeOutput(req.TaskID, "stdout", stdout)
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
 	defer func() {
 		if serveCmd.Process != nil {
@@ -332,13 +335,13 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		}
 	}()
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
+	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness serve not ready: %v", err), nil)
 		return
 	}
 	slog.Info("harness serve ready", "taskID", req.TaskID, "url", baseURL)
 
-	sid, err := r.h.CreateSession(ctx, baseURL, secret)
+	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("create session: %v", err), nil)
 		return
@@ -347,15 +350,15 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	go r.h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
+	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
+		if export, exportErr := h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
 			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
 			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
 		} else {
@@ -372,7 +375,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -391,7 +394,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	exec.Command("docker", "rm", "-f", containerName).Run()
 
-	secret := r.h.ServerPassword()
+	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
 	dockerArgs := []string{
@@ -418,13 +421,13 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
-		"-e", "CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"-e", "CHETTER_TASK_ID="+req.TaskID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
 
-	for k, v := range r.h.Env("/workspace", secret) {
+	for k, v := range h.Env("/workspace", secret) {
 		key := k
 		switch key {
 		case "OPENCODE_CONFIG":
@@ -449,7 +452,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, r.h.ServeArgs(containerPort)...)
+	dockerArgs = append(dockerArgs, h.ServeArgs(containerPort)...)
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -475,7 +478,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		}
 	}
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
+	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
 		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "logs", string(logs))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
@@ -484,7 +487,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
 
-	sid, err := r.h.CreateSession(ctx, baseURL, secret)
+	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("create session: %v", err), nil)
 		return
@@ -493,15 +496,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	go r.h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
+	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
+		if export, exportErr := h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
 			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
 			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
 		} else {
@@ -553,25 +556,25 @@ type rpcAgentState struct {
 	errorMessage  string
 }
 
-func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
+func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
 	}
 
-	args := r.h.RpcCommand(req)
+	args := h.RpcCommand(req)
 	if len(args) == 0 {
 		r.publishStatusForRequest(req, "error", "harness does not provide an RPC command", nil)
 		return
 	}
 
-	name := r.h.Name()
+	name := h.Name()
 	slog.Info("starting RPC harness", "taskID", req.TaskID, "harness", name, "args", args)
 	r.publishStatusForRequest(req, "running", "Starting agent (RPC mode)...", nil)
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = session.WorkspaceDir
-	cmd.Env = r.agentEnv(req, session.WorkspaceDir, socketPath, "")
+	cmd.Env = r.agentEnv(req, session.WorkspaceDir, socketPath, "", h)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -593,7 +596,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s: %v", name, err), nil)
 		return
 	}
-	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
 	exited := false
 	defer func() {
@@ -697,7 +700,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (rpc)", req.TaskID), "success", truncateSummary(resultText), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string) []string {
+func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string, h harness.Harness) []string {
 	env := os.Environ()
 	for k, v := range req.Env {
 		if isRunnerOwnedEnv(k) {
@@ -712,7 +715,7 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string
 		"GIT_COMMITTER_NAME=Chetter Runner",
 		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
-		"CHETTER_MODEL_ID="+r.h.ResolvedModelID(req),
+		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
@@ -721,7 +724,7 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string
 		"MCP_SOCKET_PATH="+socketPath,
 		"HOME="+wsDir,
 	)
-	for k, v := range r.h.Env(wsDir, secret) {
+	for k, v := range h.Env(wsDir, secret) {
 		env = append(env, k+"="+v)
 	}
 	return env
@@ -939,9 +942,9 @@ func writeRPCSessionExport(wsDir, export string) error {
 	return os.WriteFile(path, []byte(export), 0644)
 }
 
-func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string) {
-	args := r.h.RunBatchCommand(req)
-	name := r.h.Name()
+func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
+	args := h.RunBatchCommand(req)
+	name := h.Name()
 	slog.Info("starting batch harness", "taskID", req.TaskID, "harness", name, "args", args)
 	r.publishStatusForRequest(req, "running", "Starting agent (batch mode)...", nil)
 
@@ -964,7 +967,7 @@ func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 
-	go r.h.PipeOutput(req.TaskID, "stderr", stderr)
+	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
 	var summary string
 	readCtx, readCancel := context.WithCancel(ctx)

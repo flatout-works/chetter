@@ -104,6 +104,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		MaxMemoryMB: int(t.MaxMemoryMb),
 		MaxCPU:      int(t.MaxCpu),
 		Env:         t.Env,
+		Harness:     t.Harness,
 	}
 }
 

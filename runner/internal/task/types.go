@@ -20,11 +20,12 @@ type TaskRequest struct {
 	ProviderID  string            `json:"provider_id,omitempty"`
 	ModelID     string            `json:"model_id,omitempty"`
 	VariantID   string            `json:"variant_id,omitempty"`
-	Skills      []string          `json:"skills,omitempty"` // hints for the harness
-	TimeoutSec  int               `json:"timeout_sec"`      // default 3600
-	MaxMemoryMB int               `json:"max_memory_mb"`    // default 4096
-	MaxCPU      int               `json:"max_cpu"`          // default 2
-	Env         map[string]string `json:"env,omitempty"`    // extra env vars for harness
+	Skills      []string          `json:"skills,omitempty"`  // hints for the harness
+	Harness     string            `json:"harness,omitempty"` // per-task harness override (empty = runner default)
+	TimeoutSec  int               `json:"timeout_sec"`       // default 3600
+	MaxMemoryMB int               `json:"max_memory_mb"`     // default 4096
+	MaxCPU      int               `json:"max_cpu"`           // default 2
+	Env         map[string]string `json:"env,omitempty"`     // extra env vars for harness
 }
 
 // TaskResponse carries a task status event reported back to the control plane.

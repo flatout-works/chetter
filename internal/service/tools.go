@@ -29,6 +29,7 @@ type SubmitTaskInput struct {
 	VariantID  string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills     []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Env        map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	Harness    string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 }
 
@@ -99,6 +100,7 @@ type CreateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 }
 
@@ -123,6 +125,7 @@ type UpdateTriggerInput struct {
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 }
 
@@ -249,8 +252,8 @@ type ClearQueueOutput struct {
 
 // CreateTokenInput is the input for chetter_create_token.
 type CreateTokenInput struct {
-	TeamName string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
-	UserName string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
+	TeamName  string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
+	UserName  string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
 	TokenName string `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
 }
 
@@ -427,6 +430,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		VariantID:  in.VariantID,
 		Skills:     in.Skills,
 		Env:        in.Env,
+		Harness:    in.Harness,
 		TimeoutSec: in.TimeoutSec,
 	})
 	if err != nil {
@@ -548,8 +552,6 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		EndedAt:    store.NullTimePtr(task.EndedAt),
 	}
 }
-
-
 
 func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {
 	if in.TriggerType == "" {
@@ -1341,14 +1343,14 @@ func (s *Service) arcaneListVulnerabilitiesTool(ctx context.Context, _ *mcp.Call
 }
 
 type AuditEventFilterInput struct {
-	EventType   string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
-	SourceType  string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
-	SourceID    string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
-	TargetType  string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
-	TargetID    string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
-	Repo        string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
-	SinceHours  int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
-	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+	EventType  string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
+	SourceType string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
+	SourceID   string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
+	TargetType string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
+	TargetID   string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
+	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
 }
 
 type AuditEventRecord struct {

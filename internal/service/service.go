@@ -31,6 +31,7 @@ type SubmitTaskRequest struct {
 	ProviderID  string
 	ModelID     string
 	VariantID   string
+	Harness     string
 	Skills      []string
 	Env         map[string]string
 	TimeoutSec  int
@@ -203,7 +204,11 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
-	env, err := json.Marshal(sanitizeTaskEnv(in.Env))
+	taskEnv := sanitizeTaskEnv(in.Env)
+	if in.Harness != "" {
+		taskEnv["__chetter_harness"] = in.Harness
+	}
+	env, err := json.Marshal(taskEnv)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}

@@ -65,6 +65,7 @@ message Task {
   int32 max_cpu = 13;
   map<string, string> env = 14;
   int32 attempt = 15;
+  string harness = 16;
 }
 
 message ClaimTaskResponse {
