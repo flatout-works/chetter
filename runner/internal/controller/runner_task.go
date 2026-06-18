@@ -398,16 +398,11 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
-			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
-		} else {
-			sessionExport = export
-		}
+		sessionExport = r.captureSessionExport(ctx, req.TaskID, session.WorkspaceDir, sid, baseURL, secret)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
-		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
+		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
@@ -565,12 +560,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := r.h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
-			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
-		} else {
-			sessionExport = export
-		}
+		sessionExport = r.captureSessionExport(ctx, req.TaskID, session.WorkspaceDir, sid, baseURL, secret)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -580,6 +570,21 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("agent completed", "taskID", req.TaskID)
 	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
+}
+
+func (r *Runner) captureSessionExport(ctx context.Context, taskID, wsDir, sid, baseURL, secret string) string {
+	if export, err := r.h.ReadSessionExport(wsDir, sid); err == nil {
+		return export
+	} else {
+		slog.Warn("session export db read failed, trying HTTP API", "taskID", taskID, "err", err)
+	}
+	if apiExport, err := r.h.ExportSession(ctx, baseURL, sid, secret); err == nil {
+		return apiExport
+	} else {
+		slog.Warn("session export HTTP API also failed", "taskID", taskID, "err", err)
+		r.publishEvent(taskID, fmt.Sprintf("session export: %v", err))
+	}
+	return ""
 }
 
 func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string) {
