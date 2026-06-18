@@ -58,7 +58,7 @@ services:
       CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-}
     volumes:
-      - runner-data:/var/lib/chetter-runner
+      - /var/lib/chetter-runner-1:/var/lib/chetter-runner
       - /var/run/docker.sock:/var/run/docker.sock
 
   chetter-runner-2:
@@ -86,9 +86,7 @@ services:
       CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-""}
     volumes:
-      - runner-data-2:/var/lib/chetter-runner
+      - /var/lib/chetter-runner-2:/var/lib/chetter-runner
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
-  runner-data:
-  runner-data-2:
