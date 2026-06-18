@@ -23,23 +23,26 @@ const (
 )
 
 type RunnerInfo struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RunnerId       string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
-	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	ImageRef       string                 `protobuf:"bytes,3,opt,name=image_ref,json=imageRef,proto3" json:"image_ref,omitempty"`
-	ImageDigest    string                 `protobuf:"bytes,4,opt,name=image_digest,json=imageDigest,proto3" json:"image_digest,omitempty"`
-	Version        string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	MaxConcurrent  int32                  `protobuf:"varint,6,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
-	RunningTasks   int32                  `protobuf:"varint,7,opt,name=running_tasks,json=runningTasks,proto3" json:"running_tasks,omitempty"`
-	AvailableSlots int32                  `protobuf:"varint,8,opt,name=available_slots,json=availableSlots,proto3" json:"available_slots,omitempty"`
-	TotalStarted   int64                  `protobuf:"varint,9,opt,name=total_started,json=totalStarted,proto3" json:"total_started,omitempty"`
-	TotalCompleted int64                  `protobuf:"varint,10,opt,name=total_completed,json=totalCompleted,proto3" json:"total_completed,omitempty"`
-	TotalErrors    int64                  `protobuf:"varint,11,opt,name=total_errors,json=totalErrors,proto3" json:"total_errors,omitempty"`
-	CurrentTaskIds []string               `protobuf:"bytes,12,rep,name=current_task_ids,json=currentTaskIds,proto3" json:"current_task_ids,omitempty"`
-	ExecutionMode  string                 `protobuf:"bytes,13,opt,name=execution_mode,json=executionMode,proto3" json:"execution_mode,omitempty"`
-	StartedAt      string                 `protobuf:"bytes,14,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RunnerId          string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	Status            string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	ImageRef          string                 `protobuf:"bytes,3,opt,name=image_ref,json=imageRef,proto3" json:"image_ref,omitempty"`
+	ImageDigest       string                 `protobuf:"bytes,4,opt,name=image_digest,json=imageDigest,proto3" json:"image_digest,omitempty"`
+	Version           string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	MaxConcurrent     int32                  `protobuf:"varint,6,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	RunningTasks      int32                  `protobuf:"varint,7,opt,name=running_tasks,json=runningTasks,proto3" json:"running_tasks,omitempty"`
+	AvailableSlots    int32                  `protobuf:"varint,8,opt,name=available_slots,json=availableSlots,proto3" json:"available_slots,omitempty"`
+	TotalStarted      int64                  `protobuf:"varint,9,opt,name=total_started,json=totalStarted,proto3" json:"total_started,omitempty"`
+	TotalCompleted    int64                  `protobuf:"varint,10,opt,name=total_completed,json=totalCompleted,proto3" json:"total_completed,omitempty"`
+	TotalErrors       int64                  `protobuf:"varint,11,opt,name=total_errors,json=totalErrors,proto3" json:"total_errors,omitempty"`
+	CurrentTaskIds    []string               `protobuf:"bytes,12,rep,name=current_task_ids,json=currentTaskIds,proto3" json:"current_task_ids,omitempty"`
+	ExecutionMode     string                 `protobuf:"bytes,13,opt,name=execution_mode,json=executionMode,proto3" json:"execution_mode,omitempty"`
+	StartedAt         string                 `protobuf:"bytes,14,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	GvisorEnabled     bool                   `protobuf:"varint,15,opt,name=gvisor_enabled,json=gvisorEnabled,proto3" json:"gvisor_enabled,omitempty"`
+	CheckpointRestore bool                   `protobuf:"varint,16,opt,name=checkpoint_restore,json=checkpointRestore,proto3" json:"checkpoint_restore,omitempty"`
+	RunscVersion      string                 `protobuf:"bytes,17,opt,name=runsc_version,json=runscVersion,proto3" json:"runsc_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RunnerInfo) Reset() {
@@ -166,6 +169,27 @@ func (x *RunnerInfo) GetExecutionMode() string {
 func (x *RunnerInfo) GetStartedAt() string {
 	if x != nil {
 		return x.StartedAt
+	}
+	return ""
+}
+
+func (x *RunnerInfo) GetGvisorEnabled() bool {
+	if x != nil {
+		return x.GvisorEnabled
+	}
+	return false
+}
+
+func (x *RunnerInfo) GetCheckpointRestore() bool {
+	if x != nil {
+		return x.CheckpointRestore
+	}
+	return false
+}
+
+func (x *RunnerInfo) GetRunscVersion() string {
+	if x != nil {
+		return x.RunscVersion
 	}
 	return ""
 }
@@ -459,24 +483,27 @@ func (x *ClaimTaskRequest) GetLeaseSeconds() int32 {
 }
 
 type Task struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	TaskId         string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	AgentImage     string                 `protobuf:"bytes,2,opt,name=agent_image,json=agentImage,proto3" json:"agent_image,omitempty"`
-	Prompt         string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	GitUrl         string                 `protobuf:"bytes,4,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
-	GitRef         string                 `protobuf:"bytes,5,opt,name=git_ref,json=gitRef,proto3" json:"git_ref,omitempty"`
-	Agent          string                 `protobuf:"bytes,6,opt,name=agent,proto3" json:"agent,omitempty"`
-	ProviderId     string                 `protobuf:"bytes,7,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
-	ModelId        string                 `protobuf:"bytes,8,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	VariantId      string                 `protobuf:"bytes,9,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
-	Skills         []string               `protobuf:"bytes,10,rep,name=skills,proto3" json:"skills,omitempty"`
-	TimeoutSeconds int32                  `protobuf:"varint,11,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
-	MaxMemoryMb    int32                  `protobuf:"varint,12,opt,name=max_memory_mb,json=maxMemoryMb,proto3" json:"max_memory_mb,omitempty"`
-	MaxCpu         int32                  `protobuf:"varint,13,opt,name=max_cpu,json=maxCpu,proto3" json:"max_cpu,omitempty"`
-	Env            map[string]string      `protobuf:"bytes,14,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Attempt        int32                  `protobuf:"varint,15,opt,name=attempt,proto3" json:"attempt,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	TaskId                 string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentImage             string                 `protobuf:"bytes,2,opt,name=agent_image,json=agentImage,proto3" json:"agent_image,omitempty"`
+	Prompt                 string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	GitUrl                 string                 `protobuf:"bytes,4,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
+	GitRef                 string                 `protobuf:"bytes,5,opt,name=git_ref,json=gitRef,proto3" json:"git_ref,omitempty"`
+	Agent                  string                 `protobuf:"bytes,6,opt,name=agent,proto3" json:"agent,omitempty"`
+	ProviderId             string                 `protobuf:"bytes,7,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	ModelId                string                 `protobuf:"bytes,8,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	VariantId              string                 `protobuf:"bytes,9,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
+	Skills                 []string               `protobuf:"bytes,10,rep,name=skills,proto3" json:"skills,omitempty"`
+	TimeoutSeconds         int32                  `protobuf:"varint,11,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	MaxMemoryMb            int32                  `protobuf:"varint,12,opt,name=max_memory_mb,json=maxMemoryMb,proto3" json:"max_memory_mb,omitempty"`
+	MaxCpu                 int32                  `protobuf:"varint,13,opt,name=max_cpu,json=maxCpu,proto3" json:"max_cpu,omitempty"`
+	Env                    map[string]string      `protobuf:"bytes,14,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Attempt                int32                  `protobuf:"varint,15,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	CheckpointAfterSuccess bool                   `protobuf:"varint,16,opt,name=checkpoint_after_success,json=checkpointAfterSuccess,proto3" json:"checkpoint_after_success,omitempty"`
+	ResumeCheckpointPath   string                 `protobuf:"bytes,17,opt,name=resume_checkpoint_path,json=resumeCheckpointPath,proto3" json:"resume_checkpoint_path,omitempty"`
+	ResumeWorkspacePath    string                 `protobuf:"bytes,18,opt,name=resume_workspace_path,json=resumeWorkspacePath,proto3" json:"resume_workspace_path,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *Task) Reset() {
@@ -614,6 +641,27 @@ func (x *Task) GetAttempt() int32 {
 	return 0
 }
 
+func (x *Task) GetCheckpointAfterSuccess() bool {
+	if x != nil {
+		return x.CheckpointAfterSuccess
+	}
+	return false
+}
+
+func (x *Task) GetResumeCheckpointPath() string {
+	if x != nil {
+		return x.ResumeCheckpointPath
+	}
+	return ""
+}
+
+func (x *Task) GetResumeWorkspacePath() string {
+	if x != nil {
+		return x.ResumeWorkspacePath
+	}
+	return ""
+}
+
 type ClaimTaskResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
@@ -674,6 +722,8 @@ type TaskEvent struct {
 	EndedAt           string                 `protobuf:"bytes,12,opt,name=ended_at,json=endedAt,proto3" json:"ended_at,omitempty"`
 	PayloadJson       string                 `protobuf:"bytes,13,opt,name=payload_json,json=payloadJson,proto3" json:"payload_json,omitempty"`
 	SessionExport     string                 `protobuf:"bytes,14,opt,name=session_export,json=sessionExport,proto3" json:"session_export,omitempty"`
+	CheckpointPath    string                 `protobuf:"bytes,15,opt,name=checkpoint_path,json=checkpointPath,proto3" json:"checkpoint_path,omitempty"`
+	WorkspacePath     string                 `protobuf:"bytes,16,opt,name=workspace_path,json=workspacePath,proto3" json:"workspace_path,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -806,6 +856,20 @@ func (x *TaskEvent) GetSessionExport() string {
 	return ""
 }
 
+func (x *TaskEvent) GetCheckpointPath() string {
+	if x != nil {
+		return x.CheckpointPath
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetWorkspacePath() string {
+	if x != nil {
+		return x.WorkspacePath
+	}
+	return ""
+}
+
 type ReportTaskEventsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunnerId      string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
@@ -898,7 +962,7 @@ var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xfa\x03\n" +
+	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xf5\x04\n" +
 	"\n" +
 	"RunnerInfo\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x16\n" +
@@ -916,7 +980,10 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10current_task_ids\x18\f \x03(\tR\x0ecurrentTaskIds\x12%\n" +
 	"\x0eexecution_mode\x18\r \x01(\tR\rexecutionMode\x12\x1d\n" +
 	"\n" +
-	"started_at\x18\x0e \x01(\tR\tstartedAt\"N\n" +
+	"started_at\x18\x0e \x01(\tR\tstartedAt\x12%\n" +
+	"\x0egvisor_enabled\x18\x0f \x01(\bR\rgvisorEnabled\x12-\n" +
+	"\x12checkpoint_restore\x18\x10 \x01(\bR\x11checkpointRestore\x12#\n" +
+	"\rrunsc_version\x18\x11 \x01(\tR\frunscVersion\"N\n" +
 	"\x15RegisterRunnerRequest\x125\n" +
 	"\x06runner\x18\x01 \x01(\v2\x15.runner.v1.RunnerInfoB\x06\xbaH\x03\xc8\x01\x01R\x06runner\"\x18\n" +
 	"\x16RegisterRunnerResponse\"I\n" +
@@ -931,7 +998,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xf7\x03\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x9b\x05\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -951,12 +1018,15 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\rmax_memory_mb\x18\f \x01(\x05R\vmaxMemoryMb\x12\x17\n" +
 	"\amax_cpu\x18\r \x01(\x05R\x06maxCpu\x12*\n" +
 	"\x03env\x18\x0e \x03(\v2\x18.runner.v1.Task.EnvEntryR\x03env\x12\x18\n" +
-	"\aattempt\x18\x0f \x01(\x05R\aattempt\x1a6\n" +
+	"\aattempt\x18\x0f \x01(\x05R\aattempt\x128\n" +
+	"\x18checkpoint_after_success\x18\x10 \x01(\bR\x16checkpointAfterSuccess\x124\n" +
+	"\x16resume_checkpoint_path\x18\x11 \x01(\tR\x14resumeCheckpointPath\x122\n" +
+	"\x15resume_workspace_path\x18\x12 \x01(\tR\x13resumeWorkspacePath\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
-	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xdb\x03\n" +
+	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xab\x04\n" +
 	"\tTaskEvent\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1f\n" +
 	"\x06status\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06status\x12\x18\n" +
@@ -975,7 +1045,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"started_at\x18\v \x01(\tR\tstartedAt\x12\x19\n" +
 	"\bended_at\x18\f \x01(\tR\aendedAt\x12!\n" +
 	"\fpayload_json\x18\r \x01(\tR\vpayloadJson\x12%\n" +
-	"\x0esession_export\x18\x0e \x01(\tR\rsessionExport\"w\n" +
+	"\x0esession_export\x18\x0e \x01(\tR\rsessionExport\x12'\n" +
+	"\x0fcheckpoint_path\x18\x0f \x01(\tR\x0echeckpointPath\x12%\n" +
+	"\x0eworkspace_path\x18\x10 \x01(\tR\rworkspacePath\"w\n" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +

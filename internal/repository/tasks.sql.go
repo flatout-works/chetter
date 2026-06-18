@@ -99,15 +99,16 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const getClaimableTaskForUpdate = `-- name: GetClaimableTaskForUpdate :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success FROM chetter_tasks
 WHERE status = 'pending'
+  AND (required_runner_id IS NULL OR required_runner_id = '' OR required_runner_id = ?)
 ORDER BY created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED
 `
 
-func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context) (ChetterTask, error) {
-	row := q.db.QueryRowContext(ctx, getClaimableTaskForUpdate)
+func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.NullString) (ChetterTask, error) {
+	row := q.db.QueryRowContext(ctx, getClaimableTaskForUpdate, runnerID)
 	var i ChetterTask
 	err := row.Scan(
 		&i.ID,
@@ -143,6 +144,8 @@ func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context) (ChetterTask, e
 		&i.TriggerName,
 		&i.TriggerType,
 		&i.MaxAttempts,
+		&i.RequiredRunnerID,
+		&i.CheckpointAfterSuccess,
 	)
 	return i, err
 }
@@ -169,7 +172,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success FROM chetter_tasks
 WHERE id = ?
 `
 
@@ -210,36 +213,40 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.TriggerName,
 		&i.TriggerType,
 		&i.MaxAttempts,
+		&i.RequiredRunnerID,
+		&i.CheckpointAfterSuccess,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, checkpoint_after_success, required_runner_id, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskParams struct {
-	ID                string          `json:"id"`
-	TeamID            sql.NullString  `json:"team_id"`
-	Prompt            string          `json:"prompt"`
-	GitUrl            sql.NullString  `json:"git_url"`
-	GitRef            sql.NullString  `json:"git_ref"`
-	AgentImage        sql.NullString  `json:"agent_image"`
-	Agent             sql.NullString  `json:"agent"`
-	ProviderID        sql.NullString  `json:"provider_id"`
-	ModelID           sql.NullString  `json:"model_id"`
-	VariantID         sql.NullString  `json:"variant_id"`
-	CommitAuthorName  sql.NullString  `json:"commit_author_name"`
-	CommitAuthorEmail sql.NullString  `json:"commit_author_email"`
-	TriggerName       sql.NullString  `json:"trigger_name"`
-	TriggerType       sql.NullString  `json:"trigger_type"`
-	Skills            json.RawMessage `json:"skills"`
-	Env               json.RawMessage `json:"env"`
-	TimeoutSec        int32           `json:"timeout_sec"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
+	ID                     string          `json:"id"`
+	TeamID                 sql.NullString  `json:"team_id"`
+	Prompt                 string          `json:"prompt"`
+	GitUrl                 sql.NullString  `json:"git_url"`
+	GitRef                 sql.NullString  `json:"git_ref"`
+	AgentImage             sql.NullString  `json:"agent_image"`
+	Agent                  sql.NullString  `json:"agent"`
+	ProviderID             sql.NullString  `json:"provider_id"`
+	ModelID                sql.NullString  `json:"model_id"`
+	VariantID              sql.NullString  `json:"variant_id"`
+	CommitAuthorName       sql.NullString  `json:"commit_author_name"`
+	CommitAuthorEmail      sql.NullString  `json:"commit_author_email"`
+	TriggerName            sql.NullString  `json:"trigger_name"`
+	TriggerType            sql.NullString  `json:"trigger_type"`
+	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
+	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
+	Skills                 json.RawMessage `json:"skills"`
+	Env                    json.RawMessage `json:"env"`
+	TimeoutSec             int32           `json:"timeout_sec"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
@@ -258,6 +265,8 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.CommitAuthorEmail,
 		arg.TriggerName,
 		arg.TriggerType,
+		arg.CheckpointAfterSuccess,
+		arg.RequiredRunnerID,
 		arg.Skills,
 		arg.Env,
 		arg.TimeoutSec,
@@ -329,7 +338,7 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success FROM chetter_tasks
 WHERE (? = '' OR status = ?)
 ORDER BY created_at DESC
 LIMIT ?
@@ -383,6 +392,8 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.RequiredRunnerID,
+			&i.CheckpointAfterSuccess,
 		); err != nil {
 			return nil, err
 		}
@@ -398,7 +409,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success FROM chetter_tasks
 WHERE team_id = ?
   AND (? = '' OR status = ?)
 ORDER BY created_at DESC
@@ -459,6 +470,8 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.RequiredRunnerID,
+			&i.CheckpointAfterSuccess,
 		); err != nil {
 			return nil, err
 		}

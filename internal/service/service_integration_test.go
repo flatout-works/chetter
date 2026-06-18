@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/repository"
@@ -75,6 +77,26 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	if row.TimeoutSec != 600 {
 		t.Errorf("timeout_sec: %d", row.TimeoutSec)
 	}
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	if run.Status != "pending" {
+		t.Errorf("session run status: %s", run.Status)
+	}
+	if run.TaskID != rec.ID {
+		t.Errorf("session run task_id: %s", run.TaskID)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get agent session: %v", err)
+	}
+	if session.Status != "running" {
+		t.Errorf("agent session status: %s", session.Status)
+	}
+	if session.ResumeMode != "none" {
+		t.Errorf("agent session resume_mode: %s", session.ResumeMode)
+	}
 }
 
 func TestSubmitTaskRejectsMissingPrompt(t *testing.T) {
@@ -98,6 +120,161 @@ func TestSubmitTaskAppliesDefaultAgentImage(t *testing.T) {
 	}
 	if rec.AgentImage != "runner:latest" {
 		t.Errorf("default agent_image not applied: %s", rec.AgentImage)
+	}
+}
+
+func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "x", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0})); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:            rec.ID,
+			Status:            "done",
+			Summary:           "finished",
+			OpencodeSessionId: "opencode-session-1",
+			SessionExport:     "export",
+			EndedAt:           endedAt,
+		}},
+	})); err != nil {
+		t.Fatalf("report terminal event: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	if run.Status != "completed" {
+		t.Fatalf("session run status = %s, want completed", run.Status)
+	}
+	if run.Summary.String != "finished" {
+		t.Fatalf("session run summary = %q", run.Summary.String)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get agent session: %v", err)
+	}
+	if session.Status != "completed" {
+		t.Fatalf("agent session status = %s, want completed", session.Status)
+	}
+	if session.HarnessSessionID.String != "opencode-session-1" {
+		t.Fatalf("harness session id = %q", session.HarnessSessionID.String)
+	}
+}
+
+func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "write code",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+		PauseReason: "waiting_for_pr_feedback",
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+	task, err := q.GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if !task.CheckpointAfterSuccess {
+		t.Fatal("expected checkpoint_after_success=true for resumable session")
+	}
+
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	if run.Status != "pending" {
+		t.Fatalf("run status = %s, want pending", run.Status)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get agent session: %v", err)
+	}
+	if session.ResumeMode != "gvisor_checkpoint" {
+		t.Fatalf("resume_mode = %s, want gvisor_checkpoint", session.ResumeMode)
+	}
+	if session.PauseReason.String != "waiting_for_pr_feedback" {
+		t.Fatalf("pause_reason = %s, want waiting_for_pr_feedback", session.PauseReason.String)
+	}
+
+	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0})); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         rec.ID,
+			Status:         "done",
+			Summary:        "created PR",
+			EndedAt:        endedAt,
+			CheckpointPath: "/var/lib/docker/containers/chetter-task-" + rec.ID + "/checkpoints/cp1",
+			WorkspacePath:  "/var/lib/runner/" + rec.ID + "/workspace",
+		}},
+	})); err != nil {
+		t.Fatalf("report terminal event: %v", err)
+	}
+
+	run, err = q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	if run.Status != "completed" {
+		t.Fatalf("session run status = %s, want completed", run.Status)
+	}
+
+	session, err = q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get agent session: %v", err)
+	}
+	if session.Status != "paused_waiting_review" {
+		t.Fatalf("agent session status = %s, want paused_waiting_review", session.Status)
+	}
+	if session.PinnedRunnerID.String != "runner_1" {
+		t.Fatalf("pinned_runner_id = %s, want runner_1", session.PinnedRunnerID.String)
+	}
+	if session.WorkspacePath.String != "/var/lib/runner/"+rec.ID+"/workspace" {
+		t.Fatalf("workspace_path = %s", session.WorkspacePath.String)
+	}
+	if session.CheckpointID.String == "" {
+		t.Fatal("expected checkpoint_id to be set")
+	}
+
+	chk, err := q.GetLatestAgentSessionCheckpoint(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get checkpoint: %v", err)
+	}
+	if chk.Status != "ready" {
+		t.Fatalf("checkpoint status = %s, want ready", chk.Status)
+	}
+	if chk.RunnerID != "runner_1" {
+		t.Fatalf("checkpoint runner_id = %s, want runner_1", chk.RunnerID)
+	}
+	if chk.CheckpointPath != "/var/lib/docker/containers/chetter-task-"+rec.ID+"/checkpoints/cp1" {
+		t.Fatalf("checkpoint_path = %s", chk.CheckpointPath)
+	}
+	if chk.WorkspacePath != "/var/lib/runner/"+rec.ID+"/workspace" {
+		t.Fatalf("checkpoint workspace_path = %s", chk.WorkspacePath)
 	}
 }
 

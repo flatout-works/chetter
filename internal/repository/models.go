@@ -19,6 +19,50 @@ type ApiToken struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type ChetterAgentSession struct {
+	ID               string         `json:"id"`
+	TeamID           sql.NullString `json:"team_id"`
+	Status           string         `json:"status"`
+	ResumeMode       string         `json:"resume_mode"`
+	PinnedRunnerID   sql.NullString `json:"pinned_runner_id"`
+	PinnedRunnerName sql.NullString `json:"pinned_runner_name"`
+	CheckpointID     sql.NullString `json:"checkpoint_id"`
+	WorkspacePath    sql.NullString `json:"workspace_path"`
+	ContainerName    sql.NullString `json:"container_name"`
+	HarnessSessionID sql.NullString `json:"harness_session_id"`
+	GitUrl           sql.NullString `json:"git_url"`
+	GitRef           sql.NullString `json:"git_ref"`
+	AgentImage       sql.NullString `json:"agent_image"`
+	Agent            sql.NullString `json:"agent"`
+	ProviderID       sql.NullString `json:"provider_id"`
+	ModelID          sql.NullString `json:"model_id"`
+	VariantID        sql.NullString `json:"variant_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	PausedAt         sql.NullTime   `json:"paused_at"`
+	ExpiresAt        sql.NullTime   `json:"expires_at"`
+	PauseReason      sql.NullString `json:"pause_reason"`
+	Error            sql.NullString `json:"error"`
+}
+
+type ChetterAgentSessionCheckpoint struct {
+	ID             string         `json:"id"`
+	AgentSessionID string         `json:"agent_session_id"`
+	SessionRunID   sql.NullString `json:"session_run_id"`
+	RunnerID       string         `json:"runner_id"`
+	CheckpointPath string         `json:"checkpoint_path"`
+	WorkspacePath  string         `json:"workspace_path"`
+	ContainerName  sql.NullString `json:"container_name"`
+	RunscVersion   sql.NullString `json:"runsc_version"`
+	AgentImage     sql.NullString `json:"agent_image"`
+	SizeBytes      int64          `json:"size_bytes"`
+	Status         string         `json:"status"`
+	Error          sql.NullString `json:"error"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	ExpiresAt      sql.NullTime   `json:"expires_at"`
+}
+
 type ChetterAuditLog struct {
 	ID               string           `json:"id"`
 	EventType        string           `json:"event_type"`
@@ -89,40 +133,58 @@ type ChetterScheduleRun struct {
 	TeamID       sql.NullString `json:"team_id"`
 }
 
+type ChetterSessionRun struct {
+	ID               string         `json:"id"`
+	AgentSessionID   string         `json:"agent_session_id"`
+	TaskID           string         `json:"task_id"`
+	Status           string         `json:"status"`
+	Prompt           string         `json:"prompt"`
+	RequiredRunnerID sql.NullString `json:"required_runner_id"`
+	Summary          sql.NullString `json:"summary"`
+	Error            sql.NullString `json:"error"`
+	SessionExport    sql.NullString `json:"session_export"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	StartedAt        sql.NullTime   `json:"started_at"`
+	EndedAt          sql.NullTime   `json:"ended_at"`
+}
+
 type ChetterTask struct {
-	ID                string          `json:"id"`
-	Status            string          `json:"status"`
-	Prompt            string          `json:"prompt"`
-	GitUrl            sql.NullString  `json:"git_url"`
-	GitRef            sql.NullString  `json:"git_ref"`
-	AgentImage        sql.NullString  `json:"agent_image"`
-	Agent             sql.NullString  `json:"agent"`
-	ProviderID        sql.NullString  `json:"provider_id"`
-	ModelID           sql.NullString  `json:"model_id"`
-	VariantID         sql.NullString  `json:"variant_id"`
-	OpencodeSessionID sql.NullString  `json:"opencode_session_id"`
-	RunnerImageDigest sql.NullString  `json:"runner_image_digest"`
-	CommitAuthorName  sql.NullString  `json:"commit_author_name"`
-	CommitAuthorEmail sql.NullString  `json:"commit_author_email"`
-	RunnerID          sql.NullString  `json:"runner_id"`
-	ClaimedAt         sql.NullTime    `json:"claimed_at"`
-	LeaseExpiresAt    sql.NullTime    `json:"lease_expires_at"`
-	Attempt           int32           `json:"attempt"`
-	Skills            json.RawMessage `json:"skills"`
-	Env               json.RawMessage `json:"env"`
-	TimeoutSec        int32           `json:"timeout_sec"`
-	Summary           sql.NullString  `json:"summary"`
-	Error             sql.NullString  `json:"error"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
-	LastEventAt       sql.NullTime    `json:"last_event_at"`
-	StartedAt         sql.NullTime    `json:"started_at"`
-	EndedAt           sql.NullTime    `json:"ended_at"`
-	TeamID            sql.NullString  `json:"team_id"`
-	SessionExport     sql.NullString  `json:"session_export"`
-	TriggerName       sql.NullString  `json:"trigger_name"`
-	TriggerType       sql.NullString  `json:"trigger_type"`
-	MaxAttempts       int32           `json:"max_attempts"`
+	ID                     string          `json:"id"`
+	Status                 string          `json:"status"`
+	Prompt                 string          `json:"prompt"`
+	GitUrl                 sql.NullString  `json:"git_url"`
+	GitRef                 sql.NullString  `json:"git_ref"`
+	AgentImage             sql.NullString  `json:"agent_image"`
+	Agent                  sql.NullString  `json:"agent"`
+	ProviderID             sql.NullString  `json:"provider_id"`
+	ModelID                sql.NullString  `json:"model_id"`
+	VariantID              sql.NullString  `json:"variant_id"`
+	OpencodeSessionID      sql.NullString  `json:"opencode_session_id"`
+	RunnerImageDigest      sql.NullString  `json:"runner_image_digest"`
+	CommitAuthorName       sql.NullString  `json:"commit_author_name"`
+	CommitAuthorEmail      sql.NullString  `json:"commit_author_email"`
+	RunnerID               sql.NullString  `json:"runner_id"`
+	ClaimedAt              sql.NullTime    `json:"claimed_at"`
+	LeaseExpiresAt         sql.NullTime    `json:"lease_expires_at"`
+	Attempt                int32           `json:"attempt"`
+	Skills                 json.RawMessage `json:"skills"`
+	Env                    json.RawMessage `json:"env"`
+	TimeoutSec             int32           `json:"timeout_sec"`
+	Summary                sql.NullString  `json:"summary"`
+	Error                  sql.NullString  `json:"error"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
+	LastEventAt            sql.NullTime    `json:"last_event_at"`
+	StartedAt              sql.NullTime    `json:"started_at"`
+	EndedAt                sql.NullTime    `json:"ended_at"`
+	TeamID                 sql.NullString  `json:"team_id"`
+	SessionExport          sql.NullString  `json:"session_export"`
+	TriggerName            sql.NullString  `json:"trigger_name"`
+	TriggerType            sql.NullString  `json:"trigger_type"`
+	MaxAttempts            int32           `json:"max_attempts"`
+	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
+	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
 }
 
 type ChetterTaskArtifact struct {
@@ -137,6 +199,8 @@ type ChetterTaskArtifact struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	DiscoveredAt    time.Time      `json:"discovered_at"`
 	DiscoverySource string         `json:"discovery_source"`
+	AgentSessionID  sql.NullString `json:"agent_session_id"`
+	SessionRunID    sql.NullString `json:"session_run_id"`
 }
 
 type ChetterTaskEvent struct {

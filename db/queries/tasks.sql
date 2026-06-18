@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, checkpoint_after_success, required_runner_id, skills, env, timeout_sec, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks
@@ -16,6 +16,7 @@ LIMIT ?;
 -- name: GetClaimableTaskForUpdate :one
 SELECT * FROM chetter_tasks
 WHERE status = 'pending'
+  AND (required_runner_id IS NULL OR required_runner_id = '' OR required_runner_id = sqlc.arg(runner_id))
 ORDER BY created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED;

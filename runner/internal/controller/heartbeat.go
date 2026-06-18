@@ -78,21 +78,32 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	}
 	r.mu.Unlock()
 
+	gvisorEnabled := r.cfg.Execution.UseGVisor
+	checkpointRestore := false
+	runscVersion := ""
+	if gvisorEnabled {
+		checkpointRestore = true
+		runscVersion = firstEnv("RUNSC_VERSION")
+	}
+
 	return &runnerv1.RunnerInfo{
-		RunnerId:       r.runnerID,
-		Status:         status,
-		ImageRef:       firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
-		ImageDigest:    firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
-		Version:        firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
-		MaxConcurrent:  int32(maxConcurrent),
-		RunningTasks:   int32(len(taskIDs)),
-		AvailableSlots: int32(availableSlots),
-		TotalStarted:   totalStarted,
-		TotalCompleted: totalCompleted,
-		TotalErrors:    totalErrors,
-		CurrentTaskIds: taskIDs,
-		ExecutionMode:  r.executionMode(),
-		StartedAt:      formatProtoTime(r.startedAt),
+		RunnerId:          r.runnerID,
+		Status:            status,
+		ImageRef:          firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
+		ImageDigest:       firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
+		Version:           firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
+		MaxConcurrent:     int32(maxConcurrent),
+		RunningTasks:      int32(len(taskIDs)),
+		AvailableSlots:    int32(availableSlots),
+		TotalStarted:      totalStarted,
+		TotalCompleted:    totalCompleted,
+		TotalErrors:       totalErrors,
+		CurrentTaskIds:    taskIDs,
+		ExecutionMode:     r.executionMode(),
+		StartedAt:         formatProtoTime(r.startedAt),
+		GvisorEnabled:     gvisorEnabled,
+		CheckpointRestore: checkpointRestore,
+		RunscVersion:      runscVersion,
 	}
 }
 

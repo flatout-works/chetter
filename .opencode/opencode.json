@@ -24,6 +24,10 @@
     "chetter-export": {
       "description": "Get the session export (markdown transcript) for a completed Chetter task.",
       "template": "Ask for the task ID if not provided. Use chetter_task_export with the given ID. Return the full export markdown to the user. If no export is available, explain that the task may not have completed or the export failed."
+    },
+    "chetter-sessions": {
+      "description": "List recent Chetter agent sessions and their runs.",
+      "template": "Run chetter_list_agent_sessions with limit=20. Summarize sessions by status and resume_mode. For any paused or errored session, call chetter_agent_session_status and show its runs, pinned runner, checkpoint, and latest error. Keep output concise."
     }
   },
   "mcp": {

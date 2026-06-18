@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -16,10 +17,10 @@ import (
 )
 
 const (
-	defaultClaimWaitSec = 30
-	defaultTaskLeaseSec = 60
-	claimPollInterval   = time.Second
-	runnerEventSubject  = "connect.runner"
+	defaultClaimWaitSec       = 30
+	defaultTaskLeaseSec       = 60
+	claimPollInterval         = time.Second
+	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
 )
 
@@ -80,7 +81,18 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 	for {
 		task, err := s.claimOnce(ctx, req.Msg.RunnerId, time.Duration(leaseSec)*time.Second)
 		if err == nil {
-			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: taskToProto(task)}), nil
+			resumeCheckpointPath := ""
+			resumeWorkspacePath := ""
+			if task.CheckpointAfterSuccess && task.RequiredRunnerID.Valid {
+				chk, chkErr := s.db.GetLatestAgentSessionCheckpointByTaskID(ctx, task.ID)
+				if chkErr == nil && chk.Status == "ready" {
+					resumeCheckpointPath = chk.CheckpointPath
+					resumeWorkspacePath = chk.WorkspacePath
+				}
+			}
+			return connect.NewResponse(&runnerv1.ClaimTaskResponse{
+				Task: taskToProto(task, resumeCheckpointPath, resumeWorkspacePath),
+			}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
 			return nil, connect.NewError(connect.CodeInternal, err)
@@ -205,7 +217,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	}
 	var claimed repository.ChetterTask
 	err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
-		task, err := q.GetClaimableTaskForUpdate(ctx)
+		task, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoClaimableTask
 		}
@@ -227,6 +239,13 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}
 		if rows == 0 {
 			return errNoClaimableTask
+		}
+		if _, err := q.MarkSessionRunRunningByTask(ctx, repository.MarkSessionRunRunningByTaskParams{
+			StartedAt: sql.NullTime{Time: now, Valid: true},
+			UpdatedAt: now,
+			TaskID:    task.ID,
+		}); err != nil {
+			return err
 		}
 		task.Status = "running"
 		task.RunnerID = nullString(runnerID)
@@ -303,10 +322,77 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		if rows == 0 {
 			return errTaskNotClaimed
 		}
-		if skipEventRow {
-			return nil
+		if terminalRunStatus, terminalSessionStatus, ok := sessionTerminalStatuses(status); ok {
+			startedAt := parseOptionalTime(event.StartedAt)
+			endedAt := parseOptionalTime(event.EndedAt)
+			if !endedAt.Valid {
+				endedAt = sql.NullTime{Time: now, Valid: true}
+			}
+			if _, err := q.MarkSessionRunTerminalByTask(ctx, repository.MarkSessionRunTerminalByTaskParams{
+				Status:        terminalRunStatus,
+				Summary:       nullString(event.Summary),
+				Error:         nullString(event.Error),
+				SessionExport: nullString(event.SessionExport),
+				StartedAt:     startedAt,
+				EndedAt:       endedAt,
+				UpdatedAt:     now,
+				TaskID:        event.TaskId,
+			}); err != nil {
+				return err
+			}
+
+			sessionStatus := terminalSessionStatus
+			if terminalSessionStatus == "completed" && event.CheckpointPath != "" && event.WorkspacePath != "" {
+				var session repository.ChetterAgentSession
+				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil && session.ResumeMode == "gvisor_checkpoint" {
+					chkID, _ := randomID("chk")
+					containerName := "chetter-task-" + event.TaskId
+					if err := q.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
+						ID:             chkID,
+						AgentSessionID: session.ID,
+						RunnerID:       runnerID,
+						CheckpointPath: event.CheckpointPath,
+						WorkspacePath:  event.WorkspacePath,
+						ContainerName:  nullString(containerName),
+						Status:         "ready",
+						CreatedAt:      now,
+						UpdatedAt:      now,
+					}); err != nil {
+						return err
+					}
+					if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
+						Status:         "paused_waiting_review",
+						PinnedRunnerID: nullString(runnerID),
+						CheckpointID:   nullString(chkID),
+						WorkspacePath:  nullString(event.WorkspacePath),
+						ContainerName:  nullString(containerName),
+						PausedAt:       sql.NullTime{Time: now, Valid: true},
+						UpdatedAt:      now,
+						TaskID:         event.TaskId,
+					}); err != nil {
+						return err
+					}
+					slog.Info("agent session paused with checkpoint", "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
+					sessionStatus = ""
+				}
+			}
+
+			if sessionStatus != "" {
+				if _, err := q.MarkAgentSessionTerminalByTask(ctx, repository.MarkAgentSessionTerminalByTaskParams{
+					Status:           sessionStatus,
+					HarnessSessionID: event.OpencodeSessionId,
+					Error:            nullString(event.Error),
+					UpdatedAt:        now,
+					TaskID:           event.TaskId,
+				}); err != nil {
+					return err
+				}
+			}
 		}
-		return q.InsertTaskEvent(ctx, eventInsert)
+		if !skipEventRow {
+			return q.InsertTaskEvent(ctx, eventInsert)
+		}
+		return nil
 	})
 	if errors.Is(err, errTaskNotClaimed) {
 		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("task is not running for runner %s", runnerID))
@@ -317,27 +403,43 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	return nil
 }
 
-func taskToProto(task repository.ChetterTask) *runnerv1.Task {
+func sessionTerminalStatuses(taskStatus string) (runStatus, sessionStatus string, ok bool) {
+	switch taskStatus {
+	case "done", "completed":
+		return "completed", "completed", true
+	case "error":
+		return "failed", "error", true
+	case "cancelled":
+		return "cancelled", "error", true
+	default:
+		return "", "", false
+	}
+}
+
+func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
 	var skills []string
 	_ = json.Unmarshal(task.Skills, &skills)
 	env := map[string]string{}
 	_ = json.Unmarshal(task.Env, &env)
 	return &runnerv1.Task{
-		TaskId:         task.ID,
-		AgentImage:     task.AgentImage.String,
-		Prompt:         task.Prompt,
-		GitUrl:         task.GitUrl.String,
-		GitRef:         task.GitRef.String,
-		Agent:          task.Agent.String,
-		ProviderId:     task.ProviderID.String,
-		ModelId:        task.ModelID.String,
-		VariantId:      task.VariantID.String,
-		Skills:         skills,
-		TimeoutSeconds: task.TimeoutSec,
-		MaxMemoryMb:    defaultMaxMemoryMB,
-		MaxCpu:         defaultMaxCPU,
-		Env:            env,
-		Attempt:        task.Attempt,
+		TaskId:                 task.ID,
+		AgentImage:             task.AgentImage.String,
+		Prompt:                 task.Prompt,
+		GitUrl:                 task.GitUrl.String,
+		GitRef:                 task.GitRef.String,
+		Agent:                  task.Agent.String,
+		ProviderId:             task.ProviderID.String,
+		ModelId:                task.ModelID.String,
+		VariantId:              task.VariantID.String,
+		Skills:                 skills,
+		TimeoutSeconds:         task.TimeoutSec,
+		MaxMemoryMb:            defaultMaxMemoryMB,
+		MaxCpu:                 defaultMaxCPU,
+		Env:                    env,
+		Attempt:                task.Attempt,
+		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
+		ResumeCheckpointPath:   resumeCheckpointPath,
+		ResumeWorkspacePath:    resumeWorkspacePath,
 	}
 }
 

@@ -10,27 +10,30 @@ import (
 
 // TaskRequest is a task claimed from the control plane to spawn a new agent session.
 type TaskRequest struct {
-	TaskID      string            `json:"task_id"`
-	AgentImage  string            `json:"agent_image"`       // e.g. "ghcr.io/opencode-ai/opencode:latest"
-	Prompt      string            `json:"prompt,omitempty"`  // the actual task instruction for the harness
-	Command     []string          `json:"command,omitempty"` // optional command override for the agent image
-	GitURL      string            `json:"git_url,omitempty"` // optional: clone before starting
-	GitRef      string            `json:"git_ref,omitempty"` // branch/tag/commit
-	Agent       string            `json:"agent,omitempty"`   // optional OpenCode agent name
-	ProviderID  string            `json:"provider_id,omitempty"`
-	ModelID     string            `json:"model_id,omitempty"`
-	VariantID   string            `json:"variant_id,omitempty"`
-	Skills      []string          `json:"skills,omitempty"` // hints for the harness
-	TimeoutSec  int               `json:"timeout_sec"`      // default 3600
-	MaxMemoryMB int               `json:"max_memory_mb"`    // default 4096
-	MaxCPU      int               `json:"max_cpu"`          // default 2
-	Env         map[string]string `json:"env,omitempty"`    // extra env vars for harness
+	TaskID                 string            `json:"task_id"`
+	AgentImage             string            `json:"agent_image"`
+	Prompt                 string            `json:"prompt,omitempty"`
+	Command                []string          `json:"command,omitempty"`
+	GitURL                 string            `json:"git_url,omitempty"`
+	GitRef                 string            `json:"git_ref,omitempty"`
+	Agent                  string            `json:"agent,omitempty"`
+	ProviderID             string            `json:"provider_id,omitempty"`
+	ModelID                string            `json:"model_id,omitempty"`
+	VariantID              string            `json:"variant_id,omitempty"`
+	Skills                 []string          `json:"skills,omitempty"`
+	TimeoutSec             int               `json:"timeout_sec"`
+	MaxMemoryMB            int               `json:"max_memory_mb"`
+	MaxCPU                 int               `json:"max_cpu"`
+	Env                    map[string]string `json:"env,omitempty"`
+	CheckpointAfterSuccess bool              `json:"checkpoint_after_success,omitempty"`
+	ResumeCheckpointPath   string            `json:"resume_checkpoint_path,omitempty"`
+	ResumeWorkspacePath    string            `json:"resume_workspace_path,omitempty"`
 }
 
 // TaskResponse carries a task status event reported back to the control plane.
 type TaskResponse struct {
 	TaskID            string    `json:"task_id"`
-	Status            string    `json:"status"` // pending, running, done, error, cancelled
+	Status            string    `json:"status"`
 	Summary           string    `json:"summary,omitempty"`
 	Error             string    `json:"error,omitempty"`
 	Artifacts         []string  `json:"artifacts,omitempty"`
@@ -42,6 +45,8 @@ type TaskResponse struct {
 	SessionExport     string    `json:"session_export,omitempty"`
 	StartedAt         time.Time `json:"started_at,omitempty"`
 	EndedAt           time.Time `json:"ended_at,omitempty"`
+	CheckpointPath    string    `json:"checkpoint_path,omitempty"`
+	WorkspacePath     string    `json:"workspace_path,omitempty"`
 }
 
 // TaskSession represents one running task inside the runner.

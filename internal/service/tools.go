@@ -19,17 +19,20 @@ import (
 
 // SubmitTaskInput is the input for chetter_submit_task.
 type SubmitTaskInput struct {
-	Prompt     string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
-	GitURL     string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
-	GitRef     string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
-	AgentImage string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
-	Agent      string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
-	ProviderID string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
-	ModelID    string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
-	VariantID  string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
-	Skills     []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	Env        map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
-	TimeoutSec int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	Prompt      string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
+	GitURL      string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
+	GitRef      string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	AgentImage  string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
+	Agent       string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
+	ProviderID  string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
+	ModelID     string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
+	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
+	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
+	PauseReason string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
+	TTLHours    int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 }
 
 // SubmitTaskOutput is the output for chetter_submit_task.
@@ -100,6 +103,9 @@ type CreateTriggerInput struct {
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
+	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
+	TTLHours    int      `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 }
 
 // CreateTriggerOutput is the output for chetter_create_trigger.
@@ -124,6 +130,9 @@ type UpdateTriggerInput struct {
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
+	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
+	TTLHours    int      `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 }
 
 // UpdateTriggerOutput is the output for chetter_update_trigger.
@@ -249,8 +258,8 @@ type ClearQueueOutput struct {
 
 // CreateTokenInput is the input for chetter_create_token.
 type CreateTokenInput struct {
-	TeamName string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
-	UserName string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
+	TeamName  string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
+	UserName  string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
 	TokenName string `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
 }
 
@@ -379,11 +388,80 @@ type TaskExportOutput struct {
 	Export string `json:"export"`
 }
 
+type ListAgentSessionsInput struct {
+	Status string `json:"status,omitempty" jsonschema:"Optional agent session status filter"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum sessions to return, capped at 100"`
+}
+
+type AgentSessionRecord struct {
+	ID               string     `json:"id"`
+	TeamID           string     `json:"team_id,omitempty"`
+	Status           string     `json:"status"`
+	ResumeMode       string     `json:"resume_mode"`
+	PinnedRunnerID   string     `json:"pinned_runner_id,omitempty"`
+	CheckpointID     string     `json:"checkpoint_id,omitempty"`
+	HarnessSessionID string     `json:"harness_session_id,omitempty"`
+	GitURL           string     `json:"git_url,omitempty"`
+	GitRef           string     `json:"git_ref,omitempty"`
+	AgentImage       string     `json:"agent_image,omitempty"`
+	Agent            string     `json:"agent,omitempty"`
+	ProviderID       string     `json:"provider_id,omitempty"`
+	ModelID          string     `json:"model_id,omitempty"`
+	VariantID        string     `json:"variant_id,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	PausedAt         *time.Time `json:"paused_at,omitempty"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	PauseReason      string     `json:"pause_reason,omitempty"`
+	Error            string     `json:"error,omitempty"`
+}
+
+type SessionRunRecord struct {
+	ID               string     `json:"id"`
+	AgentSessionID   string     `json:"agent_session_id"`
+	TaskID           string     `json:"task_id"`
+	Status           string     `json:"status"`
+	RequiredRunnerID string     `json:"required_runner_id,omitempty"`
+	Summary          string     `json:"summary,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	EndedAt          *time.Time `json:"ended_at,omitempty"`
+}
+
+type ListAgentSessionsOutput struct {
+	Sessions []AgentSessionRecord `json:"sessions"`
+}
+
+type AgentSessionStatusInput struct {
+	SessionID string `json:"session_id" jsonschema:"Agent session identifier"`
+}
+
+type AgentSessionStatusOutput struct {
+	Session AgentSessionRecord `json:"session"`
+	Runs    []SessionRunRecord `json:"runs"`
+}
+
+type ResumeAgentSessionInput struct {
+	SessionID  string `json:"session_id" jsonschema:"Agent session identifier to resume"`
+	Prompt     string `json:"prompt" jsonschema:"Follow-up prompt for the resumed agent"`
+	TimeoutSec int    `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+}
+
+type ResumeAgentSessionOutput struct {
+	Task TaskToolRecord   `json:"task"`
+	Run  SessionRunRecord `json:"run"`
+}
+
 // RegisterTools registers chetter MCP tools.
 func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_status", Description: "Get current status and result details for a chetter task."}, svc.taskStatusTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tasks", Description: "List recent chetter tasks, optionally filtered by status."}, svc.listTasksTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_agent_sessions", Description: "List recent chetter agent sessions, optionally filtered by status."}, svc.listAgentSessionsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its session runs."}, svc.agentSessionStatusTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_resume_agent_session", Description: "Resume a paused agent session with a follow-up prompt."}, svc.resumeAgentSessionTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron schedule or PR review webhook)."}, svc.createTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_trigger", Description: "Update a trigger by name. Only provided fields are changed."}, svc.updateTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_triggers", Description: "List triggers, optionally filtered by type and enabled status."}, svc.listTriggersTool)
@@ -417,17 +495,20 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     in.Prompt,
-		GitURL:     in.GitURL,
-		GitRef:     in.GitRef,
-		AgentImage: in.AgentImage,
-		Agent:      in.Agent,
-		ProviderID: in.ProviderID,
-		ModelID:    in.ModelID,
-		VariantID:  in.VariantID,
-		Skills:     in.Skills,
-		Env:        in.Env,
-		TimeoutSec: in.TimeoutSec,
+		Prompt:      in.Prompt,
+		GitURL:      in.GitURL,
+		GitRef:      in.GitRef,
+		AgentImage:  in.AgentImage,
+		Agent:       in.Agent,
+		ProviderID:  in.ProviderID,
+		ModelID:     in.ModelID,
+		VariantID:   in.VariantID,
+		Skills:      in.Skills,
+		Env:         in.Env,
+		TimeoutSec:  in.TimeoutSec,
+		SessionMode: in.SessionMode,
+		PauseReason: in.PauseReason,
+		TTLHours:    in.TTLHours,
 	})
 	if err != nil {
 		return nil, SubmitTaskOutput{}, fmt.Errorf("submit task: %w", err)
@@ -488,11 +569,116 @@ func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 	return nil, ListTasksOutput{Tasks: out}, nil
 }
 
+func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {
+	scope, scoped := auth.GetScope(ctx)
+	teamID := sql.NullString{String: "", Valid: true}
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		teamID = sql.NullString{String: scope.TeamID, Valid: true}
+	}
+	rows, err := s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
+		TeamFilter:   teamID,
+		StatusFilter: in.Status,
+		Limit:        clampListLimit(in.Limit),
+	})
+	if err != nil {
+		return nil, ListAgentSessionsOutput{}, fmt.Errorf("list agent sessions: %w", err)
+	}
+	out := make([]AgentSessionRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, agentSessionRecord(row))
+	}
+	return nil, ListAgentSessionsOutput{Sessions: out}, nil
+}
+
+func (s *Service) agentSessionStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in AgentSessionStatusInput) (*mcp.CallToolResult, AgentSessionStatusOutput, error) {
+	if in.SessionID == "" {
+		return nil, AgentSessionStatusOutput{}, fmt.Errorf("session_id is required")
+	}
+	session, err := s.repo.GetAgentSessionByID(ctx, in.SessionID)
+	if err != nil {
+		return nil, AgentSessionStatusOutput{}, fmt.Errorf("get agent session: %w", err)
+	}
+	if scope, scoped := auth.GetScope(ctx); scoped && !scope.Admin && scope.TeamID != "" && session.TeamID.String != scope.TeamID {
+		return nil, AgentSessionStatusOutput{}, fmt.Errorf("agent session not found")
+	}
+	runs, err := s.repo.ListSessionRunsBySession(ctx, in.SessionID)
+	if err != nil {
+		return nil, AgentSessionStatusOutput{}, fmt.Errorf("list session runs: %w", err)
+	}
+	outRuns := make([]SessionRunRecord, 0, len(runs))
+	for _, run := range runs {
+		outRuns = append(outRuns, sessionRunRecord(run))
+	}
+	return nil, AgentSessionStatusOutput{Session: agentSessionRecord(session), Runs: outRuns}, nil
+}
+
+func (s *Service) resumeAgentSessionTool(ctx context.Context, _ *mcp.CallToolRequest, in ResumeAgentSessionInput) (*mcp.CallToolResult, ResumeAgentSessionOutput, error) {
+	if in.SessionID == "" {
+		return nil, ResumeAgentSessionOutput{}, fmt.Errorf("session_id is required")
+	}
+	if in.Prompt == "" {
+		return nil, ResumeAgentSessionOutput{}, fmt.Errorf("prompt is required")
+	}
+	out, err := s.ResumeAgentSession(ctx, in.SessionID, in.Prompt, in.TimeoutSec)
+	if err != nil {
+		return nil, ResumeAgentSessionOutput{}, err
+	}
+	return nil, out, nil
+}
+
 func clampListLimit(limit int) int32 {
 	if limit <= 0 || limit > 100 {
 		return 20
 	}
 	return int32(limit)
+}
+
+func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionRecord {
+	return AgentSessionRecord{
+		ID:               session.ID,
+		TeamID:           session.TeamID.String,
+		Status:           session.Status,
+		ResumeMode:       session.ResumeMode,
+		PinnedRunnerID:   session.PinnedRunnerID.String,
+		CheckpointID:     session.CheckpointID.String,
+		HarnessSessionID: session.HarnessSessionID.String,
+		GitURL:           session.GitUrl.String,
+		GitRef:           session.GitRef.String,
+		AgentImage:       session.AgentImage.String,
+		Agent:            session.Agent.String,
+		ProviderID:       session.ProviderID.String,
+		ModelID:          session.ModelID.String,
+		VariantID:        session.VariantID.String,
+		CreatedAt:        session.CreatedAt,
+		UpdatedAt:        session.UpdatedAt,
+		PausedAt:         nullTimePtr(session.PausedAt),
+		ExpiresAt:        nullTimePtr(session.ExpiresAt),
+		PauseReason:      session.PauseReason.String,
+		Error:            session.Error.String,
+	}
+}
+
+func sessionRunRecord(run repository.ChetterSessionRun) SessionRunRecord {
+	return SessionRunRecord{
+		ID:               run.ID,
+		AgentSessionID:   run.AgentSessionID,
+		TaskID:           run.TaskID,
+		Status:           run.Status,
+		RequiredRunnerID: run.RequiredRunnerID.String,
+		Summary:          run.Summary.String,
+		Error:            run.Error.String,
+		CreatedAt:        run.CreatedAt,
+		UpdatedAt:        run.UpdatedAt,
+		StartedAt:        nullTimePtr(run.StartedAt),
+		EndedAt:          nullTimePtr(run.EndedAt),
+	}
+}
+
+func nullTimePtr(value sql.NullTime) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
 }
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
@@ -548,8 +734,6 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		EndedAt:    store.NullTimePtr(task.EndedAt),
 	}
 }
-
-
 
 func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {
 	if in.TriggerType == "" {
@@ -1341,14 +1525,14 @@ func (s *Service) arcaneListVulnerabilitiesTool(ctx context.Context, _ *mcp.Call
 }
 
 type AuditEventFilterInput struct {
-	EventType   string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
-	SourceType  string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
-	SourceID    string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
-	TargetType  string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
-	TargetID    string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
-	Repo        string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
-	SinceHours  int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
-	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+	EventType  string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
+	SourceType string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
+	SourceID   string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
+	TargetType string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
+	TargetID   string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
+	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
 }
 
 type AuditEventRecord struct {
@@ -1424,15 +1608,18 @@ func (s *Service) listAuditEventsTool(ctx context.Context, _ *mcp.CallToolReques
 }
 
 type TaskArtifactFilterInput struct {
-	TaskID       string `json:"task_id,omitempty" jsonschema:"Filter by task ID"`
-	ArtifactType string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
-	Repo         string `json:"repo,omitempty" jsonschema:"Filter by repository"`
-	Limit        int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
+	TaskID         string `json:"task_id,omitempty" jsonschema:"Filter by task ID"`
+	AgentSessionID string `json:"agent_session_id,omitempty" jsonschema:"Filter by agent session ID"`
+	ArtifactType   string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
+	Repo           string `json:"repo,omitempty" jsonschema:"Filter by repository"`
+	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
 }
 
 type TaskArtifactRecord struct {
 	ID              string    `json:"id"`
 	TaskID          string    `json:"task_id"`
+	AgentSessionID  string    `json:"agent_session_id,omitempty"`
+	SessionRunID    string    `json:"session_run_id,omitempty"`
 	ArtifactType    string    `json:"artifact_type"`
 	Repo            string    `json:"repo"`
 	Number          int       `json:"number,omitempty"`
@@ -1455,13 +1642,15 @@ func (s *Service) listTaskArtifactsTool(ctx context.Context, _ *mcp.CallToolRequ
 	}
 
 	rows, err := s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
-		TaskID:       in.TaskID,
-		Column2:      in.TaskID,
-		ArtifactType: in.ArtifactType,
-		Column4:      in.ArtifactType,
-		Repo:         in.Repo,
-		Column6:      in.Repo,
-		Limit:        int32(limit),
+		TaskID:         in.TaskID,
+		Column2:        in.TaskID,
+		AgentSessionID: nullString(in.AgentSessionID),
+		Column4:        in.AgentSessionID,
+		ArtifactType:   in.ArtifactType,
+		Column6:        in.ArtifactType,
+		Repo:           in.Repo,
+		Column8:        in.Repo,
+		Limit:          int32(limit),
 	})
 	if err != nil {
 		return nil, TaskArtifactsOutput{}, fmt.Errorf("list task artifacts: %w", err)
@@ -1471,6 +1660,8 @@ func (s *Service) listTaskArtifactsTool(ctx context.Context, _ *mcp.CallToolRequ
 		out[i] = TaskArtifactRecord{
 			ID:              r.ID,
 			TaskID:          r.TaskID,
+			AgentSessionID:  r.AgentSessionID.String,
+			SessionRunID:    r.SessionRunID.String,
 			ArtifactType:    r.ArtifactType,
 			Repo:            r.Repo,
 			Number:          int(r.Number.Int32),
