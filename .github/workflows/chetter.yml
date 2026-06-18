@@ -84,18 +84,25 @@ jobs:
           chmod 600 ~/.ssh/wowbagger
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se '~/chetter-build.sh'
 
-      - name: Redeploy with Arcane
+      - name: Sync and redeploy with Arcane
         env:
           ARCANE_URL: ${{ secrets.ARCANE_URL }}
           ARCANE_API_KEY: ${{ secrets.ARCANE_API_KEY }}
           ARCANE_CHETTER_PROJECT_ID: ${{ secrets.ARCANE_CHETTER_PROJECT_ID }}
+          ARCANE_CHETTER_GITOPS_ID: ${{ secrets.ARCANE_CHETTER_GITOPS_ID }}
         run: |
           set -euo pipefail
+          arcane_url="${ARCANE_URL%/}"
+          # Sync GitOps to pull latest deploy/compose.yaml
+          curl --silent --show-error --request POST \
+            --header "X-Api-Key: $ARCANE_API_KEY" \
+            "${arcane_url}/api/environments/0/gitops-syncs/$ARCANE_CHETTER_GITOPS_ID/sync" >/dev/null
+          # Redeploy to pick up new images and compose changes
           curl --silent --show-error --request POST \
             --header "X-Api-Key: $ARCANE_API_KEY" \
             --header "Content-Type: application/json" \
             --data '{"forceRecreate":true,"removeOrphans":true}' \
-            "${ARCANE_URL%/}/api/environments/0/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" >/dev/null
+            "${arcane_url}/api/environments/0/projects/$ARCANE_CHETTER_PROJECT_ID/redeploy" >/dev/null
 
   # -----------------------------------------------------------------------
   # Chetter CI — image rebuilds trigger
