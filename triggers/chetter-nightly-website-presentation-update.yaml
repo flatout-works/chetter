@@ -18,17 +18,16 @@ prompt: |-
   ## Step 2: Read current materials
   Read these files to understand the current messaging:
   - `website/index.html` — The public marketing website
-  - `website/styles.css` — Website styles
-  - `presentation3/index.html` — Technical architecture presentation
-  - `presentation3/styles.css` — Presentation styles
+  - `website/styles.css` — Website styles (shared by all pages)
+  - `website/technical.html` — Technical architecture sub-page (was previously the standalone presentation3 deck)
 
   Also read source-of-truth docs: `README.md`, `AGENTS.md`, `CHANGELOG.md`.
 
   ## Step 3: Update the website
   Update `website/index.html` to accurately describe current product capabilities, tech stack, architecture, and any new features. Keep the same visual design language and existing branding.
 
-  ## Step 4: Update the technical architecture presentation
-  Update `presentation3/index.html` to accurately reflect the current system architecture and technologies in use. Keep the existing slide deck structure and visual style.
+  ## Step 4: Update the technical architecture sub-page
+  Update `website/technical.html` to accurately reflect the current system architecture and technologies in use. Keep the existing slide structure and visual style, and keep it consistent with the main website's design language.
 
   ## Step 5: Commit and create PR
   Commit all changes to a new branch named `docs/nightly-website-update-{YYYY-MM-DD}`, push, and create a GitHub PR against `main` with a summary of what was updated and why.

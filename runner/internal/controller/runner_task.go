@@ -312,7 +312,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		}
 	}()
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
+	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness serve not ready: %v", err), nil)
 		return
 	}
@@ -377,6 +377,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	dockerArgs := []string{
 		"run", "-d",
+		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
 	}
 	if r.cfg.Execution.UseGVisor {
@@ -446,9 +447,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
 
-	if err := r.h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
+	if err := r.h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
 		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "logs", string(logs))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("container harness serve not ready: %v", err), nil)
 		return
 	}
