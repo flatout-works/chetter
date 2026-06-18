@@ -20,8 +20,8 @@ trigger_type: issue
 trigger_config: '{"repo": "flatout-works/chetter", "event": "opened"}'
 agent_image: ghcr.io/flatout-works/chetter-runner:main
 agent: issue-triage
-provider_id: synthetic
-model_id: hf:moonshotai/Kimi-K2.6
+provider_id: opencode
+model_id: deepseek-v4-flash-free
 timeout_sec: 3600
 skills:
   - issue-triage

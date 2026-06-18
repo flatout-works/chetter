@@ -17,9 +17,14 @@ func (oc *OpenCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		fallback := filepath.Join(wsDir, ".opencode", "opencode.db")
 		if _, err2 := os.Stat(fallback); err2 != nil {
-			return "", fmt.Errorf("opencode db not found at %s or %s", dbPath, fallback)
+			fallback2 := filepath.Join(wsDir, ".opencode-db", "opencode.db")
+			if _, err3 := os.Stat(fallback2); err3 != nil {
+				return "", fmt.Errorf("opencode db not found at %s, %s, or %s", dbPath, fallback, fallback2)
+			}
+			dbPath = fallback2
+		} else {
+			dbPath = fallback
 		}
-		dbPath = fallback
 	}
 
 	db, err := sql.Open("sqlite", dbPath)

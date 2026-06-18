@@ -253,12 +253,63 @@ func injectPATIntoURL(raw, pat string) string {
 // runcNetwork returns the Docker network name for the runner container,
 // used to attach gVisor agent containers to the same network.
 func runcNetwork() string {
-	out, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}", os.Getenv("HOSTNAME")).CombinedOutput()
-	net := strings.TrimSpace(string(out))
-	if net != "" {
+	out, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}", os.Getenv("HOSTNAME")).CombinedOutput()
+	if net := firstField(string(out)); net != "" {
 		return net
 	}
 	return "bridge"
+}
+
+// hostIP returns the runner container's IP address on network.
+func hostIP(network string) string {
+	if ip := os.Getenv("RUNNER_HOST_IP"); ip != "" {
+		return ip
+	}
+	if network != "" {
+		format := fmt.Sprintf("{{with index .NetworkSettings.Networks %q}}{{.IPAddress}}{{end}}", network)
+		out, _ := exec.Command("docker", "inspect", "-f", format, os.Getenv("HOSTNAME")).CombinedOutput()
+		if ip := strings.TrimSpace(string(out)); ip != "" {
+			return ip
+		}
+	}
+	out, _ := exec.Command("hostname", "-i").CombinedOutput()
+	if ip := firstField(string(out)); ip != "" {
+		return ip
+	}
+	return "127.0.0.1"
+}
+
+func firstField(s string) string {
+	fields := strings.Fields(strings.TrimSpace(s))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func gvisorHostAliases() []string {
+	domains := []string{
+		"opencode.ai",
+		"api.deepseek.com",
+		"api.openai.com",
+		"api.anthropic.com",
+		"api.synthetic.new",
+	}
+	aliases := make([]string, 0, len(domains)*2)
+	for _, domain := range domains {
+		ips, err := net.LookupIP(domain)
+		if err != nil {
+			slog.Warn("resolve gvisor host alias", "host", domain, "err", err)
+			continue
+		}
+		for _, ip := range ips {
+			if v4 := ip.To4(); v4 != nil {
+				aliases = append(aliases, "--add-host", domain+":"+v4.String())
+				break
+			}
+		}
+	}
+	return aliases
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
@@ -358,16 +409,11 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
-			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
-		} else {
-			sessionExport = export
-		}
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
-		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
+		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
@@ -381,7 +427,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
+	}
+
+	ln, err := net.Listen("tcp", bindAddr+":0")
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
 		return
@@ -397,16 +448,20 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
+	netName := ""
+	runnerIP := ""
 	dockerArgs := []string{
 		"run", "-d",
 		"--entrypoint", "/usr/local/bin/opencode",
 		"--name", containerName,
 	}
 	if gvisor {
-		netName := runcNetwork()
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--network", netName)
+		netName = runcNetwork()
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--network", netName)
+		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	} else {
-		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort))
+		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", bindAddr, hostPort, containerPort))
 	}
 	dockerArgs = append(dockerArgs,
 		"-v", session.WorkspaceDir+":/workspace",
@@ -415,7 +470,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
 		"-e", "MCP_SOCKET_PATH=/workspace/.chetter.sock",
-		"-e", "HOME=/opt/opencode",
 		"-e", "XDG_CONFIG_HOME=/workspace/.config",
 		"-e", "XDG_DATA_HOME=/workspace/.local/share",
 		"-e", "XDG_STATE_HOME=/workspace/.local/state",
@@ -426,6 +480,20 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
+	} else {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+	}
+
+	if gvisor {
+		runnerIP = hostIP(netName)
+		dockerArgs = append(dockerArgs,
+			"-e", "CHETTER_PROXY="+runnerIP+":18080",
+			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
+			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
+		)
+	}
 
 	for k, v := range h.Env("/workspace", secret) {
 		key := k
@@ -452,7 +520,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, "--dir", "/workspace")
 	dockerArgs = append(dockerArgs, h.ServeArgs(containerPort)...)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
+	}
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -468,13 +540,18 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		exec.Command("docker", "rm", "-f", containerName).Run()
 	}()
 
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	baseURL := fmt.Sprintf("http://%s:%d", bindAddr, hostPort)
 	if gvisor {
-		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{.NetworkSettings.IPAddress}}", containerName).CombinedOutput()
-		containerIP := strings.TrimSpace(string(ipOut))
+		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$v.IPAddress}} {{end}}", containerName).CombinedOutput()
+		containerIP := ""
+		for _, ip := range strings.Fields(strings.TrimSpace(string(ipOut))) {
+			if ip != "" && ip != "127.0.0.1" {
+				containerIP = ip
+				break
+			}
+		}
 		if containerIP != "" {
 			baseURL = fmt.Sprintf("http://%s:%d", containerIP, containerPort)
-			hostPort = containerPort
 		}
 	}
 
@@ -504,12 +581,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := h.ReadSessionExport(session.WorkspaceDir, sid); exportErr != nil {
-			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
-		} else {
-			sessionExport = export
-		}
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
@@ -519,6 +591,16 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("agent completed", "taskID", req.TaskID)
 	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
+}
+
+func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
+	if export, err := h.ReadSessionExport(wsDir, sid); err == nil {
+		return export
+	} else {
+		slog.Warn("session export failed", "taskID", taskID, "err", err)
+		r.publishEvent(taskID, fmt.Sprintf("session export: %v", err))
+	}
+	return ""
 }
 
 func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string) {

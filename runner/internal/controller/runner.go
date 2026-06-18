@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -110,6 +111,26 @@ func truncateSummary(s string) string {
 func (r *Runner) Start(ctx context.Context) error {
 	mode := r.executionMode()
 	if mode != "local" {
+		// Clean up orphaned task containers from previous runner instances.
+		// When a runner is restarted, the defer in runDockerAgent that runs
+		// "docker rm -f" never executes, leaving containers behind.
+		slog.Info("cleaning up orphaned task containers")
+		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--format", "{{.Names}}").Output()
+		if err != nil {
+			slog.Warn("failed to list docker containers", "err", err)
+		} else {
+			for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if name == "" {
+					continue
+				}
+				if err := exec.Command("docker", "rm", "-f", name).Run(); err != nil {
+					slog.Warn("failed to remove orphaned container", "name", name, "err", err)
+				} else {
+					slog.Info("removed orphaned task container", "name", name)
+				}
+			}
+		}
+
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {
