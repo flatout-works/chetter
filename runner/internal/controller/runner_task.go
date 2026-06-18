@@ -436,6 +436,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	secret := r.h.ServerPassword()
 
+	opencodeDBDir := filepath.Join(session.WorkspaceDir, ".opencode-db")
+	os.MkdirAll(opencodeDBDir, 0755)
+
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
 	runnerIP := ""
@@ -455,6 +458,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	dockerArgs = append(dockerArgs,
 		"-v", session.WorkspaceDir+":/workspace",
 		"-v", socketPath+":/workspace/.chetter.sock",
+		"-v", filepath.Join(session.WorkspaceDir, ".opencode-db")+":/opt/opencode/.local/share/opencode",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
@@ -565,9 +569,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := r.h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		dbDir := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
-		os.MkdirAll(dbDir, 0755)
-		_ = exec.Command("docker", "cp", containerName+":/opt/opencode/.local/share/opencode/opencode.db", filepath.Join(dbDir, "opencode.db")).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid)
 	}
 	if err != nil {
