@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/mcp"
-	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/tools"
 )
@@ -150,22 +149,6 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	go mcpServer.Serve(ctx)
 	slog.Info("MCP server started", "taskID", req.TaskID, "socket", socketPath)
-
-	var taskNet *network.TaskNetwork
-	if r.executionMode() == "docker" {
-		taskNet, err = r.bridgeMgr.Setup(ctx, req.TaskID)
-		if err != nil {
-			slog.Error("bridge setup error", "taskID", req.TaskID, "err", err)
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("network isolation setup: %v", err), nil)
-			return
-		}
-		slog.Info("network bridge ready", "taskID", req.TaskID, "bridge", taskNet.Bridge)
-		defer func() {
-			if err := r.bridgeMgr.Teardown(ctx, taskNet); err != nil {
-				slog.Error("bridge teardown error", "taskID", req.TaskID, "err", err)
-			}
-		}()
-	}
 
 	if req.AgentImage == "" {
 		r.publishStatusForRequest(req, "error", "agent_image is required", nil)

@@ -33,9 +33,8 @@ type Runner struct {
 	cfg        *config.Config
 	h          harness.Harness
 	wsManager  *workspace.Manager
-	proxy      *network.TransparentProxy
-	dnsProxy   *network.DNSProxy
-	bridgeMgr  *network.BridgeManager
+	proxy    *network.TransparentProxy
+	dnsProxy *network.DNSProxy
 	rpcClient   runnerRPCClient
 	claimClient runnerRPCClient
 	runCtx      context.Context
@@ -61,7 +60,6 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		cfg:            cfg,
 		h:              selectHarness(cfg),
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
-		bridgeMgr:      network.NewBridgeManager(cfg.Proxy.ListenAddr, cfg.DNS.ListenAddr),
 		tasks:          make(map[string]*task.TaskSession),
 		runnerID:       runnerID,
 		startedAt:      time.Now().UTC(),
@@ -123,9 +121,6 @@ func (r *Runner) Start(ctx context.Context) error {
 				slog.Error("dns error", "err", err)
 			}
 		}()
-		if err := network.EnableIPForwarding(); err != nil {
-			slog.Warn("could not enable IP forwarding", "err", err)
-		}
 	} else {
 		slog.Info("skipping proxy/dns (local mode)")
 	}
