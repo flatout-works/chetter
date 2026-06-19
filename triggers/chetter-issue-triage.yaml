@@ -19,6 +19,7 @@ enabled: true
 trigger_type: issue
 trigger_config: '{"repo": "flatout-works/chetter", "event": "opened"}'
 agent_image: chetter-runner:latest
+harness: opencode
 agent: issue-triage
 provider_id: opencode
 model_id: deepseek-v4-flash-free

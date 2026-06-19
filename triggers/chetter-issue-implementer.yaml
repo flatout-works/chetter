@@ -21,6 +21,7 @@ enabled: true
 trigger_type: issue
 trigger_config: '{"repo": "flatout-works/chetter", "event": "comment"}'
 agent_image: chetter-runner:latest
+harness: opencode
 agent: issue-implementer
 provider_id: opencode
 model_id: deepseek-v4-flash-free
