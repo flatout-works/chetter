@@ -4,9 +4,13 @@ set -euo pipefail
 # Requires CHETTER_MCP_AUTH_TOKEN and MCP_URL (default: http://localhost:18088/mcp).
 
 : "${MCP_URL:=http://localhost:18088/mcp}"
-: "${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}"
 : "${DRAIN_TIMEOUT_SEC:=600}"
 : "${DRAIN_POLL_INTERVAL:=10}"
+
+if [ -z "${CHETTER_MCP_AUTH_TOKEN:-}" ]; then
+  echo "ERROR: CHETTER_MCP_AUTH_TOKEN is not set. Source your compose env first."
+  exit 1
+fi
 
 mcp_call() {
   local json="$1"
