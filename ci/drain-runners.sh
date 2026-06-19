@@ -8,8 +8,14 @@ set -euo pipefail
 : "${DRAIN_POLL_INTERVAL:=10}"
 
 if [ -z "${CHETTER_MCP_AUTH_TOKEN:-}" ]; then
-  echo "ERROR: CHETTER_MCP_AUTH_TOKEN is not set. Source your compose env first."
-  exit 1
+  # Try to read from the running chetter-mcp container or compose env
+  if command -v docker >/dev/null 2>&1 && docker inspect chetter-mcp >/dev/null 2>&1; then
+    CHETTER_MCP_AUTH_TOKEN=$(docker inspect chetter-mcp --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^CHETTER_MCP_AUTH_TOKEN=' | cut -d= -f2-)
+  fi
+  if [ -z "${CHETTER_MCP_AUTH_TOKEN:-}" ]; then
+    echo "ERROR: CHETTER_MCP_AUTH_TOKEN is not set and could not be read from container."
+    exit 1
+  fi
 fi
 
 mcp_call() {
