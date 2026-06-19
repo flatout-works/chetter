@@ -271,8 +271,8 @@ for long-running tasks that may need course correction.
 3. If the harness needs env var passthrough, add keys to
    `runnerOwnedEnvKeys()` and `isRunnerOwnedEnv()` in
    `runner/internal/controller/runner_task.go`.
-4. Install the harness binary in `runner/Dockerfile.chetter-base` (and
-   `runner/images/minimal/Dockerfile` if applicable).
+4. Install the harness binary in `runner/Dockerfile.chetter-base`, the final
+   runner image layer, and `runner/images/minimal/Dockerfile` if applicable.
 5. Add `Harness` to MCP input schemas in `internal/service/tools.go`
    (`SubmitTaskInput`, `CreateTriggerInput`, `UpdateTriggerInput`).
 6. Add `Harness` to `store.ScheduleInput` and `store.ScheduleRecord`

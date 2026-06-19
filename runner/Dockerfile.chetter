@@ -47,6 +47,33 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # --------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
+# Keep Pi in the app layer so rebuilding chetter-runner picks it up even if
+# the published base image tag has not been refreshed yet.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    node_ok="$(node -p 'const [maj,min]=process.versions.node.split(".").map(Number); Number(maj > 22 || (maj === 22 && min >= 19))' 2>/dev/null || echo 0)" \
+    && if [ "$node_ok" != "1" ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends ca-certificates curl; \
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
+        apt-get install -y --no-install-recommends nodejs; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+RUN --mount=type=cache,target=/root/.npm \
+    if ! command -v pi >/dev/null 2>&1; then \
+        npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
+        ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi; \
+    fi \
+    && mkdir -p /opt/pi-extensions \
+    && cd /opt/pi-extensions \
+    && if [ ! -d node_modules/pi-mcp-adapter ]; then \
+        npm init -y; \
+        npm install --ignore-scripts pi-mcp-adapter; \
+    fi
+
+ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
+
 # App binaries
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
 COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge

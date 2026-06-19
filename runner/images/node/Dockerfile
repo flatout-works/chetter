@@ -44,6 +44,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+RUN --mount=type=cache,target=/root/.npm \
+    if ! command -v pi >/dev/null 2>&1; then \
+        npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
+        ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi; \
+    fi \
+    && mkdir -p /opt/pi-extensions \
+    && cd /opt/pi-extensions \
+    && if [ ! -d node_modules/pi-mcp-adapter ]; then \
+        npm init -y; \
+        npm install --ignore-scripts pi-mcp-adapter; \
+    fi
+
+ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
+
 RUN npm install -g pnpm typescript ts-node eslint prettier
 
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
