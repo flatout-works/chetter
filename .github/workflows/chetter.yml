@@ -112,7 +112,7 @@ jobs:
           scp -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger \
             ci/drain-runners.sh gokr@wowbagger.krampe.se:~/drain-runners.sh
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
-            'DRAIN_TIMEOUT_SEC=600 bash ~/drain-runners.sh'
+            'DRAIN_TIMEOUT_SEC=600 bash ~/drain-runners.sh' || echo "WARNING: drain failed — redeploying anyway"
 
       - name: Sync and redeploy with Arcane
         env:
