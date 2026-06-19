@@ -142,7 +142,7 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
-	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0})); err != nil {
+	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
 	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
@@ -226,7 +226,7 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	}
 
 	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
-	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0})); err != nil {
+	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
 	endedAt := time.Now().UTC().Format(time.RFC3339Nano)

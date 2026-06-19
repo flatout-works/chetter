@@ -92,7 +92,7 @@ func TestRPCClaimTaskNoPendingReturnsEmpty(t *testing.T) {
 	defer cleanup()
 	resp, err := svc.ClaimTask(context.Background(), connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId:    "runner_1",
-		WaitSeconds: 0,
+		WaitSeconds: 1,
 	}))
 	if err != nil {
 		t.Fatalf("ClaimTask: %v", err)
@@ -113,7 +113,7 @@ func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
 
 	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId:    "runner_other",
-		WaitSeconds: 0,
+		WaitSeconds: 1,
 	}))
 	if err != nil {
 		t.Fatalf("ClaimTask other runner: %v", err)
@@ -187,7 +187,7 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 	// Just verify no pending task is claimable while the task is still running.
 	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId:    "runner_1",
-		WaitSeconds: 0,
+		WaitSeconds: 1,
 	}))
 	if err != nil {
 		t.Fatalf("ClaimTask: %v", err)
