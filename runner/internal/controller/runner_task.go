@@ -197,6 +197,15 @@ func (r *Runner) mcpBridgePath() string {
 	return "mcp-bridge"
 }
 
+func hostWorkspaceDir(containerPath string) string {
+	if hostRoot := os.Getenv("HOST_WORKSPACE_ROOT"); hostRoot != "" {
+		if after, found := strings.CutPrefix(containerPath, "/var/lib/chetter-runner"); found {
+			return hostRoot + after
+		}
+	}
+	return containerPath
+}
+
 func appendRunnerOwnedEnv(env []string) []string {
 	for _, key := range runnerOwnedEnvKeys() {
 		if value := os.Getenv(key); value != "" {
@@ -468,7 +477,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", bindAddr, hostPort, containerPort))
 	}
 	dockerArgs = append(dockerArgs,
-		"-v", session.WorkspaceDir+":/workspace",
+		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
 		"-v", socketPath+":/workspace/.chetter.sock",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
