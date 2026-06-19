@@ -1,26 +1,22 @@
 services:
-  mysql:
-    image: mysql:8.4
+  tidb:
+    image: pingcap/tidb:v8.5.1
     restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: chetter
-      MYSQL_USER: chetter
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-chetter}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-chetter-root}
+    command: --store=tikv --path=127.0.0.1:2379
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u chetter -p$${MYSQL_PASSWORD}"]
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 4000 -u root -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s
       retries: 20
     volumes:
-      - mysql-data:/var/lib/mysql
+      - tidb-data:/var/lib/tidb
 
   chetter-mcp:
     depends_on:
-      mysql:
+      tidb:
         condition: service_healthy
     environment:
-      DATABASE_DSN: ${DATABASE_DSN:-chetter:${MYSQL_PASSWORD:-chetter}@tcp(mysql:3306)/chetter?parseTime=true}
+      DATABASE_DSN: ${DATABASE_DSN:-root@tcp(tidb:4000)/chetter?parseTime=true}
 
 volumes:
-  mysql-data:
+  tidb-data:

@@ -14,7 +14,7 @@ This manual covers setup, configuration, and operation.
 ┌─────────────┐    MCP/HTTP     ┌──────────────┐    ConnectRPC    ┌─────────────┐
 │  AI Client  │◀───────────────▶│ Chetter MCP  │◀────────────────▶│   Runner    │
 │ (Claude,    │   (tools)       │   Server     │   (claim task)   │  (Docker)   │
-│  Cursor,    │                 │  (TiDB/MySQL)│                  │             │
+│  Cursor,    │                 │    TiDB      │                  │             │
 │  OpenCode)  │                 │              │                  │             │
 └─────────────┘                 └──────────────┘                  └─────────────┘
                                         │
@@ -28,7 +28,7 @@ This manual covers setup, configuration, and operation.
 - **Server** (`chetter` binary): MCP endpoint, task queue, schedule runner, auth
 - **Runner** (`runner/` module): Containerized agent harness, polls for tasks
 - **CLI** (`chetterctl`): Token management for team/users
-- **Database**: TiDB/MySQL for tasks, schedules, events, tokens, teams
+- **Database**: TiDB for tasks, schedules, events, tokens, teams
 
 ---
 
@@ -46,17 +46,15 @@ Edit `.env` and set at least:
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `MYSQL_PASSWORD` | Yes | — | MySQL root password for bundled DB |
-| `MYSQL_ROOT_PASSWORD` | Yes | — | MySQL admin password |
 | `CHETTER_MCP_AUTH_TOKEN` | Yes* | — | Admin bearer token for MCP endpoint |
-| `DATABASE_DSN` | No | — | Use external MySQL/TiDB instead of bundled |
+| `DATABASE_DSN` | No | — | External TiDB DSN override |
 
 \* Required for any shared or public server. Single-user local setups can leave it empty.
 
 ### 2. Start with Docker Compose
 
 ```bash
-# With bundled MySQL
+# With bundled TiDB
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 
 # With external database (set DATABASE_DSN in .env)
@@ -65,7 +63,7 @@ docker compose --env-file .env -f deploy/compose.yaml up -d
 
 Services started:
 - `chetter-mcp` on port `18088` (or `HTTP_ADDR`)
-- `mysql` (if using `compose.local.yaml`)
+- `tidb` (if using `compose.local.yaml`)
 - `chetter-runner` (one or more, depending on compose override)
 
 ### 3. Verify
@@ -101,7 +99,7 @@ Use the `chetter_submit_task` MCP tool or the `/chetter-submit` OpenCode command
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `HTTP_ADDR` | No | `:8080` | Server listen address |
-| `DATABASE_DSN` | Yes | — | MySQL/TiDB connection string. Example: `user:pass@tcp(host:3306)/chetter?parseTime=true` |
+| `DATABASE_DSN` | Yes | — | TiDB connection string. Example: `root@tcp(host:4000)/chetter?parseTime=true` |
 | `MCP_AUTH_TOKEN` | No | — | Admin bearer token. Bypasses all team scoping. Set for public servers. |
 | `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image if task does not specify one |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Task timeout in seconds |
@@ -154,7 +152,7 @@ These are passed to runner containers as environment variables so the OpenCode a
 All config is loaded from environment variables. There is no config file — set vars in `.env` and source it, or export directly:
 
 ```bash
-export DATABASE_DSN="root:password@tcp(127.0.0.1:4000)/chetter?parseTime=true"
+export DATABASE_DSN="root@tcp(127.0.0.1:4000)/chetter?parseTime=true"
 export MCP_AUTH_TOKEN="my-secure-token"
 export DEFAULT_AGENT_IMAGE="ghcr.io/flatout-works/chetter-runner:main"
 ```
@@ -163,8 +161,6 @@ export DEFAULT_AGENT_IMAGE="ghcr.io/flatout-works/chetter-runner:main"
 
 ```bash
 # Copy and edit
-MYSQL_PASSWORD=change-me
-MYSQL_ROOT_PASSWORD=change-me-root
 CHETTER_MCP_AUTH_TOKEN=change-me-mcp-token
 
 # Provider keys (at least one)
@@ -173,8 +169,8 @@ DEEPSEEK_API_KEY=
 SYNTHETIC_API_KEY=
 OPENCODE_API_KEY=
 
-# Optional: external DB instead of bundled MySQL
-# DATABASE_DSN=user:password@tcp(host:3306)/chetter?parseTime=true
+# Optional: external DB instead of bundled TiDB
+# DATABASE_DSN=root@tcp(host:4000)/chetter?parseTime=true
 
 # Optional: GitHub for private repos / PR creation
 GITHUB_TOKEN=
@@ -327,7 +323,7 @@ make migrate-create
 ## Self-Hosting Checklist
 
 - [ ] Set `CHETTER_MCP_AUTH_TOKEN` (for any non-local deployment)
-- [ ] Set `DATABASE_DSN` (or use bundled MySQL)
+- [ ] Set `DATABASE_DSN` (or use bundled TiDB)
 - [ ] Configure at least one LLM provider key
 - [ ] Optionally configure GitHub App for PR reviews
 - [ ] Optionally configure Arcane for vulnerability scanning

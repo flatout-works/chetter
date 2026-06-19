@@ -1,4 +1,4 @@
-// Package store persists chetter state in a TiDB/MySQL-compatible database.
+// Package store persists chetter state in a TiDB database.
 package store
 
 import (

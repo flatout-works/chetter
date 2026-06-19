@@ -14,6 +14,10 @@ A Chetter runner can clone a repository, start an OpenCode agent, execute a prom
 - Inspect runner health and heartbeat freshness.
 - Expose the whole control plane through a standard HTTP MCP endpoint.
 
+## Why TiDB
+
+Chetter uses [TiDB](https://www.pingcap.com/tidb/) as its sole database. TiDB speaks the MySQL wire protocol, so it works with Go's standard MySQL driver, but adds capabilities Chetter's roadmap depends on: vector search for semantic task/event retrieval, HTAP (Hybrid Transactional/Analytical Processing) via TiFlash for fleet analytics and dashboards, and TiDB Cloud Serverless for zero-ops managed deployments. One database, one protocol, room to grow.
+
 ## Quick Start
 
 These steps are intended for a fresh Linux cloud machine with Docker installed.
@@ -33,8 +37,6 @@ cp .env.example .env
 
 Edit `.env` and set at least:
 
-- `MYSQL_PASSWORD`
-- `MYSQL_ROOT_PASSWORD`
 - `CHETTER_MCP_AUTH_TOKEN`
 - At least one LLM provider key, such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SYNTHETIC_API_KEY`, or `OPENCODE_API_KEY`
 
@@ -48,12 +50,12 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 
 This starts:
 
-- MySQL for Chetter state
+- TiDB for Chetter state
 - The Chetter MCP server on port `18088`
 - Two runner containers that pick up tasks
 
-The `deploy/compose.local.yaml` override adds the bundled MySQL service. If you
-already have MySQL or TiDB, set `DATABASE_DSN` in `.env` and run only
+The `deploy/compose.local.yaml` override adds the bundled TiDB service. If you
+already have a TiDB instance, set `DATABASE_DSN` in `.env` and run only
 `-f deploy/compose.yaml`.
 
 ### 4. Check It
@@ -194,61 +196,17 @@ kubectl apply -f deploy/k8s/namespace.yaml
 kubectl create secret generic chetter-secrets \
   --namespace=chetter \
   --from-literal=CHETTER_MCP_AUTH_TOKEN=your-token \
-  --from-literal=DATABASE_DSN='chetter:password@tcp(mysql:3306)/chetter?parseTime=true' \
+  --from-literal=DATABASE_DSN='root@tcp(tidb:4000)/chetter?parseTime=true' \
   --from-literal=GITHUB_TOKEN=your-gh-token \
   --from-literal=DEEPSEEK_API_KEY=your-key
 ```
 
-### Step 3: Deploy MySQL
+### Step 3: Deploy TiDB
 
-For local testing, run MySQL in the cluster:
+For local testing, run TiDB in the cluster:
 
 ```bash
-kubectl apply -n chetter -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mysql
-spec:
-  selector:
-    matchLabels:
-      app: mysql
-  template:
-    metadata:
-      labels:
-        app: mysql
-    spec:
-      containers:
-      - name: mysql
-        image: mysql:8.0
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          value: password
-        - name: MYSQL_DATABASE
-          value: chetter
-        - name: MYSQL_USER
-          value: chetter
-        - name: MYSQL_PASSWORD
-          value: password
-        ports:
-        - containerPort: 3306
-        readinessProbe:
-          exec:
-            command: ["mysqladmin", "ping", "-h", "localhost"]
-          initialDelaySeconds: 10
-          periodSeconds: 5
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql
-spec:
-  selector:
-    app: mysql
-  ports:
-  - port: 3306
-    targetPort: 3306
-EOF
+kubectl apply -n chetter -f deploy/k3d/tidb.yaml
 ```
 
 ### Step 4: Deploy Chetter
@@ -409,11 +367,9 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 ### Main Environment Variables
 
 | Variable | Description |
-|---|---|
+|---|---|---|
 | `CHETTER_MCP_AUTH_TOKEN` | Bearer token required by `/mcp` |
-| `MYSQL_PASSWORD` | Password for the local `chetter` MySQL user |
-| `MYSQL_ROOT_PASSWORD` | Root password for the local MySQL container |
-| `DATABASE_DSN` | Optional external MySQL/TiDB DSN override |
+| `DATABASE_DSN` | Optional TiDB DSN override |
 | `GITHUB_TOKEN` | Optional token for private repos and GitHub write operations |
 | `GITHUB_APP_ID` | GitHub App ID for PR review webhooks |
 | `GITHUB_APP_PRIVATE_KEY_B64` | Base64-encoded GitHub App private key (PEM) |
@@ -430,7 +386,7 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `CHETTER_RUNNER_IMAGE_DIGEST` | Optional pinned image digest for PR signature footers |
 
 If `DATABASE_DSN` is not set, use `deploy/compose.local.yaml` to add the bundled
-MySQL service. Production deployments should usually set `DATABASE_DSN` and run
+TiDB service. Production deployments should usually set `DATABASE_DSN` and run
 only `deploy/compose.yaml`.
 
 ### Runner Environment Variables
@@ -645,7 +601,7 @@ self-hosted compose stack that pulls the published GHCR images.
 | `compose.yaml` | Arcane GitOps compose file with build directives |
 | `main.go` | MCP/HTTP server entry point |
 | `internal/config/` | Environment-backed configuration |
-| `internal/store/` | MySQL/TiDB schema and persistence |
+| `internal/store/` | TiDB schema and persistence |
 | `internal/repository/` | sqlc-generated database queries |
 | `db/` | goose migrations and sqlc query files |
 | `internal/service/` | MCP tools and task orchestration |

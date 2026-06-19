@@ -58,7 +58,7 @@
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to MySQL/TiDB, serves it to runners via ConnectRPC, manages triggers (cron schedules and webhook events), and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode or Claude Code inside plain Docker containers (optionally under gVisor sandboxing), stream progress, and report results. Kubernetes-friendly with included manifests.</p>
+        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB, serves it to runners via ConnectRPC, manages triggers (cron schedules and webhook events), and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode or Claude Code inside plain Docker containers (optionally under gVisor sandboxing), stream progress, and report results. Kubernetes-friendly with included manifests.</p>
       </div>
       <div class="flow-card">
         <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
@@ -89,7 +89,7 @@
         </article>
         <article>
           <span>state</span>
-          <h3>MySQL or TiDB</h3>
+          <h3>TiDB</h3>
           <p>Tables hold tasks (with leases), raw events, schedules (with trigger_type + trigger_config), schedule runs, runner heartbeats, teams, users, and API tokens. Secrets are redacted.</p>
         </article>
       </div>
@@ -118,7 +118,7 @@
       </article>
       <article>
         <h3>Standard protocols</h3>
-        <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), MySQL wire compatibility, Docker Compose, and cron. No proprietary agent protocol required.</p>
+        <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), TiDB (MySQL wire protocol), Docker Compose, and cron. No proprietary agent protocol required.</p>
       </article>
       <article>
         <h3>Built for operators</h3>
@@ -171,9 +171,9 @@ curl http://localhost:18088/healthz</code></pre>
       <div class="deploy-row">
         <div><b>chetter-mcp</b><span>Go server: MCP tools + ConnectRPC + triggers + webhook</span></div>
         <div><b>chetter-runner</b><span>plain Dockerfile-based containers, optionally gVisor-sandboxed via <code>USE_GVISOR=true</code></span></div>
-        <div><b>MySQL / TiDB</b><span>task state, events, schedules, runners, auth</span></div>
+        <div><b>TiDB</b><span>task state, events, schedules, runners, auth</span></div>
       </div>
-      <p class="note">Comes with Docker Compose and Kubernetes manifests. Production can use an external MySQL or TiDB by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing by installing gVisor (<code>runsc</code>) on the Docker host and setting <code>USE_GVISOR=true</code>.</p>
+      <p class="note">Comes with Docker Compose and Kubernetes manifests. Production can use an external TiDB instance by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing by installing gVisor (<code>runsc</code>) on the Docker host and setting <code>USE_GVISOR=true</code>.</p>
     </section>
   </main>
 

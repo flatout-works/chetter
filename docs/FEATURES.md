@@ -365,7 +365,7 @@ Server URL and auth token can be set via flags or env vars (`CHETTER_SERVER_URL`
 |----------|---------|-------------|
 | `HTTP_ADDR` | `:8080` | Listen address |
 | `MCP_AUTH_TOKEN` | (empty) | Admin bearer token; empty = auth disabled |
-| `DATABASE_DSN` | (required) | MySQL/TiDB connection string |
+| `DATABASE_DSN` | (required) | TiDB connection string |
 | `DEFAULT_AGENT_IMAGE` | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image |
 | `DEFAULT_TASK_TIMEOUT_SEC` | `600` | Default task timeout |
 | `ARCANE_SERVER_URL` | (empty) | Arcane vulnerability scanner URL |

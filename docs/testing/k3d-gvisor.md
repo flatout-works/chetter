@@ -6,7 +6,7 @@ everything runs on a single machine.
 
 ## Prerequisites
 
-You need Docker, k3d, kubectl, Go, and a MySQL client. Install them once:
+You need Docker, k3d, kubectl, Go, and a MySQL client (for talking to TiDB's MySQL-compatible port). Install them once:
 
 ```bash
 # Docker
@@ -23,7 +23,7 @@ sudo install -m 755 kubectl /usr/local/bin/kubectl && rm kubectl
 # Go 1.24+ (for goose migrations via `go run`)
 # See https://go.dev/dl/ or use your package manager
 
-# MySQL client (for creating the initial database)
+# MySQL client (for talking to TiDB's MySQL-compatible port)
 sudo apt-get install -y mysql-client   # Debian/Ubuntu
 # sudo dnf install -y mysql             # Fedora/RHEL
 ```

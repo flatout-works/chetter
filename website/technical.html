@@ -34,7 +34,7 @@
         <span class="pill">Go</span>
         <span class="pill">Streamable HTTP MCP</span>
         <span class="pill">ConnectRPC</span>
-        <span class="pill">TiDB / MySQL</span>
+        <span class="pill">TiDB</span>
         <span class="pill">Triggers (cron + webhook)</span>
         <span class="pill">Arcane Trivy</span>
       </div>
@@ -47,7 +47,7 @@
         <article><span>01</span><b>General purpose</b><p>Any MCP-capable client (Claude, ChatGPT, OpenCode, curl) can talk to it. Not tied to one product.</p></article>
         <article><span>02</span><b>For AI, by AI</b><p>The control surface is tools, not a UI. An LLM is the typical operator.</p></article>
         <article><span>03</span><b>Remote, not local</b><p>Tasks run inside runner containers somewhere else. The MCP server holds no execution responsibilities.</p></article>
-        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers (cron + PR review webhook) survive restarts via MySQL. No separate broker required.</p></article>
+        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers (cron + PR review webhook) survive restarts via TiDB. No separate broker required.</p></article>
         <article><span>05</span><b>Observable fleet</b><p>Every task carries provider, model, variant, session id, and runner image digest for end-to-end traceability.</p></article>
       </div>
     </section>
@@ -63,7 +63,7 @@
         </div>
         <div class="system-box server">
           <h3>store/</h3>
-          <p>TiDB / MySQL persistence</p>
+          <p>TiDB persistence</p>
           <span>tasks + leases</span><span>events</span><span>schedules (trigger_type + trigger_config)</span><span>runners</span><span>teams + tokens</span>
         </div>
         <div class="system-box runner">
@@ -97,7 +97,7 @@
           <div>service layer</div>
           <div>ConnectRPC task queue</div>
           <div>lease-based runner communication</div>
-          <div class="muted">MySQL / TiDB</div>
+          <div class="muted">TiDB</div>
         </div>
       </div>
     </section>
@@ -264,7 +264,7 @@
       <div class="lifecycle-flow">
         <div class="lifecycle-step"><b>cron triggers</b><span>Five-field expressions + descriptors; fired by in-process robfig/cron</span></div>
         <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; built-in review template when prompt omitted; dispatches review tasks + PR label</span></div>
-        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from MySQL on startup</span></div>
+        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from TiDB on startup</span></div>
         <div class="lifecycle-step"><b>Individual mgmt</b><span>Create, update, delete per trigger via MCP tools; no bulk sync</span></div>
       </div>
       <div class="protocol-cards">
@@ -293,7 +293,7 @@
           <div class="entity">users <span>id, name, team_id</span></div>
           <div class="entity">api_tokens <span>id, name, token_hash, user_id</span></div>
           <div class="entity">env redacted <span>SECRET / TOKEN / KEY / PASSWORD keys replaced with [redacted]</span></div>
-          <div class="entity encrypted">no plain creds <span>runner API keys live in container env, never in MySQL</span></div>
+          <div class="entity encrypted">no plain creds <span>runner API keys live in container env, never in TiDB</span></div>
         </div>
       </div>
     </section>
@@ -337,7 +337,7 @@
       <p class="eyebrow">Deployment</p>
       <h2 id="deploy-title">Docker Compose on Arcane. Two images, one DB.</h2>
       <div class="deploy-flow">
-        <div><b>MySQL / TiDB</b><span>external or bundled via compose.local.yaml</span></div>
+        <div><b>TiDB</b><span>external or bundled via compose.local.yaml</span></div>
         <div><b>chetter-mcp</b><span>the control plane, port 18088:8080</span></div>
         <div><b>chetter-runner</b><span>worker 1, connects via ConnectRPC</span></div>
         <div><b>chetter-runner-2</b><span>worker 2, same image, separate workspace</span></div>
@@ -370,7 +370,7 @@
         <article><b>MCP, not REST</b><p>The control surface is for AI agents, not humans. Tools are the native interface for any LLM client.</p></article>
         <article><b>Streamable HTTP</b><p>Modern MCP transport. Stateless mode makes the server trivially load-balancer-friendly.</p></article>
         <article><b>ConnectRPC</b><p>Task queue via server-streaming RPC over HTTP; lease-based claiming; cancel commands piggyback on heartbeats. No separate broker.</p></article>
-        <article><b>MySQL / TiDB</b><p>Same wire protocol as the rest of the stack. Small, add-only schema, conservative pool.</p></article>
+        <article><b>TiDB</b><p>MySQL wire protocol. Small, add-only schema, conservative pool. Room for vector search and HTAP on the roadmap.</p></article>
         <article><b>robfig/cron v3</b><p>Battle-tested, tiny, descriptor parser for @hourly-style. In-process is fine for single-instance.</p></article>
         <article><b>Distroless binary</b><p>Multi-stage build → static-debian12:nonroot. No shell, no package manager, small surface.</p></article>
       </div>

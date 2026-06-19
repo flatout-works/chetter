@@ -112,7 +112,7 @@ chetter/
 Config is loaded from env vars in `internal/config/config.go`.
 
 Key env vars for local dev:
-- `DATABASE_DSN` — MySQL/TiDB connection string.
+- `DATABASE_DSN` — TiDB connection string.
 - `CHETTER_MCP_AUTH_TOKEN` — Admin bearer token.
 - `DEFAULT_AGENT_IMAGE` — Default runner image.
 - `DEFAULT_TASK_TIMEOUT_SEC` — Task timeout (default 600).
