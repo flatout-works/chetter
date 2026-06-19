@@ -17,7 +17,7 @@ services:
       GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       GITHUB_REVIEW_ALLOWED_REPOS: ${GITHUB_REVIEW_ALLOWED_REPOS:-}
-      DEFAULT_AGENT_IMAGE: ghcr.io/flatout-works/chetter-runner:main
+      DEFAULT_AGENT_IMAGE: chetter-runner:latest
     ports:
       - "18088:8080"
 
@@ -30,13 +30,12 @@ services:
     command: ["true"]
 
   chetter-runner:
-    image: ghcr.io/flatout-works/chetter-runner:main
+    image: chetter-runner:latest
     build:
       context: .
       dockerfile: runner/Dockerfile.chetter
       args:
         BASE_IMAGE: ghcr.io/flatout-works/chetter-runner-base:main
-    pull_policy: always
     restart: unless-stopped
     depends_on:
       - chetter-mcp
@@ -50,20 +49,19 @@ services:
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MEM9_API_KEY: ${MEM9_API_KEY:-}
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-chetter-runner:latest}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-}
     volumes:
       - runner-data:/var/lib/chetter-runner
 
   chetter-runner-2:
-    image: ghcr.io/flatout-works/chetter-runner:main
-    pull_policy: always
+    image: chetter-runner:latest
     restart: unless-stopped
     depends_on:
       - chetter-mcp
@@ -77,13 +75,13 @@ services:
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MEM9_API_KEY: ${MEM9_API_KEY:-}
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:-}
       CHETTER_MCP_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-ghcr.io/flatout-works/chetter-runner:main}
+      CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-chetter-runner:latest}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-}
     volumes:
       - runner-data-2:/var/lib/chetter-runner
