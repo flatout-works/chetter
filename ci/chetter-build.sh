@@ -42,7 +42,7 @@ if [ "${SKIP_MAIN}" != "true" ]; then
   fi
 
   echo "=== Building MCP image ==="
-  docker build --build-arg "CACHEBUST=$CACHEBUST" \
+  docker build --no-cache --build-arg "CACHEBUST=$CACHEBUST" \
     -t "$REGISTRY/chetter-mcp:$TAG" \
     -t "chetter-mcp:latest" .
 
