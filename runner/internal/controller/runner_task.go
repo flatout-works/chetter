@@ -299,6 +299,43 @@ func hostIP(network string) string {
 	return "127.0.0.1"
 }
 
+// dockerGatewayIP returns the Docker network gateway address. Runner containers
+// can use it to reach ports published on the Docker host.
+func dockerGatewayIP(network string) string {
+	if ip := os.Getenv("RUNNER_DOCKER_GATEWAY_IP"); ip != "" {
+		return ip
+	}
+	if network != "" {
+		format := fmt.Sprintf("{{with index .NetworkSettings.Networks %q}}{{.Gateway}}{{end}}", network)
+		out, _ := exec.Command("docker", "inspect", "-f", format, os.Getenv("HOSTNAME")).CombinedOutput()
+		if ip := strings.TrimSpace(string(out)); ip != "" {
+			return ip
+		}
+	}
+	return "172.17.0.1"
+}
+
+func harnessBaseURL(bindAddr string, hostPort int, gvisor bool, network string) string {
+	if gvisor {
+		return fmt.Sprintf("http://%s:%d", dockerGatewayIP(network), hostPort)
+	}
+	connectAddr := bindAddr
+	if connectAddr == "" || connectAddr == "0.0.0.0" || connectAddr == "::" {
+		connectAddr = "127.0.0.1"
+	}
+	return fmt.Sprintf("http://%s:%d", connectAddr, hostPort)
+}
+
+func harnessPublishBindAddr(bindAddr string, gvisor bool) string {
+	if !gvisor {
+		return bindAddr
+	}
+	if addr := os.Getenv("RUNNER_PUBLISH_BIND_ADDR"); addr != "" {
+		return addr
+	}
+	return "0.0.0.0"
+}
+
 func firstField(s string) string {
 	fields := strings.Fields(strings.TrimSpace(s))
 	if len(fields) == 0 {
@@ -480,9 +517,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
-	} else {
-		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", bindAddr, hostPort, containerPort))
 	}
+	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	dockerArgs = append(dockerArgs,
 		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
 		"-v", socketPath+":/workspace/.chetter.sock",
@@ -559,24 +595,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		exec.Command("docker", "rm", "-f", containerName).Run()
 	}()
 
-	baseURL := fmt.Sprintf("http://%s:%d", bindAddr, hostPort)
-	if gvisor {
-		ipOut, _ := exec.Command("docker", "inspect", "-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$v.IPAddress}} {{end}}", containerName).CombinedOutput()
-		containerIP := ""
-		for _, ip := range strings.Fields(strings.TrimSpace(string(ipOut))) {
-			if ip != "" && ip != "127.0.0.1" {
-				containerIP = ip
-				break
-			}
-		}
-		if containerIP != "" {
-			baseURL = fmt.Sprintf("http://%s:%d", containerIP, containerPort)
-		}
-	}
+	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
-		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "logs", string(logs))
+		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerName).CombinedOutput()
+		selfCheckOut, _ := exec.Command("docker", "exec", containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
+		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("container harness serve not ready: %v", err), nil)
 		return
@@ -647,7 +674,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	configPath := h.ConfigFilePathGlobal(workspaceDir)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
+	}
+
+	ln, err := net.Listen("tcp", bindAddr+":0")
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
 		return
@@ -677,15 +709,20 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	secret := h.ServerPassword()
 
+	gvisor := r.cfg.Execution.UseGVisor
+	netName := ""
 	dockerArgs := []string{
 		"run", "-d",
 		"--name", containerName,
 	}
-	if r.cfg.Execution.UseGVisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc")
+	if gvisor {
+		netName = runcNetwork()
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--network", netName)
+		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
 	dockerArgs = append(dockerArgs,
-		"-p", fmt.Sprintf("127.0.0.1:%d:%d", hostPort, containerPort),
+		"-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort),
 		"-v", workspaceDir+":/workspace",
 		"-v", socketPath+":"+socketPath,
 		"-v", configPath+":/opt/opencode/.config/opencode/config.json:ro",
@@ -745,10 +782,15 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		exec.Command("docker", "rm", "-f", containerName).Run()
 	}()
 
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hostPort)
+	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 	if err := h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
-		slog.Error("harness serve not ready on resume", "taskID", req.TaskID, "err", err, "logs", string(logs))
+		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerName).CombinedOutput()
+		selfCheckOut, _ := exec.Command("docker", "exec", containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
+		slog.Error("harness serve not ready on resume", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
+		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("container harness serve not ready: %v", err), nil)
 		return
 	}

@@ -691,6 +691,23 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 }
 
+func TestHarnessBaseURLUsesDockerGatewayForGVisor(t *testing.T) {
+	t.Setenv("RUNNER_DOCKER_GATEWAY_IP", "172.21.0.1")
+	got := harnessBaseURL("127.0.0.1", 34133, true, "chetter_default")
+	if got != "http://172.21.0.1:34133" {
+		t.Fatalf("expected Docker gateway base URL, got %q", got)
+	}
+}
+
+func TestHarnessPublishBindAddrUsesAllInterfacesForGVisor(t *testing.T) {
+	if got := harnessPublishBindAddr("127.0.0.1", true); got != "0.0.0.0" {
+		t.Fatalf("expected gVisor publish bind addr 0.0.0.0, got %q", got)
+	}
+	if got := harnessPublishBindAddr("127.0.0.1", false); got != "127.0.0.1" {
+		t.Fatalf("expected non-gVisor bind addr to be preserved, got %q", got)
+	}
+}
+
 func indexOf(values []string, want string) int {
 	for i, value := range values {
 		if value == want {

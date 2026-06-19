@@ -50,9 +50,12 @@ func doPost(ctx context.Context, url, contentType, secret string, body io.Reader
 func waitForServeReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: serveHTTPTimeout}
+	var lastErr error
+	var lastStatus int
 	for time.Now().Before(deadline) {
 		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/config", nil)
 		if err != nil {
+			lastErr = err
 			time.Sleep(servePollInterval)
 			continue
 		}
@@ -61,10 +64,18 @@ func waitForServeReady(ctx context.Context, baseURL, secret string, timeout time
 		}
 		resp, err := client.Do(req)
 		if err == nil {
+			lastStatus = resp.StatusCode
 			resp.Body.Close()
 			return nil
 		}
+		lastErr = err
 		time.Sleep(servePollInterval)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("server at %s not responding within %v: last error: %w", baseURL, timeout, lastErr)
+	}
+	if lastStatus != 0 {
+		return fmt.Errorf("server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
 	}
 	return fmt.Errorf("server at %s not responding within %v", baseURL, timeout)
 }
