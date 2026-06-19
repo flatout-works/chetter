@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds all runtime settings for the chetter MCP service.
 type Config struct {
-	HTTPAddr                 string
-	MCPAuthToken             string
-	DatabaseDSN              string
-	DefaultAgentImage        string
-	DefaultTaskTimeoutSec    int
-	ArcaneServerURL          string
-	ArcaneAPIKey             string
+	HTTPAddr               string
+	MCPAuthToken           string
+	DatabaseDSN            string
+	DefaultAgentImage      string
+	DefaultTaskTimeoutSec  int
+	ArcaneServerURL        string
+	ArcaneAPIKey           string
 	GitHubAppID            int64
 	GitHubAppPrivateKeyB64 string
 	GitHubWebhookSecret    string
@@ -26,13 +27,13 @@ type Config struct {
 // Load returns configuration using environment variables and safe defaults.
 func Load() Config {
 	return Config{
-		HTTPAddr:                 env("HTTP_ADDR", ":8080"),
-		MCPAuthToken:             os.Getenv("MCP_AUTH_TOKEN"),
-		DatabaseDSN:              os.Getenv("DATABASE_DSN"),
-		DefaultAgentImage:        env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
-		DefaultTaskTimeoutSec:    envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
-		ArcaneServerURL:          env("ARCANE_SERVER_URL", ""),
-		ArcaneAPIKey:             env("ARCANE_API_KEY", ""),
+		HTTPAddr:               env("HTTP_ADDR", ":8080"),
+		MCPAuthToken:           os.Getenv("MCP_AUTH_TOKEN"),
+		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
+		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
+		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
+		ArcaneServerURL:        env("ARCANE_SERVER_URL", ""),
+		ArcaneAPIKey:           env("ARCANE_API_KEY", ""),
 		GitHubAppID:            envInt64("GITHUB_APP_ID", 0),
 		GitHubAppPrivateKeyB64: os.Getenv("GITHUB_APP_PRIVATE_KEY_B64"),
 		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
@@ -46,7 +47,17 @@ func (c Config) Validate() error {
 	if c.DatabaseDSN == "" {
 		return fmt.Errorf("DATABASE_DSN is required")
 	}
+	if strings.TrimSpace(c.MCPAuthToken) == "" {
+		return fmt.Errorf("MCP_AUTH_TOKEN is required")
+	}
+	if isPlaceholderAuthToken(c.MCPAuthToken) {
+		return fmt.Errorf("MCP_AUTH_TOKEN must not use a placeholder value")
+	}
 	return nil
+}
+
+func isPlaceholderAuthToken(token string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(token)), "change-me")
 }
 
 // GitHubConfigured reports whether the GitHub App integration is enabled.
@@ -101,5 +112,3 @@ func envInt64(key string, fallback int64) int64 {
 	}
 	return parsed
 }
-
-

@@ -100,7 +100,7 @@ Use the `chetter_submit_task` MCP tool or the `/chetter-submit` OpenCode command
 |---|---|---|---|
 | `HTTP_ADDR` | No | `:8080` | Server listen address |
 | `DATABASE_DSN` | Yes | — | TiDB connection string. Example: `root@tcp(host:4000)/chetter?parseTime=true` |
-| `MCP_AUTH_TOKEN` | No | — | Admin bearer token. Bypasses all team scoping. Set for public servers. |
+| `MCP_AUTH_TOKEN` | Yes | — | Admin bearer token. Bypasses all team scoping. Empty and `change-me*` values are rejected. |
 | `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image if task does not specify one |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Task timeout in seconds |
 
@@ -161,7 +161,7 @@ export DEFAULT_AGENT_IMAGE="ghcr.io/flatout-works/chetter-runner:main"
 
 ```bash
 # Copy and edit
-CHETTER_MCP_AUTH_TOKEN=change-me-mcp-token
+CHETTER_MCP_AUTH_TOKEN=
 
 # Provider keys (at least one)
 OPENAI_API_KEY=
@@ -184,7 +184,7 @@ Chetter supports two auth models:
 
 ### 1. Admin Token (Global Access)
 
-Set `MCP_AUTH_TOKEN`. This single bearer token bypasses all team scoping. It can see and manage all tasks, schedules, and tokens.
+Set `MCP_AUTH_TOKEN`. This single bearer token bypasses all team scoping. It can see and manage all tasks, schedules, and tokens. Use a long, random value.
 
 ```bash
 export MCP_AUTH_TOKEN="admin-secret-123"

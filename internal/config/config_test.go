@@ -7,7 +7,8 @@ import (
 func TestValidate(t *testing.T) {
 	t.Run("all required fields present", func(t *testing.T) {
 		cfg := Config{
-			DatabaseDSN: "root@tcp(localhost:4000)/db",
+			DatabaseDSN:  "root@tcp(localhost:4000)/db",
+			MCPAuthToken: "secure-token",
 		}
 		if err := cfg.Validate(); err != nil {
 			t.Fatalf("expected nil, got %v", err)
@@ -31,6 +32,29 @@ func TestValidate(t *testing.T) {
 		}
 		if err.Error() != "DATABASE_DSN is required" {
 			t.Errorf("expected DATABASE_DSN as first error, got %q", err.Error())
+		}
+	})
+	t.Run("missing MCPAuthToken", func(t *testing.T) {
+		cfg := Config{DatabaseDSN: "root@tcp(localhost:4000)/db"}
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if err.Error() != "MCP_AUTH_TOKEN is required" {
+			t.Errorf("expected MCP_AUTH_TOKEN error, got %q", err.Error())
+		}
+	})
+	t.Run("placeholder MCPAuthToken", func(t *testing.T) {
+		cfg := Config{
+			DatabaseDSN:  "root@tcp(localhost:4000)/db",
+			MCPAuthToken: "change-me-mcp-token",
+		}
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if err.Error() != "MCP_AUTH_TOKEN must not use a placeholder value" {
+			t.Errorf("expected placeholder MCP_AUTH_TOKEN error, got %q", err.Error())
 		}
 	})
 }
@@ -200,9 +224,9 @@ func TestGitHubConfigured(t *testing.T) {
 	})
 	t.Run("missing webhook secret", func(t *testing.T) {
 		cfg := Config{
-			GitHubAppID:             1,
-			GitHubAppPrivateKeyB64:  "key",
-			GitHubInstallationID:    1,
+			GitHubAppID:            1,
+			GitHubAppPrivateKeyB64: "key",
+			GitHubInstallationID:   1,
 		}
 		if cfg.GitHubConfigured() {
 			t.Error("expected not configured")
@@ -220,11 +244,11 @@ func TestGitHubConfigured(t *testing.T) {
 	})
 	t.Run("disabled by flag", func(t *testing.T) {
 		cfg := Config{
-			GitHubWebhookDisabled:   true,
-			GitHubWebhookSecret:     "secret",
-			GitHubAppID:             1,
-			GitHubAppPrivateKeyB64:  "key",
-			GitHubInstallationID:    1,
+			GitHubWebhookDisabled:  true,
+			GitHubWebhookSecret:    "secret",
+			GitHubAppID:            1,
+			GitHubAppPrivateKeyB64: "key",
+			GitHubInstallationID:   1,
 		}
 		if cfg.GitHubConfigured() {
 			t.Error("expected not configured when disabled")

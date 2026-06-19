@@ -32,17 +32,17 @@ func TestAuthMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	t.Run("empty token passes through", func(t *testing.T) {
+	t.Run("empty token still requires bearer auth", func(t *testing.T) {
 		nextCalled = false
 		handler := authMiddleware("", nil, next)
 		req := httptest.NewRequest("POST", "/mcp", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
-		if !nextCalled {
-			t.Error("expected next handler to be called")
+		if nextCalled {
+			t.Error("expected next handler NOT to be called")
 		}
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d", rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", rec.Code)
 		}
 	})
 

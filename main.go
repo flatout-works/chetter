@@ -121,29 +121,26 @@ func run() error {
 func authMiddleware(adminToken string, db *sql.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		authHeader := req.Header.Get("Authorization")
-		if adminToken != "" && strings.HasPrefix(authHeader, "Bearer ") {
-			provided := strings.TrimPrefix(authHeader, "Bearer ")
-			if provided == adminToken {
-				next.ServeHTTP(w, req.WithContext(
-					auth.WithScope(req.Context(), auth.Scope{Admin: true}),
-				))
-				return
-			}
-			if db != nil {
-				scope := lookupTokenScope(req.Context(), db, provided)
-				if scope.TeamID != "" {
-					next.ServeHTTP(w, req.WithContext(
-						auth.WithScope(req.Context(), scope),
-					))
-					return
-				}
-			}
+		if !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if adminToken == "" {
-			next.ServeHTTP(w, req)
+
+		provided := strings.TrimPrefix(authHeader, "Bearer ")
+		if adminToken != "" && provided == adminToken {
+			next.ServeHTTP(w, req.WithContext(
+				auth.WithScope(req.Context(), auth.Scope{Admin: true}),
+			))
 			return
+		}
+		if db != nil {
+			scope := lookupTokenScope(req.Context(), db, provided)
+			if scope.TeamID != "" {
+				next.ServeHTTP(w, req.WithContext(
+					auth.WithScope(req.Context(), scope),
+				))
+				return
+			}
 		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})

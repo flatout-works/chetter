@@ -218,9 +218,9 @@ SHA-256 hashed tokens stored in the `api_tokens` table. Each token belongs to a 
 - Create, list, and delete teams.
 - List users (optionally filtered by team).
 
-### No-Auth Mode
+### Authentication Required
 
-When `MCP_AUTH_TOKEN` is empty, authentication is disabled entirely. All requests pass through with admin scope.
+`MCP_AUTH_TOKEN` is required at startup. Empty values and `change-me*` placeholders are rejected so protected endpoints never fall back to no-auth mode.
 
 ---
 
@@ -364,7 +364,7 @@ Server URL and auth token can be set via flags or env vars (`CHETTER_SERVER_URL`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HTTP_ADDR` | `:8080` | Listen address |
-| `MCP_AUTH_TOKEN` | (empty) | Admin bearer token; empty = auth disabled |
+| `MCP_AUTH_TOKEN` | (required) | Admin bearer token; empty and `change-me*` values are rejected |
 | `DATABASE_DSN` | (required) | TiDB connection string |
 | `DEFAULT_AGENT_IMAGE` | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image |
 | `DEFAULT_TASK_TIMEOUT_SEC` | `600` | Default task timeout |

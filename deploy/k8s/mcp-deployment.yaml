@@ -24,6 +24,11 @@ spec:
         env:
         - name: HTTP_ADDR
           value: ":8080"
+        - name: MCP_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: chetter-secrets
+              key: CHETTER_MCP_AUTH_TOKEN
         - name: DEFAULT_AGENT_IMAGE
           value: ghcr.io/flatout-works/chetter-runner:main
         resources:

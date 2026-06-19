@@ -150,7 +150,11 @@ k3d image import ghcr.io/flatout-works/chetter-mcp:local \
 ### 6. Deploy Chetter
 
 ```bash
-kubectl -n chetter apply -f deploy/k8s/secrets.yaml
+export CHETTER_MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
+kubectl -n chetter create secret generic chetter-secrets \
+  --from-literal=CHETTER_MCP_AUTH_TOKEN="$CHETTER_MCP_AUTH_TOKEN" \
+  --from-literal=DATABASE_DSN='root@tcp(tidb:4000)/chetter?parseTime=true' \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n chetter apply -f deploy/k8s/mcp-service.yaml
 kubectl -n chetter apply -f deploy/k8s/mcp-deployment.yaml
 kubectl -n chetter apply -f deploy/k8s/runner-deployment.yaml
@@ -181,7 +185,7 @@ curl -s http://localhost:9080/healthz
 # Submit a task (using MCP JSON-RPC protocol with the admin token)
 TASK_ID=$(curl -s -X POST http://localhost:9080/mcp \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer change-me" \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
   -d '{
     "jsonrpc": "2.0",
     "id": "1",
@@ -200,7 +204,7 @@ echo "Task ID: $TASK_ID"
 sleep 10
 curl -s -X POST http://localhost:9080/mcp \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer change-me" \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
   -d "{
     \"jsonrpc\": \"2.0\",
     \"id\": \"2\",
@@ -216,7 +220,7 @@ curl -s -X POST http://localhost:9080/mcp \
 kill %1 2>/dev/null
 ```
 > **Using an MCP client:** Configure any MCP client with
-> `http://localhost:9080/mcp` and bearer token `change-me`. The `chetter_submit_task`,
+> `http://localhost:9080/mcp` and bearer token `$CHETTER_MCP_AUTH_TOKEN`. The `chetter_submit_task`,
 > `chetter_task_status`, `chetter_list_tasks`, and other tools are available.
 
 ### Cleanup

@@ -40,7 +40,7 @@ Edit `.env` and set at least:
 - `CHETTER_MCP_AUTH_TOKEN`
 - At least one LLM provider key, such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `SYNTHETIC_API_KEY`, or `OPENCODE_API_KEY`
 
-For public servers, always set `CHETTER_MCP_AUTH_TOKEN`.
+Always set `CHETTER_MCP_AUTH_TOKEN` to a long, random value; the server refuses to start without it.
 
 ### 3. Start
 
