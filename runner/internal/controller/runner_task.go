@@ -587,9 +587,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
 			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
 		}
-		if schOut, schErr := exec.Command("docker", "exec", containerName, "sh", "-c", "sqlite3 /workspace/.local/share/opencode/opencode.db '.tables' 2>/dev/null || sqlite3 /workspace/.local/share/opencode/opencode.db '.schema' 2>/dev/null | head -30").CombinedOutput(); schErr == nil {
-			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db schema: %s", strings.TrimSpace(string(schOut))))
-		}
 		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}

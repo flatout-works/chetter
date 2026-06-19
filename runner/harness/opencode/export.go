@@ -46,12 +46,12 @@ func (oc *OpenCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	}
 
 	rows, err := db.Query(
-		"SELECT m.id FROM message m WHERE m.session_id = ? ORDER BY m.time_created ASC",
+		"SELECT id FROM message WHERE session_id = ? ORDER BY id ASC",
 		sessionID,
 	)
 	if err != nil {
 		rows, err = db.Query(
-			"SELECT m.id FROM messages m WHERE m.session_id = ? ORDER BY m.time_created ASC",
+			"SELECT id FROM messages WHERE session_id = ? ORDER BY id ASC",
 			sessionID,
 		)
 	}
