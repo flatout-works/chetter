@@ -20,13 +20,16 @@ proxy:
     - lite.duckduckgo.com
     - www.google.com
     - bing.com
-    - raw.githubusercontent.com
     - github.com
+    - raw.githubusercontent.com
+    - objects.githubusercontent.com
     - docs.python.org
     - pkg.go.dev
     - developer.mozilla.org
     - api.mem9.ai
     - api.osv.dev
+    - registry.npmjs.org
+    - npmjs.org
   blocked_domains:
     - webhook.site
     - requestbin.com
