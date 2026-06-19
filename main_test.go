@@ -106,7 +106,72 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 }
 
-// --- Integration tests with real DB ---
+func TestRunnerRPCAuthMiddleware(t *testing.T) {
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("valid runner token", func(t *testing.T) {
+		nextCalled = false
+		handler := runnerRPCAuthMiddleware("runner-token", next)
+		req := httptest.NewRequest("POST", "/runnerv1.RunnerService/ClaimTask", nil)
+		req.Header.Set("Authorization", "Bearer runner-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if !nextCalled {
+			t.Error("expected next handler to be called")
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("wrong token", func(t *testing.T) {
+		nextCalled = false
+		handler := runnerRPCAuthMiddleware("runner-token", next)
+		req := httptest.NewRequest("POST", "/runnerv1.RunnerService/ClaimTask", nil)
+		req.Header.Set("Authorization", "Bearer wrong-token")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if nextCalled {
+			t.Error("expected next handler NOT to be called")
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", rec.Code)
+		}
+	})
+
+	t.Run("empty runner token", func(t *testing.T) {
+		nextCalled = false
+		handler := runnerRPCAuthMiddleware("", next)
+		req := httptest.NewRequest("POST", "/runnerv1.RunnerService/ClaimTask", nil)
+		req.Header.Set("Authorization", "Bearer something")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if nextCalled {
+			t.Error("expected next handler NOT to be called")
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", rec.Code)
+		}
+	})
+
+	t.Run("missing authorization header", func(t *testing.T) {
+		nextCalled = false
+		handler := runnerRPCAuthMiddleware("runner-token", next)
+		req := httptest.NewRequest("POST", "/runnerv1.RunnerService/ClaimTask", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if nextCalled {
+			t.Error("expected next handler NOT to be called")
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", rec.Code)
+		}
+	})
+}
 
 func seedTokenInDB(t *testing.T, st *store.Store) (teamID, rawToken string) {
 	t.Helper()

@@ -12,6 +12,7 @@ import (
 type Config struct {
 	HTTPAddr               string
 	MCPAuthToken           string
+	RunnerRPCToken         string
 	DatabaseDSN            string
 	DefaultAgentImage      string
 	DefaultTaskTimeoutSec  int
@@ -29,6 +30,7 @@ func Load() Config {
 	return Config{
 		HTTPAddr:               env("HTTP_ADDR", ":8080"),
 		MCPAuthToken:           os.Getenv("MCP_AUTH_TOKEN"),
+		RunnerRPCToken:         os.Getenv("CHETTER_RUNNER_RPC_TOKEN"),
 		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
 		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
 		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
@@ -52,6 +54,12 @@ func (c Config) Validate() error {
 	}
 	if isPlaceholderAuthToken(c.MCPAuthToken) {
 		return fmt.Errorf("MCP_AUTH_TOKEN must not use a placeholder value")
+	}
+	if strings.TrimSpace(c.RunnerRPCToken) == "" {
+		return fmt.Errorf("CHETTER_RUNNER_RPC_TOKEN is required")
+	}
+	if isPlaceholderAuthToken(c.RunnerRPCToken) {
+		return fmt.Errorf("CHETTER_RUNNER_RPC_TOKEN must not use a placeholder value")
 	}
 	return nil
 }

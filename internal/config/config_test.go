@@ -7,8 +7,9 @@ import (
 func TestValidate(t *testing.T) {
 	t.Run("all required fields present", func(t *testing.T) {
 		cfg := Config{
-			DatabaseDSN:  "root@tcp(localhost:4000)/db",
-			MCPAuthToken: "secure-token",
+			DatabaseDSN:    "root@tcp(localhost:4000)/db",
+			MCPAuthToken:   "secure-token",
+			RunnerRPCToken: "runner-secret",
 		}
 		if err := cfg.Validate(); err != nil {
 			t.Fatalf("expected nil, got %v", err)

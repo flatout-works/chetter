@@ -60,9 +60,9 @@ type GitConfig struct {
 }
 
 type ExecutionConfig struct {
-	Runtime  string `yaml:"runtime"`
-	Harness  string `yaml:"harness"`
-	UseGVisor bool `yaml:"use_gvisor"`
+	Runtime   string `yaml:"runtime"`
+	Harness   string `yaml:"harness"`
+	UseGVisor bool   `yaml:"use_gvisor"`
 }
 
 type DeployConfig struct {
@@ -94,7 +94,7 @@ func applyDefaults(cfg *Config) {
 		cfg.Server.URL = os.Getenv("CHETTER_SERVER_URL")
 	}
 	if cfg.Server.AuthToken == "" {
-		cfg.Server.AuthToken = firstEnv("CHETTER_RUNNER_AUTH_TOKEN", "MCP_AUTH_TOKEN", "CHETTER_MCP_AUTH_TOKEN")
+		cfg.Server.AuthToken = firstEnv("CHETTER_RUNNER_AUTH_TOKEN", "CHETTER_RUNNER_RPC_TOKEN", "MCP_AUTH_TOKEN", "CHETTER_MCP_AUTH_TOKEN")
 	}
 	if cfg.Runner.WorkspaceRoot == "" {
 		cfg.Runner.WorkspaceRoot = DefaultWorkspaceRoot

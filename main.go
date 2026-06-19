@@ -89,7 +89,7 @@ func run() error {
 	})
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
-	mux.Handle(runnerPath, authMiddleware(cfg.MCPAuthToken, st.DB(), runnerHandler))
+	mux.Handle(runnerPath, runnerRPCAuthMiddleware(cfg.RunnerRPCToken, runnerHandler))
 	mux.Handle("/api/v1/", authMiddleware(cfg.MCPAuthToken, st.DB(), svc.TokenAPIHandler()))
 	if whHandler != nil {
 		mux.Handle("/webhook/github", whHandler)
@@ -155,6 +155,24 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) auth.Sco
 		return auth.Scope{}
 	}
 	return auth.Scope{TeamID: row.TeamID}
+}
+
+// runnerRPCAuthMiddleware validates only the dedicated runner RPC token.
+// Regular team-scoped API tokens and the admin MCP token are rejected.
+func runnerRPCAuthMiddleware(runnerToken string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		authHeader := req.Header.Get("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		provided := strings.TrimPrefix(authHeader, "Bearer ")
+		if runnerToken == "" || provided != runnerToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
 }
 
 // buildWebhookHandler constructs the GitHub webhook handler. Returns nil if
