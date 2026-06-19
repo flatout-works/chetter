@@ -89,5 +89,4 @@ services:
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-""}
     volumes:
       - /var/lib/chetter-runner-2:/var/lib/chetter-runner
-       - /var/run/docker.sock:/var/run/docker.sock
-
+      - /var/run/docker.sock:/var/run/docker.sock
