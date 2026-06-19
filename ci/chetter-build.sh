@@ -31,7 +31,7 @@ BASE_IMAGE_ARG="--build-arg BASE_IMAGE=chetter-runner-base:latest"
 
 if [ "${SKIP_MAIN}" != "true" ]; then
 
-  if [ "${BUILD_BASE:-false}" = "true" ]; then
+  if [ "${BUILD_BASE:-false}" = "true" ] || ! docker image inspect chetter-runner-base:latest >/dev/null 2>&1; then
     echo "=== Building runner base image ==="
     docker build --build-arg "CACHEBUST=$CACHEBUST" \
       -f runner/Dockerfile.chetter-base \
