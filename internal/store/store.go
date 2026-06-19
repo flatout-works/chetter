@@ -389,17 +389,19 @@ func (s *Store) columnExists(ctx context.Context, table, column string) (bool, e
 	return count > 0, nil
 }
 
-// ReapStaleTasks finds running tasks that have not received a heartbeat
-// within their timeout + grace period and marks them as error.
+// ReapStaleTasks finds running tasks that have exceeded their timeout + grace
+// period and marks them as error. Uses started_at (not updated_at) because
+// updated_at is refreshed on every heartbeat, which would prevent the reaper
+// from ever firing on tasks that keep heartbeating past their timeout.
 func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, error) {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE chetter_tasks
 		SET status = 'error',
-		    error = CONCAT('runner timeout: no heartbeat for ', TIMESTAMPDIFF(SECOND, updated_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
+		    error = CONCAT('runner timeout: task ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
 		    ended_at = ?,
 		    updated_at = ?
 		WHERE status = 'running'
-		  AND TIMESTAMPDIFF(SECOND, updated_at, NOW()) > timeout_sec + ?
+		  AND TIMESTAMPDIFF(SECOND, started_at, NOW()) > timeout_sec + ?
 	`, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))
 	if err != nil {
 		return 0, fmt.Errorf("reap stale tasks: %w", err)

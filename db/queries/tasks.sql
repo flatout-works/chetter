@@ -86,6 +86,7 @@ SET status = 'pending',
     runner_id = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
+    started_at = NULL,
     updated_at = ?
 WHERE status = 'running'
   AND lease_expires_at IS NOT NULL
