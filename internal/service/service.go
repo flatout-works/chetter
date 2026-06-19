@@ -90,10 +90,15 @@ type Service struct {
 	repo        *repository.Queries
 	rawDB       *sql.DB
 	arcane      *ArcaneClient
+	runnerRPC   *RunnerRPCService
 	cron        *cron.Cron
 	cronMu      sync.Mutex
 	cronEntries map[string]cron.EntryID
 	reaperStop  chan struct{}
+}
+
+func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
+	s.runnerRPC = r
 }
 
 func New(cfg config.Config, st *store.Store) *Service {

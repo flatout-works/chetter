@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
@@ -51,6 +52,12 @@ type Runner struct {
 	terminalTasks  map[string]struct{}
 	cancelledTasks map[string]struct{}
 	sem            chan struct{}
+
+	draining    atomic.Bool
+	drainCh     chan struct{}
+	drainedCh   chan struct{}
+	drainCtx    context.Context
+	drainCancel context.CancelFunc
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
@@ -58,6 +65,8 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
+	drainCh := make(chan struct{})
+	drainedCh := make(chan struct{})
 	return &Runner{
 		cfg:            cfg,
 		defaultHarness: cfg.Execution.Harness,
@@ -68,6 +77,8 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		terminalTasks:  make(map[string]struct{}),
 		cancelledTasks: make(map[string]struct{}),
 		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent),
+		drainCh:        drainCh,
+		drainedCh:      drainedCh,
 	}, nil
 }
 

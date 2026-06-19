@@ -48,6 +48,9 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	}
 
 	<-ctx.Done()
+	if r.draining.Load() {
+		r.waitDrain(10 * time.Minute)
+	}
 	r.publishRunnerHeartbeat("stopping")
 	r.stopNetwork()
 	return nil
@@ -55,6 +58,9 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 
 func (r *Runner) claimLoop(ctx context.Context) {
 	for {
+		if r.draining.Load() {
+			return
+		}
 		resp, err := r.claimClient.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 			RunnerId:     r.runnerID,
 			WaitSeconds:  30,
@@ -75,6 +81,9 @@ func (r *Runner) claimLoop(ctx context.Context) {
 			continue
 		}
 
+		if r.draining.Load() {
+			return
+		}
 		select {
 		case r.sem <- struct{}{}:
 		case <-ctx.Done():

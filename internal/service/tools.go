@@ -248,6 +248,19 @@ type CancelTaskOutput struct {
 	Task TaskToolRecord `json:"task"`
 }
 
+// DrainRunnerInput is the input for chetter_drain_runner.
+type DrainRunnerInput struct {
+	RunnerID   string `json:"runner_id" jsonschema:"Runner ID to drain"`
+	TimeoutSec int    `json:"timeout_sec,omitempty" jsonschema:"Max seconds to wait for running tasks to finish (default 600)"`
+}
+
+// DrainRunnerOutput is the output for chetter_drain_runner.
+type DrainRunnerOutput struct {
+	Drained     bool   `json:"drained"`
+	RunnerID    string `json:"runner_id"`
+	Message     string `json:"message"`
+}
+
 // ClearQueueInput is the input for chetter_clear_queue.
 type ClearQueueInput struct {
 	Confirm bool `json:"confirm" jsonschema:"Set true to cancel pending DB-backed tasks"`
@@ -475,6 +488,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_runner_health", Description: "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age."}, svc.runnerHealthTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_drain_runner", Description: "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically."}, svc.drainRunnerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
@@ -1076,6 +1090,21 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, CancelTaskOutput{}, fmt.Errorf("get task after cancel: %w", err)
 	}
 	return nil, CancelTaskOutput{Task: repoTaskToToolRecord(task)}, nil
+}
+
+func (s *Service) drainRunnerTool(ctx context.Context, _ *mcp.CallToolRequest, in DrainRunnerInput) (*mcp.CallToolResult, DrainRunnerOutput, error) {
+	if in.RunnerID == "" {
+		return nil, DrainRunnerOutput{}, fmt.Errorf("runner_id is required")
+	}
+	if s.runnerRPC == nil {
+		return nil, DrainRunnerOutput{}, fmt.Errorf("runner RPC service not available")
+	}
+	s.runnerRPC.RequestDrain(in.RunnerID)
+	return nil, DrainRunnerOutput{
+		Drained:  true,
+		RunnerID: in.RunnerID,
+		Message:  fmt.Sprintf("drain requested for runner %s — it will stop claiming tasks, finish running work, then exit and restart", in.RunnerID),
+	}, nil
 }
 
 func (s *Service) clearQueueTool(ctx context.Context, _ *mcp.CallToolRequest, in ClearQueueInput) (*mcp.CallToolResult, ClearQueueOutput, error) {

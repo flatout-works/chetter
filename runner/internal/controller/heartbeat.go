@@ -51,7 +51,11 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			r.publishRunnerHeartbeat("active")
+			status := "active"
+			if r.draining.Load() {
+				status = "draining"
+			}
+			r.publishRunnerHeartbeat(status)
 		case <-ctx.Done():
 			return
 		}
@@ -116,8 +120,11 @@ func (r *Runner) publishRunnerHeartbeatRPC(status string) {
 		return
 	}
 	for _, command := range cmd.Msg.Commands {
-		if command.Type == "cancel" {
+		switch command.Type {
+		case "cancel":
 			r.cancelTask(command.TaskId, command.Reason)
+		case "drain":
+			r.startDrain()
 		}
 	}
 }
@@ -142,6 +149,55 @@ func (r *Runner) cancelTask(taskID, reason string) {
 	slog.Info("cancelling task", "taskID", taskID, "reason", reason)
 	session.Cancel()
 	r.publishStatus(taskID, "cancelled", reason, nil)
+}
+
+func (r *Runner) startDrain() {
+	if r.draining.Swap(true) {
+		return // already draining
+	}
+	slog.Info("runner draining — will stop claiming tasks and wait for running tasks to finish", "runner_id", r.runnerID)
+	close(r.drainCh)
+}
+
+func (r *Runner) waitDrain(deadline time.Duration) {
+	select {
+	case <-r.drainCh:
+		// not draining, nothing to wait for
+		return
+	default:
+	}
+
+	slog.Info("waiting for running tasks to finish before exit", "runner_id", r.runnerID, "deadline", deadline)
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	r.drainCtx = ctx
+	r.drainCancel = cancel
+	defer cancel()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		r.mu.Lock()
+		count := len(r.tasks)
+		r.mu.Unlock()
+		if count == 0 {
+			slog.Info("all tasks completed, drain finished", "runner_id", r.runnerID)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			slog.Warn("drain deadline exceeded, forcing exit",
+				"runner_id", r.runnerID, "remaining_tasks", count)
+			r.mu.Lock()
+			for taskID, session := range r.tasks {
+				slog.Warn("cancelling remaining task", "runner_id", r.runnerID, "task_id", taskID)
+				session.Cancel()
+			}
+			r.mu.Unlock()
+			return
+		case <-ticker.C:
+			slog.Info("drain waiting", "runner_id", r.runnerID, "remaining_tasks", count)
+		}
+	}
 }
 
 func firstEnv(keys ...string) string {

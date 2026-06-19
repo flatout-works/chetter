@@ -31,6 +31,7 @@ type RunnerRPCService struct {
 	db            *repository.Queries
 	rawDB         *sql.DB
 	heartbeatSeen sync.Map
+	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 }
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
@@ -160,8 +161,17 @@ func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.Runn
 	return nil
 }
 
+func (s *RunnerRPCService) RequestDrain(runnerID string) {
+	s.drainRequests.Store(runnerID, true)
+}
+
 func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.RunnerInfo) ([]*runnerv1.RunnerCommand, error) {
 	commands := make([]*runnerv1.RunnerCommand, 0)
+	if info != nil {
+		if _, draining := s.drainRequests.LoadAndDelete(info.RunnerId); draining {
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "drain"})
+		}
+	}
 	if info == nil || len(info.CurrentTaskIds) == 0 {
 		return commands, nil
 	}

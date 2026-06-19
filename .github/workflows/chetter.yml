@@ -104,6 +104,18 @@ jobs:
              BUILD_VARIANT_MINIMAL='$BUILD_VARIANT_MINIMAL' \
              bash ~/chetter-build.sh"
 
+      - name: Drain runners before redeploy
+        env:
+          CHETTER_AUTH_TOKEN: ${{ secrets.CHETTER_MCP_AUTH_TOKEN }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.WOWBAGGER_SSH_KEY }}" > ~/.ssh/wowbagger
+          chmod 600 ~/.ssh/wowbagger
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger \
+            ci/drain-runners.sh gokr@wowbagger.krampe.se:~/drain-runners.sh
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
+            "CHETTER_MCP_AUTH_TOKEN='${CHETTER_AUTH_TOKEN}' DRAIN_TIMEOUT_SEC=600 bash ~/drain-runners.sh"
+
       - name: Sync and redeploy with Arcane
         env:
           ARCANE_URL: ${{ secrets.ARCANE_URL }}

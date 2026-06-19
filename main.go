@@ -66,6 +66,7 @@ func run() error {
 
 	svc := service.New(cfg, st)
 	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB())
+	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
 	}
