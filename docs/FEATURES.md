@@ -134,19 +134,20 @@ A tiny binary that bridges stdio MCP to a Unix socket, enabling OpenCode to use 
 
 ## Execution Environments
 
-### Kata Containers (default)
+### gVisor (default, `USE_GVISOR=true`)
 
-Tasks run in Kata Containers via containerd with full network isolation:
+Tasks run in Docker containers with the **gVisor** (`runsc`) runtime for strong sandboxing:
 
-- Linux bridges, veth pairs, and network namespaces per task.
-- Subnet allocation from `10.200.X.0/24` (200 subnets available).
-- iptables rules block cloud metadata (169.254.169.254) and restrict egress.
-- Transparent HTTP/HTTPS proxy with domain allowlist/blocklist.
-- DNS proxy with domain filtering and IPv6 suppression (avoids Kata VM stalls).
+- Complete userspace kernel (no host kernel access, no new privileges).
+- Transparent HTTP/HTTPS proxy with optional domain allowlist/blocklist (see [Proxy Filtering](#proxy-filtering)).
+- DNS proxy with optional domain filtering and IPv6 suppression.
+- Workspace isolation per task with mount propagation.
 
-### Docker
+Networking uses Docker bridge networks — the legacy iptables/bridge/netns code has been removed.
 
-Tasks run in standard Docker containers with the runner's Docker daemon.
+### Docker (`USE_GVISOR=false`)
+
+Tasks run in standard Docker containers without gVisor sandboxing. Proxy and DNS filtering still apply if configured.
 
 ### Local
 
@@ -387,14 +388,35 @@ Configured via YAML (`runner.yaml`) with env var fallbacks:
 | `runner.workspace_root` | — | `/var/lib/runner` | Workspace directory |
 | `runner.max_concurrent` | — | `10` | Max concurrent tasks |
 | `proxy.listen_addr` | — | `:18080` | HTTP proxy address |
-| `proxy.allowed_domains` | — | (empty) | Egress allowlist |
-| `proxy.blocked_domains` | — | (empty) | Egress blocklist |
-| `dns.listen_addr` | — | `:53` | DNS proxy address |
+| `proxy.allowed_domains` | `CHETTER_PROXY_ALLOWED_DOMAINS` | (empty) | Egress allowlist — comma-separated domains. Empty = unfiltered. |
+| `proxy.blocked_domains` | `CHETTER_PROXY_BLOCKED_DOMAINS` | (empty) | Egress blocklist — comma-separated domains. Always enforced. |
+| `dns.listen_addr` | — | `:5300` | DNS proxy address |
 | `dns.upstream` | — | `8.8.8.8:53` | Upstream DNS |
+| `dns.blocked_domains` | `CHETTER_DNS_BLOCKED_DOMAINS` | (empty) | DNS blocklist — comma-separated domains |
 | `execution.harness` | — | (empty) | `claude-code`, `codex`, or default=opencode |
 | `deploy.provider` | — | `local` | `local` or `preview` |
 | `deploy.registry` | — | (empty) | Container registry |
 | `chetter_mcp.url` | — | (empty) | MCP server URL injected into agents |
+
+### Proxy Filtering
+
+The runner runs a **transparent HTTP/HTTPS proxy** on `:18080` and a **DNS proxy** on `:5300` inside task containers. These can be configured to restrict egress traffic from agent containers.
+
+**Default: unfiltered.** When `CHETTER_PROXY_ALLOWED_DOMAINS` is unset, all outbound HTTP/HTTPS traffic passes through. Set it to enable allowlist enforcement.
+
+**How allowlist matching works:** Domains match via exact match or suffix match (e.g., `github.com` matches `api.github.com` and `raw.githubusercontent.com` but NOT `objects.githubusercontent.com` — that must be listed separately).
+
+**Blocklist** is always enforced regardless of allowlist state.
+
+**DNS blocking** prevents DNS resolution entirely for blocked domains (e.g., cloud metadata endpoints).
+
+**Example — lock down a runner to only LLM APIs + GitHub:**
+
+```
+CHETTER_PROXY_ALLOWED_DOMAINS=api.openai.com,api.anthropic.com,api.deepseek.com,opencode.ai,api.synthetic.new,api.groq.com,api.mistral.ai,html.duckduckgo.com,lite.duckduckgo.com,www.google.com,bing.com,github.com,raw.githubusercontent.com,objects.githubusercontent.com,docs.python.org,pkg.go.dev,developer.mozilla.org,api.mem9.ai,api.osv.dev,registry.npmjs.org,npmjs.org
+CHETTER_PROXY_BLOCKED_DOMAINS=webhook.site,requestbin.com,pastebin.com,discord.com,hooks.slack.com,zpr.io
+CHETTER_DNS_BLOCKED_DOMAINS=metadata.google.internal,169.254.169.254
+```
 
 ### Secrets Forwarded to Agent Containers
 
