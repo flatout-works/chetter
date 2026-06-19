@@ -1,4 +1,4 @@
-# Trigger: issue implementation with GLM-5.1
+# Trigger: issue implementation with GLM-5.2
 #
 # When a comment is posted on an issue (e.g., triage feedback requesting
 # implementation), an agent reads the issue, plans the work, implements
@@ -23,8 +23,8 @@ trigger_config: '{"repo": "flatout-works/chetter", "event": "comment"}'
 agent_image: chetter-runner:latest
 harness: opencode
 agent: issue-implementer
-provider_id: opencode
-model_id: deepseek-v4-flash-free
+provider_id: synthetic
+model_id: hf:zai-org/GLM-5.2
 git_url: https://github.com/flatout-works/chetter
 git_ref: main
 timeout_sec: 7200

@@ -545,6 +545,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if gvisor {
 		runnerIP = hostIP(netName)
 		dockerArgs = append(dockerArgs,
+			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
+			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
+			"-e", "http_proxy=http://"+runnerIP+":18080",
+			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
 			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
 			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
@@ -993,6 +997,10 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, socketPath, containerName string
 	if gvisor {
 		dockerArgs = append(dockerArgs,
 			"-e", "HOME="+containerWorkspaceDir,
+			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
+			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
+			"-e", "http_proxy=http://"+runnerIP+":18080",
+			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
 			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
 			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
