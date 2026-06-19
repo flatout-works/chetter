@@ -133,33 +133,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 
 	ws := tools.NewWorkspace(wsDir)
-	git := tools.NewGit(wsDir, r.cfg.Git.SSHKeyPath, r.cfg.Git.PAT)
-	deploy := tools.NewDeploy(
-		wsDir,
-		tools.DeployProvider(r.cfg.Deploy.Provider),
-		req.TaskID,
-		r.cfg.Deploy.Registry,
-		r.cfg.Deploy.ChetterURL,
-	)
 
 	mcpServer.RegisterTool("workspace_read_file", ws.ReadFile)
 	mcpServer.RegisterTool("workspace_write_file", ws.WriteFile)
 	mcpServer.RegisterTool("workspace_list_directory", ws.ListDirectory)
-	mcpServer.RegisterTool("workspace_bash", ws.Bash)
-	mcpServer.RegisterTool("git_status", git.Status)
-	mcpServer.RegisterTool("git_pull", git.Pull)
-	mcpServer.RegisterTool("git_push", git.Push)
-	mcpServer.RegisterTool("git_commit", git.Commit)
-	mcpServer.RegisterTool("fetch_url", tools.Fetch)
-	mcpServer.RegisterTool("deploy_build", deploy.Build)
-	mcpServer.RegisterTool("deploy_push", deploy.Push)
-	mcpServer.RegisterTool("deploy_run", deploy.Run)
-	mcpServer.RegisterTool("deploy_status", deploy.Status)
-	mcpServer.RegisterTool("deploy_stop", deploy.Stop)
-	mcpServer.RegisterTool("deploy_logs", deploy.Logs)
-	mcpServer.RegisterTool("deploy_list", deploy.ListContainers)
-	mcpServer.RegisterTool("deploy_versions", deploy.ListVersions)
-	mcpServer.RegisterTool("deploy_rollback", deploy.Rollback)
 
 	go mcpServer.Serve(ctx)
 	slog.Info("MCP server started", "taskID", req.TaskID, "socket", socketPath)

@@ -66,7 +66,7 @@ func TestServerToolsList(t *testing.T) {
 	if !ok {
 		t.Fatalf("tools is not []map[string]any: %T", result["tools"])
 	}
-	if len(tools) < 10 {
+	if len(tools) < 3 {
 		t.Errorf("too few tools: %d", len(tools))
 	}
 }
