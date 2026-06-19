@@ -644,3 +644,67 @@ func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
 		t.Fatalf("expected empty harness, got %q", req.Harness)
 	}
 }
+
+func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{
+		TaskID:     "task-123",
+		AgentImage: "ghcr.io/flatout-works/chetter-runner:main",
+		Agent:      "issue-creator",
+		ProviderID: "synthetic",
+		ModelID:    "pi-model",
+		Env: map[string]string{
+			"CUSTOM_ENV":     "custom-value",
+			"OPENAI_API_KEY": "task-key",
+		},
+	}
+	args := dockerRPCArgs(req, "/tmp/ws", "/tmp/chetter.sock", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
+
+	entrypointIdx := indexOf(args, "--entrypoint")
+	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
+		t.Fatalf("expected docker entrypoint in args: %v", args)
+	}
+	if got := args[entrypointIdx+1]; got != "pi" {
+		t.Fatalf("expected docker entrypoint pi, got %q", got)
+	}
+	imageIdx := indexOf(args, req.AgentImage)
+	if imageIdx == -1 {
+		t.Fatalf("agent image %q not found in args: %v", req.AgentImage, args)
+	}
+	if imageIdx == len(args)-1 || args[imageIdx+1] != "--mode" {
+		t.Fatalf("expected pi RPC args after image, got %v", args[imageIdx:])
+	}
+	if !hasAdjacentArgs(args, "-v", "/tmp/chetter.sock:"+containerSocketPath) {
+		t.Fatalf("expected socket mounted at %s, got %v", containerSocketPath, args)
+	}
+	if !hasAdjacentArgs(args, "-e", "MCP_SOCKET_PATH="+containerSocketPath) {
+		t.Fatalf("expected MCP_SOCKET_PATH to use container socket, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "WORKSPACE="+containerWorkspaceDir) {
+		t.Fatalf("expected WORKSPACE to use container workspace, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "CUSTOM_ENV=custom-value") {
+		t.Fatalf("expected custom env to be forwarded, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", "OPENAI_API_KEY=task-key") {
+		t.Fatalf("runner-owned env must not use task-provided value, got %v", args)
+	}
+}
+
+func indexOf(values []string, want string) int {
+	for i, value := range values {
+		if value == want {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasAdjacentArgs(values []string, key, value string) bool {
+	for i := 0; i < len(values)-1; i++ {
+		if values[i] == key && values[i+1] == value {
+			return true
+		}
+	}
+	return false
+}

@@ -21,6 +21,11 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/tools"
 )
 
+const (
+	containerWorkspaceDir = "/workspace"
+	containerSocketPath   = "/workspace/.chetter.sock"
+)
+
 func (r *Runner) runTask(req task.TaskRequest) {
 	defer func() { <-r.sem }()
 	defer func() {
@@ -111,10 +116,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	isLocal := r.executionMode() == "local"
 	bridgeCmd := r.mcpBridgePath()
+	configSocketPath := socketPath
 	if r.executionMode() == "docker" {
 		bridgeCmd = "/usr/local/bin/mcp-bridge"
+		configSocketPath = containerSocketPath
 	}
-	if err := h.GenerateConfig(wsDir, socketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, configSocketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 
@@ -175,7 +182,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		r.runLocalAgent(ctx, session, req, socketPath, h)
 	default:
 		if h.SupportsRpc() {
-			r.runRpcAgent(ctx, session, req, socketPath, h)
+			r.runDockerRpcAgent(ctx, session, req, socketPath, h)
 			return
 		}
 		if !h.SupportsServe() {
@@ -877,6 +884,103 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, socketPath, "", h)
+	r.runRPCAgentCommand(ctx, session, req, h, cmd)
+}
+
+func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, socketPath string, h harness.Harness) {
+	if req.Prompt == "" {
+		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
+		return
+	}
+
+	args := h.RpcCommand(req)
+	if len(args) == 0 {
+		r.publishStatusForRequest(req, "error", "harness does not provide an RPC command", nil)
+		return
+	}
+
+	containerName := "chetter-task-" + req.TaskID
+	exec.Command("docker", "rm", "-f", containerName).Run()
+	defer exec.Command("docker", "rm", "-f", containerName).Run()
+
+	gvisor := r.cfg.Execution.UseGVisor
+	netName := ""
+	runnerIP := ""
+	if gvisor {
+		netName = runcNetwork()
+		runnerIP = hostIP(netName)
+	}
+
+	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, socketPath, containerName, h, args, gvisor, netName, runnerIP)
+	name := h.Name()
+	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
+	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
+
+	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+	r.runRPCAgentCommand(ctx, session, req, h, cmd)
+}
+
+func dockerRPCArgs(req task.TaskRequest, wsDir, socketPath, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
+	dockerArgs := []string{
+		"run", "--rm", "-i",
+		"--entrypoint", command[0],
+		"--name", containerName,
+	}
+	if gvisor {
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--network", netName)
+		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	dockerArgs = append(dockerArgs,
+		"-v", hostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
+		"-v", socketPath+":"+containerSocketPath,
+		"-w", containerWorkspaceDir,
+		"-e", "TASK_ID="+req.TaskID,
+		"-e", "WORKSPACE="+containerWorkspaceDir,
+		"-e", "MCP_SOCKET_PATH="+containerSocketPath,
+		"-e", "XDG_CONFIG_HOME="+containerWorkspaceDir+"/.config",
+		"-e", "XDG_DATA_HOME="+containerWorkspaceDir+"/.local/share",
+		"-e", "XDG_STATE_HOME="+containerWorkspaceDir+"/.local/state",
+		"-e", "XDG_CACHE_HOME="+containerWorkspaceDir+"/.cache",
+		"-e", "CHETTER_AGENT_NAME="+req.Agent,
+		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
+		"-e", "CHETTER_TASK_ID="+req.TaskID,
+		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
+		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
+	)
+	if gvisor {
+		dockerArgs = append(dockerArgs,
+			"-e", "HOME="+containerWorkspaceDir,
+			"-e", "CHETTER_PROXY="+runnerIP+":18080",
+			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
+			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
+		)
+	} else {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+	}
+
+	for k, v := range h.Env(containerWorkspaceDir, "") {
+		dockerArgs = append(dockerArgs, "-e", k+"="+v)
+	}
+	for k, v := range req.Env {
+		if isRunnerOwnedEnv(k) {
+			continue
+		}
+		dockerArgs = append(dockerArgs, "-e", k+"="+v)
+	}
+	for _, key := range runnerOwnedEnvKeys() {
+		if val := os.Getenv(key); val != "" {
+			dockerArgs = append(dockerArgs, "-e", key+"="+val)
+		}
+	}
+
+	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, command[1:]...)
+	return dockerArgs
+}
+
+func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.Harness, cmd *exec.Cmd) {
+	name := h.Name()
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
