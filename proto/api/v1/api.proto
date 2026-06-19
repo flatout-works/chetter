@@ -1,0 +1,692 @@
+syntax = "proto3";
+
+package api.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/flatout-works/chetter/gen/api/v1;apiv1";
+
+// --- Shared message types ---
+
+message Task {
+  string id = 1;
+  string team_id = 2;
+  string status = 3;
+  string prompt = 4;
+  string git_url = 5;
+  string git_ref = 6;
+  string agent_image = 7;
+  string agent = 8;
+  string provider_id = 9;
+  string model_id = 10;
+  string variant_id = 11;
+  repeated string skills = 12;
+  map<string, string> env = 13;
+  int32 timeout_sec = 14;
+  string summary = 15;
+  string error = 16;
+  string created_at = 17;
+  string updated_at = 18;
+  optional string started_at = 19;
+  optional string ended_at = 20;
+}
+
+message AgentSession {
+  string id = 1;
+  string team_id = 2;
+  string status = 3;
+  string resume_mode = 4;
+  string pinned_runner_id = 5;
+  string checkpoint_id = 6;
+  string harness_session_id = 7;
+  string git_url = 8;
+  string git_ref = 9;
+  string agent_image = 10;
+  string agent = 11;
+  string provider_id = 12;
+  string model_id = 13;
+  string variant_id = 14;
+  string created_at = 15;
+  string updated_at = 16;
+  optional string paused_at = 17;
+  optional string expires_at = 18;
+  string pause_reason = 19;
+  string error = 20;
+}
+
+message SessionRun {
+  string id = 1;
+  string agent_session_id = 2;
+  string task_id = 3;
+  string status = 4;
+  string required_runner_id = 5;
+  string summary = 6;
+  string error = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  optional string started_at = 10;
+  optional string ended_at = 11;
+}
+
+message Trigger {
+  string id = 1;
+  string team_id = 2;
+  string name = 3;
+  string trigger_type = 4;
+  string trigger_config = 5;
+  string cron_expr = 6;
+  string prompt = 7;
+  string git_url = 8;
+  string git_ref = 9;
+  string agent_image = 10;
+  string agent = 11;
+  string provider_id = 12;
+  string model_id = 13;
+  string variant_id = 14;
+  string harness = 15;
+  repeated string skills = 16;
+  int32 timeout_sec = 17;
+  bool enabled = 18;
+  string created_at = 19;
+  string updated_at = 20;
+  optional string last_run_at = 21;
+  optional string next_run_at = 22;
+}
+
+message TaskEvent {
+  string id = 1;
+  string task_id = 2;
+  string subject = 3;
+  string status = 4;
+  string payload = 5;
+  string created_at = 6;
+}
+
+message TaskProgressEntry {
+  string time = 1;
+  string status = 2;
+  string summary = 3;
+  string error = 4;
+}
+
+message ScheduleRun {
+  string id = 1;
+  string schedule_name = 2;
+  string task_id = 3;
+  string status = 4;
+  string scheduled_for = 5;
+  string created_at = 6;
+}
+
+message RunnerFleetHealth {
+  int32 total_tasks = 1;
+  int32 pending_tasks = 2;
+  int32 running_tasks = 3;
+  int32 stale_tasks = 4;
+  int32 done_tasks = 5;
+  int32 error_tasks = 6;
+  repeated RunnerImageInfo runner_images = 7;
+  repeated RunnerInfo runners = 8;
+  repeated RunningTaskInfo running_task_infos = 9;
+  bool fleet_active = 10;
+  string generated_at = 11;
+}
+
+message RunnerImageInfo {
+  string image = 1;
+  int32 count = 2;
+  repeated string runner_ids = 3;
+}
+
+message RunnerInfo {
+  string runner_id = 1;
+  string status = 2;
+  string image_ref = 3;
+  string image_digest = 4;
+  string version = 5;
+  int32 max_concurrent = 6;
+  int32 running_tasks = 7;
+  int32 available_slots = 8;
+  int64 total_started = 9;
+  int64 total_completed = 10;
+  int64 total_errors = 11;
+  repeated string current_task_ids = 12;
+  string execution_mode = 13;
+  string started_at = 14;
+  bool gvisor_enabled = 15;
+  bool checkpoint_restore = 16;
+  string runsc_version = 17;
+  string last_heartbeat = 18;
+}
+
+message RunningTaskInfo {
+  string task_id = 1;
+  string runner_id = 2;
+  string status = 3;
+  string summary = 4;
+  string agent_image = 5;
+  int32 attempt = 6;
+  string started_at = 7;
+  string last_event_at = 8;
+  int32 heartbeat_age_sec = 9;
+  bool is_stale = 10;
+}
+
+message TokenInfo {
+  string name = 1;
+  string user_name = 2;
+  string team_name = 3;
+  string created_at = 4;
+}
+
+message TeamInfo {
+  string id = 1;
+  string name = 2;
+  string created_at = 3;
+}
+
+message UserInfo {
+  string id = 1;
+  string name = 2;
+  string team_name = 3;
+  string created_at = 4;
+}
+
+message AuditEvent {
+  string id = 1;
+  string event_type = 2;
+  string created_at = 3;
+  string source_type = 4;
+  string source_id = 5;
+  string target_type = 6;
+  string target_id = 7;
+  string repo = 8;
+  string github_event = 9;
+  string github_action = 10;
+  string github_delivery_id = 11;
+  string parent_event_id = 12;
+  string detail = 13;
+}
+
+message TaskArtifact {
+  string id = 1;
+  string task_id = 2;
+  string agent_session_id = 3;
+  string session_run_id = 4;
+  string artifact_type = 5;
+  string repo = 6;
+  int32 number = 7;
+  string url = 8;
+  string ref = 9;
+  string sha = 10;
+  string created_at = 11;
+  string discovered_at = 12;
+  string discovery_source = 13;
+}
+
+// --- TaskService ---
+
+service TaskService {
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+  rpc ExportTask(ExportTaskRequest) returns (ExportTaskResponse);
+  rpc ClearQueue(ClearQueueRequest) returns (ClearQueueResponse);
+  rpc SubscribeTaskEvents(SubscribeTaskEventsRequest) returns (stream TaskEvent);
+}
+
+message SubmitTaskRequest {
+  string prompt = 1 [(buf.validate.field).string.min_len = 1];
+  string git_url = 2;
+  string git_ref = 3;
+  string agent_image = 4;
+  string agent = 5;
+  string provider_id = 6;
+  string model_id = 7;
+  string variant_id = 8;
+  repeated string skills = 9;
+  map<string, string> env = 10;
+  string harness = 11;
+  int32 timeout_sec = 12;
+  string session_mode = 13;
+  string pause_reason = 14;
+  int32 ttl_hours = 15;
+}
+
+message SubmitTaskResponse {
+  Task task = 1;
+}
+
+message GetTaskRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetTaskResponse {
+  Task task = 1;
+}
+
+message ListTasksRequest {
+  string status = 1;
+  int32 limit = 2;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+}
+
+message CancelTaskRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string reason = 2;
+}
+
+message CancelTaskResponse {
+  Task task = 1;
+}
+
+message ExportTaskRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ExportTaskResponse {
+  string export = 1;
+}
+
+message ClearQueueRequest {
+  bool confirm = 1 [(buf.validate.field).bool.const = true];
+}
+
+message ClearQueueResponse {
+  bool cleared = 1;
+  int32 cancelled_pending_tasks = 2;
+}
+
+message SubscribeTaskEventsRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string since = 2;  // RFC3339 cursor; empty = from beginning
+}
+
+// --- EventService ---
+
+service EventService {
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsResponse);
+  rpc GetTaskProgress(GetTaskProgressRequest) returns (GetTaskProgressResponse);
+  rpc GetLatestTaskEvent(GetLatestTaskEventRequest) returns (GetLatestTaskEventResponse);
+}
+
+message GetTaskEventsRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetTaskEventsResponse {
+  repeated TaskEvent events = 1;
+}
+
+message GetTaskProgressRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetTaskProgressResponse {
+  repeated TaskProgressEntry entries = 1;
+}
+
+message GetLatestTaskEventRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetLatestTaskEventResponse {
+  TaskEvent event = 1;
+  int32 age_sec = 2;
+  bool is_stale = 3;
+}
+
+// --- SessionService ---
+
+service SessionService {
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  rpc ResumeSession(ResumeSessionRequest) returns (ResumeSessionResponse);
+}
+
+message ListSessionsRequest {
+  string status = 1;
+  int32 limit = 2;
+}
+
+message ListSessionsResponse {
+  repeated AgentSession sessions = 1;
+}
+
+message GetSessionRequest {
+  string session_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetSessionResponse {
+  AgentSession session = 1;
+  repeated SessionRun runs = 2;
+}
+
+message ResumeSessionRequest {
+  string session_id = 1 [(buf.validate.field).string.min_len = 1];
+  string prompt = 2 [(buf.validate.field).string.min_len = 1];
+  int32 timeout_sec = 3;
+}
+
+message ResumeSessionResponse {
+  Task task = 1;
+  SessionRun run = 2;
+}
+
+// --- TriggerService ---
+
+service TriggerService {
+  rpc CreateTrigger(CreateTriggerRequest) returns (CreateTriggerResponse);
+  rpc UpdateTrigger(UpdateTriggerRequest) returns (UpdateTriggerResponse);
+  rpc ListTriggers(ListTriggersRequest) returns (ListTriggersResponse);
+  rpc DeleteTrigger(DeleteTriggerRequest) returns (DeleteTriggerResponse);
+  rpc RunTrigger(RunTriggerRequest) returns (RunTriggerResponse);
+  rpc ListScheduleRuns(ListScheduleRunsRequest) returns (ListScheduleRunsResponse);
+}
+
+message CreateTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string trigger_type = 2 [(buf.validate.field).string.min_len = 1];
+  string cron_expr = 3;
+  string repo = 4;
+  string event = 5;
+  string prompt = 6;
+  string git_url = 7;
+  string git_ref = 8;
+  string agent_image = 9;
+  string agent = 10;
+  string provider_id = 11;
+  string model_id = 12;
+  string variant_id = 13;
+  repeated string skills = 14;
+  string harness = 15;
+  int32 timeout_sec = 16;
+  string session_mode = 17;
+  string pause_reason = 18;
+  int32 ttl_hours = 19;
+}
+
+message CreateTriggerResponse {
+  Trigger trigger = 1;
+}
+
+message UpdateTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string trigger_type = 2;
+  string cron_expr = 3;
+  string repo = 4;
+  string prompt = 5;
+  string git_url = 6;
+  string git_ref = 7;
+  string agent_image = 8;
+  string agent = 9;
+  string provider_id = 10;
+  string model_id = 11;
+  string variant_id = 12;
+  repeated string skills = 13;
+  optional bool enabled = 14;
+  string harness = 15;
+  int32 timeout_sec = 16;
+  string session_mode = 17;
+  string pause_reason = 18;
+  int32 ttl_hours = 19;
+}
+
+message UpdateTriggerResponse {
+  Trigger trigger = 1;
+}
+
+message ListTriggersRequest {
+  bool enabled_only = 1;
+  string trigger_type = 2;
+}
+
+message ListTriggersResponse {
+  repeated Trigger triggers = 1;
+}
+
+message DeleteTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteTriggerResponse {
+  bool deleted = 1;
+}
+
+message RunTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message RunTriggerResponse {
+  Task task = 1;
+}
+
+message ListScheduleRunsRequest {
+  string schedule_name = 1;
+  int32 limit = 2;
+}
+
+message ListScheduleRunsResponse {
+  repeated ScheduleRun runs = 1;
+}
+
+// --- FleetService ---
+
+service FleetService {
+  rpc GetRunnerHealth(GetRunnerHealthRequest) returns (GetRunnerHealthResponse);
+  rpc SubscribeFleetUpdates(SubscribeFleetUpdatesRequest) returns (stream FleetUpdate);
+}
+
+message GetRunnerHealthRequest {
+  bool include_tasks = 1;
+}
+
+message GetRunnerHealthResponse {
+  RunnerFleetHealth health = 1;
+}
+
+message SubscribeFleetUpdatesRequest {}
+
+message FleetUpdate {
+  string type = 1;  // "task_status_change", "runner_registered", "runner_lost"
+  Task task = 2;     // set when type = task_status_change
+  RunnerInfo runner = 3;  // set when type = runner_registered/runner_lost
+}
+
+// --- AdminService ---
+
+service AdminService {
+  rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse);
+  rpc ListTokens(ListTokensRequest) returns (ListTokensResponse);
+  rpc DeleteToken(DeleteTokenRequest) returns (DeleteTokenResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
+  rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+  rpc ListTaskArtifacts(ListTaskArtifactsRequest) returns (ListTaskArtifactsResponse);
+}
+
+message CreateTokenRequest {
+  string team_name = 1 [(buf.validate.field).string.min_len = 1];
+  string user_name = 2 [(buf.validate.field).string.min_len = 1];
+  string token_name = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message CreateTokenResponse {
+  string token = 1;
+  string team_id = 2;
+  string team_name = 3;
+  string user_id = 4;
+  string user_name = 5;
+}
+
+message ListTokensRequest {}
+
+message ListTokensResponse {
+  repeated TokenInfo tokens = 1;
+}
+
+message DeleteTokenRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteTokenResponse {
+  bool deleted = 1;
+}
+
+message CreateTeamRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message CreateTeamResponse {
+  string team_id = 1;
+  string team_name = 2;
+  string created_at = 3;
+}
+
+message ListTeamsRequest {}
+
+message ListTeamsResponse {
+  repeated TeamInfo teams = 1;
+}
+
+message DeleteTeamRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteTeamResponse {
+  bool deleted = 1;
+}
+
+message ListUsersRequest {
+  string team_name = 1;
+}
+
+message ListUsersResponse {
+  repeated UserInfo users = 1;
+}
+
+message ListAuditEventsRequest {
+  string event_type = 1;
+  string source_type = 2;
+  string source_id = 3;
+  string target_type = 4;
+  string target_id = 5;
+  string repo = 6;
+  int32 since_hours = 7;
+  int32 limit = 8;
+}
+
+message ListAuditEventsResponse {
+  repeated AuditEvent events = 1;
+}
+
+message ListTaskArtifactsRequest {
+  string task_id = 1;
+  string agent_session_id = 2;
+  string artifact_type = 3;
+  string repo = 4;
+  int32 limit = 5;
+}
+
+message ListTaskArtifactsResponse {
+  repeated TaskArtifact artifacts = 1;
+}
+
+// --- ArcaneService (conditionally registered) ---
+
+service ArcaneService {
+  rpc GetScannerStatus(ArcaneScannerStatusRequest) returns (ArcaneScannerStatusResponse);
+  rpc GetEnvironmentSummary(ArcaneEnvironmentSummaryRequest) returns (ArcaneEnvironmentSummaryResponse);
+  rpc ListImages(ArcaneListImagesRequest) returns (ArcaneListImagesResponse);
+  rpc GetImageSummary(ArcaneImageSummaryRequest) returns (ArcaneImageSummaryResponse);
+  rpc ListVulnerabilities(ArcaneListVulnerabilitiesRequest) returns (ArcaneListVulnerabilitiesResponse);
+}
+
+message ArcaneScannerStatusRequest {
+  string environment_id = 1;
+}
+
+message ArcaneScannerStatusResponse {
+  bool available = 1;
+  string version = 2;
+}
+
+message ArcaneEnvironmentSummaryRequest {
+  string environment_id = 1;
+}
+
+message SeveritySummary {
+  int32 critical = 1;
+  int32 high = 2;
+  int32 medium = 3;
+  int32 low = 4;
+  int32 unknown = 5;
+  int32 total = 6;
+}
+
+message ArcaneEnvironmentSummaryResponse {
+  int32 total_images = 1;
+  int32 scanned_images = 2;
+  SeveritySummary summary = 3;
+}
+
+message ArcaneListImagesRequest {
+  string environment_id = 1;
+}
+
+message ImageSummaryItem {
+  string id = 1;
+  repeated string repo_tags = 2;
+  string repo = 3;
+  string tag = 4;
+  bool in_use = 5;
+}
+
+message ArcaneListImagesResponse {
+  repeated ImageSummaryItem images = 1;
+}
+
+message ArcaneImageSummaryRequest {
+  string environment_id = 1;
+  string image_id = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message ArcaneImageSummaryResponse {
+  string image_id = 1;
+  string scan_time = 2;
+  string status = 3;
+  SeveritySummary summary = 4;
+}
+
+message ArcaneListVulnerabilitiesRequest {
+  string environment_id = 1;
+  string image_id = 2 [(buf.validate.field).string.min_len = 1];
+  string severity = 3;
+  int32 page = 4;
+  int32 limit = 5;
+}
+
+message Vulnerability {
+  string vulnerability_id = 1;
+  string pkg_name = 2;
+  string installed_version = 3;
+  string fixed_version = 4;
+  string severity = 5;
+  string title = 6;
+  string description = 7;
+}
+
+message ArcaneListVulnerabilitiesResponse {
+  repeated Vulnerability vulnerabilities = 1;
+  int32 total_items = 2;
+}
