@@ -64,18 +64,22 @@ func waitForServeReady(ctx context.Context, baseURL, secret string, timeout time
 		}
 		resp, err := client.Do(req)
 		if err == nil {
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				resp.Body.Close()
+				return nil
+			}
 			lastStatus = resp.StatusCode
 			resp.Body.Close()
-			return nil
+		} else {
+			lastErr = err
 		}
-		lastErr = err
 		time.Sleep(servePollInterval)
+	}
+	if lastStatus >= 400 {
+		return fmt.Errorf("server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
 	}
 	if lastErr != nil {
 		return fmt.Errorf("server at %s not responding within %v: last error: %w", baseURL, timeout, lastErr)
-	}
-	if lastStatus != 0 {
-		return fmt.Errorf("server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
 	}
 	return fmt.Errorf("server at %s not responding within %v", baseURL, timeout)
 }
