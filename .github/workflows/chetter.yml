@@ -77,12 +77,32 @@ jobs:
     needs: [check, detect-changes]
     timeout-minutes: 120
     steps:
+      - uses: actions/checkout@v4
+
       - name: Build images on wowbagger
+        env:
+          BUILD_BASE: ${{ needs.detect-changes.outputs.runner-base }}
+          BUILD_VARIANT_GOLANG: ${{ needs.detect-changes.outputs.variant-golang }}
+          BUILD_VARIANT_PYTHON: ${{ needs.detect-changes.outputs.variant-python }}
+          BUILD_VARIANT_NODE: ${{ needs.detect-changes.outputs.variant-node }}
+          BUILD_VARIANT_RUST: ${{ needs.detect-changes.outputs.variant-rust }}
+          BUILD_VARIANT_MINIMAL: ${{ needs.detect-changes.outputs.variant-minimal }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.WOWBAGGER_SSH_KEY }}" > ~/.ssh/wowbagger
           chmod 600 ~/.ssh/wowbagger
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se '~/chetter-build.sh'
+          # Upload updated build script
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger \
+            ci/chetter-build.sh gokr@wowbagger.krampe.se:~/chetter-build.sh
+          # Build with variant flags
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
+            "BUILD_BASE='$BUILD_BASE' \
+             BUILD_VARIANT_GOLANG='$BUILD_VARIANT_GOLANG' \
+             BUILD_VARIANT_PYTHON='$BUILD_VARIANT_PYTHON' \
+             BUILD_VARIANT_NODE='$BUILD_VARIANT_NODE' \
+             BUILD_VARIANT_RUST='$BUILD_VARIANT_RUST' \
+             BUILD_VARIANT_MINIMAL='$BUILD_VARIANT_MINIMAL' \
+             bash ~/chetter-build.sh"
 
       - name: Sync and redeploy with Arcane
         env:
