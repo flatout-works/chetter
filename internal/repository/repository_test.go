@@ -5,15 +5,24 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/testdb"
 )
 
+var repoTestDB *testdb.PackageDB
+
+func TestMain(m *testing.M) {
+	repoTestDB = testdb.StartPackageDB(m)
+	defer repoTestDB.Close()
+	os.Exit(m.Run())
+}
+
 func newRepo(t *testing.T) (*Queries, func()) {
 	t.Helper()
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := repoTestDB.NewTestDB(t)
 	q := New(tdb.DB)
 	return q, func() { tdb.Truncate(t); cleanup() }
 }

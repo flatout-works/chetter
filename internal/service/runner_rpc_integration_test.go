@@ -16,7 +16,7 @@ import (
 
 func newRPCTestService(t *testing.T) (*RunnerRPCService, *repository.Queries, *testdb.TestDB, func()) {
 	t.Helper()
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := svcTestDB.NewTestDB(t)
 	tdb.Truncate(t)
 	q := repository.New(tdb.DB)
 	return NewRunnerRPCService(q, tdb.DB), q, tdb, cleanup

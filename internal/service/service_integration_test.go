@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -16,9 +17,17 @@ import (
 	"github.com/flatout-works/chetter/internal/testdb"
 )
 
+var svcTestDB *testdb.PackageDB
+
+func TestMain(m *testing.M) {
+	svcTestDB = testdb.StartPackageDB(m)
+	defer svcTestDB.Close()
+	os.Exit(m.Run())
+}
+
 func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	t.Helper()
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := svcTestDB.NewTestDB(t)
 	tdb.Truncate(t)
 	cfg := config.Config{
 		DefaultAgentImage:     "runner:latest",

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -15,6 +16,14 @@ import (
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
 )
+
+var mainTestDB *testdb.PackageDB
+
+func TestMain(m *testing.M) {
+	mainTestDB = testdb.StartPackageDB(m)
+	defer mainTestDB.Close()
+	os.Exit(m.Run())
+}
 
 func TestAuthMiddleware(t *testing.T) {
 	nextCalled := false
@@ -135,7 +144,7 @@ func seedTokenInDB(t *testing.T, st *store.Store) (teamID, rawToken string) {
 }
 
 func TestLookupTokenScope(t *testing.T) {
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
 	st, err := store.Open(tdb.DSN)
 	if err != nil {
@@ -155,7 +164,7 @@ func TestLookupTokenScope(t *testing.T) {
 }
 
 func TestLookupTokenScopeInvalidToken(t *testing.T) {
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
 	st, err := store.Open(tdb.DSN)
 	if err != nil {
@@ -173,7 +182,7 @@ func TestLookupTokenScopeInvalidToken(t *testing.T) {
 }
 
 func TestAuthMiddlewareWithDBToken(t *testing.T) {
-	tdb, cleanup := testdb.NewForTesting(t)
+	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
 	st, err := store.Open(tdb.DSN)
 	if err != nil {

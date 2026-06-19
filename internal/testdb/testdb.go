@@ -156,7 +156,7 @@ func (tdb *TestDB) OpenStore(t *testing.T) (*store.Store, func()) {
 	return st, func() { _ = st.Close() }
 }
 
-func waitForReady(t *testing.T, db *sql.DB) {
+func waitForReady(t testing.TB, db *sql.DB) {
 	t.Helper()
 	deadline := time.Now().Add(connectTimeout)
 	for time.Now().Before(deadline) {
@@ -257,4 +257,109 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// PackageDB manages a single TiDB Docker container shared across all tests
+// in one package. Use StartPackageDB in TestMain for fast integration tests.
+type PackageDB struct {
+	containerName string
+	ownsContainer bool
+	adminDSN      string
+}
+
+// StartPackageDB starts a TiDB container once per package. Call from TestMain.
+// Pass *testing.M so cleanup runs after all tests complete via os.Exit.
+func StartPackageDB(m *testing.M) *PackageDB {
+	dsn := os.Getenv("CHETTER_TEST_DSN")
+	if dsn != "" {
+		return &PackageDB{adminDSN: dsn}
+	}
+	local := os.Getenv("CHETTER_TEST_LOCAL_TIDB")
+	if local != "" {
+		return &PackageDB{adminDSN: "root@tcp(" + local + ")/?parseTime=true&multiStatements=true"}
+	}
+	containerName := "chetter-test-tidb-" + randHex(6)
+	port, err := freePort()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "testdb: find free port: %v\n", err)
+		m.Run()
+		os.Exit(0)
+	}
+	image := os.Getenv("CHETTER_TEST_TIDB_IMAGE")
+	if image == "" {
+		image = defaultTiDBImage
+	}
+	startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if !startTiDBContainer(startCtx, containerName, image, port) {
+		fmt.Fprintf(os.Stderr, "testdb: TiDB container failed to start; skipping integration tests\n")
+		m.Run()
+		os.Exit(0)
+	}
+	dsn = fmt.Sprintf("root@tcp(127.0.0.1:%d)/?parseTime=true&multiStatements=true", port)
+	return &PackageDB{containerName: containerName, ownsContainer: true, adminDSN: dsn}
+}
+
+// Close shuts down the shared TiDB container.
+func (p *PackageDB) Close() {
+	if p.ownsContainer {
+		_ = exec.Command("docker", "stop", p.containerName).Run()
+	}
+}
+
+// AdminDB returns a connection to the TiDB server for creating test databases.
+func (p *PackageDB) AdminDB(t testing.TB) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("mysql", p.adminDSN)
+	if err != nil {
+		t.Fatalf("testdb: open admin db: %v", err)
+	}
+	waitForReady(t, db)
+	return db
+}
+
+// NewTestDB creates a new isolated test database on the shared container,
+// applies the schema, and returns a TestDB ready for test use.
+func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
+	t.Helper()
+
+	admin := p.AdminDB(t)
+
+	dbName := "chetter_test_" + randHex(6)
+	if _, err := admin.Exec("CREATE DATABASE `" + dbName + "`"); err != nil {
+		_ = admin.Close()
+		t.Fatalf("testdb: create test database: %v", err)
+	}
+
+	testDSN := replaceDBName(p.adminDSN, dbName)
+	db, err := sql.Open("mysql", testDSN)
+	if err != nil {
+		dropDatabase(admin, dbName)
+		_ = admin.Close()
+		t.Fatalf("testdb: open test db: %v", err)
+	}
+
+	st, err := store.Open(testDSN)
+	if err != nil {
+		_ = db.Close()
+		dropDatabase(admin, dbName)
+		_ = admin.Close()
+		t.Fatalf("testdb: open store for schema: %v", err)
+	}
+	if err := st.ApplySchema(context.Background()); err != nil {
+		_ = st.Close()
+		_ = db.Close()
+		dropDatabase(admin, dbName)
+		_ = admin.Close()
+		t.Fatalf("testdb: apply schema: %v", err)
+	}
+	_ = st.Close()
+
+	cleanup := func() {
+		_ = db.Close()
+		dropDatabase(admin, dbName)
+		_ = admin.Close()
+	}
+
+	return &TestDB{DB: db, DSN: testDSN, database: dbName}, cleanup
 }
