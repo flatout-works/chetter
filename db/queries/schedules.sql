@@ -48,15 +48,15 @@ ORDER BY created_at DESC;
 
 -- name: CreateSchedule :exec
 INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
 
 -- name: UpdateSchedule :exec
 UPDATE chetter_schedules
 SET name = sqlc.arg(new_name), trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
-    skills = ?, timeout_sec = ?, enabled = ?,
+    harness = ?, skills = ?, timeout_sec = ?, enabled = ?,
     updated_at = ?
 WHERE name = sqlc.arg(old_name);
 

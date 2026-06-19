@@ -14,7 +14,6 @@ ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
 # --------------------------------------------------------------------------
 FROM golang:1.26-bookworm AS runner-builder
 
-ARG CACHEBUST
 WORKDIR /src
 COPY go.mod go.sum* ./
 COPY gen/ ./gen/
@@ -24,6 +23,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 WORKDIR /src
+ARG CACHEBUST
+RUN echo "$CACHEBUST" > /dev/null
 COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \

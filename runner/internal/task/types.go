@@ -21,6 +21,7 @@ type TaskRequest struct {
 	ModelID                string            `json:"model_id,omitempty"`
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
+	Harness                string            `json:"harness,omitempty"`
 	TimeoutSec             int               `json:"timeout_sec"`
 	MaxMemoryMB            int               `json:"max_memory_mb"`
 	MaxCPU                 int               `json:"max_cpu"`

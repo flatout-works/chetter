@@ -29,6 +29,7 @@ type SubmitTaskInput struct {
 	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -102,6 +103,7 @@ type CreateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -129,6 +131,7 @@ type UpdateTriggerInput struct {
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -505,6 +508,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		VariantID:   in.VariantID,
 		Skills:      in.Skills,
 		Env:         in.Env,
+		Harness:     in.Harness,
 		TimeoutSec:  in.TimeoutSec,
 		SessionMode: in.SessionMode,
 		PauseReason: in.PauseReason,
@@ -784,6 +788,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		ProviderID:    in.ProviderID,
 		ModelID:       in.ModelID,
 		VariantID:     in.VariantID,
+		Harness:       in.Harness,
 		Skills:        in.Skills,
 		TimeoutSec:    in.TimeoutSec,
 	})
@@ -857,6 +862,7 @@ func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
 		ProviderID:    s.ProviderID.String,
 		ModelID:       s.ModelID.String,
 		VariantID:     s.VariantID.String,
+		Harness:       s.Harness.String,
 		Skills:        skills,
 		TimeoutSec:    int(s.TimeoutSec),
 		Enabled:       s.Enabled,
@@ -913,6 +919,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		ProviderID:    store.NonZero(in.ProviderID, existing.ProviderID.String),
 		ModelID:       store.NonZero(in.ModelID, existing.ModelID.String),
 		VariantID:     store.NonZero(in.VariantID, existing.VariantID.String),
+		Harness:       store.NonZero(in.Harness, existing.Harness.String),
 		Skills:        store.NonNilSlice(in.Skills, scheduleSkillsToStrings(existing.Skills)),
 		TimeoutSec:    store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
 	}

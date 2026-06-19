@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
+	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -30,18 +32,18 @@ const (
 )
 
 type Runner struct {
-	cfg        *config.Config
-	h          harness.Harness
-	wsManager  *workspace.Manager
-	proxy    *network.TransparentProxy
-	dnsProxy *network.DNSProxy
-	rpcClient   runnerRPCClient
-	claimClient runnerRPCClient
-	runCtx      context.Context
-	mu         sync.Mutex
-	tasks      map[string]*task.TaskSession
-	runnerID   string
-	startedAt  time.Time
+	cfg            *config.Config
+	defaultHarness string
+	wsManager      *workspace.Manager
+	proxy          *network.TransparentProxy
+	dnsProxy       *network.DNSProxy
+	rpcClient      runnerRPCClient
+	claimClient    runnerRPCClient
+	runCtx         context.Context
+	mu             sync.Mutex
+	tasks          map[string]*task.TaskSession
+	runnerID       string
+	startedAt      time.Time
 
 	totalStarted   int64
 	totalCompleted int64
@@ -58,7 +60,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	}
 	return &Runner{
 		cfg:            cfg,
-		h:              selectHarness(cfg),
+		defaultHarness: cfg.Execution.Harness,
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
 		tasks:          make(map[string]*task.TaskSession),
 		runnerID:       runnerID,
@@ -69,15 +71,24 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	}, nil
 }
 
-func selectHarness(cfg *config.Config) harness.Harness {
-	switch cfg.Execution.Harness {
+func selectHarnessByName(name string) harness.Harness {
+	switch name {
 	case "claude-code":
 		return claude.New()
+	case "pi":
+		return pi.New()
 	case "codex":
 		return opencode.New()
 	default:
 		return opencode.New()
 	}
+}
+
+func (r *Runner) harnessFor(name string) harness.Harness {
+	if name == "" {
+		name = r.defaultHarness
+	}
+	return selectHarnessByName(name)
 }
 
 func (r *Runner) executionMode() string {
@@ -100,6 +111,26 @@ func truncateSummary(s string) string {
 func (r *Runner) Start(ctx context.Context) error {
 	mode := r.executionMode()
 	if mode != "local" {
+		// Clean up orphaned task containers from previous runner instances.
+		// When a runner is restarted, the defer in runDockerAgent that runs
+		// "docker rm -f" never executes, leaving containers behind.
+		slog.Info("cleaning up orphaned task containers")
+		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--format", "{{.Names}}").Output()
+		if err != nil {
+			slog.Warn("failed to list docker containers", "err", err)
+		} else {
+			for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if name == "" {
+					continue
+				}
+				if err := exec.Command("docker", "rm", "-f", name).Run(); err != nil {
+					slog.Warn("failed to remove orphaned container", "name", name, "err", err)
+				} else {
+					slog.Info("removed orphaned task container", "name", name)
+				}
+			}
+		}
+
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {

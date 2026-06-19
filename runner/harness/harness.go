@@ -42,4 +42,13 @@ type Harness interface {
 	// (WaitForReady, CreateSession, SendPrompt, WatchEvents, ExportSession).
 	// Harnesses without serve mode fall back to batch execution.
 	SupportsServe() bool
+
+	// SupportsRpc returns true if the harness can be driven via a long-lived
+	// stdin/stdout JSONL subprocess (RPC mode). When true, the runner uses
+	// runRpcAgent instead of runBatchAgent/runLocalAgent. See docs/HARNESSES.md.
+	SupportsRpc() bool
+
+	// RpcCommand returns the argv to start the harness in RPC mode.
+	// Only called when SupportsRpc() returns true.
+	RpcCommand(req task.TaskRequest) []string
 }

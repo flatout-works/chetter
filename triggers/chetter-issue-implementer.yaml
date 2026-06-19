@@ -22,8 +22,8 @@ trigger_type: issue
 trigger_config: '{"repo": "flatout-works/chetter", "event": "comment"}'
 agent_image: ghcr.io/flatout-works/chetter-runner:main
 agent: issue-implementer
-provider_id: synthetic
-model_id: hf:zai-org/GLM-5.1
+provider_id: opencode
+model_id: deepseek-v4-flash-free
 git_url: https://github.com/flatout-works/chetter
 git_ref: main
 timeout_sec: 7200

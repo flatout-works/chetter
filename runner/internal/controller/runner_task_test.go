@@ -15,7 +15,10 @@ import (
 	"testing"
 	"time"
 
+	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
+	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -86,6 +89,26 @@ func TestShellQuoteArgs(t *testing.T) {
 	}
 	if !strings.Contains(result, "run") {
 		t.Errorf("expected 'run': %s", result)
+	}
+}
+
+func TestFirstField(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty", in: "", want: ""},
+		{name: "single", in: "172.18.0.4\n", want: "172.18.0.4"},
+		{name: "multiple", in: "172.18.0.4 172.19.0.6\n", want: "172.18.0.4"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := firstField(tc.in); got != tc.want {
+				t.Fatalf("firstField(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -515,4 +538,109 @@ func listenTCP() (net.Listener, error) {
 func basicAuthHeader(password string) string {
 	auth := base64.StdEncoding.EncodeToString([]byte("opencode:" + password))
 	return "Basic " + auth
+}
+
+func TestSelectHarnessByName_Pi(t *testing.T) {
+	h := selectHarnessByName("pi")
+	if h.Name() != "pi" {
+		t.Fatalf("expected pi harness, got %s", h.Name())
+	}
+	if _, ok := h.(*pi.Pi); !ok {
+		t.Fatalf("expected *pi.Pi, got %T", h)
+	}
+	if !h.SupportsRpc() {
+		t.Fatal("pi should support RPC")
+	}
+	if h.SupportsServe() {
+		t.Fatal("pi should not support serve")
+	}
+}
+
+func TestSelectHarnessByName_Claude(t *testing.T) {
+	h := selectHarnessByName("claude-code")
+	if h.Name() != "claude" {
+		t.Fatalf("expected claude harness, got %s", h.Name())
+	}
+	if _, ok := h.(*claude.ClaudeCode); !ok {
+		t.Fatalf("expected *claude.ClaudeCode, got %T", h)
+	}
+	if h.SupportsRpc() {
+		t.Fatal("claude-code should not support RPC")
+	}
+	if h.SupportsServe() {
+		t.Fatal("claude-code should not support serve")
+	}
+}
+
+func TestSelectHarnessByName_OpenCode(t *testing.T) {
+	h := selectHarnessByName("opencode")
+	if h.Name() != "opencode" {
+		t.Fatalf("expected opencode harness, got %s", h.Name())
+	}
+	if _, ok := h.(*opencode.OpenCode); !ok {
+		t.Fatalf("expected *opencode.OpenCode, got %T", h)
+	}
+	if h.SupportsRpc() {
+		t.Fatal("opencode should not support RPC")
+	}
+	if !h.SupportsServe() {
+		t.Fatal("opencode should support serve")
+	}
+}
+
+func TestSelectHarnessByName_Default(t *testing.T) {
+	h := selectHarnessByName("")
+	if _, ok := h.(*opencode.OpenCode); !ok {
+		t.Fatalf("empty name should default to opencode, got %T", h)
+	}
+
+	h = selectHarnessByName("unknown")
+	if _, ok := h.(*opencode.OpenCode); !ok {
+		t.Fatalf("unknown name should default to opencode, got %T", h)
+	}
+}
+
+func TestHarnessFor_UsesDefault(t *testing.T) {
+	r := &Runner{defaultHarness: "pi"}
+	h := r.harnessFor("")
+	if h.Name() != "pi" {
+		t.Fatalf("empty request should use default 'pi', got %s", h.Name())
+	}
+}
+
+func TestHarnessFor_OverridesDefault(t *testing.T) {
+	r := &Runner{defaultHarness: "pi"}
+	h := r.harnessFor("claude-code")
+	if h.Name() != "claude" {
+		t.Fatalf("explicit 'claude-code' should override default 'pi', got %s", h.Name())
+	}
+}
+
+func TestHarnessFor_EmptyDefault(t *testing.T) {
+	r := &Runner{defaultHarness: ""}
+	h := r.harnessFor("")
+	if h.Name() != "opencode" {
+		t.Fatalf("empty default and empty request should use opencode, got %s", h.Name())
+	}
+}
+
+func TestProtoTaskToRequest_MapsHarness(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{
+		TaskId:  "task-1",
+		Prompt:  "test",
+		Harness: "pi",
+	})
+	if req.Harness != "pi" {
+		t.Fatalf("expected harness='pi', got %q", req.Harness)
+	}
+}
+
+func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{
+		TaskId: "task-2",
+		Prompt: "test",
+	})
+	if req.Harness != "" {
+		t.Fatalf("expected empty harness, got %q", req.Harness)
+	}
 }

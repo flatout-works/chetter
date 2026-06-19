@@ -107,6 +107,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		CheckpointAfterSuccess: t.CheckpointAfterSuccess,
 		ResumeCheckpointPath:   t.ResumeCheckpointPath,
 		ResumeWorkspacePath:    t.ResumeWorkspacePath,
+		Harness:                t.Harness,
 	}
 }
 

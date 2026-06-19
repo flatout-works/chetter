@@ -113,6 +113,7 @@ type ChetterSchedule struct {
 	ProviderID    sql.NullString  `json:"provider_id"`
 	ModelID       sql.NullString  `json:"model_id"`
 	VariantID     sql.NullString  `json:"variant_id"`
+	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	Enabled       bool            `json:"enabled"`

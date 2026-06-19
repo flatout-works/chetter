@@ -421,6 +421,8 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	_ = json.Unmarshal(task.Skills, &skills)
 	env := map[string]string{}
 	_ = json.Unmarshal(task.Env, &env)
+	harness := env["__chetter_harness"]
+	delete(env, "__chetter_harness")
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		AgentImage:             task.AgentImage.String,
@@ -440,6 +442,7 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
+		Harness:                harness,
 	}
 }
 

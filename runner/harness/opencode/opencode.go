@@ -77,6 +77,10 @@ func (oc *OpenCode) SummarizeBatchOutput(raw string) string {
 
 func (oc *OpenCode) SupportsServe() bool { return true }
 
+func (oc *OpenCode) SupportsRpc() bool { return false }
+
+func (oc *OpenCode) RpcCommand(req task.TaskRequest) []string { return nil }
+
 func (oc *OpenCode) ResolvedModelID(req task.TaskRequest) string {
 	return resolvedChetterModelID(req)
 }
