@@ -219,7 +219,7 @@ func TestLookupTokenScope(t *testing.T) {
 
 	teamID, rawToken := seedTokenInDB(t, st)
 
-	scope := lookupTokenScope(context.Background(), st.DB(), rawToken)
+	scope, _ := auth.ResolveToken(context.Background(), "", st.DB(), rawToken)
 	if scope.TeamID != teamID {
 		t.Errorf("expected TeamID=%q, got %q", teamID, scope.TeamID)
 	}
@@ -237,7 +237,7 @@ func TestLookupTokenScopeInvalidToken(t *testing.T) {
 	}
 	defer st.Close()
 
-	scope := lookupTokenScope(context.Background(), st.DB(), "nonexistent-token")
+	scope, _ := auth.ResolveToken(context.Background(), "", st.DB(), "nonexistent-token")
 	if scope.TeamID != "" {
 		t.Errorf("expected empty TeamID, got %q", scope.TeamID)
 	}

@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,6 +19,7 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/internal/webapi"
 	"github.com/flatout-works/chetter/internal/webhook"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -65,11 +64,13 @@ func run() error {
 	}
 
 	svc := service.New(cfg, st)
-	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB())
+	eventBus := webapi.NewEventBus()
+	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
 	}
 	defer svc.Stop()
+	defer eventBus.CloseAll()
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: mcpServerName, Version: mcpServerVersion}, nil)
 	service.RegisterTools(mcpServer, svc)
@@ -111,6 +112,38 @@ if whHandler != nil {
 	}()
 
 	slog.Info("chetter MCP server listening", "addr", cfg.HTTPAddr)
+
+	// Web API + UI server
+	webMux := http.NewServeMux()
+	webHandlers := webapi.NewHandlers(svc, eventBus)
+	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB())
+	webMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+
+	webServer := &http.Server{
+		Addr:              cfg.WebAddr,
+		Handler:           webMux,
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := webServer.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("web server shutdown", "error", err)
+		}
+	}()
+
+	slog.Info("chetter web API listening", "addr", cfg.WebAddr)
+	go func() {
+		if err := webServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("web server error", "error", err)
+		}
+	}()
+
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve http: %w", err)
 	}
@@ -126,34 +159,15 @@ func authMiddleware(adminToken string, db *sql.DB, next http.Handler) http.Handl
 		}
 
 		provided := strings.TrimPrefix(authHeader, "Bearer ")
-		if adminToken != "" && provided == adminToken {
-			next.ServeHTTP(w, req.WithContext(
-				auth.WithScope(req.Context(), auth.Scope{Admin: true}),
-			))
+		scope, ok := auth.ResolveToken(req.Context(), adminToken, db, provided)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		if db != nil {
-			scope := lookupTokenScope(req.Context(), db, provided)
-			if scope.TeamID != "" {
-				next.ServeHTTP(w, req.WithContext(
-					auth.WithScope(req.Context(), scope),
-				))
-				return
-			}
-		}
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		next.ServeHTTP(w, req.WithContext(
+			auth.WithScope(req.Context(), scope),
+		))
 	})
-}
-
-func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) auth.Scope {
-	hash := sha256.Sum256([]byte(rawToken))
-	tokenHash := hex.EncodeToString(hash[:])
-	repo := repository.New(db)
-	row, err := repo.GetTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return auth.Scope{}
-	}
-	return auth.Scope{TeamID: row.TeamID}
 }
 
 // runnerRPCAuthMiddleware validates only the dedicated runner RPC token.

@@ -136,6 +136,29 @@ func (s *Service) GetTaskEvents(ctx context.Context, taskID string, limit, offse
 	return out, nil
 }
 
+// GetTaskEventsSince returns events for a task created after the given time.
+// Used by the streaming RPC to replay missed events on reconnect.
+func (s *Service) GetTaskEventsSince(ctx context.Context, taskID string, since time.Time) ([]TaskEventRecord, error) {
+	rows, err := s.repo.ListTaskEventsSince(ctx, repository.ListTaskEventsSinceParams{
+		TaskID:    taskID,
+		CreatedAt: since,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get events since: %w", err)
+	}
+	out := make([]TaskEventRecord, len(rows))
+	for i, ev := range rows {
+		out[i] = TaskEventRecord{
+			ID:        ev.ID,
+			Subject:   ev.Subject,
+			Status:    ev.Status,
+			Payload:   string(ev.Payload),
+			CreatedAt: ev.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
 // GetTaskProgress returns a distilled progress timeline for a task.
 func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, offset int) ([]TaskProgressRecord, error) {
 	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
@@ -676,4 +699,114 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 		}
 	}
 	return out, nil
+}
+
+// --- Schedule Lookup ---
+
+func (s *Service) ArcaneIsConfigured() bool {
+	return s.arcane != nil && s.arcane.IsConfigured()
+}
+
+func (s *Service) GetScheduleByName(ctx context.Context, name string) (repository.ChetterSchedule, error) {
+	return s.repo.GetScheduleByName(ctx, name)
+}
+
+// --- Arcane Methods ---
+
+func (s *Service) ArcaneScannerStatus(ctx context.Context, envID string) (ArcaneScannerStatusOutput, error) {
+	if s.arcane == nil {
+		return ArcaneScannerStatusOutput{}, fmt.Errorf("arcane client not configured")
+	}
+	status, err := s.arcane.GetScannerStatus(ctx, envIDOrDefault(envID))
+	if err != nil {
+		return ArcaneScannerStatusOutput{}, fmt.Errorf("get scanner status: %w", err)
+	}
+	return ArcaneScannerStatusOutput{Available: status.Available, Version: status.Version}, nil
+}
+
+func (s *Service) ArcaneEnvironmentSummary(ctx context.Context, envID string) (ArcaneEnvironmentSummaryOutput, error) {
+	if s.arcane == nil {
+		return ArcaneEnvironmentSummaryOutput{}, fmt.Errorf("arcane client not configured")
+	}
+	summary, err := s.arcane.GetEnvironmentSummary(ctx, envIDOrDefault(envID))
+	if err != nil {
+		return ArcaneEnvironmentSummaryOutput{}, fmt.Errorf("get environment summary: %w", err)
+	}
+	return ArcaneEnvironmentSummaryOutput{
+		TotalImages:   summary.TotalImages,
+		ScannedImages: summary.ScannedImages,
+		Summary: SeveritySummary{
+			Critical: summary.Summary.Critical,
+			High:     summary.Summary.High,
+			Medium:   summary.Summary.Medium,
+			Low:      summary.Summary.Low,
+			Unknown:  summary.Summary.Unknown,
+			Total:    summary.Summary.Total,
+		},
+	}, nil
+}
+
+func (s *Service) ArcaneListImages(ctx context.Context, envID string) ([]ImageSummaryItem, error) {
+	if s.arcane == nil {
+		return nil, fmt.Errorf("arcane client not configured")
+	}
+	return s.arcane.ListEnvironmentImages(ctx, envIDOrDefault(envID))
+}
+
+func (s *Service) ArcaneImageSummary(ctx context.Context, envID, imageID string) (ArcaneImageSummaryOutput, error) {
+	if s.arcane == nil {
+		return ArcaneImageSummaryOutput{}, fmt.Errorf("arcane client not configured")
+	}
+	if imageID == "" {
+		return ArcaneImageSummaryOutput{}, fmt.Errorf("image_id is required")
+	}
+	summary, err := s.arcane.GetImageScanSummary(ctx, envIDOrDefault(envID), imageID)
+	if err != nil {
+		return ArcaneImageSummaryOutput{}, fmt.Errorf("get image summary: %w", err)
+	}
+	return ArcaneImageSummaryOutput{
+		ImageID:  summary.ImageID,
+		ScanTime: summary.ScanTime.Format(time.RFC3339),
+		Status:   summary.Status,
+		Summary: SeveritySummary{
+			Critical: summary.Summary.Critical,
+			High:     summary.Summary.High,
+			Medium:   summary.Summary.Medium,
+			Low:      summary.Summary.Low,
+			Unknown:  summary.Summary.Unknown,
+			Total:    summary.Summary.Total,
+		},
+	}, nil
+}
+
+func (s *Service) ArcaneListVulnerabilities(ctx context.Context, envID, imageID, severity string, page, limit int) ([]Vulnerability, int, error) {
+	if s.arcane == nil {
+		return nil, 0, fmt.Errorf("arcane client not configured")
+	}
+	if imageID == "" {
+		return nil, 0, fmt.Errorf("image_id is required")
+	}
+	if page == 0 {
+		page = 1
+	}
+	if limit == 0 {
+		limit = 20
+	}
+	items, total, err := s.arcane.ListVulnerabilities(ctx, envIDOrDefault(envID), imageID, severity, page, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list vulnerabilities: %w", err)
+	}
+	out := make([]Vulnerability, 0, len(items))
+	for _, v := range items {
+		out = append(out, Vulnerability{
+			VulnerabilityID:  v.VulnerabilityID,
+			PkgName:          v.PkgName,
+			InstalledVersion: v.InstalledVersion,
+			FixedVersion:     v.FixedVersion,
+			Severity:         string(v.Severity),
+			Title:            v.Title,
+			Description:      v.Description,
+		})
+	}
+	return out, total, nil
 }

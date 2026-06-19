@@ -11,6 +11,7 @@ import (
 // Config holds all runtime settings for the chetter MCP service.
 type Config struct {
 	HTTPAddr               string
+	WebAddr                string
 	MCPAuthToken           string
 	RunnerRPCToken         string
 	DatabaseDSN            string
@@ -29,6 +30,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		HTTPAddr:               env("HTTP_ADDR", ":8080"),
+		WebAddr:                env("WEB_ADDR", ":8090"),
 		MCPAuthToken:           os.Getenv("MCP_AUTH_TOKEN"),
 		RunnerRPCToken:         os.Getenv("CHETTER_RUNNER_RPC_TOKEN"),
 		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
