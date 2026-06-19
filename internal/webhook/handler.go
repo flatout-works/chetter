@@ -245,6 +245,15 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 		return
 	}
 
+	// Gate fork and opened triggers on author write access.
+	if triggerAction == TriggerEventFork || triggerAction == TriggerEventOpened {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
+			return
+		}
+	}
+
 	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list pr review triggers", "err", err, "repo", repo)
@@ -369,6 +378,15 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	}
 	if len(matching) == 0 {
 		return
+	}
+
+	// Gate issue comment triggers on author write access.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, repo, ev.Comment.User.Login, deliveryID) {
+			return
+		}
 	}
 
 	// Bot-comment filtering: skip comments from the Chetter App itself unless
@@ -564,6 +582,15 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 		h.discoverArtifacts(ev.Issue.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue")
 	}
 
+	// Gate issue triggers on author write access.
+	if ev.Action == "opened" || ev.Action == "reopened" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, repo, ev.Issue.User.Login, deliveryID) {
+			return
+		}
+	}
+
 	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
@@ -667,6 +694,33 @@ func (h *Handler) logAudit(params AuditEventParams) {
 	if err := h.audit.LogAuditEvent(asyncCtx(10*time.Second), params); err != nil {
 		slog.Warn("webhook: log audit event", "err", err, "event_type", params.EventType)
 	}
+}
+
+// checkAuthorWriteAccess returns true if the user has write or admin access to
+// the repo. If the check fails or the user lacks access, it logs a message and
+// returns false so the caller can abort processing.
+func (h *Handler) checkAuthorWriteAccess(ctx context.Context, repo, username, deliveryID string) bool {
+	hasAccess, err := h.gh.CheckUserHasWriteAccess(ctx, repo, username)
+	if err != nil {
+		slog.Warn("webhook: check write access", "user", username, "err", err, "repo", repo)
+		return false
+	}
+	if !hasAccess {
+		slog.Info("webhook: ignoring trigger from non-writer", "user", username, "repo", repo)
+		h.logAudit(AuditEventParams{
+			EventType:        "webhook_author_gate_denied",
+			SourceType:       "webhook",
+			SourceID:         deliveryID,
+			TargetType:       "repo",
+			TargetID:         repo,
+			Repo:             repo,
+			GitHubEvent:      "author_gate",
+			GitHubDeliveryID: deliveryID,
+			Detail:           fmt.Sprintf("user %s lacks write access to %s", username, repo),
+		})
+		return false
+	}
+	return true
 }
 
 var taskIDFooterRe = regexp.MustCompile(`Task:\s*(task_[a-f0-9]+)`)
