@@ -90,8 +90,7 @@ func run() error {
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
 	mux.Handle(runnerPath, runnerRPCAuthMiddleware(cfg.RunnerRPCToken, runnerHandler))
-	mux.Handle("/api/v1/", authMiddleware(cfg.MCPAuthToken, st.DB(), svc.TokenAPIHandler()))
-	if whHandler != nil {
+if whHandler != nil {
 		mux.Handle("/webhook/github", whHandler)
 		slog.Info("github webhook handler registered", "path", "/webhook/github")
 	}

@@ -1,0 +1,679 @@
+package service
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
+)
+
+// --- Task Methods ---
+
+// GetTask returns a single task by ID, respecting team-scoped access.
+func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
+	task, err := s.taskForToolAccess(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, err
+	}
+	return repoTaskToToolRecord(task), nil
+}
+
+// ExportTask returns the session export (markdown transcript) for a task.
+func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error) {
+	task, err := s.taskForToolAccess(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	if !task.SessionExport.Valid {
+		return "", fmt.Errorf("no session export available for task %s", taskID)
+	}
+	return strings.ReplaceAll(task.SessionExport.String, "\\n", "\n"), nil
+}
+
+// ListTasks returns tasks, optionally filtered by status, respecting team scope.
+func (s *Service) ListTasks(ctx context.Context, status string, limit int) ([]TaskToolRecord, error) {
+	scope, scoped := auth.GetScope(ctx)
+	clamped := clampListLimit(limit)
+	var tasks []repository.ChetterTask
+	var err error
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
+			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
+			StatusFilter: status,
+			Limit:        clamped,
+		})
+	} else {
+		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
+			StatusFilter: status,
+			Limit:        clamped,
+		})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+	out := make([]TaskToolRecord, 0, len(tasks))
+	for _, task := range tasks {
+		out = append(out, repoTaskToToolRecord(task))
+	}
+	return out, nil
+}
+
+// CancelTask cancels a pending or running task by ID.
+func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskToolRecord, error) {
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
+		return TaskToolRecord{}, err
+	}
+	if reason == "" {
+		reason = "cancelled by operator"
+	}
+	now := time.Now().UTC()
+	rows, err := s.repo.CancelTask(ctx, repository.CancelTaskParams{
+		Error:     sql.NullString{String: reason, Valid: true},
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+		ID:        taskID,
+	})
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("cancel task: %w", err)
+	}
+	if rows == 0 {
+		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
+	}
+	return s.GetTask(ctx, taskID)
+}
+
+// ClearQueue cancels all pending tasks. Admin only.
+func (s *Service) ClearQueue(ctx context.Context) (int, error) {
+	if !isAdmin(ctx) {
+		return 0, fmt.Errorf("admin access required")
+	}
+	now := time.Now().UTC()
+	cancelled, err := s.repo.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
+		Error:     sql.NullString{String: "cancelled by chetter_clear_queue", Valid: true},
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("cancel pending tasks: %w", err)
+	}
+	return int(cancelled), nil
+}
+
+// --- Task Event Methods ---
+
+// GetTaskEvents returns the full event history for a task.
+func (s *Service) GetTaskEvents(ctx context.Context, taskID string, limit, offset int) ([]TaskEventRecord, error) {
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
+		return nil, err
+	}
+	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
+		TaskID: taskID,
+		Limit:  clampEventLimit(limit),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get events: %w", err)
+	}
+	out := make([]TaskEventRecord, len(events))
+	for i, ev := range events {
+		out[i] = TaskEventRecord{
+			ID:        ev.ID,
+			Subject:   ev.Subject,
+			Status:    ev.Status,
+			Payload:   string(ev.Payload),
+			CreatedAt: ev.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// GetTaskProgress returns a distilled progress timeline for a task.
+func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, offset int) ([]TaskProgressRecord, error) {
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
+		return nil, err
+	}
+	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
+		TaskID: taskID,
+		Limit:  clampEventLimit(limit),
+		Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get events: %w", err)
+	}
+	var out []TaskProgressRecord
+	var lastStatus string
+	for _, ev := range events {
+		var resp store.TaskResponse
+		_ = json.Unmarshal(ev.Payload, &resp)
+		entry := TaskProgressRecord{
+			Time:    ev.CreatedAt,
+			Status:  ev.Status,
+			Summary: resp.Summary,
+			Error:   resp.Error,
+		}
+		if ev.Status != lastStatus || entry.Summary != "" || entry.Error != "" {
+			out = append(out, entry)
+			lastStatus = ev.Status
+		}
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, nil
+}
+
+// GetLatestTaskEvent returns the most recent event for a task with staleness info.
+func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLatestEventOutput, error) {
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
+		return TaskLatestEventOutput{}, err
+	}
+	ev, err := s.repo.GetLatestTaskEvent(ctx, taskID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return TaskLatestEventOutput{}, fmt.Errorf("no events found for task %s", taskID)
+		}
+		return TaskLatestEventOutput{}, fmt.Errorf("get latest event: %w", err)
+	}
+	ageSec := int(time.Since(ev.CreatedAt).Seconds())
+	return TaskLatestEventOutput{
+		Event: TaskEventRecord{
+			ID:        ev.ID,
+			Subject:   ev.Subject,
+			Status:    ev.Status,
+			Payload:   string(ev.Payload),
+			CreatedAt: ev.CreatedAt,
+		},
+		AgeSec:  ageSec,
+		IsStale: ageSec > reaperHealthMaxEventSec,
+	}, nil
+}
+
+// --- Session Methods ---
+
+// ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
+func (s *Service) ListAgentSessions(ctx context.Context, status string, limit int) ([]AgentSessionRecord, error) {
+	scope, scoped := auth.GetScope(ctx)
+	teamID := sql.NullString{String: "", Valid: true}
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		teamID = sql.NullString{String: scope.TeamID, Valid: true}
+	}
+	rows, err := s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
+		TeamFilter:   teamID,
+		StatusFilter: status,
+		Limit:        clampListLimit(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list agent sessions: %w", err)
+	}
+	out := make([]AgentSessionRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, agentSessionRecord(row))
+	}
+	return out, nil
+}
+
+// GetAgentSession returns a single agent session with its runs.
+func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentSessionRecord, []SessionRunRecord, error) {
+	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return AgentSessionRecord{}, nil, fmt.Errorf("get agent session: %w", err)
+	}
+	if scope, scoped := auth.GetScope(ctx); scoped && !scope.Admin && scope.TeamID != "" && session.TeamID.String != scope.TeamID {
+		return AgentSessionRecord{}, nil, fmt.Errorf("agent session not found")
+	}
+	runs, err := s.repo.ListSessionRunsBySession(ctx, sessionID)
+	if err != nil {
+		return AgentSessionRecord{}, nil, fmt.Errorf("list session runs: %w", err)
+	}
+	outRuns := make([]SessionRunRecord, 0, len(runs))
+	for _, run := range runs {
+		outRuns = append(outRuns, sessionRunRecord(run))
+	}
+	return agentSessionRecord(session), outRuns, nil
+}
+
+// --- Trigger Methods ---
+
+// ListTriggers returns triggers, optionally filtered by type and enabled status, respecting team scope.
+func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string) ([]store.ScheduleRecord, error) {
+	scope, scoped := auth.GetScope(ctx)
+	var repoRecords []repository.ChetterSchedule
+	var err error
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		teamID := sql.NullString{String: scope.TeamID, Valid: true}
+		if enabledOnly {
+			repoRecords, err = s.repo.ListEnabledSchedulesByTeam(ctx, teamID)
+		} else {
+			repoRecords, err = s.repo.ListSchedulesByTeam(ctx, teamID)
+		}
+	} else {
+		if enabledOnly {
+			repoRecords, err = s.repo.ListEnabledSchedules(ctx)
+		} else {
+			repoRecords, err = s.repo.ListSchedules(ctx)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list triggers: %w", err)
+	}
+	if triggerType != "" {
+		filtered := repoRecords[:0]
+		for _, r := range repoRecords {
+			if r.TriggerType == triggerType {
+				filtered = append(filtered, r)
+			}
+		}
+		repoRecords = filtered
+	}
+	triggers := make([]store.ScheduleRecord, len(repoRecords))
+	for i, r := range repoRecords {
+		triggers[i] = scheduleToStoreRecord(r)
+	}
+	return triggers, nil
+}
+
+// ListScheduleRuns returns schedule runs, optionally filtered by schedule name, respecting team scope.
+func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, limit int) ([]ScheduleRunInfo, error) {
+	scope, scoped := auth.GetScope(ctx)
+	clamped := clampListLimit(limit)
+
+	if scheduleName != "" {
+		schedule, err := s.repo.GetScheduleByName(ctx, scheduleName)
+		if err != nil {
+			return nil, fmt.Errorf("schedule %q not found", scheduleName)
+		}
+		if scoped && !scope.Admin && scope.TeamID != "" && schedule.TeamID.String != scope.TeamID {
+			return nil, fmt.Errorf("schedule %q not found", scheduleName)
+		}
+		rows, err := s.repo.ListScheduleRunsBySchedule(ctx, repository.ListScheduleRunsByScheduleParams{
+			ScheduleID: schedule.ID,
+			Limit:      clamped,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list schedule runs: %w", err)
+		}
+		out := make([]ScheduleRunInfo, len(rows))
+		for i, r := range rows {
+			out[i] = ScheduleRunInfo{
+				ID:           r.ID,
+				ScheduleName: r.ScheduleName,
+				TaskID:       r.TaskID,
+				Status:       r.Status,
+				ScheduledFor: r.ScheduledFor,
+				CreatedAt:     r.CreatedAt,
+			}
+		}
+		return out, nil
+	}
+
+	if scoped && !scope.Admin && scope.TeamID != "" {
+		rows, err := s.repo.ListScheduleRunsByTeam(ctx, repository.ListScheduleRunsByTeamParams{
+			TeamID: sql.NullString{String: scope.TeamID, Valid: true},
+			Limit:  clamped,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list schedule runs: %w", err)
+		}
+		out := make([]ScheduleRunInfo, len(rows))
+		for i, r := range rows {
+			out[i] = ScheduleRunInfo{
+				ID:           r.ID,
+				ScheduleName: r.ScheduleName,
+				TaskID:       r.TaskID,
+				Status:       r.Status,
+				ScheduledFor: r.ScheduledFor,
+				CreatedAt:    r.CreatedAt,
+			}
+		}
+		return out, nil
+	}
+
+	return nil, fmt.Errorf("admin access required to list all schedule runs without a schedule_name filter")
+}
+
+// --- Fleet Health ---
+
+// GetRunnerHealth returns fleet health metrics.
+func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store.RunnerFleetHealth, error) {
+	health, err := s.store.GetRunnerFleetHealth(ctx, reaperHealthMaxEventSec, runnerPresenceMaxSec)
+	if err != nil {
+		return store.RunnerFleetHealth{}, fmt.Errorf("get runner fleet health: %w", err)
+	}
+	if !includeTasks {
+		health.RunningTaskInfos = nil
+	}
+	return health, nil
+}
+
+// --- Token Management ---
+
+// CreateToken creates a new API token for a team and user. Admin only.
+func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName string) (CreateTokenOutput, error) {
+	if !isAdmin(ctx) {
+		return CreateTokenOutput{}, fmt.Errorf("admin access required")
+	}
+	if teamName == "" {
+		return CreateTokenOutput{}, fmt.Errorf("team_name is required")
+	}
+	if userName == "" {
+		return CreateTokenOutput{}, fmt.Errorf("user_name is required")
+	}
+	if tokenName == "" {
+		return CreateTokenOutput{}, fmt.Errorf("token_name is required")
+	}
+	now := time.Now().UTC()
+
+	team, err := s.repo.GetTeamByName(ctx, teamName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			teamID, err := randomID("team")
+			if err != nil {
+				return CreateTokenOutput{}, fmt.Errorf("generate team id: %w", err)
+			}
+			if err := s.repo.CreateTeam(ctx, repository.CreateTeamParams{
+				ID:        teamID,
+				Name:      teamName,
+				CreatedAt: now,
+				UpdatedAt: now,
+			}); err != nil {
+				return CreateTokenOutput{}, fmt.Errorf("create team: %w", err)
+			}
+			team.ID = teamID
+			team.Name = teamName
+		} else {
+			return CreateTokenOutput{}, fmt.Errorf("look up team: %w", err)
+		}
+	}
+
+	userID, err := randomID("user")
+	if err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("generate user id: %w", err)
+	}
+	if err := s.repo.CreateUser(ctx, repository.CreateUserParams{
+		ID:        userID,
+		Name:      userName,
+		TeamID:    team.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("create user: %w", err)
+	}
+
+	rawToken, err := randomID("chtr")
+	if err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("generate token: %w", err)
+	}
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenID, err := randomID("tok")
+	if err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("generate token id: %w", err)
+	}
+	if err := s.repo.CreateToken(ctx, repository.CreateTokenParams{
+		ID:        tokenID,
+		Name:      tokenName,
+		TokenHash: hex.EncodeToString(hash[:]),
+		UserID:    userID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("create token: %w", err)
+	}
+
+	return CreateTokenOutput{
+		Token:    rawToken,
+		TeamID:   team.ID,
+		TeamName: team.Name,
+		UserID:   userID,
+		UserName: userName,
+	}, nil
+}
+
+// ListTokens returns all API tokens. Admin only.
+func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
+	if !isAdmin(ctx) {
+		return nil, fmt.Errorf("admin access required")
+	}
+	rows, err := s.repo.ListTokens(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tokens: %w", err)
+	}
+	out := make([]TokenInfo, len(rows))
+	for i, r := range rows {
+		out[i] = TokenInfo{
+			Name:      r.Name,
+			UserName:  r.UserName,
+			TeamName:  r.TeamName,
+			CreatedAt: r.CreatedAt,
+		}
+	}
+	return out, nil
+}
+
+// DeleteToken deletes an API token by name. Admin only.
+func (s *Service) DeleteToken(ctx context.Context, name string) error {
+	if !isAdmin(ctx) {
+		return fmt.Errorf("admin access required")
+	}
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if err := s.repo.DeleteToken(ctx, name); err != nil {
+		return fmt.Errorf("delete token: %w", err)
+	}
+	return nil
+}
+
+// --- Team Management ---
+
+// CreateTeam creates a new team. Admin only.
+func (s *Service) CreateTeam(ctx context.Context, name string) (CreateTeamOutput, error) {
+	if !isAdmin(ctx) {
+		return CreateTeamOutput{}, fmt.Errorf("admin access required")
+	}
+	if name == "" {
+		return CreateTeamOutput{}, fmt.Errorf("name is required")
+	}
+	now := time.Now().UTC()
+	teamID, err := randomID("team")
+	if err != nil {
+		return CreateTeamOutput{}, fmt.Errorf("generate team id: %w", err)
+	}
+	if err := s.repo.CreateTeam(ctx, repository.CreateTeamParams{
+		ID:        teamID,
+		Name:      name,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		return CreateTeamOutput{}, fmt.Errorf("create team: %w", err)
+	}
+	return CreateTeamOutput{
+		TeamID:    teamID,
+		TeamName:  name,
+		CreatedAt: now,
+	}, nil
+}
+
+// ListTeams returns all teams. Admin only.
+func (s *Service) ListTeams(ctx context.Context) ([]TeamInfo, error) {
+	if !isAdmin(ctx) {
+		return nil, fmt.Errorf("admin access required")
+	}
+	teams, err := s.repo.ListTeams(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list teams: %w", err)
+	}
+	out := make([]TeamInfo, len(teams))
+	for i, t := range teams {
+		out[i] = TeamInfo{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt}
+	}
+	return out, nil
+}
+
+// DeleteTeam deletes a team and cascades to its users, tokens, tasks, and schedules. Admin only.
+func (s *Service) DeleteTeam(ctx context.Context, name string) error {
+	if !isAdmin(ctx) {
+		return fmt.Errorf("admin access required")
+	}
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	team, err := s.repo.GetTeamByName(ctx, name)
+	if err != nil {
+		return fmt.Errorf("team %q not found", name)
+	}
+	if err := s.repo.DeleteTokensByTeam(ctx, team.ID); err != nil {
+		return fmt.Errorf("delete tokens for team: %w", err)
+	}
+	if err := s.repo.DeleteUsersByTeam(ctx, team.ID); err != nil {
+		return fmt.Errorf("delete users for team: %w", err)
+	}
+	if err := s.repo.DeleteSchedule(ctx, name); err != nil {
+		slog.Debug("delete team: schedule not deleted", "team", name, "err", err)
+	}
+	if err := s.repo.DeleteTeam(ctx, name); err != nil {
+		return fmt.Errorf("delete team: %w", err)
+	}
+	return nil
+}
+
+// ListUsers returns all users, optionally filtered by team name. Admin only.
+func (s *Service) ListUsers(ctx context.Context, teamName string) ([]UserInfo, error) {
+	if !isAdmin(ctx) {
+		return nil, fmt.Errorf("admin access required")
+	}
+	if teamName != "" {
+		team, err := s.repo.GetTeamByName(ctx, teamName)
+		if err != nil {
+			return nil, fmt.Errorf("team %q not found", teamName)
+		}
+		teamRows, err := s.repo.ListUsersByTeam(ctx, team.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list users: %w", err)
+		}
+		out := make([]UserInfo, len(teamRows))
+		for i, r := range teamRows {
+			out[i] = UserInfo{ID: r.ID, Name: r.Name, TeamName: r.TeamName, CreatedAt: r.CreatedAt}
+		}
+		return out, nil
+	}
+	allRows, err := s.repo.ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	out := make([]UserInfo, len(allRows))
+	for i, r := range allRows {
+		out[i] = UserInfo{ID: r.ID, Name: r.Name, TeamName: r.TeamName, CreatedAt: r.CreatedAt}
+	}
+	return out, nil
+}
+
+// --- Audit & Artifacts ---
+
+// ListAuditEvents returns audit log events with optional filters. Admin only.
+func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterInput) ([]AuditEventRecord, error) {
+	if !isAdmin(ctx) {
+		return nil, fmt.Errorf("admin access required")
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var sinceTime sql.NullTime
+	if filter.SinceHours > 0 {
+		sinceTime = sql.NullTime{Time: time.Now().UTC().Add(-time.Duration(filter.SinceHours) * time.Hour), Valid: true}
+	}
+
+	rows, err := s.repo.ListAuditLog(ctx, repository.ListAuditLogParams{
+		EventType:  filter.EventType,
+		Column2:    filter.EventType,
+		SourceType: nullString(filter.SourceType),
+		Column4:    filter.SourceType,
+		SourceID:   nullString(filter.SourceID),
+		Column6:    filter.SourceID,
+		TargetType: nullString(filter.TargetType),
+		Column8:    filter.TargetType,
+		TargetID:   nullString(filter.TargetID),
+		Column10:   filter.TargetID,
+		Repo:       nullString(filter.Repo),
+		Column12:   filter.Repo,
+		CreatedAt:  sinceTime.Time,
+		Column14:   sinceTime,
+		Limit:      int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list audit log: %w", err)
+	}
+	out := make([]AuditEventRecord, len(rows))
+	for i, r := range rows {
+		out[i] = AuditEventRecord{
+			ID:               r.ID,
+			EventType:        r.EventType,
+			CreatedAt:        r.CreatedAt,
+			SourceType:       r.SourceType.String,
+			SourceID:         r.SourceID.String,
+			TargetType:       r.TargetType.String,
+			TargetID:         r.TargetID.String,
+			Repo:             r.Repo.String,
+			GitHubEvent:      r.GithubEvent.String,
+			GitHubAction:     r.GithubAction.String,
+			GitHubDeliveryID: r.GithubDeliveryID.String,
+			ParentEventID:    r.ParentEventID.String,
+			Detail:           r.Detail.String,
+		}
+	}
+	return out, nil
+}
+
+// ListTaskArtifacts returns GitHub artifacts created by tasks. Admin only.
+func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilterInput) ([]TaskArtifactRecord, error) {
+	if !isAdmin(ctx) {
+		return nil, fmt.Errorf("admin access required")
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+
+	rows, err := s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
+		TaskID:         filter.TaskID,
+		Column2:        filter.TaskID,
+		AgentSessionID: nullString(filter.AgentSessionID),
+		Column4:        filter.AgentSessionID,
+		ArtifactType:   filter.ArtifactType,
+		Column6:        filter.ArtifactType,
+		Repo:           filter.Repo,
+		Column8:        filter.Repo,
+		Limit:          int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list task artifacts: %w", err)
+	}
+	out := make([]TaskArtifactRecord, len(rows))
+	for i, r := range rows {
+		out[i] = TaskArtifactRecord{
+			ID:              r.ID,
+			TaskID:          r.TaskID,
+			AgentSessionID:  r.AgentSessionID.String,
+			SessionRunID:    r.SessionRunID.String,
+			ArtifactType:    r.ArtifactType,
+			Repo:            r.Repo,
+			Number:          int(r.Number.Int32),
+			URL:             r.Url.String,
+			Ref:             r.Ref.String,
+			SHA:             r.Sha.String,
+			CreatedAt:       r.CreatedAt,
+			DiscoveredAt:    r.DiscoveredAt,
+			DiscoverySource: r.DiscoverySource,
+		}
+	}
+	return out, nil
+}
