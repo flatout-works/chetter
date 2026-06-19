@@ -2,8 +2,6 @@
 set -euo pipefail
 
 SRC="$HOME/chetter-src"
-REGISTRY="ghcr.io/flatout-works"
-TAG="main"
 
 cd "$SRC"
 OLD=$(git rev-parse HEAD)
@@ -29,7 +27,7 @@ else
 fi
 
 CACHEBUST="${NEW:0:7}"
-BASE_IMAGE_ARG="--build-arg BASE_IMAGE=$REGISTRY/chetter-runner-base:$TAG"
+BASE_IMAGE_ARG="--build-arg BASE_IMAGE=chetter-runner-base:latest"
 
 if [ "${SKIP_MAIN}" != "true" ]; then
 
@@ -37,32 +35,27 @@ if [ "${SKIP_MAIN}" != "true" ]; then
     echo "=== Building runner base image ==="
     docker build --build-arg "CACHEBUST=$CACHEBUST" \
       -f runner/Dockerfile.chetter-base \
-      -t "$REGISTRY/chetter-runner-base:$TAG" \
       -t "chetter-runner-base:latest" .
   fi
 
   echo "=== Building MCP image ==="
   docker build --no-cache --build-arg "CACHEBUST=$CACHEBUST" \
-    -t "$REGISTRY/chetter-mcp:$TAG" \
     -t "chetter-mcp:latest" .
 
   echo "=== Building runner image ==="
   docker build $BASE_IMAGE_ARG \
     --build-arg "CACHEBUST=$CACHEBUST" \
     -f runner/Dockerfile.chetter \
-    -t "$REGISTRY/chetter-runner:$TAG" \
     -t "chetter-runner:latest" .
 fi
 
 build_variant() {
   local name="$1"
   local dockerfile="runner/images/$name/Dockerfile"
-  local img="$REGISTRY/chetter-runner:$TAG"
   echo "=== Building $name variant ==="
   docker build $BASE_IMAGE_ARG \
     --build-arg "CACHEBUST=$CACHEBUST" \
     -f "$dockerfile" \
-    -t "$REGISTRY/chetter-runner:$name" \
     -t "chetter-runner-$name:latest" .
 }
 
