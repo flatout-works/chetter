@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chetter-runner-gvisor
+  namespace: chetter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chetter-runner-gvisor
+  template:
+    metadata:
+      labels:
+        app: chetter-runner-gvisor
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: runner
+        image: ghcr.io/flatout-works/chetter-runner:main
+        envFrom:
+        - secretRef:
+            name: chetter-secrets
+        env:
+        - name: CHETTER_SERVER_URL
+          value: "http://chetter-mcp:8080"
+        - name: RUNNER_LOCAL
+          value: "false"
+        - name: USE_GVISOR
+          value: "true"
+        - name: RUNNER_MAX_CONCURRENT
+          value: "1"
+        - name: RUNNER_BIND_ADDR
+          value: "127.0.0.1"
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: runner-data
+          mountPath: /var/lib/chetter-runner
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+      - name: runner-data
+        hostPath:
+          path: /var/lib/chetter-runner-gvisor
+          type: DirectoryOrCreate
