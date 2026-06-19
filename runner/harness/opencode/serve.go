@@ -216,9 +216,5 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 }
 
 func opencodeServeArgs(port int) []string {
-	args := []string{"serve"}
-	if !mem9Enabled() {
-		args = append(args, "--pure")
-	}
-	return append(args, "--port", strconv.Itoa(port))
+	return []string{"serve", "--pure", "--port", strconv.Itoa(port)}
 }

@@ -152,11 +152,11 @@ func TestOpenCodeServeArgs_Mem9DisabledKeepsPure(t *testing.T) {
 	}
 }
 
-func TestOpenCodeServeArgs_Mem9EnabledRemovesPure(t *testing.T) {
+func TestOpenCodeServeArgs_Mem9EnabledKeepsPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "mem9-test-key")
 	args := opencodeServeArgs(1234)
-	if hasArg(args, "--pure") {
-		t.Fatalf("did not expect --pure with mem9 enabled, got %v", args)
+	if !hasArg(args, "--pure") {
+		t.Fatalf("expected --pure in serve mode with mem9 enabled, got %v", args)
 	}
 }
 
