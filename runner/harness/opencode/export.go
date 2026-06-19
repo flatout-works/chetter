@@ -41,11 +41,20 @@ func (oc *OpenCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	var cost float64
 	var tokensIn, tokensOut int64
 	_ = db.QueryRow("SELECT title, COALESCE(agent,''), COALESCE(model,''), COALESCE(cost,0), COALESCE(tokens_input,0), COALESCE(tokens_output,0) FROM session WHERE id = ?", sessionID).Scan(&title, &agent, &modelID, &cost, &tokensIn, &tokensOut)
+	if title == "" {
+		_ = db.QueryRow("SELECT title, COALESCE(agent,''), COALESCE(model,''), COALESCE(cost,0), COALESCE(tokens_input,0), COALESCE(tokens_output,0) FROM sessions WHERE id = ?", sessionID).Scan(&title, &agent, &modelID, &cost, &tokensIn, &tokensOut)
+	}
 
 	rows, err := db.Query(
 		"SELECT m.id FROM message m WHERE m.session_id = ? ORDER BY m.time_created ASC",
 		sessionID,
 	)
+	if err != nil {
+		rows, err = db.Query(
+			"SELECT m.id FROM messages m WHERE m.session_id = ? ORDER BY m.time_created ASC",
+			sessionID,
+		)
+	}
 	if err != nil {
 		return "", fmt.Errorf("query messages: %w", err)
 	}
@@ -93,6 +102,9 @@ func (oc *OpenCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 		}
 
 		partRows, err := db.Query("SELECT data FROM part WHERE message_id = ? ORDER BY id ASC", msgID)
+		if err != nil {
+			partRows, err = db.Query("SELECT data FROM parts WHERE message_id = ? ORDER BY id ASC", msgID)
+		}
 		if err != nil {
 			slog.Warn("query parts failed", "message_id", msgID, "err", err)
 			continue
