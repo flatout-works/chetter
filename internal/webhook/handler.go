@@ -54,6 +54,8 @@ type ArtifactRecorder interface {
 // RecordArtifactParams holds the data for a single task artifact entry.
 type RecordArtifactParams struct {
 	TaskID          string
+	AgentSessionID  string
+	SessionRunID    string
 	ArtifactType    string
 	Repo            string
 	Number          int
@@ -65,18 +67,18 @@ type RecordArtifactParams struct {
 
 // ReviewTrigger is the resolved data from a single trigger.
 type ReviewTrigger struct {
-	Name        string
-	Prompt      string
-	AgentImage  string
-	Agent       string
-	ProviderID  string
-	ModelID     string
-	VariantID   string
-	TimeoutSec  int
-	GitURL      string
-	GitRef      string
-	Skills      []string
-	Event       string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
+	Name       string
+	Prompt     string
+	AgentImage string
+	Agent      string
+	ProviderID string
+	ModelID    string
+	VariantID  string
+	TimeoutSec int
+	GitURL     string
+	GitRef     string
+	Skills     []string
+	Event      string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
@@ -84,6 +86,11 @@ type ReviewTrigger struct {
 type TaskSubmitter interface {
 	SubmitReviewTask(ctx context.Context, review ReviewContext) error
 	SubmitTask(ctx context.Context, req SubmitTaskRequest) (any, error)
+}
+
+// SessionResumer is the interface for resuming paused agent sessions.
+type SessionResumer interface {
+	ResumeSessionForPR(ctx context.Context, repo string, prNumber int) error
 }
 
 // ReviewContext is the data passed to TaskSubmitter for a single review.
@@ -114,6 +121,7 @@ type Handler struct {
 	triggers  TriggerResolver
 	audit     AuditLogger
 	artifacts ArtifactRecorder
+	resumer   SessionResumer
 	recent    *RecentDeliveries
 }
 
@@ -127,7 +135,7 @@ type HandlerConfig struct {
 // NewHandler creates a webhook Handler. If the configuration is incomplete,
 // the returned handler will accept requests but log "webhook disabled" for
 // every event (kill switch behavior).
-func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver, audit AuditLogger, artifacts ArtifactRecorder) *Handler {
+func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver, audit AuditLogger, artifacts ArtifactRecorder, resumer SessionResumer) *Handler {
 	return &Handler{
 		cfg:       cfg,
 		gh:        gh,
@@ -135,6 +143,7 @@ func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers
 		triggers:  triggers,
 		audit:     audit,
 		artifacts: artifacts,
+		resumer:   resumer,
 		recent:    NewRecentDeliveries(5*time.Minute, 4096),
 	}
 }
@@ -297,6 +306,12 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	})
 
 	h.discoverArtifacts(ev.Comment.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue_comment")
+
+	if ev.IsPullRequest() && h.resumer != nil {
+		if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
+			slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
+		}
+	}
 
 	if ev.IsPullRequest() {
 		// PR comment — handle /chetter-review trigger.
@@ -655,6 +670,8 @@ func (h *Handler) logAudit(params AuditEventParams) {
 }
 
 var taskIDFooterRe = regexp.MustCompile(`Task:\s*(task_[a-f0-9]+)`)
+var agentSessionIDFooterRe = regexp.MustCompile(`Session:\s*(sess_[a-f0-9]+)`)
+var sessionRunIDFooterRe = regexp.MustCompile(`Run:\s*(run_[a-f0-9]+)`)
 
 func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifactType string) {
 	if h.artifacts == nil {
@@ -665,8 +682,18 @@ func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifact
 		return
 	}
 	taskID := matches[1]
+	agentSessionID := ""
+	if sessionMatches := agentSessionIDFooterRe.FindStringSubmatch(text); len(sessionMatches) >= 2 {
+		agentSessionID = sessionMatches[1]
+	}
+	sessionRunID := ""
+	if runMatches := sessionRunIDFooterRe.FindStringSubmatch(text); len(runMatches) >= 2 {
+		sessionRunID = runMatches[1]
+	}
 	if err := h.artifacts.RecordArtifact(asyncCtx(10*time.Second), RecordArtifactParams{
 		TaskID:          taskID,
+		AgentSessionID:  agentSessionID,
+		SessionRunID:    sessionRunID,
 		ArtifactType:    artifactType,
 		Repo:            repo,
 		Number:          number,

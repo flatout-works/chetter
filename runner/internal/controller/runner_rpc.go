@@ -90,21 +90,24 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		timeoutSec = defaultTaskTimeoutSec
 	}
 	return task.TaskRequest{
-		TaskID:      t.TaskId,
-		AgentImage:  t.AgentImage,
-		Prompt:      t.Prompt,
-		GitURL:      t.GitUrl,
-		GitRef:      t.GitRef,
-		Agent:       t.Agent,
-		ProviderID:  t.ProviderId,
-		ModelID:     t.ModelId,
-		VariantID:   t.VariantId,
-		Skills:      t.Skills,
-		TimeoutSec:  timeoutSec,
-		MaxMemoryMB: int(t.MaxMemoryMb),
-		MaxCPU:      int(t.MaxCpu),
-		Env:         t.Env,
-		Harness:     t.Harness,
+		TaskID:                 t.TaskId,
+		AgentImage:             t.AgentImage,
+		Prompt:                 t.Prompt,
+		GitURL:                 t.GitUrl,
+		GitRef:                 t.GitRef,
+		Agent:                  t.Agent,
+		ProviderID:             t.ProviderId,
+		ModelID:                t.ModelId,
+		VariantID:              t.VariantId,
+		Skills:                 t.Skills,
+		TimeoutSec:             timeoutSec,
+		MaxMemoryMB:            int(t.MaxMemoryMb),
+		MaxCPU:                 int(t.MaxCpu),
+		Env:                    t.Env,
+		CheckpointAfterSuccess: t.CheckpointAfterSuccess,
+		ResumeCheckpointPath:   t.ResumeCheckpointPath,
+		ResumeWorkspacePath:    t.ResumeWorkspacePath,
+		Harness:                t.Harness,
 	}
 }
 
@@ -131,6 +134,8 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		SessionExport:     resp.SessionExport,
 		StartedAt:         formatProtoTime(resp.StartedAt),
 		EndedAt:           formatProtoTime(resp.EndedAt),
+		CheckpointPath:    resp.CheckpointPath,
+		WorkspacePath:     resp.WorkspacePath,
 	}
 	report := func(ctx context.Context) error {
 		_, err := r.rpcClient.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{

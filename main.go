@@ -174,10 +174,11 @@ func buildWebhookHandler(cfg config.Config, svc *service.Service) http.Handler {
 		return nil
 	}
 	submitter := webhook.NewServiceSubmitter(&serviceSubmitterAdapter{svc: svc})
+	resumer := &sessionResumerAdapter{svc: svc}
 	return webhook.NewHandler(webhook.HandlerConfig{
 		Disabled:      cfg.GitHubWebhookDisabled,
 		WebhookSecret: cfg.GitHubWebhookSecret,
-	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc})
+	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc}, resumer)
 }
 
 type auditLoggerAdapter struct{ svc *service.Service }
@@ -204,6 +205,8 @@ type artifactRecorderAdapter struct{ svc *service.Service }
 func (a *artifactRecorderAdapter) RecordArtifact(ctx context.Context, params webhook.RecordArtifactParams) error {
 	return a.svc.RecordArtifact(ctx, service.RecordArtifactParams{
 		TaskID:          params.TaskID,
+		AgentSessionID:  params.AgentSessionID,
+		SessionRunID:    params.SessionRunID,
 		ArtifactType:    params.ArtifactType,
 		Repo:            params.Repo,
 		Number:          params.Number,
@@ -212,6 +215,12 @@ func (a *artifactRecorderAdapter) RecordArtifact(ctx context.Context, params web
 		SHA:             params.SHA,
 		DiscoverySource: params.DiscoverySource,
 	})
+}
+
+type sessionResumerAdapter struct{ svc *service.Service }
+
+func (a *sessionResumerAdapter) ResumeSessionForPR(ctx context.Context, repo string, prNumber int) error {
+	return a.svc.ResumeSessionForPR(ctx, repo, prNumber)
 }
 
 // serviceSubmitterAdapter adapts service.Service to webhook.TaskSubmitterService.

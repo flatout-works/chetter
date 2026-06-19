@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS chetter_schedules (
     provider_id VARCHAR(128) NULL,
     model_id VARCHAR(255) NULL,
     variant_id VARCHAR(128) NULL,
+    harness VARCHAR(64) NULL,
     skills JSON NOT NULL,
     timeout_sec INT NOT NULL,
     enabled BOOL NOT NULL,

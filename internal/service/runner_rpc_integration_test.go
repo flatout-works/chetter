@@ -102,6 +102,38 @@ func TestRPCClaimTaskNoPendingReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
+	svc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_pinned", "resume work", "runner:latest")
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET required_runner_id = ? WHERE id = ?", "runner_pinned", "task_pinned"); err != nil {
+		t.Fatalf("pin task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_other",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask other runner: %v", err)
+	}
+	if resp.Msg.Task != nil {
+		t.Fatalf("expected no claim for non-pinned runner, got %+v", resp.Msg.Task)
+	}
+
+	resp, err = svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_pinned",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask pinned runner: %v", err)
+	}
+	if resp.Msg.Task == nil || resp.Msg.Task.TaskId != "task_pinned" {
+		t.Fatalf("expected pinned task, got %+v", resp.Msg.Task)
+	}
+}
+
 func TestRPCClaimTaskRejectsEmptyRunnerID(t *testing.T) {
 	svc, _, _, cleanup := newRPCTestService(t)
 	defer cleanup()
@@ -608,7 +640,7 @@ func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task)
+	proto := taskToProto(task, "", "")
 	if proto.Harness != "pi" {
 		t.Fatalf("expected harness='pi', got %q", proto.Harness)
 	}
@@ -641,7 +673,7 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task)
+	proto := taskToProto(task, "", "")
 	if proto.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", proto.Harness)
 	}

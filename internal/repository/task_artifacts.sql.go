@@ -12,13 +12,15 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT INTO chetter_task_artifacts (id, task_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskArtifactParams struct {
 	ID              string         `json:"id"`
 	TaskID          string         `json:"task_id"`
+	AgentSessionID  sql.NullString `json:"agent_session_id"`
+	SessionRunID    sql.NullString `json:"session_run_id"`
 	ArtifactType    string         `json:"artifact_type"`
 	Repo            string         `json:"repo"`
 	Number          sql.NullInt32  `json:"number"`
@@ -34,6 +36,8 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 	_, err := q.db.ExecContext(ctx, insertTaskArtifact,
 		arg.ID,
 		arg.TaskID,
+		arg.AgentSessionID,
+		arg.SessionRunID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.Number,
@@ -48,9 +52,10 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 }
 
 const listTaskArtifacts = `-- name: ListTaskArtifacts :many
-SELECT id, task_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = ? OR ? = '')
+  AND (agent_session_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
 ORDER BY discovered_at DESC
@@ -58,35 +63,57 @@ LIMIT ?
 `
 
 type ListTaskArtifactsParams struct {
-	TaskID       string      `json:"task_id"`
-	Column2      interface{} `json:"column_2"`
-	ArtifactType string      `json:"artifact_type"`
-	Column4      interface{} `json:"column_4"`
-	Repo         string      `json:"repo"`
-	Column6      interface{} `json:"column_6"`
-	Limit        int32       `json:"limit"`
+	TaskID         string         `json:"task_id"`
+	Column2        interface{}    `json:"column_2"`
+	AgentSessionID sql.NullString `json:"agent_session_id"`
+	Column4        interface{}    `json:"column_4"`
+	ArtifactType   string         `json:"artifact_type"`
+	Column6        interface{}    `json:"column_6"`
+	Repo           string         `json:"repo"`
+	Column8        interface{}    `json:"column_8"`
+	Limit          int32          `json:"limit"`
 }
 
-func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsParams) ([]ChetterTaskArtifact, error) {
+type ListTaskArtifactsRow struct {
+	ID              string         `json:"id"`
+	TaskID          string         `json:"task_id"`
+	AgentSessionID  sql.NullString `json:"agent_session_id"`
+	SessionRunID    sql.NullString `json:"session_run_id"`
+	ArtifactType    string         `json:"artifact_type"`
+	Repo            string         `json:"repo"`
+	Number          sql.NullInt32  `json:"number"`
+	Url             sql.NullString `json:"url"`
+	Ref             sql.NullString `json:"ref"`
+	Sha             sql.NullString `json:"sha"`
+	CreatedAt       time.Time      `json:"created_at"`
+	DiscoveredAt    time.Time      `json:"discovered_at"`
+	DiscoverySource string         `json:"discovery_source"`
+}
+
+func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsParams) ([]ListTaskArtifactsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskArtifacts,
 		arg.TaskID,
 		arg.Column2,
-		arg.ArtifactType,
+		arg.AgentSessionID,
 		arg.Column4,
-		arg.Repo,
+		arg.ArtifactType,
 		arg.Column6,
+		arg.Repo,
+		arg.Column8,
 		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTaskArtifact{}
+	items := []ListTaskArtifactsRow{}
 	for rows.Next() {
-		var i ChetterTaskArtifact
+		var i ListTaskArtifactsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,
+			&i.AgentSessionID,
+			&i.SessionRunID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

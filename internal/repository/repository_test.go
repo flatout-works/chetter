@@ -137,7 +137,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Errorf("GetTaskByID = %+v", got)
 	}
 
-	claimable, err := q.GetClaimableTaskForUpdate(ctx)
+	claimable, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: "runner-1", Valid: true})
 	if err != nil {
 		t.Fatalf("GetClaimableTaskForUpdate: %v", err)
 	}
@@ -147,10 +147,10 @@ func TestTaskLifecycle(t *testing.T) {
 
 	n, err := q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
 		ID: "task-1", RunnerID: sql.NullString{String: "runner-1", Valid: true},
-		ClaimedAt: sql.NullTime{Time: now, Valid: true},
+		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
+		StartedAt:      sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("MarkTaskClaimed: %v", err)
@@ -235,16 +235,16 @@ func TestRenewAndReclaimLeases(t *testing.T) {
 
 	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
 		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt: sql.NullTime{Time: now, Valid: true},
+		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
+		StartedAt:      sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 	})
 
 	n, err := q.RenewTaskLease(ctx, RenewTaskLeaseParams{
 		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(60 * time.Second), Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("RenewTaskLease: %v", err)
@@ -302,7 +302,7 @@ func TestClearPendingTasks(t *testing.T) {
 	}
 
 	n, err := q.ClearPendingTasks(ctx, ClearPendingTasksParams{
-		Error: sql.NullString{String: "cleared", Valid: true},
+		Error:   sql.NullString{String: "cleared", Valid: true},
 		EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now,
 	})
 	if err != nil {
@@ -389,7 +389,7 @@ func TestRunnerHeartbeat(t *testing.T) {
 		ID: "runner-1", Status: "active", MaxConcurrent: 5,
 		RunningTasks: 3, AvailableSlots: 2,
 		TotalStarted: 11, TotalCompleted: 8, TotalErrors: 1,
-		FirstSeenAt: now, LastSeenAt: now.Add(10*time.Second), UpdatedAt: now.Add(10 * time.Second),
+		FirstSeenAt: now, LastSeenAt: now.Add(10 * time.Second), UpdatedAt: now.Add(10 * time.Second),
 		Metadata: meta,
 	})
 	if err != nil {
@@ -414,7 +414,7 @@ func TestSchedulesCRUD(t *testing.T) {
 		ID: "sched-1", Name: "daily-report",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * *",
-		Prompt: "generate report", TeamID: null,
+		Prompt:   "generate report", TeamID: null,
 		GitUrl: null, GitRef: null, AgentImage: null, Agent: null,
 		ProviderID: null, ModelID: null, VariantID: null,
 		Skills: nullJSON, TimeoutSec: 600,
@@ -476,7 +476,7 @@ func TestScheduleTeamScoping(t *testing.T) {
 		ID: "s1", Name: "team-a-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
-		Prompt: "a", TeamID: sql.NullString{String: "team-a", Valid: true},
+		Prompt:   "a", TeamID: sql.NullString{String: "team-a", Valid: true},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -485,7 +485,7 @@ func TestScheduleTeamScoping(t *testing.T) {
 		ID: "s2", Name: "global-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
-		Prompt: "global", TeamID: sql.NullString{},
+		Prompt:   "global", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -519,7 +519,7 @@ func TestScheduleLastAndNextRun(t *testing.T) {
 		ID: "s1", Name: "test-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "*/5 * * * *",
-		Prompt: "test", TeamID: sql.NullString{},
+		Prompt:   "test", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -559,7 +559,7 @@ func TestUpdateSchedule(t *testing.T) {
 		ID: "s1", Name: "old-name",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
-		Prompt: "old", TeamID: sql.NullString{},
+		Prompt:   "old", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -594,7 +594,7 @@ func TestInsertScheduleRun(t *testing.T) {
 		ID: "s1", Name: "my-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
-		Prompt: "run", TeamID: sql.NullString{},
+		Prompt:   "run", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -643,10 +643,10 @@ func TestFailExpiredLeases(t *testing.T) {
 
 	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
 		ID: "task-expired", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt: sql.NullTime{Time: now, Valid: true},
+		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Hour), Valid: true},
-		StartedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
+		StartedAt:      sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 	})
 
 	got, _ := q.GetTaskByID(ctx, "task-expired")
@@ -655,7 +655,7 @@ func TestFailExpiredLeases(t *testing.T) {
 	}
 
 	n, err := q.FailExpiredLeases(ctx, FailExpiredLeasesParams{
-		EndedAt: sql.NullTime{Time: now, Valid: true},
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
 		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now, Valid: true},
 	})
@@ -685,10 +685,10 @@ func TestUpdateTaskFromRunnerEvent(t *testing.T) {
 
 	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
 		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt: sql.NullTime{Time: now, Valid: true},
+		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
+		StartedAt:      sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 	})
 
 	n, err := q.UpdateTaskFromRunnerEvent(ctx, UpdateTaskFromRunnerEventParams{
@@ -696,7 +696,7 @@ func TestUpdateTaskFromRunnerEvent(t *testing.T) {
 		Error: sql.NullString{}, ProviderID: nil, ModelID: nil, VariantID: nil,
 		OpencodeSessionID: nil, RunnerImageDigest: nil,
 		LeaseExpiresAt: sql.NullTime{},
-		StartedAt: sql.NullTime{}, EndedAt: sql.NullTime{Time: now, Valid: true},
+		StartedAt:      sql.NullTime{}, EndedAt: sql.NullTime{Time: now, Valid: true},
 		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
 		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
 	})
@@ -737,7 +737,7 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 	}
 
 	teamATasks, err := q.ListTasksByStatusAndTeam(ctx, ListTasksByStatusAndTeamParams{
-		TeamID: sql.NullString{String: "team-a", Valid: true},
+		TeamID:       sql.NullString{String: "team-a", Valid: true},
 		StatusFilter: "", Limit: 100,
 	})
 	if err != nil {
@@ -856,7 +856,7 @@ func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
 		ID: "s1", Name: "daily",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * *",
-		Prompt: "daily report", TeamID: sql.NullString{String: "t1", Valid: true},
+		Prompt:   "daily report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
@@ -865,7 +865,7 @@ func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
 		ID: "s2", Name: "weekly",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * 1",
-		Prompt: "weekly report", TeamID: sql.NullString{String: "t1", Valid: true},
+		Prompt:   "weekly report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)

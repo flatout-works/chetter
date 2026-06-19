@@ -192,6 +192,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureSessionExportColumn(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -209,6 +212,8 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER runner_image_digest"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
 		{"runner_id", "ALTER TABLE chetter_tasks ADD COLUMN runner_id VARCHAR(64) NULL AFTER commit_author_email"},
+		{"required_runner_id", "ALTER TABLE chetter_tasks ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER runner_id"},
+		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER required_runner_id"},
 		{"claimed_at", "ALTER TABLE chetter_tasks ADD COLUMN claimed_at DATETIME(6) NULL AFTER runner_id"},
 		{"lease_expires_at", "ALTER TABLE chetter_tasks ADD COLUMN lease_expires_at DATETIME(6) NULL AFTER claimed_at"},
 		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
@@ -345,6 +350,29 @@ func (s *Store) ensureSessionExportColumn(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN session_export MEDIUMTEXT NULL AFTER error")
 	if err != nil {
 		return fmt.Errorf("add chetter_tasks.session_export: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"agent_session_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN agent_session_id VARCHAR(64) NULL AFTER task_id"},
+		{"session_run_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN session_run_id VARCHAR(64) NULL AFTER agent_session_id"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "chetter_task_artifacts", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add chetter_task_artifacts.%s: %w", column.name, err)
+		}
 	}
 	return nil
 }

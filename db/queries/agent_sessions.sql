@@ -1,0 +1,137 @@
+-- name: InsertAgentSession :exec
+INSERT INTO chetter_agent_sessions
+    (id, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetAgentSessionByID :one
+SELECT * FROM chetter_agent_sessions
+WHERE id = ?;
+
+-- name: ListAgentSessions :many
+SELECT * FROM chetter_agent_sessions
+WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filter))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+ORDER BY updated_at DESC
+LIMIT ?;
+
+-- name: MarkAgentSessionTerminalByTask :execrows
+UPDATE chetter_agent_sessions
+SET status = ?,
+    harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
+    error = ?,
+    updated_at = ?
+WHERE id = (
+    SELECT agent_session_id
+    FROM chetter_session_runs
+    WHERE task_id = ?
+    LIMIT 1
+)
+AND status IN ('running', 'resuming');
+
+-- name: GetAgentSessionByTaskID :one
+SELECT * FROM chetter_agent_sessions
+WHERE id = (
+    SELECT agent_session_id
+    FROM chetter_session_runs
+    WHERE task_id = ?
+    LIMIT 1
+);
+
+-- name: PauseAgentSessionByTaskID :execrows
+UPDATE chetter_agent_sessions
+SET status = ?,
+    pinned_runner_id = COALESCE(NULLIF(sqlc.arg(pinned_runner_id), ''), pinned_runner_id),
+    checkpoint_id = COALESCE(NULLIF(sqlc.arg(checkpoint_id), ''), checkpoint_id),
+    workspace_path = COALESCE(NULLIF(sqlc.arg(workspace_path), ''), workspace_path),
+    container_name = COALESCE(NULLIF(sqlc.arg(container_name), ''), container_name),
+    paused_at = ?,
+    updated_at = ?
+WHERE id = (
+    SELECT agent_session_id
+    FROM chetter_session_runs
+    WHERE task_id = ?
+    LIMIT 1
+)
+AND status = 'running';
+
+-- name: MarkAgentSessionResuming :execrows
+UPDATE chetter_agent_sessions
+SET status = ?,
+    updated_at = ?
+WHERE id = ?;
+
+-- name: IsRunnerAlive :one
+SELECT COUNT(*) > 0 FROM chetter_runners
+WHERE id = sqlc.arg(runner_id)
+  AND status = 'active'
+  AND last_seen_at > DATE_SUB(NOW(), INTERVAL sqlc.arg(stale_seconds) SECOND);
+
+-- name: GetPausedSessionByArtifact :one
+SELECT s.* FROM chetter_agent_sessions s
+JOIN chetter_task_artifacts a ON a.agent_session_id = s.id
+WHERE a.repo = sqlc.arg(repo)
+  AND a.number = sqlc.arg(number)
+  AND a.artifact_type = sqlc.arg(artifact_type)
+  AND s.status = 'paused_waiting_review'
+  AND s.resume_mode = 'gvisor_checkpoint'
+ORDER BY a.discovered_at DESC
+LIMIT 1;
+
+-- name: ExpirePausedSessions :execrows
+UPDATE chetter_agent_sessions
+SET status = 'expired',
+    updated_at = ?
+WHERE status = 'paused_waiting_review'
+  AND expires_at IS NOT NULL
+  AND expires_at < ?;
+
+-- name: InsertSessionRun :exec
+INSERT INTO chetter_session_runs
+    (id, agent_session_id, task_id, status, prompt, required_runner_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetSessionRunByTaskID :one
+SELECT * FROM chetter_session_runs
+WHERE task_id = ?;
+
+-- name: ListSessionRunsBySession :many
+SELECT * FROM chetter_session_runs
+WHERE agent_session_id = ?
+ORDER BY created_at ASC;
+
+-- name: MarkSessionRunRunningByTask :execrows
+UPDATE chetter_session_runs
+SET status = 'running',
+    started_at = COALESCE(started_at, ?),
+    updated_at = ?
+WHERE task_id = ?
+  AND status IN ('pending', 'claimed');
+
+-- name: MarkSessionRunTerminalByTask :execrows
+UPDATE chetter_session_runs
+SET status = ?,
+    summary = ?,
+    error = ?,
+    session_export = COALESCE(?, session_export),
+    started_at = COALESCE(started_at, ?),
+    ended_at = COALESCE(?, ended_at),
+    updated_at = ?
+WHERE task_id = ?;
+
+-- name: InsertAgentSessionCheckpoint :exec
+INSERT INTO chetter_agent_session_checkpoints
+    (id, agent_session_id, session_run_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetLatestAgentSessionCheckpoint :one
+SELECT * FROM chetter_agent_session_checkpoints
+WHERE agent_session_id = ?
+ORDER BY created_at DESC
+LIMIT 1;
+
+-- name: GetLatestAgentSessionCheckpointByTaskID :one
+SELECT chk.* FROM chetter_agent_session_checkpoints chk
+JOIN chetter_session_runs r ON r.agent_session_id = chk.agent_session_id
+WHERE r.task_id = ?
+ORDER BY chk.created_at DESC
+LIMIT 1;

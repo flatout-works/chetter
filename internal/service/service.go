@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -37,6 +38,9 @@ type SubmitTaskRequest struct {
 	TimeoutSec  int
 	TriggerName string
 	TriggerType string
+	SessionMode string
+	PauseReason string
+	TTLHours    int
 }
 
 type AuditEventParams struct {
@@ -56,6 +60,8 @@ type AuditEventParams struct {
 
 type RecordArtifactParams struct {
 	TaskID          string
+	AgentSessionID  string
+	SessionRunID    string
 	ArtifactType    string
 	Repo            string
 	Number          int
@@ -82,6 +88,7 @@ type Service struct {
 	cfg         config.Config
 	store       *store.Store
 	repo        *repository.Queries
+	rawDB       *sql.DB
 	arcane      *ArcaneClient
 	cron        *cron.Cron
 	cronMu      sync.Mutex
@@ -94,6 +101,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		cfg:         cfg,
 		store:       st,
 		repo:        repository.New(st.DB()),
+		rawDB:       st.DB(),
 		cron:        cron.New(cron.WithParser(defaultCronParser), cron.WithLocation(time.UTC)),
 		cronEntries: make(map[string]cron.EntryID),
 		reaperStop:  make(chan struct{}),
@@ -127,6 +135,7 @@ func (s *Service) Stop() {
 func (s *Service) taskReaper() {
 	s.reapStaleTasks()
 	s.reapExpiredLeases()
+	s.reapExpiredSessions()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
 	for {
@@ -134,6 +143,7 @@ func (s *Service) taskReaper() {
 		case <-ticker.C:
 			s.reapStaleTasks()
 			s.reapExpiredLeases()
+			s.reapExpiredSessions()
 		case <-s.reaperStop:
 			return
 		}
@@ -177,7 +187,24 @@ func (s *Service) reapStaleTasks() {
 		return
 	}
 	if n > 0 {
-		slog.Info("reaped stale tasks", "count", n)
+		slog.Info("reaped expired leases", "count", n)
+	}
+}
+
+func (s *Service) reapExpiredSessions() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	n, err := s.repo.ExpirePausedSessions(ctx, repository.ExpirePausedSessionsParams{
+		UpdatedAt: now,
+		ExpiresAt: sql.NullTime{Time: now, Valid: true},
+	})
+	if err != nil {
+		slog.Error("session expiration failed", "error", err)
+		return
+	}
+	if n > 0 {
+		slog.Info("expired paused sessions", "count", n)
 	}
 }
 
@@ -199,6 +226,14 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
 	}
+	sessionID, err := randomID("sess")
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("generate session id: %w", err)
+	}
+	runID, err := randomID("run")
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("generate session run id: %w", err)
+	}
 	now := time.Now().UTC()
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
@@ -213,35 +248,257 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
 	teamID := teamIDFromContext(ctx)
-	if err := s.repo.InsertTask(ctx, repository.InsertTaskParams{
-		ID:                taskID,
-		TeamID:            nullString(teamID),
-		Prompt:            in.Prompt,
-		GitUrl:            nullString(in.GitURL),
-		GitRef:            nullString(in.GitRef),
-		AgentImage:        nullString(in.AgentImage),
-		Agent:             nullString(in.Agent),
-		ProviderID:        nullString(in.ProviderID),
-		ModelID:           nullString(in.ModelID),
-		VariantID:         nullString(in.VariantID),
-		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
-		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
-		TriggerName:       nullString(in.TriggerName),
-		TriggerType:       nullString(in.TriggerType),
-		Skills:            skills,
-		Env:               env,
-		TimeoutSec:        int32(in.TimeoutSec),
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("insert task: %w", err)
+	resumeMode := "none"
+	pauseReason := ""
+	var expiresAt sql.NullTime
+	checkpointAfterSuccess := false
+	if in.SessionMode == "resumable" {
+		resumeMode = "gvisor_checkpoint"
+		checkpointAfterSuccess = true
+		if in.PauseReason != "" {
+			pauseReason = in.PauseReason
+		}
+		if in.TTLHours > 0 {
+			expiresAt = sql.NullTime{Time: now.Add(time.Duration(in.TTLHours) * time.Hour), Valid: true}
+		} else {
+			expiresAt = sql.NullTime{Time: now.Add(72 * time.Hour), Valid: true}
+		}
 	}
-	slog.Info("task queued", "task_id", taskID)
-	task, err := s.repo.GetTaskByID(ctx, taskID)
+	var task repository.ChetterTask
+	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+		if err := q.InsertTask(ctx, repository.InsertTaskParams{
+			ID:                     taskID,
+			TeamID:                 nullString(teamID),
+			Prompt:                 in.Prompt,
+			GitUrl:                 nullString(in.GitURL),
+			GitRef:                 nullString(in.GitRef),
+			AgentImage:             nullString(in.AgentImage),
+			Agent:                  nullString(in.Agent),
+			ProviderID:             nullString(in.ProviderID),
+			ModelID:                nullString(in.ModelID),
+			VariantID:              nullString(in.VariantID),
+			CommitAuthorName:       sql.NullString{String: "Chetter", Valid: true},
+			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+			TriggerName:            nullString(in.TriggerName),
+			TriggerType:            nullString(in.TriggerType),
+			CheckpointAfterSuccess: checkpointAfterSuccess,
+			Skills:                 skills,
+			Env:                    env,
+			TimeoutSec:             int32(in.TimeoutSec),
+			CreatedAt:              now,
+			UpdatedAt:              now,
+		}); err != nil {
+			return fmt.Errorf("insert task: %w", err)
+		}
+		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
+			ID:          sessionID,
+			TeamID:      nullString(teamID),
+			Status:      "running",
+			ResumeMode:  resumeMode,
+			PauseReason: nullString(pauseReason),
+			ExpiresAt:   expiresAt,
+			GitUrl:      nullString(in.GitURL),
+			GitRef:      nullString(in.GitRef),
+			AgentImage:  nullString(in.AgentImage),
+			Agent:       nullString(in.Agent),
+			ProviderID:  nullString(in.ProviderID),
+			ModelID:     nullString(in.ModelID),
+			VariantID:   nullString(in.VariantID),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}); err != nil {
+			return fmt.Errorf("insert agent session: %w", err)
+		}
+		if err := q.InsertSessionRun(ctx, repository.InsertSessionRunParams{
+			ID:               runID,
+			AgentSessionID:   sessionID,
+			TaskID:           taskID,
+			Status:           "pending",
+			Prompt:           in.Prompt,
+			RequiredRunnerID: sql.NullString{},
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}); err != nil {
+			return fmt.Errorf("insert session run: %w", err)
+		}
+		row, err := q.GetTaskByID(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("get task: %w", err)
+		}
+		task = row
+		return nil
+	})
 	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("get task: %w", err)
+		return store.TaskRecord{}, err
 	}
+	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "session_run_id", runID)
 	return repoTaskToStoreRecord(task), nil
+}
+
+// ResumeAgentSession creates a follow-up run for a paused agent session.
+func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
+	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("get agent session: %w", err)
+	}
+	if session.Status != "paused_waiting_review" && session.Status != "paused" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not paused (status: %s)", session.Status)
+	}
+	if session.ResumeMode != "gvisor_checkpoint" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not resumable (resume_mode: %s)", session.ResumeMode)
+	}
+	if !session.PinnedRunnerID.Valid || session.PinnedRunnerID.String == "" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no pinned runner")
+	}
+	if !session.CheckpointID.Valid || session.CheckpointID.String == "" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no checkpoint")
+	}
+
+	chk, err := s.repo.GetLatestAgentSessionCheckpoint(ctx, sessionID)
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("get checkpoint: %w", err)
+	}
+	if chk.Status != "ready" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("checkpoint not ready (status: %s)", chk.Status)
+	}
+
+	runnerAlive, err := s.repo.IsRunnerAlive(ctx, repository.IsRunnerAliveParams{
+		RunnerID:     session.PinnedRunnerID.String,
+		StaleSeconds: 120,
+	})
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("check runner: %w", err)
+	}
+	if !runnerAlive {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("pinned runner %s is not alive", session.PinnedRunnerID.String)
+	}
+
+	taskID, err := randomID("task")
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("generate task id: %w", err)
+	}
+	runID, err := randomID("run")
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("generate session run id: %w", err)
+	}
+
+	now := time.Now().UTC()
+	teamID := teamIDFromContext(ctx)
+	if timeoutSec == 0 {
+		timeoutSec = s.cfg.DefaultTaskTimeoutSec
+	}
+
+	skills, _ := json.Marshal([]string{})
+	env, _ := json.Marshal(map[string]string{})
+
+	var task repository.ChetterTask
+	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+		if err := q.InsertTask(ctx, repository.InsertTaskParams{
+			ID:                     taskID,
+			TeamID:                 nullString(teamID),
+			Prompt:                 prompt,
+			GitUrl:                 session.GitUrl,
+			GitRef:                 session.GitRef,
+			AgentImage:             session.AgentImage,
+			Agent:                  session.Agent,
+			ProviderID:             session.ProviderID,
+			ModelID:                session.ModelID,
+			VariantID:              session.VariantID,
+			CommitAuthorName:       sql.NullString{String: "Chetter", Valid: true},
+			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+			TriggerName:            sql.NullString{},
+			TriggerType:            sql.NullString{},
+			CheckpointAfterSuccess: false,
+			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
+			Skills:                 skills,
+			Env:                    env,
+			TimeoutSec:             int32(timeoutSec),
+			CreatedAt:              now,
+			UpdatedAt:              now,
+		}); err != nil {
+			return fmt.Errorf("insert task: %w", err)
+		}
+		if err := q.InsertSessionRun(ctx, repository.InsertSessionRunParams{
+			ID:               runID,
+			AgentSessionID:   sessionID,
+			TaskID:           taskID,
+			Status:           "pending",
+			Prompt:           prompt,
+			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}); err != nil {
+			return fmt.Errorf("insert session run: %w", err)
+		}
+		if _, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
+			ID:        sessionID,
+			Status:    "resuming",
+			UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("mark session resuming: %w", err)
+		}
+		row, err := q.GetTaskByID(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("get task: %w", err)
+		}
+		task = row
+		return nil
+	})
+	if err != nil {
+		return ResumeAgentSessionOutput{}, err
+	}
+
+	run, err := s.repo.GetSessionRunByTaskID(ctx, taskID)
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("get session run: %w", err)
+	}
+
+	slog.Info("agent session resumed", "session_id", sessionID, "task_id", taskID, "session_run_id", runID)
+	return ResumeAgentSessionOutput{
+		Task: taskToolRecord(repoTaskToStoreRecord(task)),
+		Run:  sessionRunRecord(run),
+	}, nil
+}
+
+// ResumeSessionForPR checks if a paused Chetter-authored session exists for a PR
+// and enqueues a follow-up run with feedback response.
+func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber int) error {
+	session, err := s.repo.GetPausedSessionByArtifact(ctx, repository.GetPausedSessionByArtifactParams{
+		Repo:         repo,
+		Number:       sql.NullInt32{Int32: int32(prNumber), Valid: true},
+		ArtifactType: "pull_request",
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("lookup paused session: %w", err)
+	}
+
+	runnerAlive, err := s.repo.IsRunnerAlive(ctx, repository.IsRunnerAliveParams{
+		RunnerID:     session.PinnedRunnerID.String,
+		StaleSeconds: 120,
+	})
+	if err != nil || !runnerAlive {
+		return nil
+	}
+
+	prompt := fmt.Sprintf(
+		"Your PR #%d in %s received review feedback.\n\n"+
+			"Read the PR review comments and review threads using gh.\n"+
+			"Address the feedback with the smallest correct changes.\n"+
+			"Push updates to the existing branch.\n"+
+			"Reply to resolved review comments where appropriate.\n"+
+			"Do not open a new PR.",
+		prNumber, repo,
+	)
+
+	_, err = s.ResumeAgentSession(ctx, session.ID, prompt, 0)
+	if err != nil {
+		return fmt.Errorf("resume session %s: %w", session.ID, err)
+	}
+	slog.Info("auto-resumed session for PR feedback", "session_id", session.ID, "repo", repo, "pr", prNumber)
+	return nil
 }
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
@@ -775,6 +1032,8 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 	return s.repo.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
 		ID:              id,
 		TaskID:          params.TaskID,
+		AgentSessionID:  nullString(params.AgentSessionID),
+		SessionRunID:    nullString(params.SessionRunID),
 		ArtifactType:    params.ArtifactType,
 		Repo:            params.Repo,
 		Number:          number,

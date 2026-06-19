@@ -76,7 +76,7 @@ func (q *Queries) DeleteSchedule(ctx context.Context, name string) error {
 }
 
 const getScheduleByID = `-- name: GetScheduleByID :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE id = ?
 `
 
@@ -97,6 +97,7 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 		&i.ProviderID,
 		&i.ModelID,
 		&i.VariantID,
+		&i.Harness,
 		&i.Skills,
 		&i.TimeoutSec,
 		&i.Enabled,
@@ -110,7 +111,7 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 }
 
 const getScheduleByName = `-- name: GetScheduleByName :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE name = ?
 `
 
@@ -131,6 +132,7 @@ func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSc
 		&i.ProviderID,
 		&i.ModelID,
 		&i.VariantID,
+		&i.Harness,
 		&i.Skills,
 		&i.TimeoutSec,
 		&i.Enabled,
@@ -172,7 +174,7 @@ func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunPa
 }
 
 const listEnabledIssueTriggersByRepo = `-- name: ListEnabledIssueTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
   AND trigger_type = 'issue'
   AND trigger_config->>'$.repo' = ?
@@ -202,6 +204,7 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -225,7 +228,7 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 }
 
 const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
   AND trigger_type = 'pr_review'
   AND trigger_config->>'$.repo' = ?
@@ -255,6 +258,7 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -278,7 +282,7 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 }
 
 const listEnabledSchedules = `-- name: ListEnabledSchedules :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
@@ -306,6 +310,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -329,7 +334,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 }
 
 const listEnabledSchedulesByTeam = `-- name: ListEnabledSchedulesByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE team_id = ?
   AND enabled = TRUE
 ORDER BY created_at DESC
@@ -358,6 +363,7 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -381,7 +387,7 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 }
 
 const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE enabled = TRUE
   AND trigger_type = ?
 ORDER BY created_at DESC
@@ -410,6 +416,7 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -543,7 +550,7 @@ func (q *Queries) ListScheduleRunsByTeam(ctx context.Context, arg ListScheduleRu
 }
 
 const listSchedules = `-- name: ListSchedules :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 ORDER BY created_at DESC
 `
 
@@ -570,6 +577,7 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,
@@ -593,7 +601,7 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 }
 
 const listSchedulesByTeam = `-- name: ListSchedulesByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
 WHERE team_id = ?
 ORDER BY created_at DESC
 `
@@ -621,6 +629,7 @@ func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString
 			&i.ProviderID,
 			&i.ModelID,
 			&i.VariantID,
+			&i.Harness,
 			&i.Skills,
 			&i.TimeoutSec,
 			&i.Enabled,

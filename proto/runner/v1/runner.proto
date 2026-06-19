@@ -21,6 +21,9 @@ message RunnerInfo {
   repeated string current_task_ids = 12;
   string execution_mode = 13;
   string started_at = 14;
+  bool gvisor_enabled = 15;
+  bool checkpoint_restore = 16;
+  string runsc_version = 17;
 }
 
 message RegisterRunnerRequest {
@@ -65,7 +68,10 @@ message Task {
   int32 max_cpu = 13;
   map<string, string> env = 14;
   int32 attempt = 15;
-  string harness = 16;
+  bool checkpoint_after_success = 16;
+  string resume_checkpoint_path = 17;
+  string resume_workspace_path = 18;
+  string harness = 19;
 }
 
 message ClaimTaskResponse {
@@ -87,6 +93,8 @@ message TaskEvent {
   string ended_at = 12;
   string payload_json = 13;
   string session_export = 14;
+  string checkpoint_path = 15;
+  string workspace_path = 16;
 }
 
 message ReportTaskEventsRequest {
