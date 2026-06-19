@@ -20,7 +20,7 @@ name: chetter-issue-implementer
 enabled: true
 trigger_type: issue
 trigger_config: '{"repo": "flatout-works/chetter", "event": "comment"}'
-agent_image: ghcr.io/flatout-works/chetter-runner:main
+agent_image: chetter-runner:latest
 agent: issue-implementer
 provider_id: opencode
 model_id: deepseek-v4-flash-free
