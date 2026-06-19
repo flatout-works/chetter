@@ -226,7 +226,7 @@ See `cmd/chetterctl/main.go` for CLI usage or use the MCP tools:
 | `chetter_delete_trigger` | Delete a trigger by name |
 | `chetter_run_trigger` | Run a cron trigger immediately |
 | `chetter_cancel_task` | Cancel a pending or running task |
-| `chetter_clear_queue` | Cancel all pending tasks |
+| `chetter_clear_queue` | Cancel all pending tasks (admin only) |
 | `chetter_task_events` | Full event history for a task |
 | `chetter_task_progress` | Distilled progress timeline |
 | `chetter_task_latest_event` | Latest event for a task |

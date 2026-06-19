@@ -29,7 +29,7 @@ Submit development tasks to a fleet of runner machines. Each task runs an AI cod
 ### Control Tasks
 
 - **Cancel**: Cancel a pending or running task by ID.
-- **Clear queue**: Cancel all pending tasks in one call.
+- **Clear queue**: Cancel all pending tasks in one admin-only call.
 
 ### List & Filter
 
@@ -296,7 +296,7 @@ Server URL and auth token can be set via flags or env vars (`CHETTER_SERVER_URL`
 | `chetter_list_tasks` | List recent tasks (status filter, team-scoped) |
 | `chetter_cancel_task` | Cancel a pending/running task |
 | `chetter_task_export` | Get markdown session transcript |
-| `chetter_clear_queue` | Cancel all pending tasks |
+| `chetter_clear_queue` | Cancel all pending tasks (admin only) |
 | `chetter_task_events` | Get full event history |
 
 ### Task Monitoring (2)

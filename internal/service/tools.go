@@ -476,7 +476,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_runner_health", Description: "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age."}, svc.runnerHealthTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Requires confirm=true."}, svc.clearQueueTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_environment_summary", Description: "Get aggregated vulnerability counts across all images in the Arcane environment."}, svc.arcaneEnvironmentSummaryTool)
@@ -492,8 +492,8 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and schedules. Admin only."}, svc.deleteTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedule_runs", Description: "List schedule runs for the current team, optionally filtered by schedule name."}, svc.listScheduleRunsTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters."}, svc.listAuditEventsTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks."}, svc.listTaskArtifactsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
@@ -524,7 +524,7 @@ func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, TaskStatusOutput{}, fmt.Errorf("task_id is required")
 	}
-	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
+	task, err := s.taskForToolAccess(ctx, in.TaskID)
 	if err != nil {
 		return nil, TaskStatusOutput{}, fmt.Errorf("get task status: %w", err)
 	}
@@ -535,7 +535,7 @@ func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, TaskExportOutput{}, fmt.Errorf("task_id is required")
 	}
-	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
+	task, err := s.taskForToolAccess(ctx, in.TaskID)
 	if err != nil {
 		return nil, TaskExportOutput{}, fmt.Errorf("get task: %w", err)
 	}
@@ -940,6 +940,9 @@ func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, TaskEventsOutput{}, fmt.Errorf("task_id is required")
 	}
+	if _, err := s.taskForToolAccess(ctx, in.TaskID); err != nil {
+		return nil, TaskEventsOutput{}, fmt.Errorf("get task: %w", err)
+	}
 	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
 		TaskID: in.TaskID,
 		Limit:  clampEventLimit(in.Limit),
@@ -971,6 +974,9 @@ func clampEventLimit(limit int) int32 {
 func (s *Service) taskProgressTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskProgressInput) (*mcp.CallToolResult, TaskProgressOutput, error) {
 	if in.TaskID == "" {
 		return nil, TaskProgressOutput{}, fmt.Errorf("task_id is required")
+	}
+	if _, err := s.taskForToolAccess(ctx, in.TaskID); err != nil {
+		return nil, TaskProgressOutput{}, fmt.Errorf("get task: %w", err)
 	}
 	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
 		TaskID: in.TaskID,
@@ -1005,6 +1011,9 @@ func (s *Service) taskProgressTool(ctx context.Context, _ *mcp.CallToolRequest, 
 func (s *Service) taskLatestEventTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskLatestEventInput) (*mcp.CallToolResult, TaskLatestEventOutput, error) {
 	if in.TaskID == "" {
 		return nil, TaskLatestEventOutput{}, fmt.Errorf("task_id is required")
+	}
+	if _, err := s.taskForToolAccess(ctx, in.TaskID); err != nil {
+		return nil, TaskLatestEventOutput{}, fmt.Errorf("get task: %w", err)
 	}
 	ev, err := s.repo.GetLatestTaskEvent(ctx, in.TaskID)
 	if err != nil {
@@ -1042,6 +1051,9 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if in.TaskID == "" {
 		return nil, CancelTaskOutput{}, fmt.Errorf("task_id is required")
 	}
+	if _, err := s.taskForToolAccess(ctx, in.TaskID); err != nil {
+		return nil, CancelTaskOutput{}, fmt.Errorf("get task: %w", err)
+	}
 	reason := in.Reason
 	if reason == "" {
 		reason = "cancelled by operator"
@@ -1059,7 +1071,7 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	if rows == 0 {
 		return nil, CancelTaskOutput{}, fmt.Errorf("task %s is not pending or running", in.TaskID)
 	}
-	task, err := s.repo.GetTaskByID(ctx, in.TaskID)
+	task, err := s.taskForToolAccess(ctx, in.TaskID)
 	if err != nil {
 		return nil, CancelTaskOutput{}, fmt.Errorf("get task after cancel: %w", err)
 	}
@@ -1067,6 +1079,9 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) clearQueueTool(ctx context.Context, _ *mcp.CallToolRequest, in ClearQueueInput) (*mcp.CallToolResult, ClearQueueOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, ClearQueueOutput{}, fmt.Errorf("admin access required")
+	}
 	if !in.Confirm {
 		return nil, ClearQueueOutput{}, fmt.Errorf("confirm must be true to clear the queue")
 	}
@@ -1366,6 +1381,28 @@ func isAdmin(ctx context.Context) bool {
 	return ok && scope.Admin
 }
 
+func (s *Service) taskForToolAccess(ctx context.Context, taskID string) (repository.ChetterTask, error) {
+	task, err := s.repo.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return repository.ChetterTask{}, err
+	}
+	if err := authorizeTaskToolAccess(ctx, task); err != nil {
+		return repository.ChetterTask{}, err
+	}
+	return task, nil
+}
+
+func authorizeTaskToolAccess(ctx context.Context, task repository.ChetterTask) error {
+	scope, scoped := auth.GetScope(ctx)
+	if !scoped || scope.Admin {
+		return nil
+	}
+	if scope.TeamID == "" || !task.TeamID.Valid || task.TeamID.String != scope.TeamID {
+		return fmt.Errorf("task not found")
+	}
+	return nil
+}
+
 // --- Arcane Vulnerability Scan Tools ---
 
 type ArcaneScannerStatusInput struct {
@@ -1563,6 +1600,9 @@ type AuditEventsOutput struct {
 }
 
 func (s *Service) listAuditEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in AuditEventFilterInput) (*mcp.CallToolResult, AuditEventsOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, AuditEventsOutput{}, fmt.Errorf("admin access required")
+	}
 	limit := in.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 100
@@ -1643,6 +1683,9 @@ type TaskArtifactsOutput struct {
 }
 
 func (s *Service) listTaskArtifactsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskArtifactFilterInput) (*mcp.CallToolResult, TaskArtifactsOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, TaskArtifactsOutput{}, fmt.Errorf("admin access required")
+	}
 	limit := in.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 100

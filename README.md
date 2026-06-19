@@ -348,7 +348,7 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 | `chetter_delete_trigger` | Delete a trigger by name |
 | `chetter_run_trigger` | Run a cron trigger immediately |
 | `chetter_cancel_task` | Cancel a pending or running task |
-| `chetter_clear_queue` | Clear queued tasks |
+| `chetter_clear_queue` | Clear queued tasks (admin only) |
 | `chetter_task_events` | Fetch full event history for a task |
 | `chetter_task_progress` | Fetch distilled task progress |
 | `chetter_task_latest_event` | Fetch latest event for a task |

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -761,6 +762,142 @@ func TestListTasksByTeamScopesCorrectly(t *testing.T) {
 	}
 	if len(bTasks) != 1 {
 		t.Errorf("team B: expected 1 task, got %d", len(bTasks))
+	}
+}
+
+func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
+	taskA, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{Prompt: "secret task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit team A task: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET session_export = ? WHERE id = ?", "team A transcript", taskA.ID); err != nil {
+		t.Fatalf("set session export: %v", err)
+	}
+	payload, _ := json.Marshal(map[string]any{"task_id": taskA.ID, "status": "running", "summary": "private"})
+	if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+		ID: "ev_cross_team", TaskID: taskA.ID, Subject: "task", Status: "running",
+		Payload: payload, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("insert task event: %v", err)
+	}
+
+	teamBCtx := ctxWithTeam(ctx, teamB)
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"status", func() error {
+			_, _, err := svc.taskStatusTool(teamBCtx, nil, TaskStatusInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"export", func() error {
+			_, _, err := svc.taskExportTool(teamBCtx, nil, TaskExportInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"events", func() error {
+			_, _, err := svc.taskEventsTool(teamBCtx, nil, TaskEventsInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"progress", func() error {
+			_, _, err := svc.taskProgressTool(teamBCtx, nil, TaskProgressInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"latest event", func() error {
+			_, _, err := svc.taskLatestEventTool(teamBCtx, nil, TaskLatestEventInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"cancel", func() error {
+			_, _, err := svc.cancelTaskTool(teamBCtx, nil, CancelTaskInput{TaskID: taskA.ID})
+			return err
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if err == nil {
+				t.Fatal("expected cross-team access to be denied")
+			}
+			if !strings.Contains(err.Error(), "task not found") {
+				t.Fatalf("expected not-found style error, got %v", err)
+			}
+		})
+	}
+
+	row, err := q.GetTaskByID(ctx, taskA.ID)
+	if err != nil {
+		t.Fatalf("get task after denied cancel: %v", err)
+	}
+	if row.Status != "pending" {
+		t.Fatalf("cross-team cancel changed task status to %s", row.Status)
+	}
+
+	if _, out, err := svc.taskStatusTool(ctxWithTeam(ctx, teamA), nil, TaskStatusInput{TaskID: taskA.ID}); err != nil {
+		t.Fatalf("owning team status should succeed: %v", err)
+	} else if out.Task.ID != taskA.ID {
+		t.Fatalf("owning team got task %s, want %s", out.Task.ID, taskA.ID)
+	}
+}
+
+func TestUnscopedToolsRequireAdmin(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	task, err := svc.SubmitTask(ctxWithTeam(ctx, teamID), SubmitTaskRequest{Prompt: "queued", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+
+	q := repository.New(tdb.DB)
+	now := time.Now().UTC()
+	if err := q.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
+		ID: "artifact_admin_only", TaskID: task.ID, ArtifactType: "pr", Repo: "flatout-works/chetter",
+		CreatedAt: now, DiscoveredAt: now, DiscoverySource: "test",
+	}); err != nil {
+		t.Fatalf("insert task artifact: %v", err)
+	}
+	if err := q.InsertAuditLog(ctx, repository.InsertAuditLogParams{
+		ID: "audit_admin_only", EventType: "task_submitted", CreatedAt: now,
+		TargetType: sql.NullString{String: "task", Valid: true}, TargetID: sql.NullString{String: task.ID, Valid: true},
+	}); err != nil {
+		t.Fatalf("insert audit log: %v", err)
+	}
+
+	teamCtx := ctxWithTeam(ctx, teamID)
+	if _, _, err := svc.clearQueueTool(teamCtx, nil, ClearQueueInput{Confirm: true}); err == nil {
+		t.Fatal("expected team-scoped clear queue to be denied")
+	}
+	if _, _, err := svc.listAuditEventsTool(teamCtx, nil, AuditEventFilterInput{}); err == nil {
+		t.Fatal("expected team-scoped audit list to be denied")
+	}
+	if _, _, err := svc.listTaskArtifactsTool(teamCtx, nil, TaskArtifactFilterInput{}); err == nil {
+		t.Fatal("expected team-scoped artifact list to be denied")
+	}
+
+	adminCtx := ctxWithAdmin(ctx)
+	if _, out, err := svc.listAuditEventsTool(adminCtx, nil, AuditEventFilterInput{}); err != nil {
+		t.Fatalf("admin audit list: %v", err)
+	} else if len(out.Events) != 1 {
+		t.Fatalf("admin audit list returned %d events, want 1", len(out.Events))
+	}
+	if _, out, err := svc.listTaskArtifactsTool(adminCtx, nil, TaskArtifactFilterInput{}); err != nil {
+		t.Fatalf("admin artifact list: %v", err)
+	} else if len(out.Artifacts) != 1 {
+		t.Fatalf("admin artifact list returned %d artifacts, want 1", len(out.Artifacts))
+	}
+	if _, out, err := svc.clearQueueTool(adminCtx, nil, ClearQueueInput{Confirm: true}); err != nil {
+		t.Fatalf("admin clear queue: %v", err)
+	} else if out.CancelledPendingTasks != 1 {
+		t.Fatalf("admin clear queue cancelled %d tasks, want 1", out.CancelledPendingTasks)
 	}
 }
 

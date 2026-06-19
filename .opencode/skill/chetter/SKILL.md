@@ -43,7 +43,7 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_task_events` | Get full event history |
 | `chetter_task_latest_event` | Get most recent event |
 | `chetter_cancel_task` | Cancel a pending or running task |
-| `chetter_clear_queue` | Clear queued task messages (requires confirm) |
+| `chetter_clear_queue` | Clear queued task messages (admin only; requires confirm) |
 
 ### Tokens
 | Tool | Purpose |
