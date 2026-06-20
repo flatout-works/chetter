@@ -1,10 +1,11 @@
-.PHONY: generate tools build test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-runner-base docker-build-runner docker-build-golang docker-build-python docker-build-node docker-build-rust docker-build-minimal
+.PHONY: generate tools build web-build test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-runner-base docker-build-runner docker-build-golang docker-build-python docker-build-node docker-build-rust docker-build-minimal
 
 MCP_IMAGE ?= ghcr.io/flatout-works/chetter-mcp:local
 RUNNER_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-runner-base:local
 RUNNER_IMAGE ?= ghcr.io/flatout-works/chetter-runner:local
 DB_DSN ?= root@tcp(127.0.0.1:4000)/chetter?parseTime=true
 BIN_DIR := $(CURDIR)/bin
+WEB_EMBED_DIR := internal/webui/dist
 BUF := $(BIN_DIR)/buf
 SQLC := $(BIN_DIR)/sqlc
 BUF_VERSION := v1.69.0
@@ -23,10 +24,17 @@ $(BUF):
 $(SQLC):
 	GOBIN=$(BIN_DIR) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
-build:
+build: web-build
 	mkdir -p bin
 	go build -o bin/chetter .
 	go build -o bin/chetterctl ./cmd/chetterctl
+
+web-build:
+	npm --prefix web ci
+	npm --prefix web run build
+	mkdir -p $(WEB_EMBED_DIR)
+	rm -rf $(WEB_EMBED_DIR)/*
+	cp -R web/build/. $(WEB_EMBED_DIR)/
 
 migrate:
 	go run github.com/pressly/goose/v3/cmd/goose@latest -dir db/migrations mysql "$(DB_DSN)" up

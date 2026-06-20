@@ -21,6 +21,7 @@ import (
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webapi"
 	"github.com/flatout-works/chetter/internal/webhook"
+	"github.com/flatout-works/chetter/internal/webui"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -91,7 +92,7 @@ func run() error {
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
 	mux.Handle(runnerPath, runnerRPCAuthMiddleware(cfg.RunnerRPCToken, runnerHandler))
-if whHandler != nil {
+	if whHandler != nil {
 		mux.Handle("/webhook/github", whHandler)
 		slog.Info("github webhook handler registered", "path", "/webhook/github")
 	}
@@ -121,6 +122,7 @@ if whHandler != nil {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	webMux.Handle("/", webui.Handler())
 
 	webServer := &http.Server{
 		Addr:              cfg.WebAddr,

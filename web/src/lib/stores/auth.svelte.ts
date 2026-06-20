@@ -1,4 +1,5 @@
 import { writable } from "svelte/store";
+import { clearToken, setToken } from "$lib/api/client";
 
 export type AuthState = {
   authenticated: boolean;
@@ -21,11 +22,11 @@ export function initAuth() {
 }
 
 export function login(token: string) {
-  localStorage.setItem("chetter-token", token);
+  setToken(token);
   auth.set({ authenticated: true, token, error: null });
 }
 
 export function logout() {
-  localStorage.removeItem("chetter-token");
+  clearToken();
   auth.set({ authenticated: false, token: null, error: null });
 }

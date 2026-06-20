@@ -3,6 +3,8 @@ bin/
 /chetter
 web/.svelte-kit/
 web/build/
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
 runner/runner
 runner/mcp-bridge
 coverage.out

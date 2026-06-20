@@ -1,6 +1,9 @@
 # Build artifacts
 /chetter
 bin/
+web/.svelte-kit/
+web/build/
+web/node_modules/
 runner/runner
 runner/mcp-bridge
 coverage.out

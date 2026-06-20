@@ -38,7 +38,7 @@ export function getTransport() {
   if (!token) throw new Error("Not authenticated");
 
   currentTransport = createConnectTransport({
-    baseUrl: "/api",
+    baseUrl: window.location.origin,
     interceptors: [
       (next) => (req) => {
         req.header.set("Authorization", `Bearer ${token}`);
