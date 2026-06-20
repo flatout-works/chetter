@@ -1,0 +1,52 @@
+version: 1
+default_provider: synthetic
+default_model: hf:zai-org/GLM-5.2
+
+defaults:
+  opencode:
+    provider: synthetic
+    model: hf:zai-org/GLM-5.2
+  pi:
+    provider: zai
+    model: glm-5.2
+  claude-code:
+    provider: anthropic
+    model: claude-sonnet-4-5
+
+providers:
+  synthetic:
+    name: Synthetic
+    kind: openai_compatible
+    models:
+      - id: hf:zai-org/GLM-5.2
+
+  opencode:
+    name: OpenCode Zen
+    kind: openai_compatible
+    api_key_env: OPENCODE_API_KEY
+    base_url: https://opencode.ai/zen/v1
+    models:
+      - id: deepseek-v4-flash-free
+
+  deepseek:
+    name: DeepSeek
+    kind: openai_compatible
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com
+    models:
+      - id: deepseek-chat
+      - id: deepseek-v4-pro
+      - id: deepseek-v4-flash
+
+  zai:
+    name: Z.ai
+    kind: native
+    models:
+      - id: glm-5.2
+
+  anthropic:
+    name: Anthropic
+    kind: native
+    api_key_env: ANTHROPIC_API_KEY
+    models:
+      - id: claude-sonnet-4-5

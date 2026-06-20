@@ -80,6 +80,17 @@ type ChetterAuditLog struct {
 	Payload          *json.RawMessage `json:"payload"`
 }
 
+type ChetterModelCatalog struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Active    bool           `json:"active"`
+	Source    sql.NullString `json:"source"`
+	Checksum  string         `json:"checksum"`
+	Yaml      string         `json:"yaml"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
 type ChetterRunner struct {
 	ID             string          `json:"id"`
 	Status         string          `json:"status"`

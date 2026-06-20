@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
 const (
@@ -91,9 +92,9 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 					resumeWorkspacePath = chk.WorkspacePath
 				}
 			}
-			return connect.NewResponse(&runnerv1.ClaimTaskResponse{
-				Task: taskToProto(task, resumeCheckpointPath, resumeWorkspacePath),
-			}), nil
+			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			s.injectActiveModelCatalog(ctx, protoTask)
+			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
 			return nil, connect.NewError(connect.CodeInternal, err)
@@ -107,6 +108,23 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		case <-time.After(claimPollInterval):
 		}
 	}
+}
+
+func (s *RunnerRPCService) injectActiveModelCatalog(ctx context.Context, task *runnerv1.Task) {
+	if task == nil {
+		return
+	}
+	row, err := s.db.GetActiveModelCatalog(ctx)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			slog.Warn("load active model catalog", "err", err)
+		}
+		return
+	}
+	if task.Env == nil {
+		task.Env = map[string]string{}
+	}
+	task.Env[modelcatalog.EnvKey] = row.Yaml
 }
 
 func (s *RunnerRPCService) ReportTaskEvents(ctx context.Context, req *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error) {

@@ -12,6 +12,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/robfig/cron/v3 v3.0.1
 	google.golang.org/protobuf v1.36.11
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
 const defaultMem9PluginSpec = "@mem9/opencode"
@@ -63,57 +65,53 @@ func configStringList(value any) []any {
 	return nil
 }
 
-func ensureRunnerProviders(cfg map[string]any) {
+func ensureRunnerProviders(cfg map[string]any, taskEnv map[string]string) {
 	providers, _ := cfg["provider"].(map[string]any)
 	if providers == nil {
 		providers = make(map[string]any)
 		cfg["provider"] = providers
 	}
 
-	addDeepSeekProvider(providers)
-	addOpenCodeProvider(providers)
-	addSyntheticProvider(providers)
-}
-
-func addDeepSeekProvider(providers map[string]any) {
-	if apiKey := os.Getenv("DEEPSEEK_API_KEY"); apiKey != "" {
-		if _, ok := providers["deepseek"]; !ok {
-			providers["deepseek"] = map[string]any{
-				"name":    "DeepSeek",
-				"apiKey":  apiKey,
-				"baseURL": "https://api.deepseek.com",
-				"models": map[string]any{
-					"deepseek-chat":     map[string]any{},
-					"deepseek-v4-pro":   map[string]any{},
-					"deepseek-v4-flash": map[string]any{},
-				},
-			}
+	for _, p := range activeModelCatalog(taskEnv).OpenCodeProviders() {
+		if _, ok := providers[p.ID]; ok {
+			continue
 		}
+		if p.APIKeyEnv != "" && os.Getenv(p.APIKeyEnv) == "" {
+			continue
+		}
+		entry := map[string]any{
+			"name":   p.Name,
+			"models": make(map[string]any),
+		}
+		if p.APIKeyEnv != "" {
+			entry["apiKey"] = os.Getenv(p.APIKeyEnv)
+		}
+		if p.BaseURL != "" {
+			entry["baseURL"] = p.BaseURL
+		}
+		for _, m := range p.Models {
+			entry["models"].(map[string]any)[m] = map[string]any{}
+		}
+		providers[p.ID] = entry
 	}
 }
 
-func addOpenCodeProvider(providers map[string]any) {
-	if apiKey := os.Getenv("OPENCODE_API_KEY"); apiKey != "" {
-		if _, ok := providers["opencode"]; !ok {
-			providers["opencode"] = map[string]any{
-				"name":    "OpenCode Zen",
-				"apiKey":  apiKey,
-				"baseURL": "https://opencode.ai/zen/v1",
-				"models": map[string]any{
-					"deepseek-v4-flash-free": map[string]any{},
-				},
-			}
-		}
+func activeModelCatalog(taskEnv map[string]string) *modelcatalog.Catalog {
+	data := ""
+	if taskEnv != nil {
+		data = strings.TrimSpace(taskEnv[modelcatalog.EnvKey])
 	}
-}
-
-func addSyntheticProvider(providers map[string]any) {
-	if _, ok := providers["synthetic"]; !ok {
-		providers["synthetic"] = map[string]any{
-			"name":   "Synthetic",
-			"models": map[string]any{},
-		}
+	if data == "" {
+		data = strings.TrimSpace(os.Getenv(modelcatalog.EnvKey))
 	}
+	if data != "" {
+		catalog, err := modelcatalog.ParseYAML([]byte(data))
+		if err == nil {
+			return catalog
+		}
+		slog.Warn("invalid model catalog; using default", "err", err)
+	}
+	return modelcatalog.Default()
 }
 
 func ensureProvider(cfg map[string]any, providerID string) {
@@ -131,6 +129,10 @@ func ensureProvider(cfg map[string]any, providerID string) {
 }
 
 func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
+	return GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, nil, isLocal)
+}
+
+func GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
 	configSource := wsConfigPath
@@ -143,7 +145,7 @@ func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPT
 	}
 	slog.Info("opencode config source", "path", configSource, "bytes", len(data))
 	ensureMem9Plugin(cfg)
-	ensureRunnerProviders(cfg)
+	ensureRunnerProviders(cfg, taskEnv)
 
 	if includeRunnerMCP {
 		mcpServers, _ := cfg["mcp"].(map[string]any)

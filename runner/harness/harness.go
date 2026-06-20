@@ -11,7 +11,7 @@ import (
 type Harness interface {
 	Name() string
 
-	GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error
+	GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, taskEnv map[string]string, isLocal bool) error
 
 	ConfigFilePath(wsDir string) string
 	ConfigFilePathGlobal(wsDir string) string

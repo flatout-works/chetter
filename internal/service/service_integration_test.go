@@ -1072,3 +1072,52 @@ func TestDeleteTokenRequiresAdmin(t *testing.T) {
 		t.Fatal("expected error for non-admin token deletion")
 	}
 }
+
+func TestImportModelCatalogStoresActiveCatalog(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	yaml := `version: 1
+default_provider: synthetic
+default_model: hf:zai-org/GLM-5.2
+providers:
+  synthetic:
+    name: Synthetic
+    kind: openai_compatible
+    models:
+      - id: hf:zai-org/GLM-5.2
+`
+
+	_, imported, err := svc.importModelCatalogTool(ctx, nil, ImportModelCatalogInput{Name: "test", YAML: yaml})
+	if err != nil {
+		t.Fatalf("import model catalog: %v", err)
+	}
+	if !imported.Catalog.Active || imported.Catalog.ProviderCount != 1 || imported.Catalog.ModelCount != 1 {
+		t.Fatalf("unexpected imported catalog: %+v", imported.Catalog)
+	}
+
+	_, got, err := svc.getModelCatalogTool(ctx, nil, GetModelCatalogInput{})
+	if err != nil {
+		t.Fatalf("get active model catalog: %v", err)
+	}
+	if got.Catalog.Name != "test" || !strings.Contains(got.YAML, "hf:zai-org/GLM-5.2") {
+		t.Fatalf("unexpected active catalog: %+v", got.Catalog)
+	}
+
+	_, listed, err := svc.listModelCatalogsTool(ctx, nil, ListModelCatalogsInput{})
+	if err != nil {
+		t.Fatalf("list model catalogs: %v", err)
+	}
+	if len(listed.Catalogs) != 1 || listed.Catalogs[0].Name != "test" {
+		t.Fatalf("unexpected catalog list: %+v", listed.Catalogs)
+	}
+}
+
+func TestImportModelCatalogRequiresAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	_, _, err := svc.importModelCatalogTool(context.Background(), nil, ImportModelCatalogInput{YAML: "version: 1"})
+	if err == nil {
+		t.Fatal("expected error for non-admin model catalog import")
+	}
+}

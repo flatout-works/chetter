@@ -194,6 +194,8 @@ This way your triggers are version-controlled alongside your code and can be rev
 
 ## Model Selection
 
+Admins can load the shared provider/model catalog with `chetter_import_model_catalog` from inline YAML or a server-local file. The active catalog is generic across harnesses and can define per-harness defaults for OpenCode, Claude Code, Pi, and future harnesses. Catalog entries should reference secret environment variable names (for example `api_key_env: SYNTHETIC_API_KEY`), not secret values.
+
 Common model choices for different task types:
 
 | Task type | Suggested model | Notes |

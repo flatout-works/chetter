@@ -20,7 +20,7 @@ func (p *Pi) SupportsServe() bool { return false }
 
 func (p *Pi) SupportsRpc() bool { return true }
 
-func (p *Pi) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func (p *Pi) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, _ map[string]string, isLocal bool) error {
 	return GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, isLocal)
 }
 

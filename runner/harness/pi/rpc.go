@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -49,6 +50,13 @@ func modelFields(req task.TaskRequest) (provider, model string) {
 		parts := strings.SplitN(model, "/", 2)
 		provider = parts[0]
 		model = parts[1]
+	}
+	defaultProvider, defaultModel := modelcatalog.ParseYAMLOrDefault(os.Getenv(modelcatalog.EnvKey)).DefaultForHarness("pi", "", "")
+	if model == "" {
+		model = defaultModel
+	}
+	if provider == "" {
+		provider = defaultProvider
 	}
 	return provider, model
 }

@@ -111,9 +111,10 @@ Runs [OpenCode](https://opencode.ai) as the coding agent.
 
 - Generates `.opencode.json` with MCP servers (`runner-bridge` + `chetter`), permissions, and provider settings.
 - Auto-detects and copies opencode auth state, model state, and ripgrep binary.
-- Adds providers: DeepSeek, OpenCode Zen, Synthetic (based on available API keys).
+- Adds provider settings from the active DB-backed model catalog, gated by available API key env vars.
 - Optional MEM9 plugin integration.
-- Model resolution: request fields → agent config → env vars → default (\`synthetic/hf:zai-org/GLM-5.2\`).
+- Model resolution: request fields → agent config → env vars → active catalog default → built-in catalog default (`synthetic/hf:zai-org/GLM-5.2`).
+- Admins can import a generic YAML provider/model catalog with `chetter_import_model_catalog`; the same catalog carries per-harness defaults for OpenCode, Claude Code, Pi, and future harnesses.
 
 ### Claude Code Harness
 

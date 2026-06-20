@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -20,11 +21,12 @@ func claudeModelFields(req task.TaskRequest) (provider, model string) {
 	if model == "" {
 		model = os.Getenv("ANTHROPIC_MODEL")
 	}
+	defaultProvider, defaultModel := modelcatalog.ParseYAMLOrDefault(os.Getenv(modelcatalog.EnvKey)).DefaultForHarness("claude-code", "anthropic", "claude-sonnet-4-5")
 	if model == "" {
-		model = "claude-sonnet-4-5"
+		model = defaultModel
 	}
 	if provider == "" {
-		provider = "anthropic"
+		provider = defaultProvider
 	}
 	return
 }

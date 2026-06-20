@@ -16,8 +16,8 @@ func New() *OpenCode {
 
 func (oc *OpenCode) Name() string { return "opencode" }
 
-func (oc *OpenCode) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
-	return GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, true, isLocal)
+func (oc *OpenCode) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, taskEnv map[string]string, isLocal bool) error {
+	return GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, true, taskEnv, isLocal)
 }
 
 func (oc *OpenCode) ConfigFilePath(wsDir string) string {

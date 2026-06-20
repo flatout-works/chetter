@@ -112,9 +112,26 @@ func TestResolvedChetterModelID_FallsBackToEnv(t *testing.T) {
 }
 
 func TestResolvedChetterModelID_DefaultsWhenEmpty(t *testing.T) {
+	t.Setenv("CHETTER_MODEL_CATALOG_YAML", "")
 	req := task.TaskRequest{}
-	if got := resolvedChetterModelID(req); got != "opencode/deepseek-v4-flash-free" {
+	if got := resolvedChetterModelID(req); got != "synthetic/hf:zai-org/GLM-5.2" {
 		t.Fatalf("expected default model, got %q", got)
+	}
+}
+
+func TestResolvedChetterModelID_UsesCatalogDefault(t *testing.T) {
+	t.Setenv("CHETTER_MODEL_CATALOG_YAML", `version: 1
+default_provider: custom
+default_model: custom-model
+providers:
+  custom:
+    name: Custom
+    kind: openai_compatible
+    models:
+      - id: custom-model
+`)
+	if got := resolvedChetterModelID(task.TaskRequest{}); got != "custom/custom-model" {
+		t.Fatalf("expected catalog default model, got %q", got)
 	}
 }
 
