@@ -38,6 +38,7 @@
     { href: "/runners", label: "Runners", icon: "runners" },
     { href: "/triggers", label: "Triggers", icon: "triggers" },
     { href: "/sessions", label: "Sessions", icon: "sessions" },
+    { href: "/admin/audit", label: "Audit Log", icon: "audit" },
     { href: "/admin", label: "Admin", icon: "admin" },
   ] as const;
 

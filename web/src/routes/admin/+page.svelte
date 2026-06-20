@@ -10,10 +10,13 @@
   let users = $state<UserInfo[]>([]);
   let loading = $state(true);
   let showTokenForm = $state(false);
+  let showTeamForm = $state(false);
   let newTeam = $state("");
   let newUser = $state("");
   let newTokenName = $state("");
   let createdToken = $state<string | null>(null);
+  let newTeamName = $state("");
+  let actionError = $state<string | null>(null);
 
   async function load() {
     try {
@@ -56,11 +59,41 @@
 
   async function deleteToken(name: string) {
     if (!confirm(`Delete token "${name}"?`)) return;
+    actionError = null;
     try {
       const client = createClient(AdminService, getTransport());
       await client.deleteToken({ name });
       await load();
     } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to delete token.";
+      console.error(e);
+    }
+  }
+
+  async function createTeamAction() {
+    if (!newTeamName.trim()) return;
+    actionError = null;
+    try {
+      const client = createClient(AdminService, getTransport());
+      await client.createTeam({ name: newTeamName.trim() });
+      newTeamName = "";
+      showTeamForm = false;
+      await load();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to create team.";
+      console.error(e);
+    }
+  }
+
+  async function deleteTeamAction(name: string) {
+    if (!confirm(`Delete team "${name}" and all users/tokens/tasks? This cannot be undone.`)) return;
+    actionError = null;
+    try {
+      const client = createClient(AdminService, getTransport());
+      await client.deleteTeam({ name });
+      await load();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to delete team.";
       console.error(e);
     }
   }
@@ -72,6 +105,10 @@
 
 <div class="p-6">
   <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">Admin</h1>
+
+  {#if actionError}
+    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">{actionError}</div>
+  {/if}
 
   {#if loading}
     <p class="text-gray-500 dark:text-gray-400">Loading…</p>
@@ -122,14 +159,26 @@
 
       <!-- Teams -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="font-semibold text-gray-900 dark:text-white">Teams</h2>
+          <button onclick={() => showTeamForm = !showTeamForm} class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            {showTeamForm ? "Cancel" : "+ New"}
+          </button>
         </div>
+        {#if showTeamForm}
+          <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-2">
+            <input bind:value={newTeamName} placeholder="Team name" class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+            <button onclick={createTeamAction} class="w-full px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">Create Team</button>
+          </div>
+        {/if}
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each teams as team (team.id)}
-            <div class="px-4 py-3">
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{team.name}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{team.id}</p>
+            <div class="px-4 py-3 flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{team.name}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{team.id}</p>
+              </div>
+              <button onclick={() => deleteTeamAction(team.name)} class="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
             </div>
           {:else}
             <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No teams</p>
