@@ -7,5 +7,9 @@ spec:
   selector:
     app: chetter-mcp
   ports:
-  - port: 8080
+  - name: mcp
+    port: 8080
     targetPort: 8080
+  - name: web
+    port: 8090
+    targetPort: 8090

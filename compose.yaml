@@ -7,7 +7,8 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment:
-      HTTP_ADDR: :8080
+      HTTP_ADDR: "${HTTP_ADDR:-:8080}"
+      WEB_ADDR: "${WEB_ADDR:-:8090}"
       DATABASE_DSN: ${DATABASE_DSN:-}
       MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}
       CHETTER_RUNNER_RPC_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN}}
@@ -21,6 +22,7 @@ services:
       DEFAULT_AGENT_IMAGE: chetter-runner:latest
     ports:
       - "18088:8080"
+      - "18089:8090"
 
   chetter-runner-base:
     profiles: ["build"]

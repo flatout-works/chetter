@@ -18,12 +18,15 @@ spec:
         image: ghcr.io/flatout-works/chetter-mcp:main
         ports:
         - containerPort: 8080
+        - containerPort: 8090
         envFrom:
         - secretRef:
             name: chetter-secrets
         env:
         - name: HTTP_ADDR
           value: ":8080"
+        - name: WEB_ADDR
+          value: ":8090"
         - name: MCP_AUTH_TOKEN
           valueFrom:
             secretKeyRef:

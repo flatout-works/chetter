@@ -1,4 +1,4 @@
-.PHONY: generate tools build web-build test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-runner-base docker-build-runner docker-build-golang docker-build-python docker-build-node docker-build-rust docker-build-minimal
+.PHONY: generate tools build web-build web-check test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-runner-base docker-build-runner docker-build-golang docker-build-python docker-build-node docker-build-rust docker-build-minimal
 
 MCP_IMAGE ?= ghcr.io/flatout-works/chetter-mcp:local
 RUNNER_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-runner-base:local
@@ -36,6 +36,10 @@ web-build:
 	rm -rf $(WEB_EMBED_DIR)/*
 	cp -R web/build/. $(WEB_EMBED_DIR)/
 
+web-check:
+	npm --prefix web ci
+	npm --prefix web run check
+
 migrate:
 	go run github.com/pressly/goose/v3/cmd/goose@latest -dir db/migrations mysql "$(DB_DSN)" up
 
@@ -70,7 +74,7 @@ runner-lint:
 runner-check:
 	$(MAKE) -C runner check
 
-check: test vet lint runner-check
+check: test vet lint web-check runner-check
 
 docker-build-mcp:
 	docker build -t $(MCP_IMAGE) .
