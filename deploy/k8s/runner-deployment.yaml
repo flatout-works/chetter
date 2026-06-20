@@ -22,6 +22,11 @@ spec:
         env:
         - name: CHETTER_SERVER_URL
           value: "http://chetter-mcp:8080"
+        - name: CHETTER_RUNNER_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: chetter-secrets
+              key: CHETTER_RUNNER_RPC_TOKEN
         - name: RUNNER_LOCAL
           value: "true"
         - name: RUNNER_MAX_CONCURRENT

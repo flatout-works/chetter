@@ -191,6 +191,110 @@ func TestWebAPITriggerRunHistory(t *testing.T) {
 	}
 }
 
+func TestWebAPITeamTokenCannotMutateOtherTeamTrigger(t *testing.T) {
+	server, cleanup := newWebAPITestServer(t)
+	defer cleanup()
+
+	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
+	teamA, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
+		TeamName:  "trigger-team-a",
+		UserName:  "alice",
+		TokenName: "trigger-alice-token",
+	}))
+	if err != nil {
+		t.Fatalf("CreateToken team-a: %v", err)
+	}
+	teamB, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
+		TeamName:  "trigger-team-b",
+		UserName:  "bob",
+		TokenName: "trigger-bob-token",
+	}))
+	if err != nil {
+		t.Fatalf("CreateToken team-b: %v", err)
+	}
+
+	triggersA := apiv1connect.NewTriggerServiceClient(authHTTPClient(server, teamA.Msg.Token), server.URL)
+	if _, err := triggersA.CreateTrigger(context.Background(), connect.NewRequest(&apiv1.CreateTriggerRequest{
+		Name:        "team-a-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "team-a trigger task",
+	})); err != nil {
+		t.Fatalf("CreateTrigger team-a: %v", err)
+	}
+
+	triggersB := apiv1connect.NewTriggerServiceClient(authHTTPClient(server, teamB.Msg.Token), server.URL)
+	if _, err := triggersB.UpdateTrigger(context.Background(), connect.NewRequest(&apiv1.UpdateTriggerRequest{
+		Name:   "team-a-trigger",
+		Prompt: "team-b takeover",
+	})); err == nil {
+		t.Fatal("team-b UpdateTrigger should fail")
+	}
+	if _, err := triggersB.RunTrigger(context.Background(), connect.NewRequest(&apiv1.RunTriggerRequest{Name: "team-a-trigger"})); err == nil {
+		t.Fatal("team-b RunTrigger should fail")
+	}
+	if _, err := triggersB.DeleteTrigger(context.Background(), connect.NewRequest(&apiv1.DeleteTriggerRequest{Name: "team-a-trigger"})); err == nil {
+		t.Fatal("team-b DeleteTrigger should fail")
+	}
+
+	listed, err := triggersA.ListTriggers(context.Background(), connect.NewRequest(&apiv1.ListTriggersRequest{}))
+	if err != nil {
+		t.Fatalf("ListTriggers team-a: %v", err)
+	}
+	if len(listed.Msg.Triggers) != 1 || listed.Msg.Triggers[0].GetPrompt() != "team-a trigger task" {
+		t.Fatalf("team-a trigger was modified/deleted: %+v", listed.Msg.Triggers)
+	}
+}
+
+func TestWebAPITeamTokenCannotSubscribeOtherTeamTaskEvents(t *testing.T) {
+	server, cleanup := newWebAPITestServer(t)
+	defer cleanup()
+
+	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
+	teamA, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
+		TeamName:  "events-team-a",
+		UserName:  "alice",
+		TokenName: "events-alice-token",
+	}))
+	if err != nil {
+		t.Fatalf("CreateToken team-a: %v", err)
+	}
+	teamB, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
+		TeamName:  "events-team-b",
+		UserName:  "bob",
+		TokenName: "events-bob-token",
+	}))
+	if err != nil {
+		t.Fatalf("CreateToken team-b: %v", err)
+	}
+
+	tasksA := apiv1connect.NewTaskServiceClient(authHTTPClient(server, teamA.Msg.Token), server.URL)
+	submitted, err := tasksA.SubmitTask(context.Background(), connect.NewRequest(&apiv1.SubmitTaskRequest{Prompt: "team-a stream task"}))
+	if err != nil {
+		t.Fatalf("SubmitTask team-a: %v", err)
+	}
+
+	tasksB := apiv1connect.NewTaskServiceClient(authHTTPClient(server, teamB.Msg.Token), server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stream, err := tasksB.SubscribeTaskEvents(ctx, connect.NewRequest(&apiv1.SubscribeTaskEventsRequest{
+		TaskId: submitted.Msg.Task.GetId(),
+		Since:  time.Unix(0, 0).UTC().Format(time.RFC3339),
+	}))
+	if err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return
+		}
+		t.Fatalf("SubscribeTaskEvents returned wrong error: %v", err)
+	}
+	if stream.Receive() {
+		t.Fatalf("team-b received event for team-a task: %+v", stream.Msg())
+	}
+	if err := stream.Err(); err == nil || connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("stream error = %v, want not_found", err)
+	}
+}
+
 type authRoundTripper struct {
 	base  http.RoundTripper
 	token string

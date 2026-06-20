@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -210,9 +212,49 @@ func TestPrintProtoJSON(t *testing.T) {
 	printProtoJSON(&apiv1.DeleteTokenResponse{Deleted: true})
 }
 
+func TestWebCmdPrintsLoginLink(t *testing.T) {
+	out := captureStdout(t, func() {
+		err := webCmd([]string{"--server", "http://localhost:18089", "--token", "tok en"}, "", "")
+		if err != nil {
+			t.Fatalf("webCmd: %v", err)
+		}
+	})
+	if !strings.Contains(out, "http://localhost:18089#token=tok+en") {
+		t.Fatalf("output = %q, want token link", out)
+	}
+}
+
+func TestWebCmdRequiresServer(t *testing.T) {
+	err := webCmd([]string{"--server", ""}, "", "")
+	if err == nil {
+		t.Fatal("expected missing server error")
+	}
+	if !strings.Contains(err.Error(), "CHETTER_WEB_URL") {
+		t.Fatalf("error = %v, want CHETTER_WEB_URL", err)
+	}
+}
+
 func TestTokenCmdUnknownSubcommand(t *testing.T) {
 	err := tokenCmd([]string{"unknown"}, "http://srv", "tok")
 	if err != nil {
 		t.Fatalf("expected nil for unknown subcommand, got %v", err)
 	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	return string(out)
 }

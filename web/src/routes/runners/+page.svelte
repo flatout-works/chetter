@@ -16,7 +16,7 @@
     clearError = null;
     try {
       const client = createClient(TaskService, getTransport());
-      await client.clearQueue({});
+      await client.clearQueue({ confirm: true });
       await load();
     } catch (e) {
       clearError = e instanceof Error ? e.message : "Failed to clear queue.";

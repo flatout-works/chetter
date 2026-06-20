@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -25,8 +26,9 @@ func main() {
 }
 
 func run() error {
-	serverURL := env("CHETTER_SERVER_URL", defaultServerURL)
-	token := os.Getenv("CHETTER_TOKEN")
+	serverURL := envAny(defaultServerURL, "CHETTER_API_URL")
+	webURL := envAny(serverURL, "CHETTER_WEB_URL")
+	token := envAny("", "CHETTER_TOKEN", "MCP_AUTH_TOKEN", "CHETTER_MCP_AUTH_TOKEN")
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -37,6 +39,8 @@ func run() error {
 	args := os.Args[2:]
 
 	switch cmd {
+	case "web":
+		return webCmd(args, webURL, token)
 	case "token":
 		if len(args) < 1 {
 			printTokenUsage()
@@ -54,7 +58,7 @@ func run() error {
 func tokenCmd(args []string, serverURL, token string) error {
 	sub := args[0]
 	fs := flag.NewFlagSet("token "+sub, flag.ExitOnError)
-	server := fs.String("server", serverURL, "Chetter server URL (or set CHETTER_SERVER_URL)")
+	server := fs.String("server", serverURL, "Chetter web API URL (or set CHETTER_API_URL)")
 	tok := fs.String("token", token, "Admin API token (or set CHETTER_TOKEN)")
 
 	switch sub {
@@ -135,6 +139,32 @@ func tokenCmd(args []string, serverURL, token string) error {
 	return nil
 }
 
+func webCmd(args []string, serverURL, token string) error {
+	fs := flag.NewFlagSet("web", flag.ExitOnError)
+	server := fs.String("server", serverURL, "Chetter web UI URL (or set CHETTER_WEB_URL)")
+	tok := fs.String("token", token, "Admin API token for a login link (or set CHETTER_TOKEN)")
+	_ = fs.Parse(args)
+	if *server == "" {
+		return fmt.Errorf("--server or CHETTER_WEB_URL is required")
+	}
+
+	link := strings.TrimRight(*server, "/")
+	if *tok != "" {
+		link += "#token=" + url.QueryEscape(*tok)
+	}
+
+	fmt.Println("Open Chetter web UI:")
+	fmt.Println("  " + link)
+	if *tok != "" {
+		fmt.Println()
+		fmt.Println("The token is placed in the URL fragment and stored by the browser UI; it is not sent in the HTTP request for the page.")
+	} else {
+		fmt.Println()
+		fmt.Println("Pass --token or set CHETTER_TOKEN to print a one-click login link.")
+	}
+	return nil
+}
+
 func newAdminClient(serverURL, token string) apiv1connect.AdminServiceClient {
 	return apiv1connect.NewAdminServiceClient(
 		&authHTTPClient{token: token, next: http.DefaultClient},
@@ -165,9 +195,11 @@ func printProtoJSON(msg proto.Message) {
 	fmt.Println(string(out))
 }
 
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func envAny(fallback string, keys ...string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
 	return fallback
 }
@@ -176,12 +208,14 @@ func printUsage() {
 	fmt.Println(`chetterctl - Chetter CLI
 
 Usage:
+  chetterctl web
   chetterctl token create --team <team> --user <user> --name <name>
   chetterctl token list
   chetterctl token delete --name <name>
 
 Environment:
-  CHETTER_SERVER_URL   Server URL (default: http://localhost:8090)
+  CHETTER_WEB_URL      Web UI URL for chetterctl web (default: http://localhost:8090)
+  CHETTER_API_URL      Web API URL for token commands (default: http://localhost:8090)
   CHETTER_TOKEN        Admin API token
 
 Flags can also be set via env vars.`)
@@ -196,6 +230,6 @@ Usage:
   chetterctl token delete --name <token-name>
 
 Options:
-  --server  Server URL (or CHETTER_SERVER_URL)
+  --server  Web API URL (or CHETTER_API_URL)
   --token   Admin API token (or CHETTER_TOKEN)`)
 }

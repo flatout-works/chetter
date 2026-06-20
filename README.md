@@ -910,6 +910,17 @@ make check
 make build
 ```
 
+Open the embedded web UI from a local build:
+
+```bash
+MCP_AUTH_TOKEN=admin-token \
+CHETTER_TOKEN=admin-token \
+CHETTER_WEB_URL=http://localhost:8090 \
+./bin/chetterctl web
+```
+
+`chetterctl token ...` uses `CHETTER_API_URL` for the ConnectRPC API URL, defaulting to `http://localhost:8090`. `chetterctl web` uses `CHETTER_WEB_URL`, also defaulting to `http://localhost:8090`.
+
 Build images locally:
 
 ```bash

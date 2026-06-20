@@ -15,10 +15,23 @@ export const auth = writable<AuthState>({
 
 export function initAuth() {
   if (typeof localStorage === "undefined") return;
+  const tokenFromURL = tokenFromLocation();
+  if (tokenFromURL) {
+    login(tokenFromURL);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    return;
+  }
   const token = localStorage.getItem("chetter-token");
   if (token) {
     auth.set({ authenticated: true, token, error: null });
   }
+}
+
+function tokenFromLocation() {
+  if (typeof window === "undefined") return "";
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) return "";
+  return new URLSearchParams(hash).get("token")?.trim() ?? "";
 }
 
 export function login(token: string) {

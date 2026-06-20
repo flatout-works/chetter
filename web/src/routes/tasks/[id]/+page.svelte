@@ -36,6 +36,7 @@
 
   onMount(async () => {
     try {
+      const streamSince = new Date().toISOString();
       const client = createClient(TaskService, getTransport());
       const resp = await client.getTask({ taskId: params.id });
       task = resp.task ?? null;
@@ -54,7 +55,7 @@
       }
 
       if (task?.status === "running" || task?.status === "pending") {
-        unsub = subscribeToTaskEvents(params.id);
+        unsub = subscribeToTaskEvents(params.id, streamSince);
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load task";
@@ -249,7 +250,7 @@
         {/if}
       </div>
       <div class="space-y-1 max-h-96 overflow-y-auto font-mono text-xs">
-        {#each events as event (event.id)}
+        {#each events as event (event.id || `${event.createdAt}:${event.status}:${event.payload}`)}
           <div class="flex gap-2 py-1 border-b border-gray-100 dark:border-gray-700/50">
             <span class="text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatTime(event.createdAt)}</span>
             <span class={`px-1 rounded font-medium ${

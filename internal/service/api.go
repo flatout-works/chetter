@@ -250,8 +250,8 @@ func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentS
 	if err != nil {
 		return AgentSessionRecord{}, nil, fmt.Errorf("get agent session: %w", err)
 	}
-	if scope, scoped := auth.GetScope(ctx); scoped && !scope.Admin && scope.TeamID != "" && session.TeamID.String != scope.TeamID {
-		return AgentSessionRecord{}, nil, fmt.Errorf("agent session not found")
+	if err := authorizeAgentSessionAccess(ctx, session); err != nil {
+		return AgentSessionRecord{}, nil, err
 	}
 	runs, err := s.repo.ListSessionRunsBySession(ctx, sessionID)
 	if err != nil {
@@ -332,7 +332,7 @@ func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, lim
 				TaskID:       r.TaskID,
 				Status:       r.Status,
 				ScheduledFor: r.ScheduledFor,
-				CreatedAt:     r.CreatedAt,
+				CreatedAt:    r.CreatedAt,
 			}
 		}
 		return out, nil

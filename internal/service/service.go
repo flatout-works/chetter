@@ -341,6 +341,9 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	if err != nil {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("get agent session: %w", err)
 	}
+	if err := authorizeAgentSessionAccess(ctx, session); err != nil {
+		return ResumeAgentSessionOutput{}, err
+	}
 	if session.Status != "paused_waiting_review" && session.Status != "paused" {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not paused (status: %s)", session.Status)
 	}
@@ -697,14 +700,16 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
+	existing, err := s.scheduleForToolAccess(ctx, name)
+	if err != nil {
+		return store.ScheduleRecord{}, fmt.Errorf("get trigger: %w", err)
+	}
+
 	// Deactivate cron trigger if it's a cron type.
 	s.cronMu.Lock()
-	existing, err := s.repo.GetScheduleByName(ctx, name)
-	if err == nil {
-		if entryID, ok := s.cronEntries[existing.ID]; ok {
-			s.cron.Remove(entryID)
-			delete(s.cronEntries, existing.ID)
-		}
+	if entryID, ok := s.cronEntries[existing.ID]; ok {
+		s.cron.Remove(entryID)
+		delete(s.cronEntries, existing.ID)
 	}
 	s.cronMu.Unlock()
 	now := time.Now().UTC()
@@ -738,7 +743,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 	}); err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("update trigger: %w", err)
 	}
-	record, err := s.repo.GetScheduleByName(ctx, in.Name)
+	record, err := s.scheduleForToolAccess(ctx, in.Name)
 	if err != nil {
 		return store.ScheduleRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
@@ -754,7 +759,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 
 // DeleteTrigger removes a trigger by name and stops its cron job if applicable.
 func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
-	sch, err := s.repo.GetScheduleByName(ctx, name)
+	sch, err := s.scheduleForToolAccess(ctx, name)
 	if err != nil {
 		return fmt.Errorf("get trigger: %w", err)
 	}
@@ -776,7 +781,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if name == "" {
 		return store.TaskRecord{}, fmt.Errorf("name is required")
 	}
-	sch, err := s.repo.GetScheduleByName(ctx, name)
+	sch, err := s.scheduleForToolAccess(ctx, name)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
@@ -996,6 +1001,39 @@ func teamIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	return scope.TeamID
+}
+
+func (s *Service) scheduleForToolAccess(ctx context.Context, name string) (repository.ChetterSchedule, error) {
+	schedule, err := s.repo.GetScheduleByName(ctx, name)
+	if err != nil {
+		return repository.ChetterSchedule{}, err
+	}
+	if err := authorizeScheduleAccess(ctx, schedule); err != nil {
+		return repository.ChetterSchedule{}, err
+	}
+	return schedule, nil
+}
+
+func authorizeScheduleAccess(ctx context.Context, schedule repository.ChetterSchedule) error {
+	scope, scoped := auth.GetScope(ctx)
+	if !scoped || scope.Admin {
+		return nil
+	}
+	if scope.TeamID == "" || !schedule.TeamID.Valid || schedule.TeamID.String != scope.TeamID {
+		return fmt.Errorf("trigger not found")
+	}
+	return nil
+}
+
+func authorizeAgentSessionAccess(ctx context.Context, session repository.ChetterAgentSession) error {
+	scope, scoped := auth.GetScope(ctx)
+	if !scoped || scope.Admin {
+		return nil
+	}
+	if scope.TeamID == "" || !session.TeamID.Valid || session.TeamID.String != scope.TeamID {
+		return fmt.Errorf("agent session not found")
+	}
+	return nil
 }
 
 func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) error {

@@ -797,7 +797,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 	if in.Name == "" {
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("name is required")
 	}
-	existing, err := s.repo.GetScheduleByName(ctx, in.Name)
+	existing, err := s.GetScheduleByName(ctx, in.Name)
 	if err != nil {
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("get trigger %q: %w", in.Name, err)
 	}

@@ -2,7 +2,6 @@ package webapi
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
@@ -22,17 +21,19 @@ func (h *taskHandler) SubscribeTaskEvents(
 ) error {
 	taskID := req.Msg.TaskId
 	since := parseTime(req.Msg.Since)
+	if _, err := h.svc.GetTask(ctx, taskID); err != nil {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
 
 	// Phase 1: Replay historical events from DB.
 	if !since.IsZero() {
 		events, err := h.svc.GetTaskEventsSince(ctx, taskID, since)
 		if err != nil {
-			slog.Warn("subscribe_task_events: history replay failed", "task_id", taskID, "error", err)
-		} else {
-			for _, e := range events {
-				if err := stream.Send(protoEvent(e)); err != nil {
-					return err
-				}
+			return connect.NewError(connect.CodeInternal, err)
+		}
+		for _, e := range events {
+			if err := stream.Send(protoEvent(e)); err != nil {
+				return err
 			}
 		}
 	}

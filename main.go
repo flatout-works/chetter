@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -129,6 +130,10 @@ func run() error {
 		Handler:           webMux,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
+	webListener, err := net.Listen("tcp", cfg.WebAddr)
+	if err != nil {
+		return fmt.Errorf("listen web api: %w", err)
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -141,7 +146,7 @@ func run() error {
 
 	slog.Info("chetter web API listening", "addr", cfg.WebAddr)
 	go func() {
-		if err := webServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := webServer.Serve(webListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("web server error", "error", err)
 		}
 	}()

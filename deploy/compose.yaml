@@ -45,7 +45,7 @@ services:
     environment:
       RUNNER_LOCAL: "false"
       CHETTER_SERVER_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}
+      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-1
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"
@@ -74,7 +74,7 @@ services:
     environment:
       RUNNER_LOCAL: "false"
       CHETTER_SERVER_URL: http://chetter-mcp:8080
-      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}
+      CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "1"

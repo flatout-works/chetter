@@ -15,8 +15,10 @@ export async function loadTaskEvents(taskId: string, limit = 100) {
     const client = createClient(EventService, getTransport());
     const resp = await client.getTaskEvents({ taskId, limit });
     taskEvents.set(resp.events);
+    return resp.events;
   } catch (e) {
     console.error("Failed to load task events:", e);
+    return [];
   }
 }
 
@@ -30,7 +32,7 @@ export async function loadTaskProgress(taskId: string) {
   }
 }
 
-export function subscribeToTaskEvents(taskId: string) {
+export function subscribeToTaskEvents(taskId: string, since: string) {
   if (abortController) {
     abortController.abort();
   }
@@ -43,11 +45,17 @@ export function subscribeToTaskEvents(taskId: string) {
       const client = createClient(TaskService, getTransport());
       const stream = await client.subscribeTaskEvents({
         taskId,
-        since: new Date().toISOString(),
-      });
+        since,
+      }, { signal: abortController.signal });
 
       for await (const event of stream) {
-        taskEvents.update((events) => [...events, event]);
+        if (event.status === "keepalive") continue;
+        taskEvents.update((events) => {
+          if (event.id && events.some((existing) => existing.id === event.id)) {
+            return events;
+          }
+          return [...events, event];
+        });
       }
     } catch (e) {
       if (e instanceof Error && e.name !== "AbortError") {

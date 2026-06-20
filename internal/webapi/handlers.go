@@ -190,11 +190,11 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 
 func protoRunningTaskInfo(t store.RunningTaskInfo) *apiv1.RunningTaskInfo {
 	return &apiv1.RunningTaskInfo{
-		TaskId:          t.TaskID,
-		Summary:         t.Summary,
-		AgentImage:      t.ImageDigest,
-		StartedAt:       timeStrPtr(t.StartedAt),
-		IsStale:         t.IsStale,
+		TaskId:     t.TaskID,
+		Summary:    t.Summary,
+		AgentImage: t.ImageDigest,
+		StartedAt:  timeStrPtr(t.StartedAt),
+		IsStale:    t.IsStale,
 	}
 }
 
@@ -273,6 +273,9 @@ func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1
 }
 
 func (h *taskHandler) ClearQueue(ctx context.Context, req *connect.Request[apiv1.ClearQueueRequest]) (*connect.Response[apiv1.ClearQueueResponse], error) {
+	if !req.Msg.Confirm {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("confirm must be true"))
+	}
 	cancelled, err := h.svc.ClearQueue(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodePermissionDenied, err)
@@ -398,7 +401,7 @@ func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request
 		Agent:         req.Msg.Agent,
 		ProviderID:    req.Msg.ProviderId,
 		ModelID:       req.Msg.ModelId,
-		VariantID:      req.Msg.VariantId,
+		VariantID:     req.Msg.VariantId,
 		Skills:        req.Msg.Skills,
 		Harness:       req.Msg.Harness,
 		TimeoutSec:    int(req.Msg.TimeoutSec),
@@ -570,8 +573,8 @@ func (h *adminHandler) CreateTeam(ctx context.Context, req *connect.Request[apiv
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&apiv1.CreateTeamResponse{
-		TeamId:   out.TeamID,
-		TeamName: out.TeamName,
+		TeamId:    out.TeamID,
+		TeamName:  out.TeamName,
 		CreatedAt: out.CreatedAt.Format(time.RFC3339),
 	}), nil
 }
@@ -762,7 +765,7 @@ func (h *arcaneHandler) ListVulnerabilities(ctx context.Context, req *connect.Re
 	}
 	return connect.NewResponse(&apiv1.ArcaneListVulnerabilitiesResponse{
 		Vulnerabilities: out,
-		TotalItems:       int32(total),
+		TotalItems:      int32(total),
 	}), nil
 }
 
