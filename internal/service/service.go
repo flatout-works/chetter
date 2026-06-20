@@ -90,6 +90,7 @@ type Service struct {
 	repo        *repository.Queries
 	rawDB       *sql.DB
 	arcane      *ArcaneClient
+	github      *webhook.Client
 	runnerRPC   *RunnerRPCService
 	cron        *cron.Cron
 	cronMu      sync.Mutex
@@ -99,6 +100,10 @@ type Service struct {
 
 func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
 	s.runnerRPC = r
+}
+
+func (s *Service) SetGitHubClient(c *webhook.Client) {
+	s.github = c
 }
 
 func New(cfg config.Config, st *store.Store) *Service {

@@ -73,7 +73,12 @@ func isPlaceholderAuthToken(token string) bool {
 func (c Config) GitHubConfigured() bool {
 	return !c.GitHubWebhookDisabled &&
 		c.GitHubWebhookSecret != "" &&
-		c.GitHubAppID > 0 &&
+		c.GitHubAppConfigured()
+}
+
+// GitHubAppConfigured reports whether GitHub App API credentials are present.
+func (c Config) GitHubAppConfigured() bool {
+	return c.GitHubAppID > 0 &&
 		c.GitHubAppPrivateKeyB64 != "" &&
 		c.GitHubInstallationID > 0
 }

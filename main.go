@@ -65,6 +65,13 @@ func run() error {
 	}
 
 	svc := service.New(cfg, st)
+	if cfg.GitHubAppConfigured() {
+		gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
+		if err != nil {
+			return fmt.Errorf("configure github app client: %w", err)
+		}
+		svc.SetGitHubClient(gh)
+	}
 	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB())
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {

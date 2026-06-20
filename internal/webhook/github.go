@@ -146,12 +146,100 @@ func (c *Client) AddIssueLabel(ctx context.Context, repo string, prNumber int, l
 
 // CreateIssueComment posts a comment on a PR.
 func (c *Client) CreateIssueComment(ctx context.Context, repo string, prNumber int, body string) error {
-	url := fmt.Sprintf("%s/repos/%s/issues/%d/comments", githubAPIBase, repo, prNumber)
+	_, err := c.CreateIssueCommentWithResponse(ctx, repo, prNumber, body)
+	return err
+}
+
+type CreatedGitHubArtifact struct {
+	Number  int
+	URL     string
+	ID      int64
+	HTMLURL string
+}
+
+func (c *Client) CreateIssue(ctx context.Context, repo, title, body string, labels []string) (CreatedGitHubArtifact, error) {
+	url := fmt.Sprintf("%s/repos/%s/issues", githubAPIBase, repo)
+	payload := map[string]any{
+		"title": title,
+		"body":  body,
+	}
+	if len(labels) > 0 {
+		payload["labels"] = labels
+	}
+	req, err := c.newRequest(ctx, http.MethodPost, url, payload)
+	if err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	var resp struct {
+		ID      int64  `json:"id"`
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	return CreatedGitHubArtifact{ID: resp.ID, Number: resp.Number, URL: resp.HTMLURL, HTMLURL: resp.HTMLURL}, nil
+}
+
+func (c *Client) CreateIssueCommentWithResponse(ctx context.Context, repo string, issueNumber int, body string) (CreatedGitHubArtifact, error) {
+	url := fmt.Sprintf("%s/repos/%s/issues/%d/comments", githubAPIBase, repo, issueNumber)
 	req, err := c.newRequest(ctx, http.MethodPost, url, map[string]string{"body": body})
 	if err != nil {
-		return err
+		return CreatedGitHubArtifact{}, err
 	}
-	return c.do(req, nil)
+	var resp struct {
+		ID      int64  `json:"id"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	return CreatedGitHubArtifact{ID: resp.ID, Number: issueNumber, URL: resp.HTMLURL, HTMLURL: resp.HTMLURL}, nil
+}
+
+func (c *Client) CreatePullRequest(ctx context.Context, repo, title, body, head, base string, draft bool) (CreatedGitHubArtifact, error) {
+	url := fmt.Sprintf("%s/repos/%s/pulls", githubAPIBase, repo)
+	req, err := c.newRequest(ctx, http.MethodPost, url, map[string]any{
+		"title": title,
+		"body":  body,
+		"head":  head,
+		"base":  base,
+		"draft": draft,
+	})
+	if err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	var resp struct {
+		ID      int64  `json:"id"`
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+		Head    struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	return CreatedGitHubArtifact{ID: resp.ID, Number: resp.Number, URL: resp.HTMLURL, HTMLURL: resp.HTMLURL}, nil
+}
+
+func (c *Client) CreatePullRequestReview(ctx context.Context, repo string, prNumber int, event, body string) (CreatedGitHubArtifact, error) {
+	url := fmt.Sprintf("%s/repos/%s/pulls/%d/reviews", githubAPIBase, repo, prNumber)
+	req, err := c.newRequest(ctx, http.MethodPost, url, map[string]string{
+		"event": event,
+		"body":  body,
+	})
+	if err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	var resp struct {
+		ID      int64  `json:"id"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return CreatedGitHubArtifact{}, err
+	}
+	return CreatedGitHubArtifact{ID: resp.ID, Number: prNumber, URL: resp.HTMLURL, HTMLURL: resp.HTMLURL}, nil
 }
 
 // GetPullRequest fetches a pull request and returns the head ref, base ref,
