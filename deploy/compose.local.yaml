@@ -2,9 +2,15 @@ services:
   tidb:
     image: pingcap/tidb:v8.5.1
     restart: unless-stopped
-    # Single-node, self-contained TiDB for local/dev use. `unistore` is TiDB's
-    # built-in storage engine, so no separate PD/TiKV is required. (`--store=tikv`
-    # would need a full PD + TiKV cluster and cannot start standalone.)
+    # Single-node, self-contained TiDB for LOCAL/DEV ONLY.
+    # `unistore` is TiDB's in-process test/mock storage engine: one container, no
+    # PD/TiKV/Raft and no TiFlash -- so no HA, no HTAP, and no vector search. It is
+    # a good zero-config dev DB because chetter uses only MySQL-protocol features
+    # today, but it is NOT production-representative. For production use an external
+    # TiDB via DATABASE_DSN (TiDB Cloud Serverless or a real cluster); to develop or
+    # validate vector/HTAP features, use `tiup playground` or TiDB Cloud, not this.
+    # (The previous `--store=tikv --path=127.0.0.1:2379` needed a full PD+TiKV
+    # cluster and could never start standalone.)
     command: --store=unistore --path=/var/lib/tidb
     volumes:
       - tidb-data:/var/lib/tidb
