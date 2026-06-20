@@ -535,9 +535,8 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and schedules. Admin only."}, svc.deleteTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_import_model_catalog", Description: "Import a generic model/provider catalog from YAML content or a server-local YAML file. Admin only."}, svc.importModelCatalogTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_get_model_catalog", Description: "Get a model/provider catalog by name, or the active catalog if name is omitted. Admin only."}, svc.getModelCatalogTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_model_catalogs", Description: "List imported model/provider catalogs. Admin only."}, svc.listModelCatalogsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_get_model_catalog", Description: "Get the current model/provider catalog and its source."}, svc.getModelCatalogTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_sync_definitions", Description: "Re-pull the definitions repo and reload configs (model catalog, triggers, etc.). Admin only."}, svc.syncDefinitionsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedule_runs", Description: "List schedule runs for the current team, optionally filtered by schedule name."}, svc.listScheduleRunsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
@@ -605,7 +604,11 @@ func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, ListTasksOutput{}, err
 	}
-	return nil, ListTasksOutput{Tasks: tasks}, nil
+	out := make([]TaskToolRecord, 0, len(tasks))
+	for _, t := range tasks {
+		out = append(out, repoTaskToToolRecord(t))
+	}
+	return nil, ListTasksOutput{Tasks: out}, nil
 }
 
 func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {

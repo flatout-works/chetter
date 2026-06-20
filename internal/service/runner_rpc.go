@@ -12,8 +12,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"gopkg.in/yaml.v3"
+
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -31,9 +34,12 @@ var errTaskNotClaimed = errors.New("task is not claimed by runner")
 type RunnerRPCService struct {
 	db            *repository.Queries
 	rawDB         *sql.DB
+	defs          *definitions.Manager
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	eventBus      TaskEventPublisher
+	defaultCatYAML   string
+	defaultCatOnce   sync.Once
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -44,6 +50,10 @@ type TaskEventPublisher interface {
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
 	return &RunnerRPCService{db: db, rawDB: rawDB}
+}
+
+func NewRunnerRPCServiceWithDefs(db *repository.Queries, rawDB *sql.DB, defs *definitions.Manager) *RunnerRPCService {
+	return &RunnerRPCService{db: db, rawDB: rawDB, defs: defs}
 }
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
@@ -126,17 +136,29 @@ func (s *RunnerRPCService) injectActiveModelCatalog(ctx context.Context, task *r
 	if task == nil {
 		return
 	}
-	row, err := s.db.GetActiveModelCatalog(ctx)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			slog.Warn("load active model catalog", "err", err)
-		}
+	data := s.modelCatalogYAML()
+	if data == "" {
 		return
 	}
 	if task.Env == nil {
 		task.Env = map[string]string{}
 	}
-	task.Env[modelcatalog.EnvKey] = row.Yaml
+	task.Env[modelcatalog.EnvKey] = data
+}
+
+func (s *RunnerRPCService) modelCatalogYAML() string {
+	if s.defs != nil {
+		if y := s.defs.CatalogYAML(); y != "" {
+			return y
+		}
+	}
+	s.defaultCatOnce.Do(func() {
+		data, err := yaml.Marshal(modelcatalog.Default())
+		if err == nil {
+			s.defaultCatYAML = string(data)
+		}
+	})
+	return s.defaultCatYAML
 }
 
 func (s *RunnerRPCService) ReportTaskEvents(ctx context.Context, req *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error) {

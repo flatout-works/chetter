@@ -24,6 +24,8 @@ type Config struct {
 	GitHubWebhookSecret    string
 	GitHubWebhookDisabled  bool
 	GitHubInstallationID   int64
+	DefinitionsRepo        string
+	DefinitionsBranch      string
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -43,6 +45,8 @@ func Load() Config {
 		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		GitHubWebhookDisabled:  envBool("GITHUB_WEBHOOK_DISABLED", false),
 		GitHubInstallationID:   envInt64("GITHUB_INSTALLATION_ID", 0),
+		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
+		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
 	}
 }
 

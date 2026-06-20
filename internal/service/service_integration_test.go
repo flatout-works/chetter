@@ -1126,51 +1126,41 @@ func TestDeleteTokenRequiresAdmin(t *testing.T) {
 	}
 }
 
-func TestImportModelCatalogStoresActiveCatalog(t *testing.T) {
+func TestGetModelCatalogReturnsDefaults(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	ctx := ctxWithAdmin(context.Background())
-	yaml := `version: 1
-default_provider: synthetic
-default_model: hf:zai-org/GLM-5.2
-providers:
-  synthetic:
-    name: Synthetic
-    kind: openai_compatible
-    models:
-      - id: hf:zai-org/GLM-5.2
-`
+	ctx := context.Background()
 
-	_, imported, err := svc.importModelCatalogTool(ctx, nil, ImportModelCatalogInput{Name: "test", YAML: yaml})
+	_, out, err := svc.getModelCatalogTool(ctx, nil, GetModelCatalogInput{})
 	if err != nil {
-		t.Fatalf("import model catalog: %v", err)
+		t.Fatalf("get model catalog: %v", err)
 	}
-	if !imported.Catalog.Active || imported.Catalog.ProviderCount != 1 || imported.Catalog.ModelCount != 1 {
-		t.Fatalf("unexpected imported catalog: %+v", imported.Catalog)
+	if out.Catalog.DefaultProvider != "synthetic" {
+		t.Errorf("expected default provider 'synthetic', got %q", out.Catalog.DefaultProvider)
 	}
-
-	_, got, err := svc.getModelCatalogTool(ctx, nil, GetModelCatalogInput{})
-	if err != nil {
-		t.Fatalf("get active model catalog: %v", err)
-	}
-	if got.Catalog.Name != "test" || !strings.Contains(got.YAML, "hf:zai-org/GLM-5.2") {
-		t.Fatalf("unexpected active catalog: %+v", got.Catalog)
-	}
-
-	_, listed, err := svc.listModelCatalogsTool(ctx, nil, ListModelCatalogsInput{})
-	if err != nil {
-		t.Fatalf("list model catalogs: %v", err)
-	}
-	if len(listed.Catalogs) != 1 || listed.Catalogs[0].Name != "test" {
-		t.Fatalf("unexpected catalog list: %+v", listed.Catalogs)
+	if out.Catalog.ProviderCount == 0 {
+		t.Errorf("expected non-zero providers")
 	}
 }
 
-func TestImportModelCatalogRequiresAdmin(t *testing.T) {
+func TestSyncDefinitionsNoConfig(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	_, _, err := svc.importModelCatalogTool(context.Background(), nil, ImportModelCatalogInput{YAML: "version: 1"})
+	ctx := ctxWithAdmin(context.Background())
+
+	_, _, err := svc.syncDefinitionsTool(ctx, nil, SyncDefinitionsInput{})
 	if err == nil {
-		t.Fatal("expected error for non-admin model catalog import")
+		t.Fatal("expected error when no definitions repo is configured")
+	}
+}
+
+func TestGetModelCatalogNoAdminRequired(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, _, err := svc.getModelCatalogTool(ctx, nil, GetModelCatalogInput{})
+	if err != nil {
+		t.Fatal("get model catalog should not require admin")
 	}
 }

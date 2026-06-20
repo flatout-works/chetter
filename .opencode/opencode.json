@@ -29,13 +29,13 @@
       "description": "List recent Chetter agent sessions and their runs.",
       "template": "Run chetter_list_agent_sessions with limit=20. Summarize sessions by status and resume_mode. For any paused or errored session, call chetter_agent_session_status and show its runs, pinned runner, checkpoint, and latest error. Keep output concise."
     },
-    "chetter-model-catalogs": {
-      "description": "List imported Chetter model/provider catalogs.",
-      "template": "Run chetter_list_model_catalogs. Summarize the active catalog, default provider/model, provider count, model count, source, and checksum. If no catalog exists, say that the runner will use the built-in catalog. Do not edit files."
+    "chetter-model-catalog": {
+      "description": "Show the current Chetter model/provider catalog.",
+      "template": "Run chetter_get_model_catalog. Summarize the active catalog, default provider/model, provider count, model count, and source. If the source is built-in, note that a DEFINITIONS_REPO can override it. Do not edit files."
     },
-    "chetter-import-model-catalog": {
-      "description": "Import and activate a Chetter model/provider catalog from YAML.",
-      "template": "Ask the user for a model catalog YAML file path or inline YAML if not provided. Use chetter_import_model_catalog with activate=true. Then run chetter_get_model_catalog to confirm the active catalog. Do not edit files unless the user explicitly asks you to create or modify a catalog file."
+    "chetter-sync-definitions": {
+      "description": "Re-pull the Chetter definitions repo and reload configs.",
+      "template": "Run chetter_sync_definitions to pull the latest definitions from the DEFINITIONS_REPO. Then run chetter_get_model_catalog to confirm the refreshed catalog. Do not edit files."
     }
   },
   "mcp": {

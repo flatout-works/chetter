@@ -19,6 +19,8 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webhook"
+	"github.com/flatout-works/chetter/pkg/definitions"
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 	"github.com/robfig/cron/v3"
 )
 
@@ -97,6 +99,7 @@ type Service struct {
 	cronMu      sync.Mutex
 	cronEntries map[string]cron.EntryID
 	reaperStop  chan struct{}
+	definitions *definitions.Manager
 }
 
 func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
@@ -105,6 +108,19 @@ func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
 
 func (s *Service) SetGitHubClient(c *webhook.Client) {
 	s.github = c
+}
+
+func (s *Service) SetDefinitions(d *definitions.Manager) {
+	s.definitions = d
+}
+
+func (s *Service) ModelCatalog() *modelcatalog.Catalog {
+	if s.definitions != nil {
+		if cat := s.definitions.Catalog(); cat != nil {
+			return cat
+		}
+	}
+	return modelcatalog.Default()
 }
 
 func New(cfg config.Config, st *store.Store) *Service {

@@ -23,6 +23,7 @@ import (
 	"github.com/flatout-works/chetter/internal/webapi"
 	"github.com/flatout-works/chetter/internal/webhook"
 	"github.com/flatout-works/chetter/internal/webui"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -65,7 +66,18 @@ func run() error {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 
+	var defs *definitions.Manager
+	if cfg.DefinitionsRepo != "" {
+		defs = definitions.New(cfg.DefinitionsRepo, cfg.DefinitionsBranch, "")
+		if err := defs.SyncAndLoad(ctx); err != nil {
+			slog.Warn("definitions sync failed (continuing with defaults)", "err", err)
+		}
+	}
+
 	svc := service.New(cfg, st)
+	if defs != nil {
+		svc.SetDefinitions(defs)
+	}
 	if cfg.GitHubAppConfigured() {
 		gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
 		if err != nil {
@@ -74,7 +86,7 @@ func run() error {
 		svc.SetGitHubClient(gh)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus)
+	runnerSvc := service.NewRunnerRPCServiceWithDefs(repository.New(st.DB()), st.DB(), defs).WithEventBus(eventBus)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
