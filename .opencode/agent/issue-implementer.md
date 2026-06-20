@@ -1,7 +1,7 @@
 ---
 description: Implements solutions for GitHub issues. Reads the issue and triage comments, produces code changes, and opens a PR. Use for issue implementation tasks.
-model: hf:zai-org/GLM-5.2
-provider: synthetic
+provider: opencode
+model: deepseek-v4-flash-free
 mode: primary
 permission:
   edit: allow

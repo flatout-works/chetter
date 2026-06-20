@@ -120,7 +120,7 @@ PR review triggers watch a GitHub repository for new pull requests:
 
 ```
 Use chetter_create_trigger to create a pr_review trigger for flatout-works/chetter
-with agent=pr-reviewer, model=opencode-go/minimax-m3, and prompt "You are performing a deep code review..."
+with agent=pr-reviewer, model=opencode/minimax-m3, and prompt "You are performing a deep code review..."
 ```
 
 ### Customizing a Trigger
@@ -199,7 +199,7 @@ Common model choices for different task types:
 | Task type | Suggested model | Notes |
 |---|---|---|
 | Docs/changelog | synthetic/kimi-k2.6 | Fast, cheap, good at summarizing |
-| PR reviews | opencode-go/minimax-m3 | Thorough, structured output |
+| PR reviews | opencode/minimax-m3 | Thorough, structured output |
 | Code quality / fixes | opencode/deepseek-v4-pro | Good at Go code analysis |
 | Bugfixes | deepseek/deepseek-chat | Budget-friendly for simple fixes |
 

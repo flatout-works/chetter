@@ -113,7 +113,7 @@ Runs [OpenCode](https://opencode.ai) as the coding agent.
 - Auto-detects and copies opencode auth state, model state, and ripgrep binary.
 - Adds providers: DeepSeek, OpenCode Zen, Synthetic (based on available API keys).
 - Optional MEM9 plugin integration.
-- Model resolution: request fields → agent config → env vars → default (`synthetic/hf:zai-org/GLM-5.1`).
+- Model resolution: request fields → agent config → env vars → default (`syn:large:text`).
 
 ### Claude Code Harness
 

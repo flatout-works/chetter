@@ -26,7 +26,7 @@ A schedule is a **persisted task template** with a cron expression. On each cron
 | `git_ref` | No | `main` | Branch, tag, or commit to check out. |
 | `agent_image` | Yes | — | Runner Docker image. Falls back to `DEFAULT_AGENT_IMAGE` if omitted and configured. |
 | `agent` | No | — | OpenCode agent name (e.g. `changelog-maintainer`). |
-| `provider_id` | No | — | LLM provider (e.g. `opencode-go`). |
+| `provider_id` | No | — | LLM provider (e.g. \`opencode\`). |
 | `model_id` | No | — | LLM model (e.g. `deepseek-v4-pro`). |
 | `variant_id` | No | — | Model variant (e.g. `high`, `minimal`). |
 | `skills` | No | `[]` | Array of skill names passed to the runner. |
@@ -136,7 +136,7 @@ cron_expr: "0 4 * * *"
 git_url: https://github.com/org/repo
 git_ref: main
 agent_image: ghcr.io/flatout-works/chetter-runner:main
-provider_id: opencode-go
+provider_id: opencode
 model_id: deepseek-v4-pro
 skills:
   - docs-update

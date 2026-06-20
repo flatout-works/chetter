@@ -1,6 +1,7 @@
 ---
 description: Updates documentation from recent code and product changes. Use for docs, architecture, product, process, storage, and AGENTS.md maintenance tasks.
-model: opencode/deepseek-v4-flash-free
+provider: opencode
+model: deepseek-v4-flash-free
 mode: primary
 permission:
   edit: allow

@@ -1,7 +1,7 @@
 ---
 description: Triages GitHub issues — classifies, prioritizes, produces a plan, and posts a structured comment. Use for issue triage and initial assessment tasks.
-model: hf:moonshotai/Kimi-K2.6
-provider: synthetic
+provider: opencode
+model: deepseek-v4-flash-free
 mode: primary
 permission:
   edit: allow

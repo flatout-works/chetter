@@ -289,7 +289,7 @@ func (h *Handler) submitReviewTask(pr PullRequest, repo Repository, trigger stri
         GitURL:     pr.Head.Repo.CloneURL,
         GitRef:     pr.Head.Ref,
         Agent:      "pr-reviewer",
-        ProviderID: "opencode-go",
+        ProviderID: "opencode",
         ModelID:    "minimax-m3",
         Env: map[string]string{
             "PR_NUMBER":   strconv.Itoa(pr.Number),
@@ -414,7 +414,7 @@ The webhook handler is registered outside the auth middleware — HMAC signature
 ```markdown
 ---
 description: Deep PR review — correctness, security, performance, error handling, style. Posts structured review and approves or requests changes.
-model: opencode-go/minimax-m3
+model: opencode/minimax-m3
 mode: primary
 permission:
   edit: allow
@@ -430,7 +430,7 @@ The environment provides:
 - GITHUB_TOKEN — GitHub App installation token with PR read/write
 - GITHUB_REPO — repository (e.g., flatout-works/flatout)
 - AGENT_NAME — your agent definition name (e.g., "pr-reviewer")
-- MODEL_ID — your model identifier (e.g., "opencode-go/minimax-m3")
+- MODEL_ID — your model identifier (e.g., "opencode/minimax-m3")
 
 ## Procedure
 

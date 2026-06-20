@@ -165,7 +165,7 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 		CommentAuthor: "",
 		GitHubToken:   "ghs_test_token",
 		Agent:         "pr-reviewer",
-		ProviderID:    "opencode-go",
+		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
 		TimeoutSec:    3600,
 	}
@@ -183,8 +183,8 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	if req.Agent != "pr-reviewer" {
 		t.Errorf("Agent = %q, want pr-reviewer", req.Agent)
 	}
-	if req.ProviderID != "opencode-go" {
-		t.Errorf("ProviderID = %q, want opencode-go", req.ProviderID)
+	if req.ProviderID != "opencode" {
+		t.Errorf("ProviderID = %q, want opencode", req.ProviderID)
 	}
 	if req.ModelID != "minimax-m3" {
 		t.Errorf("ModelID = %q, want minimax-m3", req.ModelID)
@@ -220,7 +220,7 @@ func TestBuildReviewTaskRequest_WithComment(t *testing.T) {
 		HeadCloneURL:  "https://github.com/x.git",
 		GitHubToken:   "t",
 		Agent:         "pr-reviewer",
-		ProviderID:    "opencode-go",
+		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
 		TimeoutSec:    3600,
 	}
@@ -287,7 +287,7 @@ func TestBuildReviewTaskRequest_FallsBackToTemplateWhenNoPrompt(t *testing.T) {
 		HeadCloneURL: "https://github.com/o/r.git",
 		GitHubToken:  "t",
 		Agent:        "pr-reviewer",
-		ProviderID:   "opencode-go",
+		ProviderID:   "opencode",
 		ModelID:      "minimax-m3",
 		TimeoutSec:   3600,
 		// Prompt and AgentImage are intentionally left empty

@@ -119,7 +119,7 @@ Use the `chetter_create_trigger` MCP tool:
   "repo": "flatout-works/chetter",
   "prompt": "You are performing a deep code review...",
   "agent": "pr-reviewer",
-  "provider_id": "opencode-go",
+  "provider_id": "opencode",
   "model_id": "minimax-m3",
   "timeout_sec": 3600
 }

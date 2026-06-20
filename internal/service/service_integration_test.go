@@ -502,7 +502,7 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 		Prompt:        "review please",
 		AgentImage:    "runner:latest",
 		Agent:         "pr-reviewer",
-		ProviderID:    "opencode-go",
+		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
 		TimeoutSec:    3600,
 	}); err != nil {
@@ -518,7 +518,7 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 		Prompt:        "review please",
 		AgentImage:    "runner:latest",
 		Agent:         "pr-reviewer",
-		ProviderID:    "opencode-go",
+		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
 		TimeoutSec:    3600,
 	}); err != nil {

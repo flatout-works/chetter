@@ -1,6 +1,7 @@
 ---
 description: Audits Go code for correctness, maintainability, duplication, unclear naming, error handling, and focused refactors. Use for code quality audit tasks.
-model: synthetic/hf:moonshotai/Kimi-K2.6
+provider: opencode
+model: deepseek-v4-flash-free
 mode: primary
 permission:
   edit: allow
