@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-20
+
+### Added
+
+- Runner drain mechanism: `chetter_drain_runner` MCP tool requests a runner to stop claiming new tasks, finish in-flight work, then exit. The runner reports `draining` status on heartbeats. CI adds a drain step before redeploy to ensure zero tasks are running during rollout.
+- Network egress controls: `CHETTER_PROXY_ALLOWED_DOMAINS`, `CHETTER_PROXY_BLOCKED_DOMAINS`, and `CHETTER_DNS_BLOCKED_DOMAINS` environment variables for restricting outbound traffic from runner containers (default: unfiltered).
+
+### Changed
+
+- Server now requires `CHETTER_MCP_AUTH_TOKEN` to start; fails with a clear error if unset or if a placeholder value like `change-me` is used.
+- Runner ConnectRPC requires a dedicated `CHETTER_RUNNER_RPC_TOKEN` environment variable; admin and team-scoped MCP tokens are no longer accepted as runner RPC credentials.
+- Per-ID task MCP tools (`chetter_get_task`, `chetter_cancel_task`, `chetter_list_task_events`, `chetter_task_export`) are now scoped by `team_id`. Fleet-wide tools (`chetter_list_tasks`, `chetter_list_runners`, `chetter_list_audit_events`, `chetter_list_task_artifacts`, `chetter_clear_queue`) restricted to admin tokens.
+- RPC-based agent harnesses now run inside the agent Docker container (instead of on the host) with readiness routed via the host port.
+- Deployment compose files use local Docker image tags (`chetter-mcp:latest`, `chetter-runner:latest`) instead of GHCR-published tags; GHCR push deferred. Builder auto-builds the runner base image when missing locally.
+- gVisor sandbox containers now receive `HTTP_PROXY`/`HTTPS_PROXY` environment variables for outbound proxy routing.
+- Default proxy allowlist expanded with `github.com` subdomains (`api.github.com`, `uploads.github.com`, `codeload.github.com`, `objects.githubusercontent.com`) and `registry.npmjs.org`.
+- GLM model references updated to 5.2.
+
+### Fixed
+
+- Reaper now uses `started_at` (not `updated_at`) for task timeout detection, preventing tasks from running indefinitely past their timeout when heartbeats keep `updated_at` current. Lease reclaim also resets `started_at` so reclaimed tasks get a fresh timeout window.
+- Host-side MCP tools (`workspace_bash`, `git_*`, `fetch_url`, `deploy_*`) removed from the runner tool set, preventing sandbox escape from the task container.
+- Webhook fork/opened PR, issue, and issue-comment triggers now require the author to have write access to the repository, preventing unauthorized contributions from triggering tasks.
+- Server auto-creates the configured database on startup (`CREATE DATABASE IF NOT EXISTS`), preventing crash-loop when `DATABASE_DSN` points to a non-existent database (e.g. a fresh TiDB Cloud Starter cluster).
+- Bundled local TiDB now starts with the `unistore` engine (no PD/TiKV required) and drops the unusable container healthcheck; MCP server retries until TiDB accepts connections.
+- Deploy compose empty-string env var defaults fixed for `chetter-runner-2`: `:-""` → `:-}` to prevent injecting literal `""` into YAML, which caused a crash-loop on config parse.
+- RPC harness readiness poll now uses the host-mapped port for gVisor, removing a dead store in the serve loop.
+- Integration test suite shares a single TiDB container across all tests via `TestMain`; `ClaimTask` long-poll interval reduced from 30s to 1s for faster test execution.
+
+### Documentation
+
+- README quick start now includes the `./deploy/build.sh` image build step and corrects the `agent_image` example to reference the local `chetter-runner:latest` image.
+- Deploy documentation (`deploy/compose.local.yaml`) clarifies the bundled TiDB is the unistore test engine (not production-ready; no vector/HTAP support).
+- TiDB Cloud references updated from "Serverless" to "Starter/Essential" naming throughout README and compose files.
+- Proxy/DNS allowlist and blocklist configuration documented in `docs/FEATURES.md`.
+
 ## 2026-06-17
 
 ### Added
