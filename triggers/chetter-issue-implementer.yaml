@@ -9,7 +9,7 @@
 #   git_ref      - branch to work from (usually main)
 #   agent_image  - runner image (get from your Chetter admin or build your own)
 #   provider_id  - LLM provider (synthetic for GLM, or your configured provider)
-#   model_id     - model identifier (e.g. syn:large:text)
+#   model_id     - model identifier (e.g. hf:zai-org/GLM-5.2)
 #   timeout_sec  - adjust based on issue complexity (3600+ recommended)
 #   skills       - skill hints for the runner (optional)
 #
@@ -24,7 +24,7 @@ agent_image: chetter-runner:latest
 harness: opencode
 agent: issue-implementer
 provider_id: synthetic
-model_id: syn:large:text
+model_id: hf:zai-org/GLM-5.2
 git_url: https://github.com/flatout-works/chetter
 git_ref: main
 timeout_sec: 7200
