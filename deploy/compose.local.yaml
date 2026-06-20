@@ -6,9 +6,10 @@ services:
     # `unistore` is TiDB's in-process test/mock storage engine: one container, no
     # PD/TiKV/Raft and no TiFlash -- so no HA, no HTAP, and no vector search. It is
     # a good zero-config dev DB because chetter uses only MySQL-protocol features
-    # today, but it is NOT production-representative. For production use an external
-    # TiDB via DATABASE_DSN (TiDB Cloud Serverless or a real cluster); to develop or
-    # validate vector/HTAP features, use `tiup playground` or TiDB Cloud, not this.
+    # today, but it is NOT production-representative. For production -- and to
+    # develop or validate vector/HTAP features -- connect to a real TiDB via
+    # DATABASE_DSN; TiDB Cloud Starter or Essential give you a managed cluster with
+    # TiFlash and vector search built in.
     # (The previous `--store=tikv --path=127.0.0.1:2379` needed a full PD+TiKV
     # cluster and could never start standalone.)
     command: --store=unistore --path=/var/lib/tidb
