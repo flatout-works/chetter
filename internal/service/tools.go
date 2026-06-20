@@ -112,7 +112,7 @@ type CreateTriggerInput struct {
 
 // CreateTriggerOutput is the output for chetter_create_trigger.
 type CreateTriggerOutput struct {
-	Trigger store.ScheduleRecord `json:"trigger"`
+	Trigger TriggerToolRecord `json:"trigger"`
 }
 
 // UpdateTriggerInput is the input for chetter_update_trigger.
@@ -140,7 +140,7 @@ type UpdateTriggerInput struct {
 
 // UpdateTriggerOutput is the output for chetter_update_trigger.
 type UpdateTriggerOutput struct {
-	Trigger store.ScheduleRecord `json:"trigger"`
+	Trigger TriggerToolRecord `json:"trigger"`
 }
 
 // ListTriggersInput is the input for chetter_list_triggers.
@@ -151,7 +151,34 @@ type ListTriggersInput struct {
 
 // ListTriggersOutput is the output for chetter_list_triggers.
 type ListTriggersOutput struct {
-	Triggers []store.ScheduleRecord `json:"triggers"`
+	Triggers []TriggerToolRecord `json:"triggers"`
+}
+
+// TriggerToolRecord is the stable MCP trigger response shape. Store-level
+// schedule records may grow internal fields without breaking MCP clients.
+type TriggerToolRecord struct {
+	ID            string     `json:"id"`
+	TeamID        string     `json:"team_id,omitempty"`
+	Name          string     `json:"name"`
+	TriggerType   string     `json:"trigger_type"`
+	TriggerConfig string     `json:"trigger_config"`
+	CronExpr      string     `json:"cron_expr"`
+	Prompt        string     `json:"prompt"`
+	GitURL        string     `json:"git_url,omitempty"`
+	GitRef        string     `json:"git_ref,omitempty"`
+	AgentImage    string     `json:"agent_image,omitempty"`
+	Agent         string     `json:"agent,omitempty"`
+	ProviderID    string     `json:"provider_id,omitempty"`
+	ModelID       string     `json:"model_id,omitempty"`
+	VariantID     string     `json:"variant_id,omitempty"`
+	Harness       string     `json:"harness,omitempty"`
+	Skills        []string   `json:"skills,omitempty"`
+	TimeoutSec    int        `json:"timeout_sec"`
+	Enabled       bool       `json:"enabled"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
 }
 
 // DeleteTriggerInput is the input for chetter_delete_trigger.
@@ -809,7 +836,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, CreateTriggerOutput{}, fmt.Errorf("create trigger: %w", err)
 	}
-	return nil, CreateTriggerOutput{Trigger: trigger}, nil
+	return nil, CreateTriggerOutput{Trigger: triggerToolRecord(trigger)}, nil
 }
 
 func (s *Service) runTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in RunTriggerInput) (*mcp.CallToolResult, RunTriggerOutput, error) {
@@ -851,11 +878,38 @@ func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, 
 		}
 		repoRecords = filtered
 	}
-	triggers := make([]store.ScheduleRecord, len(repoRecords))
+	triggers := make([]TriggerToolRecord, len(repoRecords))
 	for i, r := range repoRecords {
-		triggers[i] = scheduleToStoreRecord(r)
+		triggers[i] = triggerToolRecord(scheduleToStoreRecord(r))
 	}
 	return nil, ListTriggersOutput{Triggers: triggers}, nil
+}
+
+func triggerToolRecord(s store.ScheduleRecord) TriggerToolRecord {
+	return TriggerToolRecord{
+		ID:            s.ID,
+		TeamID:        s.TeamID,
+		Name:          s.Name,
+		TriggerType:   s.TriggerType,
+		TriggerConfig: s.TriggerConfig,
+		CronExpr:      s.CronExpr,
+		Prompt:        s.Prompt,
+		GitURL:        s.GitURL,
+		GitRef:        s.GitRef,
+		AgentImage:    s.AgentImage,
+		Agent:         s.Agent,
+		ProviderID:    s.ProviderID,
+		ModelID:       s.ModelID,
+		VariantID:     s.VariantID,
+		Harness:       s.Harness,
+		Skills:        nonEmptyStrings(s.Skills),
+		TimeoutSec:    s.TimeoutSec,
+		Enabled:       s.Enabled,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+		LastRunAt:     s.LastRunAt,
+		NextRunAt:     s.NextRunAt,
+	}
 }
 
 func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
@@ -941,7 +995,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("update trigger: %w", err)
 	}
-	return nil, UpdateTriggerOutput{Trigger: trigger}, nil
+	return nil, UpdateTriggerOutput{Trigger: triggerToolRecord(trigger)}, nil
 }
 
 func scheduleSkillsToStrings(skills json.RawMessage) []string {

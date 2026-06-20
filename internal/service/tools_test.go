@@ -51,3 +51,42 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		t.Fatalf("expected model fields to be preserved: %+v", record)
 	}
 }
+
+func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	next := now.Add(time.Hour)
+	record := triggerToolRecord(store.ScheduleRecord{
+		ID:            "trig_1",
+		TeamID:        "team_123",
+		Name:          "hourly",
+		TriggerType:   store.TriggerTypeCron,
+		TriggerConfig: "{}",
+		CronExpr:      "@hourly",
+		Prompt:        "prompt",
+		GitURL:        "https://example.com/repo.git",
+		GitRef:        "main",
+		AgentImage:    "image",
+		Agent:         "docs-maintainer",
+		ProviderID:    "synthetic",
+		ModelID:       "model",
+		VariantID:     "variant",
+		Harness:       "opencode",
+		Skills:        []string{"docs"},
+		TimeoutSec:    300,
+		Enabled:       true,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		NextRunAt:     &next,
+	})
+
+	if record.ID != "trig_1" || record.Name != "hourly" || record.TriggerType != store.TriggerTypeCron || !record.Enabled {
+		t.Fatalf("unexpected trigger record: %+v", record)
+	}
+	if record.ProviderID != "synthetic" || record.ModelID != "model" || record.VariantID != "variant" || record.Harness != "opencode" {
+		t.Fatalf("expected model and harness fields to be preserved: %+v", record)
+	}
+	if len(record.Skills) != 1 || record.NextRunAt == nil || !record.NextRunAt.Equal(next) {
+		t.Fatalf("expected skills and schedule timestamps to be preserved: %+v", record)
+	}
+}
