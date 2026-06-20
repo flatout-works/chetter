@@ -2,8 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { page } from "$app/stores";
   import { createClient } from "@connectrpc/connect";
-  import { TaskService } from "$gen/proto/api/v1/api_pb";
-  import type { Task } from "$gen/proto/api/v1/api_pb";
+  import { TaskService, AdminService } from "$gen/proto/api/v1/api_pb";
+  import type { Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents,
@@ -17,6 +17,7 @@
 
   let { params } = $props();
   let task = $state<Task | null>(null);
+  let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let unsub: (() => void) | null = null;
@@ -42,6 +43,15 @@
 
       await loadTaskEvents(params.id, 100);
       await loadTaskProgress(params.id);
+
+      // Load artifacts for completed tasks
+      if (task?.status === "done" || task?.status === "error") {
+        try {
+          const adminClient = createClient(AdminService, getTransport());
+          const artResp = await adminClient.listTaskArtifacts({ taskId: params.id });
+          artifacts = artResp.artifacts ?? [];
+        } catch { /* artifacts are admin-only; silently skip */ }
+      }
 
       if (task?.status === "running" || task?.status === "pending") {
         unsub = subscribeToTaskEvents(params.id);
@@ -187,6 +197,36 @@
                 {entry.status}
               </span>
               <span class="text-gray-600 dark:text-gray-400 flex-1 truncate">{entry.summary}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Artifacts -->
+    {#if artifacts.length > 0}
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
+        <div class="space-y-2">
+          {#each artifacts as art (art.id)}
+            <div class="flex items-center gap-3 text-sm">
+              <span class={`px-2 py-0.5 rounded text-xs font-medium ${
+                art.artifactType === "issue" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
+                art.artifactType === "pull_request" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" :
+                "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+              }`}>
+                {art.artifactType}
+              </span>
+              {#if art.url}
+                <a href={art.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">
+                  {art.repo}#{art.number}
+                </a>
+              {:else}
+                <span class="text-gray-700 dark:text-gray-300">{art.repo}#{art.number}</span>
+              {/if}
+              {#if art.ref}
+                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{art.ref}</span>
+              {/if}
             </div>
           {/each}
         </div>

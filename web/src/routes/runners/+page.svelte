@@ -1,14 +1,31 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createClient } from "@connectrpc/connect";
-  import { FleetService } from "$gen/proto/api/v1/api_pb";
+  import { FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { RunnerFleetHealth } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
+  let clearing = $state(false);
+  let clearError = $state<string | null>(null);
 
-  onMount(async () => {
+  async function clearQueue() {
+    if (!confirm("Cancel all pending tasks? This cannot be undone.")) return;
+    clearing = true;
+    clearError = null;
+    try {
+      const client = createClient(TaskService, getTransport());
+      await client.clearQueue({});
+      await load();
+    } catch (e) {
+      clearError = e instanceof Error ? e.message : "Failed to clear queue.";
+    } finally {
+      clearing = false;
+    }
+  }
+
+  async function load() {
     try {
       const client = createClient(FleetService, getTransport());
       const resp = await client.getRunnerHealth({ includeTasks: true });
@@ -18,7 +35,9 @@
     } finally {
       loading = false;
     }
-  });
+  }
+
+  onMount(load);
 
   const statusColors: Record<string, string> = {
     running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
@@ -34,7 +53,21 @@
 </svelte:head>
 
 <div class="p-6">
-  <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">Runner Fleet</h1>
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Runner Fleet</h1>
+    {#if health && health.pendingTasks > 0}
+      <button
+        onclick={clearQueue}
+        disabled={clearing}
+        class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium rounded-lg"
+      >
+        {clearing ? "Clearing…" : `Clear Queue (${health.pendingTasks} pending)`}
+      </button>
+    {/if}
+  </div>
+  {#if clearError}
+    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">{clearError}</div>
+  {/if}
 
   {#if loading}
     <p class="text-gray-500 dark:text-gray-400">Loading…</p>

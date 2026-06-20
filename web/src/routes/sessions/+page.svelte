@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { SessionService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession } from "$gen/proto/api/v1/api_pb";
@@ -82,7 +83,11 @@
         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each sessions as session (session.id)}
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              <td class="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white">{session.id.slice(0, 20)}…</td>
+              <td class="px-4 py-3">
+                <a href={resolve("/sessions/[id]", { id: session.id })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
+                  {session.id.slice(0, 20)}…
+                </a>
+              </td>
               <td class="px-4 py-3">
                 <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[session.status] || statusColors.running}`}>
                   {session.status}
