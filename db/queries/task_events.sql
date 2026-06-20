@@ -8,3 +8,8 @@ WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT ?
 OFFSET ?;
+
+-- name: ListTaskEventsSince :many
+SELECT * FROM chetter_task_events
+WHERE task_id = ? AND created_at > ?
+ORDER BY created_at ASC;

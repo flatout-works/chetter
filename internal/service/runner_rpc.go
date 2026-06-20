@@ -33,10 +33,22 @@ type RunnerRPCService struct {
 	rawDB         *sql.DB
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
+	eventBus      TaskEventPublisher
+}
+
+// TaskEventPublisher fans out task events to streaming subscribers.
+// Implemented by webapi.EventBus.
+type TaskEventPublisher interface {
+	PublishTaskEvent(taskID, eventID, status, summary, payload, createdAt string)
 }
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
 	return &RunnerRPCService{db: db, rawDB: rawDB}
+}
+
+func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
+	s.eventBus = bus
+	return s
 }
 
 func (s *RunnerRPCService) RegisterRunner(ctx context.Context, req *connect.Request[runnerv1.RegisterRunnerRequest]) (*connect.Response[runnerv1.RegisterRunnerResponse], error) {
@@ -427,6 +439,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	}
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
+	}
+	if s.eventBus != nil && !skipEventRow {
+		s.eventBus.PublishTaskEvent(event.TaskId, eventID, status, event.Summary, string(payload), now.Format(time.RFC3339))
 	}
 	return nil
 }

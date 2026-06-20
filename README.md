@@ -12,6 +12,7 @@ A Chetter runner can clone a repository, start an OpenCode agent, execute a prom
 - Run recurring cron-backed maintenance jobs.
 - Cancel pending or running tasks.
 - Inspect runner health and heartbeat freshness.
+- Use the embedded web UI for tasks, triggers, runners, sessions, artifacts, and admin actions.
 - Expose the whole control plane through a standard HTTP MCP endpoint.
 
 ## Why TiDB
@@ -62,6 +63,7 @@ This starts:
 
 - TiDB for Chetter state
 - The Chetter MCP server on port `18088`
+- The Chetter web UI and ConnectRPC API on port `18089`
 - Two runner containers that pick up tasks
 
 The `deploy/compose.local.yaml` override adds the bundled TiDB service. If you
@@ -72,8 +74,11 @@ already have a TiDB instance, set `DATABASE_DSN` in `.env` and run only
 
 ```bash
 curl http://localhost:18088/healthz
+curl http://localhost:18089/healthz
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml ps
 ```
+
+Open `http://localhost:18089` to use the web UI. Log in with the same token you set in `.env` as `CHETTER_MCP_AUTH_TOKEN`.
 
 ### 5. Connect Your AI Client
 
@@ -198,7 +203,7 @@ k3d cluster create chetter \
 kubectl get nodes
 ```
 
-This creates a 1-server + 1-agent cluster. The Docker socket is mounted into the agent node so the runner can spawn agent containers. Port 18088 on your host maps to the k3d load balancer (Traefik ingress).
+This creates a 1-server + 1-agent cluster. The Docker socket is mounted into the agent node so the runner can spawn agent containers. Port `18088` maps to the k3d load balancer for MCP access. Use port-forwarding for the web UI while testing, or add a separate ingress that routes to service port `8090`.
 
 ### Step 2: Create the namespace and secrets
 
@@ -239,8 +244,9 @@ kubectl -n chetter rollout status deployment/chetter-runner
 For quick testing, use port-forward:
 
 ```bash
-kubectl -n chetter port-forward deployment/chetter-mcp 18088:8080 &
+kubectl -n chetter port-forward deployment/chetter-mcp 18088:8080 18089:8090 &
 curl http://localhost:18088/healthz
+curl http://localhost:18089/healthz
 ```
 
 For a persistent setup, add an Ingress:
@@ -267,7 +273,7 @@ spec:
 EOF
 ```
 
-Then the MCP server is available at `http://localhost:18088/mcp` (via the load balancer port mapped in step 1).
+Then the MCP server is available at `http://localhost:18088/mcp` (via the load balancer port mapped in step 1). The web UI is available at `http://localhost:18089` when using the port-forward command above, or through a separate ingress that routes to service port `8090`.
 
 ### Step 6: Verify
 
@@ -285,6 +291,8 @@ kubectl -n chetter logs -f deployment/chetter-runner
 ### Step 7: Connect your AI client
 
 Use `http://localhost:18088/mcp` as your MCP endpoint. See [Quick Start](#quick-start) step 5 for client-specific setup.
+
+Use `http://localhost:18089` for the web UI when port-forwarding the web port.
 
 ### Optional: Enable gVisor
 
@@ -379,9 +387,12 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 ### Main Environment Variables
 
 | Variable | Description |
-|---|---|---|
+|---|---|
 | `CHETTER_MCP_AUTH_TOKEN` | Bearer token required by `/mcp` |
+| `HTTP_ADDR` | MCP, runner RPC, webhook, and health listen address, default `:8080` |
+| `WEB_ADDR` | Web UI and ConnectRPC API listen address, default `:8090` |
 | `DATABASE_DSN` | Optional TiDB DSN override |
+| `DEFAULT_AGENT_IMAGE` | Default dev container image for tasks and triggers |
 | `GITHUB_TOKEN` | Optional token for private repos and GitHub write operations |
 | `GITHUB_APP_ID` | GitHub App ID for PR review webhooks |
 | `GITHUB_APP_PRIVATE_KEY_B64` | Base64-encoded GitHub App private key (PEM) |
@@ -447,8 +458,12 @@ spec:
   selector:
     app: chetter-mcp
   ports:
-  - port: 8080
+  - name: mcp
+    port: 8080
     targetPort: 8080
+  - name: web
+    port: 8090
+    targetPort: 8090
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -469,12 +484,15 @@ spec:
         image: ghcr.io/flatout-works/chetter-mcp:main
         ports:
         - containerPort: 8080
+        - containerPort: 8090
         envFrom:
         - secretRef:
             name: chetter-secrets
         env:
         - name: HTTP_ADDR
           value: ":8080"
+        - name: WEB_ADDR
+          value: ":8090"
         - name: DEFAULT_AGENT_IMAGE
           value: ghcr.io/flatout-works/chetter-runner:main
 ```
@@ -903,6 +921,17 @@ Secrets (API keys) are forwarded automatically when set in the runner's environm
 make check
 make build
 ```
+
+Open the embedded web UI from a local build:
+
+```bash
+MCP_AUTH_TOKEN=admin-token \
+CHETTER_TOKEN=admin-token \
+CHETTER_WEB_URL=http://localhost:8090 \
+./bin/chetterctl web
+```
+
+`chetterctl token ...` uses `CHETTER_API_URL` for the ConnectRPC API URL, defaulting to `http://localhost:8090`. `chetterctl web` uses `CHETTER_WEB_URL`, also defaulting to `http://localhost:8090`.
 
 Build images locally:
 

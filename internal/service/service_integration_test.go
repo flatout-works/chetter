@@ -430,6 +430,25 @@ func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
 	}
 }
 
+func TestServiceCreateScheduleAppliesDefaultAgentImage(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+
+	rec, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+		Name:        "default-image",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		TimeoutSec:  60,
+	})
+	if err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	if rec.AgentImage != "runner:latest" {
+		t.Fatalf("agent image = %q, want runner:latest", rec.AgentImage)
+	}
+}
+
 func TestServiceCreateScheduleRequiresPrompt(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

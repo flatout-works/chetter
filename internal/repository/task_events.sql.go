@@ -80,3 +80,44 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 	}
 	return items, nil
 }
+
+const listTaskEventsSince = `-- name: ListTaskEventsSince :many
+SELECT id, task_id, subject, status, payload, created_at FROM chetter_task_events
+WHERE task_id = ? AND created_at > ?
+ORDER BY created_at ASC
+`
+
+type ListTaskEventsSinceParams struct {
+	TaskID    string    `json:"task_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSinceParams) ([]ChetterTaskEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskEventsSince, arg.TaskID, arg.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTaskEvent{}
+	for rows.Next() {
+		var i ChetterTaskEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Subject,
+			&i.Status,
+			&i.Payload,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
