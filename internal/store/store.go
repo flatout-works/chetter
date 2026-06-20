@@ -50,6 +50,8 @@ type TaskRecord struct {
 	RunnerImageDigest string            `json:"runner_image_digest,omitempty"`
 	CommitAuthorName  string            `json:"commit_author_name,omitempty"`
 	CommitAuthorEmail string            `json:"commit_author_email,omitempty"`
+	TriggerName       string            `json:"trigger_name,omitempty"`
+	TriggerType       string            `json:"trigger_type,omitempty"`
 	Skills            []string          `json:"skills"`
 	Env               map[string]string `json:"env"`
 	TimeoutSec        int               `json:"timeout_sec"`

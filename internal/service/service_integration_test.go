@@ -414,6 +414,40 @@ func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
 	}
 }
 
+func TestRunTriggerNowStampsTaskAttribution(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamID, _ := seedTeam(t, tdb.DB, "automation", "alice")
+
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamID), store.ScheduleInput{
+		Name:        "attributed-check",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "check attribution",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  300,
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+
+	task, err := svc.RunTriggerNow(ctx, "attributed-check")
+	if err != nil {
+		t.Fatalf("RunTriggerNow: %v", err)
+	}
+	if task.TeamID != teamID || task.TriggerName != "attributed-check" || task.TriggerType != store.TriggerTypeCron {
+		t.Fatalf("returned task missing trigger attribution: %+v", task)
+	}
+
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	if row.TeamID.String != teamID || row.TriggerName.String != "attributed-check" || row.TriggerType.String != store.TriggerTypeCron {
+		t.Fatalf("persisted task missing trigger attribution: %+v", row)
+	}
+}
+
 func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

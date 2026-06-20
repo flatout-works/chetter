@@ -41,6 +41,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_created (created_at),
 		KEY idx_chetter_tasks_claim (status, lease_expires_at, created_at),
 		KEY idx_chetter_tasks_runner (runner_id, status),
+		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
 		KEY idx_chetter_tasks_required_runner (required_runner_id, status, created_at)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (

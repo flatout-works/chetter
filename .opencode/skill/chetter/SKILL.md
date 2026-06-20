@@ -29,9 +29,9 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 
 ### Fleet Health
 | Tool | Purpose |
-|---|---|
+|---|---|---|
 | `chetter_runner_health` | Runner fleet health, running/stale tasks, image versions, and latest task event age |
-| `chetter_list_tasks` | List recent tasks, optional status filter |
+| `chetter_list_tasks` | List recent tasks, optional `status` and `trigger_name` filters |
 | `chetter_list_triggers` | List triggers (cron schedules and PR review configs) |
 
 ### Task Lifecycle
@@ -78,6 +78,12 @@ Use `/chetter-status` or ask:
 Tell me about the ongoing tasks
 ```
 The agent will call `chetter_list_tasks` and `chetter_runner_health` to show what's running, what's done, what's stale, and what failed.
+
+Tasks created by cron triggers, PR reviews, or issue webhooks are stamped with `trigger_name` and `trigger_type` attribution. You can filter by trigger:
+```
+Show me all tasks from the nightly-docs-update trigger
+```
+The agent will use `chetter_list_tasks` with `trigger_name="nightly-docs-update"`.
 
 ### Submit a Task
 Use `/chetter-submit` or ask explicitly. When submitting, specify:

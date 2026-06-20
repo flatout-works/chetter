@@ -33,6 +33,8 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		RunnerImageDigest: "digest",
 		CommitAuthorName:  "Chetter",
 		CommitAuthorEmail: "chetter@chetter.flatout.works",
+		TriggerName:       "nightly-docs",
+		TriggerType:       store.TriggerTypeCron,
 		Skills:            []string{"go"},
 		Env:               map[string]string{"SAFE": "value"},
 		TimeoutSec:        300,
@@ -49,6 +51,9 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.ProviderID != "synthetic" || record.ModelID != "model" || record.VariantID != "variant" {
 		t.Fatalf("expected model fields to be preserved: %+v", record)
+	}
+	if record.TriggerName != "nightly-docs" || record.TriggerType != store.TriggerTypeCron {
+		t.Fatalf("expected trigger attribution to be preserved: %+v", record)
 	}
 }
 

@@ -67,18 +67,20 @@ type RecordArtifactParams struct {
 
 // ReviewTrigger is the resolved data from a single trigger.
 type ReviewTrigger struct {
-	Name       string
-	Prompt     string
-	AgentImage string
-	Agent      string
-	ProviderID string
-	ModelID    string
-	VariantID  string
-	TimeoutSec int
-	GitURL     string
-	GitRef     string
-	Skills     []string
-	Event      string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
+	TeamID      string
+	Name        string
+	TriggerType string
+	Prompt      string
+	AgentImage  string
+	Agent       string
+	ProviderID  string
+	ModelID     string
+	VariantID   string
+	TimeoutSec  int
+	GitURL      string
+	GitRef      string
+	Skills      []string
+	Event       string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
@@ -95,6 +97,9 @@ type SessionResumer interface {
 
 // ReviewContext is the data passed to TaskSubmitter for a single review.
 type ReviewContext struct {
+	TeamID        string
+	TriggerName   string
+	TriggerType   string
 	Trigger       string // "label", "fork", "file-pattern", "comment"
 	Repo          string // e.g., "chetter/chetter"
 	PRNumber      int
@@ -412,6 +417,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 				ev.Comment.User.Login, ev.Comment.Body)
 		}
 		req := SubmitTaskRequest{
+			TeamID:      t.TeamID,
 			Prompt:      prompt,
 			GitURL:      t.GitURL,
 			GitRef:      t.GitRef,
@@ -423,7 +429,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			Skills:      t.Skills,
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
-			TriggerType: "issue",
+			TriggerType: t.TriggerType,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
@@ -530,6 +536,9 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		if len(t.Skills) > 0 {
 			rc.Skills = t.Skills
 		}
+		rc.TeamID = t.TeamID
+		rc.TriggerName = t.Name
+		rc.TriggerType = t.TriggerType
 		rc.Agent = t.Agent
 		rc.ProviderID = t.ProviderID
 		rc.ModelID = t.ModelID
@@ -621,6 +630,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
 		}
 		req := SubmitTaskRequest{
+			TeamID:      t.TeamID,
 			Prompt:      prompt,
 			GitURL:      t.GitURL,
 			GitRef:      t.GitRef,
@@ -632,7 +642,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			Skills:      t.Skills,
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
-			TriggerType: "issue",
+			TriggerType: t.TriggerType,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
