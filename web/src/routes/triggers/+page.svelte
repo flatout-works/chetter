@@ -1,12 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
-  import type { Trigger } from "$gen/proto/api/v1/api_pb";
+  import type { ScheduleRun, Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
 
   let triggers = $state<Trigger[]>([]);
+  let scheduleRuns = $state<ScheduleRun[]>([]);
+  let selectedRunTrigger = $state<string | null>(null);
   let loading = $state(true);
+  let loadingRuns = $state(false);
   let showCreateForm = $state(false);
   let creating = $state(false);
   let actionError = $state<string | null>(null);
@@ -52,9 +56,26 @@
     try {
       const client = createClient(TriggerService, getTransport());
       await client.runTrigger({ name });
+      if (selectedRunTrigger === name) await loadScheduleRuns(name);
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to run trigger.";
       console.error(e);
+    }
+  }
+
+  async function loadScheduleRuns(name: string) {
+    selectedRunTrigger = name;
+    loadingRuns = true;
+    actionError = null;
+    try {
+      const client = createClient(TriggerService, getTransport());
+      const resp = await client.listScheduleRuns({ scheduleName: name, limit: 25 });
+      scheduleRuns = resp.runs ?? [];
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
+      console.error(e);
+    } finally {
+      loadingRuns = false;
     }
   }
 
@@ -127,6 +148,15 @@
       return JSON.parse(trigger.triggerConfig || "{}").repo || "—";
     } catch {
       return "—";
+    }
+  }
+
+  function formatTime(ts: string): string {
+    if (!ts) return "—";
+    try {
+      return new Date(ts).toLocaleString();
+    } catch {
+      return ts;
     }
   }
 </script>
@@ -216,6 +246,7 @@
               <td class="px-4 py-3 text-right">
                 <div class="flex justify-end gap-2">
                   <button onclick={() => runNow(trigger.name)} class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">Run</button>
+                  <button onclick={() => loadScheduleRuns(trigger.name)} class="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded">Runs</button>
                   <button onclick={() => deleteTrigger(trigger.name)} class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Delete</button>
                 </div>
               </td>
@@ -228,5 +259,48 @@
         </tbody>
       </table>
     </div>
+
+    {#if selectedRunTrigger}
+      <div class="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 class="font-semibold text-gray-900 dark:text-white">Recent Runs: {selectedRunTrigger}</h2>
+          <button onclick={() => { selectedRunTrigger = null; scheduleRuns = []; }} class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Close</button>
+        </div>
+        {#if loadingRuns}
+          <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">Loading runs…</p>
+        {:else}
+          <table class="w-full">
+            <thead class="bg-gray-50 dark:bg-gray-700/50">
+              <tr>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Run ID</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Task</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scheduled For</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Created</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+              {#each scheduleRuns as run (run.id)}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{run.id.slice(0, 20)}…</td>
+                  <td class="px-4 py-3">
+                    <a href={resolve("/tasks/[id]", { id: run.taskId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
+                      {run.taskId.slice(0, 20)}…
+                    </a>
+                  </td>
+                  <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{run.status}</td>
+                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatTime(run.scheduledFor)}</td>
+                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="5" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No runs found</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
