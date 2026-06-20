@@ -90,3 +90,17 @@ func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
 		t.Fatalf("expected skills and schedule timestamps to be preserved: %+v", record)
 	}
 }
+
+func TestExpandChetterPromptVars(t *testing.T) {
+	t.Parallel()
+	prompt := "Task $CHETTER_TASK_ID by ${CHETTER_AGENT_NAME} on $CHETTER_RUNNER_IMAGE ($CHETTER_RUNNER_IMAGE_DIGEST); keep $ISSUE_NUMBER"
+	got := expandChetterPromptVars(prompt, map[string]string{
+		"CHETTER_AGENT_NAME":   "issue-writer",
+		"CHETTER_TASK_ID":      "task_123",
+		"CHETTER_RUNNER_IMAGE": "runner:latest",
+	})
+	want := "Task task_123 by issue-writer on runner:latest (unknown); keep $ISSUE_NUMBER"
+	if got != want {
+		t.Fatalf("expandChetterPromptVars() = %q, want %q", got, want)
+	}
+}

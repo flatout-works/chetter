@@ -718,6 +718,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"-e", "XDG_CACHE_HOME=/workspace/.cache",
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
 		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
+		"-e", "CHETTER_TASK_ID="+req.TaskID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -1383,6 +1384,7 @@ func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, r
 
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = session.WorkspaceDir
+	cmd.Env = r.agentEnv(req, session.WorkspaceDir, socketPath, "", h)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

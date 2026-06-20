@@ -231,6 +231,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
 	}
+	in.Prompt = expandChetterPromptVars(in.Prompt, map[string]string{
+		"CHETTER_AGENT_NAME":          in.Agent,
+		"CHETTER_MODEL_ID":            in.ModelID,
+		"CHETTER_TASK_ID":             taskID,
+		"CHETTER_RUNNER_IMAGE":        in.AgentImage,
+		"CHETTER_RUNNER_IMAGE_DIGEST": "unknown",
+	})
 	sessionID, err := randomID("sess")
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate session id: %w", err)
@@ -544,6 +551,24 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		StartedAt:         startedAt,
 		EndedAt:           endedAt,
 	}
+}
+
+func expandChetterPromptVars(prompt string, values map[string]string) string {
+	for _, key := range []string{
+		"CHETTER_RUNNER_IMAGE_DIGEST",
+		"CHETTER_RUNNER_IMAGE",
+		"CHETTER_AGENT_NAME",
+		"CHETTER_MODEL_ID",
+		"CHETTER_TASK_ID",
+	} {
+		value := values[key]
+		if value == "" {
+			value = "unknown"
+		}
+		prompt = strings.ReplaceAll(prompt, "${"+key+"}", value)
+		prompt = strings.ReplaceAll(prompt, "$"+key, value)
+	}
+	return prompt
 }
 
 func nonEmptyStrings(values []string) []string {
