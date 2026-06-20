@@ -5,6 +5,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: unless-stopped
+    dns: 1.1.1.1
     environment:
       HTTP_ADDR: "${HTTP_ADDR:-:8080}"
       WEB_ADDR: "${WEB_ADDR:-:8090}"
