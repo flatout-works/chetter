@@ -16,7 +16,9 @@ A Chetter runner can clone a repository, start an OpenCode agent, execute a prom
 
 ## Why TiDB
 
-Chetter uses [TiDB](https://www.pingcap.com/tidb/) as its sole database. TiDB speaks the MySQL wire protocol, so it works with Go's standard MySQL driver, but adds capabilities Chetter's roadmap depends on: vector search for semantic task/event retrieval, HTAP (Hybrid Transactional/Analytical Processing) via TiFlash for fleet analytics and dashboards, and TiDB Cloud Serverless for zero-ops managed deployments. One database, one protocol, room to grow.
+Chetter uses [TiDB](https://www.pingcap.com/tidb/) as its sole database. TiDB speaks the MySQL wire protocol, so it works with Go's standard MySQL driver, but adds capabilities Chetter's roadmap depends on: vector search for semantic task/event retrieval, HTAP (Hybrid Transactional/Analytical Processing) via TiFlash for fleet analytics and dashboards, and TiDB Cloud (Starter/Essential) for zero-ops managed deployments. One database, one protocol, room to grow.
+
+> **Local vs. real TiDB.** The bundled database in `deploy/compose.local.yaml` runs TiDB's single-container `unistore` *test* engine — convenient for local dev (it serves Chetter's plain MySQL-protocol workload), but it has no TiFlash, so **vector search and HTAP do not run on it**. To develop or validate those roadmap features — and to run in production — connect to a real TiDB via `DATABASE_DSN`. [TiDB Cloud Starter or Essential](https://www.pingcap.com/tidb-cloud/) give you a fully managed cluster with TiFlash and vector search built in, zero ops.
 
 ## Quick Start
 
@@ -42,11 +44,19 @@ Edit `.env` and set at least:
 
 Always set `CHETTER_MCP_AUTH_TOKEN` to a long, random value; the server refuses to start without it.
 
-### 3. Start
+### 3. Build and start
+
+Images are built locally (publishing to a registry is deferred until proper
+releases), so build them first, then start the stack:
 
 ```bash
+./deploy/build.sh
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 ```
+
+`deploy/build.sh` builds the MCP, runner-base, and runner images in order (the
+runner is `FROM chetter-runner-base`, so the base must exist first — a plain
+`docker compose up` cannot build it because the base build is profile-gated).
 
 This starts:
 
@@ -150,10 +160,12 @@ Call the `chetter_submit_task` MCP tool from your AI client, or use `/chetter-su
 {
   "prompt": "Add input validation to all API handlers and run the tests.",
   "git_url": "https://github.com/my-org/my-repo",
-  "git_ref": "main",
-  "agent_image": "ghcr.io/flatout-works/chetter-runner:main"
+  "git_ref": "main"
 }
 ```
+
+`agent_image` defaults to the locally built `chetter-runner:latest` (the
+server's `DEFAULT_AGENT_IMAGE`); only set it to use a different runner image.
 
 Set `GITHUB_TOKEN` in `.env` if runners need access to private repositories or need to create branches and pull requests.
 

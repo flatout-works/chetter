@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
@@ -141,6 +142,7 @@ func Open(dsn string) (*Store, error) {
 	if err := registerTiDBTLS(normalized); err != nil {
 		return nil, err
 	}
+	ensureDatabaseExists(normalized)
 	db, err := sql.Open("mysql", normalized)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -150,6 +152,52 @@ func Open(dsn string) (*Store, error) {
 	db.SetConnMaxLifetime(connMaxLifetime)
 	db.SetConnMaxIdleTime(connMaxIdleTime)
 	return &Store{db: db}, nil
+}
+
+// ensureDatabaseExists best-effort creates the database named in the DSN if it
+// does not already exist. The server applies its schema (tables) on boot via
+// ApplySchema but does not own the database itself, so a fresh TiDB — whether a
+// local container or a new TiDB Cloud Serverless cluster — otherwise crash-loops
+// on "Unknown database". This is best-effort on purpose: a failure here is not
+// fatal, because the operator may have pre-created the database, or the account
+// may lack CREATE privileges, in which case the main connection below surfaces a
+// clear error of its own.
+func ensureDatabaseExists(normalizedDSN string) {
+	cfg, err := mysql.ParseDSN(normalizedDSN)
+	if err != nil || cfg.DBName == "" || !validDatabaseName(cfg.DBName) {
+		return
+	}
+	dbName := cfg.DBName
+	cfg.DBName = "" // connect without selecting a schema so we can create it
+	adminDB, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		return
+	}
+	defer adminDB.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// dbName is validated above and quoted with backticks; it cannot be a bind
+	// parameter because it is a schema identifier.
+	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS `"+dbName+"`"); err != nil {
+		slog.Warn("could not ensure database exists; assuming it is pre-created",
+			"database", dbName, "error", err)
+	}
+}
+
+// validDatabaseName reports whether name is a safe schema identifier to splice
+// into a CREATE DATABASE statement (letters, digits, underscore, dash).
+func validDatabaseName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Close closes the database pool.

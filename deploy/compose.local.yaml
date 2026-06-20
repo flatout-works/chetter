@@ -2,19 +2,26 @@ services:
   tidb:
     image: pingcap/tidb:v8.5.1
     restart: unless-stopped
-    command: --store=tikv --path=127.0.0.1:2379
-    healthcheck:
-      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 4000 -u root -e 'SELECT 1'"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+    # Single-node, self-contained TiDB for LOCAL/DEV ONLY.
+    # `unistore` is TiDB's in-process test/mock storage engine: one container, no
+    # PD/TiKV/Raft and no TiFlash -- so no HA, no HTAP, and no vector search. It is
+    # a good zero-config dev DB because chetter uses only MySQL-protocol features
+    # today, but it is NOT production-representative. For production -- and to
+    # develop or validate vector/HTAP features -- connect to a real TiDB via
+    # DATABASE_DSN; TiDB Cloud Starter or Essential give you a managed cluster with
+    # TiFlash and vector search built in.
+    # (The previous `--store=tikv --path=127.0.0.1:2379` needed a full PD+TiKV
+    # cluster and could never start standalone.)
+    command: --store=unistore --path=/var/lib/tidb
     volumes:
       - tidb-data:/var/lib/tidb
 
   chetter-mcp:
+    # Start after TiDB. There is no readiness gate here because the pingcap/tidb
+    # image ships no mysql client for a healthcheck; chetter-mcp instead retries
+    # the connection on its own restart loop until TiDB accepts connections.
     depends_on:
-      tidb:
-        condition: service_healthy
+      - tidb
     environment:
       DATABASE_DSN: ${DATABASE_DSN:-root@tcp(tidb:4000)/chetter?parseTime=true}
 
