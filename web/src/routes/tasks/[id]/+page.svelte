@@ -72,6 +72,10 @@
       const client = createClient(TaskService, getTransport());
       const resp = await client.cancelTask({ taskId: params.id, reason: "cancelled via web UI" });
       task = resp.task ?? null;
+      if (unsub) {
+        unsub();
+        unsub = null;
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to cancel task";
     }
@@ -188,7 +192,7 @@
       <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Progress Timeline</h2>
         <div class="space-y-2">
-          {#each progress as entry}
+          {#each progress as entry (`${entry.time}:${entry.status}:${entry.summary}`)}
             <div class="flex gap-3 text-sm">
               <span class="text-gray-400 dark:text-gray-500 font-mono text-xs whitespace-nowrap pt-0.5">
                 {formatTime(entry.time)}
@@ -218,9 +222,9 @@
                 {art.artifactType}
               </span>
               {#if art.url}
-                <a href={art.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">
+                <button onclick={() => window.open(art.url, "_blank", "noopener,noreferrer")} class="text-blue-600 dark:text-blue-400 hover:underline">
                   {art.repo}#{art.number}
-                </a>
+                </button>
               {:else}
                 <span class="text-gray-700 dark:text-gray-300">{art.repo}#{art.number}</span>
               {/if}

@@ -586,7 +586,10 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 		in.ID = id
 	}
 	if in.AgentImage == "" {
-		return store.ScheduleRecord{}, fmt.Errorf("agent_image is required")
+		if s.cfg.DefaultAgentImage == "" {
+			return store.ScheduleRecord{}, fmt.Errorf("agent_image is required (no default configured)")
+		}
+		in.AgentImage = s.cfg.DefaultAgentImage
 	}
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec

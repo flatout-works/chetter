@@ -13,6 +13,7 @@
   let prompt = $state("");
   let gitUrl = $state("");
   let gitRef = $state("");
+  let agentImage = $state("");
   let agent = $state("");
   let modelId = $state("");
 
@@ -42,12 +43,14 @@
         prompt: prompt.trim(),
         gitUrl: gitUrl.trim(),
         gitRef: gitRef.trim(),
+        agentImage: agentImage.trim(),
         agent: agent.trim(),
         modelId: modelId.trim(),
       });
       prompt = "";
       gitUrl = "";
       gitRef = "";
+      agentImage = "";
       agent = "";
       modelId = "";
       showSubmitForm = false;
@@ -104,6 +107,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <input bind:value={gitUrl} placeholder="Git URL (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
         <input bind:value={gitRef} placeholder="Git ref (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
+        <input bind:value={agentImage} placeholder="Agent image override (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
         <input bind:value={agent} placeholder="Agent (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
         <input bind:value={modelId} placeholder="Model ID (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
       </div>
