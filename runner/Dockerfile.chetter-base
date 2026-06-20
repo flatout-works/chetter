@@ -100,7 +100,8 @@ RUN go version
 COPY --from=binary-downloader /usr/local/bin/buf /usr/local/bin/buf
 COPY --from=binary-downloader /usr/local/bin/sqlc /usr/local/bin/sqlc
 COPY --from=binary-downloader /usr/local/bin/osv-scanner /usr/local/bin/osv-scanner
-COPY --from=binary-downloader /usr/local/bin/gh /usr/local/bin/gh
+COPY --from=binary-downloader /usr/local/bin/gh /usr/local/bin/gh-real
+COPY --chmod=0755 runner/scripts/gh /usr/local/bin/gh
 COPY --from=binary-downloader /usr/local/bin/hcloud /usr/local/bin/hcloud
 COPY --from=binary-downloader /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=go-tools-builder /go/bin/goose /usr/local/bin/goose

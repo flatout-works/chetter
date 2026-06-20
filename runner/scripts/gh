@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+if [ "${CHETTER_ALLOW_GH_WRITES:-}" = "1" ]; then
+  exec /usr/local/bin/gh-real "$@"
+fi
+
+cmd="${1:-} ${2:-}"
+case "$cmd" in
+  "issue create"|"issue comment"|"pr create"|"pr review"|"pr comment")
+    cat >&2 <<'EOF'
+Chetter-managed GitHub writes must use MCP tools so signatures, audit logs,
+and artifact records are correct:
+
+- use chetter_create_issue instead of gh issue create
+- use chetter_issue_comment instead of gh issue comment or gh pr comment
+- use chetter_create_pr instead of gh pr create
+- use chetter_pr_review instead of gh pr review
+
+Read-only gh commands are still allowed. Set CHETTER_ALLOW_GH_WRITES=1 only for
+manual debugging outside Chetter-managed tasks.
+EOF
+    exit 64
+    ;;
+esac
+
+exec /usr/local/bin/gh-real "$@"
