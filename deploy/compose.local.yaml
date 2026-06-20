@@ -2,19 +2,19 @@ services:
   tidb:
     image: pingcap/tidb:v8.5.1
     restart: unless-stopped
-    command: --store=tikv --path=127.0.0.1:2379
-    healthcheck:
-      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 4000 -u root -e 'SELECT 1'"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+    # Single-node, self-contained TiDB for local/dev use. `unistore` is TiDB's
+    # built-in storage engine, so no separate PD/TiKV is required. (`--store=tikv`
+    # would need a full PD + TiKV cluster and cannot start standalone.)
+    command: --store=unistore --path=/var/lib/tidb
     volumes:
       - tidb-data:/var/lib/tidb
 
   chetter-mcp:
+    # Start after TiDB. There is no readiness gate here because the pingcap/tidb
+    # image ships no mysql client for a healthcheck; chetter-mcp instead retries
+    # the connection on its own restart loop until TiDB accepts connections.
     depends_on:
-      tidb:
-        condition: service_healthy
+      - tidb
     environment:
       DATABASE_DSN: ${DATABASE_DSN:-root@tcp(tidb:4000)/chetter?parseTime=true}
 
