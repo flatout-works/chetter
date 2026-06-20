@@ -1,15 +1,21 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
+
+	"connectrpc.com/connect"
+	apiv1 "github.com/flatout-works/chetter/gen/proto/api/v1"
+	"github.com/flatout-works/chetter/gen/proto/api/v1/apiv1connect"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
+
+const defaultServerURL = "http://localhost:8090"
 
 func main() {
 	if err := run(); err != nil {
@@ -19,7 +25,7 @@ func main() {
 }
 
 func run() error {
-	serverURL := os.Getenv("CHETTER_SERVER_URL")
+	serverURL := env("CHETTER_SERVER_URL", defaultServerURL)
 	token := os.Getenv("CHETTER_TOKEN")
 
 	if len(os.Args) < 2 {
@@ -66,16 +72,16 @@ func tokenCmd(args []string, serverURL, token string) error {
 		if *team == "" || *user == "" || *tokenName == "" {
 			return fmt.Errorf("--team, --user, and --name are required")
 		}
-		body, _ := json.Marshal(map[string]string{
-			"team_name":  *team,
-			"user_name":  *user,
-			"token_name": *tokenName,
-		})
-		resp, err := apiPost(*server, *tok, "/api/v1/tokens", body)
+		client := newAdminClient(*server, *tok)
+		resp, err := client.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
+			TeamName:  *team,
+			UserName:  *user,
+			TokenName: *tokenName,
+		}))
 		if err != nil {
 			return err
 		}
-		printJSON(resp)
+		printProtoJSON(resp.Msg)
 		fmt.Println()
 		fmt.Println("Save this token. It will not be shown again.")
 		fmt.Println()
@@ -97,11 +103,12 @@ func tokenCmd(args []string, serverURL, token string) error {
 		if *tok == "" {
 			return fmt.Errorf("--token or CHETTER_TOKEN is required")
 		}
-		resp, err := apiGet(*server, *tok, "/api/v1/tokens")
+		client := newAdminClient(*server, *tok)
+		resp, err := client.ListTokens(context.Background(), connect.NewRequest(&apiv1.ListTokensRequest{}))
 		if err != nil {
 			return err
 		}
-		printJSON(resp)
+		printProtoJSON(resp.Msg)
 
 	case "delete":
 		name := fs.String("name", "", "Token name to delete")
@@ -115,11 +122,12 @@ func tokenCmd(args []string, serverURL, token string) error {
 		if *name == "" {
 			return fmt.Errorf("--name is required")
 		}
-		resp, err := apiDelete(*server, *tok, "/api/v1/tokens/"+*name)
+		client := newAdminClient(*server, *tok)
+		resp, err := client.DeleteToken(context.Background(), connect.NewRequest(&apiv1.DeleteTokenRequest{Name: *name}))
 		if err != nil {
 			return err
 		}
-		printJSON(resp)
+		printProtoJSON(resp.Msg)
 
 	default:
 		printTokenUsage()
@@ -127,72 +135,41 @@ func tokenCmd(args []string, serverURL, token string) error {
 	return nil
 }
 
-func apiGet(serverURL, token, path string) ([]byte, error) {
-	url := strings.TrimRight(serverURL, "/") + path
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
-	}
-	return body, nil
+func newAdminClient(serverURL, token string) apiv1connect.AdminServiceClient {
+	return apiv1connect.NewAdminServiceClient(
+		&authHTTPClient{token: token, next: http.DefaultClient},
+		strings.TrimRight(serverURL, "/"),
+	)
 }
 
-func apiPost(serverURL, token, path string, body []byte) ([]byte, error) {
-	url := strings.TrimRight(serverURL, "/") + path
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
-	}
-	return respBody, nil
+type authHTTPClient struct {
+	token string
+	next  *http.Client
 }
 
-func apiDelete(serverURL, token, path string) ([]byte, error) {
-	url := strings.TrimRight(serverURL, "/") + path
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
-	}
-	return body, nil
+func (c *authHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	return c.next.Do(req)
 }
 
-func printJSON(data []byte) {
-	var v any
-	if err := json.Unmarshal(data, &v); err != nil {
-		fmt.Println(string(data))
+func printProtoJSON(msg proto.Message) {
+	out, err := protojson.MarshalOptions{
+		Multiline:     true,
+		Indent:        "  ",
+		UseProtoNames: true,
+	}.Marshal(msg)
+	if err != nil {
+		fmt.Println(msg)
 		return
 	}
-	out, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(string(out))
+}
+
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func printUsage() {
@@ -204,7 +181,7 @@ Usage:
   chetterctl token delete --name <name>
 
 Environment:
-  CHETTER_SERVER_URL   Server URL (default: http://localhost:8080)
+  CHETTER_SERVER_URL   Server URL (default: http://localhost:8090)
   CHETTER_TOKEN        Admin API token
 
 Flags can also be set via env vars.`)

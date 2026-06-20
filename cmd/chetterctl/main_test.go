@@ -1,51 +1,85 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"connectrpc.com/connect"
+	apiv1 "github.com/flatout-works/chetter/gen/proto/api/v1"
+	"github.com/flatout-works/chetter/gen/proto/api/v1/apiv1connect"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	mux := http.NewServeMux()
+	mux.Handle(apiv1connect.NewAdminServiceHandler(&testAdminService{t: t}))
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		switch {
-		case r.Method == "POST" && r.URL.Path == "/api/v1/tokens":
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, "bad request", http.StatusBadRequest)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{
-				"token": "new-token-value",
-				"name":  body["token_name"],
-			})
-
-		case r.Method == "GET" && r.URL.Path == "/api/v1/tokens":
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]string{
-				{"name": "token-1", "user_name": "alice", "team_name": "platform"},
-			})
-
-		case r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/api/v1/tokens/"):
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
-
-		case r.URL.Path == "/api/v1/tokens/error":
-			http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
-
-		default:
-			http.Error(w, "not found", http.StatusNotFound)
-		}
+		mux.ServeHTTP(w, r)
 	}))
+}
+
+type testAdminService struct {
+	t *testing.T
+}
+
+func (s *testAdminService) CreateToken(_ context.Context, req *connect.Request[apiv1.CreateTokenRequest]) (*connect.Response[apiv1.CreateTokenResponse], error) {
+	if req.Msg.TeamName != "platform" || req.Msg.UserName != "alice" || req.Msg.TokenName != "alice-cli" {
+		s.t.Fatalf("CreateToken request = %+v", req.Msg)
+	}
+	return connect.NewResponse(&apiv1.CreateTokenResponse{
+		Token:    "new-token-value",
+		TeamName: req.Msg.TeamName,
+		UserName: req.Msg.UserName,
+	}), nil
+}
+
+func (s *testAdminService) ListTokens(context.Context, *connect.Request[apiv1.ListTokensRequest]) (*connect.Response[apiv1.ListTokensResponse], error) {
+	return connect.NewResponse(&apiv1.ListTokensResponse{Tokens: []*apiv1.TokenInfo{{
+		Name:     "token-1",
+		UserName: "alice",
+		TeamName: "platform",
+	}}}), nil
+}
+
+func (s *testAdminService) DeleteToken(_ context.Context, req *connect.Request[apiv1.DeleteTokenRequest]) (*connect.Response[apiv1.DeleteTokenResponse], error) {
+	if req.Msg.Name == "error" {
+		return nil, connect.NewError(connect.CodeInternal, nil)
+	}
+	if req.Msg.Name != "token-1" {
+		s.t.Fatalf("DeleteToken name = %q", req.Msg.Name)
+	}
+	return connect.NewResponse(&apiv1.DeleteTokenResponse{Deleted: true}), nil
+}
+
+func (s *testAdminService) CreateTeam(context.Context, *connect.Request[apiv1.CreateTeamRequest]) (*connect.Response[apiv1.CreateTeamResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) ListTeams(context.Context, *connect.Request[apiv1.ListTeamsRequest]) (*connect.Response[apiv1.ListTeamsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) DeleteTeam(context.Context, *connect.Request[apiv1.DeleteTeamRequest]) (*connect.Response[apiv1.DeleteTeamResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) ListUsers(context.Context, *connect.Request[apiv1.ListUsersRequest]) (*connect.Response[apiv1.ListUsersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) ListAuditEvents(context.Context, *connect.Request[apiv1.ListAuditEventsRequest]) (*connect.Response[apiv1.ListAuditEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) ListTaskArtifacts(context.Context, *connect.Request[apiv1.ListTaskArtifactsRequest]) (*connect.Response[apiv1.ListTaskArtifactsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
 func TestTokenCreate(t *testing.T) {
@@ -105,7 +139,7 @@ func TestTokenCreateMissingRequiredFlags(t *testing.T) {
 }
 
 func TestTokenCmdMissingServer(t *testing.T) {
-	err := tokenCmd([]string{"create", "--token", "t", "--team", "a", "--user", "b", "--name", "c"}, "", "t")
+	err := tokenCmd([]string{"create", "--server", "", "--token", "t", "--team", "a", "--user", "b", "--name", "c"}, "", "t")
 	if err == nil {
 		t.Fatal("expected error for empty server, got nil")
 	}
@@ -137,80 +171,43 @@ func TestTokenCmdDefaultsFromEnv(t *testing.T) {
 	}
 }
 
-func TestApiGet(t *testing.T) {
+func TestTokenDeleteServerError(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	body, err := apiGet(srv.URL, "test-token", "/api/v1/tokens")
-	if err != nil {
-		t.Fatalf("apiGet: %v", err)
-	}
-	if !strings.Contains(string(body), "token-1") {
-		t.Errorf("response = %s, want token-1", string(body))
-	}
-}
-
-func TestApiPost(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-
-	reqBody, _ := json.Marshal(map[string]string{"token_name": "cli"})
-	body, err := apiPost(srv.URL, "test-token", "/api/v1/tokens", reqBody)
-	if err != nil {
-		t.Fatalf("apiPost: %v", err)
-	}
-	if !strings.Contains(string(body), "new-token-value") {
-		t.Errorf("response = %s, want new-token-value", string(body))
-	}
-}
-
-func TestApiDelete(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-
-	body, err := apiDelete(srv.URL, "test-token", "/api/v1/tokens/token-1")
-	if err != nil {
-		t.Fatalf("apiDelete: %v", err)
-	}
-	if !strings.Contains(string(body), "deleted") {
-		t.Errorf("response = %s, want deleted", string(body))
-	}
-}
-
-func TestApiGetServerError(t *testing.T) {
-	srv := newTestServer(t)
-	defer srv.Close()
-
-	_, err := apiGet(srv.URL, "test-token", "/api/v1/tokens/error")
+	err := tokenCmd([]string{
+		"delete",
+		"--server", srv.URL,
+		"--token", "test-token",
+		"--name", "error",
+	}, "", "")
 	if err == nil {
-		t.Fatal("expected error for 500, got nil")
+		t.Fatal("expected error for internal response, got nil")
 	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("error = %v, want 500", err)
+	if !strings.Contains(err.Error(), "internal") {
+		t.Errorf("error = %v, want internal", err)
 	}
 }
 
-func TestApiPostUnauthorized(t *testing.T) {
+func TestTokenCmdUnauthorized(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
 
-	_, err := apiPost(srv.URL, "bad-token", "/api/v1/tokens", nil)
+	err := tokenCmd([]string{
+		"list",
+		"--server", srv.URL,
+		"--token", "bad-token",
+	}, "", "")
 	if err == nil {
 		t.Fatal("expected error for 401, got nil")
 	}
-	if !strings.Contains(err.Error(), "401") {
-		t.Errorf("error = %v, want 401", err)
+	if !strings.Contains(err.Error(), "unauthenticated") && !strings.Contains(err.Error(), "401") {
+		t.Errorf("error = %v, want unauthenticated or 401", err)
 	}
 }
 
-func TestPrintJSONValid(t *testing.T) {
-	data := []byte(`{"a":1,"b":2}`)
-	printJSON(data)
-}
-
-func TestPrintJSONInvalid(t *testing.T) {
-	data := []byte(`not-json`)
-	printJSON(data)
+func TestPrintProtoJSON(t *testing.T) {
+	printProtoJSON(&apiv1.DeleteTokenResponse{Deleted: true})
 }
 
 func TestTokenCmdUnknownSubcommand(t *testing.T) {
