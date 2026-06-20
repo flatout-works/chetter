@@ -18,6 +18,8 @@ A Chetter runner can clone a repository, start an OpenCode agent, execute a prom
 
 Chetter uses [TiDB](https://www.pingcap.com/tidb/) as its sole database. TiDB speaks the MySQL wire protocol, so it works with Go's standard MySQL driver, but adds capabilities Chetter's roadmap depends on: vector search for semantic task/event retrieval, HTAP (Hybrid Transactional/Analytical Processing) via TiFlash for fleet analytics and dashboards, and TiDB Cloud Serverless for zero-ops managed deployments. One database, one protocol, room to grow.
 
+> **Local vs. real TiDB.** The bundled database in `deploy/compose.local.yaml` runs TiDB's single-container `unistore` *test* engine — convenient for local dev (it serves Chetter's plain MySQL-protocol workload), but it has no TiFlash, so **vector search and HTAP do not run on it**. Develop and validate those roadmap features against a real TiDB — [`tiup playground`](https://docs.pingcap.com/tidb/stable/tiup-playground/) locally, or [TiDB Cloud Serverless](https://www.pingcap.com/tidb-cloud-serverless/) — and run production against an external TiDB via `DATABASE_DSN`.
+
 ## Quick Start
 
 These steps are intended for a fresh Linux cloud machine with Docker installed.
