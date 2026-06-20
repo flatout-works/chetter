@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@import "flowbite/src/themes/default.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --default-font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--default-font-family);
+}

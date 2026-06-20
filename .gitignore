@@ -1,6 +1,8 @@
 # Build artifacts
 bin/
 /chetter
+web/.svelte-kit/
+web/build/
 runner/runner
 runner/mcp-bridge
 coverage.out
@@ -20,3 +22,6 @@ coverage.out
 
 # Go workspace
 vendor/
+
+# JS dependencies
+web/node_modules/

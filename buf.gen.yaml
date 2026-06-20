@@ -18,8 +18,3 @@ plugins:
     opt:
       - target=ts
       - import_extension=js
-  - remote: buf.build/connectrpc/es
-    out: web/src/gen
-    opt:
-      - target=ts
-      - import_extension=js
