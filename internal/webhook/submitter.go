@@ -21,6 +21,7 @@ type TaskSubmitterService interface {
 // it here to avoid importing the service package. The service adapter in
 // main.go converts from service.SubmitTaskRequest to this type.
 type SubmitTaskRequest struct {
+	TeamID      string
 	Prompt      string
 	GitURL      string
 	GitRef      string
@@ -88,17 +89,20 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	}
 
 	return SubmitTaskRequest{
-		Prompt:     prompt,
-		GitURL:     review.HeadCloneURL,
-		GitRef:     review.HeadRef,
-		AgentImage: agentImage,
-		Agent:      review.Agent,
-		ProviderID: review.ProviderID,
-		ModelID:    review.ModelID,
-		VariantID:  review.VariantID,
-		Skills:     review.Skills,
-		Env:        env,
-		TimeoutSec: review.TimeoutSec,
+		TeamID:      review.TeamID,
+		Prompt:      prompt,
+		GitURL:      review.HeadCloneURL,
+		GitRef:      review.HeadRef,
+		AgentImage:  agentImage,
+		Agent:       review.Agent,
+		ProviderID:  review.ProviderID,
+		ModelID:     review.ModelID,
+		VariantID:   review.VariantID,
+		Skills:      review.Skills,
+		Env:         env,
+		TimeoutSec:  review.TimeoutSec,
+		TriggerName: review.TriggerName,
+		TriggerType: review.TriggerType,
 	}
 }
 

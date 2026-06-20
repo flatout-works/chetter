@@ -275,6 +275,7 @@ type serviceSubmitterAdapter struct {
 // format and calls service.SubmitTask. The TaskRecord return value is ignored.
 func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.SubmitTaskRequest) (any, error) {
 	return a.svc.SubmitTask(ctx, service.SubmitTaskRequest{
+		TeamID:      req.TeamID,
 		Prompt:      req.Prompt,
 		GitURL:      req.GitURL,
 		GitRef:      req.GitRef,

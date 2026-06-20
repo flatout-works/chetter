@@ -10,6 +10,7 @@ WHERE id = ?;
 -- name: ListTasksByStatus :many
 SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
 ORDER BY created_at DESC
 LIMIT ?;
 
@@ -131,5 +132,6 @@ LIMIT 1;
 SELECT * FROM chetter_tasks
 WHERE team_id = sqlc.arg(team_id)
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
 ORDER BY created_at DESC
 LIMIT ?;

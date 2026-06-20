@@ -24,6 +24,7 @@ import (
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
+	TeamID      string
 	Prompt      string
 	GitURL      string
 	GitRef      string
@@ -264,7 +265,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
-	teamID := teamIDFromContext(ctx)
+	teamID := in.TeamID
+	if teamID == "" {
+		teamID = teamIDFromContext(ctx)
+	}
 	resumeMode := "none"
 	pauseReason := ""
 	var expiresAt sql.NullTime
@@ -549,6 +553,8 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		RunnerImageDigest: task.RunnerImageDigest.String,
 		CommitAuthorName:  task.CommitAuthorName.String,
 		CommitAuthorEmail: task.CommitAuthorEmail.String,
+		TriggerName:       task.TriggerName.String,
+		TriggerType:       task.TriggerType.String,
 		Skills:            skills,
 		Env:               env,
 		TimeoutSec:        int(task.TimeoutSec),
@@ -824,6 +830,8 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	_ = json.Unmarshal(sch.Skills, &targetSkills)
 	return s.submitScheduleTask(ctx,
 		sch.ID,
+		sch.Name,
+		sch.TriggerType,
 		sch.TeamID.String,
 		sch.Prompt,
 		sch.GitUrl.String,
@@ -890,25 +898,28 @@ func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledF
 	}
 	var skills []string
 	_ = json.Unmarshal(schedule.Skills, &skills)
-	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
+	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.Name, schedule.TriggerType, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
 		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
 		schedule.Harness.String, skills, int(schedule.TimeoutSec), scheduledFor)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     prompt,
-		GitURL:     gitURL,
-		GitRef:     gitRef,
-		AgentImage: agentImage,
-		Agent:      agent,
-		ProviderID: providerID,
-		ModelID:    modelID,
-		VariantID:  variantID,
-		Harness:    harness,
-		Skills:     skills,
-		TimeoutSec: timeoutSec,
+		TeamID:      teamID,
+		Prompt:      prompt,
+		GitURL:      gitURL,
+		GitRef:      gitRef,
+		AgentImage:  agentImage,
+		Agent:       agent,
+		ProviderID:  providerID,
+		ModelID:     modelID,
+		VariantID:   variantID,
+		Harness:     harness,
+		Skills:      skills,
+		TimeoutSec:  timeoutSec,
+		TriggerName: triggerName,
+		TriggerType: triggerType,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit scheduled task: %w", err)
@@ -965,18 +976,20 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 		_ = json.Unmarshal(t.Skills, &skills)
 		ev := triggerEventFromConfig(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
-			Name:       t.Name,
-			Prompt:     t.Prompt,
-			AgentImage: t.AgentImage.String,
-			Agent:      t.Agent.String,
-			ProviderID: t.ProviderID.String,
-			ModelID:    t.ModelID.String,
-			VariantID:  t.VariantID.String,
-			TimeoutSec: int(t.TimeoutSec),
-			GitURL:     t.GitUrl.String,
-			GitRef:     t.GitRef.String,
-			Skills:     skills,
-			Event:      ev,
+			TeamID:      t.TeamID.String,
+			Name:        t.Name,
+			TriggerType: t.TriggerType,
+			Prompt:      t.Prompt,
+			AgentImage:  t.AgentImage.String,
+			Agent:       t.Agent.String,
+			ProviderID:  t.ProviderID.String,
+			ModelID:     t.ModelID.String,
+			VariantID:   t.VariantID.String,
+			TimeoutSec:  int(t.TimeoutSec),
+			GitURL:      t.GitUrl.String,
+			GitRef:      t.GitRef.String,
+			Skills:      skills,
+			Event:       ev,
 		}
 	}
 	return out, nil
@@ -994,18 +1007,20 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 		_ = json.Unmarshal(t.Skills, &skills)
 		ev := triggerEventFromConfig(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
-			Name:       t.Name,
-			Prompt:     t.Prompt,
-			AgentImage: t.AgentImage.String,
-			Agent:      t.Agent.String,
-			ProviderID: t.ProviderID.String,
-			ModelID:    t.ModelID.String,
-			VariantID:  t.VariantID.String,
-			TimeoutSec: int(t.TimeoutSec),
-			GitURL:     t.GitUrl.String,
-			GitRef:     t.GitRef.String,
-			Skills:     skills,
-			Event:      ev,
+			TeamID:      t.TeamID.String,
+			Name:        t.Name,
+			TriggerType: t.TriggerType,
+			Prompt:      t.Prompt,
+			AgentImage:  t.AgentImage.String,
+			Agent:       t.Agent.String,
+			ProviderID:  t.ProviderID.String,
+			ModelID:     t.ModelID.String,
+			VariantID:   t.VariantID.String,
+			TimeoutSec:  int(t.TimeoutSec),
+			GitURL:      t.GitUrl.String,
+			GitRef:      t.GitRef.String,
+			Skills:      skills,
+			Event:       ev,
 		}
 	}
 	return out, nil
