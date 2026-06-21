@@ -9,6 +9,14 @@ Self-hosted MCP server for running autonomous AI development agents on a fleet o
 - **Manage** — web UI, MCP tools, team tokens, audit log, runner fleet health
 - **Powered by TiDB** — MySQL wire protocol, vector search on the roadmap
 
+## Design Principles
+
+- **Standard harnesses.** Chetter delegates agent execution to existing CLI tools — primarily OpenCode, with growing support for Claude Code and Pi. No custom agent runtime.
+- **Deploy anywhere.** Both the server and runners run on plain Docker or standard Kubernetes. No special infrastructure beyond a TiDB database.
+- **GitHub-native orchestration.** Chetter uses PRs, issues, reviews, and comments to drive agent workflows — the same primitives developers already use.
+- **Plain containers as environments.** The agent runs in a normal Docker container. You define the image with the tools and stack your project needs.
+- **MCP-first, API+UI for observation.** All interaction flows through MCP tools. The ConnectRPC API and web UI exist primarily for monitoring, inspection, and admin.
+
 ## Quick Start
 
 ```bash
