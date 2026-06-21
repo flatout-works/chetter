@@ -148,6 +148,7 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		EndedAt:           formatProtoTime(resp.EndedAt),
 		CheckpointPath:    resp.CheckpointPath,
 		WorkspacePath:     resp.WorkspacePath,
+		ErrorCategory:     resp.ErrorCategory,
 	}
 	report := func(ctx context.Context) error {
 		_, err := r.rpcClient.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{

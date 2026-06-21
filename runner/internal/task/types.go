@@ -51,6 +51,7 @@ type TaskResponse struct {
 	EndedAt           time.Time `json:"ended_at,omitempty"`
 	CheckpointPath    string    `json:"checkpoint_path,omitempty"`
 	WorkspacePath     string    `json:"workspace_path,omitempty"`
+	ErrorCategory     string    `json:"error_category,omitempty"`
 }
 
 // TaskSession represents one running task inside the runner.

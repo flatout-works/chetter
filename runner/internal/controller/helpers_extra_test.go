@@ -5,6 +5,38 @@ import (
 	"time"
 )
 
+func TestClassifyErrorCategory(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  string
+		message string
+		want    string
+	}{
+		{"cancelled status", "cancelled", "user requested", "cancelled"},
+		{"budget exceeded", "error", "Budget limit reached", "budget_exceeded"},
+		{"cost limit", "error", "cost limit exceeded", "budget_exceeded"},
+		{"max budget", "error", "max budget of $10", "budget_exceeded"},
+		{"timeout", "error", "context deadline exceeded", "timeout"},
+		{"deadline exceeded", "error", "deadline exceeded", "timeout"},
+		{"stuck", "error", "stuck in a loop", "stuck"},
+		{"model error", "error", "model returned invalid", "model_error"},
+		{"llm error", "error", "LLM provider error", "model_error"},
+		{"rate limit", "error", "rate limit exceeded", "model_error"},
+		{"provider error", "error", "provider api error", "model_error"},
+		{"api error", "error", "API error 500", "model_error"},
+		{"empty message", "error", "", "unknown"},
+		{"generic error", "error", "something went wrong", "runtime_error"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyErrorCategory(tc.status, tc.message)
+			if got != tc.want {
+				t.Errorf("classifyErrorCategory(%q, %q) = %q, want %q", tc.status, tc.message, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestInjectPATIntoURL(t *testing.T) {
 	tests := []struct {
 		name, url, pat, want string

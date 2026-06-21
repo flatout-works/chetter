@@ -198,8 +198,32 @@ func (r *Runner) finishStatusResponse(resp *task.TaskResponse, status, message s
 	}
 	if status == "error" || status == "cancelled" {
 		resp.Error = message
+		if resp.ErrorCategory == "" {
+			resp.ErrorCategory = classifyErrorCategory(status, message)
+		}
 	} else {
 		resp.Summary = message
+	}
+}
+
+func classifyErrorCategory(status, message string) string {
+	if status == "cancelled" {
+		return "cancelled"
+	}
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "budget"), strings.Contains(lower, "cost limit"), strings.Contains(lower, "max budget"):
+		return "budget_exceeded"
+	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"):
+		return "timeout"
+	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
+		return "stuck"
+	case strings.Contains(lower, "model"), strings.Contains(lower, "llm"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "provider"), strings.Contains(lower, "api error"):
+		return "model_error"
+	case message == "":
+		return "unknown"
+	default:
+		return "runtime_error"
 	}
 }
 
