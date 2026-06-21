@@ -503,6 +503,9 @@ type Task struct {
 	ResumeCheckpointPath   string                 `protobuf:"bytes,17,opt,name=resume_checkpoint_path,json=resumeCheckpointPath,proto3" json:"resume_checkpoint_path,omitempty"`
 	ResumeWorkspacePath    string                 `protobuf:"bytes,18,opt,name=resume_workspace_path,json=resumeWorkspacePath,proto3" json:"resume_workspace_path,omitempty"`
 	Harness                string                 `protobuf:"bytes,19,opt,name=harness,proto3" json:"harness,omitempty"`
+	ProviderName           string                 `protobuf:"bytes,20,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
+	ProviderBaseUrl        string                 `protobuf:"bytes,21,opt,name=provider_base_url,json=providerBaseUrl,proto3" json:"provider_base_url,omitempty"`
+	ProviderApiKeyEnv      string                 `protobuf:"bytes,22,opt,name=provider_api_key_env,json=providerApiKeyEnv,proto3" json:"provider_api_key_env,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -666,6 +669,27 @@ func (x *Task) GetResumeWorkspacePath() string {
 func (x *Task) GetHarness() string {
 	if x != nil {
 		return x.Harness
+	}
+	return ""
+}
+
+func (x *Task) GetProviderName() string {
+	if x != nil {
+		return x.ProviderName
+	}
+	return ""
+}
+
+func (x *Task) GetProviderBaseUrl() string {
+	if x != nil {
+		return x.ProviderBaseUrl
+	}
+	return ""
+}
+
+func (x *Task) GetProviderApiKeyEnv() string {
+	if x != nil {
+		return x.ProviderApiKeyEnv
 	}
 	return ""
 }
@@ -1006,7 +1030,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb5\x05\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb7\x06\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -1030,7 +1054,10 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x18checkpoint_after_success\x18\x10 \x01(\bR\x16checkpointAfterSuccess\x124\n" +
 	"\x16resume_checkpoint_path\x18\x11 \x01(\tR\x14resumeCheckpointPath\x122\n" +
 	"\x15resume_workspace_path\x18\x12 \x01(\tR\x13resumeWorkspacePath\x12\x18\n" +
-	"\aharness\x18\x13 \x01(\tR\aharness\x1a6\n" +
+	"\aharness\x18\x13 \x01(\tR\aharness\x12#\n" +
+	"\rprovider_name\x18\x14 \x01(\tR\fproviderName\x12*\n" +
+	"\x11provider_base_url\x18\x15 \x01(\tR\x0fproviderBaseUrl\x12/\n" +
+	"\x14provider_api_key_env\x18\x16 \x01(\tR\x11providerApiKeyEnv\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +

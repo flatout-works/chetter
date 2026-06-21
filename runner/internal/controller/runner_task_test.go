@@ -157,12 +157,8 @@ func TestGenerateOpenCodeConfig_UsesMCPKeyNotMCPservers(t *testing.T) {
 		t.Error("config must not contain 'mcpServers' key — use 'mcp'")
 	}
 
-	providers, ok := parsed["provider"].(map[string]any)
-	if !ok {
-		t.Fatal("expected provider key to be a map")
-	}
-	if _, ok := providers["synthetic"]; !ok {
-		t.Error("expected synthetic provider to be injected")
+	if providers, ok := parsed["provider"].(map[string]any); !ok || len(providers) != 0 {
+		t.Fatalf("expected empty provider map when task has no resolved provider, got %+v", parsed["provider"])
 	}
 }
 

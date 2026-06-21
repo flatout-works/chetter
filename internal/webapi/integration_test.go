@@ -23,8 +23,9 @@ var webAPITestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	webAPITestDB = testdb.StartPackageDB(m)
-	defer webAPITestDB.Close()
-	os.Exit(m.Run())
+	code := m.Run()
+	webAPITestDB.Close()
+	os.Exit(code)
 }
 
 func TestWebAPIRejectsMissingAuth(t *testing.T) {

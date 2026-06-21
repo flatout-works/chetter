@@ -21,8 +21,9 @@ var mainTestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	mainTestDB = testdb.StartPackageDB(m)
-	defer mainTestDB.Close()
-	os.Exit(m.Run())
+	code := m.Run()
+	mainTestDB.Close()
+	os.Exit(code)
 }
 
 func TestAuthMiddleware(t *testing.T) {

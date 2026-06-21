@@ -82,6 +82,17 @@ func ParseYAMLOrDefault(data string) *Catalog {
 	return Default()
 }
 
+func MarshalYAML(catalog *Catalog) (string, error) {
+	if catalog == nil {
+		catalog = Default()
+	}
+	data, err := yaml.Marshal(catalog)
+	if err != nil {
+		return "", fmt.Errorf("marshal model catalog yaml: %w", err)
+	}
+	return string(data), nil
+}
+
 func Default() *Catalog {
 	return &Catalog{
 		Version:         1,
@@ -218,7 +229,7 @@ func (c Catalog) DefaultForHarness(harness, fallbackProvider, fallbackModel stri
 			providerID = hp.ID
 		}
 		for _, m := range p.Models {
-			if m.ID != c.DefaultModel {
+			if m.ID != modelID {
 				continue
 			}
 			if hm, ok := m.Harnesses[harness]; ok && !hm.Disabled && hm.ID != "" {

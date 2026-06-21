@@ -121,7 +121,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		bridgeCmd = "/usr/local/bin/mcp-bridge"
 		configSocketPath = containerSocketPath
 	}
-	if err := h.GenerateConfig(wsDir, configSocketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req.Env, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, configSocketPath, bridgeCmd, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 

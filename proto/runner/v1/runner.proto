@@ -72,6 +72,9 @@ message Task {
   string resume_checkpoint_path = 17;
   string resume_workspace_path = 18;
   string harness = 19;
+  string provider_name = 20;
+  string provider_base_url = 21;
+  string provider_api_key_env = 22;
 }
 
 message ClaimTaskResponse {

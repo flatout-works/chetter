@@ -33,8 +33,7 @@ func promptModel(req task.TaskRequest, defaultProvider, defaultModel string) (st
 }
 
 func resolvedChetterModelID(req task.TaskRequest) string {
-	defaultProvider, defaultModel := activeModelCatalog(req.Env).DefaultForHarness("opencode", "synthetic", "hf:zai-org/GLM-5.2")
-	providerID, modelID := promptModel(req, defaultProvider, defaultModel)
+	providerID, modelID := promptModel(req, "synthetic", "hf:zai-org/GLM-5.2")
 	return providerID + "/" + modelID
 }
 

@@ -16,8 +16,9 @@ var repoTestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	repoTestDB = testdb.StartPackageDB(m)
-	defer repoTestDB.Close()
-	os.Exit(m.Run())
+	code := m.Run()
+	repoTestDB.Close()
+	os.Exit(code)
 }
 
 func newRepo(t *testing.T) (*Queries, func()) {

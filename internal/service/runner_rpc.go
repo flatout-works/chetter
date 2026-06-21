@@ -12,11 +12,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"gopkg.in/yaml.v3"
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
-	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -34,12 +32,9 @@ var errTaskNotClaimed = errors.New("task is not claimed by runner")
 type RunnerRPCService struct {
 	db            *repository.Queries
 	rawDB         *sql.DB
-	defs          *definitions.Manager
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	eventBus      TaskEventPublisher
-	defaultCatYAML   string
-	defaultCatOnce   sync.Once
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -50,10 +45,6 @@ type TaskEventPublisher interface {
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
 	return &RunnerRPCService{db: db, rawDB: rawDB}
-}
-
-func NewRunnerRPCServiceWithDefs(db *repository.Queries, rawDB *sql.DB, defs *definitions.Manager) *RunnerRPCService {
-	return &RunnerRPCService{db: db, rawDB: rawDB, defs: defs}
 }
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
@@ -115,7 +106,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
-			s.injectActiveModelCatalog(ctx, protoTask)
+			s.resolveTaskModel(ctx, protoTask)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -132,33 +123,146 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 	}
 }
 
-func (s *RunnerRPCService) injectActiveModelCatalog(ctx context.Context, task *runnerv1.Task) {
+type resolvedModelConfig struct {
+	ProviderID        string
+	ModelID           string
+	ProviderName      string
+	ProviderBaseURL   string
+	ProviderAPIKeyEnv string
+}
+
+func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.Task) {
 	if task == nil {
 		return
 	}
-	data := s.modelCatalogYAML()
-	if data == "" {
-		return
+	if task.Harness == "" {
+		task.Harness = "opencode"
 	}
-	if task.Env == nil {
-		task.Env = map[string]string{}
+	catalog := modelcatalog.Default()
+	row, err := s.db.GetActiveModelCatalog(ctx)
+	if err == nil {
+		if parsed, parseErr := modelcatalog.ParseYAML([]byte(row.Yaml)); parseErr == nil {
+			catalog = parsed
+		} else {
+			slog.Warn("invalid active model catalog; using default", "err", parseErr)
+		}
+	} else if err != sql.ErrNoRows {
+		slog.Warn("load active model catalog; using default", "err", err)
 	}
-	task.Env[modelcatalog.EnvKey] = data
+	resolved := resolveModelForTask(catalog, task)
+	task.ProviderId = resolved.ProviderID
+	task.ModelId = resolved.ModelID
+	task.ProviderName = resolved.ProviderName
+	task.ProviderBaseUrl = resolved.ProviderBaseURL
+	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
 }
 
-func (s *RunnerRPCService) modelCatalogYAML() string {
-	if s.defs != nil {
-		if y := s.defs.CatalogYAML(); y != "" {
-			return y
+func resolveModelForTask(catalog *modelcatalog.Catalog, task *runnerv1.Task) resolvedModelConfig {
+	if catalog == nil {
+		catalog = modelcatalog.Default()
+	}
+	harness := catalogHarnessName(task.Harness)
+	providerID := strings.TrimSpace(task.ProviderId)
+	modelID := strings.TrimSpace(task.ModelId)
+	if providerID == "" && strings.Contains(modelID, "/") {
+		parts := strings.SplitN(modelID, "/", 2)
+		providerID = parts[0]
+		modelID = parts[1]
+	}
+	if task.Env != nil {
+		if providerID == "" {
+			providerID = strings.TrimSpace(firstNonEmpty(task.Env["LLM_PROVIDER"], task.Env["PI_PROVIDER"]))
+		}
+		if modelID == "" {
+			modelID = strings.TrimSpace(firstNonEmpty(task.Env["LLM_MODEL_CODER"], task.Env["PI_MODEL"], task.Env["ANTHROPIC_MODEL"]))
 		}
 	}
-	s.defaultCatOnce.Do(func() {
-		data, err := yaml.Marshal(modelcatalog.Default())
-		if err == nil {
-			s.defaultCatYAML = string(data)
+	defaultProvider, defaultModel := catalogDefaultForHarness(catalog, harness)
+	if providerID == "" {
+		providerID = defaultProvider
+	}
+	if modelID == "" {
+		modelID = defaultModel
+	}
+	return catalogProviderModelConfig(catalog, harness, providerID, modelID)
+}
+
+func catalogDefaultForHarness(catalog *modelcatalog.Catalog, harness string) (providerID, modelID string) {
+	providerID = catalog.DefaultProvider
+	modelID = catalog.DefaultModel
+	if def, ok := catalog.Defaults[harness]; ok {
+		if def.Provider != "" {
+			providerID = def.Provider
 		}
-	})
-	return s.defaultCatYAML
+		if def.Model != "" {
+			modelID = def.Model
+		}
+	}
+	if providerID == "" {
+		providerID = "synthetic"
+	}
+	if modelID == "" {
+		modelID = "hf:zai-org/GLM-5.2"
+	}
+	return providerID, modelID
+}
+
+func catalogProviderModelConfig(catalog *modelcatalog.Catalog, harness, providerID, modelID string) resolvedModelConfig {
+	provider, ok := catalog.Providers[providerID]
+	if !ok {
+		return resolvedModelConfig{ProviderID: providerID, ModelID: modelID}
+	}
+	if hp, ok := provider.Harnesses[harness]; ok && hp.Disabled {
+		defaultProvider, defaultModel := catalogDefaultForHarness(catalog, harness)
+		return catalogProviderModelConfig(catalog, harness, defaultProvider, defaultModel)
+	}
+	resolved := resolvedModelConfig{ProviderID: providerID, ModelID: modelID}
+	if hp, ok := provider.Harnesses[harness]; ok && !hp.Disabled {
+		if hp.ID != "" {
+			resolved.ProviderID = hp.ID
+		}
+		resolved.ProviderName = firstNonEmpty(hp.Name, provider.Name, resolved.ProviderID)
+		resolved.ProviderBaseURL = firstNonEmpty(hp.BaseURL, provider.BaseURL)
+		resolved.ProviderAPIKeyEnv = firstNonEmpty(hp.APIKeyEnv, provider.APIKeyEnv)
+	} else {
+		resolved.ProviderName = firstNonEmpty(provider.Name, resolved.ProviderID)
+		resolved.ProviderBaseURL = provider.BaseURL
+		resolved.ProviderAPIKeyEnv = provider.APIKeyEnv
+	}
+	for _, model := range provider.Models {
+		if model.ID != modelID {
+			continue
+		}
+		if hm, ok := model.Harnesses[harness]; ok {
+			if hm.Disabled {
+				defaultProvider, defaultModel := catalogDefaultForHarness(catalog, harness)
+				return catalogProviderModelConfig(catalog, harness, defaultProvider, defaultModel)
+			}
+			if hm.ID != "" {
+				resolved.ModelID = hm.ID
+			}
+		}
+		break
+	}
+	return resolved
+}
+
+func catalogHarnessName(harness string) string {
+	switch strings.TrimSpace(harness) {
+	case "", "codex":
+		return "opencode"
+	default:
+		return strings.TrimSpace(harness)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (s *RunnerRPCService) ReportTaskEvents(ctx context.Context, req *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error) {

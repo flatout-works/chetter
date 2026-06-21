@@ -12,6 +12,7 @@ import (
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
 func newRPCTestService(t *testing.T) (*RunnerRPCService, *repository.Queries, *testdb.TestDB, func()) {
@@ -676,5 +677,44 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	proto := taskToProto(task, "", "")
 	if proto.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", proto.Harness)
+	}
+}
+
+func TestResolveModelForTaskUsesHarnessMappings(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "synthetic",
+		DefaultModel:    "default-model",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"opencode": {Provider: "synthetic", Model: "default-model"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"synthetic": {
+				Name:      "Synthetic",
+				BaseURL:   "https://api.example.test/base",
+				APIKeyEnv: "SYNTHETIC_API_KEY",
+				Harnesses: map[string]modelcatalog.ProviderHarness{
+					"opencode": {
+						ID:        "synthetic-openai",
+						Name:      "Synthetic OpenAI",
+						BaseURL:   "https://api.example.test/openai",
+						APIKeyEnv: "SYNTHETIC_OPENAI_KEY",
+					},
+				},
+				Models: []modelcatalog.Model{{
+					ID: "default-model",
+					Harnesses: map[string]modelcatalog.ModelHarness{
+						"opencode": {ID: "mapped-model"},
+					},
+				}},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{Harness: "opencode"})
+	if got.ProviderID != "synthetic-openai" || got.ModelID != "mapped-model" {
+		t.Fatalf("unexpected resolved model: %+v", got)
+	}
+	if got.ProviderName != "Synthetic OpenAI" || got.ProviderBaseURL != "https://api.example.test/openai" || got.ProviderAPIKeyEnv != "SYNTHETIC_OPENAI_KEY" {
+		t.Fatalf("unexpected provider metadata: %+v", got)
 	}
 }

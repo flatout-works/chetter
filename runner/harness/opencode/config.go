@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/flatout-works/chetter/pkg/modelcatalog"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 const defaultMem9PluginSpec = "@mem9/opencode"
@@ -65,53 +65,39 @@ func configStringList(value any) []any {
 	return nil
 }
 
-func ensureRunnerProviders(cfg map[string]any, taskEnv map[string]string) {
+func ensureRunnerProvider(cfg map[string]any, req task.TaskRequest) {
 	providers, _ := cfg["provider"].(map[string]any)
 	if providers == nil {
 		providers = make(map[string]any)
 		cfg["provider"] = providers
 	}
-
-	for _, p := range activeModelCatalog(taskEnv).OpenCodeProviders() {
-		if _, ok := providers[p.ID]; ok {
-			continue
-		}
-		if p.APIKeyEnv != "" && os.Getenv(p.APIKeyEnv) == "" {
-			continue
-		}
-		entry := map[string]any{
-			"name":   p.Name,
+	providerID := strings.TrimSpace(req.ProviderID)
+	modelID := strings.TrimSpace(req.ModelID)
+	if providerID == "" || modelID == "" {
+		return
+	}
+	entry, _ := providers[providerID].(map[string]any)
+	if entry == nil {
+		entry = map[string]any{
+			"name":   firstNonEmpty(req.ProviderName, providerID),
 			"models": make(map[string]any),
 		}
-		if p.APIKeyEnv != "" {
-			entry["apiKey"] = os.Getenv(p.APIKeyEnv)
-		}
-		if p.BaseURL != "" {
-			entry["baseURL"] = p.BaseURL
-		}
-		for _, m := range p.Models {
-			entry["models"].(map[string]any)[m] = map[string]any{}
-		}
-		providers[p.ID] = entry
+		providers[providerID] = entry
 	}
-}
-
-func activeModelCatalog(taskEnv map[string]string) *modelcatalog.Catalog {
-	data := ""
-	if taskEnv != nil {
-		data = strings.TrimSpace(taskEnv[modelcatalog.EnvKey])
+	if req.ProviderBaseURL != "" {
+		entry["baseURL"] = req.ProviderBaseURL
 	}
-	if data == "" {
-		data = strings.TrimSpace(os.Getenv(modelcatalog.EnvKey))
-	}
-	if data != "" {
-		catalog, err := modelcatalog.ParseYAML([]byte(data))
-		if err == nil {
-			return catalog
+	if req.ProviderAPIKeyEnv != "" {
+		if apiKey := os.Getenv(req.ProviderAPIKeyEnv); apiKey != "" {
+			entry["apiKey"] = apiKey
 		}
-		slog.Warn("invalid model catalog; using default", "err", err)
 	}
-	return modelcatalog.Default()
+	models, _ := entry["models"].(map[string]any)
+	if models == nil {
+		models = make(map[string]any)
+		entry["models"] = models
+	}
+	models[modelID] = map[string]any{}
 }
 
 func ensureProvider(cfg map[string]any, providerID string) {
@@ -129,10 +115,14 @@ func ensureProvider(cfg map[string]any, providerID string) {
 }
 
 func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
-	return GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, nil, isLocal)
+	return GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
 }
 
 func GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
+}
+
+func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
 	configSource := wsConfigPath
@@ -145,7 +135,7 @@ func GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 	}
 	slog.Info("opencode config source", "path", configSource, "bytes", len(data))
 	ensureMem9Plugin(cfg)
-	ensureRunnerProviders(cfg, taskEnv)
+	ensureRunnerProvider(cfg, req)
 
 	if includeRunnerMCP {
 		mcpServers, _ := cfg["mcp"].(map[string]any)
@@ -213,6 +203,15 @@ func GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 	slog.Info("wrote opencode config", "path", wsConfigPath)
 	slog.Info("wrote opencode global config", "path", globalConfigPath)
 	return nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func copyOpenCodeState(wsDir string, isLocal bool) {

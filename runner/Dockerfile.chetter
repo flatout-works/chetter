@@ -17,7 +17,6 @@ FROM golang:1.26-bookworm AS runner-builder
 WORKDIR /src
 COPY go.mod go.sum* ./
 COPY gen/ ./gen/
-COPY pkg/ ./pkg/
 COPY runner/go.mod runner/go.sum* ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \

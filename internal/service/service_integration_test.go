@@ -22,8 +22,9 @@ var svcTestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	svcTestDB = testdb.StartPackageDB(m)
-	defer svcTestDB.Close()
-	os.Exit(m.Run())
+	code := m.Run()
+	svcTestDB.Close()
+	os.Exit(code)
 }
 
 func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {

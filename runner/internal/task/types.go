@@ -19,6 +19,9 @@ type TaskRequest struct {
 	Agent                  string            `json:"agent,omitempty"`
 	ProviderID             string            `json:"provider_id,omitempty"`
 	ModelID                string            `json:"model_id,omitempty"`
+	ProviderName           string            `json:"provider_name,omitempty"`
+	ProviderBaseURL        string            `json:"provider_base_url,omitempty"`
+	ProviderAPIKeyEnv      string            `json:"provider_api_key_env,omitempty"`
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
 	Harness                string            `json:"harness,omitempty"`

@@ -112,26 +112,9 @@ func TestResolvedChetterModelID_FallsBackToEnv(t *testing.T) {
 }
 
 func TestResolvedChetterModelID_DefaultsWhenEmpty(t *testing.T) {
-	t.Setenv("CHETTER_MODEL_CATALOG_YAML", "")
 	req := task.TaskRequest{}
 	if got := resolvedChetterModelID(req); got != "synthetic/hf:zai-org/GLM-5.2" {
 		t.Fatalf("expected default model, got %q", got)
-	}
-}
-
-func TestResolvedChetterModelID_UsesCatalogDefault(t *testing.T) {
-	t.Setenv("CHETTER_MODEL_CATALOG_YAML", `version: 1
-default_provider: custom
-default_model: custom-model
-providers:
-  custom:
-    name: Custom
-    kind: openai_compatible
-    models:
-      - id: custom-model
-`)
-	if got := resolvedChetterModelID(task.TaskRequest{}); got != "custom/custom-model" {
-		t.Fatalf("expected catalog default model, got %q", got)
 	}
 }
 
@@ -142,6 +125,38 @@ func TestPromptWithSkillHints(t *testing.T) {
 	}
 	if !strings.HasSuffix(result, "Do work") {
 		t.Fatalf("expected original prompt suffix, got %q", result)
+	}
+}
+
+func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
+	t.Setenv("SYNTHETIC_OPENAI_KEY", "test-key")
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:        "synthetic-openai",
+		ProviderName:      "Synthetic OpenAI",
+		ProviderBaseURL:   "https://api.example.test/openai",
+		ProviderAPIKeyEnv: "SYNTHETIC_OPENAI_KEY",
+		ModelID:           "mapped-model",
+	}
+	if err := GenerateConfigForTask(wsDir, "/tmp/chetter.sock", "mcp-bridge", "", "", false, req, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	data, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	providers := cfg["provider"].(map[string]any)
+	provider := providers["synthetic-openai"].(map[string]any)
+	if provider["name"] != "Synthetic OpenAI" || provider["baseURL"] != "https://api.example.test/openai" || provider["apiKey"] != "test-key" {
+		t.Fatalf("unexpected provider config: %+v", provider)
+	}
+	models := provider["models"].(map[string]any)
+	if _, ok := models["mapped-model"]; !ok {
+		t.Fatalf("expected mapped-model in provider models: %+v", models)
 	}
 }
 

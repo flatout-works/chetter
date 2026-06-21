@@ -69,14 +69,14 @@ func run() error {
 	var defs *definitions.Manager
 	if cfg.DefinitionsRepo != "" {
 		defs = definitions.New(cfg.DefinitionsRepo, cfg.DefinitionsBranch, "")
-		if err := defs.SyncAndLoad(ctx); err != nil {
-			slog.Warn("definitions sync failed (continuing with defaults)", "err", err)
-		}
 	}
 
 	svc := service.New(cfg, st)
 	if defs != nil {
 		svc.SetDefinitions(defs)
+		if _, err := svc.SyncDefinitions(ctx); err != nil {
+			slog.Warn("definitions sync failed (continuing with active DB or built-in catalog)", "err", err)
+		}
 	}
 	if cfg.GitHubAppConfigured() {
 		gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
@@ -86,7 +86,7 @@ func run() error {
 		svc.SetGitHubClient(gh)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCServiceWithDefs(repository.New(st.DB()), st.DB(), defs).WithEventBus(eventBus)
+	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
