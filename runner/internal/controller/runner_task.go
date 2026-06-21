@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -708,10 +709,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "socket", mountedSocketPath)
 	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
 
-	out, err := exec.CommandContext(ctx, "docker", "start", "--checkpoint", checkpointName, containerID).CombinedOutput()
-	if err != nil {
-		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err, "output", string(out))
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v\n%s", err, string(out)), nil)
+	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName); err != nil {
+		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v", err), nil)
 		return
 	}
 
@@ -858,6 +858,30 @@ func parseDockerPortOutput(output string) (int, bool) {
 		return 0, false
 	}
 	return port, true
+}
+
+func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName string) error {
+	client := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", "/var/run/docker.sock")
+			},
+		},
+	}
+	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s", containerID, checkpointName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("docker API: %w", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 204 {
+		return fmt.Errorf("docker API: HTTP %d (expected 204)", resp.StatusCode)
+	}
+	return nil
 }
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
