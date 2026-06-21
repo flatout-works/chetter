@@ -245,7 +245,7 @@ func (h *taskHandler) GetTask(ctx context.Context, req *connect.Request[apiv1.Ge
 }
 
 func (h *taskHandler) ListTasks(ctx context.Context, req *connect.Request[apiv1.ListTasksRequest]) (*connect.Response[apiv1.ListTasksResponse], error) {
-	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit))
+	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -344,7 +344,7 @@ type sessionHandler struct {
 }
 
 func (h *sessionHandler) ListSessions(ctx context.Context, req *connect.Request[apiv1.ListSessionsRequest]) (*connect.Response[apiv1.ListSessionsResponse], error) {
-	sessions, err := h.svc.ListAgentSessions(ctx, req.Msg.Status, int(req.Msg.Limit))
+	sessions, err := h.svc.ListAgentSessions(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -490,7 +490,7 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 }
 
 func (h *triggerHandler) ListScheduleRuns(ctx context.Context, req *connect.Request[apiv1.ListScheduleRunsRequest]) (*connect.Response[apiv1.ListScheduleRunsResponse], error) {
-	runs, err := h.svc.ListScheduleRuns(ctx, req.Msg.ScheduleName, int(req.Msg.Limit))
+	runs, err := h.svc.ListScheduleRuns(ctx, req.Msg.ScheduleName, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -629,6 +629,7 @@ func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request
 		Repo:       req.Msg.Repo,
 		SinceHours: int(req.Msg.SinceHours),
 		Limit:      int(req.Msg.Limit),
+		Offset:     int(req.Msg.Offset),
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -661,6 +662,7 @@ func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Reque
 		ArtifactType:   req.Msg.ArtifactType,
 		Repo:           req.Msg.Repo,
 		Limit:          int(req.Msg.Limit),
+		Offset:         int(req.Msg.Offset),
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)

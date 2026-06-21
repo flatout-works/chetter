@@ -10,4 +10,4 @@ WHERE (task_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
 ORDER BY discovered_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;

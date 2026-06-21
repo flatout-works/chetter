@@ -3,7 +3,7 @@
   import { page } from "$app/stores";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService } from "$gen/proto/api/v1/api_pb";
-  import type { Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
+  import type { Task, TaskArtifact, TaskEvent } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents,
@@ -14,6 +14,7 @@
     streamConnected,
     clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
+  import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
 
   let { params } = $props();
   let task = $state<Task | null>(null);
@@ -21,6 +22,7 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let unsub: (() => void) | null = null;
+  let now = $state(Date.now());
 
   const statusColors: Record<string, string> = {
     running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
@@ -34,7 +36,34 @@
   let progress = $derived($taskProgress);
   let connected = $derived($streamConnected);
 
+  let expandedEvents = $state<Set<string>>(new Set());
+
+  function toggleEvent(id: string) {
+    if (expandedEvents.has(id)) {
+      expandedEvents.delete(id);
+    } else {
+      expandedEvents.add(id);
+    }
+    expandedEvents = new Set(expandedEvents);
+  }
+
+  let duration = $derived(formatDuration(task?.startedAt, task?.endedAt));
+
+  let statusText = $derived.by(() => {
+    if (!task) return "";
+    if (task.status === "running" || task.status === "pending") {
+      return `${duration}`;
+    }
+    if (task.status === "done") return `Completed in ${duration}`;
+    if (task.status === "error") return `Failed after ${duration}`;
+    if (task.status === "cancelled") return `Cancelled after ${duration}`;
+    return "";
+  });
+
+  let timerInterval: ReturnType<typeof setInterval> | undefined;
+
   onMount(async () => {
+    timerInterval = setInterval(() => { now = Date.now(); }, 1000);
     try {
       const streamSince = new Date().toISOString();
       const client = createClient(TaskService, getTransport());
@@ -45,7 +74,6 @@
       await loadTaskEvents(params.id, 100);
       await loadTaskProgress(params.id);
 
-      // Load artifacts for completed tasks
       if (task?.status === "done" || task?.status === "error") {
         try {
           const adminClient = createClient(AdminService, getTransport());
@@ -66,6 +94,7 @@
   onDestroy(() => {
     clearTaskDetail();
     if (unsub) unsub();
+    if (timerInterval) clearInterval(timerInterval);
   });
 
   async function cancelTask() {
@@ -97,15 +126,6 @@
       error = e instanceof Error ? e.message : "Failed to export task";
     }
   }
-
-  function formatTime(ts: string): string {
-    if (!ts) return "—";
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return ts;
-    }
-  }
 </script>
 
 <svelte:head>
@@ -130,6 +150,9 @@
           <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[task.status] || statusColors.pending}`}>
             {task.status}
           </span>
+          {#if statusText}
+            <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">({statusText})</span>
+          {/if}
         </div>
         <p class="text-sm text-gray-500 dark:text-gray-400">
           Created {formatTime(task.createdAt)} · Updated {formatTime(task.updatedAt)}
@@ -156,7 +179,7 @@
     </div>
 
     <!-- Task metadata -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
       <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
@@ -173,6 +196,10 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
       </div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
+      </div>
     </div>
 
     <!-- Prompt -->
@@ -188,20 +215,32 @@
       </div>
     {/if}
 
-    <!-- Progress timeline -->
+    <!-- Progress Timeline -->
     {#if progress.length > 0}
       <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Progress Timeline</h2>
-        <div class="space-y-2">
+        <div class="space-y-3">
           {#each progress as entry (`${entry.time}:${entry.status}:${entry.summary}`)}
-            <div class="flex gap-3 text-sm">
-              <span class="text-gray-400 dark:text-gray-500 font-mono text-xs whitespace-nowrap pt-0.5">
-                {formatTime(entry.time)}
-              </span>
-              <span class={`px-1.5 py-0.5 rounded text-xs font-medium ${statusColors[entry.status] || statusColors.pending}`}>
-                {entry.status}
-              </span>
-              <span class="text-gray-600 dark:text-gray-400 flex-1 truncate">{entry.summary}</span>
+            <div class="flex gap-3 text-sm items-start">
+              <div class="flex flex-col items-center">
+                <div class="w-2 h-2 rounded-full {entry.status === 'done' || entry.status === 'error' ? 'bg-blue-500' : entry.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}"></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex gap-2 items-baseline">
+                  <span class="text-gray-400 dark:text-gray-500 text-xs font-mono whitespace-nowrap">
+                    {formatTime(entry.time)}
+                  </span>
+                  <span class={`px-1.5 py-0.5 rounded text-xs font-medium ${statusColors[entry.status] || statusColors.pending}`}>
+                    {entry.status}
+                  </span>
+                </div>
+                <p class="text-gray-600 dark:text-gray-400 text-sm mt-0.5">
+                  {humanReadableStatus(entry.status, entry.summary)}
+                </p>
+                {#if entry.error}
+                  <p class="text-red-600 dark:text-red-400 text-xs mt-1 font-mono">{entry.error}</p>
+                {/if}
+              </div>
             </div>
           {/each}
         </div>
@@ -251,14 +290,27 @@
       </div>
       <div class="space-y-1 max-h-96 overflow-y-auto font-mono text-xs">
         {#each events as event (event.id || `${event.createdAt}:${event.status}:${event.payload}`)}
-          <div class="flex gap-2 py-1 border-b border-gray-100 dark:border-gray-700/50">
-            <span class="text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatTime(event.createdAt)}</span>
-            <span class={`px-1 rounded font-medium ${
-              event.status === "keepalive" ? "text-gray-400" : "text-gray-600 dark:text-gray-300"
-            }`}>
-              {event.status}
-            </span>
-            <span class="text-gray-500 dark:text-gray-400 flex-1 truncate">{event.payload?.slice(0, 200)}</span>
+          <div class="border-b border-gray-100 dark:border-gray-700/50">
+            <button
+              onclick={() => toggleEvent(event.id)}
+              class="w-full flex gap-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 px-1 rounded"
+            >
+              <span class="text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatTime(event.createdAt)}</span>
+              <span class={`px-1 rounded font-medium ${
+                event.status === "keepalive" ? "text-gray-400" : "text-gray-600 dark:text-gray-300"
+              }`}>
+                {event.status}
+              </span>
+              <span class="text-gray-500 dark:text-gray-400 flex-1 truncate">
+                {event.payload?.slice(0, 120) || "—"}
+              </span>
+              <span class="text-gray-400 shrink-0">
+                {expandedEvents.has(event.id) ? "▲" : "▼"}
+              </span>
+            </button>
+            {#if expandedEvents.has(event.id) && event.payload}
+              <pre class="ml-1 mb-2 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">{event.payload}</pre>
+            {/if}
           </div>
         {:else}
           <p class="text-gray-500 dark:text-gray-400 text-center py-4">No events</p>

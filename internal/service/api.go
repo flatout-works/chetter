@@ -40,9 +40,10 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
-func (s *Service) ListTasks(ctx context.Context, status string, limit int) ([]TaskToolRecord, error) {
+func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int) ([]TaskToolRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
+	clampedOffset := int32(max(offset, 0))
 	var tasks []repository.ChetterTask
 	var err error
 	if scoped && !scope.Admin && scope.TeamID != "" {
@@ -50,11 +51,13 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit int) ([]Ta
 			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
 			StatusFilter: status,
 			Limit:        clamped,
+			Offset:       clampedOffset,
 		})
 	} else {
 		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
 			StatusFilter: status,
 			Limit:        clamped,
+			Offset:       clampedOffset,
 		})
 	}
 	if err != nil {
@@ -223,7 +226,7 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 // --- Session Methods ---
 
 // ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
-func (s *Service) ListAgentSessions(ctx context.Context, status string, limit int) ([]AgentSessionRecord, error) {
+func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int) ([]AgentSessionRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	teamID := sql.NullString{String: "", Valid: true}
 	if scoped && !scope.Admin && scope.TeamID != "" {
@@ -233,6 +236,7 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit in
 		TeamFilter:   teamID,
 		StatusFilter: status,
 		Limit:        clampListLimit(limit),
+		Offset:       int32(max(offset, 0)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list agent sessions: %w", err)
@@ -305,9 +309,10 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 }
 
 // ListScheduleRuns returns schedule runs, optionally filtered by schedule name, respecting team scope.
-func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, limit int) ([]ScheduleRunInfo, error) {
+func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, limit, offset int) ([]ScheduleRunInfo, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
+	clampedOffset := int32(max(offset, 0))
 
 	if scheduleName != "" {
 		schedule, err := s.repo.GetScheduleByName(ctx, scheduleName)
@@ -320,6 +325,7 @@ func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, lim
 		rows, err := s.repo.ListScheduleRunsBySchedule(ctx, repository.ListScheduleRunsByScheduleParams{
 			ScheduleID: schedule.ID,
 			Limit:      clamped,
+			Offset:     clampedOffset,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("list schedule runs: %w", err)
@@ -342,6 +348,7 @@ func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, lim
 		rows, err := s.repo.ListScheduleRunsByTeam(ctx, repository.ListScheduleRunsByTeamParams{
 			TeamID: sql.NullString{String: scope.TeamID, Valid: true},
 			Limit:  clamped,
+			Offset: clampedOffset,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("list schedule runs: %w", err)
@@ -631,6 +638,7 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 		CreatedAt:  sinceTime.Time,
 		Column14:   sinceTime,
 		Limit:      int32(limit),
+		Offset:     int32(max(filter.Offset, 0)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list audit log: %w", err)
@@ -676,6 +684,7 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 		Repo:           filter.Repo,
 		Column8:        filter.Repo,
 		Limit:          int32(limit),
+		Offset:         int32(max(filter.Offset, 0)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list task artifacts: %w", err)

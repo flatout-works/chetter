@@ -5,6 +5,7 @@
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
   import type { ScheduleRun, Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
+  import { formatTime } from "$lib/utils.svelte";
 
   let triggers = $state<Trigger[]>([]);
   let scheduleRuns = $state<ScheduleRun[]>([]);
@@ -25,6 +26,12 @@
   let agentImage = $state("");
   let agent = $state("");
   let modelId = $state("");
+
+  let runsPage = $state(0);
+  let runsPageSize = $state(10);
+  let sortedRuns = $derived([...scheduleRuns]);
+  let totalRunsPages = $derived(Math.max(1, Math.ceil(sortedRuns.length / runsPageSize)));
+  let pagedRuns = $derived(sortedRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
 
   async function load() {
     try {
@@ -68,6 +75,7 @@
     selectedRunTrigger = name;
     loadingRuns = true;
     actionError = null;
+    runsPage = 0;
     try {
       const client = createClient(TriggerService, getTransport());
       const resp = await client.listScheduleRuns({ scheduleName: name, limit: 25 });
@@ -155,15 +163,6 @@
       return JSON.parse(trigger.triggerConfig || "{}").repo || "—";
     } catch {
       return "—";
-    }
-  }
-
-  function formatTime(ts: string): string {
-    if (!ts) return "—";
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return ts;
     }
   }
 </script>
@@ -288,7 +287,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-              {#each scheduleRuns as run (run.id)}
+              {#each pagedRuns as run (run.id)}
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{run.id.slice(0, 20)}…</td>
                   <td class="px-4 py-3">
@@ -307,6 +306,33 @@
               {/each}
             </tbody>
           </table>
+          <div class="flex items-center justify-between px-4 py-3 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+            <span>Showing {sortedRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, sortedRuns.length)} of {sortedRuns.length}</span>
+            <div class="flex gap-2">
+              <button
+                onclick={() => { runsPage = Math.max(0, runsPage - 1); }}
+                disabled={runsPage === 0}
+                class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed"
+              >
+                ← Prev
+              </button>
+              {#each { length: totalRunsPages } as _, i}
+                <button
+                  onclick={() => { runsPage = i; }}
+                  class="px-3 py-1.5 border rounded {i === runsPage ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'}"
+                >
+                  {i + 1}
+                </button>
+              {/each}
+              <button
+                onclick={() => { runsPage = Math.min(totalRunsPages - 1, runsPage + 1); }}
+                disabled={runsPage >= totalRunsPages - 1}
+                class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
         {/if}
       </div>
     {/if}

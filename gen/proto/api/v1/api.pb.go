@@ -2234,6 +2234,7 @@ type ListTasksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2278,6 +2279,13 @@ func (x *ListTasksRequest) GetStatus() string {
 func (x *ListTasksRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListTasksRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
 	}
 	return 0
 }
@@ -2974,6 +2982,7 @@ type ListSessionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3018,6 +3027,13 @@ func (x *ListSessionsRequest) GetStatus() string {
 func (x *ListSessionsRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListSessionsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
 	}
 	return 0
 }
@@ -4014,6 +4030,7 @@ type ListScheduleRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ScheduleName  string                 `protobuf:"bytes,1,opt,name=schedule_name,json=scheduleName,proto3" json:"schedule_name,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4058,6 +4075,13 @@ func (x *ListScheduleRunsRequest) GetScheduleName() string {
 func (x *ListScheduleRunsRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListScheduleRunsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
 	}
 	return 0
 }
@@ -4964,6 +4988,7 @@ type ListAuditEventsRequest struct {
 	Repo          string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
 	SinceHours    int32                  `protobuf:"varint,7,opt,name=since_hours,json=sinceHours,proto3" json:"since_hours,omitempty"`
 	Limit         int32                  `protobuf:"varint,8,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,9,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5054,6 +5079,13 @@ func (x *ListAuditEventsRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *ListAuditEventsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
 type ListAuditEventsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Events        []*AuditEvent          `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
@@ -5105,6 +5137,7 @@ type ListTaskArtifactsRequest struct {
 	ArtifactType   string                 `protobuf:"bytes,3,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
 	Repo           string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
 	Limit          int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset         int32                  `protobuf:"varint,6,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -5170,6 +5203,13 @@ func (x *ListTaskArtifactsRequest) GetRepo() string {
 func (x *ListTaskArtifactsRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListTaskArtifactsRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
 	}
 	return 0
 }
@@ -6289,10 +6329,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eGetTaskRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"3\n" +
 	"\x0fGetTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"@\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"X\n" +
 	"\x10ListTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"7\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"7\n" +
 	"\x11ListTasksResponse\x12\"\n" +
 	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\"M\n" +
 	"\x11CancelTaskRequest\x12 \n" +
@@ -6329,10 +6370,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x1aGetLatestTaskEventResponse\x12'\n" +
 	"\x05event\x18\x01 \x01(\v2\x11.api.v1.TaskEventR\x05event\x12\x17\n" +
 	"\aage_sec\x18\x02 \x01(\x05R\x06ageSec\x12\x19\n" +
-	"\bis_stale\x18\x03 \x01(\bR\aisStale\"C\n" +
+	"\bis_stale\x18\x03 \x01(\bR\aisStale\"[\n" +
 	"\x13ListSessionsRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"H\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"H\n" +
 	"\x14ListSessionsResponse\x120\n" +
 	"\bsessions\x18\x01 \x03(\v2\x14.api.v1.AgentSessionR\bsessions\";\n" +
 	"\x11GetSessionRequest\x12&\n" +
@@ -6418,10 +6460,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x11RunTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\"6\n" +
 	"\x12RunTriggerResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"T\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"l\n" +
 	"\x17ListScheduleRunsRequest\x12#\n" +
 	"\rschedule_name\x18\x01 \x01(\tR\fscheduleName\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"C\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"C\n" +
 	"\x18ListScheduleRunsResponse\x12'\n" +
 	"\x04runs\x18\x01 \x03(\v2\x13.api.v1.ScheduleRunR\x04runs\"=\n" +
 	"\x16GetRunnerHealthRequest\x12#\n" +
@@ -6468,7 +6511,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x10ListUsersRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\";\n" +
 	"\x11ListUsersResponse\x12&\n" +
-	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\xfe\x01\n" +
+	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\x96\x02\n" +
 	"\x16ListAuditEventsRequest\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x01 \x01(\tR\teventType\x12\x1f\n" +
@@ -6481,15 +6524,17 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x04repo\x18\x06 \x01(\tR\x04repo\x12\x1f\n" +
 	"\vsince_hours\x18\a \x01(\x05R\n" +
 	"sinceHours\x12\x14\n" +
-	"\x05limit\x18\b \x01(\x05R\x05limit\"E\n" +
+	"\x05limit\x18\b \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\t \x01(\x05R\x06offset\"E\n" +
 	"\x17ListAuditEventsResponse\x12*\n" +
-	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xac\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xc4\x01\n" +
 	"\x18ListTaskArtifactsRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12(\n" +
 	"\x10agent_session_id\x18\x02 \x01(\tR\x0eagentSessionId\x12#\n" +
 	"\rartifact_type\x18\x03 \x01(\tR\fartifactType\x12\x12\n" +
 	"\x04repo\x18\x04 \x01(\tR\x04repo\x12\x14\n" +
-	"\x05limit\x18\x05 \x01(\x05R\x05limit\"O\n" +
+	"\x05limit\x18\x05 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x06 \x01(\x05R\x06offset\"O\n" +
 	"\x19ListTaskArtifactsResponse\x122\n" +
 	"\tartifacts\x18\x01 \x03(\v2\x14.api.v1.TaskArtifactR\tartifacts\"C\n" +
 	"\x1aArcaneScannerStatusRequest\x12%\n" +

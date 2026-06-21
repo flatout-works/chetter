@@ -13,4 +13,4 @@ WHERE (event_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
 ORDER BY created_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;

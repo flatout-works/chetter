@@ -12,7 +12,7 @@ SELECT * FROM chetter_agent_sessions
 WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
 ORDER BY updated_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: MarkAgentSessionTerminalByTask :execrows
 UPDATE chetter_agent_sessions

@@ -84,7 +84,7 @@ FROM chetter_schedule_runs sr
 JOIN chetter_schedules s ON s.id = sr.schedule_id
 WHERE s.team_id = sqlc.arg(team_id)
 ORDER BY sr.created_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;
 
 -- name: ListScheduleRunsBySchedule :many
 SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
@@ -92,4 +92,4 @@ FROM chetter_schedule_runs sr
 JOIN chetter_schedules s ON s.id = sr.schedule_id
 WHERE sr.schedule_id = ?
 ORDER BY sr.created_at DESC
-LIMIT ?;
+LIMIT ? OFFSET ?;

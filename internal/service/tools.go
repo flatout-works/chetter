@@ -612,7 +612,7 @@ func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {
-	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit)
+	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit, 0)
 	if err != nil {
 		return nil, ListAgentSessionsOutput{}, err
 	}
@@ -1089,7 +1089,7 @@ func (s *Service) listUsersTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 // --- Schedule Run Tool Handlers ---
 
 func (s *Service) listScheduleRunsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListScheduleRunsInput) (*mcp.CallToolResult, ListScheduleRunsOutput, error) {
-	runs, err := s.ListScheduleRuns(ctx, in.ScheduleName, in.Limit)
+	runs, err := s.ListScheduleRuns(ctx, in.ScheduleName, in.Limit, 0)
 	if err != nil {
 		return nil, ListScheduleRunsOutput{}, err
 	}
@@ -1297,6 +1297,7 @@ type AuditEventFilterInput struct {
 	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
 	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+	Offset     int    `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
 }
 
 type AuditEventRecord struct {
@@ -1333,6 +1334,7 @@ type TaskArtifactFilterInput struct {
 	ArtifactType   string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
 	Repo           string `json:"repo,omitempty" jsonschema:"Filter by repository"`
 	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
+	Offset         int    `json:"offset,omitempty" jsonschema:"Number of artifacts to skip (default 0)"`
 }
 
 type TaskArtifactRecord struct {

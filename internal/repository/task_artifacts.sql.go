@@ -59,7 +59,7 @@ WHERE (task_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
 ORDER BY discovered_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListTaskArtifactsParams struct {
@@ -72,6 +72,7 @@ type ListTaskArtifactsParams struct {
 	Repo           string         `json:"repo"`
 	Column8        interface{}    `json:"column_8"`
 	Limit          int32          `json:"limit"`
+	Offset         int32          `json:"offset"`
 }
 
 type ListTaskArtifactsRow struct {
@@ -101,6 +102,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 		arg.Repo,
 		arg.Column8,
 		arg.Limit,
+		arg.Offset,
 	)
 	if err != nil {
 		return nil, err

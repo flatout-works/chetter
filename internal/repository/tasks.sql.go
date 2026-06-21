@@ -342,13 +342,14 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
 ORDER BY created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListTasksByStatusParams struct {
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
 	Limit             int32          `json:"limit"`
+	Offset            int32          `json:"offset"`
 }
 
 func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusParams) ([]ChetterTask, error) {
@@ -358,6 +359,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
 		arg.Limit,
+		arg.Offset,
 	)
 	if err != nil {
 		return nil, err
@@ -422,7 +424,7 @@ WHERE team_id = ?
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
 ORDER BY created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListTasksByStatusAndTeamParams struct {
@@ -430,6 +432,7 @@ type ListTasksByStatusAndTeamParams struct {
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
 	Limit             int32          `json:"limit"`
+	Offset            int32          `json:"offset"`
 }
 
 func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByStatusAndTeamParams) ([]ChetterTask, error) {
@@ -440,6 +443,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
 		arg.Limit,
+		arg.Offset,
 	)
 	if err != nil {
 		return nil, err

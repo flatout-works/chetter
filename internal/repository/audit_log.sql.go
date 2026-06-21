@@ -65,7 +65,7 @@ WHERE (event_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
 ORDER BY created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListAuditLogParams struct {
@@ -84,6 +84,7 @@ type ListAuditLogParams struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	Column14   interface{}    `json:"column_14"`
 	Limit      int32          `json:"limit"`
+	Offset     int32          `json:"offset"`
 }
 
 func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ChetterAuditLog, error) {
@@ -103,6 +104,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]C
 		arg.CreatedAt,
 		arg.Column14,
 		arg.Limit,
+		arg.Offset,
 	)
 	if err != nil {
 		return nil, err

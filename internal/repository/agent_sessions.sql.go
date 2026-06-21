@@ -391,13 +391,14 @@ SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, c
 WHERE (? = '' OR COALESCE(team_id, '') = ?)
   AND (? = '' OR status = ?)
 ORDER BY updated_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListAgentSessionsParams struct {
 	TeamFilter   sql.NullString `json:"team_filter"`
 	StatusFilter string         `json:"status_filter"`
 	Limit        int32          `json:"limit"`
+	Offset       int32          `json:"offset"`
 }
 
 func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsParams) ([]ChetterAgentSession, error) {
@@ -407,6 +408,7 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 		arg.StatusFilter,
 		arg.StatusFilter,
 		arg.Limit,
+		arg.Offset,
 	)
 	if err != nil {
 		return nil, err

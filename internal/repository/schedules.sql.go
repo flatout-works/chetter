@@ -445,12 +445,13 @@ FROM chetter_schedule_runs sr
 JOIN chetter_schedules s ON s.id = sr.schedule_id
 WHERE sr.schedule_id = ?
 ORDER BY sr.created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListScheduleRunsByScheduleParams struct {
 	ScheduleID string `json:"schedule_id"`
 	Limit      int32  `json:"limit"`
+	Offset     int32  `json:"offset"`
 }
 
 type ListScheduleRunsByScheduleRow struct {
@@ -464,7 +465,7 @@ type ListScheduleRunsByScheduleRow struct {
 }
 
 func (q *Queries) ListScheduleRunsBySchedule(ctx context.Context, arg ListScheduleRunsByScheduleParams) ([]ListScheduleRunsByScheduleRow, error) {
-	rows, err := q.db.QueryContext(ctx, listScheduleRunsBySchedule, arg.ScheduleID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listScheduleRunsBySchedule, arg.ScheduleID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -500,12 +501,13 @@ FROM chetter_schedule_runs sr
 JOIN chetter_schedules s ON s.id = sr.schedule_id
 WHERE s.team_id = ?
 ORDER BY sr.created_at DESC
-LIMIT ?
+LIMIT ? OFFSET ?
 `
 
 type ListScheduleRunsByTeamParams struct {
 	TeamID sql.NullString `json:"team_id"`
 	Limit  int32          `json:"limit"`
+	Offset int32          `json:"offset"`
 }
 
 type ListScheduleRunsByTeamRow struct {
@@ -519,7 +521,7 @@ type ListScheduleRunsByTeamRow struct {
 }
 
 func (q *Queries) ListScheduleRunsByTeam(ctx context.Context, arg ListScheduleRunsByTeamParams) ([]ListScheduleRunsByTeamRow, error) {
-	rows, err := q.db.QueryContext(ctx, listScheduleRunsByTeam, arg.TeamID, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, listScheduleRunsByTeam, arg.TeamID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

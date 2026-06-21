@@ -269,6 +269,7 @@ message GetTaskResponse {
 message ListTasksRequest {
   string status = 1;
   int32 limit = 2;
+  int32 offset = 3;
 }
 
 message ListTasksResponse {
@@ -355,6 +356,7 @@ service SessionService {
 message ListSessionsRequest {
   string status = 1;
   int32 limit = 2;
+  int32 offset = 3;
 }
 
 message ListSessionsResponse {
@@ -472,6 +474,7 @@ message RunTriggerResponse {
 message ListScheduleRunsRequest {
   string schedule_name = 1;
   int32 limit = 2;
+  int32 offset = 3;
 }
 
 message ListScheduleRunsResponse {
@@ -584,6 +587,7 @@ message ListAuditEventsRequest {
   string repo = 6;
   int32 since_hours = 7;
   int32 limit = 8;
+  int32 offset = 9;
 }
 
 message ListAuditEventsResponse {
@@ -596,6 +600,7 @@ message ListTaskArtifactsRequest {
   string artifact_type = 3;
   string repo = 4;
   int32 limit = 5;
+  int32 offset = 6;
 }
 
 message ListTaskArtifactsResponse {
