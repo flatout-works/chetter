@@ -29,8 +29,8 @@ Use this page to pick the right document. `MANUAL.md` and `FEATURES.md` are the 
 
 | Document | Purpose |
 |---|---|
-| [OPENHANDS.md](OPENHANDS.md) | OpenHands architecture findings relevant to Chetter. |
-| [GVISOR.md](GVISOR.md) | gVisor feature research beyond checkpoint/restore. |
+| [research/OPENHANDS.md](research/OPENHANDS.md) | OpenHands architecture findings relevant to Chetter. |
+| [research/GVISOR.md](research/GVISOR.md) | gVisor feature research beyond checkpoint/restore. |
 | [SNAPSHOTS.md](SNAPSHOTS.md) | Snapshot/checkpoint design reference. |
-| [DAYTONA.md](DAYTONA.md) | Optional Daytona backend proposal. |
+| [research/DAYTONA.md](research/DAYTONA.md) | Optional Daytona backend proposal. |
 | [REVIEWER.md](REVIEWER.md) | Archived PR reviewer implementation plan; use `REVIEWS.md` for current behavior. |

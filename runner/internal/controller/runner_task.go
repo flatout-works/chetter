@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -868,7 +869,7 @@ func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName 
 			},
 		},
 	}
-	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s", containerID, checkpointName)
+	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s", url.QueryEscape(containerID), url.QueryEscape(checkpointName))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -877,8 +878,13 @@ func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName 
 	if err != nil {
 		return fmt.Errorf("docker API: %w", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 204 {
+		errMsg := strings.TrimSpace(string(body))
+		if errMsg != "" {
+			return fmt.Errorf("docker API: HTTP %d (expected 204): %s", resp.StatusCode, errMsg)
+		}
 		return fmt.Errorf("docker API: HTTP %d (expected 204)", resp.StatusCode)
 	}
 	return nil

@@ -10,7 +10,7 @@ This plan is based on:
 
 - `CHANGELOG.md` through 2026-06-21.
 - Current docs under `docs/`.
-- OpenHands findings in `docs/OPENHANDS.md`.
+- OpenHands findings in `docs/research/OPENHANDS.md`.
 - Spot checks against current source for recently implemented sessions and MCP tools.
 
 ## Summary
@@ -41,31 +41,33 @@ The docs need consolidation before or alongside this work. Several files describ
 | `HARNESSES.md` | Runner harness reference | Keep. Use it as canonical harness architecture docs. |
 | `PAUSED_SESSIONS.md` | Resumable session reference | Updated in Milestone 1 from plan to current behavior plus remaining work. |
 | `SNAPSHOTS.md` | Snapshot/checkpoint design | Marked as design reference in Milestone 1. Keep linked from `PAUSED_SESSIONS.md`. |
-| `GVISOR.md` | gVisor research | Marked as research in Milestone 1. Move to `docs/research/` later if desired. |
-| `DAYTONA.md` | Optional remote backend proposal | Refreshed in Milestone 1 as a future optional backend proposal. |
-| `OPENHANDS.md` | External architecture inspiration | Move to `docs/research/` and keep as reference. Its actionable items should live in this plan. |
+| `GVISOR.md` | gVisor research | Moved to `docs/research/GVISOR.md` as research doc. |
+| `DAYTONA.md` | Optional remote backend proposal | Moved to `docs/research/DAYTONA.md` as proposal reference. |
+| `OPENHANDS.md` | External architecture inspiration | Moved to `docs/research/OPENHANDS.md` as reference. |
 | `testing/k3d-gvisor.md` | Local Kubernetes/gVisor test guide | Keep under `docs/testing/`. Update env vars if needed. |
 
 ### Proposed Structure
 
 ```text
 docs/
-  README.md                 # documentation index
+  README.md                 # documentation index (current state)
   MANUAL.md                 # operator guide
   FEATURES.md               # current shipped capability reference
   PLAN.md                   # this roadmap
-  AUTOMATION.md             # triggers, schedules, reviews, event callbacks
-  CONFIGURATION.md          # env vars, definitions repo, model catalog
+  AUTOMATION.md             # triggers, schedules, reviews, event callbacks (future)
+  CONFIGURATION.md          # env vars, definitions repo, model catalog (future)
   HARNESSES.md              # agent harnesses
-  SESSIONS.md               # agent sessions, pause/resume, snapshots
-  EXECUTION.md              # Docker, gVisor, runner execution backends
+  SESSIONS.md               # agent sessions, pause/resume, snapshots (future)
+  EXECUTION.md              # Docker, gVisor, runner execution backends (future)
   testing/
     k3d-gvisor.md
   research/
-    OPENHANDS.md
-    DAYTONA.md
-    GVISOR.md
+    OPENHANDS.md            # moved from root
+    DAYTONA.md              # moved from root
+    GVISOR.md               # moved from root
 ```
+
+**Status:** Research docs moved as of 2026-06-22. Remaining restructuring (AUTOMATION.md, CONFIGURATION.md, SESSIONS.md, EXECUTION.md) deferred until those topics need dedicated docs.
 
 This does not need to happen in one large PR. The first useful change is to make `MANUAL.md`, `FEATURES.md`, `REVIEWS.md`, `HARNESSES.md`, and `PAUSED_SESSIONS.md` truthful against the current implementation.
 
@@ -83,6 +85,7 @@ Items addressed:
 - `PAUSED_SESSIONS.md` now describes current session/run/checkpoint behavior and remaining work.
 - `DAYTONA.md` now treats Daytona as a future optional backend and no longer frames Kata as current.
 - `REVIEWER.md`, `TRIGGERS_PROPOSAL.md`, `GVISOR.md`, `SNAPSHOTS.md`, and `OPENHANDS.md` are marked as archived, proposal, research, or reference docs.
+- `GVISOR.md`, `DAYTONA.md`, and `OPENHANDS.md` moved to `docs/research/` for documentation restructure.
 
 ## Product Roadmap
 
@@ -97,8 +100,9 @@ Deliverables:
 - Update `MANUAL.md` env reference and tool list.
 - Update `FEATURES.md` from current MCP registration and runner features.
 - Convert `PAUSED_SESSIONS.md` from future plan to current status plus remaining work.
-- Mark `REVIEWER.md`, `TRIGGERS_PROPOSAL.md`, `DAYTONA.md`, `GVISOR.md`, and `OPENHANDS.md` as reference or research documents.
+- Mark `REVIEWER.md`, `TRIGGERS_PROPOSAL.md`, `DAYTONA.md`, `GVISOR.md`, and `OPENHANDS.md` as reference or research documents, then move research docs to `docs/research/`.
 - Add a short docs index, either in `docs/README.md` or at the top of `MANUAL.md`.
+- Move research/reference docs (`GVISOR.md`, `DAYTONA.md`, `OPENHANDS.md`) into `docs/research/`.
 
 ### P1: Resumable Agent Sessions And PR Feedback Loops
 
@@ -194,7 +198,7 @@ Users can wire Chetter automations to lifecycle events without adding hardcoded 
 
 Why next:
 
-Both OpenHands and `DAYTONA.md` point to the same architectural need: runner execution should be abstracted behind a backend interface. This should start as a refactor around current Docker/gVisor/local behavior, not as a Daytona-first feature.
+Both OpenHands and `docs/research/DAYTONA.md` point to the same architectural need: runner execution should be abstracted behind a backend interface. This should start as a refactor around current Docker/gVisor/local behavior, not as a Daytona-first feature.
 
 Next deliverables:
 
