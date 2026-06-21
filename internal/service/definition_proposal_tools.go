@@ -148,7 +148,7 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		if err != nil {
 			return nil, CreateDefinitionProposalOutput{}, err
 		}
-		body = appendChetterSignature(body, githubToolSignature(task))
+		body = appendChetterSignature(body, githubToolSignature(task, sessionRun))
 	}
 	created, err := s.githubClient().CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
 	if err != nil {
