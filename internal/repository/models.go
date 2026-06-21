@@ -80,6 +80,18 @@ type ChetterAuditLog struct {
 	Payload          *json.RawMessage `json:"payload"`
 }
 
+type ChetterEventCallback struct {
+	ID           string          `json:"id"`
+	TeamID       sql.NullString  `json:"team_id"`
+	Name         string          `json:"name"`
+	EventType    string          `json:"event_type"`
+	ActionType   string          `json:"action_type"`
+	ActionConfig json.RawMessage `json:"action_config"`
+	Enabled      bool            `json:"enabled"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
 type ChetterModelCatalog struct {
 	ID        string         `json:"id"`
 	Name      string         `json:"name"`
@@ -197,6 +209,7 @@ type ChetterTask struct {
 	MaxAttempts            int32           `json:"max_attempts"`
 	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
 	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
+	ErrorCategory          sql.NullString  `json:"error_category"`
 }
 
 type ChetterTaskArtifact struct {
@@ -222,6 +235,7 @@ type ChetterTaskEvent struct {
 	Status    string          `json:"status"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"created_at"`
+	EventType string          `json:"event_type"`
 }
 
 type Team struct {
