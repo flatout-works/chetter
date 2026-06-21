@@ -1,5 +1,7 @@
 # Triggers: Future Work
 
+Status: **Archived proposal - core trigger system implemented**
+
 The unified trigger system described in the original proposal has been fully implemented. This document tracks remaining items not yet shipped.
 
 ## Implemented

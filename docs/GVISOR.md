@@ -1,5 +1,7 @@
 # gVisor Features (Beyond Checkpoint/Restore)
 
+Status: **Research reference**
+
 Research based on [gvisor.dev/docs](https://gvisor.dev/docs/) as of 2026-06-19.
 
 ---
