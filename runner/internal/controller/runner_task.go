@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -641,14 +642,22 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	workspacePath := ""
 	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
 		checkpointName := "chetter-checkpoint-" + req.TaskID
-		cpOut, cpErr := exec.Command("docker", "checkpoint", "create", containerName, checkpointName).CombinedOutput()
+		ckDir := filepath.Join(session.WorkspaceDir, ".checkpoint", checkpointName)
+		cpOut, cpErr := exec.Command("docker", "checkpoint", "create", "--checkpoint-dir", ckDir, containerName, checkpointName).CombinedOutput()
 		if cpErr != nil {
 			slog.Error("docker checkpoint failed", "taskID", req.TaskID, "err", cpErr, "output", string(cpOut))
 		} else {
-			checkpointPath = dockerCheckpointPath(containerName, checkpointName)
+			// Clear stale net_ns_path so restore works after runner restarts.
+			if err := clearCheckpointNetNS(ckDir); err != nil {
+				slog.Warn("clear checkpoint netns", "err", err)
+			}
+			// Store the container ID for restore.
+			containerID := containerIDFromName(containerName)
+			os.WriteFile(filepath.Join(ckDir, ".container_id"), []byte(containerID+"\n"), 0644)
+			checkpointPath = ckDir
 			workspacePath = session.WorkspaceDir
 			session.PreserveWorkspace = true
-			slog.Info("checkpoint created", "taskID", req.TaskID, "path", checkpointPath, "workspace", workspacePath)
+			slog.Info("checkpoint created", "taskID", req.TaskID, "dir", ckDir, "containerID", containerID, "workspace", workspacePath)
 		}
 	}
 	if sid != "" {
@@ -684,9 +693,11 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 
 	const containerPort = 9999
-	containerID, checkpointName, ok := dockerCheckpointParts(req.ResumeCheckpointPath)
-	if !ok {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid checkpoint path: %s", req.ResumeCheckpointPath), nil)
+	ckDir := req.ResumeCheckpointPath
+	// The checkpoint path is now a custom directory in the workspace.
+	containerID, checkpointName := checkpointDirParts(ckDir)
+	if containerID == "" || checkpointName == "" {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid checkpoint dir: %s", ckDir), nil)
 		return
 	}
 
@@ -707,17 +718,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	secret := h.ServerPassword()
 
-	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "socket", mountedSocketPath)
+	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "dir", ckDir, "socket", mountedSocketPath)
 	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
 
-	// Ensure the container's network namespace exists before restore.
-	// gVisor containers use a custom Docker network; if the runner restarted,
-	// the original network namespace handle is gone and must be recreated.
-	if r.cfg.Execution.UseGVisor {
-		r.ensureDockerNetworkNamespace(ctx, containerID)
-	}
-
-	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName); err != nil {
+	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName, ckDir); err != nil {
 		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err)
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v", err), nil)
 		return
@@ -830,6 +834,14 @@ func dockerCheckpointParts(checkpointPath string) (containerID, checkpointName s
 	return "", "", false
 }
 
+func containerIDFromName(containerName string) string {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
+	if err != nil {
+		return containerName
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func dockerMountSource(containerID, destination string) (string, error) {
 	format := fmt.Sprintf(`{{range .Mounts}}{{if eq .Destination %q}}{{.Source}}{{end}}{{end}}`, destination)
 	out, err := exec.Command("docker", "inspect", "-f", format, containerID).CombinedOutput()
@@ -868,9 +880,9 @@ func parseDockerPortOutput(output string) (int, bool) {
 	return port, true
 }
 
-func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName string) error {
+func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName, ckDir string) error {
 	// Try Docker HTTP API v1.43 first (works around containerd bug in CLI).
-	if err := dockerAPICheckpointRestore(ctx, containerID, checkpointName); err == nil {
+	if err := dockerAPICheckpointRestore(ctx, containerID, checkpointName, ckDir); err == nil {
 		return nil
 	} else if ctx.Err() != nil {
 		return err
@@ -879,42 +891,47 @@ func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName 
 			"containerID", containerID, "checkpoint", checkpointName, "err", err)
 	}
 	// Fall back to CLI.
-	out, err := exec.CommandContext(ctx, "docker", "start", "--checkpoint", checkpointName, containerID).CombinedOutput()
+	cliArgs := []string{"start", "--checkpoint", checkpointName}
+	if ckDir != "" {
+		cliArgs = append(cliArgs, "--checkpoint-dir", ckDir)
+	}
+	cliArgs = append(cliArgs, containerID)
+	out, err := exec.CommandContext(ctx, "docker", cliArgs...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker CLI: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-// ensureDockerNetworkNamespace recreates the network namespace handle for a
-// stopped container. When the runner restarts, the kernel-level network
-// namespace handle (/var/run/docker/netns/...) is destroyed, but the Docker
-// network still exists. Restoring a gVisor checkpoint fails if the original
-// namespace handle is gone. We work around this by disconnecting and
-// reconnecting the container to its Docker network, which recreates the
-// kernel-level handle.
-func (r *Runner) ensureDockerNetworkNamespace(ctx context.Context, containerID string) {
-	format := `{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}`
-	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", format, containerID).CombinedOutput()
+// clearCheckpointNetNS strips the stale network namespace path from the
+// checkpoint config so Docker creates a fresh namespace on restore.
+func clearCheckpointNetNS(ckDir string) error {
+	cfgPath := filepath.Join(ckDir, "config.json")
+	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		slog.Warn("ensureDockerNetworkNamespace: inspect", "containerID", containerID, "err", err)
-		return
+		return fmt.Errorf("read config: %w", err)
 	}
-	netName := strings.TrimSpace(firstField(string(out)))
-	if netName == "" {
-		return
-	}
-	// Disconnect and reconnect to recreate the netns handle.
-	exec.CommandContext(ctx, "docker", "network", "disconnect", netName, containerID).Run()
-	if err := exec.CommandContext(ctx, "docker", "network", "connect", netName, containerID).Run(); err != nil {
-		slog.Warn("ensureDockerNetworkNamespace: reconnect failed; trying connect only",
-			"containerID", containerID, "netName", netName, "err", err)
-		// Container may not have been connected; try direct connect.
-		exec.CommandContext(ctx, "docker", "network", "connect", netName, containerID).Run()
-	}
+	data = regexp.MustCompile(`"net_ns_path"\s*:\s*"[^"]*"`).ReplaceAll(data, []byte(`"net_ns_path":""`))
+	return os.WriteFile(cfgPath, data, 0644)
 }
 
-func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName string) error {
+// checkpointDirParts extracts the container ID and checkpoint name from a
+// checkpoint directory path. The container ID is read from a sidecar file
+// written alongside the checkpoint.
+func checkpointDirParts(dir string) (containerID, checkpointName string) {
+	base := filepath.Base(dir)
+	if !strings.HasPrefix(base, "chetter-checkpoint-") {
+		return "", ""
+	}
+	idPath := filepath.Join(dir, ".container_id")
+	data, err := os.ReadFile(idPath)
+	if err != nil {
+		return "", base
+	}
+	return strings.TrimSpace(string(data)), base
+}
+
+func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName, ckDir string) error {
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -922,7 +939,7 @@ func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName
 			},
 		},
 	}
-	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s", url.QueryEscape(containerID), url.QueryEscape(checkpointName))
+	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s&checkpointDir=%s", url.QueryEscape(containerID), url.QueryEscape(checkpointName), url.QueryEscape(ckDir))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
