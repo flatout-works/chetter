@@ -61,6 +61,17 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_delete_trigger` | Delete a trigger by name |
 | `chetter_run_trigger` | Run a cron trigger immediately |
 
+### Definitions
+| Tool | Purpose |
+|---|---|
+| `chetter_get_model_catalog` | Get the active model/provider catalog |
+| `chetter_sync_definitions` | Sync the configured definitions repo and reload indexed configs (admin only) |
+| `chetter_list_definition_sources` | List Git-backed definition sources |
+| `chetter_get_definition_source` | Get a definition source by ID or name |
+| `chetter_sync_definition_source` | Sync a definition source (admin only) |
+| `chetter_list_definitions` | List active materialized definitions, optionally by type/source |
+| `chetter_get_definition` | Get a materialized definition by type and name |
+
 ### Arcane (Vulnerability Scanning, Optional)
 | Tool | Purpose |
 |---|---|
@@ -108,6 +119,19 @@ Triggers (cron schedules and PR review configs) can be kept as YAML files in you
 ```
 Use chetter_create_trigger with trigger_type=cron to create a trigger from triggers/nightly-changelog-update.yaml
 ```
+
+### Inspect Definitions
+Definitions are indexed from the configured `DEFINITIONS_REPO` into TiDB. To inspect the current registry:
+```
+List definition sources and show active agent definitions
+```
+The agent will call `chetter_list_definition_sources` and `chetter_list_definitions` with `definition_type="agent"`.
+
+To refresh the configured source:
+```
+Sync the default definition source
+```
+The agent will use `chetter_sync_definition_source`; admin access is required.
 
 ## Working with Triggers
 

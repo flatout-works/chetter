@@ -62,6 +62,35 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != definitionSyncStatusSuccess || runs[0].DefinitionsCount != 4 {
 		t.Fatalf("unexpected sync runs: %#v", runs)
 	}
+
+	_, sourcesOut, err := svc.listDefinitionSourcesTool(context.Background(), nil, ListDefinitionSourcesInput{})
+	if err != nil {
+		t.Fatalf("list definition sources tool: %v", err)
+	}
+	if len(sourcesOut.Sources) != 1 || sourcesOut.Sources[0].ID != defaultDefinitionSourceID || sourcesOut.Sources[0].LastSyncAt == nil {
+		t.Fatalf("unexpected source tool output: %#v", sourcesOut)
+	}
+
+	_, defsOut, err := svc.listDefinitionsTool(context.Background(), nil, ListDefinitionsInput{DefinitionType: definitions.DefinitionTypeAgent})
+	if err != nil {
+		t.Fatalf("list definitions tool: %v", err)
+	}
+	if len(defsOut.Definitions) != 1 || defsOut.Definitions[0].Name != "pr-reviewer" || defsOut.Definitions[0].Content == "" {
+		t.Fatalf("unexpected definitions tool output: %#v", defsOut)
+	}
+
+	_, defOut, err := svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeSkill, Name: "chetter"})
+	if err != nil {
+		t.Fatalf("get definition tool: %v", err)
+	}
+	if defOut.Definition.Path != "skills/chetter/SKILL.md" {
+		t.Fatalf("unexpected definition output: %#v", defOut)
+	}
+
+	_, _, err = svc.syncDefinitionSourceTool(context.Background(), nil, SyncDefinitionSourceInput{})
+	if err == nil {
+		t.Fatal("expected non-admin sync definition source to fail")
+	}
 }
 
 func createDefinitionsRepo(t *testing.T) string {
