@@ -62,28 +62,29 @@ type ListTasksOutput struct {
 // TaskToolRecord is the stable MCP task response shape. Store-level task
 // records may grow internal audit fields without breaking existing MCP clients.
 type TaskToolRecord struct {
-	ID          string            `json:"id"`
-	TeamID      string            `json:"team_id,omitempty"`
-	Status      string            `json:"status"`
-	Prompt      string            `json:"prompt"`
-	GitURL      string            `json:"git_url,omitempty"`
-	GitRef      string            `json:"git_ref,omitempty"`
-	AgentImage  string            `json:"agent_image,omitempty"`
-	Agent       string            `json:"agent,omitempty"`
-	ProviderID  string            `json:"provider_id,omitempty"`
-	ModelID     string            `json:"model_id,omitempty"`
-	VariantID   string            `json:"variant_id,omitempty"`
-	TriggerName string            `json:"trigger_name,omitempty"`
-	TriggerType string            `json:"trigger_type,omitempty"`
-	Skills      []string          `json:"skills"`
-	Env         map[string]string `json:"env"`
-	TimeoutSec  int               `json:"timeout_sec"`
-	Summary     string            `json:"summary,omitempty"`
-	Error       string            `json:"error,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
-	StartedAt   *time.Time        `json:"started_at,omitempty"`
-	EndedAt     *time.Time        `json:"ended_at,omitempty"`
+	ID            string            `json:"id"`
+	TeamID        string            `json:"team_id,omitempty"`
+	Status        string            `json:"status"`
+	Prompt        string            `json:"prompt"`
+	GitURL        string            `json:"git_url,omitempty"`
+	GitRef        string            `json:"git_ref,omitempty"`
+	AgentImage    string            `json:"agent_image,omitempty"`
+	Agent         string            `json:"agent,omitempty"`
+	ProviderID    string            `json:"provider_id,omitempty"`
+	ModelID       string            `json:"model_id,omitempty"`
+	VariantID     string            `json:"variant_id,omitempty"`
+	TriggerName   string            `json:"trigger_name,omitempty"`
+	TriggerType   string            `json:"trigger_type,omitempty"`
+	Skills        []string          `json:"skills"`
+	Env           map[string]string `json:"env"`
+	TimeoutSec    int               `json:"timeout_sec"`
+	Summary       string            `json:"summary,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	ErrorCategory string            `json:"error_category,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+	StartedAt     *time.Time        `json:"started_at,omitempty"`
+	EndedAt       *time.Time        `json:"ended_at,omitempty"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -156,6 +157,48 @@ type ListTriggersOutput struct {
 	Triggers []TriggerToolRecord `json:"triggers"`
 }
 
+type CreateEventCallbackInput struct {
+	Name         string `json:"name" jsonschema:"Unique event callback name"`
+	EventType    string `json:"event_type" jsonschema:"Event type to match, e.g. task.completed, task.failed.*, task.failed.model_error"`
+	ActionType   string `json:"action_type" jsonschema:"Action type: create_task, webhook, or slack"`
+	ActionConfig string `json:"action_config" jsonschema:"Action config as JSON. create_task uses prompt/git/model fields; webhook/slack use url, headers, template/text."`
+	Enabled      *bool  `json:"enabled,omitempty" jsonschema:"Enable the callback (default true)"`
+}
+
+type CreateEventCallbackOutput struct {
+	Callback EventCallbackRecord `json:"callback"`
+}
+
+type UpdateEventCallbackInput struct {
+	Name         string `json:"name" jsonschema:"Name of the event callback to update"`
+	EventType    string `json:"event_type,omitempty" jsonschema:"Updated event type matcher"`
+	ActionType   string `json:"action_type,omitempty" jsonschema:"Updated action type: create_task, webhook, or slack"`
+	ActionConfig string `json:"action_config,omitempty" jsonschema:"Updated action config as JSON"`
+	Enabled      *bool  `json:"enabled,omitempty" jsonschema:"Enable or disable the callback"`
+}
+
+type UpdateEventCallbackOutput struct {
+	Callback EventCallbackRecord `json:"callback"`
+}
+
+type ListEventCallbacksInput struct {
+	EnabledOnly bool   `json:"enabled_only,omitempty" jsonschema:"Only return enabled callbacks"`
+	EventType   string `json:"event_type,omitempty" jsonschema:"Filter by exact event type matcher"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum callbacks to return, capped at 100"`
+}
+
+type ListEventCallbacksOutput struct {
+	Callbacks []EventCallbackRecord `json:"callbacks"`
+}
+
+type DeleteEventCallbackInput struct {
+	Name string `json:"name" jsonschema:"Name of the event callback to delete"`
+}
+
+type DeleteEventCallbackOutput struct {
+	Deleted bool `json:"deleted"`
+}
+
 // TriggerToolRecord is the stable MCP trigger response shape. Store-level
 // schedule records may grow internal fields without breaking MCP clients.
 type TriggerToolRecord struct {
@@ -220,6 +263,7 @@ type TaskEventRecord struct {
 	ID        string    `json:"id"`
 	Subject   string    `json:"subject"`
 	Status    string    `json:"status"`
+	EventType string    `json:"event_type"`
 	Payload   string    `json:"payload"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -512,6 +556,10 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_triggers", Description: "List triggers, optionally filtered by type and enabled status."}, svc.listTriggersTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_trigger", Description: "Delete a trigger by name."}, svc.deleteTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_run_trigger", Description: "Run a cron trigger immediately by name."}, svc.runTriggerTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_event_callback", Description: "Create an event callback that reacts to task events with create_task, webhook, or slack actions."}, svc.createEventCallbackTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_event_callback", Description: "Update an event callback by name."}, svc.updateEventCallbackTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_event_callbacks", Description: "List event callbacks, optionally filtered by enabled status and event type."}, svc.listEventCallbacksTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_event_callback", Description: "Delete an event callback by name."}, svc.deleteEventCallbackTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_events", Description: "Get the full event history for a chetter task."}, svc.taskEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_progress", Description: "Get a distilled progress timeline for a chetter task."}, svc.taskProgressTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
@@ -701,28 +749,29 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	return TaskToolRecord{
-		ID:          task.ID,
-		TeamID:      task.TeamID,
-		Status:      task.Status,
-		Prompt:      task.Prompt,
-		GitURL:      task.GitURL,
-		GitRef:      task.GitRef,
-		AgentImage:  task.AgentImage,
-		Agent:       task.Agent,
-		ProviderID:  task.ProviderID,
-		ModelID:     task.ModelID,
-		VariantID:   task.VariantID,
-		TriggerName: task.TriggerName,
-		TriggerType: task.TriggerType,
-		Skills:      task.Skills,
-		Env:         task.Env,
-		TimeoutSec:  task.TimeoutSec,
-		Summary:     task.Summary,
-		Error:       task.Error,
-		CreatedAt:   task.CreatedAt,
-		UpdatedAt:   task.UpdatedAt,
-		StartedAt:   task.StartedAt,
-		EndedAt:     task.EndedAt,
+		ID:            task.ID,
+		TeamID:        task.TeamID,
+		Status:        task.Status,
+		Prompt:        task.Prompt,
+		GitURL:        task.GitURL,
+		GitRef:        task.GitRef,
+		AgentImage:    task.AgentImage,
+		Agent:         task.Agent,
+		ProviderID:    task.ProviderID,
+		ModelID:       task.ModelID,
+		VariantID:     task.VariantID,
+		TriggerName:   task.TriggerName,
+		TriggerType:   task.TriggerType,
+		Skills:        task.Skills,
+		Env:           task.Env,
+		TimeoutSec:    task.TimeoutSec,
+		Summary:       task.Summary,
+		Error:         task.Error,
+		ErrorCategory: task.ErrorCategory,
+		CreatedAt:     task.CreatedAt,
+		UpdatedAt:     task.UpdatedAt,
+		StartedAt:     task.StartedAt,
+		EndedAt:       task.EndedAt,
 	}
 }
 
@@ -732,28 +781,29 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	env := map[string]string{}
 	_ = json.Unmarshal(task.Env, &env)
 	return TaskToolRecord{
-		ID:          task.ID,
-		TeamID:      task.TeamID.String,
-		Status:      task.Status,
-		Prompt:      task.Prompt,
-		GitURL:      task.GitUrl.String,
-		GitRef:      task.GitRef.String,
-		AgentImage:  task.AgentImage.String,
-		Agent:       task.Agent.String,
-		ProviderID:  task.ProviderID.String,
-		ModelID:     task.ModelID.String,
-		VariantID:   task.VariantID.String,
-		TriggerName: task.TriggerName.String,
-		TriggerType: task.TriggerType.String,
-		Skills:      skills,
-		Env:         env,
-		TimeoutSec:  int(task.TimeoutSec),
-		Summary:     task.Summary.String,
-		Error:       task.Error.String,
-		CreatedAt:   task.CreatedAt,
-		UpdatedAt:   task.UpdatedAt,
-		StartedAt:   store.NullTimePtr(task.StartedAt),
-		EndedAt:     store.NullTimePtr(task.EndedAt),
+		ID:            task.ID,
+		TeamID:        task.TeamID.String,
+		Status:        task.Status,
+		Prompt:        task.Prompt,
+		GitURL:        task.GitUrl.String,
+		GitRef:        task.GitRef.String,
+		AgentImage:    task.AgentImage.String,
+		Agent:         task.Agent.String,
+		ProviderID:    task.ProviderID.String,
+		ModelID:       task.ModelID.String,
+		VariantID:     task.VariantID.String,
+		TriggerName:   task.TriggerName.String,
+		TriggerType:   task.TriggerType.String,
+		Skills:        skills,
+		Env:           env,
+		TimeoutSec:    int(task.TimeoutSec),
+		Summary:       task.Summary.String,
+		Error:         task.Error.String,
+		ErrorCategory: task.ErrorCategory.String,
+		CreatedAt:     task.CreatedAt,
+		UpdatedAt:     task.UpdatedAt,
+		StartedAt:     store.NullTimePtr(task.StartedAt),
+		EndedAt:       store.NullTimePtr(task.EndedAt),
 	}
 }
 
@@ -903,6 +953,56 @@ func (s *Service) deleteTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, DeleteTriggerOutput{}, fmt.Errorf("delete trigger: %w", err)
 	}
 	return nil, DeleteTriggerOutput{Deleted: true}, nil
+}
+
+func (s *Service) createEventCallbackTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateEventCallbackInput) (*mcp.CallToolResult, CreateEventCallbackOutput, error) {
+	enabled := true
+	if in.Enabled != nil {
+		enabled = *in.Enabled
+	}
+	callback, err := s.CreateEventCallback(ctx, EventCallbackInput{
+		Name:         in.Name,
+		EventType:    in.EventType,
+		ActionType:   in.ActionType,
+		ActionConfig: json.RawMessage(in.ActionConfig),
+		Enabled:      enabled,
+	})
+	if err != nil {
+		return nil, CreateEventCallbackOutput{}, err
+	}
+	return nil, CreateEventCallbackOutput{Callback: callback}, nil
+}
+
+func (s *Service) updateEventCallbackTool(ctx context.Context, _ *mcp.CallToolRequest, in UpdateEventCallbackInput) (*mcp.CallToolResult, UpdateEventCallbackOutput, error) {
+	var cfg json.RawMessage
+	if in.ActionConfig != "" {
+		cfg = json.RawMessage(in.ActionConfig)
+	}
+	callback, err := s.UpdateEventCallback(ctx, in.Name, EventCallbackInput{
+		EventType:    in.EventType,
+		ActionType:   in.ActionType,
+		ActionConfig: cfg,
+	}, in.Enabled)
+	if err != nil {
+		return nil, UpdateEventCallbackOutput{}, err
+	}
+	return nil, UpdateEventCallbackOutput{Callback: callback}, nil
+}
+
+func (s *Service) listEventCallbacksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListEventCallbacksInput) (*mcp.CallToolResult, ListEventCallbacksOutput, error) {
+	callbacks, err := s.ListEventCallbacks(ctx, in.EnabledOnly, in.EventType, in.Limit, 0)
+	if err != nil {
+		return nil, ListEventCallbacksOutput{}, err
+	}
+	return nil, ListEventCallbacksOutput{Callbacks: callbacks}, nil
+}
+
+func (s *Service) deleteEventCallbackTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteEventCallbackInput) (*mcp.CallToolResult, DeleteEventCallbackOutput, error) {
+	deleted, err := s.DeleteEventCallback(ctx, in.Name)
+	if err != nil {
+		return nil, DeleteEventCallbackOutput{}, err
+	}
+	return nil, DeleteEventCallbackOutput{Deleted: deleted}, nil
 }
 
 func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in UpdateTriggerInput) (*mcp.CallToolResult, UpdateTriggerOutput, error) {

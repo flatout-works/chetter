@@ -35,12 +35,31 @@ type RunnerRPCService struct {
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	eventBus      TaskEventPublisher
+	callbacks     TaskEventCallbackDispatcher
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
 // Implemented by webapi.EventBus.
 type TaskEventPublisher interface {
-	PublishTaskEvent(taskID, eventID, status, summary, payload, createdAt string)
+	PublishTaskEvent(taskID, eventID, status, eventType, summary, payload, createdAt string)
+}
+
+type TaskEventCallbackDispatcher interface {
+	DispatchTaskEventCallbacks(ctx context.Context, event TaskEventCallbackContext)
+}
+
+type TaskEventCallbackContext struct {
+	ID            string
+	TaskID        string
+	TeamID        string
+	Subject       string
+	Status        string
+	EventType     string
+	Summary       string
+	Error         string
+	ErrorCategory string
+	Payload       json.RawMessage
+	CreatedAt     time.Time
 }
 
 func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
@@ -49,6 +68,11 @@ func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCServic
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
 	s.eventBus = bus
+	return s
+}
+
+func (s *RunnerRPCService) WithEventCallbacks(callbacks TaskEventCallbackDispatcher) *RunnerRPCService {
+	s.callbacks = callbacks
 	return s
 }
 
@@ -382,7 +406,14 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		return repository.ChetterTask{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
 	var claimed repository.ChetterTask
-	err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	var eventID string
+	var eventPayload json.RawMessage
+	var eventCreatedAt time.Time
+	eventID, err := randomID("evt")
+	if err != nil {
+		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
+	}
+	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
 		task, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoClaimableTask
@@ -391,6 +422,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			return err
 		}
 		now := time.Now().UTC()
+		eventCreatedAt = now
 		rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
 			RunnerID:       nullString(runnerID),
 			ClaimedAt:      sql.NullTime{Time: now, Valid: true},
@@ -421,9 +453,49 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		task.UpdatedAt = now
 		task.LastEventAt = sql.NullTime{Time: now, Valid: true}
 		task.Attempt++
+		eventPayload, _ = json.Marshal(map[string]any{
+			"task_id":   task.ID,
+			"runner_id": runnerID,
+			"status":    "running",
+			"summary":   "Task claimed by runner",
+		})
+		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+			ID:        eventID,
+			TaskID:    task.ID,
+			Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, task.ID),
+			Status:    "running",
+			EventType: "task.claimed",
+			Payload:   eventPayload,
+			CreatedAt: now,
+		}); err != nil {
+			return err
+		}
 		claimed = task
 		return nil
 	})
+	if err == nil {
+		if s.eventBus != nil {
+			s.eventBus.PublishTaskEvent(claimed.ID, eventID, "running", "task.claimed", "Task claimed by runner", string(eventPayload), eventCreatedAt.Format(time.RFC3339))
+		}
+		if s.callbacks != nil {
+			dispatch := TaskEventCallbackContext{
+				ID:        eventID,
+				TaskID:    claimed.ID,
+				TeamID:    claimed.TeamID.String,
+				Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, claimed.ID),
+				Status:    "running",
+				EventType: "task.claimed",
+				Summary:   "Task claimed by runner",
+				Payload:   eventPayload,
+				CreatedAt: eventCreatedAt,
+			}
+			go func() {
+				callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+				defer cancel()
+				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, dispatch)
+			}()
+		}
+	}
 	return claimed, err
 }
 
@@ -451,12 +523,19 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	if status == "" {
 		status = "running"
 	}
+	errorCategory := normalizeErrorCategory(event.ErrorCategory)
+	if errorCategory == "" && statusIsErrorCategoryCandidate(status) {
+		errorCategory = classifyTaskErrorCategory(status, event.Error)
+	}
+	isHeartbeat := status == "running" && isHeartbeatSummary(event.Summary)
+	eventType := taskEventType(status, errorCategory, isHeartbeat)
 	lease := sql.NullTime{Time: now.Add(defaultTaskLeaseSec * time.Second), Valid: status == "running"}
 	eventInsert := repository.InsertTaskEventParams{
 		ID:        eventID,
 		TaskID:    event.TaskId,
 		Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, event.TaskId),
 		Status:    status,
+		EventType: eventType,
 		Payload:   payload,
 		CreatedAt: now,
 	}
@@ -464,6 +543,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		Status:            status,
 		Summary:           nullString(event.Summary),
 		Error:             nullString(event.Error),
+		ErrorCategory:     errorCategory,
 		SessionExport:     nullString(event.SessionExport),
 		ProviderID:        event.ProviderId,
 		ModelID:           event.ModelId,
@@ -478,7 +558,6 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		ID:                event.TaskId,
 		RunnerID:          sql.NullString{String: runnerID, Valid: true},
 	}
-	isHeartbeat := status == "running" && isHeartbeatSummary(event.Summary)
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
 		rows, err := q.UpdateTaskFromRunnerEvent(ctx, updateParams)
@@ -567,7 +646,31 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	if s.eventBus != nil && !skipEventRow {
-		s.eventBus.PublishTaskEvent(event.TaskId, eventID, status, event.Summary, string(payload), now.Format(time.RFC3339))
+		s.eventBus.PublishTaskEvent(event.TaskId, eventID, status, eventType, event.Summary, string(payload), now.Format(time.RFC3339))
+	}
+	if s.callbacks != nil && !skipEventRow {
+		if task, err := s.db.GetTaskByID(ctx, event.TaskId); err == nil {
+			dispatch := TaskEventCallbackContext{
+				ID:            eventID,
+				TaskID:        event.TaskId,
+				TeamID:        task.TeamID.String,
+				Subject:       eventInsert.Subject,
+				Status:        status,
+				EventType:     eventType,
+				Summary:       event.Summary,
+				Error:         event.Error,
+				ErrorCategory: errorCategory,
+				Payload:       payload,
+				CreatedAt:     now,
+			}
+			go func() {
+				callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+				defer cancel()
+				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, dispatch)
+			}()
+		} else {
+			slog.Warn("could not load task for event callbacks", "task_id", event.TaskId, "error", err)
+		}
 	}
 	return nil
 }
@@ -583,6 +686,82 @@ func sessionTerminalStatuses(taskStatus string) (runStatus, sessionStatus string
 	default:
 		return "", "", false
 	}
+}
+
+func statusIsErrorCategoryCandidate(status string) bool {
+	return status == "error" || status == "cancelled"
+}
+
+func normalizeErrorCategory(category string) string {
+	switch category {
+	case "budget_exceeded", "model_error", "runtime_error", "timeout", "stuck", "cancelled", "unknown":
+		return category
+	default:
+		return ""
+	}
+}
+
+func classifyTaskErrorCategory(status, message string) string {
+	if status == "cancelled" {
+		return "cancelled"
+	}
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "budget"), strings.Contains(lower, "cost limit"), strings.Contains(lower, "max budget"):
+		return "budget_exceeded"
+	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"), strings.Contains(lower, "lease expired"):
+		return "timeout"
+	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
+		return "stuck"
+	case strings.Contains(lower, "model"), strings.Contains(lower, "llm"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "provider"), strings.Contains(lower, "api error"):
+		return "model_error"
+	case message == "":
+		return "unknown"
+	default:
+		return "runtime_error"
+	}
+}
+
+func taskEventType(status, errorCategory string, heartbeat bool) string {
+	if heartbeat {
+		return "task.heartbeat"
+	}
+	switch status {
+	case "done", "completed":
+		return "task.completed"
+	case "error":
+		if errorCategory == "" {
+			errorCategory = "unknown"
+		}
+		return "task.failed." + errorCategory
+	case "cancelled":
+		return "task.cancelled"
+	case "running":
+		return "task.progress"
+	default:
+		return "task." + sanitizeEventTypePart(status)
+	}
+}
+
+func sanitizeEventTypePart(part string) string {
+	if part == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(part) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "unknown"
+	}
+	return b.String()
 }
 
 func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
