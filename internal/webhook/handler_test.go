@@ -2,6 +2,7 @@
 package webhook
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -122,9 +123,9 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			wantOK: false, wantTrigger: "",
 		},
 		{
-			name: "opened triggers review",
-			pr:   PullRequest{},
-			repo: "org/repo",
+			name:   "opened triggers review",
+			pr:     PullRequest{},
+			repo:   "org/repo",
 			wantOK: true, wantTrigger: "opened",
 		},
 	}
@@ -168,6 +169,9 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
 		TimeoutSec:    3600,
+		SessionMode:   "resumable",
+		PauseReason:   "waiting_for_pr_feedback",
+		TTLHours:      48,
 	}
 	req := buildReviewTaskRequest(review)
 
@@ -191,6 +195,15 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	}
 	if req.TimeoutSec != 3600 {
 		t.Errorf("TimeoutSec = %d, want 3600", req.TimeoutSec)
+	}
+	if req.SessionMode != "resumable" {
+		t.Errorf("SessionMode = %q, want resumable", req.SessionMode)
+	}
+	if req.PauseReason != "waiting_for_pr_feedback" {
+		t.Errorf("PauseReason = %q, want waiting_for_pr_feedback", req.PauseReason)
+	}
+	if req.TTLHours != 48 {
+		t.Errorf("TTLHours = %d, want 48", req.TTLHours)
 	}
 	if req.AgentImage == "" {
 		t.Error("AgentImage should be set so service.SubmitTask does not reject the request")
@@ -227,6 +240,59 @@ func TestBuildReviewTaskRequest_WithComment(t *testing.T) {
 	req := buildReviewTaskRequest(review)
 	if got := req.Env["COMMENT_AUTHOR"]; got != "someuser" {
 		t.Errorf("Env[COMMENT_AUTHOR] = %q, want someuser", got)
+	}
+}
+
+type recordingSessionResumer struct {
+	repo     string
+	prNumber int
+	calls    int
+}
+
+func (r *recordingSessionResumer) ResumeSessionForPR(_ context.Context, repo string, prNumber int) error {
+	r.repo = repo
+	r.prNumber = prNumber
+	r.calls++
+	return nil
+}
+
+func TestHandlePullRequestReviewResumesSession(t *testing.T) {
+	resumer := &recordingSessionResumer{}
+	h := &Handler{resumer: resumer}
+	body := []byte(`{
+		"action":"submitted",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"pull_request":{"number":42},
+		"review":{}
+	}`)
+
+	h.handlePullRequestReview(body, "delivery-1")
+
+	if resumer.calls != 1 {
+		t.Fatalf("resume calls = %d, want 1", resumer.calls)
+	}
+	if resumer.repo != "flatout-works/chetter" || resumer.prNumber != 42 {
+		t.Fatalf("resume target = %s#%d", resumer.repo, resumer.prNumber)
+	}
+}
+
+func TestHandlePullRequestReviewCommentResumesSession(t *testing.T) {
+	resumer := &recordingSessionResumer{}
+	h := &Handler{resumer: resumer}
+	body := []byte(`{
+		"action":"created",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"pull_request":{"number":7},
+		"comment":{}
+	}`)
+
+	h.handlePullRequestReviewComment(body, "delivery-2")
+
+	if resumer.calls != 1 {
+		t.Fatalf("resume calls = %d, want 1", resumer.calls)
+	}
+	if resumer.repo != "flatout-works/chetter" || resumer.prNumber != 7 {
+		t.Fatalf("resume target = %s#%d", resumer.repo, resumer.prNumber)
 	}
 }
 

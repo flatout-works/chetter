@@ -13,9 +13,11 @@ const (
 	PullRequestActionLabeled     = "labeled"
 
 	// EventType values for the X-GitHub-Event header.
-	EventTypePullRequest  = "pull_request"
-	EventTypeIssueComment = "issue_comment"
-	EventTypeIssues       = "issues"
+	EventTypePullRequest              = "pull_request"
+	EventTypeIssueComment             = "issue_comment"
+	EventTypeIssues                   = "issues"
+	EventTypePullRequestReview        = "pull_request_review"
+	EventTypePullRequestReviewComment = "pull_request_review_comment"
 
 	// ChetterReviewLabel is the label we add to PRs that should be reviewed.
 	ChetterReviewLabel = "chetter-review"
@@ -39,6 +41,29 @@ type PullRequestEvent struct {
 	PullRequest PullRequest `json:"pull_request"`
 	Label       *Label      `json:"label,omitempty"`
 	Repository  Repository  `json:"repository"`
+}
+
+// PullRequestReviewEvent is the top-level payload for pull_request_review.
+type PullRequestReviewEvent struct {
+	Action      string      `json:"action"`
+	PullRequest PullRequest `json:"pull_request"`
+	Review      Review      `json:"review"`
+	Repository  Repository  `json:"repository"`
+}
+
+// PullRequestReviewCommentEvent is the top-level payload for pull_request_review_comment.
+type PullRequestReviewCommentEvent struct {
+	Action      string      `json:"action"`
+	PullRequest PullRequest `json:"pull_request"`
+	Comment     Comment     `json:"comment"`
+	Repository  Repository  `json:"repository"`
+}
+
+// Review is the relevant subset of a pull request review object.
+type Review struct {
+	User struct {
+		Login string `json:"login"`
+	} `json:"user"`
 }
 
 // PullRequest is the relevant subset of the pull_request object.

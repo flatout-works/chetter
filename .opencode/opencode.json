@@ -40,6 +40,14 @@
     "chetter-sync-definitions": {
       "description": "Re-pull the Chetter definitions repo and reload configs.",
       "template": "Run chetter_sync_definitions to pull the latest definitions from the DEFINITIONS_REPO. Then run chetter_get_model_catalog to confirm the refreshed catalog. Do not edit files."
+    },
+    "chetter-definitions": {
+      "description": "List Chetter definition sources and indexed definitions.",
+      "template": "Run chetter_list_definition_sources, then run chetter_list_definitions. Summarize sources, last sync times, definition counts by type, and any obvious missing expected definitions. Do not edit files."
+    },
+    "chetter-definition-proposals": {
+      "description": "List Chetter definition change proposals.",
+      "template": "Run chetter_list_definition_proposals with limit=20. Summarize open proposals, PR URLs, changed files, and any live status available from chetter_get_definition_proposal. Do not edit files."
     }
   },
   "mcp": {

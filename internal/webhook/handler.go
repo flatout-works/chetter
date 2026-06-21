@@ -82,6 +82,9 @@ type ReviewTrigger struct {
 	Skills      []string
 	Event       string   // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
 	MatchLabels []string // required issue labels; empty = all labels match
+	SessionMode string
+	PauseReason string
+	TTLHours    int
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
@@ -117,6 +120,9 @@ type ReviewContext struct {
 	VariantID     string // reviewer variant ID (from the trigger config)
 	Skills        []string
 	TimeoutSec    int // reviewer task timeout (from the trigger config)
+	SessionMode   string
+	PauseReason   string
+	TTLHours      int
 }
 
 // Handler serves GitHub webhook events. Implements http.Handler.
@@ -201,8 +207,64 @@ func (h *Handler) handle(event string, body []byte, deliveryID string) {
 		h.handleIssueComment(body, deliveryID)
 	case EventTypeIssues:
 		h.handleIssues(body, deliveryID)
+	case EventTypePullRequestReview:
+		h.handlePullRequestReview(body, deliveryID)
+	case EventTypePullRequestReviewComment:
+		h.handlePullRequestReviewComment(body, deliveryID)
 	default:
 		slog.Debug("webhook: ignoring unsupported event", "event", event)
+	}
+}
+
+func (h *Handler) handlePullRequestReview(body []byte, deliveryID string) {
+	var ev PullRequestReviewEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		slog.Warn("webhook: parse pull_request_review", "err", err)
+		return
+	}
+	if ev.Action != "submitted" {
+		return
+	}
+	h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Review.User.Login, deliveryID, EventTypePullRequestReview, ev.Action)
+}
+
+func (h *Handler) handlePullRequestReviewComment(body []byte, deliveryID string) {
+	var ev PullRequestReviewCommentEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		slog.Warn("webhook: parse pull_request_review_comment", "err", err)
+		return
+	}
+	if ev.Action != "created" {
+		return
+	}
+	h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Comment.User.Login, deliveryID, EventTypePullRequestReviewComment, ev.Action)
+}
+
+func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, deliveryID, eventType, action string) {
+	if h.resumer == nil || repo == "" || prNumber <= 0 {
+		return
+	}
+	if author != "" {
+		appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
+		if appLogin != "" && author == appLogin {
+			slog.Info("webhook: skipping Chetter app review feedback", "repo", repo, "pr", prNumber, "event", eventType)
+			return
+		}
+	}
+	h.logAudit(AuditEventParams{
+		EventType:        "webhook_received",
+		SourceType:       "webhook",
+		SourceID:         deliveryID,
+		TargetType:       "pull_request",
+		TargetID:         fmt.Sprintf("%s#%d", repo, prNumber),
+		Repo:             repo,
+		GitHubEvent:      eventType,
+		GitHubAction:     action,
+		GitHubDeliveryID: deliveryID,
+		Detail:           fmt.Sprintf("%s/%s for %s#%d", eventType, action, repo, prNumber),
+	})
+	if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, prNumber); err != nil {
+		slog.Warn("webhook: resume session for pr feedback", "err", err, "repo", repo, "pr", prNumber, "event", eventType)
 	}
 }
 
@@ -441,6 +503,9 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
 			TriggerType: t.TriggerType,
+			SessionMode: t.SessionMode,
+			PauseReason: t.PauseReason,
+			TTLHours:    t.TTLHours,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
@@ -555,6 +620,9 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		rc.ModelID = t.ModelID
 		rc.VariantID = t.VariantID
 		rc.TimeoutSec = t.TimeoutSec
+		rc.SessionMode = t.SessionMode
+		rc.PauseReason = t.PauseReason
+		rc.TTLHours = t.TTLHours
 		if err := h.submitter.SubmitReviewTask(asyncCtx(30*time.Second), rc); err != nil {
 			slog.Error("webhook: submit review task", "err", err,
 				"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
@@ -668,6 +736,9 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
 			TriggerType: t.TriggerType,
+			SessionMode: t.SessionMode,
+			PauseReason: t.PauseReason,
+			TTLHours:    t.TTLHours,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,

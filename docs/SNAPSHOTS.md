@@ -1,5 +1,7 @@
 # Snapshots
 
+Status: **Design reference - partial implementation through resumable sessions**
+
 ## What Is a Snapshot?
 
 A snapshot captures the **full execution state** of a running agent container — not just its filesystem, but also process memory, open file descriptors, network connections, and CPU register state. When restored, the agent resumes exactly where it left off as if no time had passed.

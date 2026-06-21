@@ -1,40 +1,34 @@
 # Chetter Manual
 
+Status: **Current operator guide**
+
+This manual covers setup, configuration, and common operations. For a feature inventory, see [FEATURES.md](FEATURES.md). For roadmap work, see [PLAN.md](PLAN.md).
+
 ## Overview
 
-Chetter is a self-hosted MCP (Model Context Protocol) server that submits software development tasks to a fleet of containerized runners. Each runner clones a repository, starts an OpenCode agent, executes a prompt, and reports progress.
+Chetter is a self-hosted MCP server and web control plane for running autonomous development agents on a fleet of runners.
 
-This manual covers setup, configuration, and operation.
-
----
-
-## Architecture at a Glance
-
-```
-┌─────────────┐    MCP/HTTP     ┌──────────────┐    ConnectRPC    ┌─────────────┐
-│  AI Client  │◀───────────────▶│ Chetter MCP  │◀────────────────▶│   Runner    │
-│ (Claude,    │   (tools)       │   Server     │   (claim task)   │  (Docker)   │
-│  Cursor,    │                 │    TiDB      │                  │             │
-│  OpenCode)  │                 │              │                  │             │
-└─────────────┘                 └──────────────┘                  └─────────────┘
-                                        │
-                                        ▼
-                              ┌──────────────┐
-                              │   Cron /     │
-                              │   Schedules  │
-                              └──────────────┘
+```text
+AI client / web UI
+      |
+      | MCP / HTTP
+      v
+Chetter server + TiDB
+      |
+      | ConnectRPC claim, heartbeat, events
+      v
+Runner fleet -> Docker/gVisor task containers -> agent harness
 ```
 
-- **Server** (`chetter` binary): MCP endpoint, task queue, schedule runner, auth
-- **Runner** (`runner/` module): Containerized agent harness, polls for tasks
-- **CLI** (`chetterctl`): Token management for team/users
-- **Database**: TiDB for tasks, schedules, events, tokens, teams
+Main binaries:
 
----
+- `chetter`: server, MCP endpoint, web/API endpoint, triggers, auth, task queue.
+- `chetterctl`: token management CLI.
+- `runner`: runner harness service in `runner/`.
 
-## Quick Start
+## Quick Start With Compose
 
-### 1. Clone & Configure
+1. Clone and configure:
 
 ```bash
 git clone https://github.com/flatout-works/chetter.git
@@ -42,299 +36,248 @@ cd chetter
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+2. Edit `.env` and set at minimum:
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `CHETTER_MCP_AUTH_TOKEN` | Yes* | — | Admin bearer token for MCP endpoint |
-| `DATABASE_DSN` | No | — | External TiDB DSN override |
+| Variable | Purpose |
+|---|---|
+| `CHETTER_MCP_AUTH_TOKEN` | External admin bearer token used by Compose and Kubernetes examples. Compose maps it to the server's `MCP_AUTH_TOKEN`. |
+| `CHETTER_RUNNER_RPC_TOKEN` | Optional dedicated runner RPC token. If empty in Compose, it defaults to `CHETTER_MCP_AUTH_TOKEN`. |
+| Provider key | At least one usable LLM/provider key, depending on selected harness and model. |
 
-\* Required for any shared or public server. Single-user local setups can leave it empty.
-
-### 2. Start with Docker Compose
+3. Build images if needed:
 
 ```bash
-# With bundled TiDB
-docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
+./deploy/build.sh
+```
 
-# With external database (set DATABASE_DSN in .env)
+4. Start with bundled local TiDB:
+
+```bash
+docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
+```
+
+5. Or start with an external TiDB by setting `DATABASE_DSN` and omitting the local override:
+
+```bash
 docker compose --env-file .env -f deploy/compose.yaml up -d
 ```
 
-Services started:
-- `chetter-mcp` on port `18088` (or `HTTP_ADDR`)
-- `tidb` (if using `compose.local.yaml`)
-- `chetter-runner` (one or more, depending on compose override)
-
-### 3. Verify
+6. Verify:
 
 ```bash
 curl http://localhost:18088/healthz
-# → ok
-
-# Check runner health
-opencode mcp list
-# chetter should be enabled
 ```
 
-### 4. Submit a Task
+Open the web UI at `http://localhost:18090` and log in with `CHETTER_MCP_AUTH_TOKEN`.
+
+## Ports
+
+| Host port | Container port | Purpose |
+|---|---|---|
+| `18088` | `8080` | MCP endpoint and health endpoint. |
+| `18090` | `8090` | Web UI and ConnectRPC API. |
+
+The underlying server env vars are `HTTP_ADDR` and `WEB_ADDR`.
+
+## Authentication
+
+There are three token contexts to keep distinct:
+
+| Token | Where used | Notes |
+|---|---|---|
+| `MCP_AUTH_TOKEN` | Server binary admin token. | Required by the server process. Compose/K8s examples set this from external `CHETTER_MCP_AUTH_TOKEN`. |
+| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token and agent MCP token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. |
+| `CHETTER_RUNNER_RPC_TOKEN` | Runner-to-server ConnectRPC token. | Required by the server. Compose falls back to `CHETTER_MCP_AUTH_TOKEN` if this is empty. |
+
+Team tokens are stored hashed in TiDB and belong to a user in a team. Team-scoped tokens can only see their team's tasks, triggers, schedule runs, and sessions.
+
+Create a scoped token with `chetterctl`:
+
+```bash
+chetterctl token create --team engineering --user alice --name alice-cli
+```
+
+## Environment Variables
+
+### Server
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `HTTP_ADDR` | No | `:8080` | MCP listen address. |
+| `WEB_ADDR` | No | `:8090` | Web UI and ConnectRPC API listen address. |
+| `MCP_AUTH_TOKEN` | Yes | empty | Server admin bearer token. Empty and `change-me*` values are rejected. |
+| `CHETTER_RUNNER_RPC_TOKEN` | Yes | empty | Dedicated runner ConnectRPC token. Empty and `change-me*` values are rejected. |
+| `DATABASE_DSN` | Yes for binary | empty | TiDB DSN. Compose local override can provide bundled TiDB. |
+| `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default task runner image. |
+| `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
+| `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and future definitions. |
+| `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
+| `ARCANE_SERVER_URL` | No | empty | Optional Arcane scanner URL. |
+| `ARCANE_API_KEY` | No | empty | Optional Arcane API key. |
+| `GITHUB_APP_ID` | For GitHub app | `0` | GitHub App ID. |
+| `GITHUB_APP_PRIVATE_KEY_B64` | For GitHub app | empty | Base64-encoded GitHub App private key PEM. |
+| `GITHUB_INSTALLATION_ID` | For GitHub app | `0` | GitHub App installation ID. |
+| `GITHUB_WEBHOOK_SECRET` | For GitHub webhook | empty | HMAC-SHA256 webhook secret. |
+| `GITHUB_WEBHOOK_DISABLED` | No | `false` | Webhook kill switch. |
+
+### Runner And Agent Containers
+
+| Variable | Purpose |
+|---|---|
+| `CHETTER_SERVER_URL` | Server URL used by the runner. |
+| `CHETTER_RUNNER_AUTH_TOKEN` | Runner config token env. Compose fills this from `CHETTER_RUNNER_RPC_TOKEN` for current runner fallback compatibility. |
+| `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
+| `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `USE_GVISOR` | Enables Docker `runsc` execution and checkpoint support when `true`. |
+| `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
+| `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
+| `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
+| `GITHUB_TOKEN` | GitHub token for cloning private repos and read operations inside tasks. |
+| `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
+| `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
+
+## Submit A Task
+
+Use `chetter_submit_task` from an MCP client, the web UI, or an OpenCode command.
+
+Example input:
 
 ```json
 {
   "prompt": "Add input validation to all API handlers and run the tests.",
   "git_url": "https://github.com/my-org/my-repo",
   "git_ref": "main",
-  "agent_image": "ghcr.io/flatout-works/chetter-runner:main"
+  "agent_image": "chetter-runner:latest",
+  "harness": "opencode",
+  "timeout_sec": 1800
 }
 ```
 
-Use the `chetter_submit_task` MCP tool or the `/chetter-submit` OpenCode command.
-
----
-
-## Environment Variables Reference
-
-### Core Server
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `HTTP_ADDR` | No | `:8080` | Server listen address |
-| `DATABASE_DSN` | Yes | — | TiDB connection string. Example: `root@tcp(host:4000)/chetter?parseTime=true` |
-| `MCP_AUTH_TOKEN` | Yes | — | Admin bearer token. Bypasses all team scoping. Empty and `change-me*` values are rejected. |
-| `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image if task does not specify one |
-| `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Task timeout in seconds |
-
-### Arcane Vulnerability Scanning (Optional)
-
-| Variable | Required | Description |
-|---|---|---|
-| `ARCANE_SERVER_URL` | No | Arcane vulnerability scanner URL |
-| `ARCANE_API_KEY` | No | Arcane API key |
-
-If both are set, five `chetter_arcane_*` MCP tools are registered.
-
-### GitHub Integration (Optional)
-
-| Variable | Required | Description |
-|---|---|---|
-| `GITHUB_APP_ID` | Yes* | GitHub App ID for PR reviews |
-| `GITHUB_INSTALLATION_ID` | Yes* | Installation ID |
-| `GITHUB_APP_PRIVATE_KEY_B64` | Yes* | Base64-encoded PEM private key |
-| `GITHUB_WEBHOOK_SECRET` | Yes* | HMAC-SHA256 secret for webhook signature verification |
-| `GITHUB_WEBHOOK_DISABLED` | No | `true` to disable the webhook (kill switch) |
-
-\* Only required if you want PR review automation via GitHub webhook. See [docs/REVIEWS.md](REVIEWS.md) for full setup.
-
-### Runner Provider Keys
-
-These are passed to runner containers as environment variables so the OpenCode agent inside can call LLM APIs:
-
-| Variable | Purpose |
-|---|---|
-| `OPENAI_API_KEY` | OpenAI API access |
-| `DEEPSEEK_API_KEY` | DeepSeek API access |
-| `SYNTHETIC_API_KEY` | Synthetic API access |
-| `OPENCODE_API_KEY` | OpenCode API access |
-| `GITHUB_TOKEN` | For agents that clone private repos or create PRs |
-
-### Persistent Memory (Optional)
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `MEM9_API_KEY` | — | Mem9 persistent memory provider key |
-| `MEM9_API_URL` | `https://api.mem9.ai` | Mem9 API endpoint |
-| `MEM9_DEBUG` | `false` | Debug logging for Mem9 |
-
----
-
-## Configuration from Environment
-
-All config is loaded from environment variables. There is no config file — set vars in `.env` and source it, or export directly:
-
-```bash
-export DATABASE_DSN="root@tcp(127.0.0.1:4000)/chetter?parseTime=true"
-export MCP_AUTH_TOKEN="my-secure-token"
-export DEFAULT_AGENT_IMAGE="ghcr.io/flatout-works/chetter-runner:main"
-```
-
-### `.env.example` Quick Reference
-
-```bash
-# Copy and edit
-CHETTER_MCP_AUTH_TOKEN=
-
-# Provider keys (at least one)
-OPENAI_API_KEY=
-DEEPSEEK_API_KEY=
-SYNTHETIC_API_KEY=
-OPENCODE_API_KEY=
-
-# Optional: external DB instead of bundled TiDB
-# DATABASE_DSN=root@tcp(host:4000)/chetter?parseTime=true
-
-# Optional: GitHub for private repos / PR creation
-GITHUB_TOKEN=
-```
-
----
-
-## Authentication & Multi-Tenancy
-
-Chetter supports two auth models:
-
-### 1. Admin Token (Global Access)
-
-Set `MCP_AUTH_TOKEN`. This single bearer token bypasses all team scoping. It can see and manage all tasks, schedules, and tokens. Use a long, random value.
-
-```bash
-export MCP_AUTH_TOKEN="admin-secret-123"
-# Then use: Bearer admin-secret-123
-```
-
-### 2. Team Tokens (Scoped Access)
-
-Create scoped tokens for teams using `chetterctl` or the `chetter_create_token` MCP tool:
-
-```bash
-# Create a token for team "engineering" and user "alice"
-chetterctl token create --team engineering --user alice --name alice-cli
-# → Returns a raw token like "chtr_..."
-```
-
-- Each token belongs to a user in a team
-- Tasks and schedules created with a token are auto-stamped with the team's `team_id`
-- Team-scoped tokens can only see their own tasks and schedules
-- Admin token (`MCP_AUTH_TOKEN`) sees everything
-
-See `cmd/chetterctl/main.go` for CLI usage or use the MCP tools:
-- `chetter_create_token`
-- `chetter_list_tokens`
-- `chetter_delete_token`
-
----
-
-## MCP Tools
-
-| Tool | Purpose |
-|---|---|
-| `chetter_submit_task` | Submit a one-off development task |
-| `chetter_task_status` | Get task status and result |
-| `chetter_list_tasks` | List recent tasks (filtered by team scope) |
-| `chetter_create_trigger` | Create a trigger (cron schedule or PR review webhook) |
-| `chetter_update_trigger` | Update a trigger by name |
-| `chetter_list_triggers` | List triggers, optionally filtered by type |
-| `chetter_delete_trigger` | Delete a trigger by name |
-| `chetter_run_trigger` | Run a cron trigger immediately |
-| `chetter_cancel_task` | Cancel a pending or running task |
-| `chetter_clear_queue` | Cancel all pending tasks (admin only) |
-| `chetter_task_events` | Full event history for a task |
-| `chetter_task_progress` | Distilled progress timeline |
-| `chetter_task_latest_event` | Latest event for a task |
-| `chetter_runner_health` | Runner fleet health and running tasks |
-| `chetter_create_token` | Create team/user token (admin only) |
-| `chetter_list_tokens` | List tokens (admin only) |
-| `chetter_delete_token` | Delete a token (admin only) |
-| `chetter_create_team` | Create a team (admin only) |
-| `chetter_list_teams` | List all teams (admin only) |
-| `chetter_delete_team` | Delete a team and cascade users/tokens/tasks/schedules (admin only) |
-| `chetter_list_users` | List users, optionally filtered by team name (admin only) |
-| `chetter_list_schedule_runs` | List schedule runs for the current team, optionally filtered by schedule name |
-| `chetter_arcane_scanner_status` | Arcane scanner availability |
-| `chetter_arcane_environment_summary` | Vulnerability counts across images |
-| `chetter_arcane_list_images` | Docker images in Arcane |
-| `chetter_arcane_image_summary` | Vulnerability summary per image |
-| `chetter_arcane_list_vulnerabilities` | Detailed vulnerability list |
-
-Arcane tools are only available if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.
-
----
-
-## Schedules
-
-Chetter supports cron-backed schedules. See [docs/SCHEDULES.md](SCHEDULES.md) for full details.
-
-Quick example:
+For a resumable session:
 
 ```json
 {
-  "name": "nightly-docs-update",
-  "cron_expr": "0 4 * * *",
-  "prompt": "Review recent changes and update documentation...",
-  "git_url": "https://github.com/my-org/my-repo",
+  "prompt": "Create a PR for the next documentation improvement.",
+  "git_url": "https://github.com/flatout-works/chetter",
   "git_ref": "main",
-  "agent_image": "ghcr.io/flatout-works/chetter-runner:main"
+  "harness": "opencode",
+  "session_mode": "resumable",
+  "pause_reason": "waiting_for_pr_feedback",
+  "ttl_hours": 72
 }
 ```
 
----
+## MCP Tool Reference
 
-## PR Reviews
+### Tasks
 
-Chetter can automatically review GitHub pull requests via webhook integration. Four trigger paths: label, fork, `/chetter-review` comment, and manual MCP submission.
+| Tool | Purpose |
+|---|---|
+| `chetter_submit_task` | Submit a one-off development task. |
+| `chetter_task_status` | Get task status and result details. |
+| `chetter_list_tasks` | List recent tasks with optional status filter. |
+| `chetter_cancel_task` | Cancel a pending or running task. |
+| `chetter_clear_queue` | Admin-only cancellation of all pending tasks. |
+| `chetter_task_events` | Full event history for a task. |
+| `chetter_task_progress` | Distilled task progress timeline. |
+| `chetter_task_latest_event` | Latest task event. |
+| `chetter_task_export` | Markdown transcript for a completed task. |
 
-See [docs/REVIEWS.md](REVIEWS.md) for full setup.
+### Sessions
 
----
+| Tool | Purpose |
+|---|---|
+| `chetter_list_agent_sessions` | List recent agent sessions. |
+| `chetter_agent_session_status` | Get an agent session and its runs. |
+| `chetter_resume_agent_session` | Resume a paused session with a follow-up prompt. |
+
+### Triggers And Schedule Runs
+
+| Tool | Purpose |
+|---|---|
+| `chetter_create_trigger` | Create a cron, PR review, or issue trigger. |
+| `chetter_update_trigger` | Update a trigger. |
+| `chetter_list_triggers` | List triggers, optionally by type/enabled state. |
+| `chetter_delete_trigger` | Delete a trigger. |
+| `chetter_run_trigger` | Run a cron trigger immediately. |
+| `chetter_list_schedule_runs` | List schedule run history. |
+
+### Runner Fleet
+
+| Tool | Purpose |
+|---|---|
+| `chetter_runner_health` | Fleet diagnostics and heartbeat ages. |
+| `chetter_drain_runner` | Ask a runner to stop claiming new work and exit after current work. |
+
+### GitHub Artifacts
+
+| Tool | Purpose |
+|---|---|
+| `chetter_create_issue` | Create a GitHub issue with Chetter footer and audit/artifact records. |
+| `chetter_issue_comment` | Create an issue or PR comment with Chetter footer. |
+| `chetter_create_pr` | Create a GitHub PR with Chetter footer. |
+| `chetter_pr_review` | Create a GitHub PR review with Chetter footer. |
+| `chetter_list_task_artifacts` | Admin-only artifact browser/filter. |
+
+### Admin, Definitions, And Audit
+
+| Tool | Purpose |
+|---|---|
+| `chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token` | Admin token management. |
+| `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team`, `chetter_list_users` | Admin team/user management. |
+| `chetter_get_model_catalog` | Read the active model catalog summary. |
+| `chetter_sync_definitions` | Admin manual sync of the definitions repo. |
+| `chetter_list_audit_events` | Admin audit log query. |
+
+### Conditional Arcane Tools
+
+Registered only when `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured:
+
+- `chetter_arcane_scanner_status`
+- `chetter_arcane_environment_summary`
+- `chetter_arcane_list_images`
+- `chetter_arcane_image_summary`
+- `chetter_arcane_list_vulnerabilities`
 
 ## Common Operations
 
-### Check health
+### Health
+
 ```bash
 curl http://localhost:18088/healthz
 ```
 
-### View logs
-```bash
-# All services
-docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml logs -f
+### Logs
 
-# MCP server only
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml logs -f
 docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml logs -f chetter-mcp
 ```
 
-### Restart after `.env` changes
+### Restart After `.env` Changes
+
 ```bash
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 ```
 
 ### Stop
+
 ```bash
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml down
 ```
 
-### Database migrations
+### Migrations
+
 ```bash
-# Up
 make migrate
-
-# Status
 make migrate-status
-
-# Down one
-make migrate-down
-
-# Create new migration
-make migrate-create
-# → prompts for migration name
 ```
 
----
+## Related Docs
 
-## Self-Hosting Checklist
-
-- [ ] Set `CHETTER_MCP_AUTH_TOKEN` (for any non-local deployment)
-- [ ] Set `DATABASE_DSN` (or use bundled TiDB)
-- [ ] Configure at least one LLM provider key
-- [ ] Optionally configure GitHub App for PR reviews
-- [ ] Optionally configure Arcane for vulnerability scanning
-- [ ] Verify health endpoint: `curl http://host:port/healthz`
-- [ ] Verify MCP tools respond
-- [ ] Create team tokens via `chetterctl` or `chetter_create_token`
-
----
-
-## Further Reading
-
-- [docs/SCHEDULES.md](SCHEDULES.md) — Cron schedule management
-- [docs/REVIEWS.md](REVIEWS.md) — GitHub PR review automation
-- [AGENTS.md](/AGENTS.md) — Developer commands, testing, and architecture notes
+- [FEATURES.md](FEATURES.md) - current capability reference.
+- [SCHEDULES.md](SCHEDULES.md) - cron trigger management.
+- [REVIEWS.md](REVIEWS.md) - GitHub PR review automation.
+- [HARNESSES.md](HARNESSES.md) - harness architecture.
+- [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) - resumable sessions.
+- [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) - configuration-as-code design.

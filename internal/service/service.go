@@ -460,7 +460,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
 			TriggerName:            sql.NullString{},
 			TriggerType:            sql.NullString{},
-			CheckpointAfterSuccess: false,
+			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
 			Env:                    env,
@@ -855,6 +855,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
+	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := []string(nil)
 	_ = json.Unmarshal(sch.Skills, &targetSkills)
 	return s.submitScheduleTask(ctx,
@@ -873,6 +874,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		sch.Harness.String,
 		targetSkills,
 		int(sch.TimeoutSec),
+		runtime,
 		time.Now().UTC(),
 	)
 }
@@ -927,13 +929,14 @@ func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledF
 	}
 	var skills []string
 	_ = json.Unmarshal(schedule.Skills, &skills)
+	runtime := triggerRuntimeConfigFromJSON(schedule.TriggerConfig)
 	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.Name, schedule.TriggerType, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
 		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
-		schedule.Harness.String, skills, int(schedule.TimeoutSec), scheduledFor)
+		schedule.Harness.String, skills, int(schedule.TimeoutSec), runtime, scheduledFor)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, scheduledFor time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		TeamID:      teamID,
 		Prompt:      prompt,
@@ -949,6 +952,9 @@ func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerNam
 		TimeoutSec:  timeoutSec,
 		TriggerName: triggerName,
 		TriggerType: triggerType,
+		SessionMode: runtime.SessionMode,
+		PauseReason: runtime.PauseReason,
+		TTLHours:    runtime.TTLHours,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit scheduled task: %w", err)
@@ -1003,7 +1009,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	for i, t := range triggers {
 		var skills []string
 		_ = json.Unmarshal(t.Skills, &skills)
-		ev, _ := triggerEventAndLabelsFromConfig(t.TriggerConfig)
+		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
 			Name:        t.Name,
@@ -1018,7 +1024,10 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
-			Event:       ev,
+			Event:       cfg.Event,
+			SessionMode: cfg.SessionMode,
+			PauseReason: cfg.PauseReason,
+			TTLHours:    cfg.TTLHours,
 		}
 	}
 	return out, nil
@@ -1034,7 +1043,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 	for i, t := range triggers {
 		var skills []string
 		_ = json.Unmarshal(t.Skills, &skills)
-		ev, labels := triggerEventAndLabelsFromConfig(t.TriggerConfig)
+		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
 			Name:        t.Name,
@@ -1049,24 +1058,28 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
-			Event:       ev,
-			MatchLabels: labels,
+			Event:       cfg.Event,
+			MatchLabels: cfg.MatchLabels,
+			SessionMode: cfg.SessionMode,
+			PauseReason: cfg.PauseReason,
+			TTLHours:    cfg.TTLHours,
 		}
 	}
 	return out, nil
 }
 
-// triggerEventAndLabelsFromConfig extracts the "event" and "match_labels"
-// fields from a trigger_config JSON.
-func triggerEventAndLabelsFromConfig(cfg json.RawMessage) (string, []string) {
-	var parsed struct {
-		Event       string   `json:"event"`
-		MatchLabels []string `json:"match_labels"`
-	}
-	if err := json.Unmarshal(cfg, &parsed); err != nil {
-		return "", nil
-	}
-	return parsed.Event, parsed.MatchLabels
+type triggerRuntimeConfig struct {
+	Event       string   `json:"event"`
+	MatchLabels []string `json:"match_labels"`
+	SessionMode string   `json:"session_mode"`
+	PauseReason string   `json:"pause_reason"`
+	TTLHours    int      `json:"ttl_hours"`
+}
+
+func triggerRuntimeConfigFromJSON(cfg json.RawMessage) triggerRuntimeConfig {
+	var parsed triggerRuntimeConfig
+	_ = json.Unmarshal(cfg, &parsed)
+	return parsed
 }
 
 func randomID(prefix string) (string, error) {

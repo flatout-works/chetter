@@ -202,7 +202,6 @@ Some OpenHands patterns should not be copied directly:
 | Webhook push transport | Keep ConnectRPC polling. It is simpler and better for runner deployments. |
 | Sandbox grouping | Not needed while Chetter concurrency is runner-based. |
 | Full sub-agent runtime | Consider parent/child tasks later, not SDK-level sub-agents now. |
-
 ## Summary Table
 
 | Pattern | OpenHands | Chetter Today | Suggested Direction |

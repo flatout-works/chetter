@@ -56,14 +56,15 @@ type TaskResponse struct {
 
 // TaskSession represents one running task inside the runner.
 type TaskSession struct {
-	TaskID       string
-	Request      TaskRequest
-	WorkspaceDir string
-	SocketPath   string
-	StartedAt    time.Time
-	Ctx          context.Context
-	Cancel       context.CancelFunc
-	ResultChan   chan TaskResponse
+	TaskID            string
+	Request           TaskRequest
+	WorkspaceDir      string
+	PreserveWorkspace bool
+	SocketPath        string
+	StartedAt         time.Time
+	Ctx               context.Context
+	Cancel            context.CancelFunc
+	ResultChan        chan TaskResponse
 }
 
 // SocketPath returns the path to the MCP Unix socket for a given task ID.

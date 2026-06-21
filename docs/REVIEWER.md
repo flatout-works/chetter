@@ -1,5 +1,9 @@
 # Chetter PR Reviewer — Implementation Plan
 
+Status: **Archived implementation plan**
+
+The PR reviewer feature has shipped. Use [REVIEWS.md](REVIEWS.md) for current architecture and operations. This document remains as historical implementation context only.
+
 ## Overview
 
 A deep PR review agent that runs on every meaningful pull request in the repository. Triggered by a GitHub webhook endpoint in the chetter MCP service, not by cron. Posts structured reviews (approve / request-changes) with line-level comments using the "Chetter" GitHub App's identity.
