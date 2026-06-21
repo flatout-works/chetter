@@ -862,6 +862,24 @@ func parseDockerPortOutput(output string) (int, bool) {
 }
 
 func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName string) error {
+	// Try Docker HTTP API v1.43 first (works around containerd bug in CLI).
+	if err := dockerAPICheckpointRestore(ctx, containerID, checkpointName); err == nil {
+		return nil
+	} else if ctx.Err() != nil {
+		return err
+	} else {
+		slog.Warn("HTTP API checkpoint restore failed, trying CLI",
+			"containerID", containerID, "checkpoint", checkpointName, "err", err)
+	}
+	// Fall back to CLI.
+	out, err := exec.CommandContext(ctx, "docker", "start", "--checkpoint", checkpointName, containerID).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker CLI: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName string) error {
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -883,9 +901,9 @@ func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName 
 	if resp.StatusCode != 204 {
 		errMsg := strings.TrimSpace(string(body))
 		if errMsg != "" {
-			return fmt.Errorf("docker API: HTTP %d (expected 204): %s", resp.StatusCode, errMsg)
+			return fmt.Errorf("docker API: HTTP %d: %s", resp.StatusCode, errMsg)
 		}
-		return fmt.Errorf("docker API: HTTP %d (expected 204)", resp.StatusCode)
+		return fmt.Errorf("docker API: HTTP %d", resp.StatusCode)
 	}
 	return nil
 }

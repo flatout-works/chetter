@@ -8,7 +8,7 @@ Use this page to pick the right document. `MANUAL.md` and `FEATURES.md` are the 
 
 | Document | Purpose |
 |---|---|
-| [MANUAL.md](MANUAL.md) | Setup, configuration, common operations, and MCP tool reference. |
+| [MANUAL.md](MANUAL.md) | Comprehensive operations guide covering setup, config, deployment, sandbox isolation, custom images, and MCP tools. |
 | [FEATURES.md](FEATURES.md) | Current shipped feature reference. |
 | [HARNESSES.md](HARNESSES.md) | Runner harness architecture and supported agent CLIs. |
 | [SCHEDULES.md](SCHEDULES.md) | Cron trigger/schedule management. |
