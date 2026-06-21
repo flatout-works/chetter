@@ -80,6 +80,8 @@ const (
 	scheduleRunTimeout      = 30 * time.Second
 	eventHandlerTimeout     = 10 * time.Second
 	reaperInterval          = 30 * time.Second
+	definitionsSyncInterval = 5 * time.Minute
+	definitionsSyncTimeout  = 2 * time.Minute
 	reaperGrace             = 120 * time.Second
 	reaperHealthMaxEventSec = 120
 	runnerPresenceMaxSec    = 60
@@ -146,6 +148,9 @@ func (s *Service) Start(ctx context.Context) error {
 		return err
 	}
 	go s.taskReaper()
+	if s.definitions != nil {
+		go s.definitionsSyncLoop()
+	}
 	return nil
 }
 
@@ -171,6 +176,23 @@ func (s *Service) taskReaper() {
 			s.reapStaleTasks()
 			s.reapExpiredLeases()
 			s.reapExpiredSessions()
+		case <-s.reaperStop:
+			return
+		}
+	}
+}
+
+func (s *Service) definitionsSyncLoop() {
+	ticker := time.NewTicker(definitionsSyncInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), definitionsSyncTimeout)
+			if _, err := s.SyncDefinitions(ctx); err != nil {
+				slog.Warn("periodic definitions sync failed", "err", err)
+			}
+			cancel()
 		case <-s.reaperStop:
 			return
 		}

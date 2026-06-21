@@ -117,7 +117,7 @@ Human or outside changes:
 ```text
 1. Open PR against the definitions repo.
 2. Review and merge.
-3. Chetter detects the new commit or receives a webhook.
+3. Chetter detects the new commit through periodic sync, a manual sync, or a webhook.
 4. Chetter validates and materializes definitions into TiDB.
 5. Future tasks use the new definitions.
 ```
@@ -168,13 +168,13 @@ triggers. These tools make the model explicit and usable from any MCP client.
   coexist with manual `chetter_update_trigger` as an override path.
 - How strict validation should be for unknown agent frontmatter fields and skill
   metadata.
-- Whether definition sources should be synced by polling, GitHub webhooks, or
-  both.
+- Whether definition sources should also support GitHub webhook sync in addition
+  to the current five-minute polling and manual sync.
 
 ## Implementation Phases
 
-1. Add task attribution fields, starting with `trigger_name`.
-2. Add definition source schema and read-only sync/indexing.
-3. Add definition MCP read/sync tools.
+1. Add task attribution fields, starting with `trigger_name`. ✓
+2. Add definition source schema and read-only sync/indexing. _(partial: model catalog loaded from Git via `DEFINITIONS_REPO`; automatic five-minute sync)_
+3. Add definition MCP read/sync tools. _(partial: `chetter_sync_definitions`, `chetter_get_model_catalog`)_
 4. Add the weekly meta-improver agent and trigger.
 5. Add PR proposal tooling for definition changes.

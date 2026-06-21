@@ -1,22 +1,37 @@
 # Model Catalog
 
-Chetter keeps provider and model definitions in a generic YAML catalog. Admins can import the catalog into the control-plane database, and runners receive the active catalog when they claim tasks.
+Chetter keeps provider and model definitions in a generic YAML catalog that
+lives in a Git definitions repo. The server syncs it into TiDB and resolves
+the harness-specific provider/model before a runner receives a task.
 
-The catalog is shared by all harnesses. Harness-specific behavior belongs in optional `defaults` or `harnesses` sections, not in Go code for a specific provider or model.
+Runners do not receive or parse the full catalog. Claimed tasks contain the
+resolved `harness`, `provider_id`, `model_id`, and provider metadata needed by
+the selected harness to write its local config.
 
-## Import
+If no definitions repo is configured (`DEFINITIONS_REPO` env var), Chetter
+uses a built-in default catalog with common providers (Synthetic, DeepSeek,
+Z.ai, Anthropic, OpenCode Zen).
 
-Use the admin MCP tool:
+## Setup
 
-```json
-{
-  "name": "default",
-  "file_path": "config/model-catalog.yaml",
-  "activate": true
-}
+1. Create a Git repo (or use an existing one) with a `model-catalog.yaml` at
+   the root. The Flatout default repo is `github.com/flatout-works/chetter-config`.
+2. Set `DEFINITIONS_REPO` (and optionally `DEFINITIONS_BRANCH`) on the MCP
+   server.
+3. Start (or restart) the server. It clones the repo, validates the catalog,
+   and stores it as the active catalog in `chetter_model_catalogs`.
+4. Chetter re-pulls the definitions repo every five minutes and updates the DB.
+   To refresh immediately, call `chetter_sync_definitions` (admin only) or restart.
+
+Example MCP server environment:
+
+```bash
+DEFINITIONS_REPO=git@github.com:flatout-works/chetter-config.git
+DEFINITIONS_BRANCH=main
 ```
 
-Or pass inline YAML via the `yaml` field. The catalog must not contain secret values; use env var names such as `api_key_env: SYNTHETIC_API_KEY`.
+The catalog must not contain secret values; use env var names such as
+`api_key_env: SYNTHETIC_API_KEY`.
 
 ## Shape
 
@@ -52,6 +67,14 @@ providers:
       - id: deepseek-chat
 ```
 
-`kind: openai_compatible` is enough for OpenCode provider rendering. Native providers can still be listed for harnesses such as Claude Code or Pi without OpenCode trying to render them as OpenAI-compatible endpoints.
+`kind: openai_compatible` is enough for OpenCode provider rendering. Native
+providers can still be listed for harnesses such as Claude Code or Pi without
+OpenCode trying to render them as OpenAI-compatible endpoints.
 
-Use provider or model `harnesses` overrides only when a harness needs a different ID or should disable an entry.
+Use provider or model `harnesses` overrides only when a harness needs a
+different ID or should disable an entry.
+
+## Viewing
+
+Use `chetter_get_model_catalog` (no admin required) to see the active
+catalog's default provider/model, provider count, model count, and source.
