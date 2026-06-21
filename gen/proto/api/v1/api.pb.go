@@ -3311,6 +3311,7 @@ type CreateTriggerRequest struct {
 	SessionMode   string                 `protobuf:"bytes,17,opt,name=session_mode,json=sessionMode,proto3" json:"session_mode,omitempty"`
 	PauseReason   string                 `protobuf:"bytes,18,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,19,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
+	MatchLabels   []string               `protobuf:"bytes,20,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3478,6 +3479,13 @@ func (x *CreateTriggerRequest) GetTtlHours() int32 {
 	return 0
 }
 
+func (x *CreateTriggerRequest) GetMatchLabels() []string {
+	if x != nil {
+		return x.MatchLabels
+	}
+	return nil
+}
+
 type CreateTriggerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Trigger       *Trigger               `protobuf:"bytes,1,opt,name=trigger,proto3" json:"trigger,omitempty"`
@@ -3543,6 +3551,8 @@ type UpdateTriggerRequest struct {
 	SessionMode   string                 `protobuf:"bytes,17,opt,name=session_mode,json=sessionMode,proto3" json:"session_mode,omitempty"`
 	PauseReason   string                 `protobuf:"bytes,18,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,19,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
+	MatchLabels   []string               `protobuf:"bytes,20,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty"`
+	Event         string                 `protobuf:"bytes,21,opt,name=event,proto3" json:"event,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3708,6 +3718,20 @@ func (x *UpdateTriggerRequest) GetTtlHours() int32 {
 		return x.TtlHours
 	}
 	return 0
+}
+
+func (x *UpdateTriggerRequest) GetMatchLabels() []string {
+	if x != nil {
+		return x.MatchLabels
+	}
+	return nil
+}
+
+func (x *UpdateTriggerRequest) GetEvent() string {
+	if x != nil {
+		return x.Event
+	}
+	return ""
 }
 
 type UpdateTriggerResponse struct {
@@ -6391,7 +6415,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\"_\n" +
 	"\x15ResumeSessionResponse\x12 \n" +
 	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\x12$\n" +
-	"\x03run\x18\x02 \x01(\v2\x12.api.v1.SessionRunR\x03run\"\xb8\x04\n" +
+	"\x03run\x18\x02 \x01(\v2\x12.api.v1.SessionRunR\x03run\"\xdb\x04\n" +
 	"\x14CreateTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12*\n" +
 	"\ftrigger_type\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vtriggerType\x12\x1b\n" +
@@ -6416,9 +6440,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\x12!\n" +
 	"\fsession_mode\x18\x11 \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x12 \x01(\tR\vpauseReason\x12\x1b\n" +
-	"\tttl_hours\x18\x13 \x01(\x05R\bttlHours\"B\n" +
+	"\tttl_hours\x18\x13 \x01(\x05R\bttlHours\x12!\n" +
+	"\fmatch_labels\x18\x14 \x03(\tR\vmatchLabels\"B\n" +
 	"\x15CreateTriggerResponse\x12)\n" +
-	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"\xc4\x04\n" +
+	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"\xfd\x04\n" +
 	"\x14UpdateTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12!\n" +
 	"\ftrigger_type\x18\x02 \x01(\tR\vtriggerType\x12\x1b\n" +
@@ -6443,7 +6468,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\x12!\n" +
 	"\fsession_mode\x18\x11 \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x12 \x01(\tR\vpauseReason\x12\x1b\n" +
-	"\tttl_hours\x18\x13 \x01(\x05R\bttlHoursB\n" +
+	"\tttl_hours\x18\x13 \x01(\x05R\bttlHours\x12!\n" +
+	"\fmatch_labels\x18\x14 \x03(\tR\vmatchLabels\x12\x14\n" +
+	"\x05event\x18\x15 \x01(\tR\x05eventB\n" +
 	"\n" +
 	"\b_enabled\"B\n" +
 	"\x15UpdateTriggerResponse\x12)\n" +

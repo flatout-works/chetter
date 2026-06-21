@@ -1002,7 +1002,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	for i, t := range triggers {
 		var skills []string
 		_ = json.Unmarshal(t.Skills, &skills)
-		ev := triggerEventFromConfig(t.TriggerConfig)
+		ev, _ := triggerEventAndLabelsFromConfig(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
 			Name:        t.Name,
@@ -1033,7 +1033,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 	for i, t := range triggers {
 		var skills []string
 		_ = json.Unmarshal(t.Skills, &skills)
-		ev := triggerEventFromConfig(t.TriggerConfig)
+		ev, labels := triggerEventAndLabelsFromConfig(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
 			Name:        t.Name,
@@ -1049,20 +1049,23 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
 			Event:       ev,
+			MatchLabels: labels,
 		}
 	}
 	return out, nil
 }
 
-// triggerEventFromConfig extracts the "event" field from a trigger_config JSON.
-func triggerEventFromConfig(cfg json.RawMessage) string {
+// triggerEventAndLabelsFromConfig extracts the "event" and "match_labels"
+// fields from a trigger_config JSON.
+func triggerEventAndLabelsFromConfig(cfg json.RawMessage) (string, []string) {
 	var parsed struct {
-		Event string `json:"event"`
+		Event       string   `json:"event"`
+		MatchLabels []string `json:"match_labels"`
 	}
 	if err := json.Unmarshal(cfg, &parsed); err != nil {
-		return ""
+		return "", nil
 	}
-	return parsed.Event
+	return parsed.Event, parsed.MatchLabels
 }
 
 func randomID(prefix string) (string, error) {

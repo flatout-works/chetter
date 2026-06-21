@@ -16,6 +16,8 @@
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
 
+  import { marked } from "marked";
+
   let { params } = $props();
   let task = $state<Task | null>(null);
   let artifacts = $state<TaskArtifact[]>([]);
@@ -23,6 +25,8 @@
   let error = $state<string | null>(null);
   let unsub: (() => void) | null = null;
   let now = $state(Date.now());
+  let viewMarkdown = $state<string | null>(null);
+  let viewLoading = $state(false);
 
   const statusColors: Record<string, string> = {
     running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
@@ -74,7 +78,7 @@
       await loadTaskEvents(params.id, 100);
       await loadTaskProgress(params.id);
 
-      if (task?.status === "done" || task?.status === "error") {
+      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
         try {
           const adminClient = createClient(AdminService, getTransport());
           const artResp = await adminClient.listTaskArtifacts({ taskId: params.id });
@@ -126,6 +130,23 @@
       error = e instanceof Error ? e.message : "Failed to export task";
     }
   }
+
+  async function viewExport() {
+    viewLoading = true;
+    try {
+      const client = createClient(TaskService, getTransport());
+      const resp = await client.exportTask({ taskId: params.id });
+      viewMarkdown = await marked.parse(resp.export, { breaks: true });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load export";
+    } finally {
+      viewLoading = false;
+    }
+  }
+
+  function closeView() {
+    viewMarkdown = null;
+  }
 </script>
 
 <svelte:head>
@@ -168,6 +189,13 @@
           </button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
+          <button
+            onclick={viewExport}
+            disabled={viewLoading}
+            class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium"
+          >
+            {viewLoading ? "Loading…" : "View"}
+          </button>
           <button
             onclick={exportTask}
             class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium"
@@ -215,6 +243,36 @@
       </div>
     {/if}
 
+    <!-- Artifacts -->
+    {#if artifacts.length > 0}
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
+        <div class="space-y-2">
+          {#each artifacts as art (art.id)}
+            <div class="flex items-center gap-3 text-sm">
+              <span class={`px-2 py-0.5 rounded text-xs font-medium ${
+                art.artifactType === "issue" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
+                art.artifactType === "pull_request" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" :
+                "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+              }`}>
+                {art.artifactType}
+              </span>
+              {#if art.url}
+                <button onclick={() => window.open(art.url, "_blank", "noopener,noreferrer")} class="text-blue-600 dark:text-blue-400 hover:underline">
+                  {art.repo}#{art.number}
+                </button>
+              {:else}
+                <span class="text-gray-700 dark:text-gray-300">{art.repo}#{art.number}</span>
+              {/if}
+              {#if art.ref}
+                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{art.ref}</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     <!-- Progress Timeline -->
     {#if progress.length > 0}
       <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
@@ -241,36 +299,6 @@
                   <p class="text-red-600 dark:text-red-400 text-xs mt-1 font-mono">{entry.error}</p>
                 {/if}
               </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <!-- Artifacts -->
-    {#if artifacts.length > 0}
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
-        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
-        <div class="space-y-2">
-          {#each artifacts as art (art.id)}
-            <div class="flex items-center gap-3 text-sm">
-              <span class={`px-2 py-0.5 rounded text-xs font-medium ${
-                art.artifactType === "issue" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
-                art.artifactType === "pull_request" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" :
-                "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
-              }`}>
-                {art.artifactType}
-              </span>
-              {#if art.url}
-                <button onclick={() => window.open(art.url, "_blank", "noopener,noreferrer")} class="text-blue-600 dark:text-blue-400 hover:underline">
-                  {art.repo}#{art.number}
-                </button>
-              {:else}
-                <span class="text-gray-700 dark:text-gray-300">{art.repo}#{art.number}</span>
-              {/if}
-              {#if art.ref}
-                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{art.ref}</span>
-              {/if}
             </div>
           {/each}
         </div>
@@ -315,6 +343,22 @@
         {:else}
           <p class="text-gray-500 dark:text-gray-400 text-center py-4">No events</p>
         {/each}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Export viewer modal -->
+{#if viewMarkdown}
+  <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onclick={closeView} onkeydown={(e) => e.key === "Escape" && closeView()}>
+    <div role="dialog" aria-label="Session export viewer" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-11/12 h-5/6 flex flex-col" onclick={(e) => e.stopPropagation()}>
+      <div class="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Session Export</h2>
+        <button onclick={closeView} class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-6 prose prose-sm dark:prose-invert max-w-none">
+        {@html viewMarkdown}
       </div>
     </div>
   </div>

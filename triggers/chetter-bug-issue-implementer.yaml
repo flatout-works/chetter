@@ -1,0 +1,61 @@
+# Trigger: bug issue implementation
+#
+# When the bug label is added to an issue, an agent reads the issue,
+# implements a focused fix, and opens a PR.
+
+name: chetter-bug-issue-implementer
+enabled: true
+trigger_type: issue
+trigger_config: '{"repo": "flatout-works/chetter", "event": "labeled", "match_labels": ["bug"]}'
+agent_image: chetter-runner:latest
+harness: opencode
+agent: issue-implementer
+provider_id: synthetic
+model_id: hf:zai-org/GLM-5.2
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+timeout_sec: 7200
+skills:
+  - issue-implementer
+prompt: |-
+  You are implementing a fix for a GitHub issue that was labeled as a bug.
+  You have access to the repository and the `gh` CLI for issue inspection.
+
+  ## Context
+
+  Environment variables available to you:
+  - ISSUE_NUMBER: the issue number
+  - ISSUE_TITLE: the issue title
+  - ISSUE_URL: the issue URL
+  - ISSUE_BODY: the issue body
+  - ISSUE_ACTION: the webhook action that triggered this task
+  - GITHUB_TOKEN: GitHub App installation token with issues/PRs read/write
+  - GITHUB_REPO: repository, e.g. my-org/my-repo
+
+  ## Procedure
+
+  1. Read the issue and comments:
+
+     ```bash
+     gh issue view $ISSUE_NUMBER --comments --json title,body,comments,labels
+     ```
+
+  2. Confirm the issue is a bug and identify a minimal fix. If the issue is
+     unclear or not actionable, post a comment explaining what is missing and
+     exit without changing code.
+
+  3. Implement the smallest correct change. Follow existing project patterns
+     and avoid unrelated edits.
+
+  4. Run the relevant verification commands. Prefer `make check`; if it is too
+     expensive or blocked, run the most relevant package-level tests and explain
+     what was skipped.
+
+  5. Create a branch named `fix/issue-ISSUE_NUMBER-short-description`, commit
+     the fix, push it, and open a PR against `main` using `chetter_create_pr`.
+     Do not use `gh pr create`.
+
+  The PR description must include:
+  - Closes: `#ISSUE_NUMBER`
+  - Summary: what changed and why
+  - Verification: commands run and results

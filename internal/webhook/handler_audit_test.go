@@ -45,6 +45,65 @@ func TestTriggerAllowsBotComments(t *testing.T) {
 	}
 }
 
+func TestTriggerMatchesLabels(t *testing.T) {
+	tests := []struct {
+		name          string
+		triggerLabels []string
+		issueLabels   []string
+		want          bool
+	}{
+		{
+			name:          "no trigger labels matches any issue",
+			triggerLabels: nil,
+			issueLabels:   []string{"bug"},
+			want:          true,
+		},
+		{
+			name:          "empty trigger labels matches any issue",
+			triggerLabels: []string{},
+			issueLabels:   []string{"enhancement"},
+			want:          true,
+		},
+		{
+			name:          "exact match",
+			triggerLabels: []string{"bug"},
+			issueLabels:   []string{"bug", "enhancement"},
+			want:          true,
+		},
+		{
+			name:          "case insensitive match",
+			triggerLabels: []string{"Bug"},
+			issueLabels:   []string{"bug"},
+			want:          true,
+		},
+		{
+			name:          "no match",
+			triggerLabels: []string{"bug"},
+			issueLabels:   []string{"enhancement"},
+			want:          false,
+		},
+		{
+			name:          "multiple trigger labels - one matches",
+			triggerLabels: []string{"bug", "urgent"},
+			issueLabels:   []string{"enhancement", "urgent"},
+			want:          true,
+		},
+		{
+			name:          "no issue labels",
+			triggerLabels: []string{"bug"},
+			issueLabels:   nil,
+			want:          false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := triggerMatchesLabels(tc.triggerLabels, tc.issueLabels); got != tc.want {
+				t.Errorf("triggerMatchesLabels = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTaskIDFooterRegex(t *testing.T) {
 	tests := []struct {
 		name  string

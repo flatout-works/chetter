@@ -95,21 +95,21 @@ func TestProtoSeverity(t *testing.T) {
 
 func TestBuildTriggerConfig(t *testing.T) {
 	t.Run("empty trigger type", func(t *testing.T) {
-		got := buildTriggerConfig("", "", "")
+		got := buildTriggerConfig("", "", "", nil)
 		if got != "" {
 			t.Errorf("buildTriggerConfig('', '', '') = %q, want empty", got)
 		}
 	})
 
 	t.Run("cron type returns empty config", func(t *testing.T) {
-		got := buildTriggerConfig("cron", "org/repo", "")
+		got := buildTriggerConfig("cron", "org/repo", "", nil)
 		if got != "" {
 			t.Errorf("buildTriggerConfig(cron) = %q, want empty", got)
 		}
 	})
 
 	t.Run("pr_review with repo", func(t *testing.T) {
-		got := buildTriggerConfig("pr_review", "flatout-works/chetter", "")
+		got := buildTriggerConfig("pr_review", "flatout-works/chetter", "", nil)
 		want := `{"repo":"flatout-works/chetter"}`
 		if got != want {
 			t.Errorf("buildTriggerConfig(pr_review) = %q, want %q", got, want)
@@ -117,14 +117,14 @@ func TestBuildTriggerConfig(t *testing.T) {
 	})
 
 	t.Run("pr_review without repo returns empty", func(t *testing.T) {
-		got := buildTriggerConfig("pr_review", "", "")
+		got := buildTriggerConfig("pr_review", "", "", nil)
 		if got != "" {
 			t.Errorf("buildTriggerConfig(pr_review, no repo) = %q, want empty", got)
 		}
 	})
 
 	t.Run("issue with repo", func(t *testing.T) {
-		got := buildTriggerConfig("issue", "flatout-works/chetter", "")
+		got := buildTriggerConfig("issue", "flatout-works/chetter", "", nil)
 		want := `{"repo":"flatout-works/chetter"}`
 		if got != want {
 			t.Errorf("buildTriggerConfig(issue) = %q, want %q", got, want)
@@ -132,15 +132,23 @@ func TestBuildTriggerConfig(t *testing.T) {
 	})
 
 	t.Run("issue with repo and event", func(t *testing.T) {
-		got := buildTriggerConfig("issue", "flatout-works/chetter", "opened")
+		got := buildTriggerConfig("issue", "flatout-works/chetter", "opened", nil)
 		want := `{"event":"opened","repo":"flatout-works/chetter"}`
 		if got != want {
 			t.Errorf("buildTriggerConfig(issue, event) = %q, want %q", got, want)
 		}
 	})
 
+	t.Run("issue with match labels", func(t *testing.T) {
+		got := buildTriggerConfig("issue", "flatout-works/chetter", "opened", []string{"bug"})
+		want := `{"event":"opened","match_labels":["bug"],"repo":"flatout-works/chetter"}`
+		if got != want {
+			t.Errorf("buildTriggerConfig(issue, labels) = %q, want %q", got, want)
+		}
+	})
+
 	t.Run("issue without repo returns empty", func(t *testing.T) {
-		got := buildTriggerConfig("issue", "", "opened")
+		got := buildTriggerConfig("issue", "", "opened", []string{"bug"})
 		if got != "" {
 			t.Errorf("buildTriggerConfig(issue, no repo) = %q, want empty", got)
 		}

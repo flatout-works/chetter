@@ -80,7 +80,8 @@ type ReviewTrigger struct {
 	GitURL      string
 	GitRef      string
 	Skills      []string
-	Event       string // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
+	Event       string   // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
+	MatchLabels []string // required issue labels; empty = all labels match
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
@@ -375,11 +376,21 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		slog.Error("webhook: list issue triggers for comment", "err", err, "repo", repo)
 		return
 	}
+	// Extract issue label names.
+	issueLabels := make([]string, len(ev.Issue.Labels))
+	for i, lbl := range ev.Issue.Labels {
+		issueLabels[i] = lbl.Name
+	}
+
 	var matching []ReviewTrigger
 	for _, t := range triggers {
-		if t.Event == "" || t.Event == "comment" {
-			matching = append(matching, t)
+		if t.Event != "" && t.Event != "comment" {
+			continue
 		}
+		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
+			continue
+		}
+		matching = append(matching, t)
 	}
 	if len(matching) == 0 {
 		return
@@ -606,12 +617,26 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 		return
 	}
 
-	// Filter triggers by event.
+	// Extract issue label names. For labeled events, compare against the label
+	// that was just added so bug-label triggers don't re-fire for unrelated labels.
+	issueLabels := make([]string, len(ev.Issue.Labels))
+	for i, lbl := range ev.Issue.Labels {
+		issueLabels[i] = lbl.Name
+	}
+	if ev.Action == "labeled" && ev.Label != nil {
+		issueLabels = []string{ev.Label.Name}
+	}
+
+	// Filter triggers by event and labels.
 	var matching []ReviewTrigger
 	for _, t := range triggers {
-		if t.Event == "" || t.Event == ev.Action {
-			matching = append(matching, t)
+		if t.Event != "" && t.Event != ev.Action {
+			continue
 		}
+		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
+			continue
+		}
+		matching = append(matching, t)
 	}
 	if len(matching) == 0 {
 		return
@@ -770,4 +795,20 @@ func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifact
 
 func triggerAllowsBotComments(t ReviewTrigger) bool {
 	return strings.Contains(t.Event, "bot_comments:true")
+}
+
+// triggerMatchesLabels checks if any of the issue's labels match the trigger's
+// required labels. If the trigger has no match_labels, all issues match.
+func triggerMatchesLabels(triggerLabels, issueLabels []string) bool {
+	if len(triggerLabels) == 0 {
+		return true
+	}
+	for _, req := range triggerLabels {
+		for _, lbl := range issueLabels {
+			if strings.EqualFold(req, lbl) {
+				return true
+			}
+		}
+	}
+	return false
 }

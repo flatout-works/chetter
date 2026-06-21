@@ -388,7 +388,7 @@ type triggerHandler struct {
 }
 
 func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request[apiv1.CreateTriggerRequest]) (*connect.Response[apiv1.CreateTriggerResponse], error) {
-	triggerConfig := buildTriggerConfig(req.Msg.TriggerType, req.Msg.Repo, req.Msg.Event)
+	triggerConfig := buildTriggerConfig(req.Msg.TriggerType, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels)
 	trigger, err := h.svc.CreateTrigger(ctx, store.ScheduleInput{
 		Name:          req.Msg.Name,
 		TriggerType:   req.Msg.TriggerType,
@@ -422,20 +422,11 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 		enabled = *req.Msg.Enabled
 	}
 	triggerType := store.NonZero(req.Msg.TriggerType, existing.TriggerType)
-	triggerConfig := existing.TriggerConfig
-	if req.Msg.Repo != "" {
-		var cfg store.PRReviewTriggerConfig
-		if len(existing.TriggerConfig) > 0 {
-			_ = json.Unmarshal(existing.TriggerConfig, &cfg)
-		}
-		cfg.Repo = req.Msg.Repo
-		data, _ := json.Marshal(cfg)
-		triggerConfig = data
-	}
+	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels)
 	merged := store.ScheduleInput{
 		Name:          req.Msg.Name,
 		TriggerType:   triggerType,
-		TriggerConfig: string(triggerConfig),
+		TriggerConfig: triggerConfig,
 		CronExpr:      store.NonZero(req.Msg.CronExpr, existing.CronExpr),
 		Prompt:        store.NonZero(req.Msg.Prompt, existing.Prompt),
 		GitURL:        store.NonZero(req.Msg.GitUrl, existing.GitUrl.String),
@@ -784,7 +775,7 @@ func protoSeverity(s service.SeveritySummary) *apiv1.SeveritySummary {
 
 // --- Helpers ---
 
-func buildTriggerConfig(triggerType, repo, event string) string {
+func buildTriggerConfig(triggerType, repo, event string, matchLabels []string) string {
 	switch triggerType {
 	case store.TriggerTypePRReview:
 		if repo == "" {
@@ -796,9 +787,12 @@ func buildTriggerConfig(triggerType, repo, event string) string {
 		if repo == "" {
 			return ""
 		}
-		cfg := map[string]string{"repo": repo}
+		cfg := map[string]any{"repo": repo}
 		if event != "" {
 			cfg["event"] = event
+		}
+		if len(matchLabels) > 0 {
+			cfg["match_labels"] = matchLabels
 		}
 		data, _ := json.Marshal(cfg)
 		return string(data)

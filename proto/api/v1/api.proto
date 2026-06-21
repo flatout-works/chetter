@@ -414,6 +414,7 @@ message CreateTriggerRequest {
   string session_mode = 17;
   string pause_reason = 18;
   int32 ttl_hours = 19;
+  repeated string match_labels = 20;
 }
 
 message CreateTriggerResponse {
@@ -440,6 +441,8 @@ message UpdateTriggerRequest {
   string session_mode = 17;
   string pause_reason = 18;
   int32 ttl_hours = 19;
+  repeated string match_labels = 20;
+  string event = 21;
 }
 
 message UpdateTriggerResponse {

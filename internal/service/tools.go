@@ -107,6 +107,7 @@ type CreateTriggerInput struct {
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
 	TTLHours    int      `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	MatchLabels []string `json:"match_labels,omitempty" jsonschema:"Required issue labels (e.g. bug) to filter issue triggers; empty = all labels match"`
 }
 
 // CreateTriggerOutput is the output for chetter_create_trigger.
@@ -117,9 +118,11 @@ type CreateTriggerOutput struct {
 // UpdateTriggerInput is the input for chetter_update_trigger.
 type UpdateTriggerInput struct {
 	Name        string   `json:"name" jsonschema:"Name of the trigger to update"`
-	TriggerType string   `json:"trigger_type,omitempty" jsonschema:"Trigger type: cron or pr_review"`
+	TriggerType string   `json:"trigger_type,omitempty" jsonschema:"Trigger type: cron, pr_review, or issue"`
 	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly"`
-	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (for pr_review)"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Repository to watch (for pr_review and issue)"`
+	Event       string   `json:"event,omitempty" jsonschema:"Webhook event to respond to (for issue triggers: opened, comment; optional)"`
+	MatchLabels []string `json:"match_labels,omitempty" jsonschema:"Required issue labels (e.g. bug) to filter issue triggers"`
 	Prompt      string   `json:"prompt,omitempty" jsonschema:"Task prompt to submit when the trigger fires"`
 	GitURL      string   `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running each task"`
 	GitRef      string   `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
@@ -780,9 +783,12 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		if in.Agent == "" {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for issue triggers")
 		}
-		cfg := map[string]string{"repo": in.Repo}
+		cfg := map[string]any{"repo": in.Repo}
 		if in.Event != "" {
 			cfg["event"] = in.Event
+		}
+		if len(in.MatchLabels) > 0 {
+			cfg["match_labels"] = in.MatchLabels
 		}
 		data, err := json.Marshal(cfg)
 		if err != nil {
@@ -912,20 +918,11 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		enabled = *in.Enabled
 	}
 	triggerType := store.NonZero(in.TriggerType, existing.TriggerType)
-	triggerConfig := existing.TriggerConfig
-	if in.Repo != "" {
-		var cfg store.PRReviewTriggerConfig
-		if len(existing.TriggerConfig) > 0 {
-			_ = json.Unmarshal(existing.TriggerConfig, &cfg)
-		}
-		cfg.Repo = in.Repo
-		data, _ := json.Marshal(cfg)
-		triggerConfig = data
-	}
+	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels)
 	merged := store.ScheduleInput{
 		Name:          in.Name,
 		TriggerType:   triggerType,
-		TriggerConfig: string(triggerConfig),
+		TriggerConfig: triggerConfig,
 		CronExpr:      store.NonZero(in.CronExpr, existing.CronExpr),
 		Prompt:        store.NonZero(in.Prompt, existing.Prompt),
 		GitURL:        store.NonZero(in.GitURL, existing.GitUrl.String),
@@ -944,6 +941,33 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("update trigger: %w", err)
 	}
 	return nil, UpdateTriggerOutput{Trigger: triggerToolRecord(trigger)}, nil
+}
+
+// MergeTriggerConfig merges updated fields into an existing trigger_config JSON.
+// Empty strings mean "keep existing" unless overridden.
+func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabels []string) string {
+	needsMerge := repo != "" || event != "" || len(matchLabels) > 0
+	if !needsMerge {
+		return string(existing)
+	}
+	var cfg map[string]any
+	if len(existing) > 0 {
+		_ = json.Unmarshal(existing, &cfg)
+	}
+	if cfg == nil {
+		cfg = make(map[string]any)
+	}
+	if repo != "" {
+		cfg["repo"] = repo
+	}
+	if event != "" {
+		cfg["event"] = event
+	}
+	if len(matchLabels) > 0 {
+		cfg["match_labels"] = matchLabels
+	}
+	data, _ := json.Marshal(cfg)
+	return string(data)
 }
 
 func scheduleSkillsToStrings(skills json.RawMessage) []string {

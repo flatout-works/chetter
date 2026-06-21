@@ -28,7 +28,7 @@ const (
 	TriggerEventLabeled     = "labeled"
 	TriggerEventComment     = "comment"
 	TriggerEventFork        = "fork"
-	TriggerEventCreated     = "created"  // issue created
+	TriggerEventCreated     = "created" // issue created
 	TriggerEventSynchronize = "synchronize"
 )
 
@@ -109,6 +109,7 @@ type Issue struct {
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request,omitempty"`
+	Labels []Label `json:"labels"`
 }
 
 // IsPullRequest returns true if the issue is actually a pull request.
@@ -120,6 +121,7 @@ func (e *IssueCommentEvent) IsPullRequest() bool {
 type IssueEvent struct {
 	Action     string     `json:"action"`
 	Issue      IssueData  `json:"issue"`
+	Label      *Label     `json:"label,omitempty"`
 	Repository Repository `json:"repository"`
 }
 
@@ -133,4 +135,5 @@ type IssueData struct {
 	User    struct {
 		Login string `json:"login"`
 	} `json:"user"`
+	Labels []Label `json:"labels"`
 }
