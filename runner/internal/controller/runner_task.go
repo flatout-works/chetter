@@ -710,6 +710,13 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "socket", mountedSocketPath)
 	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
 
+	// Ensure the container's network namespace exists before restore.
+	// gVisor containers use a custom Docker network; if the runner restarted,
+	// the original network namespace handle is gone and must be recreated.
+	if r.cfg.Execution.UseGVisor {
+		r.ensureDockerNetworkNamespace(ctx, containerID)
+	}
+
 	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName); err != nil {
 		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err)
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v", err), nil)
@@ -877,6 +884,34 @@ func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName 
 		return fmt.Errorf("docker CLI: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// ensureDockerNetworkNamespace recreates the network namespace handle for a
+// stopped container. When the runner restarts, the kernel-level network
+// namespace handle (/var/run/docker/netns/...) is destroyed, but the Docker
+// network still exists. Restoring a gVisor checkpoint fails if the original
+// namespace handle is gone. We work around this by disconnecting and
+// reconnecting the container to its Docker network, which recreates the
+// kernel-level handle.
+func (r *Runner) ensureDockerNetworkNamespace(ctx context.Context, containerID string) {
+	format := `{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}`
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", format, containerID).CombinedOutput()
+	if err != nil {
+		slog.Warn("ensureDockerNetworkNamespace: inspect", "containerID", containerID, "err", err)
+		return
+	}
+	netName := strings.TrimSpace(firstField(string(out)))
+	if netName == "" {
+		return
+	}
+	// Disconnect and reconnect to recreate the netns handle.
+	exec.CommandContext(ctx, "docker", "network", "disconnect", netName, containerID).Run()
+	if err := exec.CommandContext(ctx, "docker", "network", "connect", netName, containerID).Run(); err != nil {
+		slog.Warn("ensureDockerNetworkNamespace: reconnect failed; trying connect only",
+			"containerID", containerID, "netName", netName, "err", err)
+		// Container may not have been connected; try direct connect.
+		exec.CommandContext(ctx, "docker", "network", "connect", netName, containerID).Run()
+	}
 }
 
 func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName string) error {
