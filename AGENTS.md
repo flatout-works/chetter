@@ -56,6 +56,16 @@ make docker-build-minimal        # build minimal variant (no language toolchain)
 
 **CI note:** If Docker is unavailable, integration tests skip automatically with a message. Do not treat skips as failures.
 
+## CI/CD
+
+Push to `main` triggers `.github/workflows/chetter.yml` with three jobs:
+
+1. **check** — runs `make check` (test, vet, lint).
+2. **detect-changes** — identifies which Dockerfile paths changed (runner-base, mcp, runner, variant images).
+3. **arcane-build-deploy** — after check + detect-changes pass, SSHes into **wowbagger** (`gokr@wowbagger.krampe.se`), runs `ci/chetter-build.sh` to build and push images to GHCR, drains runners gracefully via `ci/drain-runners.sh`, syncs GitOps via Arcane API, then triggers a project redeploy with `forceRecreate: true`.
+
+Image builds happen **on wowbagger** (not GitHub Actions) to save Actions minutes. The build logs and timings are visible in the CI run's `arcane-build-deploy` step.
+
 ## Schema & Codegen
 
 **Two sources of truth for schema:**
