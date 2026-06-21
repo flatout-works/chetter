@@ -965,7 +965,10 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 
 	containerName := "chetter-task-" + req.TaskID
 	exec.Command("docker", "rm", "-f", containerName).Run()
-	defer exec.Command("docker", "rm", "-f", containerName).Run()
+	keepContainer := req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor
+	if !keepContainer {
+		defer exec.Command("docker", "rm", "-f", containerName).Run()
+	}
 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
@@ -975,7 +978,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, socketPath, containerName, h, args, gvisor, netName, runnerIP)
+	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, socketPath, containerName, h, args, gvisor, netName, runnerIP, keepContainer)
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -984,11 +987,14 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func dockerRPCArgs(req task.TaskRequest, wsDir, socketPath, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
+func dockerRPCArgs(req task.TaskRequest, wsDir, socketPath, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string, keepContainer bool) []string {
 	dockerArgs := []string{
-		"run", "--rm", "-i",
+		"run", "-i",
 		"--entrypoint", command[0],
 		"--name", containerName,
+	}
+	if !keepContainer {
+		dockerArgs = append(dockerArgs, "--rm")
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")

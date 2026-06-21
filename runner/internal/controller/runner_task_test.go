@@ -654,7 +654,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"OPENAI_API_KEY": "task-key",
 		},
 	}
-	args := dockerRPCArgs(req, "/tmp/ws", "/tmp/chetter.sock", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
+	args := dockerRPCArgs(req, "/tmp/ws", "/tmp/chetter.sock", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", false)
 
 	entrypointIdx := indexOf(args, "--entrypoint")
 	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
@@ -666,6 +666,9 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	imageIdx := indexOf(args, req.AgentImage)
 	if imageIdx == -1 {
 		t.Fatalf("agent image %q not found in args: %v", req.AgentImage, args)
+	}
+	if rmIdx := indexOf(args, "--rm"); rmIdx == -1 {
+		t.Fatalf("expected --rm flag when not keeping container, got %v", args)
 	}
 	if imageIdx == len(args)-1 || args[imageIdx+1] != "--mode" {
 		t.Fatalf("expected pi RPC args after image, got %v", args[imageIdx:])

@@ -134,6 +134,12 @@ func (r *Runner) Start(ctx context.Context) error {
 				if name == "" {
 					continue
 				}
+				// Skip containers that have checkpoints (paused for resume).
+				chkOut, _ := exec.Command("docker", "checkpoint", "ls", name).CombinedOutput()
+				if strings.Contains(string(chkOut), "chetter-checkpoint") {
+					slog.Info("skipping orphaned container with checkpoints", "name", name)
+					continue
+				}
 				if err := exec.Command("docker", "rm", "-f", name).Run(); err != nil {
 					slog.Warn("failed to remove orphaned container", "name", name, "err", err)
 				} else {
