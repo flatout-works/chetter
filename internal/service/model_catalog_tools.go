@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
@@ -41,6 +43,14 @@ type SyncDefinitionsOutput struct {
 	Message string `json:"message"`
 }
 
+const (
+	defaultDefinitionSourceID   = "defs_default"
+	defaultDefinitionSourceName = "default"
+	definitionScopeGlobal       = "global"
+	definitionSyncStatusSuccess = "success"
+	definitionSyncStatusError   = "error"
+)
+
 func (s *Service) getModelCatalogTool(ctx context.Context, _ *mcp.CallToolRequest, _ GetModelCatalogInput) (*mcp.CallToolResult, GetModelCatalogOutput, error) {
 	record, yamlText, err := s.activeModelCatalogRecord(ctx)
 	if err != nil {
@@ -70,36 +80,98 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 	if s.definitions == nil {
 		return ModelCatalogRecord{}, fmt.Errorf("no definitions repo configured (set DEFINITIONS_REPO)")
 	}
-	if err := s.definitions.SyncAndLoad(ctx); err != nil {
+	startedAt := time.Now().UTC()
+	if err := s.upsertDefaultDefinitionSource(ctx, startedAt, sql.NullTime{}); err != nil {
 		return ModelCatalogRecord{}, err
 	}
-	yamlText := s.definitions.CatalogYAML()
-	if yamlText == "" {
-		return ModelCatalogRecord{}, fmt.Errorf("definitions repo did not provide model-catalog.yaml")
+	if err := s.definitions.Sync(ctx); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, "", 0, err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
 	}
-	catalog, err := modelcatalog.ParseYAML([]byte(yamlText))
+	sourceCommit, err := s.definitions.HeadCommit(ctx)
 	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, "", 0, err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, err
 	}
-	checksumBytes := sha256.Sum256([]byte(yamlText))
+	defs, err := s.definitions.ScanDefinitions()
+	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, 0, err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
+	catalog, yamlText, err := s.definitions.LoadModelCatalogYAML()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
 	now := time.Now().UTC()
-	row := repository.InsertModelCatalogParams{
-		ID:        "mcat_definitions",
-		Name:      "definitions",
-		Active:    true,
-		Source:    nullString(definitionsSource(s.definitions)),
-		Checksum:  hex.EncodeToString(checksumBytes[:]),
-		Yaml:      yamlText,
-		CreatedAt: now,
-		UpdatedAt: now,
+	var row repository.InsertModelCatalogParams
+	if yamlText != "" {
+		checksumBytes := sha256.Sum256([]byte(yamlText))
+		row = repository.InsertModelCatalogParams{
+			ID:        "mcat_definitions",
+			Name:      "definitions",
+			Active:    true,
+			Source:    nullString(definitionsSource(s.definitions)),
+			Checksum:  hex.EncodeToString(checksumBytes[:]),
+			Yaml:      yamlText,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
 	}
 	if err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
-		if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
+		if yamlText != "" {
+			if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
+				return err
+			}
+			if err := q.InsertModelCatalog(ctx, row); err != nil {
+				return err
+			}
+		}
+		if err := q.DeactivateDefinitionsBySource(ctx, repository.DeactivateDefinitionsBySourceParams{
+			UpdatedAt: now,
+			SourceID:  defaultDefinitionSourceID,
+		}); err != nil {
 			return err
 		}
-		return q.InsertModelCatalog(ctx, row)
+		for _, def := range defs {
+			if err := q.UpsertDefinition(ctx, repository.UpsertDefinitionParams{
+				ID:             definitionID(defaultDefinitionSourceID, def.Type, def.Path),
+				SourceID:       defaultDefinitionSourceID,
+				DefinitionType: def.Type,
+				Name:           def.Name,
+				Scope:          definitionScopeGlobal,
+				TeamID:         sql.NullString{},
+				Repo:           sql.NullString{},
+				Path:           def.Path,
+				SourceCommit:   sourceCommit,
+				ContentHash:    def.ContentHash,
+				Content:        def.Content,
+				Metadata:       nil,
+				Active:         true,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}); err != nil {
+				return err
+			}
+		}
+		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
+			LastSyncAt: sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:  now,
+			ID:         defaultDefinitionSourceID,
+		}); err != nil {
+			return err
+		}
+		return q.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(defaultDefinitionSourceID, definitionSyncStatusSuccess, sourceCommit, len(defs), nil, startedAt, now))
 	}); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
+	}
+	if yamlText == "" {
+		record, _, err := s.activeModelCatalogRecord(ctx)
+		if err != nil {
+			return ModelCatalogRecord{}, err
+		}
+		return record, nil
 	}
 	providers, models := catalog.Counts()
 	record := ModelCatalogRecord{
@@ -118,8 +190,59 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		"default_model", catalog.DefaultModel,
 		"providers", providers,
 		"models", models,
+		"definitions", len(defs),
 	)
 	return record, nil
+}
+
+func (s *Service) upsertDefaultDefinitionSource(ctx context.Context, now time.Time, lastSyncAt sql.NullTime) error {
+	return s.repo.UpsertDefinitionSource(ctx, repository.UpsertDefinitionSourceParams{
+		ID:         defaultDefinitionSourceID,
+		Name:       defaultDefinitionSourceName,
+		Scope:      definitionScopeGlobal,
+		TeamID:     sql.NullString{},
+		Repo:       sql.NullString{},
+		RepoUrl:    s.definitions.RepoURL(),
+		Branch:     s.definitions.Branch(),
+		Path:       "",
+		Enabled:    true,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		LastSyncAt: lastSyncAt,
+	})
+}
+
+func (s *Service) recordDefinitionSyncRun(ctx context.Context, sourceID, status, sourceCommit string, definitionsCount int, syncErr error, startedAt, endedAt time.Time) {
+	if err := s.repo.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(sourceID, status, sourceCommit, definitionsCount, syncErr, startedAt, endedAt)); err != nil {
+		slog.Warn("could not record definition sync run", "err", err)
+	}
+}
+
+func definitionSyncRunParams(sourceID, status, sourceCommit string, definitionsCount int, syncErr error, startedAt, endedAt time.Time) repository.InsertDefinitionSyncRunParams {
+	var errString string
+	if syncErr != nil {
+		errString = syncErr.Error()
+	}
+	runID, err := randomID("dsync")
+	if err != nil {
+		runID = "dsync_" + definitionID(sourceID, status, endedAt.Format(time.RFC3339Nano))
+	}
+	return repository.InsertDefinitionSyncRunParams{
+		ID:               runID,
+		SourceID:         sourceID,
+		Status:           status,
+		SourceCommit:     nullString(sourceCommit),
+		DefinitionsCount: int32(definitionsCount),
+		Error:            nullString(errString),
+		StartedAt:        startedAt,
+		EndedAt:          endedAt,
+		CreatedAt:        endedAt,
+	}
+}
+
+func definitionID(sourceID, definitionType, path string) string {
+	sum := sha256.Sum256([]byte(sourceID + "\x00" + definitionType + "\x00" + path))
+	return "def_" + hex.EncodeToString(sum[:])[:32]
 }
 
 func (s *Service) activeModelCatalogRecord(ctx context.Context) (ModelCatalogRecord, string, error) {
