@@ -224,6 +224,68 @@ type ChetterTaskEvent struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 
+type Definition struct {
+	ID             string           `json:"id"`
+	SourceID       string           `json:"source_id"`
+	DefinitionType string           `json:"definition_type"`
+	Name           string           `json:"name"`
+	Scope          string           `json:"scope"`
+	TeamID         sql.NullString   `json:"team_id"`
+	Repo           sql.NullString   `json:"repo"`
+	Path           string           `json:"path"`
+	SourceCommit   string           `json:"source_commit"`
+	ContentHash    string           `json:"content_hash"`
+	Content        string           `json:"content"`
+	Metadata       *json.RawMessage `json:"metadata"`
+	Active         bool             `json:"active"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
+}
+
+type DefinitionChangeProposal struct {
+	ID         string          `json:"id"`
+	SourceID   string          `json:"source_id"`
+	TaskID     sql.NullString  `json:"task_id"`
+	Repo       string          `json:"repo"`
+	Branch     string          `json:"branch"`
+	BaseBranch string          `json:"base_branch"`
+	PrNumber   int32           `json:"pr_number"`
+	PrUrl      string          `json:"pr_url"`
+	Title      string          `json:"title"`
+	Body       string          `json:"body"`
+	Files      json.RawMessage `json:"files"`
+	Status     string          `json:"status"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+}
+
+type DefinitionSource struct {
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Scope      string         `json:"scope"`
+	TeamID     sql.NullString `json:"team_id"`
+	Repo       sql.NullString `json:"repo"`
+	RepoUrl    string         `json:"repo_url"`
+	Branch     string         `json:"branch"`
+	Path       string         `json:"path"`
+	Enabled    bool           `json:"enabled"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	LastSyncAt sql.NullTime   `json:"last_sync_at"`
+}
+
+type DefinitionSyncRun struct {
+	ID               string         `json:"id"`
+	SourceID         string         `json:"source_id"`
+	Status           string         `json:"status"`
+	SourceCommit     sql.NullString `json:"source_commit"`
+	DefinitionsCount int32          `json:"definitions_count"`
+	Error            sql.NullString `json:"error"`
+	StartedAt        time.Time      `json:"started_at"`
+	EndedAt          time.Time      `json:"ended_at"`
+	CreatedAt        time.Time      `json:"created_at"`
+}
+
 type Team struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`

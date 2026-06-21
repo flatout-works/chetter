@@ -1,0 +1,36 @@
+# Trigger: weekly Chetter task improver
+#
+# Analyzes recent Chetter task outcomes and proposes small, reviewed changes to
+# agents, skills, prompts, triggers, or task templates.
+#
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
+
+name: chetter-weekly-task-improver
+enabled: true
+cron_expr: "0 2 * * 0"
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+agent_image: chetter-runner:latest
+harness: opencode
+agent: task-improver
+provider_id: opencode
+model_id: deepseek-v4-pro
+timeout_sec: 7200
+skills:
+  - chetter
+prompt: |-
+  Run the weekly Chetter task-improver workflow.
+
+  Analyze recent Chetter tasks, trigger history, session exports, and active
+  definition files. Use the Chetter MCP definition tools to inspect indexed
+  sources and definitions, then correlate task outcomes with the trigger,
+  agent, skill, prompt, or template that produced them.
+
+  If there is clear evidence for a small improvement, edit the relevant
+  definition files in a branch and open a pull request with evidence. If no
+  safe improvement is justified, leave files unchanged and report what you
+  inspected.
+
+  Do not directly mutate production definitions in the database. Durable
+  changes must go through a Git pull request.

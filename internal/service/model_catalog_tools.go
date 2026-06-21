@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
@@ -41,6 +43,90 @@ type SyncDefinitionsOutput struct {
 	Message string `json:"message"`
 }
 
+type ListDefinitionSourcesInput struct{}
+
+type ListDefinitionSourcesOutput struct {
+	Sources []DefinitionSourceToolRecord `json:"sources"`
+}
+
+type GetDefinitionSourceInput struct {
+	SourceID string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
+	Name     string `json:"name,omitempty" jsonschema:"Definition source name; optional alternative to source_id"`
+}
+
+type GetDefinitionSourceOutput struct {
+	Source DefinitionSourceToolRecord `json:"source"`
+}
+
+type SyncDefinitionSourceInput struct {
+	SourceID string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
+	Name     string `json:"name,omitempty" jsonschema:"Definition source name; optional alternative to source_id"`
+}
+
+type SyncDefinitionSourceOutput struct {
+	Source  DefinitionSourceToolRecord `json:"source"`
+	Message string                     `json:"message"`
+}
+
+type ListDefinitionsInput struct {
+	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template"`
+	SourceID       string `json:"source_id,omitempty" jsonschema:"Optional definition source ID filter"`
+}
+
+type ListDefinitionsOutput struct {
+	Definitions []DefinitionToolRecord `json:"definitions"`
+}
+
+type GetDefinitionInput struct {
+	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template"`
+	Name           string `json:"name" jsonschema:"Definition name"`
+	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
+}
+
+type GetDefinitionOutput struct {
+	Definition DefinitionToolRecord `json:"definition"`
+}
+
+type DefinitionSourceToolRecord struct {
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Scope      string     `json:"scope"`
+	TeamID     string     `json:"team_id,omitempty"`
+	Repo       string     `json:"repo,omitempty"`
+	RepoURL    string     `json:"repo_url"`
+	Branch     string     `json:"branch"`
+	Path       string     `json:"path,omitempty"`
+	Enabled    bool       `json:"enabled"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	LastSyncAt *time.Time `json:"last_sync_at,omitempty"`
+}
+
+type DefinitionToolRecord struct {
+	ID             string    `json:"id"`
+	SourceID       string    `json:"source_id"`
+	DefinitionType string    `json:"definition_type"`
+	Name           string    `json:"name"`
+	Scope          string    `json:"scope"`
+	TeamID         string    `json:"team_id,omitempty"`
+	Repo           string    `json:"repo,omitempty"`
+	Path           string    `json:"path"`
+	SourceCommit   string    `json:"source_commit"`
+	ContentHash    string    `json:"content_hash"`
+	Content        string    `json:"content,omitempty"`
+	Active         bool      `json:"active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+const (
+	defaultDefinitionSourceID   = "defs_default"
+	defaultDefinitionSourceName = "default"
+	definitionScopeGlobal       = "global"
+	definitionSyncStatusSuccess = "success"
+	definitionSyncStatusError   = "error"
+)
+
 func (s *Service) getModelCatalogTool(ctx context.Context, _ *mcp.CallToolRequest, _ GetModelCatalogInput) (*mcp.CallToolResult, GetModelCatalogOutput, error) {
 	record, yamlText, err := s.activeModelCatalogRecord(ctx)
 	if err != nil {
@@ -66,40 +152,206 @@ func (s *Service) syncDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 	}, nil
 }
 
+func (s *Service) listDefinitionSourcesTool(ctx context.Context, _ *mcp.CallToolRequest, _ ListDefinitionSourcesInput) (*mcp.CallToolResult, ListDefinitionSourcesOutput, error) {
+	sources, err := s.repo.ListDefinitionSources(ctx)
+	if err != nil {
+		return nil, ListDefinitionSourcesOutput{}, fmt.Errorf("list definition sources: %w", err)
+	}
+	out := make([]DefinitionSourceToolRecord, 0, len(sources))
+	for _, source := range sources {
+		out = append(out, definitionSourceToolRecord(source))
+	}
+	return nil, ListDefinitionSourcesOutput{Sources: out}, nil
+}
+
+func (s *Service) getDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRequest, in GetDefinitionSourceInput) (*mcp.CallToolResult, GetDefinitionSourceOutput, error) {
+	source, err := s.definitionSourceByInput(ctx, in.SourceID, in.Name)
+	if err != nil {
+		return nil, GetDefinitionSourceOutput{}, err
+	}
+	return nil, GetDefinitionSourceOutput{Source: definitionSourceToolRecord(source)}, nil
+}
+
+func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRequest, in SyncDefinitionSourceInput) (*mcp.CallToolResult, SyncDefinitionSourceOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("admin access required")
+	}
+	if s.definitions == nil {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("no definitions repo configured (set DEFINITIONS_REPO)")
+	}
+	if in.SourceID != "" && in.SourceID != defaultDefinitionSourceID {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("sync for non-default definition sources is not implemented yet")
+	}
+	if in.Name != "" && in.Name != defaultDefinitionSourceName {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("sync for non-default definition sources is not implemented yet")
+	}
+	record, err := s.SyncDefinitions(ctx)
+	if err != nil {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("sync definition source: %w", err)
+	}
+	source, err := s.repo.GetDefinitionSource(ctx, defaultDefinitionSourceID)
+	if err != nil {
+		return nil, SyncDefinitionSourceOutput{}, fmt.Errorf("get synced definition source: %w", err)
+	}
+	return nil, SyncDefinitionSourceOutput{
+		Source:  definitionSourceToolRecord(source),
+		Message: fmt.Sprintf("definition source %s synced; active catalog %s has %d providers and %d models", source.Name, record.Name, record.ProviderCount, record.ModelCount),
+	}, nil
+}
+
+func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListDefinitionsInput) (*mcp.CallToolResult, ListDefinitionsOutput, error) {
+	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
+		Column1:        in.DefinitionType,
+		DefinitionType: in.DefinitionType,
+		Column3:        in.SourceID,
+		SourceID:       in.SourceID,
+	})
+	if err != nil {
+		return nil, ListDefinitionsOutput{}, fmt.Errorf("list definitions: %w", err)
+	}
+	out := make([]DefinitionToolRecord, 0, len(defs))
+	for _, def := range defs {
+		out = append(out, definitionToolRecord(def))
+	}
+	return nil, ListDefinitionsOutput{Definitions: out}, nil
+}
+
+func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest, in GetDefinitionInput) (*mcp.CallToolResult, GetDefinitionOutput, error) {
+	if in.DefinitionType == "" {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("definition_type is required")
+	}
+	if in.Name == "" {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("name is required")
+	}
+	sourceID := in.SourceID
+	if sourceID == "" {
+		sourceID = defaultDefinitionSourceID
+	}
+	def, err := s.repo.GetDefinitionBySourceTypeName(ctx, repository.GetDefinitionBySourceTypeNameParams{
+		SourceID:       sourceID,
+		DefinitionType: in.DefinitionType,
+		Name:           in.Name,
+	})
+	if err != nil {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("get definition: %w", err)
+	}
+	return nil, GetDefinitionOutput{Definition: definitionToolRecord(def)}, nil
+}
+
+func (s *Service) definitionSourceByInput(ctx context.Context, sourceID, name string) (repository.DefinitionSource, error) {
+	if name != "" {
+		source, err := s.repo.GetDefinitionSourceByName(ctx, name)
+		if err != nil {
+			return repository.DefinitionSource{}, fmt.Errorf("get definition source by name: %w", err)
+		}
+		return source, nil
+	}
+	if sourceID == "" {
+		sourceID = defaultDefinitionSourceID
+	}
+	source, err := s.repo.GetDefinitionSource(ctx, sourceID)
+	if err != nil {
+		return repository.DefinitionSource{}, fmt.Errorf("get definition source: %w", err)
+	}
+	return source, nil
+}
+
 func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, error) {
 	if s.definitions == nil {
 		return ModelCatalogRecord{}, fmt.Errorf("no definitions repo configured (set DEFINITIONS_REPO)")
 	}
-	if err := s.definitions.SyncAndLoad(ctx); err != nil {
+	startedAt := time.Now().UTC()
+	if err := s.upsertDefaultDefinitionSource(ctx, startedAt, sql.NullTime{}); err != nil {
 		return ModelCatalogRecord{}, err
 	}
-	yamlText := s.definitions.CatalogYAML()
-	if yamlText == "" {
-		return ModelCatalogRecord{}, fmt.Errorf("definitions repo did not provide model-catalog.yaml")
+	if err := s.definitions.Sync(ctx); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, "", 0, err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
 	}
-	catalog, err := modelcatalog.ParseYAML([]byte(yamlText))
+	sourceCommit, err := s.definitions.HeadCommit(ctx)
 	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, "", 0, err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, err
 	}
-	checksumBytes := sha256.Sum256([]byte(yamlText))
+	defs, err := s.definitions.ScanDefinitions()
+	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, 0, err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
+	catalog, yamlText, err := s.definitions.LoadModelCatalogYAML()
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
 	now := time.Now().UTC()
-	row := repository.InsertModelCatalogParams{
-		ID:        "mcat_definitions",
-		Name:      "definitions",
-		Active:    true,
-		Source:    nullString(definitionsSource(s.definitions)),
-		Checksum:  hex.EncodeToString(checksumBytes[:]),
-		Yaml:      yamlText,
-		CreatedAt: now,
-		UpdatedAt: now,
+	var row repository.InsertModelCatalogParams
+	if yamlText != "" {
+		checksumBytes := sha256.Sum256([]byte(yamlText))
+		row = repository.InsertModelCatalogParams{
+			ID:        "mcat_definitions",
+			Name:      "definitions",
+			Active:    true,
+			Source:    nullString(definitionsSource(s.definitions)),
+			Checksum:  hex.EncodeToString(checksumBytes[:]),
+			Yaml:      yamlText,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
 	}
 	if err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
-		if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
+		if yamlText != "" {
+			if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
+				return err
+			}
+			if err := q.InsertModelCatalog(ctx, row); err != nil {
+				return err
+			}
+		}
+		if err := q.DeactivateDefinitionsBySource(ctx, repository.DeactivateDefinitionsBySourceParams{
+			UpdatedAt: now,
+			SourceID:  defaultDefinitionSourceID,
+		}); err != nil {
 			return err
 		}
-		return q.InsertModelCatalog(ctx, row)
+		for _, def := range defs {
+			if err := q.UpsertDefinition(ctx, repository.UpsertDefinitionParams{
+				ID:             definitionID(defaultDefinitionSourceID, def.Type, def.Path),
+				SourceID:       defaultDefinitionSourceID,
+				DefinitionType: def.Type,
+				Name:           def.Name,
+				Scope:          definitionScopeGlobal,
+				TeamID:         sql.NullString{},
+				Repo:           sql.NullString{},
+				Path:           def.Path,
+				SourceCommit:   sourceCommit,
+				ContentHash:    def.ContentHash,
+				Content:        def.Content,
+				Metadata:       nil,
+				Active:         true,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}); err != nil {
+				return err
+			}
+		}
+		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
+			LastSyncAt: sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:  now,
+			ID:         defaultDefinitionSourceID,
+		}); err != nil {
+			return err
+		}
+		return q.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(defaultDefinitionSourceID, definitionSyncStatusSuccess, sourceCommit, len(defs), nil, startedAt, now))
 	}); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
+	}
+	if yamlText == "" {
+		record, _, err := s.activeModelCatalogRecord(ctx)
+		if err != nil {
+			return ModelCatalogRecord{}, err
+		}
+		return record, nil
 	}
 	providers, models := catalog.Counts()
 	record := ModelCatalogRecord{
@@ -118,8 +370,95 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		"default_model", catalog.DefaultModel,
 		"providers", providers,
 		"models", models,
+		"definitions", len(defs),
 	)
 	return record, nil
+}
+
+func (s *Service) upsertDefaultDefinitionSource(ctx context.Context, now time.Time, lastSyncAt sql.NullTime) error {
+	return s.repo.UpsertDefinitionSource(ctx, repository.UpsertDefinitionSourceParams{
+		ID:         defaultDefinitionSourceID,
+		Name:       defaultDefinitionSourceName,
+		Scope:      definitionScopeGlobal,
+		TeamID:     sql.NullString{},
+		Repo:       sql.NullString{},
+		RepoUrl:    s.definitions.RepoURL(),
+		Branch:     s.definitions.Branch(),
+		Path:       "",
+		Enabled:    true,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		LastSyncAt: lastSyncAt,
+	})
+}
+
+func (s *Service) recordDefinitionSyncRun(ctx context.Context, sourceID, status, sourceCommit string, definitionsCount int, syncErr error, startedAt, endedAt time.Time) {
+	if err := s.repo.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(sourceID, status, sourceCommit, definitionsCount, syncErr, startedAt, endedAt)); err != nil {
+		slog.Warn("could not record definition sync run", "err", err)
+	}
+}
+
+func definitionSyncRunParams(sourceID, status, sourceCommit string, definitionsCount int, syncErr error, startedAt, endedAt time.Time) repository.InsertDefinitionSyncRunParams {
+	var errString string
+	if syncErr != nil {
+		errString = syncErr.Error()
+	}
+	runID, err := randomID("dsync")
+	if err != nil {
+		runID = "dsync_" + definitionID(sourceID, status, endedAt.Format(time.RFC3339Nano))
+	}
+	return repository.InsertDefinitionSyncRunParams{
+		ID:               runID,
+		SourceID:         sourceID,
+		Status:           status,
+		SourceCommit:     nullString(sourceCommit),
+		DefinitionsCount: int32(definitionsCount),
+		Error:            nullString(errString),
+		StartedAt:        startedAt,
+		EndedAt:          endedAt,
+		CreatedAt:        endedAt,
+	}
+}
+
+func definitionID(sourceID, definitionType, path string) string {
+	sum := sha256.Sum256([]byte(sourceID + "\x00" + definitionType + "\x00" + path))
+	return "def_" + hex.EncodeToString(sum[:])[:32]
+}
+
+func definitionSourceToolRecord(source repository.DefinitionSource) DefinitionSourceToolRecord {
+	return DefinitionSourceToolRecord{
+		ID:         source.ID,
+		Name:       source.Name,
+		Scope:      source.Scope,
+		TeamID:     source.TeamID.String,
+		Repo:       source.Repo.String,
+		RepoURL:    source.RepoUrl,
+		Branch:     source.Branch,
+		Path:       source.Path,
+		Enabled:    source.Enabled,
+		CreatedAt:  source.CreatedAt,
+		UpdatedAt:  source.UpdatedAt,
+		LastSyncAt: nullTimePtr(source.LastSyncAt),
+	}
+}
+
+func definitionToolRecord(def repository.Definition) DefinitionToolRecord {
+	return DefinitionToolRecord{
+		ID:             def.ID,
+		SourceID:       def.SourceID,
+		DefinitionType: def.DefinitionType,
+		Name:           def.Name,
+		Scope:          def.Scope,
+		TeamID:         def.TeamID.String,
+		Repo:           def.Repo.String,
+		Path:           def.Path,
+		SourceCommit:   def.SourceCommit,
+		ContentHash:    def.ContentHash,
+		Content:        def.Content,
+		Active:         def.Active,
+		CreatedAt:      def.CreatedAt,
+		UpdatedAt:      def.UpdatedAt,
+	}
 }
 
 func (s *Service) activeModelCatalogRecord(ctx context.Context) (ModelCatalogRecord, string, error) {

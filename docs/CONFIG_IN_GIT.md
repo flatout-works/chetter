@@ -83,6 +83,26 @@ definition_sync_runs
 definition_change_proposals
 ```
 
+Implemented registry tables:
+
+- `definition_sources` records Git definition sources. The first implementation
+  materializes the configured `DEFINITIONS_REPO` as a global source named
+  `default`.
+- `definitions` stores active parsed definitions from supported paths with the
+  source commit, file path, raw content, and SHA-256 content hash.
+- `definition_sync_runs` records success and failure history for each sync.
+
+Supported indexed paths:
+
+```text
+agents/*.md
+skills/*.md
+skills/*/SKILL.md
+triggers/*.yaml
+triggers/*.yml
+task-templates/*.md
+```
+
 The runtime DB should store enough information to answer:
 
 - Which definitions are active?
@@ -174,7 +194,7 @@ triggers. These tools make the model explicit and usable from any MCP client.
 ## Implementation Phases
 
 1. Add task attribution fields, starting with `trigger_name`. ✓
-2. Add definition source schema and read-only sync/indexing. _(partial: model catalog loaded from Git via `DEFINITIONS_REPO`; automatic five-minute sync)_
-3. Add definition MCP read/sync tools. _(partial: `chetter_sync_definitions`, `chetter_get_model_catalog`)_
-4. Add the weekly meta-improver agent and trigger.
-5. Add PR proposal tooling for definition changes.
+2. Add definition source schema and read-only sync/indexing. ✓
+3. Add definition MCP read/sync tools. ✓
+4. Add the weekly meta-improver agent and trigger. ✓
+5. Add PR proposal tooling for definition changes. ✓

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +158,95 @@ type CreatedGitHubArtifact struct {
 	HTMLURL string
 }
 
+type PullRequestDetails struct {
+	Number  int
+	State   string
+	Merged  bool
+	URL     string
+	HeadRef string
+	HeadSHA string
+	BaseRef string
+}
+
+type CheckRunSummary struct {
+	Total      int
+	Completed  int
+	Successful int
+	Failed     int
+	Pending    int
+}
+
+func (c *Client) GetBranchSHA(ctx context.Context, repo, branch string) (string, error) {
+	url := fmt.Sprintf("%s/repos/%s/git/ref/heads/%s", githubAPIBase, repo, escapeGitHubPath(branch))
+	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return "", err
+	}
+	if resp.Object.SHA == "" {
+		return "", fmt.Errorf("github branch %q has empty sha", branch)
+	}
+	return resp.Object.SHA, nil
+}
+
+func (c *Client) CreateBranch(ctx context.Context, repo, branch, sha string) error {
+	url := fmt.Sprintf("%s/repos/%s/git/refs", githubAPIBase, repo)
+	req, err := c.newRequest(ctx, http.MethodPost, url, map[string]string{
+		"ref": "refs/heads/" + branch,
+		"sha": sha,
+	})
+	if err != nil {
+		return err
+	}
+	return c.do(req, nil)
+}
+
+func (c *Client) UpsertFile(ctx context.Context, repo, branch, path, content, message string) error {
+	sha, err := c.fileSHA(ctx, repo, branch, path)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"message": message,
+		"content": base64.StdEncoding.EncodeToString([]byte(content)),
+		"branch":  branch,
+	}
+	if sha != "" {
+		payload["sha"] = sha
+	}
+	url := fmt.Sprintf("%s/repos/%s/contents/%s", githubAPIBase, repo, escapeGitHubPath(path))
+	req, err := c.newRequest(ctx, http.MethodPut, url, payload)
+	if err != nil {
+		return err
+	}
+	return c.do(req, nil)
+}
+
+func (c *Client) fileSHA(ctx context.Context, repo, branch, path string) (string, error) {
+	url := fmt.Sprintf("%s/repos/%s/contents/%s?ref=%s", githubAPIBase, repo, escapeGitHubPath(path), url.QueryEscape(branch))
+	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		SHA string `json:"sha"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return "", nil
+		}
+		return "", err
+	}
+	return resp.SHA, nil
+}
+
 func (c *Client) CreateIssue(ctx context.Context, repo, title, body string, labels []string) (CreatedGitHubArtifact, error) {
 	url := fmt.Sprintf("%s/repos/%s/issues", githubAPIBase, repo)
 	payload := map[string]any{
@@ -221,6 +311,72 @@ func (c *Client) CreatePullRequest(ctx context.Context, repo, title, body, head,
 		return CreatedGitHubArtifact{}, err
 	}
 	return CreatedGitHubArtifact{ID: resp.ID, Number: resp.Number, URL: resp.HTMLURL, HTMLURL: resp.HTMLURL}, nil
+}
+
+func (c *Client) GetPullRequestDetails(ctx context.Context, repo string, prNumber int) (PullRequestDetails, error) {
+	url := fmt.Sprintf("%s/repos/%s/pulls/%d", githubAPIBase, repo, prNumber)
+	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return PullRequestDetails{}, err
+	}
+	var resp struct {
+		Number  int    `json:"number"`
+		State   string `json:"state"`
+		Merged  bool   `json:"merged"`
+		HTMLURL string `json:"html_url"`
+		Head    struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return PullRequestDetails{}, err
+	}
+	return PullRequestDetails{
+		Number:  resp.Number,
+		State:   resp.State,
+		Merged:  resp.Merged,
+		URL:     resp.HTMLURL,
+		HeadRef: resp.Head.Ref,
+		HeadSHA: resp.Head.SHA,
+		BaseRef: resp.Base.Ref,
+	}, nil
+}
+
+func (c *Client) ListCheckRunsForRef(ctx context.Context, repo, ref string) (CheckRunSummary, error) {
+	url := fmt.Sprintf("%s/repos/%s/commits/%s/check-runs", githubAPIBase, repo, url.PathEscape(ref))
+	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return CheckRunSummary{}, err
+	}
+	var resp struct {
+		TotalCount int `json:"total_count"`
+		CheckRuns  []struct {
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"check_runs"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return CheckRunSummary{}, err
+	}
+	summary := CheckRunSummary{Total: resp.TotalCount}
+	for _, run := range resp.CheckRuns {
+		if run.Status == "completed" {
+			summary.Completed++
+			switch run.Conclusion {
+			case "success", "neutral", "skipped":
+				summary.Successful++
+			default:
+				summary.Failed++
+			}
+		} else {
+			summary.Pending++
+		}
+	}
+	return summary, nil
 }
 
 func (c *Client) CreatePullRequestReview(ctx context.Context, repo string, prNumber int, event, body string) (CreatedGitHubArtifact, error) {
@@ -337,6 +493,14 @@ func (c *Client) GetAppLogin(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("could not determine app login")
 	}
 	return c.appLogin, nil
+}
+
+func escapeGitHubPath(path string) string {
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
 }
 
 // tokenCache holds the installation token with TTL, refreshes before expiry.
