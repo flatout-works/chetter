@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -107,5 +108,13 @@ func TestExpandChetterPromptVars(t *testing.T) {
 	want := "Task task_123 by issue-writer on runner:latest (unknown); keep $ISSUE_NUMBER"
 	if got != want {
 		t.Fatalf("expandChetterPromptVars() = %q, want %q", got, want)
+	}
+}
+
+func TestMergeTriggerConfigIncludesRuntimeFields(t *testing.T) {
+	got := MergeTriggerConfig(json.RawMessage(`{"repo":"flatout-works/chetter","event":"opened"}`), "", "labeled", []string{"bug"}, "resumable", "waiting_for_pr_feedback", 48)
+	want := `{"event":"labeled","match_labels":["bug"],"pause_reason":"waiting_for_pr_feedback","repo":"flatout-works/chetter","session_mode":"resumable","ttl_hours":48}`
+	if got != want {
+		t.Fatalf("MergeTriggerConfig() = %q, want %q", got, want)
 	}
 }

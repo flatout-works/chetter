@@ -35,6 +35,9 @@ type SubmitTaskRequest struct {
 	TimeoutSec  int
 	TriggerName string
 	TriggerType string
+	SessionMode string
+	PauseReason string
+	TTLHours    int
 }
 
 // NewServiceSubmitter creates a TaskSubmitter that wraps the given service
@@ -103,6 +106,9 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		TimeoutSec:  review.TimeoutSec,
 		TriggerName: review.TriggerName,
 		TriggerType: review.TriggerType,
+		SessionMode: review.SessionMode,
+		PauseReason: review.PauseReason,
+		TTLHours:    review.TTLHours,
 	}
 }
 
