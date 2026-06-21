@@ -98,7 +98,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		if err == nil {
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
-			if task.CheckpointAfterSuccess && task.RequiredRunnerID.Valid {
+			if task.RequiredRunnerID.Valid {
 				chk, chkErr := s.db.GetLatestAgentSessionCheckpointByTaskID(ctx, task.ID)
 				if chkErr == nil && chk.Status == "ready" {
 					resumeCheckpointPath = chk.CheckpointPath

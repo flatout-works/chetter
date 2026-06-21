@@ -388,7 +388,7 @@ type triggerHandler struct {
 }
 
 func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request[apiv1.CreateTriggerRequest]) (*connect.Response[apiv1.CreateTriggerResponse], error) {
-	triggerConfig := buildTriggerConfig(req.Msg.TriggerType, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels)
+	triggerConfig := buildTriggerConfig(req.Msg.TriggerType, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours))
 	trigger, err := h.svc.CreateTrigger(ctx, store.ScheduleInput{
 		Name:          req.Msg.Name,
 		TriggerType:   req.Msg.TriggerType,
@@ -422,7 +422,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 		enabled = *req.Msg.Enabled
 	}
 	triggerType := store.NonZero(req.Msg.TriggerType, existing.TriggerType)
-	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels)
+	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours))
 	merged := store.ScheduleInput{
 		Name:          req.Msg.Name,
 		TriggerType:   triggerType,
@@ -775,19 +775,22 @@ func protoSeverity(s service.SeveritySummary) *apiv1.SeveritySummary {
 
 // --- Helpers ---
 
-func buildTriggerConfig(triggerType, repo, event string, matchLabels []string) string {
+func buildTriggerConfig(triggerType, repo, event string, matchLabels []string, sessionMode, pauseReason string, ttlHours int) string {
+	cfg := map[string]any{}
+	applyWebTriggerRuntimeConfig(cfg, sessionMode, pauseReason, ttlHours)
 	switch triggerType {
 	case store.TriggerTypePRReview:
 		if repo == "" {
 			return ""
 		}
-		data, _ := json.Marshal(store.PRReviewTriggerConfig{Repo: repo})
+		cfg["repo"] = repo
+		data, _ := json.Marshal(cfg)
 		return string(data)
 	case store.TriggerTypeIssue:
 		if repo == "" {
 			return ""
 		}
-		cfg := map[string]any{"repo": repo}
+		cfg["repo"] = repo
 		if event != "" {
 			cfg["event"] = event
 		}
@@ -797,7 +800,23 @@ func buildTriggerConfig(triggerType, repo, event string, matchLabels []string) s
 		data, _ := json.Marshal(cfg)
 		return string(data)
 	}
+	if len(cfg) > 0 {
+		data, _ := json.Marshal(cfg)
+		return string(data)
+	}
 	return ""
+}
+
+func applyWebTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason string, ttlHours int) {
+	if sessionMode != "" {
+		cfg["session_mode"] = sessionMode
+	}
+	if pauseReason != "" {
+		cfg["pause_reason"] = pauseReason
+	}
+	if ttlHours > 0 {
+		cfg["ttl_hours"] = ttlHours
+	}
 }
 
 func scheduleSkillsToStrings(skills json.RawMessage) []string {

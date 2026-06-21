@@ -770,7 +770,8 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		if in.Agent == "" {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for pr_review triggers")
 		}
-		cfg := store.PRReviewTriggerConfig{Repo: in.Repo}
+		cfg := map[string]any{"repo": in.Repo}
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
 		data, err := json.Marshal(cfg)
 		if err != nil {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
@@ -790,11 +791,22 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		if len(in.MatchLabels) > 0 {
 			cfg["match_labels"] = in.MatchLabels
 		}
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
 		data, err := json.Marshal(cfg)
 		if err != nil {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
 		}
 		triggerConfig = string(data)
+	default:
+		cfg := map[string]any{}
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
+		if len(cfg) > 0 {
+			data, err := json.Marshal(cfg)
+			if err != nil {
+				return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
+			}
+			triggerConfig = string(data)
+		}
 	}
 	trigger, err := s.CreateTrigger(ctx, store.ScheduleInput{
 		Name:          in.Name,
@@ -918,7 +930,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		enabled = *in.Enabled
 	}
 	triggerType := store.NonZero(in.TriggerType, existing.TriggerType)
-	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels)
+	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels, in.SessionMode, in.PauseReason, in.TTLHours)
 	merged := store.ScheduleInput{
 		Name:          in.Name,
 		TriggerType:   triggerType,
@@ -945,8 +957,8 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 
 // MergeTriggerConfig merges updated fields into an existing trigger_config JSON.
 // Empty strings mean "keep existing" unless overridden.
-func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabels []string) string {
-	needsMerge := repo != "" || event != "" || len(matchLabels) > 0
+func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabels []string, sessionMode, pauseReason string, ttlHours int) string {
+	needsMerge := repo != "" || event != "" || len(matchLabels) > 0 || sessionMode != "" || pauseReason != "" || ttlHours > 0
 	if !needsMerge {
 		return string(existing)
 	}
@@ -966,8 +978,21 @@ func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabel
 	if len(matchLabels) > 0 {
 		cfg["match_labels"] = matchLabels
 	}
+	applyTriggerRuntimeConfig(cfg, sessionMode, pauseReason, ttlHours)
 	data, _ := json.Marshal(cfg)
 	return string(data)
+}
+
+func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason string, ttlHours int) {
+	if sessionMode != "" {
+		cfg["session_mode"] = sessionMode
+	}
+	if pauseReason != "" {
+		cfg["pause_reason"] = pauseReason
+	}
+	if ttlHours > 0 {
+		cfg["ttl_hours"] = ttlHours
+	}
 }
 
 func scheduleSkillsToStrings(skills json.RawMessage) []string {

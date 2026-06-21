@@ -704,6 +704,48 @@ func TestHarnessPublishBindAddrUsesAllInterfacesForGVisor(t *testing.T) {
 	}
 }
 
+func TestDockerCheckpointParts(t *testing.T) {
+	containerID, checkpointName, ok := dockerCheckpointParts("/var/lib/docker/containers/abc123/checkpoints/chetter-checkpoint-task_1")
+	if !ok {
+		t.Fatal("expected checkpoint path to parse")
+	}
+	if containerID != "abc123" {
+		t.Fatalf("containerID = %q, want abc123", containerID)
+	}
+	if checkpointName != "chetter-checkpoint-task_1" {
+		t.Fatalf("checkpointName = %q", checkpointName)
+	}
+
+	if _, _, ok := dockerCheckpointParts("/tmp/not-a-checkpoint"); ok {
+		t.Fatal("expected invalid checkpoint path not to parse")
+	}
+}
+
+func TestParseDockerPortOutput(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want int
+		ok   bool
+	}{
+		{name: "ipv4", in: "0.0.0.0:34219", want: 34219, ok: true},
+		{name: "ipv6 and ipv4", in: "0.0.0.0:34219\n[::]:34219", want: 34219, ok: true},
+		{name: "empty", in: "", ok: false},
+		{name: "bad", in: "not-a-port", ok: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := parseDockerPortOutput(tc.in)
+			if ok != tc.ok {
+				t.Fatalf("ok = %v, want %v", ok, tc.ok)
+			}
+			if got != tc.want {
+				t.Fatalf("port = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func indexOf(values []string, want string) int {
 	for i, value := range values {
 		if value == want {

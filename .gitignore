@@ -14,6 +14,7 @@ coverage.out
 # Local environment
 .env
 *.env
+.opentrace/
 
 # IDE
 .idea/

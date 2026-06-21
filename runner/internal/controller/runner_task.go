@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,6 +80,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	session.WorkspaceDir = wsDir
 
 	defer func() {
+		if session.PreserveWorkspace {
+			slog.Info("preserving workspace for checkpointed session", "taskID", req.TaskID, "workspace", session.WorkspaceDir)
+			return
+		}
 		if err := r.wsManager.Destroy(req.TaskID); err != nil {
 			slog.Warn("cleanup error", "taskID", req.TaskID, "err", err)
 		}
@@ -125,21 +130,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 
-	mcpServer, err := mcp.NewServer(socketPath)
+	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, wsDir, socketPath)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 		return
 	}
 	defer mcpServer.Close()
-
-	ws := tools.NewWorkspace(wsDir)
-
-	mcpServer.RegisterTool("workspace_read_file", ws.ReadFile)
-	mcpServer.RegisterTool("workspace_write_file", ws.WriteFile)
-	mcpServer.RegisterTool("workspace_list_directory", ws.ListDirectory)
-
-	go mcpServer.Serve(ctx)
-	slog.Info("MCP server started", "taskID", req.TaskID, "socket", socketPath)
 
 	if req.AgentImage == "" {
 		r.publishStatusForRequest(req, "error", "agent_image is required", nil)
@@ -168,6 +164,20 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		r.runDockerAgent(ctx, session, req, socketPath, h)
 	}
+}
+
+func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, workspaceDir, socketPath string) (*mcp.Server, error) {
+	mcpServer, err := mcp.NewServer(socketPath)
+	if err != nil {
+		return nil, err
+	}
+	ws := tools.NewWorkspace(workspaceDir)
+	mcpServer.RegisterTool("workspace_read_file", ws.ReadFile)
+	mcpServer.RegisterTool("workspace_write_file", ws.WriteFile)
+	mcpServer.RegisterTool("workspace_list_directory", ws.ListDirectory)
+	go mcpServer.Serve(ctx)
+	slog.Info("MCP server started", "taskID", taskID, "socket", socketPath)
+	return mcpServer, nil
 }
 
 func (r *Runner) mcpBridgePath() string {
@@ -573,6 +583,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	defer func() {
+		if session.PreserveWorkspace {
+			slog.Info("preserving container for checkpointed session", "taskID", req.TaskID, "container", containerName)
+			return
+		}
 		exec.Command("docker", "rm", "-f", containerName).Run()
 	}()
 
@@ -607,15 +621,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
-	if sid != "" {
-		if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
-			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
-		}
-		exec.Command("docker", "stop", containerName).Run()
-		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
-	}
 	if err != nil {
+		if sid != "" {
+			if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
+				r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
+			}
+			exec.Command("docker", "stop", containerName).Run()
+			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		}
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
@@ -629,10 +643,19 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		if cpErr != nil {
 			slog.Error("docker checkpoint failed", "taskID", req.TaskID, "err", cpErr, "output", string(cpOut))
 		} else {
-			checkpointPath = fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerName, checkpointName)
+			checkpointPath = dockerCheckpointPath(containerName, checkpointName)
 			workspacePath = session.WorkspaceDir
+			session.PreserveWorkspace = true
 			slog.Info("checkpoint created", "taskID", req.TaskID, "path", checkpointPath, "workspace", workspacePath)
 		}
+	}
+	if sid != "" {
+		if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
+			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
+		}
+		exec.Command("docker", "stop", containerName).Run()
+		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, checkpointPath, workspacePath)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
@@ -653,122 +676,56 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	r.publishStatusForRequest(req, "running", "Restoring agent from checkpoint...", nil)
 
-	configPath := h.ConfigFilePathGlobal(workspaceDir)
-
 	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
 	if bindAddr == "" {
 		bindAddr = "127.0.0.1"
 	}
 
-	ln, err := net.Listen("tcp", bindAddr+":0")
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
+	const containerPort = 9999
+	containerID, checkpointName, ok := dockerCheckpointParts(req.ResumeCheckpointPath)
+	if !ok {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid checkpoint path: %s", req.ResumeCheckpointPath), nil)
 		return
 	}
-	hostPort := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
 
-	const containerPort = 9999
-	containerName := "chetter-task-" + req.TaskID
-
-	exec.Command("docker", "rm", "-f", containerName).Run()
-
-	archivePath := req.ResumeCheckpointPath
-	if strings.HasPrefix(archivePath, "/var/lib/docker/containers/") {
-		archivePath = "/var/lib/docker/containers/" + containerName + "/checkpoints/cp1"
-		copyCheckpoint := []string{"cp", "-r", req.ResumeCheckpointPath, archivePath}
-		if _, cpErr := exec.Command("mkdir", "-p", filepath.Dir(archivePath)).CombinedOutput(); cpErr != nil {
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("mkdir checkpoint dir: %v", cpErr), nil)
-			return
-		}
-		if out, cpErr := exec.Command(copyCheckpoint[0], copyCheckpoint[1:]...).CombinedOutput(); cpErr != nil {
-			slog.Error("copy checkpoint failed", "taskID", req.TaskID, "err", cpErr, "output", string(out))
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("copy checkpoint: %v", cpErr), nil)
-			return
-		}
+	mountedSocketPath, err := dockerMountSource(containerID, containerSocketPath)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("inspect checkpointed container socket mount: %v", err), nil)
+		return
 	}
+	if mountedSocketPath == "" {
+		mountedSocketPath = socketPath
+	}
+	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, workspaceDir, mountedSocketPath)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
+		return
+	}
+	defer mcpServer.Close()
 
 	secret := h.ServerPassword()
 
-	gvisor := r.cfg.Execution.UseGVisor
-	netName := ""
-	dockerArgs := []string{
-		"run", "-d",
-		"--name", containerName,
-	}
-	if gvisor {
-		netName = runcNetwork()
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
-		dockerArgs = append(dockerArgs, "--network", netName)
-		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
-	}
-	dockerArgs = append(dockerArgs,
-		"-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort),
-		"-v", workspaceDir+":/workspace",
-		"-v", socketPath+":"+socketPath,
-		"-v", configPath+":/opt/opencode/.config/opencode/config.json:ro",
-		"-w", "/workspace",
-		"-e", "TASK_ID="+req.TaskID,
-		"-e", "WORKSPACE=/workspace",
-		"-e", "MCP_SOCKET_PATH="+socketPath,
-		"-e", "HOME=/opt/opencode",
-		"-e", "XDG_CONFIG_HOME=/opt/opencode/.config",
-		"-e", "XDG_DATA_HOME=/workspace/.local/share",
-		"-e", "XDG_STATE_HOME=/workspace/.local/state",
-		"-e", "XDG_CACHE_HOME=/workspace/.cache",
-		"-e", "CHETTER_AGENT_NAME="+req.Agent,
-		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
-		"-e", "CHETTER_TASK_ID="+req.TaskID,
-		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
-		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
-	)
-
-	for k, v := range h.Env("/opt/opencode/.config/opencode", secret) {
-		key := k
-		switch key {
-		case "OPENCODE_CONFIG":
-			key = "OPENCODE_CONFIG"
-			v = "/opt/opencode/.config/opencode/config.json"
-		case "OPENCODE_SERVER_PASSWORD":
-			v = secret
-		}
-		dockerArgs = append(dockerArgs, "-e", key+"="+v)
-	}
-	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
-			continue
-		}
-		dockerArgs = append(dockerArgs, "-e", k+"="+v)
-	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
-
-	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, h.Name())
-	dockerArgs = append(dockerArgs, h.ServeArgs(containerPort)...)
-
-	slog.Info("starting Docker container for resume", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
+	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "socket", mountedSocketPath)
 	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
 
-	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "docker", "start", "--checkpoint", checkpointName, containerID).CombinedOutput()
 	if err != nil {
-		slog.Error("docker run failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
+		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err, "output", string(out))
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v\n%s", err, string(out)), nil)
 		return
 	}
 
-	defer func() {
-		exec.Command("docker", "rm", "-f", containerName).Run()
-	}()
+	hostPort, err := dockerMappedHostPort(containerID, containerPort)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("inspect restored container port: %v", err), nil)
+		return
+	}
 
-	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
+	baseURL := harnessBaseURL(bindAddr, hostPort, r.cfg.Execution.UseGVisor, "")
 	if err := h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
-		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
-		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerName).CombinedOutput()
-		selfCheckOut, _ := exec.Command("docker", "exec", containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
+		logs, _ := exec.Command("docker", "logs", containerID).CombinedOutput()
+		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerID).CombinedOutput()
+		selfCheckOut, _ := exec.Command("docker", "exec", containerID, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
 		slog.Error("harness serve not ready on resume", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
@@ -811,11 +768,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	checkpointPath := ""
 	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
 		checkpointName := "chetter-checkpoint-" + req.TaskID
-		cpOut, cpErr := exec.Command("docker", "checkpoint", "create", containerName, checkpointName).CombinedOutput()
+		cpOut, cpErr := exec.Command("docker", "checkpoint", "create", containerID, checkpointName).CombinedOutput()
 		if cpErr != nil {
 			slog.Error("docker checkpoint failed on resume", "taskID", req.TaskID, "err", cpErr, "output", string(cpOut))
 		} else {
-			checkpointPath = fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerName, checkpointName)
+			checkpointPath = dockerCheckpointPath(containerID, checkpointName)
+			session.PreserveWorkspace = true
 			slog.Info("checkpoint created on resume", "taskID", req.TaskID, "path", checkpointPath)
 		}
 	}
@@ -842,6 +800,64 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 		resp.Summary = message
 	}
 	r.publishTaskResponse(resp)
+}
+
+func dockerCheckpointPath(containerName, checkpointName string) string {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
+	containerID := strings.TrimSpace(string(out))
+	if err != nil || containerID == "" {
+		containerID = containerName
+	}
+	return fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerID, checkpointName)
+}
+
+func dockerCheckpointParts(checkpointPath string) (containerID, checkpointName string, ok bool) {
+	checkpointPath = filepath.Clean(checkpointPath)
+	parts := strings.Split(checkpointPath, string(os.PathSeparator))
+	for i := 0; i+3 < len(parts); i++ {
+		if parts[i] == "containers" && parts[i+2] == "checkpoints" && parts[i+1] != "" && parts[i+3] != "" {
+			return parts[i+1], parts[i+3], true
+		}
+	}
+	return "", "", false
+}
+
+func dockerMountSource(containerID, destination string) (string, error) {
+	format := fmt.Sprintf(`{{range .Mounts}}{{if eq .Destination %q}}{{.Source}}{{end}}{{end}}`, destination)
+	out, err := exec.Command("docker", "inspect", "-f", format, containerID).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker inspect: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func dockerMappedHostPort(containerID string, containerPort int) (int, error) {
+	out, err := exec.Command("docker", "port", containerID, fmt.Sprintf("%d/tcp", containerPort)).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("docker port: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	port, ok := parseDockerPortOutput(string(out))
+	if !ok {
+		return 0, fmt.Errorf("could not parse docker port output %q", strings.TrimSpace(string(out)))
+	}
+	return port, nil
+}
+
+func parseDockerPortOutput(output string) (int, bool) {
+	fields := strings.Fields(strings.TrimSpace(output))
+	if len(fields) == 0 {
+		return 0, false
+	}
+	last := fields[len(fields)-1]
+	idx := strings.LastIndex(last, ":")
+	if idx < 0 || idx == len(last)-1 {
+		return 0, false
+	}
+	port, err := strconv.Atoi(last[idx+1:])
+	if err != nil || port <= 0 {
+		return 0, false
+	}
+	return port, true
 }
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
