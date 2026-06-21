@@ -242,6 +242,23 @@ type Definition struct {
 	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
+type DefinitionChangeProposal struct {
+	ID         string          `json:"id"`
+	SourceID   string          `json:"source_id"`
+	TaskID     sql.NullString  `json:"task_id"`
+	Repo       string          `json:"repo"`
+	Branch     string          `json:"branch"`
+	BaseBranch string          `json:"base_branch"`
+	PrNumber   int32           `json:"pr_number"`
+	PrUrl      string          `json:"pr_url"`
+	Title      string          `json:"title"`
+	Body       string          `json:"body"`
+	Files      json.RawMessage `json:"files"`
+	Status     string          `json:"status"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+}
+
 type DefinitionSource struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`

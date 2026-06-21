@@ -197,4 +197,4 @@ triggers. These tools make the model explicit and usable from any MCP client.
 2. Add definition source schema and read-only sync/indexing. ✓
 3. Add definition MCP read/sync tools. ✓
 4. Add the weekly meta-improver agent and trigger. ✓
-5. Add PR proposal tooling for definition changes.
+5. Add PR proposal tooling for definition changes. ✓

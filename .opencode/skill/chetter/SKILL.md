@@ -71,6 +71,9 @@ All tools are prefixed `chetter_` and available via the `chetter` MCP server.
 | `chetter_sync_definition_source` | Sync a definition source (admin only) |
 | `chetter_list_definitions` | List active materialized definitions, optionally by type/source |
 | `chetter_get_definition` | Get a materialized definition by type and name |
+| `chetter_create_definition_proposal` | Create a PR proposing definition file changes |
+| `chetter_list_definition_proposals` | List definition change proposals created by Chetter |
+| `chetter_get_definition_proposal` | Get proposal details and live PR status when available |
 
 ### Arcane (Vulnerability Scanning, Optional)
 | Tool | Purpose |
@@ -132,6 +135,8 @@ To refresh the configured source:
 Sync the default definition source
 ```
 The agent will use `chetter_sync_definition_source`; admin access is required.
+
+To propose durable definition changes, use `chetter_create_definition_proposal` with complete replacement file contents. The tool creates a branch, writes the files, opens a GitHub pull request, and records the proposal. Use `chetter_list_definition_proposals` and `chetter_get_definition_proposal` to track review status.
 
 ## Working with Triggers
 
