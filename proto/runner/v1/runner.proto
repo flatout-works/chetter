@@ -98,6 +98,7 @@ message TaskEvent {
   string session_export = 14;
   string checkpoint_path = 15;
   string workspace_path = 16;
+  string error_category = 17;
 }
 
 message ReportTaskEventsRequest {
