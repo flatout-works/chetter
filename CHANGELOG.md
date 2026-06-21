@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-21
+
+### Added
+
+- GitHub MCP tools: `chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, and `chetter_pr_review` create GitHub artifacts with server-side signature footer, audit log entries, and artifact tracking in `chetter_task_artifacts`. Existing footers stripped to avoid duplication.
+- Data-driven model catalog: YAML-based `pkg/modelcatalog` replaces hardcoded provider config (`addDeepSeekProvider`, `addOpenCodeProvider`, `addSyntheticProvider`). Catalog can be sourced from a Git definitions repo via `DEFINITIONS_REPO` env var with periodic auto-sync every 5 minutes, or loaded from a local file. Built-in default catalog includes Synthetic (GLM-5.2), OpenCode Zen (deepseek-v4-flash-free), DeepSeek, Z.ai, and Anthropic providers with per-harness overrides. New MCP tools: `chetter_sync_definitions` (admin), `chetter_list_model_catalogs` (admin), `chetter_get_model_catalog` (any authenticated user).
+- Trigger run history and artifact browser in the web UI: triggers page now shows recent 25 schedule runs per trigger with links to task detail pages; new admin/artifacts page lists task-created GitHub artifacts with filtering by task ID, repo, and artifact type.
+- Task attribution indexing: DB index on `trigger_name`/`trigger_type` columns for efficient trigger-scoped task queries in MCP tools and web UI.
+- `CONFIG_IN_GIT.md` documentation describing the definitions repo workflow (model catalog, agents, triggers synced from Git).
+- `GVISOR.md` research document covering 12 gVisor feature categories for production deployment considerations.
+- `WEB_ADDR` environment variable to configure the web UI/ConnectRPC API listen address (default `:8090`); K8s manifests updated to expose both MCP (8080) and web (8090) ports.
+
+### Changed
+
+- Runner `gh` wrapper: `/usr/local/bin/gh` now blocks write subcommands (`issue create`, `issue comment`, `pr create`, `pr review`, `pr comment`) and directs agents to use Chetter MCP tools instead. The real `gh` binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` to bypass for manual debugging.
+- All trigger prompts migrated from raw `gh` CLI commands to Chetter MCP tools (`chetter_create_pr`, `chetter_create_issue`, `chetter_issue_comment`, `chetter_pr_review`). Manual footer instructions removed since tools append signatures server-side.
+- Agent and trigger model configs standardized: `model: provider/id` split into separate `provider` and `model` front-matter fields. Provider references migrated from `opencode-go` to `opencode`. Models defaulted to `opencode/deepseek-v4-flash-free`.
+- Chetter web UI listen port changed to `:18090` to avoid conflict with external services.
+- CI workflow (`chetter.yml`) now includes web build and check steps with Node.js 24 setup and npm dependency caching. `make check` target includes `web-check`.
+- Web UI auth hardened: admin login link added, token stores validated, streaming endpoint auth strengthened.
+
+### Fixed
+
+- Server-side prompt placeholder expansion: `$CHETTER_*` and `${CHETTER_*}` variable references in trigger prompts are replaced server-side at submission time instead of passing literal references to agents.
+- Entrypoint digest fallback: `:-` substitution replaces `:=` so an empty-string env var from compose.yaml defaults to `"unknown"` instead of remaining empty.
+- `CHETTER_TASK_ID` environment variable now injected into Docker resume and batch agent execution paths, making the task ID available in all execution modes.
+- Stable MCP trigger response type: `TriggerToolRecord` decouples the MCP JSON schema from `store.ScheduleRecord`, preventing future DB schema changes (additional columns) from causing `"must NOT have additional properties"` errors in MCP clients.
+- Runner Dockerfile copies `pkg/` directory for modelcatalog dependency; compose.yaml DNS configuration fixed for TiDB hostname resolution.
+
+### Documentation
+
+- `README.md` updated: web UI and ConnectRPC API documented in quick start and K8s deployment sections; `HTTP_ADDR`, `WEB_ADDR`, `DEFAULT_AGENT_IMAGE` env vars documented; web port 8090 exposed in K8s service manifest example.
+- `docs/MODEL_CATALOG.md` updated: describes Git-sourced model catalog with `DEFINITIONS_REPO` auto-sync, viewing via `chetter_get_model_catalog`, and harness-specific overrides.
+- `docs/CONFIG_IN_GIT.md` expanded: definitions repo workflow, periodic sync, and manual sync via `chetter_sync_definitions`.
+- `docs/FEATURES.md` updated: GLM-5.2 model reference, opencode provider name.
+- `.opencode/skill/chetter/SKILL.md` updated: trigger attribution docs, trigger-scoped task querying, `trigger_name` filter on `chetter_list_tasks`.
+- `.env.example` updated: `HTTP_ADDR` and `WEB_ADDR` documented.
+- `deploy/k8s/mcp-deployment.yaml` and `mcp-service.yaml`: web port 8090 added to service and deployment specs.
+
 ## 2026-06-20
 
 ### Added
