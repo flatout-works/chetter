@@ -29,13 +29,13 @@
   let agent = $state("");
   let modelId = $state("");
 
-  let scheduleRuns = $state<TriggerRun[]>([]);
+  let triggerRuns = $state<TriggerRun[]>([]);
   let runsTriggerName = $state<string | null>(null);
   let loadingRuns = $state(false);
   let runsPage = $state(0);
   let runsPageSize = 10;
-  let totalRunsPages = $derived(Math.max(1, Math.ceil(scheduleRuns.length / runsPageSize)));
-  let pagedRuns = $derived(scheduleRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
+  let totalRunsPages = $derived(Math.max(1, Math.ceil(triggerRuns.length / runsPageSize)));
+  let pagedRuns = $derived(triggerRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
 
   async function load() {
     try {
@@ -97,7 +97,7 @@
     try {
       const client = createClient(TriggerService, getTransport());
       const resp = await client.listTriggerRuns({ triggerName: name, limit: 25 });
-      scheduleRuns = resp.runs ?? [];
+      triggerRuns = resp.runs ?? [];
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
       addToast(actionError, "error");
@@ -438,7 +438,7 @@
                     <div class="flex items-center gap-2 px-3 py-6 text-gray-500 dark:text-gray-400">
                       <Spinner size="4" /> Loading runs…
                     </div>
-                  {:else if scheduleRuns.length === 0}
+                  {:else if triggerRuns.length === 0}
                     <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
                   {:else}
                     <div class="chetter-table overflow-x-auto">
@@ -468,7 +468,7 @@
                     </Table>
                     </div>
                     <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
-                      <span>{scheduleRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, scheduleRuns.length)} of {scheduleRuns.length}</span>
+                      <span>{triggerRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, triggerRuns.length)} of {triggerRuns.length}</span>
                       <div class="flex gap-1">
                         <Button size="xs" color="alternative" disabled={runsPage === 0} onclick={() => { runsPage = Math.max(0, runsPage - 1); }}>←</Button>
                         {#each { length: Math.min(totalRunsPages, 7) } as _, i}
