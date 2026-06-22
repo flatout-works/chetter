@@ -50,7 +50,7 @@ services:
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-1
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
-      RUNNER_MAX_CONCURRENT: "1"
+      RUNNER_MAX_CONCURRENT: "3"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
@@ -79,7 +79,7 @@ services:
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
-      RUNNER_MAX_CONCURRENT: "1"
+      RUNNER_MAX_CONCURRENT: "3"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
