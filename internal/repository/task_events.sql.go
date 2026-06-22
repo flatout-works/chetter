@@ -12,8 +12,8 @@ import (
 )
 
 const insertTaskEvent = `-- name: InsertTaskEvent :exec
-INSERT INTO chetter_task_events (id, task_id, subject, status, payload, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_task_events (id, task_id, subject, status, event_type, payload, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskEventParams struct {
@@ -21,6 +21,7 @@ type InsertTaskEventParams struct {
 	TaskID    string          `json:"task_id"`
 	Subject   string          `json:"subject"`
 	Status    string          `json:"status"`
+	EventType string          `json:"event_type"`
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"created_at"`
 }
@@ -31,6 +32,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 		arg.TaskID,
 		arg.Subject,
 		arg.Status,
+		arg.EventType,
 		arg.Payload,
 		arg.CreatedAt,
 	)
@@ -38,7 +40,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 }
 
 const listTaskEvents = `-- name: ListTaskEvents :many
-SELECT id, task_id, subject, status, payload, created_at FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT ?
@@ -67,6 +69,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 			&i.Status,
 			&i.Payload,
 			&i.CreatedAt,
+			&i.EventType,
 		); err != nil {
 			return nil, err
 		}
@@ -82,7 +85,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const listTaskEventsSince = `-- name: ListTaskEventsSince :many
-SELECT id, task_id, subject, status, payload, created_at FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
 WHERE task_id = ? AND created_at > ?
 ORDER BY created_at ASC
 `
@@ -108,6 +111,7 @@ func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSin
 			&i.Status,
 			&i.Payload,
 			&i.CreatedAt,
+			&i.EventType,
 		); err != nil {
 			return nil, err
 		}

@@ -158,7 +158,7 @@ func sendFleetNonBlocking(ch chan *apiv1.FleetUpdate, closed chan struct{}, upda
 
 // PublishTaskEvent implements service.TaskEventPublisher using plain-string
 // parameters (avoids import cycle between service and webapi packages).
-func (b *EventBus) PublishTaskEvent(taskID, eventID, status, summary, payload, createdAt string) {
+func (b *EventBus) PublishTaskEvent(taskID, eventID, status, eventType, summary, payload, createdAt string) {
 	if b == nil {
 		return
 	}
@@ -166,6 +166,7 @@ func (b *EventBus) PublishTaskEvent(taskID, eventID, status, summary, payload, c
 		TaskId:    taskID,
 		Id:        eventID,
 		Status:    status,
+		EventType: eventType,
 		Payload:   payload,
 		CreatedAt: createdAt,
 	}

@@ -44,6 +44,7 @@ type Task struct {
 	UpdatedAt     string                 `protobuf:"bytes,18,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	StartedAt     *string                `protobuf:"bytes,19,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
 	EndedAt       *string                `protobuf:"bytes,20,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
+	ErrorCategory string                 `protobuf:"bytes,21,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -214,6 +215,13 @@ func (x *Task) GetStartedAt() string {
 func (x *Task) GetEndedAt() string {
 	if x != nil && x.EndedAt != nil {
 		return *x.EndedAt
+	}
+	return ""
+}
+
+func (x *Task) GetErrorCategory() string {
+	if x != nil {
+		return x.ErrorCategory
 	}
 	return ""
 }
@@ -758,6 +766,7 @@ type TaskEvent struct {
 	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 	Payload       string                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	EventType     string                 `protobuf:"bytes,7,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -830,6 +839,13 @@ func (x *TaskEvent) GetPayload() string {
 func (x *TaskEvent) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
 	}
 	return ""
 }
@@ -6074,7 +6090,7 @@ var File_proto_api_v1_api_proto protoreflect.FileDescriptor
 
 const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
-	"\x16proto/api/v1/api.proto\x12\x06api.v1\x1a\x1bbuf/validate/validate.proto\"\x8b\x05\n" +
+	"\x16proto/api/v1/api.proto\x12\x06api.v1\x1a\x1bbuf/validate/validate.proto\"\xb2\x05\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -6103,7 +6119,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"updated_at\x18\x12 \x01(\tR\tupdatedAt\x12\"\n" +
 	"\n" +
 	"started_at\x18\x13 \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
-	"\bended_at\x18\x14 \x01(\tH\x01R\aendedAt\x88\x01\x01\x1a6\n" +
+	"\bended_at\x18\x14 \x01(\tH\x01R\aendedAt\x88\x01\x01\x12%\n" +
+	"\x0eerror_category\x18\x15 \x01(\tR\rerrorCategory\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
@@ -6191,7 +6208,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\vlast_run_at\x18\x15 \x01(\tH\x00R\tlastRunAt\x88\x01\x01\x12#\n" +
 	"\vnext_run_at\x18\x16 \x01(\tH\x01R\tnextRunAt\x88\x01\x01B\x0e\n" +
 	"\f_last_run_atB\x0e\n" +
-	"\f_next_run_at\"\x9f\x01\n" +
+	"\f_next_run_at\"\xbe\x01\n" +
 	"\tTaskEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +
@@ -6199,7 +6216,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12\x18\n" +
 	"\apayload\x18\x05 \x01(\tR\apayload\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\tR\tcreatedAt\"o\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\a \x01(\tR\teventType\"o\n" +
 	"\x11TaskProgressEntry\x12\x12\n" +
 	"\x04time\x18\x01 \x01(\tR\x04time\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +

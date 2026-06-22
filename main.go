@@ -86,7 +86,7 @@ func run() error {
 		svc.SetGitHubClient(gh)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus)
+	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus).WithEventCallbacks(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)

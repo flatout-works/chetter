@@ -39,6 +39,7 @@ UPDATE chetter_tasks
 SET status = sqlc.arg(status),
     summary = ?,
     error = ?,
+    error_category = COALESCE(NULLIF(sqlc.arg(error_category), ''), error_category),
     session_export = COALESCE(?, session_export),
     provider_id = COALESCE(NULLIF(sqlc.arg(provider_id), ''), provider_id),
     model_id = COALESCE(NULLIF(sqlc.arg(model_id), ''), model_id),
@@ -98,6 +99,7 @@ WHERE status = 'running'
 UPDATE chetter_tasks
 SET status = 'error',
     error = CONCAT('runner lease expired after ', attempt, ' attempts'),
+    error_category = 'timeout',
     ended_at = ?,
     updated_at = ?,
     last_event_at = ?
@@ -110,6 +112,7 @@ WHERE status = 'running'
 UPDATE chetter_tasks
 SET status = 'cancelled',
     error = ?,
+    error_category = 'cancelled',
     ended_at = COALESCE(ended_at, ?),
     updated_at = ?
 WHERE id = ? AND status IN ('pending', 'running');
@@ -118,6 +121,7 @@ WHERE id = ? AND status IN ('pending', 'running');
 UPDATE chetter_tasks
 SET status = 'cancelled',
     error = ?,
+    error_category = 'cancelled',
     ended_at = COALESCE(ended_at, ?),
     updated_at = ?
 WHERE status = 'pending';

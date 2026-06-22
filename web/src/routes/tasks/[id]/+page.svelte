@@ -238,7 +238,12 @@
 
     {#if task.error}
       <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg mb-6">
-        <h2 class="text-sm font-semibold mb-1">Error</h2>
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="text-sm font-semibold">Error</h2>
+          {#if task.errorCategory}
+            <span class="px-1.5 py-0.5 rounded text-xs font-medium bg-red-200 dark:bg-red-800/50">{task.errorCategory}</span>
+          {/if}
+        </div>
         <p class="text-sm font-mono">{task.error}</p>
       </div>
     {/if}
@@ -329,6 +334,9 @@
               }`}>
                 {event.status}
               </span>
+              {#if event.eventType && event.eventType !== "task." + event.status}
+                <span class="text-gray-400 dark:text-gray-500 text-xs shrink-0">{event.eventType}</span>
+              {/if}
               <span class="text-gray-500 dark:text-gray-400 flex-1 truncate">
                 {event.payload?.slice(0, 120) || "—"}
               </span>

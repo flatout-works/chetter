@@ -17,6 +17,10 @@
       "description": "List Chetter triggers (cron schedules and PR review webhooks).",
       "template": "Run chetter_list_triggers to list all triggers. Compare enabled vs disabled counts and show the name, trigger_type, and prompt summary for each trigger. Keep output concise."
     },
+    "chetter-event-callbacks": {
+      "description": "List Chetter event callbacks and summarize their actions.",
+      "template": "Run chetter_list_event_callbacks with limit=50. Summarize enabled vs disabled callbacks, each callback's event_type matcher, action_type, and any obvious target such as webhook URL domain. Do not reveal secrets from action_config."
+    },
     "chetter-cancel": {
       "description": "Cancel a pending or running Chetter task.",
       "template": "Cancel the specified chetter task. Ask for the task ID if not provided. Use chetter_cancel_task with the given ID and optionally a reason. Confirm the result."

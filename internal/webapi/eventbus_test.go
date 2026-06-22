@@ -14,7 +14,7 @@ func TestEventBusSubscribeTaskEvents(t *testing.T) {
 	ch, unsub := bus.SubscribeTaskEvents("task_1", 10)
 	defer unsub()
 
-	bus.PublishTaskEvent("task_1", "evt_1", "running", "started", `{"summary":"hello"}`, "2025-01-01T00:00:00Z")
+	bus.PublishTaskEvent("task_1", "evt_1", "running", "task.progress", "started", `{"summary":"hello"}`, "2025-01-01T00:00:00Z")
 
 	select {
 	case ev := <-ch:
@@ -23,6 +23,9 @@ func TestEventBusSubscribeTaskEvents(t *testing.T) {
 		}
 		if ev.Status != "running" {
 			t.Errorf("status = %q, want %q", ev.Status, "running")
+		}
+		if ev.EventType != "task.progress" {
+			t.Errorf("event type = %q, want %q", ev.EventType, "task.progress")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for event")
@@ -35,7 +38,7 @@ func TestEventBusSubscribeTaskEventsOnlyReceivesOwnTask(t *testing.T) {
 	ch1, unsub1 := bus.SubscribeTaskEvents("task_a", 10)
 	defer unsub1()
 
-	bus.PublishTaskEvent("task_b", "evt_b", "done", "", "", "2025-01-01T00:00:00Z")
+	bus.PublishTaskEvent("task_b", "evt_b", "done", "task.completed", "", "", "2025-01-01T00:00:00Z")
 
 	select {
 	case <-ch1:
@@ -50,7 +53,7 @@ func TestEventBusUnsubscribeStopsDelivery(t *testing.T) {
 	ch, unsub := bus.SubscribeTaskEvents("task_1", 10)
 	unsub()
 
-	bus.PublishTaskEvent("task_1", "evt_2", "done", "", "", "2025-01-01T00:00:00Z")
+	bus.PublishTaskEvent("task_1", "evt_2", "done", "task.completed", "", "", "2025-01-01T00:00:00Z")
 
 	select {
 	case <-ch:
@@ -67,7 +70,7 @@ func TestEventBusMultipleSubscribers(t *testing.T) {
 	ch2, unsub2 := bus.SubscribeTaskEvents("task_1", 10)
 	defer unsub2()
 
-	bus.PublishTaskEvent("task_1", "evt_1", "done", "", "", "2025-01-01T00:00:00Z")
+	bus.PublishTaskEvent("task_1", "evt_1", "done", "task.completed", "", "", "2025-01-01T00:00:00Z")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -147,7 +150,7 @@ func TestEventBusCloseAllStopsDelivery(t *testing.T) {
 	bus.CloseAll()
 
 	// Publishing after CloseAll should not panic
-	bus.PublishTaskEvent("task_1", "evt_3", "done", "", "", "")
+	bus.PublishTaskEvent("task_1", "evt_3", "done", "task.completed", "", "", "")
 	bus.PublishFleetUpdate(&apiv1.FleetUpdate{Type: "test"})
 
 	// After CloseAll, subscribers should NOT receive new events
@@ -168,7 +171,7 @@ func TestEventBusPublishNilBus(t *testing.T) {
 	var bus *EventBus = nil
 
 	// These should not panic
-	bus.PublishTaskEvent("task_1", "evt_1", "done", "", "", "")
+	bus.PublishTaskEvent("task_1", "evt_1", "done", "task.completed", "", "", "")
 	bus.PublishFleetUpdate(&apiv1.FleetUpdate{Type: "test"})
 	bus.CloseAll()
 
@@ -197,7 +200,7 @@ func TestEventBusTaskEventFansOutToFleetSubscribers(t *testing.T) {
 	taskCh, unsubTask := bus.SubscribeTaskEvents("task_x", 10)
 	defer unsubTask()
 
-	bus.PublishTaskEvent("task_x", "evt_1", "done", "summary", `{}`, "2025-01-01T00:00:00Z")
+	bus.PublishTaskEvent("task_x", "evt_1", "done", "task.completed", "summary", `{}`, "2025-01-01T00:00:00Z")
 
 	// Task subscriber should get the event
 	select {

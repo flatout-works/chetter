@@ -800,6 +800,9 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 	}
 	if status == "error" || status == "cancelled" {
 		resp.Error = message
+		if resp.ErrorCategory == "" {
+			resp.ErrorCategory = classifyErrorCategory(status, message)
+		}
 	} else {
 		resp.Summary = message
 	}
@@ -1022,6 +1025,9 @@ func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message
 	}
 	if status == "error" || status == "cancelled" {
 		resp.Error = message
+		if resp.ErrorCategory == "" {
+			resp.ErrorCategory = classifyErrorCategory(status, message)
+		}
 	} else {
 		resp.Summary = message
 	}
