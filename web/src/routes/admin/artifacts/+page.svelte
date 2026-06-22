@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Input, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner } from "flowbite-svelte";
+  import { Alert, Button, Input, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner } from "flowbite-svelte";
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
@@ -73,24 +73,20 @@
 <div class="p-6">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Task Artifacts</h1>
-    <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
-  </div>
-
-  <Card class="mb-6" shadow="sm">
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-      <Input bind:value={taskId} placeholder="Task ID" />
-      <Input bind:value={repo} placeholder="Repository" />
-      <Select bind:value={artifactType}>
+    <div class="flex items-center gap-3">
+      <Input bind:value={taskId} placeholder="Task ID" class="w-40" />
+      <Input bind:value={repo} placeholder="Repository" class="w-44" />
+      <Select bind:value={artifactType} class="min-w-44">
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
         <option value="pull_request">Pull Request</option>
         <option value="issue_comment">Issue Comment</option>
         <option value="pr_review">PR Review</option>
       </Select>
-      <Input type="number" bind:value={limit} min="1" max="500" />
+      <Input type="number" bind:value={limit} min="1" max="500" class="w-20" placeholder="Limit" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Search</Button>
     </div>
-  </Card>
+  </div>
 
   {#if error}
     <Alert color="red" class="mb-4">{error}</Alert>

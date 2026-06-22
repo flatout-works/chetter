@@ -74,27 +74,27 @@
     </div>
   {:else if health}
     <div class="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Total</p>
         <p class="text-2xl font-bold text-gray-900 dark:text-white">{health.totalTasks}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Running</p>
         <p class="text-2xl font-bold text-green-600 dark:text-green-400">{health.runningTasks}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
         <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{health.pendingTasks}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Done</p>
         <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{health.doneTasks}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Error</p>
         <p class="text-2xl font-bold text-red-600 dark:text-red-400">{health.errorTasks}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Stale</p>
         <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{health.staleTasks}</p>
       </Card>
