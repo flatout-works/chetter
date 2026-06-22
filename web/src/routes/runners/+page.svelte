@@ -7,7 +7,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Button, Spinner } from "flowbite-svelte";
+  import { Alert, Button, Card, Spinner } from "flowbite-svelte";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
@@ -65,7 +65,7 @@
     {/if}
   </div>
   {#if clearError}
-    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">{clearError}</div>
+    <Alert color="red" class="mb-4">{clearError}</Alert>
   {/if}
 
   {#if loading}
@@ -74,33 +74,33 @@
     </div>
   {:else if health}
     <div class="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Total</p>
         <p class="text-2xl font-bold text-gray-900 dark:text-white">{health.totalTasks}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Running</p>
         <p class="text-2xl font-bold text-green-600 dark:text-green-400">{health.runningTasks}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
         <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{health.pendingTasks}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Done</p>
         <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{health.doneTasks}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Error</p>
         <p class="text-2xl font-bold text-red-600 dark:text-red-400">{health.errorTasks}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-sm text-gray-500 dark:text-gray-400">Stale</p>
         <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{health.staleTasks}</p>
-      </div>
+      </Card>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-8">
+    <Card class="mb-8" shadow="sm">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h2 class="font-semibold text-gray-900 dark:text-white">Active Runners</h2>
       </div>
@@ -111,7 +111,7 @@
               <div>
                 <p class="text-sm font-mono font-medium text-gray-900 dark:text-white">{runner.runnerId}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {runner.imageRef || "—"} · v{runner.version || "?"} · {runner.runningTasks}/{runner.maxConcurrent} tasks
+                  {runner.imageRef || "—"} · v{runner.version || "?"} · {runner.runningTasks}/{runner.maxConcurrent} tasks{runner.imageDigest ? ` · digest:${runner.imageDigest.slice(0, 12)}` : ""}
                 </p>
               </div>
               <div class="flex items-center gap-3">
@@ -132,10 +132,10 @@
           <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No active runners</p>
         {/each}
       </div>
-    </div>
+      </Card>
 
     {#if health.runningTaskInfos?.length}
-      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <Card shadow="sm">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 class="font-semibold text-gray-900 dark:text-white">Running Task Details</h2>
         </div>
@@ -154,7 +154,7 @@
             </a>
           {/each}
         </div>
-      </div>
+      </Card>
     {/if}
   {:else}
     <p class="text-gray-500 dark:text-gray-400">Failed to load fleet health</p>

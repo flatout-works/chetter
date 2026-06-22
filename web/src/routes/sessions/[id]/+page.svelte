@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
+  import { Alert, Button, Card, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
@@ -52,7 +52,7 @@
   {#if loading}
     <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg">{error}</div>
+    <Alert color="red">{error}</Alert>
   {:else if session}
     <div class="flex items-center justify-between mb-6">
       <div>
@@ -70,34 +70,34 @@
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.agent || "—"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.modelId || "—"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Resume Mode</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.resumeMode || "none"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Pinned Runner</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{session.pinnedRunnerId || "—"}</p>
-      </div>
+      </Card>
     </div>
 
     {#if session.pauseReason}
-      <div class="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 p-4 rounded-lg mb-6">
+      <Alert color="yellow" class="mb-6">
         <p class="text-sm"><span class="font-semibold">Pause reason:</span> {session.pauseReason}</p>
-      </div>
+      </Alert>
     {/if}
 
     {#if session.error}
-      <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg mb-6">
+      <Alert color="red" class="mb-6">
         <p class="text-sm font-mono">{session.error}</p>
-      </div>
+      </Alert>
     {/if}
 
     <TableCard title={`Session runs (${runs.length})`}>

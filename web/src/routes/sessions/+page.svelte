@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
+  import { Button, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "created";
   let sessions = $state<AgentSession[]>([]);
@@ -77,20 +77,18 @@
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Agent Sessions</h1>
     <div class="flex items-center gap-3">
-      <select bind:value={statusFilter} onchange={() => { page = 0; load(); }}
-        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
-        <option value="">All</option>
-        <option value="running">Running</option>
-        <option value="paused_waiting_review">Paused</option>
-        <option value="completed">Completed</option>
-        <option value="error">Error</option>
-      </select>
-      <select bind:value={pageSize} onchange={() => { page = 0; }}
-        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
-        <option value={10}>10 / page</option>
-        <option value={25}>25 / page</option>
-        <option value={50}>50 / page</option>
-      </select>
+      <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }}>
+          <option value="">All</option>
+          <option value="running">Running</option>
+          <option value="paused_waiting_review">Paused</option>
+          <option value="completed">Completed</option>
+          <option value="error">Error</option>
+        </Select>
+        <Select bind:value={pageSize} onchange={() => { page = 0; }}>
+          <option value={10}>10 / page</option>
+          <option value={25}>25 / page</option>
+          <option value={50}>50 / page</option>
+        </Select>
     </div>
   </div>
 

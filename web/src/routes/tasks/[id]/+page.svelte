@@ -11,7 +11,7 @@
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Badge, Modal, Button, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Modal, Spinner } from "flowbite-svelte";
   import { marked } from "marked";
 
   let { params } = $props();
@@ -178,36 +178,36 @@
 
     <!-- Task metadata -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "default"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
-      </div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+      </Card>
+      <Card size="sm" shadow="sm">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
-      </div>
+      </Card>
     </div>
 
     <!-- Prompt -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
+    <Card class="mb-6" shadow="sm">
       <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt</h2>
       <pre class="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">{task.prompt}</pre>
-    </div>
+    </Card>
 
     {#if task.error}
-      <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg mb-6">
+      <Alert color="red" class="mb-6">
         <div class="flex items-center gap-2 mb-1">
           <h2 class="text-sm font-semibold">Error</h2>
           {#if task.errorCategory}
@@ -215,12 +215,12 @@
           {/if}
         </div>
         <p class="text-sm font-mono">{task.error}</p>
-      </div>
+      </Alert>
     {/if}
 
     <!-- Artifacts -->
     {#if artifacts.length > 0}
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
+      <Card class="mb-6" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
         <div class="space-y-2">
           {#each artifacts as art (art.id)}
@@ -239,12 +239,12 @@
             </div>
           {/each}
         </div>
-      </div>
+      </Card>
     {/if}
 
     <!-- Progress Timeline -->
     {#if progress.length > 0}
-      <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-6">
+      <Card class="mb-6" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Progress Timeline</h2>
         <div class="space-y-3">
           {#each progress as entry (`${entry.time}:${entry.status}:${entry.summary}`)}
@@ -265,11 +265,11 @@
             </div>
           {/each}
         </div>
-      </div>
+      </Card>
     {/if}
 
     <!-- Live event stream -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+    <Card shadow="sm">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Event Stream</h2>
         {#if connected}
@@ -306,7 +306,7 @@
           <p class="text-gray-500 dark:text-gray-400 text-center py-4">No events</p>
         {/each}
       </div>
-    </div>
+    </Card>
   </div>
 {/if}
 
