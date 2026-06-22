@@ -724,7 +724,7 @@ func TestDockerCheckpointParts(t *testing.T) {
 func TestClearCheckpointNetNS(t *testing.T) {
 	ckDir := t.TempDir()
 	configPath := filepath.Join(ckDir, "config.json")
-	input := `{"namespaces":[{"type":"network","net_ns_path":"/var/run/docker/netns/abc123"}]}`
+	input := `{"linux":{"namespaces":[{"type":"network","path":"/var/run/docker/netns/abc123"},{"type":"pid","path":"/proc/1/ns/pid"}]},"net_ns_path":"/var/run/docker/netns/abc123"}`
 	if err := os.WriteFile(configPath, []byte(input), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -741,6 +741,12 @@ func TestClearCheckpointNetNS(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"net_ns_path":""`) {
 		t.Fatalf("cleared net_ns_path missing: %s", string(data))
+	}
+	if strings.Contains(string(data), `"type":"network","path"`) {
+		t.Fatalf("network namespace path was not removed: %s", string(data))
+	}
+	if !strings.Contains(string(data), `/proc/1/ns/pid`) {
+		t.Fatalf("non-network namespace path should be preserved: %s", string(data))
 	}
 }
 

@@ -920,8 +920,39 @@ func clearCheckpointNetNS(ckDir string) error {
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
 	}
+	var cfg any
+	if err := json.Unmarshal(data, &cfg); err == nil {
+		clearNetworkNamespacePaths(cfg)
+		updated, err := json.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("marshal config: %w", err)
+		}
+		return os.WriteFile(cfgPath, updated, 0644)
+	}
 	data = regexp.MustCompile(`"net_ns_path"\s*:\s*"[^"]*"`).ReplaceAll(data, []byte(`"net_ns_path":""`))
+	data = regexp.MustCompile(`"path"\s*:\s*"/var/run/docker/netns/[^"]*"`).ReplaceAll(data, []byte(`"path":""`))
 	return os.WriteFile(cfgPath, data, 0644)
+}
+
+func clearNetworkNamespacePaths(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		if path, ok := x["net_ns_path"].(string); ok && path != "" {
+			x["net_ns_path"] = ""
+		}
+		if typ, _ := x["type"].(string); typ == "network" {
+			if path, _ := x["path"].(string); strings.HasPrefix(path, "/var/run/docker/netns/") {
+				delete(x, "path")
+			}
+		}
+		for _, child := range x {
+			clearNetworkNamespacePaths(child)
+		}
+	case []any:
+		for _, child := range x {
+			clearNetworkNamespacePaths(child)
+		}
+	}
 }
 
 func clearCheckpointNetNSWithFallback(ckDir, helperImage string) error {
@@ -931,7 +962,7 @@ func clearCheckpointNetNSWithFallback(ckDir, helperImage string) error {
 		return err
 	}
 	cfgPath := filepath.Join("/hostdocker", strings.TrimPrefix(ckDir, "/var/lib/docker/"), "config.json")
-	script := `cfg="$1"; sed -i -E 's/"net_ns_path"[[:space:]]*:[[:space:]]*"[^"]*"/"net_ns_path":""/g' "$cfg"`
+	script := `cfg="$1"; sed -i -E 's/"net_ns_path"[[:space:]]*:[[:space:]]*"[^"]*"/"net_ns_path":""/g; s/"path"[[:space:]]*:[[:space:]]*"\/var\/run\/docker\/netns\/[^"]*"/"path":""/g' "$cfg"`
 	out, err := exec.Command("docker", "run", "--rm", "-v", "/var/lib/docker:/hostdocker", helperImage, "sh", "-lc", script, "sh", cfgPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("helper clear checkpoint netns: %w: %s", err, strings.TrimSpace(string(out)))
