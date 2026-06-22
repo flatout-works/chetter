@@ -67,8 +67,7 @@ COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
 # Agent and skill definitions are injected at runtime.
 
-RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
-    && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent
+RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint
 
 ENV RUNNER_LOCAL=true
 ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces

@@ -53,7 +53,7 @@ WHERE id = (
     WHERE task_id = ?
     LIMIT 1
 )
-AND status = 'running';
+AND status IN ('running', 'resuming');
 
 -- name: MarkAgentSessionResuming :execrows
 UPDATE chetter_agent_sessions

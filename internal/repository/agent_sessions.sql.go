@@ -635,7 +635,7 @@ WHERE id = (
     WHERE task_id = ?
     LIMIT 1
 )
-AND status = 'running'
+AND status IN ('running', 'resuming')
 `
 
 type PauseAgentSessionByTaskIDParams struct {
