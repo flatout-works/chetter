@@ -6,7 +6,9 @@
   import type { AgentSession } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner, Button } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "created";
   let sessions = $state<AgentSession[]>([]);
@@ -16,14 +18,6 @@
   let pageSize = $state(25);
   let sortColumn = $state<SortColumn>("created");
   let sortDirection = $state<"asc" | "desc">("desc");
-
-  function sessionColor(status: string): "green" | "red" | "yellow" | "blue" | "purple" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "purple" | "gray"> = {
-      running: "green", completed: "blue", error: "red",
-      paused_waiting_review: "yellow", paused: "yellow", resuming: "purple",
-    };
-    return map[status] ?? "gray";
-  }
 
   let sortedSessions = $derived.by(() => {
     return [...sessions].sort((a, b) => {
@@ -103,7 +97,8 @@
   {#if loading}
     <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
-    <Table hoverable shadow>
+    <TableCard title="Agent sessions" subtitle="Recent resumable agent sessions, newest first.">
+    <Table hoverable={true} shadow={false}>
       <TableHead>
         <TableHeadCell onclick={() => toggleSort("id")} class="cursor-pointer select-none">Session ID {sortIcon("id")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("status")} class="cursor-pointer select-none">Status {sortIcon("status")}</TableHeadCell>
@@ -120,7 +115,7 @@
                 {session.id.slice(0, 20)}…
               </a>
             </TableBodyCell>
-            <TableBodyCell><Badge color={sessionColor(session.status)}>{session.status}</Badge></TableBodyCell>
+            <TableBodyCell><StatusBadge status={session.status} /></TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.agent || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.modelId || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
@@ -139,6 +134,7 @@
         {/each}
       </TableBody>
     </Table>
+    </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {sortedSessions.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, sortedSessions.length)} of {sortedSessions.length}</span>

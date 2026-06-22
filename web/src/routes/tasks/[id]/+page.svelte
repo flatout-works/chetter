@@ -10,6 +10,7 @@
     taskEvents, taskProgress, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Badge, Modal, Button, Spinner } from "flowbite-svelte";
   import { marked } from "marked";
 
@@ -23,13 +24,6 @@
   let viewMarkdown = $state<string | null>(null);
   let viewLoading = $state(false);
   let showExportViewer = $state(false);
-
-  function statusColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "gray"> = {
-      running: "green", pending: "yellow", done: "blue", error: "red", cancelled: "gray",
-    };
-    return map[status] ?? "gray";
-  }
 
   let events = $derived($taskEvents);
   let progress = $derived($taskProgress);
@@ -160,7 +154,7 @@
       <div>
         <div class="flex items-center gap-3 mb-1">
           <h1 class="text-xl font-mono font-bold text-gray-900 dark:text-white">{task.id}</h1>
-          <Badge color={statusColor(task.status)}>{task.status}</Badge>
+          <StatusBadge status={task.status} />
           {#if statusText}
             <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">({statusText})</span>
           {/if}
@@ -231,9 +225,7 @@
         <div class="space-y-2">
           {#each artifacts as art (art.id)}
             <div class="flex items-center gap-3 text-sm">
-              <Badge color={art.artifactType === "issue" ? "green" : art.artifactType === "pull_request" ? "purple" : "gray"}>
-                {art.artifactType}
-              </Badge>
+              <StatusBadge status={art.artifactType === "pr_review" ? "pr_review_artifact" : art.artifactType} label={art.artifactType} />
               {#if art.url}
                 <Button color="alternative" size="xs" onclick={() => window.open(art.url, "_blank", "noopener,noreferrer")}>
                   {art.repo}#{art.number}
@@ -263,7 +255,7 @@
               <div class="flex-1 min-w-0">
                 <div class="flex gap-2 items-baseline">
                   <span class="text-gray-400 dark:text-gray-500 text-xs font-mono whitespace-nowrap">{formatTime(entry.time)}</span>
-                  <Badge color={statusColor(entry.status)}>{entry.status}</Badge>
+                  <StatusBadge status={entry.status} />
                 </div>
                 <p class="text-gray-600 dark:text-gray-400 text-sm mt-0.5">{humanReadableStatus(entry.status, entry.summary)}</p>
                 {#if entry.error}

@@ -6,7 +6,9 @@
   import type { TaskArtifact } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner, Button } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
@@ -19,13 +21,6 @@
   let offset = $state(0);
   let sortColumn = $state<SortColumn>("discovered");
   let sortDirection = $state<"asc" | "desc">("desc");
-
-  function artColor(type: string): "green" | "purple" | "blue" | "yellow" | "gray" {
-    const map: Record<string, "green" | "purple" | "blue" | "yellow" | "gray"> = {
-      issue: "green", pull_request: "purple", issue_comment: "blue", pr_review: "yellow",
-    };
-    return map[type] ?? "gray";
-  }
 
   let sortedArtifacts = $derived.by(() => {
     return [...artifacts].sort((a, b) => {
@@ -104,7 +99,8 @@
   {#if loading}
     <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
-    <Table hoverable shadow>
+    <TableCard title="Task artifacts" subtitle="GitHub issues, PRs, comments, and reviews created by Chetter tasks.">
+    <Table hoverable={true} shadow={false}>
       <TableHead>
         <TableHeadCell onclick={() => toggleSort("type")} class="cursor-pointer select-none">Type {sortIcon("type")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("artifact")} class="cursor-pointer select-none">Artifact {sortIcon("artifact")}</TableHeadCell>
@@ -115,7 +111,7 @@
       <TableBody>
         {#each sortedArtifacts as artifact (artifact.id)}
           <TableBodyRow>
-            <TableBodyCell><Badge color={artColor(artifact.artifactType)}>{artifact.artifactType}</Badge></TableBodyCell>
+            <TableBodyCell><StatusBadge status={artifact.artifactType === "pr_review" ? "pr_review_artifact" : artifact.artifactType} label={artifact.artifactType} /></TableBodyCell>
             <TableBodyCell>
               {#if artifact.url}
                 <Button color="alternative" size="xs" onclick={() => window.open(artifact.url, "_blank", "noopener,noreferrer")}>
@@ -144,6 +140,7 @@
         {/each}
       </TableBody>
     </Table>
+    </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {offset + 1}–{offset + artifacts.length} of {artifacts.length < limit ? offset + artifacts.length : `${offset + artifacts.length}+`}</span>

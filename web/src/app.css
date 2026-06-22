@@ -25,3 +25,56 @@
 body {
   font-family: var(--default-font-family);
 }
+
+.chetter-table table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.chetter-table thead {
+  background: color-mix(in srgb, var(--color-slate-100) 72%, transparent);
+}
+
+.dark .chetter-table thead {
+  background: color-mix(in srgb, var(--color-slate-800) 72%, transparent);
+}
+
+.chetter-table th {
+  color: var(--color-slate-500);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dark .chetter-table th {
+  color: var(--color-slate-400);
+}
+
+.chetter-table tbody tr {
+  background: var(--color-white);
+}
+
+.dark .chetter-table tbody tr {
+  background: var(--color-slate-900);
+}
+
+.chetter-table tbody tr:hover {
+  background: var(--color-slate-50);
+}
+
+.dark .chetter-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-slate-800) 58%, transparent);
+}
+
+.chetter-table td,
+.chetter-table th {
+  border-bottom: 1px solid var(--color-slate-100);
+}
+
+.dark .chetter-table td,
+.dark .chetter-table th {
+  border-bottom-color: var(--color-slate-800);
+}

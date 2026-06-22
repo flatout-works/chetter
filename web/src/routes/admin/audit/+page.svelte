@@ -5,7 +5,9 @@
   import type { AuditEvent } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner, Button } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
 
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
@@ -17,14 +19,6 @@
   let offset = $state(0);
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
-
-  function eventColor(type: string): "green" | "blue" | "purple" | "yellow" | "gray" {
-    const map: Record<string, "green" | "blue" | "purple" | "yellow" | "gray"> = {
-      webhook_received: "green", task_submitted: "blue",
-      trigger_matched: "purple", artifact_discovered: "yellow",
-    };
-    return map[type] ?? "gray";
-  }
 
   let sortedEvents = $derived.by(() => {
     return [...events].sort((a, b) => {
@@ -105,7 +99,8 @@
   {#if loading}
     <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
-    <Table hoverable shadow>
+    <TableCard title="Audit events" subtitle="Server-side event history for webhook, task, trigger, and artifact activity.">
+    <Table hoverable={true} shadow={false}>
       <TableHead>
         <TableHeadCell onclick={() => toggleSort("time")} class="cursor-pointer select-none">Time {sortIcon("time")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("event")} class="cursor-pointer select-none">Event Type {sortIcon("event")}</TableHeadCell>
@@ -117,7 +112,7 @@
         {#each sortedEvents as event (event.id)}
           <TableBodyRow>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(event.createdAt)}</span></TableBodyCell>
-            <TableBodyCell><Badge color={eventColor(event.eventType)}>{event.eventType}</Badge></TableBodyCell>
+            <TableBodyCell><StatusBadge status={event.eventType} /></TableBodyCell>
             <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.sourceType}
@@ -155,6 +150,7 @@
         {/each}
       </TableBody>
     </Table>
+    </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {offset + 1}–{offset + events.length} of {events.length < limit ? offset + events.length : `${offset + events.length}+`}</span>

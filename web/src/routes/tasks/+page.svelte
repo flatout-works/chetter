@@ -5,7 +5,9 @@
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks } from "$lib/stores/tasks.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Button } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Button } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
   let statusFilter = $state("");
@@ -54,13 +56,6 @@
   function sortIcon(col: SortColumn): string {
     if (sortColumn !== col) return "↕";
     return sortDirection === "asc" ? "↑" : "↓";
-  }
-
-  function statusColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "gray"> = {
-      running: "green", pending: "yellow", done: "blue", error: "red", cancelled: "gray",
-    };
-    return map[status] ?? "gray";
   }
 
   function applyFilter() {
@@ -151,7 +146,8 @@
     </form>
   {/if}
 
-  <Table hoverable shadow>
+  <TableCard title="Tasks" subtitle="Sorted by creation time, newest first unless you choose another column.">
+  <Table hoverable={true} shadow={false}>
     <TableHead>
       <TableHeadCell onclick={() => toggleSort("id")} class="cursor-pointer select-none">
         Task ID {sortIcon("id")}
@@ -187,7 +183,7 @@
             </a>
           </TableBodyCell>
           <TableBodyCell>
-            <Badge color={statusColor(task.status)}>{task.status}</Badge>
+            <StatusBadge status={task.status} />
           </TableBodyCell>
           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.agent || "—"}</span></TableBodyCell>
           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.modelId || "—"}</span></TableBodyCell>
@@ -209,6 +205,7 @@
       {/each}
     </TableBody>
   </Table>
+  </TableCard>
 
   <!-- Pagination -->
   <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">

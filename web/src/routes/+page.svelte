@@ -2,7 +2,9 @@
   import { goto } from "$app/navigation";
   import { tasks, fleetHealth } from "$lib/stores/tasks.svelte";
   import { formatTime, formatAge, formatDuration } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let health = $derived($fleetHealth);
   let allTasks = $derived($tasks);
@@ -16,13 +18,6 @@
     }
     return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   });
-
-  function statusColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "gray"> = {
-      running: "green", pending: "yellow", done: "blue", error: "red", cancelled: "gray",
-    };
-    return map[status] ?? "gray";
-  }
 
   const cards = $derived([
     { label: "Running", value: health.runningTasks, color: "text-green-600 dark:text-green-400", filter: "running" },
@@ -66,7 +61,8 @@
     </p>
   {/if}
 
-  <Table hoverable shadow>
+  <TableCard title="Recent tasks" subtitle="Newest tasks first. Click a top panel to filter by status.">
+  <Table hoverable={true} shadow={false}>
     <TableHead>
       <TableHeadCell>Task</TableHeadCell>
       <TableHeadCell>Status</TableHeadCell>
@@ -89,7 +85,7 @@
             </a>
           </TableBodyCell>
           <TableBodyCell>
-            <Badge color={statusColor(task.status)}>{task.status}</Badge>
+            <StatusBadge status={task.status} />
           </TableBodyCell>
           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.agent || "—"}</span></TableBodyCell>
           <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(task.createdAt)}</span></TableBodyCell>
@@ -105,4 +101,5 @@
       {/each}
     </TableBody>
   </Table>
+  </TableCard>
 </div>

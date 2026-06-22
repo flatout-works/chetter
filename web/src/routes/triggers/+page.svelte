@@ -8,7 +8,8 @@
   import { formatTime } from "$lib/utils.svelte";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
-  import { Button, Badge, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import { Button, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
@@ -263,9 +264,7 @@
           >
             <div class="flex items-center gap-4 min-w-0">
               <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{trigger.name}</span>
-              <Badge color={trigger.triggerType === "cron" ? "blue" : trigger.triggerType === "pr_review" ? "purple" : "pink"}>
-                {trigger.triggerType}
-              </Badge>
+              <StatusBadge status={trigger.triggerType} />
               <span class="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:block">{triggerTarget(trigger)}</span>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-4">
@@ -288,7 +287,7 @@
                 <div>
                   <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
                   <p class="text-gray-900 dark:text-white">
-                    <Badge color={trigger.enabled ? "green" : "gray"}>{trigger.enabled ? "Enabled" : "Disabled"}</Badge>
+                    <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
                   </p>
                 </div>
                 <div>
@@ -429,7 +428,8 @@
                   {:else if scheduleRuns.length === 0}
                     <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
                   {:else}
-                    <Table>
+                    <div class="chetter-table overflow-x-auto">
+                    <Table hoverable={true} shadow={false}>
                       <TableHead>
                         <TableHeadCell>Run ID</TableHeadCell>
                         <TableHeadCell>Task</TableHeadCell>
@@ -446,13 +446,14 @@
                                 {run.taskId.slice(0, 16)}…
                               </a>
                             </TableBodyCell>
-                            <TableBodyCell class="text-xs">{run.status}</TableBodyCell>
-                            <TableBodyCell class="text-xs text-gray-500">{formatTime(run.scheduledFor)}</TableBodyCell>
-                            <TableBodyCell class="text-xs text-gray-500">{formatTime(run.createdAt)}</TableBodyCell>
+                            <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
+                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.scheduledFor)}</TableBodyCell>
+                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
                           </TableBodyRow>
                         {/each}
                       </TableBody>
                     </Table>
+                    </div>
                     <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
                       <span>{scheduleRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, scheduleRuns.length)} of {scheduleRuns.length}</span>
                       <div class="flex gap-1">

@@ -6,7 +6,8 @@
   import { getTransport } from "$lib/api/client";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
-  import { Button, Spinner, Badge } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import { Button, Spinner } from "flowbite-svelte";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
@@ -48,16 +49,6 @@
 
   onMount(load);
 
-  function statusColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
-    switch (status) {
-      case "running": return "green";
-      case "pending": return "yellow";
-      case "done": return "blue";
-      case "error": return "red";
-      case "cancelled": return "gray";
-      default: return "gray";
-    }
-  }
 </script>
 
 <svelte:head>
@@ -133,7 +124,7 @@
                     {/each}
                   </div>
                 {/if}
-                <Badge color={statusColor(runner.status)}>{runner.status}</Badge>
+                <StatusBadge status={runner.status} />
               </div>
             </div>
           </div>
@@ -155,7 +146,7 @@
                 <span class="text-sm font-mono text-blue-600 dark:text-blue-400">{info.taskId.slice(0, 24)}…</span>
                 <div class="flex items-center gap-3">
                   {#if info.isStale}
-                    <span class="text-xs text-orange-600 dark:text-orange-400">⚠ Stale</span>
+                    <StatusBadge status="stale" />
                   {/if}
                   <span class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">{info.summary}</span>
                 </div>

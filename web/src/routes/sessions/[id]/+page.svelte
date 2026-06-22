@@ -6,28 +6,15 @@
   import type { AgentSession, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner, Button } from "flowbite-svelte";
+  import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
   let runs = $state<SessionRun[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-
-  function sessionColor(status: string): "green" | "red" | "yellow" | "blue" | "purple" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "purple" | "gray"> = {
-      running: "green", completed: "blue", error: "red",
-      paused_waiting_review: "yellow", paused: "yellow", resuming: "purple",
-    };
-    return map[status] ?? "gray";
-  }
-
-  function runColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
-    const map: Record<string, "green" | "red" | "yellow" | "blue" | "gray"> = {
-      running: "green", done: "blue", error: "red", pending: "yellow",
-    };
-    return map[status] ?? "gray";
-  }
 
   async function resume() {
     const followUpPrompt = window.prompt("Enter follow-up prompt:");
@@ -71,7 +58,7 @@
       <div>
         <div class="flex items-center gap-3 mb-1">
           <h1 class="text-xl font-mono font-bold text-gray-900 dark:text-white">{session.id}</h1>
-          <Badge color={sessionColor(session.status)}>{session.status}</Badge>
+          <StatusBadge status={session.status} />
         </div>
         <p class="text-sm text-gray-500 dark:text-gray-400">
           Created {formatTime(session.createdAt)} · Updated {formatTime(session.updatedAt)}
@@ -113,7 +100,8 @@
       </div>
     {/if}
 
-    <Table hoverable shadow>
+    <TableCard title={`Session runs (${runs.length})`}>
+    <Table hoverable={true} shadow={false}>
       <TableHead>
         <TableHeadCell>Run ID</TableHeadCell>
         <TableHeadCell>Task</TableHeadCell>
@@ -130,7 +118,7 @@
                 {run.taskId.slice(0, 20)}…
               </a>
             </TableBodyCell>
-            <TableBodyCell><Badge color={runColor(run.status)}>{run.status}</Badge></TableBodyCell>
+            <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
             <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{run.summary || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(run.startedAt || "")}</span></TableBodyCell>
           </TableBodyRow>
@@ -143,5 +131,6 @@
         {/each}
       </TableBody>
     </Table>
+    </TableCard>
   {/if}
 </div>
