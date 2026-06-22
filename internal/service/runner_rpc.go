@@ -277,10 +277,10 @@ func tarSkill(name string, files []skillFileEntry) ([]byte, error) {
 			entryName = f.path
 		}
 		hdr := &tar.Header{
-			Name:     entryName,
-			Size:     int64(len(f.content)),
-			Mode:     0644,
-			Format:   tar.FormatUSTAR,
+			Name:   entryName,
+			Size:   int64(len(f.content)),
+			Mode:   0644,
+			Format: tar.FormatUSTAR,
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			return nil, fmt.Errorf("write tar header for %s: %w", entryName, err)
@@ -419,6 +419,56 @@ func (s *RunnerRPCService) ReportTaskEvents(ctx context.Context, req *connect.Re
 		}
 	}
 	return connect.NewResponse(&runnerv1.ReportTaskEventsResponse{}), nil
+}
+
+func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Request[runnerv1.PruneWorkspacesRequest]) (*connect.Response[runnerv1.PruneWorkspacesResponse], error) {
+	if req.Msg.RunnerId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
+	}
+	taskIDs := req.Msg.TaskIds
+	if len(taskIDs) == 0 {
+		return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{}), nil
+	}
+
+	args := make([]any, 0, len(taskIDs))
+	placeholders := make([]string, 0, len(taskIDs))
+	for _, id := range taskIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+
+	query := `SELECT DISTINCT t.id
+		FROM chetter_tasks t
+		LEFT JOIN chetter_session_runs sr ON sr.task_id = t.id
+		LEFT JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id AND s.status IN ('paused_waiting_review', 'paused')
+		WHERE t.id IN (` + strings.Join(placeholders, ",") + `)
+		  AND (t.status IN ('running', 'pending') OR s.id IS NOT NULL)`
+
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	defer rows.Close()
+
+	protected := make(map[string]bool, len(taskIDs))
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		protected[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	safe := make([]string, 0, len(taskIDs))
+	for _, id := range taskIDs {
+		if !protected[id] {
+			safe = append(safe, id)
+		}
+	}
+	return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{SafeToDelete: safe}), nil
 }
 
 func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.RunnerInfo) error {

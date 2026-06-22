@@ -25,6 +25,7 @@ type runnerRPCClient interface {
 	Heartbeat(context.Context, *connect.Request[runnerv1.HeartbeatRequest]) (*connect.Response[runnerv1.HeartbeatResponse], error)
 	ClaimTask(context.Context, *connect.Request[runnerv1.ClaimTaskRequest]) (*connect.Response[runnerv1.ClaimTaskResponse], error)
 	ReportTaskEvents(context.Context, *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error)
+	PruneWorkspaces(context.Context, *connect.Request[runnerv1.PruneWorkspacesRequest]) (*connect.Response[runnerv1.PruneWorkspacesResponse], error)
 }
 
 func (r *Runner) startConnectRPC(ctx context.Context) error {
@@ -39,6 +40,9 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	r.runCtx = ctx
 	if _, err := r.rpcClient.RegisterRunner(ctx, connect.NewRequest(&runnerv1.RegisterRunnerRequest{Runner: r.runnerInfoProto("active")})); err != nil {
 		return fmt.Errorf("register runner: %w", err)
+	}
+	if err := r.pruneOrphanedWorkspaces(ctx); err != nil {
+		slog.Warn("prune orphaned workspaces on startup", "err", err)
 	}
 
 	slog.Info("claiming tasks via ConnectRPC", "url", r.cfg.Server.URL)
@@ -119,6 +123,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		CheckpointAfterSuccess: t.CheckpointAfterSuccess,
 		ResumeCheckpointPath:   t.ResumeCheckpointPath,
 		ResumeWorkspacePath:    t.ResumeWorkspacePath,
+		ResumeHarnessSessionID: t.ResumeHarnessSessionId,
 		Harness:                t.Harness,
 		AgentDefinition:        t.AgentDefinition,
 		SkillDefinitions:       t.SkillDefinitions,

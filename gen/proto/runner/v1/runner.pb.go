@@ -1022,6 +1022,102 @@ func (*ReportTaskEventsResponse) Descriptor() ([]byte, []int) {
 	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{11}
 }
 
+type PruneWorkspacesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunnerId      string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	TaskIds       []string               `protobuf:"bytes,2,rep,name=task_ids,json=taskIds,proto3" json:"task_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PruneWorkspacesRequest) Reset() {
+	*x = PruneWorkspacesRequest{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PruneWorkspacesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PruneWorkspacesRequest) ProtoMessage() {}
+
+func (x *PruneWorkspacesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PruneWorkspacesRequest.ProtoReflect.Descriptor instead.
+func (*PruneWorkspacesRequest) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *PruneWorkspacesRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
+func (x *PruneWorkspacesRequest) GetTaskIds() []string {
+	if x != nil {
+		return x.TaskIds
+	}
+	return nil
+}
+
+type PruneWorkspacesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SafeToDelete  []string               `protobuf:"bytes,1,rep,name=safe_to_delete,json=safeToDelete,proto3" json:"safe_to_delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PruneWorkspacesResponse) Reset() {
+	*x = PruneWorkspacesResponse{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PruneWorkspacesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PruneWorkspacesResponse) ProtoMessage() {}
+
+func (x *PruneWorkspacesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PruneWorkspacesResponse.ProtoReflect.Descriptor instead.
+func (*PruneWorkspacesResponse) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PruneWorkspacesResponse) GetSafeToDelete() []string {
+	if x != nil {
+		return x.SafeToDelete
+	}
+	return nil
+}
+
 var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
@@ -1126,12 +1222,18 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +
-	"\x18ReportTaskEventsResponse2\xdb\x02\n" +
+	"\x18ReportTaskEventsResponse\"Y\n" +
+	"\x16PruneWorkspacesRequest\x12$\n" +
+	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x19\n" +
+	"\btask_ids\x18\x02 \x03(\tR\ataskIds\"?\n" +
+	"\x17PruneWorkspacesResponse\x12$\n" +
+	"\x0esafe_to_delete\x18\x01 \x03(\tR\fsafeToDelete2\xb7\x03\n" +
 	"\rRunnerService\x12W\n" +
 	"\x0eRegisterRunner\x12 .runner.v1.RegisterRunnerRequest\x1a!.runner.v1.RegisterRunnerResponse\"\x00\x12H\n" +
 	"\tHeartbeat\x12\x1b.runner.v1.HeartbeatRequest\x1a\x1c.runner.v1.HeartbeatResponse\"\x00\x12H\n" +
 	"\tClaimTask\x12\x1b.runner.v1.ClaimTaskRequest\x1a\x1c.runner.v1.ClaimTaskResponse\"\x00\x12]\n" +
-	"\x10ReportTaskEvents\x12\".runner.v1.ReportTaskEventsRequest\x1a#.runner.v1.ReportTaskEventsResponse\"\x00B\xa0\x01\n" +
+	"\x10ReportTaskEvents\x12\".runner.v1.ReportTaskEventsRequest\x1a#.runner.v1.ReportTaskEventsResponse\"\x00\x12Z\n" +
+	"\x0fPruneWorkspaces\x12!.runner.v1.PruneWorkspacesRequest\x1a\".runner.v1.PruneWorkspacesResponse\"\x00B\xa0\x01\n" +
 	"\rcom.runner.v1B\vRunnerProtoP\x01Z=github.com/flatout-works/chetter/gen/proto/runner/v1;runnerv1\xa2\x02\x03RXX\xaa\x02\tRunner.V1\xca\x02\tRunner\\V1\xe2\x02\x15Runner\\V1\\GPBMetadata\xea\x02\n" +
 	"Runner::V1b\x06proto3"
 
@@ -1147,7 +1249,7 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*RunnerInfo)(nil),               // 0: runner.v1.RunnerInfo
 	(*RegisterRunnerRequest)(nil),    // 1: runner.v1.RegisterRunnerRequest
@@ -1161,27 +1263,31 @@ var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*TaskEvent)(nil),                // 9: runner.v1.TaskEvent
 	(*ReportTaskEventsRequest)(nil),  // 10: runner.v1.ReportTaskEventsRequest
 	(*ReportTaskEventsResponse)(nil), // 11: runner.v1.ReportTaskEventsResponse
-	nil,                              // 12: runner.v1.Task.EnvEntry
-	nil,                              // 13: runner.v1.Task.SkillDefinitionsEntry
+	(*PruneWorkspacesRequest)(nil),   // 12: runner.v1.PruneWorkspacesRequest
+	(*PruneWorkspacesResponse)(nil),  // 13: runner.v1.PruneWorkspacesResponse
+	nil,                              // 14: runner.v1.Task.EnvEntry
+	nil,                              // 15: runner.v1.Task.SkillDefinitionsEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 0: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
 	0,  // 1: runner.v1.HeartbeatRequest.runner:type_name -> runner.v1.RunnerInfo
 	4,  // 2: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
-	12, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
-	13, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
+	14, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
+	15, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
 	7,  // 5: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
 	9,  // 6: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
 	1,  // 7: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
 	3,  // 8: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
 	6,  // 9: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
 	10, // 10: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
-	2,  // 11: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	5,  // 12: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	8,  // 13: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	11, // 14: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
+	12, // 11: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
+	2,  // 12: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	5,  // 13: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	8,  // 14: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	11, // 15: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	13, // 16: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
+	12, // [12:17] is the sub-list for method output_type
+	7,  // [7:12] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -1198,7 +1304,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

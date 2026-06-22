@@ -111,9 +111,19 @@ message ReportTaskEventsRequest {
 
 message ReportTaskEventsResponse {}
 
+message PruneWorkspacesRequest {
+  string runner_id = 1 [(buf.validate.field).string.min_len = 1];
+  repeated string task_ids = 2;
+}
+
+message PruneWorkspacesResponse {
+  repeated string safe_to_delete = 1;
+}
+
 service RunnerService {
   rpc RegisterRunner(RegisterRunnerRequest) returns (RegisterRunnerResponse) {}
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
   rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
   rpc ReportTaskEvents(ReportTaskEventsRequest) returns (ReportTaskEventsResponse) {}
+  rpc PruneWorkspaces(PruneWorkspacesRequest) returns (PruneWorkspacesResponse) {}
 }

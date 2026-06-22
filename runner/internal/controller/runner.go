@@ -5,15 +5,19 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"connectrpc.com/connect"
+	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
@@ -315,4 +319,58 @@ func (r *Runner) stopNetwork() {
 			slog.Error("proxy stop error", "err", err)
 		}
 	}
+}
+
+func (r *Runner) pruneOrphanedWorkspaces(ctx context.Context) error {
+	root := r.wsManager.Root
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read workspace root: %w", err)
+	}
+
+	taskIDs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "task_") {
+			continue
+		}
+		taskIDs = append(taskIDs, entry.Name())
+	}
+	if len(taskIDs) == 0 {
+		return nil
+	}
+
+	slog.Info("checking orphaned workspace directories", "count", len(taskIDs), "root", root)
+	resp, err := r.rpcClient.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId: r.runnerID,
+		TaskIds:  taskIDs,
+	}))
+	if err != nil {
+		return fmt.Errorf("prune workspaces rpc: %w", err)
+	}
+
+	safeToDelete := make(map[string]bool, len(resp.Msg.SafeToDelete))
+	for _, id := range resp.Msg.SafeToDelete {
+		safeToDelete[id] = true
+	}
+
+	deleted := 0
+	skipped := 0
+	for _, taskID := range taskIDs {
+		if !safeToDelete[taskID] {
+			skipped++
+			continue
+		}
+		dir := filepath.Join(root, taskID)
+		if err := r.wsManager.Destroy(taskID); err != nil {
+			slog.Warn("failed to prune workspace", "taskID", taskID, "dir", dir, "err", err)
+			continue
+		}
+		deleted++
+	}
+
+	slog.Info("workspace prune complete", "deleted", deleted, "skipped", skipped, "total", len(taskIDs))
+	return nil
 }

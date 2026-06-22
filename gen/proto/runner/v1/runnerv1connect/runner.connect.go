@@ -43,6 +43,9 @@ const (
 	// RunnerServiceReportTaskEventsProcedure is the fully-qualified name of the RunnerService's
 	// ReportTaskEvents RPC.
 	RunnerServiceReportTaskEventsProcedure = "/runner.v1.RunnerService/ReportTaskEvents"
+	// RunnerServicePruneWorkspacesProcedure is the fully-qualified name of the RunnerService's
+	// PruneWorkspaces RPC.
+	RunnerServicePruneWorkspacesProcedure = "/runner.v1.RunnerService/PruneWorkspaces"
 )
 
 // RunnerServiceClient is a client for the runner.v1.RunnerService service.
@@ -51,6 +54,7 @@ type RunnerServiceClient interface {
 	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
 	ClaimTask(context.Context, *connect.Request[v1.ClaimTaskRequest]) (*connect.Response[v1.ClaimTaskResponse], error)
 	ReportTaskEvents(context.Context, *connect.Request[v1.ReportTaskEventsRequest]) (*connect.Response[v1.ReportTaskEventsResponse], error)
+	PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error)
 }
 
 // NewRunnerServiceClient constructs a client for the runner.v1.RunnerService service. By default,
@@ -88,6 +92,12 @@ func NewRunnerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(runnerServiceMethods.ByName("ReportTaskEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		pruneWorkspaces: connect.NewClient[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse](
+			httpClient,
+			baseURL+RunnerServicePruneWorkspacesProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("PruneWorkspaces")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -97,6 +107,7 @@ type runnerServiceClient struct {
 	heartbeat        *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
 	claimTask        *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
 	reportTaskEvents *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
+	pruneWorkspaces  *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
 }
 
 // RegisterRunner calls runner.v1.RunnerService.RegisterRunner.
@@ -119,12 +130,18 @@ func (c *runnerServiceClient) ReportTaskEvents(ctx context.Context, req *connect
 	return c.reportTaskEvents.CallUnary(ctx, req)
 }
 
+// PruneWorkspaces calls runner.v1.RunnerService.PruneWorkspaces.
+func (c *runnerServiceClient) PruneWorkspaces(ctx context.Context, req *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error) {
+	return c.pruneWorkspaces.CallUnary(ctx, req)
+}
+
 // RunnerServiceHandler is an implementation of the runner.v1.RunnerService service.
 type RunnerServiceHandler interface {
 	RegisterRunner(context.Context, *connect.Request[v1.RegisterRunnerRequest]) (*connect.Response[v1.RegisterRunnerResponse], error)
 	Heartbeat(context.Context, *connect.Request[v1.HeartbeatRequest]) (*connect.Response[v1.HeartbeatResponse], error)
 	ClaimTask(context.Context, *connect.Request[v1.ClaimTaskRequest]) (*connect.Response[v1.ClaimTaskResponse], error)
 	ReportTaskEvents(context.Context, *connect.Request[v1.ReportTaskEventsRequest]) (*connect.Response[v1.ReportTaskEventsResponse], error)
+	PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error)
 }
 
 // NewRunnerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -158,6 +175,12 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(runnerServiceMethods.ByName("ReportTaskEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	runnerServicePruneWorkspacesHandler := connect.NewUnaryHandler(
+		RunnerServicePruneWorkspacesProcedure,
+		svc.PruneWorkspaces,
+		connect.WithSchema(runnerServiceMethods.ByName("PruneWorkspaces")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/runner.v1.RunnerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RunnerServiceRegisterRunnerProcedure:
@@ -168,6 +191,8 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 			runnerServiceClaimTaskHandler.ServeHTTP(w, r)
 		case RunnerServiceReportTaskEventsProcedure:
 			runnerServiceReportTaskEventsHandler.ServeHTTP(w, r)
+		case RunnerServicePruneWorkspacesProcedure:
+			runnerServicePruneWorkspacesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -191,4 +216,8 @@ func (UnimplementedRunnerServiceHandler) ClaimTask(context.Context, *connect.Req
 
 func (UnimplementedRunnerServiceHandler) ReportTaskEvents(context.Context, *connect.Request[v1.ReportTaskEventsRequest]) (*connect.Response[v1.ReportTaskEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.ReportTaskEvents is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.PruneWorkspaces is not implemented"))
 }
