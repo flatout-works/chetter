@@ -132,6 +132,7 @@ func (s *Service) GetTaskEvents(ctx context.Context, taskID string, limit, offse
 			ID:        ev.ID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
+			EventType: ev.EventType,
 			Payload:   string(ev.Payload),
 			CreatedAt: ev.CreatedAt,
 		}
@@ -155,6 +156,7 @@ func (s *Service) GetTaskEventsSince(ctx context.Context, taskID string, since t
 			ID:        ev.ID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
+			EventType: ev.EventType,
 			Payload:   string(ev.Payload),
 			CreatedAt: ev.CreatedAt,
 		}
@@ -215,6 +217,7 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 			ID:        ev.ID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
+			EventType: ev.EventType,
 			Payload:   string(ev.Payload),
 			CreatedAt: ev.CreatedAt,
 		},

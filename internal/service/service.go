@@ -588,6 +588,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		TimeoutSec:        int(task.TimeoutSec),
 		Summary:           task.Summary.String,
 		Error:             task.Error.String,
+		ErrorCategory:     task.ErrorCategory.String,
 		CreatedAt:         task.CreatedAt,
 		UpdatedAt:         task.UpdatedAt,
 		StartedAt:         startedAt,

@@ -756,6 +756,7 @@ type TaskEvent struct {
 	SessionExport     string                 `protobuf:"bytes,14,opt,name=session_export,json=sessionExport,proto3" json:"session_export,omitempty"`
 	CheckpointPath    string                 `protobuf:"bytes,15,opt,name=checkpoint_path,json=checkpointPath,proto3" json:"checkpoint_path,omitempty"`
 	WorkspacePath     string                 `protobuf:"bytes,16,opt,name=workspace_path,json=workspacePath,proto3" json:"workspace_path,omitempty"`
+	ErrorCategory     string                 `protobuf:"bytes,17,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -898,6 +899,13 @@ func (x *TaskEvent) GetCheckpointPath() string {
 func (x *TaskEvent) GetWorkspacePath() string {
 	if x != nil {
 		return x.WorkspacePath
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetErrorCategory() string {
+	if x != nil {
+		return x.ErrorCategory
 	}
 	return ""
 }
@@ -1062,7 +1070,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
-	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xab\x04\n" +
+	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xd2\x04\n" +
 	"\tTaskEvent\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1f\n" +
 	"\x06status\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06status\x12\x18\n" +
@@ -1083,7 +1091,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\fpayload_json\x18\r \x01(\tR\vpayloadJson\x12%\n" +
 	"\x0esession_export\x18\x0e \x01(\tR\rsessionExport\x12'\n" +
 	"\x0fcheckpoint_path\x18\x0f \x01(\tR\x0echeckpointPath\x12%\n" +
-	"\x0eworkspace_path\x18\x10 \x01(\tR\rworkspacePath\"w\n" +
+	"\x0eworkspace_path\x18\x10 \x01(\tR\rworkspacePath\x12%\n" +
+	"\x0eerror_category\x18\x11 \x01(\tR\rerrorCategory\"w\n" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +

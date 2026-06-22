@@ -29,6 +29,7 @@ message Task {
   string updated_at = 18;
   optional string started_at = 19;
   optional string ended_at = 20;
+  string error_category = 21;
 }
 
 message AgentSession {
@@ -100,6 +101,7 @@ message TaskEvent {
   string status = 4;
   string payload = 5;
   string created_at = 6;
+  string event_type = 7;
 }
 
 message TaskProgressEntry {

@@ -57,6 +57,7 @@ type TaskRecord struct {
 	TimeoutSec        int               `json:"timeout_sec"`
 	Summary           string            `json:"summary,omitempty"`
 	Error             string            `json:"error,omitempty"`
+	ErrorCategory     string            `json:"error_category,omitempty"`
 	CreatedAt         time.Time         `json:"created_at"`
 	UpdatedAt         time.Time         `json:"updated_at"`
 	StartedAt         *time.Time        `json:"started_at,omitempty"`
@@ -77,6 +78,7 @@ type TaskResponse struct {
 	RunnerImageDigest string    `json:"runner_image_digest,omitempty"`
 	StartedAt         time.Time `json:"started_at,omitempty"`
 	EndedAt           time.Time `json:"ended_at,omitempty"`
+	ErrorCategory     string    `json:"error_category,omitempty"`
 }
 
 const (
@@ -245,6 +247,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTaskEventTypeColumn(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -272,6 +277,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
+		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -427,6 +433,28 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 	return nil
 }
 
+func (s *Store) ensureTaskEventTypeColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "chetter_task_events", "event_type")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD COLUMN event_type VARCHAR(64) NOT NULL DEFAULT 'task.progress' AFTER status"); err != nil {
+			return fmt.Errorf("add chetter_task_events.event_type: %w", err)
+		}
+	}
+	indexExists, err := s.indexExists(ctx, "chetter_task_events", "idx_chetter_task_events_type_created")
+	if err != nil {
+		return err
+	}
+	if !indexExists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD KEY idx_chetter_task_events_type_created (event_type, created_at)"); err != nil {
+			return fmt.Errorf("add chetter_task_events event_type index: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *Store) columnExists(ctx context.Context, table, column string) (bool, error) {
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
@@ -435,6 +463,18 @@ func (s *Store) columnExists(ctx context.Context, table, column string) (bool, e
 		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
 	`, table, column).Scan(&count); err != nil {
 		return false, fmt.Errorf("check column %s.%s: %w", table, column, err)
+	}
+	return count > 0, nil
+}
+
+func (s *Store) indexExists(ctx context.Context, table, index string) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.statistics
+		WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+	`, table, index).Scan(&count); err != nil {
+		return false, fmt.Errorf("check index %s.%s: %w", table, index, err)
 	}
 	return count > 0, nil
 }
@@ -448,6 +488,7 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 		UPDATE chetter_tasks
 		SET status = 'error',
 		    error = CONCAT('runner timeout: task ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
+		    error_category = 'timeout',
 		    ended_at = ?,
 		    updated_at = ?
 		WHERE status = 'running'
