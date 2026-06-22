@@ -65,6 +65,28 @@ UPDATE chetter_schedules
 SET next_run_at = ?, updated_at = ?
 WHERE id = ?;
 
+-- name: UpsertSchedule :exec
+INSERT INTO chetter_schedules
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    trigger_type = VALUES(trigger_type),
+    trigger_config = VALUES(trigger_config),
+    cron_expr = VALUES(cron_expr),
+    prompt = VALUES(prompt),
+    git_url = VALUES(git_url),
+    git_ref = VALUES(git_ref),
+    agent_image = VALUES(agent_image),
+    agent = VALUES(agent),
+    provider_id = VALUES(provider_id),
+    model_id = VALUES(model_id),
+    variant_id = VALUES(variant_id),
+    harness = VALUES(harness),
+    skills = VALUES(skills),
+    timeout_sec = VALUES(timeout_sec),
+    enabled = VALUES(enabled),
+    updated_at = VALUES(updated_at);
+
 -- name: DeleteSchedule :exec
 DELETE FROM chetter_schedules
 WHERE name = ?;

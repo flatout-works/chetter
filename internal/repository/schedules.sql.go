@@ -742,3 +742,75 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 	)
 	return err
 }
+
+const upsertSchedule = `-- name: UpsertSchedule :exec
+INSERT INTO chetter_schedules
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+    trigger_type = VALUES(trigger_type),
+    trigger_config = VALUES(trigger_config),
+    cron_expr = VALUES(cron_expr),
+    prompt = VALUES(prompt),
+    git_url = VALUES(git_url),
+    git_ref = VALUES(git_ref),
+    agent_image = VALUES(agent_image),
+    agent = VALUES(agent),
+    provider_id = VALUES(provider_id),
+    model_id = VALUES(model_id),
+    variant_id = VALUES(variant_id),
+    harness = VALUES(harness),
+    skills = VALUES(skills),
+    timeout_sec = VALUES(timeout_sec),
+    enabled = VALUES(enabled),
+    updated_at = VALUES(updated_at)
+`
+
+type UpsertScheduleParams struct {
+	ID            string          `json:"id"`
+	TeamID        sql.NullString  `json:"team_id"`
+	Name          string          `json:"name"`
+	TriggerType   string          `json:"trigger_type"`
+	TriggerConfig json.RawMessage `json:"trigger_config"`
+	CronExpr      string          `json:"cron_expr"`
+	Prompt        string          `json:"prompt"`
+	GitUrl        sql.NullString  `json:"git_url"`
+	GitRef        sql.NullString  `json:"git_ref"`
+	AgentImage    sql.NullString  `json:"agent_image"`
+	Agent         sql.NullString  `json:"agent"`
+	ProviderID    sql.NullString  `json:"provider_id"`
+	ModelID       sql.NullString  `json:"model_id"`
+	VariantID     sql.NullString  `json:"variant_id"`
+	Harness       sql.NullString  `json:"harness"`
+	Skills        json.RawMessage `json:"skills"`
+	TimeoutSec    int32           `json:"timeout_sec"`
+	Enabled       bool            `json:"enabled"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+func (q *Queries) UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) error {
+	_, err := q.db.ExecContext(ctx, upsertSchedule,
+		arg.ID,
+		arg.TeamID,
+		arg.Name,
+		arg.TriggerType,
+		arg.TriggerConfig,
+		arg.CronExpr,
+		arg.Prompt,
+		arg.GitUrl,
+		arg.GitRef,
+		arg.AgentImage,
+		arg.Agent,
+		arg.ProviderID,
+		arg.ModelID,
+		arg.VariantID,
+		arg.Harness,
+		arg.Skills,
+		arg.TimeoutSec,
+		arg.Enabled,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
+	"gopkg.in/yaml.v3"
 )
 
 type Manager struct {
@@ -236,4 +238,131 @@ func (m *Manager) RepoURL() string {
 
 func (m *Manager) Branch() string {
 	return m.branch
+}
+
+type TriggerDef struct {
+	Name        string
+	Enabled     bool
+	CronExpr    string
+	TriggerType string
+	TriggerCfg  string // JSON string for trigger_config column
+	Prompt      string
+	GitURL      string
+	GitRef      string
+	AgentImage  string
+	Agent       string
+	ProviderID  string
+	ModelID     string
+	VariantID   string
+	Harness     string
+	Skills      []string
+	TimeoutSec  int
+}
+
+type rawTriggerYAML struct {
+	Name          string            `yaml:"name"`
+	Enabled       bool              `yaml:"enabled"`
+	CronExpr      string            `yaml:"cron_expr"`
+	TriggerType   string            `yaml:"trigger_type"`
+	TriggerConfig string            `yaml:"trigger_config"`
+	Prompt        string            `yaml:"prompt"`
+	GitURL        string            `yaml:"git_url"`
+	GitRef        string            `yaml:"git_ref"`
+	AgentImage    string            `yaml:"agent_image"`
+	Agent         string            `yaml:"agent"`
+	ProviderID    string            `yaml:"provider_id"`
+	ModelID       string            `yaml:"model_id"`
+	VariantID     string            `yaml:"variant_id"`
+	Harness       string            `yaml:"harness"`
+	Skills        any               `yaml:"skills"`
+	TimeoutSec    int               `yaml:"timeout_sec"`
+	SessionMode   string            `yaml:"session_mode"`
+	PauseReason   string            `yaml:"pause_reason"`
+	TTLHours      int               `yaml:"ttl_hours"`
+	MatchLabels   []string          `yaml:"match_labels"`
+	Repo          string            `yaml:"repo"`
+	Event         string            `yaml:"event"`
+	Extra         map[string]any    `yaml:",inline"`
+}
+
+func ParseTriggerYAML(content string) (TriggerDef, error) {
+	var raw rawTriggerYAML
+	if err := yaml.Unmarshal([]byte(content), &raw); err != nil {
+		return TriggerDef{}, fmt.Errorf("parse trigger yaml: %w", err)
+	}
+
+	if raw.Name == "" {
+		return TriggerDef{}, fmt.Errorf("trigger name is required")
+	}
+	if !raw.Enabled {
+		raw.Enabled = true
+	}
+
+	triggerType := raw.TriggerType
+	if triggerType == "" {
+		triggerType = "cron"
+	}
+
+	triggerCfg := raw.TriggerConfig
+	if triggerCfg == "" {
+		triggerCfg = "{}"
+	}
+
+	runCfg := make(map[string]any)
+	if raw.TriggerConfig != "" && raw.TriggerConfig != "{}" {
+		if err := json.Unmarshal([]byte(raw.TriggerConfig), &runCfg); err != nil {
+			return TriggerDef{}, fmt.Errorf("parse trigger_config JSON: %w", err)
+		}
+	}
+
+	if raw.SessionMode != "" {
+		runCfg["session_mode"] = raw.SessionMode
+	}
+	if raw.PauseReason != "" {
+		runCfg["pause_reason"] = raw.PauseReason
+	}
+	if raw.TTLHours > 0 {
+		runCfg["ttl_hours"] = raw.TTLHours
+	}
+
+	if len(runCfg) > 0 {
+		b, err := json.Marshal(runCfg)
+		if err != nil {
+			return TriggerDef{}, fmt.Errorf("marshal trigger_config: %w", err)
+		}
+		triggerCfg = string(b)
+	}
+
+	var skills []string
+	switch v := raw.Skills.(type) {
+	case []any:
+		for _, s := range v {
+			if str, ok := s.(string); ok {
+				skills = append(skills, str)
+			}
+		}
+	case []string:
+		skills = v
+	case string:
+		skills = []string{v}
+	}
+
+	return TriggerDef{
+		Name:        raw.Name,
+		Enabled:     raw.Enabled,
+		CronExpr:    raw.CronExpr,
+		TriggerType: triggerType,
+		TriggerCfg:  triggerCfg,
+		Prompt:      raw.Prompt,
+		GitURL:      raw.GitURL,
+		GitRef:      raw.GitRef,
+		AgentImage:  raw.AgentImage,
+		Agent:       raw.Agent,
+		ProviderID:  raw.ProviderID,
+		ModelID:     raw.ModelID,
+		VariantID:   raw.VariantID,
+		Harness:     raw.Harness,
+		Skills:      skills,
+		TimeoutSec:  raw.TimeoutSec,
+	}, nil
 }

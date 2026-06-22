@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -28,6 +30,7 @@ type ModelCatalogRecord struct {
 	ModelCount      int    `json:"model_count"`
 	Source          string `json:"source"`
 	Checksum        string `json:"checksum,omitempty"`
+	TriggerCount    int    `json:"trigger_count"`
 }
 
 type GetModelCatalogOutput struct {
@@ -148,7 +151,7 @@ func (s *Service) syncDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 		return nil, SyncDefinitionsOutput{}, fmt.Errorf("sync definitions: %w", err)
 	}
 	return nil, SyncDefinitionsOutput{
-		Message: fmt.Sprintf("definitions synced from %s (%s); active catalog %s has %d providers and %d models", s.definitions.RepoURL(), time.Now().UTC().Format(time.RFC3339), record.Name, record.ProviderCount, record.ModelCount),
+		Message: fmt.Sprintf("definitions synced from %s (%s); active catalog %s has %d providers and %d models; %d trigger definitions synced", s.definitions.RepoURL(), time.Now().UTC().Format(time.RFC3339), record.Name, record.ProviderCount, record.ModelCount, record.TriggerCount),
 	}, nil
 }
 
@@ -284,6 +287,10 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		return ModelCatalogRecord{}, err
 	}
 	now := time.Now().UTC()
+	triggerEntries, err := parseTriggerDefsForSync(defs, now)
+	if err != nil {
+		return ModelCatalogRecord{}, fmt.Errorf("parse trigger definitions: %w", err)
+	}
 	var row repository.InsertModelCatalogParams
 	if yamlText != "" {
 		checksumBytes := sha256.Sum256([]byte(yamlText))
@@ -334,6 +341,11 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 				return err
 			}
 		}
+		for _, t := range triggerEntries {
+			if err := q.UpsertSchedule(ctx, t.params); err != nil {
+				return fmt.Errorf("upsert trigger schedule %q: %w", t.def.Name, err)
+			}
+		}
 		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
 			LastSyncAt: sql.NullTime{Time: now, Valid: true},
 			UpdatedAt:  now,
@@ -346,6 +358,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
 	}
+	activateTriggerSchedules(ctx, s, triggerEntries)
 	if yamlText == "" {
 		record, _, err := s.activeModelCatalogRecord(ctx)
 		if err != nil {
@@ -364,6 +377,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		ModelCount:      models,
 		Source:          row.Source.String,
 		Checksum:        row.Checksum,
+		TriggerCount:    len(triggerEntries),
 	}
 	slog.Info("definitions sync complete",
 		"default_provider", catalog.DefaultProvider,
@@ -371,6 +385,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		"providers", providers,
 		"models", models,
 		"definitions", len(defs),
+		"triggers", len(triggerEntries),
 	)
 	return record, nil
 }
@@ -520,4 +535,81 @@ func definitionsSource(defs interface {
 	Branch() string
 }) string {
 	return "definitions: " + defs.RepoURL() + " (" + defs.Branch() + ")"
+}
+
+type triggerSyncEntry struct {
+	def    definitions.TriggerDef
+	params repository.UpsertScheduleParams
+}
+
+func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]triggerSyncEntry, error) {
+	var entries []triggerSyncEntry
+	for _, def := range defs {
+		if def.Type != definitions.DefinitionTypeTrigger {
+			continue
+		}
+		td, err := definitions.ParseTriggerYAML(def.Content)
+		if err != nil {
+			slog.Warn("skipping trigger definition: parse error", "path", def.Path, "err", err)
+			continue
+		}
+		id, err := randomID("trig")
+		if err != nil {
+			slog.Warn("skipping trigger definition: id generation error", "path", def.Path, "err", err)
+			continue
+		}
+		skillsJSON, _ := json.Marshal(nonEmptyStrings(td.Skills))
+		entries = append(entries, triggerSyncEntry{
+			def: td,
+			params: repository.UpsertScheduleParams{
+				ID:            id,
+				TeamID:        sql.NullString{},
+				Name:          td.Name,
+				TriggerType:   td.TriggerType,
+				TriggerConfig: json.RawMessage(td.TriggerCfg),
+				CronExpr:      td.CronExpr,
+				Prompt:        td.Prompt,
+				GitUrl:        nullString(td.GitURL),
+				GitRef:        nullString(td.GitRef),
+				AgentImage:    nullString(td.AgentImage),
+				Agent:         nullString(td.Agent),
+				ProviderID:    nullString(td.ProviderID),
+				ModelID:       nullString(td.ModelID),
+				VariantID:     nullString(td.VariantID),
+				Harness:       nullString(td.Harness),
+				Skills:        skillsJSON,
+				TimeoutSec:    int32(td.TimeoutSec),
+				Enabled:       td.Enabled,
+				CreatedAt:     now,
+				UpdatedAt:     now,
+			},
+		})
+	}
+	return entries, nil
+}
+
+func activateTriggerSchedules(ctx context.Context, s *Service, entries []triggerSyncEntry) {
+	for _, t := range entries {
+		if t.def.TriggerType != "cron" {
+			continue
+		}
+		schedule, err := s.repo.GetScheduleByName(ctx, t.def.Name)
+		if err != nil {
+			slog.Warn("activate synced cron trigger: get schedule", "name", t.def.Name, "err", err)
+			continue
+		}
+		if t.def.Enabled {
+			record := scheduleToStoreRecord(schedule)
+			if err := s.activateSchedule(ctx, record); err != nil {
+				slog.Warn("activate synced cron trigger", "name", t.def.Name, "err", err)
+			}
+		} else {
+			s.cronMu.Lock()
+			if existing, ok := s.cronEntries[schedule.ID]; ok {
+				s.cron.Remove(existing)
+				delete(s.cronEntries, schedule.ID)
+			}
+			s.cronMu.Unlock()
+		}
+	}
 }
