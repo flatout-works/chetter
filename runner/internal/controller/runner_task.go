@@ -495,7 +495,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
-	sharedRunnerNetwork := gvisor && req.CheckpointAfterSuccess
+	hostNetwork := gvisor && req.CheckpointAfterSuccess
 	netName := ""
 	runnerIP := ""
 	dockerArgs := []string{
@@ -506,18 +506,14 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if gvisor {
 		netName = runcNetwork()
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
-		if sharedRunnerNetwork {
-			dockerArgs = append(dockerArgs,
-				"--network", "container:"+os.Getenv("HOSTNAME"),
-				"--label", "chetter.host_port="+strconv.Itoa(hostPort),
-				"--label", "chetter.network_mode=runner",
-			)
+		if hostNetwork {
+			dockerArgs = append(dockerArgs, "--network", "host", "--label", "chetter.host_port="+strconv.Itoa(hostPort))
 		} else {
 			dockerArgs = append(dockerArgs, "--network", netName)
 			dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 		}
 	}
-	if !sharedRunnerNetwork {
+	if !hostNetwork {
 		dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	}
 	dockerArgs = append(dockerArgs,
@@ -544,11 +540,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	if gvisor {
-		if sharedRunnerNetwork {
-			runnerIP = "127.0.0.1"
-		} else {
-			runnerIP = hostIP(netName)
-		}
+		runnerIP = hostIP(netName)
 		dockerArgs = append(dockerArgs,
 			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
 			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
@@ -586,7 +578,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	agentPort := containerPort
-	if sharedRunnerNetwork {
+	if hostNetwork {
 		agentPort = hostPort
 	}
 	dockerArgs = append(dockerArgs, h.ServeArgs(agentPort)...)
@@ -613,9 +605,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}()
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
-	if sharedRunnerNetwork {
-		baseURL = fmt.Sprintf("http://127.0.0.1:%d", hostPort)
-	}
 
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
@@ -762,9 +751,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		netName = runcNetwork()
 	}
 	baseURL := harnessBaseURL(bindAddr, hostPort, r.cfg.Execution.UseGVisor, netName)
-	if mode, _ := dockerStringLabel(containerID, "chetter.network_mode"); mode == "runner" {
-		baseURL = fmt.Sprintf("http://127.0.0.1:%d", hostPort)
-	}
 	if err := h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerID).CombinedOutput()
 		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerID).CombinedOutput()
@@ -911,28 +897,17 @@ func dockerMappedHostPort(containerID string, containerPort int) (int, error) {
 }
 
 func dockerIntLabel(containerID, label string) (int, error) {
-	value, err := dockerStringLabel(containerID, label)
+	format := fmt.Sprintf(`{{index .Config.Labels %q}}`, label)
+	out, err := exec.Command("docker", "inspect", "-f", format, containerID).CombinedOutput()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("docker inspect label: %w: %s", err, strings.TrimSpace(string(out)))
 	}
+	value := strings.TrimSpace(string(out))
 	port, err := strconv.Atoi(value)
 	if err != nil || port <= 0 {
 		return 0, fmt.Errorf("invalid %s label %q", label, value)
 	}
 	return port, nil
-}
-
-func dockerStringLabel(containerID, label string) (string, error) {
-	format := fmt.Sprintf(`{{index .Config.Labels %q}}`, label)
-	out, err := exec.Command("docker", "inspect", "-f", format, containerID).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("docker inspect label: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	value := strings.TrimSpace(string(out))
-	if value == "" || value == "<no value>" {
-		return "", fmt.Errorf("missing %s label", label)
-	}
-	return value, nil
 }
 
 func parseDockerPortOutput(output string) (int, bool) {
