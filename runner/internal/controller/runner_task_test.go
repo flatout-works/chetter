@@ -721,6 +721,100 @@ func TestDockerCheckpointParts(t *testing.T) {
 	}
 }
 
+func TestCheckpointDirParts(t *testing.T) {
+	ckDir := filepath.Join(t.TempDir(), "chetter-checkpoint-task_1")
+	if err := os.MkdirAll(ckDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ckDir, ".container_id"), []byte("abc123\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	containerID, checkpointName := checkpointDirParts(ckDir)
+	if containerID != "abc123" {
+		t.Fatalf("containerID = %q, want abc123", containerID)
+	}
+	if checkpointName != "chetter-checkpoint-task_1" {
+		t.Fatalf("checkpointName = %q", checkpointName)
+	}
+}
+
+func TestCheckpointDirPartsWithoutSidecar(t *testing.T) {
+	ckDir := filepath.Join(t.TempDir(), "chetter-checkpoint-task_1")
+	if err := os.MkdirAll(ckDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	containerID, checkpointName := checkpointDirParts(ckDir)
+	if containerID != "chetter-task-task_1" {
+		t.Fatalf("containerID = %q, want fallback container name", containerID)
+	}
+	if checkpointName != "chetter-checkpoint-task_1" {
+		t.Fatalf("checkpointName = %q", checkpointName)
+	}
+
+	containerID, checkpointName = checkpointDirParts(filepath.Join(t.TempDir(), "not-a-checkpoint"))
+	if containerID != "" || checkpointName != "" {
+		t.Fatalf("invalid checkpoint dir parsed as containerID=%q checkpointName=%q", containerID, checkpointName)
+	}
+}
+
+func TestCheckpointDirs(t *testing.T) {
+	root := t.TempDir()
+	name := "chetter-checkpoint-task_1"
+	ckDir := filepath.Join(root, name)
+	if err := os.MkdirAll(ckDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ckDir, "config.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkpointConfigDir(ckDir, name); got != ckDir {
+		t.Fatalf("checkpointConfigDir = %q, want %q", got, ckDir)
+	}
+	if got := checkpointRestoreRoot(ckDir, name); got != root {
+		t.Fatalf("checkpointRestoreRoot = %q, want %q", got, root)
+	}
+
+	oldRoot := filepath.Join(t.TempDir(), name)
+	oldConfigDir := filepath.Join(oldRoot, name)
+	if err := os.MkdirAll(oldConfigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldConfigDir, "config.json"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkpointConfigDir(oldRoot, name); got != oldConfigDir {
+		t.Fatalf("old checkpointConfigDir = %q, want %q", got, oldConfigDir)
+	}
+	if got := checkpointRestoreRoot(oldRoot, name); got != oldRoot {
+		t.Fatalf("old checkpointRestoreRoot = %q, want %q", got, oldRoot)
+	}
+}
+
+func TestClearCheckpointNetNS(t *testing.T) {
+	ckDir := t.TempDir()
+	configPath := filepath.Join(ckDir, "config.json")
+	input := `{"namespaces":[{"type":"network","net_ns_path":"/var/run/docker/netns/abc123"}]}`
+	if err := os.WriteFile(configPath, []byte(input), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := clearCheckpointNetNS(ckDir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "/var/run/docker/netns/abc123") {
+		t.Fatalf("net_ns_path was not cleared: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"net_ns_path":""`) {
+		t.Fatalf("cleared net_ns_path missing: %s", string(data))
+	}
+}
+
 func TestParseDockerPortOutput(t *testing.T) {
 	tests := []struct {
 		name string
