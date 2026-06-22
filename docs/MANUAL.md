@@ -504,6 +504,60 @@ The runner injects these environment variables into every container:
 
 Secrets (API keys) are forwarded automatically when set in the runner's environment.
 
+### What Is Baked Into Dev Container Images
+
+Dev container images should contain stable runtime tooling: things that are expensive to install, tied to the execution environment, or needed before any task-specific configuration can be fetched.
+
+Today Chetter bakes these into `chetter-runner-base` and derived images:
+
+| Category | Examples |
+|---|---|
+| Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
+| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands such as `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, and `gh pr review`; the real binary is `/usr/local/bin/gh-real`. |
+| Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
+| Agent harnesses | OpenCode, Claude Code, Pi, `mcp-bridge`, and `chetter-entrypoint`. |
+| OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
+| Current fallback agents and skills | `.opencode/agent/` and `tools/skills/` are copied into runner images today. These are intended to become fallback defaults once Git-backed runtime injection is complete. |
+
+Image rebuilds are still required for toolchain and harness changes. They should not be required for normal prompt, skill, agent, trigger, or model catalog updates once those definitions are managed through `DEFINITIONS_REPO`.
+
+### What Is Injected Per Task Today
+
+Task-specific data is stored by the server, passed to the runner over ConnectRPC, and injected by the runner when it starts the local harness or Docker/gVisor task container.
+
+| Category | Injected values |
+|---|---|
+| Task content | Prompt, repo URL/ref, timeout, harness name, selected agent name, skill hints, and optional non-secret task env. |
+| Workspace mounts | The cloned workspace is mounted at `/workspace`; the runner MCP bridge socket is mounted at `/workspace/.chetter.sock`. |
+| Harness config | OpenCode config is generated into the workspace (`/workspace/.opencode.json` and `/workspace/.config/opencode/config.json`) with Chetter MCP and runner bridge MCP entries. |
+| Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
+| Git identity | `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` are set to the Chetter runner identity. |
+| Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
+| Runner-owned secrets | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. User-supplied task env cannot override these runner-owned keys. |
+| Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
+
+`gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+
+### Planned Runtime Definition Injection
+
+The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo configured by `DEFINITIONS_REPO`.
+
+Planned flow:
+
+1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
+2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
+3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
+4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
+5. Updating agents, skills, prompts, task templates, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+
+Trigger ownership should remain explicit:
+
+| Trigger source | Behavior |
+|---|---|
+| Git-managed triggers | Created or updated from `triggers/*.yaml` in the definitions repo. Manual DB edits are overwritten on the next sync. If removed from Git, they should be disabled rather than deleted. |
+| Dynamic MCP-created triggers | Created through `chetter_create_trigger` or the web/API. They are not modified by Git sync unless explicitly adopted. |
+| Conflicts | If Git sync would create a trigger with the same name as a dynamic trigger, sync should fail with a clear conflict rather than silently taking ownership. |
+
 ## Arcane Deployment
 
 Chetter's production deployment uses Arcane GitOps. GitHub Actions does not build Docker images.
