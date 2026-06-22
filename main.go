@@ -27,12 +27,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+var _gitHash = "unknown"
+
 const (
-	mcpServerName     = "chetter"
-	mcpServerVersion  = "v0.1.0"
-	initTimeout       = 30 * time.Second
-	shutdownTimeout   = 15 * time.Second
-	readHeaderTimeout = 10 * time.Second
+	serverVersion      = "dev"
+	mcpServerName      = "chetter"
+	mcpServerVersion   = "v0.1.0"
+	initTimeout        = 30 * time.Second
+	shutdownTimeout    = 15 * time.Second
+	readHeaderTimeout  = 10 * time.Second
 )
 
 func main() {
@@ -142,6 +145,11 @@ func run() error {
 	webMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
+	})
+	webMux.HandleFunc("GET /api/server-info", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"serverVersion":%q,"gitHash":%q}`, serverVersion, _gitHash)))
 	})
 	webMux.Handle("/", webui.Handler())
 

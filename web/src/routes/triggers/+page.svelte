@@ -6,12 +6,13 @@
   import type { ScheduleRun, Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
+  import { addToast } from "$lib/stores/toast.svelte";
+  import { confirm } from "$lib/stores/confirm.svelte";
+  import { Button, Badge, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
-  let scheduleRuns = $state<ScheduleRun[]>([]);
-  let selectedRunTrigger = $state<string | null>(null);
+  let expandedId = $state<string | null>(null);
   let loading = $state(true);
-  let loadingRuns = $state(false);
   let showCreateForm = $state(false);
   let creating = $state(false);
   let actionError = $state<string | null>(null);
@@ -27,11 +28,13 @@
   let agent = $state("");
   let modelId = $state("");
 
+  let scheduleRuns = $state<ScheduleRun[]>([]);
+  let runsTriggerName = $state<string | null>(null);
+  let loadingRuns = $state(false);
   let runsPage = $state(0);
-  let runsPageSize = $state(10);
-  let sortedRuns = $derived([...scheduleRuns]);
-  let totalRunsPages = $derived(Math.max(1, Math.ceil(sortedRuns.length / runsPageSize)));
-  let pagedRuns = $derived(sortedRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
+  let runsPageSize = 10;
+  let totalRunsPages = $derived(Math.max(1, Math.ceil(scheduleRuns.length / runsPageSize)));
+  let pagedRuns = $derived(scheduleRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
 
   async function load() {
     try {
@@ -53,26 +56,40 @@
       const client = createClient(TriggerService, getTransport());
       await client.updateTrigger({ name: trigger.name, enabled: !trigger.enabled });
       await load();
+      addToast(`${trigger.name} ${trigger.enabled ? "disabled" : "enabled"}`, "success");
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to update trigger.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
 
   async function runNow(name: string) {
+    const ok = await confirm({
+      title: "Run Trigger",
+      message: `Run trigger "${name}" now?`,
+      confirmLabel: "Run",
+    });
+    if (!ok) return;
     actionError = null;
     try {
       const client = createClient(TriggerService, getTransport());
       await client.runTrigger({ name });
-      if (selectedRunTrigger === name) await loadScheduleRuns(name);
+      addToast(`Trigger "${name}" started`, "success");
+      if (runsTriggerName === name) await loadRuns(name);
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to run trigger.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
 
-  async function loadScheduleRuns(name: string) {
-    selectedRunTrigger = name;
+  async function loadRuns(name: string) {
+    if (runsTriggerName === name) {
+      runsTriggerName = null;
+      return;
+    }
+    runsTriggerName = name;
     loadingRuns = true;
     actionError = null;
     runsPage = 0;
@@ -82,6 +99,7 @@
       scheduleRuns = resp.runs ?? [];
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
+      addToast(actionError, "error");
       console.error(e);
     } finally {
       loadingRuns = false;
@@ -89,14 +107,22 @@
   }
 
   async function deleteTrigger(name: string) {
-    if (!confirm(`Delete trigger "${name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete Trigger",
+      message: `Delete trigger "${name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     actionError = null;
     try {
       const client = createClient(TriggerService, getTransport());
       await client.deleteTrigger({ name });
+      addToast(`Trigger "${name}" deleted`, "success");
+      if (expandedId) expandedId = null;
       await load();
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to delete trigger.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
@@ -137,6 +163,7 @@
         agent: agent.trim(),
         modelId: modelId.trim(),
       });
+      addToast(`Trigger "${name.trim()}" created`, "success");
       name = "";
       triggerType = "cron";
       cronExpr = "@hourly";
@@ -152,6 +179,7 @@
       await load();
     } catch (err) {
       actionError = err instanceof Error ? err.message : "Failed to create trigger.";
+      addToast(actionError, "error");
     } finally {
       creating = false;
     }
@@ -165,6 +193,14 @@
       return "—";
     }
   }
+
+  function toggleExpand(id: string) {
+    expandedId = expandedId === id ? null : id;
+  }
+
+  function running(trigger: Trigger) {
+    return runsTriggerName === trigger.name;
+  }
 </script>
 
 <svelte:head>
@@ -174,12 +210,9 @@
 <div class="p-6">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Triggers</h1>
-    <button
-      onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}
-      class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
-    >
+    <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}>
       {showCreateForm ? "Cancel" : "Create Trigger"}
-    </button>
+    </Button>
   </div>
 
   {#if actionError}
@@ -207,134 +240,241 @@
         <input bind:value={modelId} placeholder="Model ID (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
       </div>
       <textarea bind:value={prompt} rows="3" placeholder="Prompt override (optional)" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"></textarea>
-      <button type="submit" disabled={creating} class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg">
+      <Button type="submit" color="blue" disabled={creating}>
         {creating ? "Creating…" : "Create"}
-      </button>
+      </Button>
     </form>
   {/if}
 
   {#if loading}
-    <p class="text-gray-500 dark:text-gray-400">Loading…</p>
-  {:else}
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <table class="w-full">
-        <thead class="bg-gray-50 dark:bg-gray-700/50">
-          <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Cron/Repo</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Agent</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Enabled</th>
-            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-          {#each triggers as trigger (trigger.id)}
-            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{trigger.name}</td>
-              <td class="px-4 py-3">
-                <span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
-                  {trigger.triggerType}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                {triggerTarget(trigger)}
-              </td>
-              <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{trigger.agent || "—"}</td>
-              <td class="px-4 py-3">
-                <button
-                  onclick={() => toggleEnabled(trigger)}
-                  aria-label={`${trigger.enabled ? "Disable" : "Enable"} ${trigger.name}`}
-                  class="relative w-10 h-5 rounded-full transition-colors {trigger.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"
-                >
-                  <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform {trigger.enabled ? 'translate-x-5' : ''}"></span>
-                </button>
-              </td>
-              <td class="px-4 py-3 text-right">
-                <div class="flex justify-end gap-2">
-                  <button onclick={() => runNow(trigger.name)} class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded">Run</button>
-                  <button onclick={() => loadScheduleRuns(trigger.name)} class="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded">Runs</button>
-                  <button onclick={() => deleteTrigger(trigger.name)} class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Delete</button>
-                </div>
-              </td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="6" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No triggers found</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+      <Spinner size="4" /> Loading…
     </div>
-
-    {#if selectedRunTrigger}
-      <div class="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 class="font-semibold text-gray-900 dark:text-white">Recent Runs: {selectedRunTrigger}</h2>
-          <button onclick={() => { selectedRunTrigger = null; scheduleRuns = []; }} class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Close</button>
-        </div>
-        {#if loadingRuns}
-          <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">Loading runs…</p>
-        {:else}
-          <table class="w-full">
-            <thead class="bg-gray-50 dark:bg-gray-700/50">
-              <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Run ID</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Task</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Scheduled For</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Created</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-              {#each pagedRuns as run (run.id)}
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                  <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{run.id.slice(0, 20)}…</td>
-                  <td class="px-4 py-3">
-                    <a href={resolve("/tasks/[id]", { id: run.taskId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
-                      {run.taskId.slice(0, 20)}…
-                    </a>
-                  </td>
-                  <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{run.status}</td>
-                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatTime(run.scheduledFor)}</td>
-                  <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</td>
-                </tr>
-              {:else}
-                <tr>
-                  <td colspan="5" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No runs found</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-          <div class="flex items-center justify-between px-4 py-3 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
-            <span>Showing {sortedRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, sortedRuns.length)} of {sortedRuns.length}</span>
-            <div class="flex gap-2">
+  {:else}
+    <div class="space-y-2">
+      {#each triggers as trigger (trigger.id)}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div
+            class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+            onclick={() => toggleExpand(trigger.id)}
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") toggleExpand(trigger.id); }}
+          >
+            <div class="flex items-center gap-4 min-w-0">
+              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{trigger.name}</span>
+              <Badge color={trigger.triggerType === "cron" ? "blue" : trigger.triggerType === "pr_review" ? "purple" : "pink"}>
+                {trigger.triggerType}
+              </Badge>
+              <span class="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:block">{triggerTarget(trigger)}</span>
+            </div>
+            <div class="flex items-center gap-3 shrink-0 ml-4">
               <button
-                onclick={() => { runsPage = Math.max(0, runsPage - 1); }}
-                disabled={runsPage === 0}
-                class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed"
+                onclick={(ev) => { ev.stopPropagation(); toggleEnabled(trigger); }}
+                aria-label={`${trigger.enabled ? "Disable" : "Enable"} ${trigger.name}`}
+                class="relative w-10 h-5 rounded-full transition-colors {trigger.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"
               >
-                ← Prev
+                <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform {trigger.enabled ? 'translate-x-5' : ''}"></span>
               </button>
-              {#each { length: totalRunsPages } as _, i}
-                <button
-                  onclick={() => { runsPage = i; }}
-                  class="px-3 py-1.5 border rounded {i === runsPage ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'}"
-                >
-                  {i + 1}
-                </button>
-              {/each}
-              <button
-                onclick={() => { runsPage = Math.min(totalRunsPages - 1, runsPage + 1); }}
-                disabled={runsPage >= totalRunsPages - 1}
-                class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed"
-              >
-                Next →
-              </button>
+              <Button color="blue" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); runNow(trigger.name); }}>Run</Button>
+              <Button color="red" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>
+              <span class="text-gray-400 transition-transform {expandedId === trigger.id ? 'rotate-180' : ''}">▼</span>
             </div>
           </div>
-        {/if}
-      </div>
-    {/if}
+
+          {#if expandedId === trigger.id}
+            <div class="px-4 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
+                  <p class="text-gray-900 dark:text-white">
+                    <Badge color={trigger.enabled ? "green" : "gray"}>{trigger.enabled ? "Enabled" : "Disabled"}</Badge>
+                  </p>
+                </div>
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Type</span>
+                  <p class="text-gray-900 dark:text-white">{trigger.triggerType}</p>
+                </div>
+                {#if trigger.cronExpr}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Cron</span>
+                    <p class="text-gray-900 dark:text-white font-mono">{trigger.cronExpr}</p>
+                  </div>
+                {/if}
+                {#if trigger.triggerConfig}
+                  {@const parsed = (() => { try { return JSON.parse(trigger.triggerConfig); } catch { return {}; } })()}
+                  {#if parsed.repo}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Repository</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.repo}</p>
+                    </div>
+                  {/if}
+                  {#if parsed.event}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Event</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.event}</p>
+                    </div>
+                  {/if}
+                  {#if parsed.session_mode}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Session Mode</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.session_mode}</p>
+                    </div>
+                  {/if}
+                  {#if parsed.ttl_hours}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">TTL</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.ttl_hours}h</p>
+                    </div>
+                  {/if}
+                {/if}
+                {#if trigger.agent}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Agent</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.agent}</p>
+                  </div>
+                {/if}
+                {#if trigger.modelId}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Model</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.modelId}</p>
+                  </div>
+                {/if}
+                {#if trigger.providerId}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Provider</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.providerId}</p>
+                  </div>
+                {/if}
+                {#if trigger.harness}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Harness</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.harness}</p>
+                  </div>
+                {/if}
+                {#if trigger.variantId}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Variant</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.variantId}</p>
+                  </div>
+                {/if}
+                {#if trigger.skills && trigger.skills.length > 0}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Skills</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.skills.join(", ")}</p>
+                  </div>
+                {/if}
+                {#if trigger.gitUrl}
+                  <div class="sm:col-span-2">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Git URL</span>
+                    <p class="text-gray-900 dark:text-white font-mono">{trigger.gitUrl}</p>
+                  </div>
+                {/if}
+                {#if trigger.gitRef}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Git Ref</span>
+                    <p class="text-gray-900 dark:text-white font-mono">{trigger.gitRef}</p>
+                  </div>
+                {/if}
+                {#if trigger.agentImage}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Agent Image</span>
+                    <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.agentImage}</p>
+                  </div>
+                {/if}
+                {#if trigger.timeoutSec > 0}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Timeout</span>
+                    <p class="text-gray-900 dark:text-white">{trigger.timeoutSec}s</p>
+                  </div>
+                {/if}
+                {#if trigger.lastRunAt}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Last Run</span>
+                    <p class="text-gray-900 dark:text-white">{formatTime(trigger.lastRunAt)}</p>
+                  </div>
+                {/if}
+                {#if trigger.nextRunAt}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Next Run</span>
+                    <p class="text-gray-900 dark:text-white">{formatTime(trigger.nextRunAt)}</p>
+                  </div>
+                {/if}
+              </div>
+
+              {#if trigger.prompt}
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Prompt</span>
+                  <pre class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-wrap bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">{trigger.prompt}</pre>
+                </div>
+              {/if}
+
+              <div class="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <Button color={running(trigger) ? "blue" : "alternative"} size="xs" onclick={() => loadRuns(trigger.name)}>
+                  {running(trigger) ? "Hide Runs" : "Show Runs"}
+                </Button>
+                <Button color="blue" size="xs" onclick={() => runNow(trigger.name)}>Run Now</Button>
+                <Button color="red" size="xs" onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
+              </div>
+
+              {#if running(trigger)}
+                <div class="mt-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Recent Runs</h3>
+                  </div>
+                  {#if loadingRuns}
+                    <div class="flex items-center gap-2 px-3 py-6 text-gray-500 dark:text-gray-400">
+                      <Spinner size="4" /> Loading runs…
+                    </div>
+                  {:else if scheduleRuns.length === 0}
+                    <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
+                  {:else}
+                    <Table>
+                      <TableHead>
+                        <TableHeadCell>Run ID</TableHeadCell>
+                        <TableHeadCell>Task</TableHeadCell>
+                        <TableHeadCell>Status</TableHeadCell>
+                        <TableHeadCell>Scheduled For</TableHeadCell>
+                        <TableHeadCell>Created</TableHeadCell>
+                      </TableHead>
+                      <TableBody>
+                        {#each pagedRuns as run (run.id)}
+                          <TableBodyRow>
+                            <TableBodyCell class="font-mono text-xs">{run.id.slice(0, 16)}…</TableBodyCell>
+                            <TableBodyCell>
+                              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                                {run.taskId.slice(0, 16)}…
+                              </a>
+                            </TableBodyCell>
+                            <TableBodyCell class="text-xs">{run.status}</TableBodyCell>
+                            <TableBodyCell class="text-xs text-gray-500">{formatTime(run.scheduledFor)}</TableBodyCell>
+                            <TableBodyCell class="text-xs text-gray-500">{formatTime(run.createdAt)}</TableBodyCell>
+                          </TableBodyRow>
+                        {/each}
+                      </TableBody>
+                    </Table>
+                    <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+                      <span>{scheduleRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, scheduleRuns.length)} of {scheduleRuns.length}</span>
+                      <div class="flex gap-1">
+                        <Button size="xs" color="alternative" disabled={runsPage === 0} onclick={() => { runsPage = Math.max(0, runsPage - 1); }}>←</Button>
+                        {#each { length: Math.min(totalRunsPages, 7) } as _, i}
+                          {@const p = totalRunsPages <= 7 ? i : runsPage < 4 ? i : runsPage > totalRunsPages - 4 ? totalRunsPages - 7 + i : runsPage - 3 + i}
+                          <Button size="xs" color={p === runsPage ? "blue" : "alternative"} onclick={() => { runsPage = p; }}>{p + 1}</Button>
+                        {/each}
+                        <Button size="xs" color="alternative" disabled={runsPage >= totalRunsPages - 1} onclick={() => { runsPage = Math.min(totalRunsPages - 1, runsPage + 1); }}>→</Button>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400">
+          No triggers found
+        </div>
+      {/each}
+    </div>
   {/if}
 </div>

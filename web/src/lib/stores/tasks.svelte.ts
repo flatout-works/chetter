@@ -13,6 +13,7 @@ export const fleetHealth = writable<{
   doneTasks: number;
   errorTasks: number;
   fleetActive: boolean;
+  runnerCount: number;
 }>({
   totalTasks: 0,
   pendingTasks: 0,
@@ -21,6 +22,7 @@ export const fleetHealth = writable<{
   doneTasks: 0,
   errorTasks: 0,
   fleetActive: false,
+  runnerCount: 0,
 });
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -54,6 +56,7 @@ export async function refreshFleetHealth() {
         doneTasks: h.doneTasks,
         errorTasks: h.errorTasks,
         fleetActive: h.fleetActive,
+        runnerCount: h.runners.length,
       });
     }
   } catch (e) {

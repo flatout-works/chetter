@@ -7,20 +7,27 @@
   import { initTheme, toggleTheme, theme } from "$lib/stores/theme.svelte";
   import { startLiveUpdates, stopLiveUpdates } from "$lib/stores/tasks.svelte";
   import { clearTaskDetail } from "$lib/stores/taskDetail.svelte";
-  import {
-    Sidebar,
-    SidebarItem,
-    SidebarGroup,
-  } from "flowbite-svelte";
+  import Toast from "$lib/components/Toast.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import { Button, Sidebar, SidebarGroup, SidebarItem, SidebarWrapper } from "flowbite-svelte";
 
   let { children } = $props();
+
+  let gitHash = $state<string | null>(null);
 
   onMount(() => {
     initAuth();
     initTheme();
+    fetch("/api/server-info")
+      .then((r) => r.json())
+      .then((info) => {
+        if (info.gitHash && info.gitHash !== "unknown") {
+          gitHash = info.gitHash;
+        }
+      })
+      .catch(() => {});
   });
 
-  // Start/stop live updates based on auth state
   let lastAuthed = false;
   auth.subscribe((state) => {
     if (state.authenticated && !lastAuthed) {
@@ -33,14 +40,14 @@
   });
 
   const navItems = [
-    { href: "/", label: "Dashboard", icon: "dashboard" },
-    { href: "/tasks", label: "Tasks", icon: "tasks" },
-    { href: "/runners", label: "Runners", icon: "runners" },
-    { href: "/triggers", label: "Triggers", icon: "triggers" },
-    { href: "/sessions", label: "Sessions", icon: "sessions" },
-    { href: "/admin/artifacts", label: "Artifacts", icon: "artifacts" },
-    { href: "/admin/audit", label: "Audit Log", icon: "audit" },
-    { href: "/admin", label: "Admin", icon: "admin" },
+    { href: "/", label: "Dashboard" },
+    { href: "/tasks", label: "Tasks" },
+    { href: "/runners", label: "Runners" },
+    { href: "/triggers", label: "Triggers" },
+    { href: "/sessions", label: "Sessions" },
+    { href: "/admin/artifacts", label: "Artifacts" },
+    { href: "/admin/audit", label: "Audit Log" },
+    { href: "/admin", label: "Admin" },
   ] as const;
 
   let token = $state("");
@@ -54,6 +61,8 @@
   }
 
   let authState = $derived($auth);
+
+  let activePath = $derived($page.url.pathname);
 </script>
 
 {#if !authState.authenticated}
@@ -78,54 +87,50 @@
             placeholder="Enter your bearer token"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <button
-            type="submit"
-            class="w-full mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-          >
-            Sign In
-          </button>
+          <Button type="submit" color="blue" class="w-full mt-4">Sign In</Button>
         </form>
       </div>
     </div>
   </div>
 {:else}
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
-    <!-- Sidebar -->
-    <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-      <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h1 class="text-xl font-bold text-gray-900 dark:text-white">Chetter</h1>
-      </div>
-      <nav class="flex-1 p-3 space-y-1">
-        {#each navItems as item (item.href)}
-          <a
-            href={resolve(item.href)}
-            class="block px-3 py-2 rounded-lg text-sm font-medium transition-colors {$page.url.pathname === item.href
-              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}"
+    <Sidebar activeUrl={activePath} position="static" alwaysOpen={true} activateClickOutside={false} backdrop={false} class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col h-screen sticky top-0">
+      <SidebarWrapper class="flex flex-col h-full">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h1 class="text-xl font-bold text-gray-900 dark:text-white">Chetter</h1>
+        </div>
+        <SidebarGroup border={false} class="flex-1 overflow-y-auto px-3 py-2">
+          {#each navItems as item (item.href)}
+            <SidebarItem href={resolve(item.href)} label={item.label} />
+          {/each}
+        </SidebarGroup>
+        <div class="p-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
+          <button
+            onclick={toggleTheme}
+            class="w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-left"
           >
-            {item.label}
-          </a>
-        {/each}
-      </nav>
-      <div class="p-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
-        <button
-          onclick={toggleTheme}
-          class="w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-left"
-        >
-          {$theme === "dark" ? "☀ Light" : "🌙 Dark"}
-        </button>
-        <button
-          onclick={logout}
-          class="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-left"
-        >
-          Sign Out
-        </button>
-      </div>
-    </aside>
+            {$theme === "dark" ? "☀ Light" : "🌙 Dark"}
+          </button>
+          <button
+            onclick={logout}
+            class="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-left"
+          >
+            Sign Out
+          </button>
+          {#if gitHash}
+            <div class="pt-2 text-center text-xs text-gray-400 dark:text-gray-500 font-mono">
+              {gitHash}
+            </div>
+          {/if}
+        </div>
+      </SidebarWrapper>
+    </Sidebar>
 
-    <!-- Main content -->
     <main class="flex-1 overflow-auto">
       {@render children()}
     </main>
+
+    <Toast />
+    <ConfirmDialog />
   </div>
 {/if}

@@ -4,6 +4,9 @@
   import { AdminService } from "$gen/proto/api/v1/api_pb";
   import type { TokenInfo, TeamInfo, UserInfo } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
+  import { addToast } from "$lib/stores/toast.svelte";
+  import { confirm } from "$lib/stores/confirm.svelte";
+  import { Button, Spinner } from "flowbite-svelte";
 
   let tokens = $state<TokenInfo[]>([]);
   let teams = $state<TeamInfo[]>([]);
@@ -47,6 +50,7 @@
         tokenName: newTokenName,
       });
       createdToken = resp.token;
+      addToast("Token created successfully", "success");
       showTokenForm = false;
       newTeam = "";
       newUser = "";
@@ -58,14 +62,21 @@
   }
 
   async function deleteToken(name: string) {
-    if (!confirm(`Delete token "${name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete Token",
+      message: `Delete token "${name}"?`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     actionError = null;
     try {
       const client = createClient(AdminService, getTransport());
       await client.deleteToken({ name });
+      addToast(`Token "${name}" deleted`, "success");
       await load();
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to delete token.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
@@ -76,6 +87,7 @@
     try {
       const client = createClient(AdminService, getTransport());
       await client.createTeam({ name: newTeamName.trim() });
+      addToast(`Team "${newTeamName.trim()}" created`, "success");
       newTeamName = "";
       showTeamForm = false;
       await load();
@@ -86,14 +98,21 @@
   }
 
   async function deleteTeamAction(name: string) {
-    if (!confirm(`Delete team "${name}" and all users/tokens/tasks? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: "Delete Team",
+      message: `Delete team "${name}" and all users/tokens/tasks? This cannot be undone.`,
+      confirmLabel: "Delete Team",
+    });
+    if (!ok) return;
     actionError = null;
     try {
       const client = createClient(AdminService, getTransport());
       await client.deleteTeam({ name });
+      addToast(`Team "${name}" deleted`, "success");
       await load();
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to delete team.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
@@ -111,35 +130,35 @@
   {/if}
 
   {#if loading}
-    <p class="text-gray-500 dark:text-gray-400">Loading…</p>
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+      <Spinner size="4" /> Loading…
+    </div>
   {:else}
-    <!-- Created token alert -->
     {#if createdToken}
       <div class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
         <p class="text-sm font-medium text-green-800 dark:text-green-400 mb-2">Token created — copy it now (shown only once):</p>
         <div class="flex gap-2">
           <code class="flex-1 px-3 py-2 bg-white dark:bg-gray-800 rounded font-mono text-sm text-gray-900 dark:text-white break-all">{createdToken}</code>
-          <button onclick={() => { navigator.clipboard.writeText(createdToken!); }} class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">Copy</button>
+          <Button color="blue" onclick={() => { navigator.clipboard.writeText(createdToken!); }}>Copy</Button>
         </div>
-        <button onclick={() => createdToken = null} class="mt-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Dismiss</button>
+        <Button color="alternative" size="xs" class="mt-2" onclick={() => createdToken = null}>Dismiss</Button>
       </div>
     {/if}
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Tokens -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="font-semibold text-gray-900 dark:text-white">API Tokens</h2>
-          <button onclick={() => showTokenForm = !showTokenForm} class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+          <Button color="alternative" size="xs" onclick={() => showTokenForm = !showTokenForm}>
             {showTokenForm ? "Cancel" : "+ New"}
-          </button>
+          </Button>
         </div>
         {#if showTokenForm}
           <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-2">
             <input bind:value={newTeam} placeholder="Team name" class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             <input bind:value={newUser} placeholder="User name" class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
             <input bind:value={newTokenName} placeholder="Token name" class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-            <button onclick={createToken} class="w-full px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">Create Token</button>
+            <Button color="blue" class="w-full" size="xs" onclick={createToken}>Create Token</Button>
           </div>
         {/if}
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -149,7 +168,7 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-white">{token.name}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{token.userName} · {token.teamName}</p>
               </div>
-              <button onclick={() => deleteToken(token.name)} class="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
+              <Button color="red" size="xs" outline onclick={() => deleteToken(token.name)}>Delete</Button>
             </div>
           {:else}
             <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No tokens</p>
@@ -157,18 +176,17 @@
         </div>
       </div>
 
-      <!-- Teams -->
       <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 class="font-semibold text-gray-900 dark:text-white">Teams</h2>
-          <button onclick={() => showTeamForm = !showTeamForm} class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+          <Button color="alternative" size="xs" onclick={() => showTeamForm = !showTeamForm}>
             {showTeamForm ? "Cancel" : "+ New"}
-          </button>
+          </Button>
         </div>
         {#if showTeamForm}
           <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-2">
             <input bind:value={newTeamName} placeholder="Team name" class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
-            <button onclick={createTeamAction} class="w-full px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">Create Team</button>
+            <Button color="blue" class="w-full" size="xs" onclick={createTeamAction}>Create Team</Button>
           </div>
         {/if}
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -178,7 +196,7 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-white">{team.name}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{team.id}</p>
               </div>
-              <button onclick={() => deleteTeamAction(team.name)} class="text-xs text-red-600 dark:text-red-400 hover:underline">Delete</button>
+              <Button color="red" size="xs" outline onclick={() => deleteTeamAction(team.name)}>Delete</Button>
             </div>
           {:else}
             <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No teams</p>

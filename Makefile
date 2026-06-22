@@ -26,7 +26,7 @@ $(SQLC):
 
 build: web-build
 	mkdir -p bin
-	go build -o bin/chetter .
+	go build -ldflags="-X 'main._gitHash=$(shell git rev-parse --short HEAD)'" -o bin/chetter .
 	go build -o bin/chetterctl ./cmd/chetterctl
 
 web-build:

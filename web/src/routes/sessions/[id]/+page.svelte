@@ -5,6 +5,8 @@
   import { SessionService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
+  import { formatTime } from "$lib/utils.svelte";
+  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Spinner, Button } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
@@ -12,21 +14,20 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  const statusColors: Record<string, string> = {
-    running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    paused_waiting_review: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    paused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    resuming: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    completed: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    error: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  };
+  function sessionColor(status: string): "green" | "red" | "yellow" | "blue" | "purple" | "gray" {
+    const map: Record<string, "green" | "red" | "yellow" | "blue" | "purple" | "gray"> = {
+      running: "green", completed: "blue", error: "red",
+      paused_waiting_review: "yellow", paused: "yellow", resuming: "purple",
+    };
+    return map[status] ?? "gray";
+  }
 
-  const runStatusColors: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    running: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    done: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    error: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  };
+  function runColor(status: string): "green" | "red" | "yellow" | "blue" | "gray" {
+    const map: Record<string, "green" | "red" | "yellow" | "blue" | "gray"> = {
+      running: "green", done: "blue", error: "red", pending: "yellow",
+    };
+    return map[status] ?? "gray";
+  }
 
   async function resume() {
     const followUpPrompt = window.prompt("Enter follow-up prompt:");
@@ -50,21 +51,10 @@
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load session.";
       console.error(e);
-    } finally {
-      loading = false;
-    }
+    } finally { loading = false; }
   }
 
   onMount(load);
-
-  function formatTime(ts: string): string {
-    if (!ts) return "—";
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return ts;
-    }
-  }
 </script>
 
 <svelte:head>
@@ -73,31 +63,25 @@
 
 <div class="p-6 max-w-6xl">
   {#if loading}
-    <p class="text-gray-500 dark:text-gray-400">Loading…</p>
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else if error}
     <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg">{error}</div>
   {:else if session}
-    <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <div>
         <div class="flex items-center gap-3 mb-1">
           <h1 class="text-xl font-mono font-bold text-gray-900 dark:text-white">{session.id}</h1>
-          <span class={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[session.status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"}`}>
-            {session.status}
-          </span>
+          <Badge color={sessionColor(session.status)}>{session.status}</Badge>
         </div>
         <p class="text-sm text-gray-500 dark:text-gray-400">
           Created {formatTime(session.createdAt)} · Updated {formatTime(session.updatedAt)}
         </p>
       </div>
       {#if session.status === "paused_waiting_review" || session.status === "paused"}
-        <button onclick={resume} class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium">
-          Resume
-        </button>
+        <Button color="green" size="sm" onclick={resume}>Resume</Button>
       {/if}
     </div>
 
-    <!-- Session metadata -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <div class="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
@@ -129,45 +113,35 @@
       </div>
     {/if}
 
-    <!-- Runs -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h2 class="font-semibold text-gray-900 dark:text-white">Session Runs ({runs.length})</h2>
-      </div>
-      {#if runs.length > 0}
-        <table class="w-full">
-          <thead class="bg-gray-50 dark:bg-gray-700/50">
-            <tr>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Run ID</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Task</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Summary</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Started</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-            {#each runs as run (run.id)}
-              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300">{run.id.slice(0, 20)}…</td>
-                <td class="px-4 py-3">
-                  <a href={resolve("/tasks/[id]", { id: run.taskId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
-                    {run.taskId.slice(0, 20)}…
-                  </a>
-                </td>
-                <td class="px-4 py-3">
-                  <span class={`px-2 py-0.5 rounded text-xs font-medium ${runStatusColors[run.status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"}`}>
-                    {run.status}
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">{run.summary || "—"}</td>
-                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(run.startedAt || "")}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      {:else}
-        <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No runs recorded</p>
-      {/if}
-    </div>
+    <Table hoverable shadow>
+      <TableHead>
+        <TableHeadCell>Run ID</TableHeadCell>
+        <TableHeadCell>Task</TableHeadCell>
+        <TableHeadCell>Status</TableHeadCell>
+        <TableHeadCell>Summary</TableHeadCell>
+        <TableHeadCell>Started</TableHeadCell>
+      </TableHead>
+      <TableBody>
+        {#each runs as run (run.id)}
+          <TableBodyRow>
+            <TableBodyCell><span class="font-mono text-gray-700 dark:text-gray-300 text-xs">{run.id.slice(0, 20)}…</span></TableBodyCell>
+            <TableBodyCell>
+              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                {run.taskId.slice(0, 20)}…
+              </a>
+            </TableBodyCell>
+            <TableBodyCell><Badge color={runColor(run.status)}>{run.status}</Badge></TableBodyCell>
+            <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{run.summary || "—"}</span></TableBodyCell>
+            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(run.startedAt || "")}</span></TableBodyCell>
+          </TableBodyRow>
+        {:else}
+          <TableBodyRow>
+            <TableBodyCell colspan={5}>
+              <div class="text-center text-gray-500 dark:text-gray-400 py-8">No runs recorded</div>
+            </TableBodyCell>
+          </TableBodyRow>
+        {/each}
+      </TableBody>
+    </Table>
   {/if}
 </div>
