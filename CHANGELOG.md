@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-22
+
+### Added
+
+- Definition registry: Git-backed definitions materialized into `definition_sources`, `definitions`, and `definition_sync_runs` DB tables with SHA-256 content hashing, source commit tracking, and sync-run history. Periodic auto-sync every 5 minutes. New MCP tools: `chetter_list_definition_sources`, `chetter_get_definition_source`, `chetter_sync_definition_source`, `chetter_list_definitions`, `chetter_get_definition`.
+- Definition change proposal tooling: MCP tools `chetter_create_definition_proposal`, `chetter_list_definition_proposals`, `chetter_get_definition_proposal` create GitHub PRs proposing definition file changes. `chetter_definition_change_proposals` DB table tracks proposals with PR URLs and live status from GitHub.
+- Resumable agent sessions with gVisor checkpoint/restore: `session_mode: resumable` creates gVisor checkpoints preserving the task container for later resume. `pull_request_review` and `pull_request_review_comment` webhook events can resume paused sessions. `Session:` and `Run:` footer metadata added to GitHub artifact signatures. Session mode, pause reason, and TTL hours propagated through trigger config into review/issue submit paths.
+- Web UI: pagination (page selector, prev/next, configurable page size) on task list, sessions, schedule runs, audit log, and artifacts tables. Clickable column header sorting on all tables. Expand/collapse for raw event payloads in task detail view. Human-readable timeline descriptions. Task duration display with live timer for running tasks. Session export viewer modal rendering markdown transcript inline.
+- Weekly task improver trigger (`chetter-weekly-task-improver`) and agent definition that analyzes task outcomes, session exports, and definition files to propose evidence-backed improvements via PRs.
+- `match_labels` field on issue triggers for filtering GitHub label events.
+- `GITHUB_TOKEN`/`CHETTER_GITHUB_TOKEN` env-based auth embedded in definitions repo clone URL for private repo access.
+
+### Changed
+
+- Model catalog resolution moved server-side: the runner RPC now resolves harness-specific provider/model at claim time and passes resolved provider name, base URL, and API key env var in the task proto. Runner no longer imports or parses `pkg/modelcatalog` YAML. `COPY pkg/` removed from runner Dockerfile.
+- MCP server base image switched from `gcr.io/distroless/static-debian12:nonroot` to `debian:bookworm-slim` with git and openssh-client for definitions repository git clone/pull operations.
+- `GITHUB_TOKEN` environment variable mapped to MCP server container for definitions repo authentication.
+
+### Fixed
+
+- Checkpoint restore uses Docker HTTP API v1.43 directly via Unix socket, bypassing a `docker start --checkpoint` containerd content store bug (`content sha256 already exists`).
+- Runner recreates the kernel-level network namespace handle before checkpoint restore by reconnecting paused gVisor containers to their Docker network bridge.
+- Checkpoints stored in workspace directory instead of a dedicated checkpoint path; netns path cleared after restore.
+- `sessionRun` passed to `githubToolSignature` in definition proposal tools so GitHub artifact tracking functions correctly.
+
+### Documentation
+
+- Milestone 1 documentation pass: `PLAN.md` (comprehensive roadmap), `README.md` (docs index), `FEATURES.md` (rewritten as current-state reference replacing the old complete list), `MANUAL.md` (env and tool fixes), `PAUSED_SESSIONS.md` (resumable session model updated), `GVISOR.md`, `REVIEWER.md`, `SNAPSHOTS.md`, `TRIGGERS_PROPOSAL.md` updated.
+- CI/CD section added to `AGENTS.md` covering the three-job workflow (check, detect-changes, arcane-build-deploy).
+- Design principles section added to `README.md`.
+- Research documents (`DAYTONA.md`, `GVISOR.md`, `OPENHANDS.md`) moved to `docs/research/` subdirectory.
+- Website and technical architecture page updated for new MCP tools, web UI, model catalog, definition registry, and session management features.
+
 ## 2026-06-21
 
 ### Added
