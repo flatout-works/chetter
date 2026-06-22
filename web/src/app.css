@@ -42,7 +42,7 @@ body {
 
 .chetter-table th {
   color: var(--color-slate-500);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
