@@ -41,12 +41,15 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	if _, err := r.rpcClient.RegisterRunner(ctx, connect.NewRequest(&runnerv1.RegisterRunnerRequest{Runner: r.runnerInfoProto("active")})); err != nil {
 		return fmt.Errorf("register runner: %w", err)
 	}
-	if err := r.pruneOrphanedWorkspaces(ctx); err != nil {
+	go r.heartbeatLoop(ctx)
+
+	pruneCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := r.pruneOrphanedWorkspaces(pruneCtx); err != nil {
 		slog.Warn("prune orphaned workspaces on startup", "err", err)
 	}
+	cancel()
 
 	slog.Info("claiming tasks via ConnectRPC", "url", r.cfg.Server.URL)
-	go r.heartbeatLoop(ctx)
 	for i := 0; i < r.cfg.Runner.MaxConcurrent; i++ {
 		go r.claimLoop(ctx)
 	}
