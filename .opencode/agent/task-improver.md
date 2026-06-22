@@ -14,7 +14,7 @@ Focus on durable improvements to files such as:
 
 - `.opencode/agent/*.md`
 - `.opencode/skill/*/SKILL.md`
-- `triggers/*.yaml`
+- `triggers/*.yaml` (from the definitions repo sync)
 - `task-templates/*.md`
 - documentation that explains how these definitions work
 

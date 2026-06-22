@@ -1,0 +1,23 @@
+# Chetter Config Repo
+
+Example git repository for Chetter runtime configuration. The MCP server reads from this repo when `DEFINITIONS_REPO` points to it. Never store secret values here — use environment variable names like `api_key_env: ANTHROPIC_API_KEY`.
+
+## Structure
+
+```
+├── model-catalog.yaml      # AI model/provider registry
+├── agents/                 # Agent definitions (*.md)
+├── skills/                 # Skill definitions (SKILL.md)
+├── triggers/               # Trigger definitions (*.yaml)
+└── task-templates/         # Reusable task templates (*.md)
+```
+
+## How it works
+
+1. Point Chetter at your config repo with `DEFINITIONS_REPO=https://github.com/your-org/chetter-config`
+2. Chetter clones the repo and syncs definitions into its database
+3. Agents and skills are injected into runner containers at task time
+4. Triggers are activated in the scheduler
+5. Changes go through PRs — the git repo is the source of truth
+
+See `docs/CONFIG_IN_GIT.md` in the Chetter repo for full architecture details.

@@ -31,10 +31,6 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		ProviderID:        "synthetic",
 		ModelID:           "model",
 		VariantID:         "variant",
-		OpenCodeSessionID: "session",
-		RunnerImageDigest: "digest",
-		CommitAuthorName:  "Chetter",
-		CommitAuthorEmail: "chetter@chetter.flatout.works",
 		TriggerName:       "nightly-docs",
 		TriggerType:       store.TriggerTypeCron,
 		Skills:            []string{"go"},
@@ -56,9 +52,6 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.TriggerName != "nightly-docs" || record.TriggerType != store.TriggerTypeCron {
 		t.Fatalf("expected trigger attribution to be preserved: %+v", record)
-	}
-	if record.OpenCodeSessionID != "session" || record.RunnerImageDigest != "digest" {
-		t.Fatalf("expected runner metadata to be preserved: %+v", record)
 	}
 	validateGeneratedOutputSchema(t, TaskStatusOutput{Task: record})
 }

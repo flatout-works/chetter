@@ -117,10 +117,10 @@ Show the latest event for task task_<id>
 A running task is stale in fleet health when `last_event_sec > 600`. Check its events and progress to understand what step it is stuck on. Consider canceling and resubmitting.
 
 ### Manage Triggers
-Triggers (cron schedules and PR review configs) can be kept as YAML files in your repo for reviewability. Chetter does not read local YAML files directly; use the trigger tools to create or update each trigger.
+Triggers (cron schedules and PR review configs) are managed as YAML files in the definitions repo set via `DEFINITIONS_REPO`. Chetter syncs them automatically; use `chetter_sync_definitions` to trigger a manual resync.
 
 ```
-Use chetter_create_trigger with trigger_type=cron to create a trigger from triggers/nightly-changelog-update.yaml
+Use chetter_create_trigger with trigger_type=cron to create a trigger from definitions in your config repo
 ```
 
 ### Inspect Definitions
@@ -142,11 +142,11 @@ To propose durable definition changes, use `chetter_create_definition_proposal` 
 
 ### Adding a New Cron Trigger
 
-1. Copy an existing sample from `triggers/` as a starting point.
-2. Edit it with your repo details and prompt.
-3. Create it in Chetter:
+1. Copy an existing trigger YAML from `examples/config-repo/triggers/` as a starting point.
+2. Edit it with your repo details and prompt, then add it to your config repo's `triggers/` directory.
+3. Sync definitions to activate it:
    ```
-   Use chetter_create_trigger with trigger_type=cron and the fields from triggers/nightly-changelog-update.yaml
+   Use chetter_sync_definitions to reload triggers from the definitions repo
    ```
 
 ### Adding a New PR Review Trigger
@@ -184,10 +184,10 @@ Each trigger supports these fields:
 
 To change a trigger's cron expression, prompt, model, or other fields:
 
-1. Edit the `triggers/*.yaml` file directly.
-2. Update Chetter with the changed fields:
+1. Edit the `triggers/*.yaml` file in your config repo directly.
+2. Sync definitions to apply changes:
    ```
-   Use chetter_update_trigger to change nightly-changelog-update's model to opencode/minimax-m3
+   Use chetter_sync_definitions to reload triggers
    ```
 
 ### Pausing a Trigger
@@ -209,10 +209,10 @@ Remove the corresponding YAML file from your repo if it is no longer part of you
 
 ### Keeping Triggers in Your Repo
 
-The recommended pattern is to store trigger YAMLs in your own repo (not in chetter's `triggers/` directory). When you set up your project:
+The recommended pattern is to store trigger YAMLs in your config repo (set via `DEFINITIONS_REPO`). When you set up your project:
 
-1. Create a `triggers/` directory in your project repo.
-2. Copy the samples from chetter's `triggers/` as starting points.
+1. Create a `triggers/` directory in your config repo.
+2. Copy the samples from Chetter's `examples/config-repo/triggers/` as starting points.
 3. Customize for your project (repo URL, agent image, prompt details).
 4. Apply each trigger with `chetter_create_trigger`, or update with `chetter_update_trigger`.
 
@@ -225,7 +225,7 @@ This way your triggers are version-controlled alongside your code and can be rev
 - Tell tasks to create branches and PRs rather than pushing to the default branch
 - Use `timeout_sec` appropriate for the work (e.g., 600 for quick checks, 3600 for code changes)
 - Chetter clones from Git; tasks cannot access uncommitted local changes
-- For recurring schedules, check `triggers/` YAMLs into version control
+- For recurring schedules, check `triggers/*.yaml` into your config repo
 
 ## Model Selection
 
