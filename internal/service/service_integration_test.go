@@ -476,6 +476,103 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	})
 }
 
+func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	q := repository.New(tdb.DB)
+	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "create a PR",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_gone", WaitSeconds: 0,
+	})); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID:            "runner_gone",
+		Status:        "active",
+		MaxConcurrent: 1,
+		FirstSeenAt:   now,
+		LastSeenAt:    now,
+		UpdatedAt:     now,
+		Metadata:      json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("upsert runner: %v", err)
+	}
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_gone",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:            rec.ID,
+			Status:            "done",
+			EndedAt:           now.Format(time.RFC3339Nano),
+			OpencodeSessionId: "oc_sid_gone",
+			WorkspacePath:     "/var/lib/runner/" + rec.ID + "/workspace",
+		}},
+	})); err != nil {
+		t.Fatalf("report terminal event: %v", err)
+	}
+
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	resumeOut, err := svc.ResumeAgentSession(ctx, session.ID, "address feedback", 600)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	stale := now.Add(-5 * time.Minute)
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID:            "runner_gone",
+		Status:        "active",
+		MaxConcurrent: 1,
+		FirstSeenAt:   stale,
+		LastSeenAt:    stale,
+		UpdatedAt:     stale,
+		Metadata:      json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("mark runner stale: %v", err)
+	}
+
+	svc.reapUnavailablePinnedResumeTasks()
+
+	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
+	if err != nil {
+		t.Fatalf("get resume task: %v", err)
+	}
+	if resumeTask.Status != "error" || resumeTask.ErrorCategory.String != "runner_unavailable" {
+		t.Fatalf("resume task status/category = %s/%s, want error/runner_unavailable", resumeTask.Status, resumeTask.ErrorCategory.String)
+	}
+	resumeRun, err := q.GetSessionRunByTaskID(ctx, resumeOut.Task.ID)
+	if err != nil {
+		t.Fatalf("get resume run: %v", err)
+	}
+	if resumeRun.Status != "failed" {
+		t.Fatalf("resume run status = %s, want failed", resumeRun.Status)
+	}
+	session, err = q.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get session after reaper: %v", err)
+	}
+	if session.Status != "error" || !strings.Contains(session.Error.String, "runner_gone") {
+		t.Fatalf("session status/error = %s/%q, want error mentioning runner_gone", session.Status, session.Error.String)
+	}
+}
+
 func TestServiceCancelTaskMarksRunningAsCancelled(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

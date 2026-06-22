@@ -157,6 +157,7 @@ func (s *Service) Stop() {
 func (s *Service) taskReaper() {
 	s.reapStaleTasks()
 	s.reapExpiredLeases()
+	s.reapUnavailablePinnedResumeTasks()
 	s.reapExpiredSessions()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
@@ -165,6 +166,7 @@ func (s *Service) taskReaper() {
 		case <-ticker.C:
 			s.reapStaleTasks()
 			s.reapExpiredLeases()
+			s.reapUnavailablePinnedResumeTasks()
 			s.reapExpiredSessions()
 		case <-s.reaperStop:
 			return
@@ -214,6 +216,38 @@ func (s *Service) reapExpiredLeases() {
 	}
 	if reclaimed > 0 || failed > 0 {
 		slog.Info("reaped expired task leases", "reclaimed", reclaimed, "failed", failed)
+	}
+}
+
+func (s *Service) reapUnavailablePinnedResumeTasks() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	defer cancel()
+	now := time.Now().UTC()
+	failedTasks, err := s.repo.FailPendingResumeTasksForMissingRunner(ctx, repository.FailPendingResumeTasksForMissingRunnerParams{
+		EndedAt:      sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:    now,
+		LastEventAt:  sql.NullTime{Time: now, Valid: true},
+		StaleSeconds: runnerPresenceMaxSec,
+	})
+	if err != nil {
+		slog.Error("pinned resume reaper task failure failed", "error", err)
+		return
+	}
+	failedRuns, err := s.repo.FailPendingSessionRunsForUnavailableRunner(ctx, repository.FailPendingSessionRunsForUnavailableRunnerParams{
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now,
+	})
+	if err != nil {
+		slog.Error("pinned resume reaper run failure failed", "error", err)
+		return
+	}
+	failedSessions, err := s.repo.MarkResumingSessionsFailedForUnavailableRunner(ctx, now)
+	if err != nil {
+		slog.Error("pinned resume reaper session failure failed", "error", err)
+		return
+	}
+	if failedTasks > 0 || failedRuns > 0 || failedSessions > 0 {
+		slog.Info("failed pinned resume work for unavailable runners", "tasks", failedTasks, "runs", failedRuns, "sessions", failedSessions)
 	}
 }
 

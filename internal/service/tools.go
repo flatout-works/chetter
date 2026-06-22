@@ -62,29 +62,38 @@ type ListTasksOutput struct {
 // TaskToolRecord is the stable MCP task response shape. Store-level task
 // records may grow internal audit fields without breaking existing MCP clients.
 type TaskToolRecord struct {
-	ID            string            `json:"id"`
-	TeamID        string            `json:"team_id,omitempty"`
-	Status        string            `json:"status"`
-	Prompt        string            `json:"prompt"`
-	GitURL        string            `json:"git_url,omitempty"`
-	GitRef        string            `json:"git_ref,omitempty"`
-	AgentImage    string            `json:"agent_image,omitempty"`
-	Agent         string            `json:"agent,omitempty"`
-	ProviderID    string            `json:"provider_id,omitempty"`
-	ModelID       string            `json:"model_id,omitempty"`
-	VariantID     string            `json:"variant_id,omitempty"`
-	TriggerName   string            `json:"trigger_name,omitempty"`
-	TriggerType   string            `json:"trigger_type,omitempty"`
-	Skills        []string          `json:"skills"`
-	Env           map[string]string `json:"env"`
-	TimeoutSec    int               `json:"timeout_sec"`
-	Summary       string            `json:"summary,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	ErrorCategory string            `json:"error_category,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
-	StartedAt     *time.Time        `json:"started_at,omitempty"`
-	EndedAt       *time.Time        `json:"ended_at,omitempty"`
+	ID                     string            `json:"id"`
+	TeamID                 string            `json:"team_id,omitempty"`
+	Status                 string            `json:"status"`
+	Prompt                 string            `json:"prompt"`
+	GitURL                 string            `json:"git_url,omitempty"`
+	GitRef                 string            `json:"git_ref,omitempty"`
+	AgentImage             string            `json:"agent_image,omitempty"`
+	Agent                  string            `json:"agent,omitempty"`
+	ProviderID             string            `json:"provider_id,omitempty"`
+	ModelID                string            `json:"model_id,omitempty"`
+	VariantID              string            `json:"variant_id,omitempty"`
+	OpenCodeSessionID      string            `json:"opencode_session_id,omitempty"`
+	RunnerImageDigest      string            `json:"runner_image_digest,omitempty"`
+	CommitAuthorName       string            `json:"commit_author_name,omitempty"`
+	CommitAuthorEmail      string            `json:"commit_author_email,omitempty"`
+	TriggerName            string            `json:"trigger_name,omitempty"`
+	TriggerType            string            `json:"trigger_type,omitempty"`
+	RunnerID               string            `json:"runner_id,omitempty"`
+	RequiredRunnerID       string            `json:"required_runner_id,omitempty"`
+	CheckpointAfterSuccess bool              `json:"checkpoint_after_success,omitempty"`
+	Skills                 []string          `json:"skills"`
+	Env                    map[string]string `json:"env"`
+	TimeoutSec             int               `json:"timeout_sec"`
+	Summary                string            `json:"summary,omitempty"`
+	Error                  string            `json:"error,omitempty"`
+	ErrorCategory          string            `json:"error_category,omitempty"`
+	CreatedAt              time.Time         `json:"created_at"`
+	UpdatedAt              time.Time         `json:"updated_at"`
+	ClaimedAt              *time.Time        `json:"claimed_at,omitempty"`
+	LeaseExpiresAt         *time.Time        `json:"lease_expires_at,omitempty"`
+	StartedAt              *time.Time        `json:"started_at,omitempty"`
+	EndedAt                *time.Time        `json:"ended_at,omitempty"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -261,6 +270,7 @@ type TaskEventsOutput struct {
 // TaskEventRecord is a single persisted runner event.
 type TaskEventRecord struct {
 	ID        string    `json:"id"`
+	TaskID    string    `json:"task_id,omitempty"`
 	Subject   string    `json:"subject"`
 	Status    string    `json:"status"`
 	EventType string    `json:"event_type"`
@@ -757,29 +767,33 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitURL,
-		GitRef:        task.GitRef,
-		AgentImage:    task.AgentImage,
-		Agent:         task.Agent,
-		ProviderID:    task.ProviderID,
-		ModelID:       task.ModelID,
-		VariantID:     task.VariantID,
-		TriggerName:   task.TriggerName,
-		TriggerType:   task.TriggerType,
-		Skills:        task.Skills,
-		Env:           task.Env,
-		TimeoutSec:    task.TimeoutSec,
-		Summary:       task.Summary,
-		Error:         task.Error,
-		ErrorCategory: task.ErrorCategory,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     task.StartedAt,
-		EndedAt:       task.EndedAt,
+		ID:                task.ID,
+		TeamID:            task.TeamID,
+		Status:            task.Status,
+		Prompt:            task.Prompt,
+		GitURL:            task.GitURL,
+		GitRef:            task.GitRef,
+		AgentImage:        task.AgentImage,
+		Agent:             task.Agent,
+		ProviderID:        task.ProviderID,
+		ModelID:           task.ModelID,
+		VariantID:         task.VariantID,
+		OpenCodeSessionID: task.OpenCodeSessionID,
+		RunnerImageDigest: task.RunnerImageDigest,
+		CommitAuthorName:  task.CommitAuthorName,
+		CommitAuthorEmail: task.CommitAuthorEmail,
+		TriggerName:       task.TriggerName,
+		TriggerType:       task.TriggerType,
+		Skills:            task.Skills,
+		Env:               task.Env,
+		TimeoutSec:        task.TimeoutSec,
+		Summary:           task.Summary,
+		Error:             task.Error,
+		ErrorCategory:     task.ErrorCategory,
+		CreatedAt:         task.CreatedAt,
+		UpdatedAt:         task.UpdatedAt,
+		StartedAt:         task.StartedAt,
+		EndedAt:           task.EndedAt,
 	}
 }
 
@@ -789,29 +803,38 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	env := map[string]string{}
 	_ = json.Unmarshal(task.Env, &env)
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID.String,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitUrl.String,
-		GitRef:        task.GitRef.String,
-		AgentImage:    task.AgentImage.String,
-		Agent:         task.Agent.String,
-		ProviderID:    task.ProviderID.String,
-		ModelID:       task.ModelID.String,
-		VariantID:     task.VariantID.String,
-		TriggerName:   task.TriggerName.String,
-		TriggerType:   task.TriggerType.String,
-		Skills:        skills,
-		Env:           env,
-		TimeoutSec:    int(task.TimeoutSec),
-		Summary:       task.Summary.String,
-		Error:         task.Error.String,
-		ErrorCategory: task.ErrorCategory.String,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     store.NullTimePtr(task.StartedAt),
-		EndedAt:       store.NullTimePtr(task.EndedAt),
+		ID:                     task.ID,
+		TeamID:                 task.TeamID.String,
+		Status:                 task.Status,
+		Prompt:                 task.Prompt,
+		GitURL:                 task.GitUrl.String,
+		GitRef:                 task.GitRef.String,
+		AgentImage:             task.AgentImage.String,
+		Agent:                  task.Agent.String,
+		ProviderID:             task.ProviderID.String,
+		ModelID:                task.ModelID.String,
+		VariantID:              task.VariantID.String,
+		OpenCodeSessionID:      task.OpencodeSessionID.String,
+		RunnerImageDigest:      task.RunnerImageDigest.String,
+		CommitAuthorName:       task.CommitAuthorName.String,
+		CommitAuthorEmail:      task.CommitAuthorEmail.String,
+		TriggerName:            task.TriggerName.String,
+		TriggerType:            task.TriggerType.String,
+		RunnerID:               task.RunnerID.String,
+		RequiredRunnerID:       task.RequiredRunnerID.String,
+		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
+		Skills:                 skills,
+		Env:                    env,
+		TimeoutSec:             int(task.TimeoutSec),
+		Summary:                task.Summary.String,
+		Error:                  task.Error.String,
+		ErrorCategory:          task.ErrorCategory.String,
+		CreatedAt:              task.CreatedAt,
+		UpdatedAt:              task.UpdatedAt,
+		ClaimedAt:              store.NullTimePtr(task.ClaimedAt),
+		LeaseExpiresAt:         store.NullTimePtr(task.LeaseExpiresAt),
+		StartedAt:              store.NullTimePtr(task.StartedAt),
+		EndedAt:                store.NullTimePtr(task.EndedAt),
 	}
 }
 

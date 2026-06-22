@@ -119,6 +119,55 @@ SET status = ?,
     updated_at = ?
 WHERE task_id = ?;
 
+-- name: FailPendingResumeTasksForMissingRunner :execrows
+UPDATE chetter_tasks t
+LEFT JOIN chetter_runners r ON r.id = t.required_runner_id
+SET t.status = 'error',
+    t.error = CONCAT('pinned runner ', t.required_runner_id, ' is not alive'),
+    t.error_category = 'runner_unavailable',
+    t.ended_at = ?,
+    t.updated_at = ?,
+    t.last_event_at = ?
+WHERE t.status = 'pending'
+  AND t.required_runner_id IS NOT NULL
+  AND t.required_runner_id <> ''
+  AND (
+    r.id IS NULL
+    OR r.status <> 'active'
+    OR r.last_seen_at <= DATE_SUB(NOW(), INTERVAL sqlc.arg(stale_seconds) SECOND)
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM chetter_session_runs sr
+    JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
+    WHERE sr.task_id = t.id
+      AND sr.status = 'pending'
+      AND s.status = 'resuming'
+  );
+
+-- name: FailPendingSessionRunsForUnavailableRunner :execrows
+UPDATE chetter_session_runs sr
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET sr.status = 'failed',
+    sr.error = t.error,
+    sr.ended_at = COALESCE(sr.ended_at, ?),
+    sr.updated_at = ?
+WHERE sr.status = 'pending'
+  AND t.status = 'error'
+  AND t.error_category = 'runner_unavailable';
+
+-- name: MarkResumingSessionsFailedForUnavailableRunner :execrows
+UPDATE chetter_agent_sessions s
+JOIN chetter_session_runs sr ON sr.agent_session_id = s.id
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET s.status = 'error',
+    s.error = COALESCE(sr.error, t.error),
+    s.updated_at = ?
+WHERE s.status = 'resuming'
+  AND sr.status = 'failed'
+  AND t.status = 'error'
+  AND t.error_category = 'runner_unavailable';
+
 -- name: InsertAgentSessionCheckpoint :exec
 INSERT INTO chetter_agent_session_checkpoints
     (id, agent_session_id, session_run_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)

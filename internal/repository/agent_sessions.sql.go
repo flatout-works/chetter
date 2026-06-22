@@ -33,6 +33,78 @@ func (q *Queries) ExpirePausedSessions(ctx context.Context, arg ExpirePausedSess
 	return result.RowsAffected()
 }
 
+const failPendingResumeTasksForMissingRunner = `-- name: FailPendingResumeTasksForMissingRunner :execrows
+UPDATE chetter_tasks t
+LEFT JOIN chetter_runners r ON r.id = t.required_runner_id
+SET t.status = 'error',
+    t.error = CONCAT('pinned runner ', t.required_runner_id, ' is not alive'),
+    t.error_category = 'runner_unavailable',
+    t.ended_at = ?,
+    t.updated_at = ?,
+    t.last_event_at = ?
+WHERE t.status = 'pending'
+  AND t.required_runner_id IS NOT NULL
+  AND t.required_runner_id <> ''
+  AND (
+    r.id IS NULL
+    OR r.status <> 'active'
+    OR r.last_seen_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM chetter_session_runs sr
+    JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
+    WHERE sr.task_id = t.id
+      AND sr.status = 'pending'
+      AND s.status = 'resuming'
+  )
+`
+
+type FailPendingResumeTasksForMissingRunnerParams struct {
+	EndedAt      sql.NullTime `json:"ended_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	LastEventAt  sql.NullTime `json:"last_event_at"`
+	StaleSeconds interface{}  `json:"stale_seconds"`
+}
+
+func (q *Queries) FailPendingResumeTasksForMissingRunner(ctx context.Context, arg FailPendingResumeTasksForMissingRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingResumeTasksForMissingRunner,
+		arg.EndedAt,
+		arg.UpdatedAt,
+		arg.LastEventAt,
+		arg.StaleSeconds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const failPendingSessionRunsForUnavailableRunner = `-- name: FailPendingSessionRunsForUnavailableRunner :execrows
+UPDATE chetter_session_runs sr
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET sr.status = 'failed',
+    sr.error = t.error,
+    sr.ended_at = COALESCE(sr.ended_at, ?),
+    sr.updated_at = ?
+WHERE sr.status = 'pending'
+  AND t.status = 'error'
+  AND t.error_category = 'runner_unavailable'
+`
+
+type FailPendingSessionRunsForUnavailableRunnerParams struct {
+	EndedAt   sql.NullTime `json:"ended_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+func (q *Queries) FailPendingSessionRunsForUnavailableRunner(ctx context.Context, arg FailPendingSessionRunsForUnavailableRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingSessionRunsForUnavailableRunner, arg.EndedAt, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getAgentSessionByID = `-- name: GetAgentSessionByID :one
 SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error FROM chetter_agent_sessions
 WHERE id = ?
@@ -550,6 +622,27 @@ func (q *Queries) MarkAgentSessionTerminalByTask(ctx context.Context, arg MarkAg
 		arg.UpdatedAt,
 		arg.TaskID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markResumingSessionsFailedForUnavailableRunner = `-- name: MarkResumingSessionsFailedForUnavailableRunner :execrows
+UPDATE chetter_agent_sessions s
+JOIN chetter_session_runs sr ON sr.agent_session_id = s.id
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET s.status = 'error',
+    s.error = COALESCE(sr.error, t.error),
+    s.updated_at = ?
+WHERE s.status = 'resuming'
+  AND sr.status = 'failed'
+  AND t.status = 'error'
+  AND t.error_category = 'runner_unavailable'
+`
+
+func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markResumingSessionsFailedForUnavailableRunner, updatedAt)
 	if err != nil {
 		return 0, err
 	}

@@ -130,6 +130,7 @@ func (s *Service) GetTaskEvents(ctx context.Context, taskID string, limit, offse
 	for i, ev := range events {
 		out[i] = TaskEventRecord{
 			ID:        ev.ID,
+			TaskID:    ev.TaskID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
 			EventType: ev.EventType,
@@ -154,6 +155,7 @@ func (s *Service) GetTaskEventsSince(ctx context.Context, taskID string, since t
 	for i, ev := range rows {
 		out[i] = TaskEventRecord{
 			ID:        ev.ID,
+			TaskID:    ev.TaskID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
 			EventType: ev.EventType,
@@ -404,6 +406,7 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 	return TaskLatestEventOutput{
 		Event: TaskEventRecord{
 			ID:        ev.ID,
+			TaskID:    ev.TaskID,
 			Subject:   ev.Subject,
 			Status:    ev.Status,
 			EventType: ev.EventType,

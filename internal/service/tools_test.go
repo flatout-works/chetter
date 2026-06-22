@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -55,6 +56,60 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.TriggerName != "nightly-docs" || record.TriggerType != store.TriggerTypeCron {
 		t.Fatalf("expected trigger attribution to be preserved: %+v", record)
+	}
+	if record.OpenCodeSessionID != "session" || record.RunnerImageDigest != "digest" {
+		t.Fatalf("expected runner metadata to be preserved: %+v", record)
+	}
+	validateGeneratedOutputSchema(t, TaskStatusOutput{Task: record})
+}
+
+func TestTaskEventOutputMatchesGeneratedSchema(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	validateGeneratedOutputSchema(t, TaskEventsOutput{Events: []TaskEventRecord{{
+		ID:        "evt_1",
+		TaskID:    "task_1",
+		Subject:   "task.task_1",
+		Status:    "running",
+		EventType: "task.progress",
+		Payload:   `{"task_id":"task_1","status":"running","summary":"working"}`,
+		CreatedAt: now,
+	}}})
+	validateGeneratedOutputSchema(t, TaskLatestEventOutput{
+		Event: TaskEventRecord{
+			ID:        "evt_1",
+			TaskID:    "task_1",
+			Subject:   "task.task_1",
+			Status:    "running",
+			EventType: "task.progress",
+			Payload:   `{"task_id":"task_1","status":"running","summary":"working"}`,
+			CreatedAt: now,
+		},
+		AgeSec:  1,
+		IsStale: false,
+	})
+}
+
+func validateGeneratedOutputSchema[T any](t *testing.T, value T) {
+	t.Helper()
+	schema, err := jsonschema.For[T](nil)
+	if err != nil {
+		t.Fatalf("generate schema: %v", err)
+	}
+	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		t.Fatalf("resolve schema: %v", err)
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal output: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if err := resolved.Validate(&decoded); err != nil {
+		t.Fatalf("validate output schema: %v\njson: %s", err, data)
 	}
 }
 
