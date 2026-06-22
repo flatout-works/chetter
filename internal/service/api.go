@@ -182,10 +182,13 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 	for _, ev := range events {
 		var resp store.TaskResponse
 		_ = json.Unmarshal(ev.Payload, &resp)
+		if isProgressHeartbeat(resp.Summary) {
+			continue
+		}
 		entry := TaskProgressRecord{
 			Time:    ev.CreatedAt,
 			Status:  ev.Status,
-			Summary: resp.Summary,
+			Summary: humanProgressSummary(resp.Summary),
 			Error:   resp.Error,
 		}
 		if ev.Status != lastStatus || entry.Summary != "" || entry.Error != "" {
@@ -197,6 +200,192 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
+}
+
+func isProgressHeartbeat(summary string) bool {
+	return strings.HasPrefix(strings.TrimSpace(summary), "opencode: server.heartbeat")
+}
+
+func humanProgressSummary(summary string) string {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return ""
+	}
+	if !strings.HasPrefix(summary, "opencode: ") {
+		return summary
+	}
+
+	detail := strings.TrimSpace(strings.TrimPrefix(summary, "opencode: "))
+	eventType, payload, _ := strings.Cut(detail, " ")
+	payload = strings.TrimSpace(payload)
+	props := map[string]any{}
+	if payload != "" {
+		_ = json.Unmarshal([]byte(payload), &props)
+	}
+
+	switch eventType {
+	case "server.connected":
+		return "Connected to the agent runtime"
+	case "server.heartbeat":
+		return ""
+	case "session.updated":
+		return "Agent session updated"
+	case "session.status":
+		if status, ok := stringAt(props, "status", "type"); ok {
+			switch status {
+			case "busy":
+				return "Agent is working"
+			case "idle":
+				return "Agent is waiting"
+			default:
+				return "Agent status: " + status
+			}
+		}
+		return "Agent status changed"
+	case "message.part.updated", "message.part.delta":
+		return humanMessagePartSummary(props)
+	case "message.updated":
+		return "Agent message updated"
+	case "session.error":
+		return "Agent session error"
+	case "permission.asked":
+		return "Agent requested permission"
+	case "permission.replied":
+		return "Permission response received"
+	case "file.edited":
+		if path, ok := firstStringAt(props, []string{"filePath"}, []string{"path"}); ok {
+			return "Edited " + path
+		}
+		return "Edited a file"
+	case "command.executed":
+		if command, ok := firstStringAt(props, []string{"command"}, []string{"cmd"}); ok {
+			return "Ran command: " + truncateProgressDetail(command)
+		}
+		return "Ran a command"
+	default:
+		return "OpenCode event: " + strings.ReplaceAll(eventType, ".", " ")
+	}
+}
+
+func humanMessagePartSummary(props map[string]any) string {
+	part, _ := props["part"].(map[string]any)
+	if part == nil {
+		return "Agent updated progress"
+	}
+	partType, _ := part["type"].(string)
+	switch partType {
+	case "tool":
+		tool, _ := part["tool"].(string)
+		if tool == "" {
+			tool = "tool"
+		}
+		status, _ := stringAt(part, "state", "status")
+		target := toolTarget(part)
+		prefix := "Using"
+		switch status {
+		case "running":
+			prefix = "Running"
+		case "completed":
+			prefix = "Completed"
+		case "error":
+			prefix = "Tool failed:"
+		}
+		if target != "" {
+			return fmt.Sprintf("%s %s on %s", prefix, tool, target)
+		}
+		return fmt.Sprintf("%s %s", prefix, tool)
+	case "step-finish":
+		reason, _ := part["reason"].(string)
+		if reason == "tool-calls" {
+			reason = "tool call"
+		}
+		if total, ok := numberAt(part, "tokens", "total"); ok && reason != "" {
+			return fmt.Sprintf("Finished %s step (%s tokens)", reason, formatProgressNumber(total))
+		}
+		if reason != "" {
+			return "Finished " + reason + " step"
+		}
+		return "Finished an agent step"
+	case "text":
+		if text, ok := part["text"].(string); ok && strings.TrimSpace(text) != "" {
+			return "Agent replied: " + truncateProgressDetail(strings.TrimSpace(text))
+		}
+		return "Agent replied"
+	default:
+		return "Agent updated progress"
+	}
+}
+
+func toolTarget(part map[string]any) string {
+	if target, ok := firstStringAt(part,
+		[]string{"state", "input", "filePath"},
+		[]string{"state", "input", "path"},
+		[]string{"state", "input", "command"},
+		[]string{"state", "input", "pattern"},
+	); ok {
+		return truncateProgressDetail(target)
+	}
+	return ""
+}
+
+func firstStringAt(value map[string]any, paths ...[]string) (string, bool) {
+	for _, path := range paths {
+		if value, ok := stringAt(value, path...); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value), true
+		}
+	}
+	return "", false
+}
+
+func stringAt(value map[string]any, path ...string) (string, bool) {
+	var current any = value
+	for _, key := range path {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		current = m[key]
+	}
+	text, ok := current.(string)
+	return text, ok
+}
+
+func numberAt(value map[string]any, path ...string) (int64, bool) {
+	var current any = value
+	for _, key := range path {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return 0, false
+		}
+		current = m[key]
+	}
+	switch n := current.(type) {
+	case float64:
+		return int64(n), true
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	default:
+		return 0, false
+	}
+}
+
+func truncateProgressDetail(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	const maxLen = 120
+	if len(value) <= maxLen {
+		return value
+	}
+	return value[:maxLen] + "..."
+}
+
+func formatProgressNumber(n int64) string {
+	text := fmt.Sprintf("%d", n)
+	for i := len(text) - 3; i > 0; i -= 3 {
+		text = text[:i] + "," + text[i:]
+	}
+	return text
 }
 
 // GetLatestTaskEvent returns the most recent event for a task with staleness info.
