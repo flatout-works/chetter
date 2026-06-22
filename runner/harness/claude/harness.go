@@ -42,6 +42,10 @@ func (cc *ClaudeCode) ServeArgs(port int) []string {
 	return nil
 }
 
+func (cc *ClaudeCode) ServeArgsResume(port int) []string {
+	return nil
+}
+
 func (cc *ClaudeCode) ServerPassword() string {
 	return ""
 }

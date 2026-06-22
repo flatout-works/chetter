@@ -9,13 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -69,7 +65,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	socketPath := r.wsManager.SocketPath(req.TaskID)
 	h := r.harnessFor(req.Harness)
 
-	if req.ResumeCheckpointPath != "" && r.cfg.Execution.UseGVisor {
+	if req.ResumeWorkspacePath != "" {
 		r.runDockerAgentResume(ctx, session, req, socketPath, h)
 		return
 	}
@@ -638,18 +634,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	checkpointPath := ""
 	workspacePath := ""
-	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
-		ckDir, containerID, cpErr := createDockerCheckpoint(containerName, req.TaskID, req.AgentImage)
-		if cpErr != nil {
-			slog.Error("docker checkpoint failed", "taskID", req.TaskID, "err", cpErr)
-		} else {
-			checkpointPath = ckDir
-			workspacePath = session.WorkspaceDir
-			session.PreserveWorkspace = true
-			slog.Info("checkpoint created", "taskID", req.TaskID, "dir", ckDir, "containerID", containerID, "workspace", workspacePath)
-		}
+	if req.CheckpointAfterSuccess {
+		workspacePath = session.WorkspaceDir
+		session.PreserveWorkspace = true
+		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
 		if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
@@ -659,7 +648,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, checkpointPath, workspacePath)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -676,76 +665,134 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 	session.WorkspaceDir = workspaceDir
 
-	r.publishStatusForRequest(req, "running", "Restoring agent from checkpoint...", nil)
-
-	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
-	if bindAddr == "" {
-		bindAddr = "127.0.0.1"
-	}
-
-	const containerPort = 9999
-	ckDir := req.ResumeCheckpointPath
-	containerID, checkpointName, ok := dockerCheckpointParts(ckDir)
-	if !ok {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid checkpoint dir: %s", ckDir), nil)
+	sid := req.ResumeHarnessSessionID
+	if sid == "" {
+		r.publishStatusForRequest(req, "error", "no harness session ID for resume", nil)
 		return
 	}
 
-	mountedSocketPath, err := dockerMountSource(containerID, containerSocketPath)
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("inspect checkpointed container socket mount: %v", err), nil)
-		return
-	}
-	if mountedSocketPath == "" {
-		mountedSocketPath = socketPath
-	}
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, workspaceDir, mountedSocketPath)
+	r.publishStatusForRequest(req, "running", "Resuming agent session...", nil)
+
+	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, workspaceDir, socketPath)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 		return
 	}
 	defer mcpServer.Close()
 
-	secret := h.ServerPassword()
-
-	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "dir", ckDir, "socket", mountedSocketPath)
-	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
-
-	if err := clearCheckpointNetNSWithFallback(ckDir, req.AgentImage); err != nil {
-		slog.Warn("clear checkpoint netns before restore", "taskID", req.TaskID, "dir", ckDir, "err", err)
-	}
-	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName, ""); err != nil {
-		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err)
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v", err), nil)
-		return
+	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
+	if bindAddr == "" {
+		bindAddr = "127.0.0.1"
 	}
 
-	hostPort, err := dockerMappedHostPort(containerID, containerPort)
+	ln, err := net.Listen("tcp", bindAddr+":0")
 	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("inspect restored container port: %v", err), nil)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("allocate port: %v", err), nil)
+		return
+	}
+	hostPort := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	const containerPort = 9999
+	containerName := "chetter-task-" + req.TaskID
+	exec.Command("docker", "rm", "-f", containerName).Run()
+	defer exec.Command("docker", "rm", "-f", containerName).Run()
+
+	secret := h.ServerPassword()
+	gvisor := r.cfg.Execution.UseGVisor
+	netName := ""
+	dockerArgs := []string{
+		"run", "-d",
+		"--entrypoint", "/usr/local/bin/opencode",
+		"--name", containerName,
+	}
+	if gvisor {
+		netName = runcNetwork()
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--network", netName)
+		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
+	dockerArgs = append(dockerArgs,
+		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
+		"-v", socketPath+":/workspace/.chetter.sock",
+		"-w", "/workspace",
+		"-e", "TASK_ID="+req.TaskID,
+		"-e", "WORKSPACE=/workspace",
+		"-e", "MCP_SOCKET_PATH=/workspace/.chetter.sock",
+		"-e", "XDG_CONFIG_HOME=/workspace/.config",
+		"-e", "XDG_DATA_HOME=/workspace/.local/share",
+		"-e", "XDG_STATE_HOME=/workspace/.local/state",
+		"-e", "XDG_CACHE_HOME=/workspace/.cache",
+		"-e", "CHETTER_AGENT_NAME="+req.Agent,
+		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
+		"-e", "CHETTER_TASK_ID="+req.TaskID,
+		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
+		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
+	)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
+	} else {
+		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+	}
+	if gvisor {
+		runnerIP := hostIP(netName)
+		dockerArgs = append(dockerArgs,
+			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
+			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
+			"-e", "http_proxy=http://"+runnerIP+":18080",
+			"-e", "https_proxy=http://"+runnerIP+":18080",
+			"-e", "CHETTER_PROXY="+runnerIP+":18080",
+			"-e", "NO_PROXY=localhost,127.0.0.1,.local,chetter-mcp",
+			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
+		)
+	}
+	for k, v := range h.Env("/workspace", secret) {
+		key := k
+		switch key {
+		case "OPENCODE_CONFIG":
+			key = "OPENCODE_CONFIG"
+			v = "/workspace/.opencode.json"
+		case "OPENCODE_SERVER_PASSWORD":
+			v = secret
+		}
+		dockerArgs = append(dockerArgs, "-e", key+"="+v)
+	}
+	for k, v := range req.Env {
+		if isRunnerOwnedEnv(k) {
+			continue
+		}
+		dockerArgs = append(dockerArgs, "-e", k+"="+v)
+	}
+	for _, key := range runnerOwnedEnvKeys() {
+		if val := os.Getenv(key); val != "" {
+			dockerArgs = append(dockerArgs, "-e", key+"="+val)
+		}
+	}
+
+	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, h.ServeArgsResume(containerPort)...)
+	if gvisor {
+		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
+	}
+
+	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
+	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
+
+	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
+	if err != nil {
+		slog.Error("docker run failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
 		return
 	}
 
-	baseURL := harnessBaseURL(bindAddr, hostPort, r.cfg.Execution.UseGVisor, "")
-	if err := h.WaitForReady(ctx, baseURL, secret, 15*time.Second); err != nil {
-		logs, _ := exec.Command("docker", "logs", containerID).CombinedOutput()
-		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerID).CombinedOutput()
-		selfCheckOut, _ := exec.Command("docker", "exec", containerID, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
-		slog.Error("harness serve not ready on resume", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("container harness serve not ready: %v", err), nil)
+	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
+	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
+		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)), nil)
 		return
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)
-
-	sid, err := h.CreateSession(ctx, baseURL, secret)
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("create session: %v", err), nil)
-		return
-	}
-	slog.Info("session created on resume", "taskID", req.TaskID, "sessionID", sid)
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
@@ -757,31 +804,21 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
-		if export, exportErr := h.ReadSessionExport(workspaceDir, sid); exportErr != nil {
-			slog.Warn("session export failed", "taskID", req.TaskID, "err", exportErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", exportErr))
-		} else {
-			sessionExport = export
-		}
+		exec.Command("docker", "stop", containerName).Run()
+		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+	}
+	workspacePath := ""
+	if req.CheckpointAfterSuccess {
+		workspacePath = session.WorkspaceDir
 	}
 	if err != nil {
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", "")
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
-	checkpointPath := ""
-	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
-		ckDir, checkpointContainerID, cpErr := createDockerCheckpoint(containerID, req.TaskID, req.AgentImage)
-		if cpErr != nil {
-			slog.Error("docker checkpoint failed on resume", "taskID", req.TaskID, "err", cpErr)
-		} else {
-			checkpointPath = ckDir
-			session.PreserveWorkspace = true
-			slog.Info("checkpoint created on resume", "taskID", req.TaskID, "path", checkpointPath, "containerID", checkpointContainerID)
-		}
-	}
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, checkpointPath, workspaceDir)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker resume)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -809,198 +846,7 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 	r.publishTaskResponse(resp)
 }
 
-func dockerCheckpointParts(checkpointPath string) (containerID, checkpointName string, ok bool) {
-	checkpointPath = filepath.Clean(checkpointPath)
-	parts := strings.Split(checkpointPath, string(os.PathSeparator))
-	for i := 0; i+3 < len(parts); i++ {
-		if parts[i] == "containers" && parts[i+2] == "checkpoints" && parts[i+1] != "" && parts[i+3] != "" {
-			return parts[i+1], parts[i+3], true
-		}
-	}
-	return "", "", false
-}
 
-func dockerCheckpointPath(containerName, checkpointName string) string {
-	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
-	containerID := strings.TrimSpace(string(out))
-	if err != nil || containerID == "" {
-		containerID = containerName
-	}
-	return fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerID, checkpointName)
-}
-
-func createDockerCheckpoint(containerRef, taskID, helperImage string) (checkpointPath, containerID string, err error) {
-	checkpointName := "chetter-checkpoint-" + taskID
-	cpOut, cpErr := exec.Command("docker", "checkpoint", "create", containerRef, checkpointName).CombinedOutput()
-	if cpErr != nil {
-		return "", "", fmt.Errorf("docker checkpoint create: %w: %s", cpErr, strings.TrimSpace(string(cpOut)))
-	}
-	checkpointPath = dockerCheckpointPath(containerRef, checkpointName)
-	if err := clearCheckpointNetNSWithFallback(checkpointPath, helperImage); err != nil {
-		slog.Warn("clear checkpoint netns", "dir", checkpointPath, "err", err)
-	}
-	containerID = containerIDFromName(containerRef)
-	if containerID == "" {
-		containerID = containerRef
-	}
-	return checkpointPath, containerID, nil
-}
-
-func containerIDFromName(containerName string) string {
-	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
-	if err != nil {
-		return containerName
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func dockerMountSource(containerID, destination string) (string, error) {
-	format := fmt.Sprintf(`{{range .Mounts}}{{if eq .Destination %q}}{{.Source}}{{end}}{{end}}`, destination)
-	out, err := exec.Command("docker", "inspect", "-f", format, containerID).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("docker inspect: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func dockerMappedHostPort(containerID string, containerPort int) (int, error) {
-	out, err := exec.Command("docker", "port", containerID, fmt.Sprintf("%d/tcp", containerPort)).CombinedOutput()
-	if err != nil {
-		return 0, fmt.Errorf("docker port: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	port, ok := parseDockerPortOutput(string(out))
-	if !ok {
-		return 0, fmt.Errorf("could not parse docker port output %q", strings.TrimSpace(string(out)))
-	}
-	return port, nil
-}
-
-func parseDockerPortOutput(output string) (int, bool) {
-	fields := strings.Fields(strings.TrimSpace(output))
-	if len(fields) == 0 {
-		return 0, false
-	}
-	last := fields[len(fields)-1]
-	idx := strings.LastIndex(last, ":")
-	if idx < 0 || idx == len(last)-1 {
-		return 0, false
-	}
-	port, err := strconv.Atoi(last[idx+1:])
-	if err != nil || port <= 0 {
-		return 0, false
-	}
-	return port, true
-}
-
-func dockerStartWithCheckpoint(ctx context.Context, containerID, checkpointName, ckDir string) error {
-	// Try Docker HTTP API v1.43 first (works around containerd bug in CLI).
-	if err := dockerAPICheckpointRestore(ctx, containerID, checkpointName, ckDir); err == nil {
-		return nil
-	} else if ctx.Err() != nil {
-		return err
-	} else {
-		slog.Warn("HTTP API checkpoint restore failed, trying CLI",
-			"containerID", containerID, "checkpoint", checkpointName, "err", err)
-	}
-	// Fall back to CLI.
-	cliArgs := []string{"start", "--checkpoint", checkpointName}
-	if ckDir != "" {
-		cliArgs = append(cliArgs, "--checkpoint-dir", ckDir)
-	}
-	cliArgs = append(cliArgs, containerID)
-	out, err := exec.CommandContext(ctx, "docker", cliArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("docker CLI: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// clearCheckpointNetNS strips the stale network namespace path from the
-// checkpoint config so Docker creates a fresh namespace on restore.
-func clearCheckpointNetNS(ckDir string) error {
-	cfgPath := filepath.Join(ckDir, "config.json")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		return fmt.Errorf("read config: %w", err)
-	}
-	var cfg any
-	if err := json.Unmarshal(data, &cfg); err == nil {
-		clearNetworkNamespacePaths(cfg)
-		updated, err := json.Marshal(cfg)
-		if err != nil {
-			return fmt.Errorf("marshal config: %w", err)
-		}
-		return os.WriteFile(cfgPath, updated, 0644)
-	}
-	data = regexp.MustCompile(`"net_ns_path"\s*:\s*"[^"]*"`).ReplaceAll(data, []byte(`"net_ns_path":""`))
-	data = regexp.MustCompile(`"path"\s*:\s*"/var/run/docker/netns/[^"]*"`).ReplaceAll(data, []byte(`"path":""`))
-	return os.WriteFile(cfgPath, data, 0644)
-}
-
-func clearNetworkNamespacePaths(v any) {
-	switch x := v.(type) {
-	case map[string]any:
-		if path, ok := x["net_ns_path"].(string); ok && path != "" {
-			x["net_ns_path"] = ""
-		}
-		if typ, _ := x["type"].(string); typ == "network" {
-			if path, _ := x["path"].(string); strings.HasPrefix(path, "/var/run/docker/netns/") {
-				delete(x, "path")
-			}
-		}
-		for _, child := range x {
-			clearNetworkNamespacePaths(child)
-		}
-	case []any:
-		for _, child := range x {
-			clearNetworkNamespacePaths(child)
-		}
-	}
-}
-
-func clearCheckpointNetNSWithFallback(ckDir, helperImage string) error {
-	if err := clearCheckpointNetNS(ckDir); err == nil {
-		return nil
-	} else if !strings.HasPrefix(ckDir, "/var/lib/docker/") || helperImage == "" {
-		return err
-	}
-	cfgPath := filepath.Join("/hostdocker", strings.TrimPrefix(ckDir, "/var/lib/docker/"), "config.json")
-	script := `cfg="$1"; sed -i -E 's/"net_ns_path"[[:space:]]*:[[:space:]]*"[^"]*"/"net_ns_path":""/g; s/"path"[[:space:]]*:[[:space:]]*"\/var\/run\/docker\/netns\/[^"]*"/"path":""/g' "$cfg"`
-	out, err := exec.Command("docker", "run", "--rm", "-v", "/var/lib/docker:/hostdocker", helperImage, "sh", "-lc", script, "sh", cfgPath).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("helper clear checkpoint netns: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName, ckDir string) error {
-	client := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", "/var/run/docker.sock")
-			},
-		},
-	}
-	u := fmt.Sprintf("http://localhost/v1.43/containers/%s/start?checkpoint=%s&checkpointDir=%s", url.QueryEscape(containerID), url.QueryEscape(checkpointName), url.QueryEscape(ckDir))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("docker API: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 204 {
-		errMsg := strings.TrimSpace(string(body))
-		if errMsg != "" {
-			return fmt.Errorf("docker API: HTTP %d: %s", resp.StatusCode, errMsg)
-		}
-		return fmt.Errorf("docker API: HTTP %d", resp.StatusCode)
-	}
-	return nil
-}
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
 	if export, err := h.ReadSessionExport(wsDir, sid); err == nil {

@@ -220,8 +220,8 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get agent session: %v", err)
 	}
-	if session.ResumeMode != "gvisor_checkpoint" {
-		t.Fatalf("resume_mode = %s, want gvisor_checkpoint", session.ResumeMode)
+	if session.ResumeMode != "harness_session" {
+		t.Fatalf("resume_mode = %s, want harness_session", session.ResumeMode)
 	}
 	if session.PauseReason.String != "waiting_for_pr_feedback" {
 		t.Fatalf("pause_reason = %s, want waiting_for_pr_feedback", session.PauseReason.String)
@@ -235,12 +235,12 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:         rec.ID,
-			Status:         "done",
-			Summary:        "created PR",
-			EndedAt:        endedAt,
-			CheckpointPath: "/var/lib/docker/containers/chetter-task-" + rec.ID + "/checkpoints/cp1",
-			WorkspacePath:  "/var/lib/runner/" + rec.ID + "/workspace",
+			TaskId:            rec.ID,
+			Status:            "done",
+			Summary:           "created PR",
+			EndedAt:           endedAt,
+			OpencodeSessionId: "oc_session_123",
+			WorkspacePath:     "/var/lib/runner/" + rec.ID + "/workspace",
 		}},
 	})); err != nil {
 		t.Fatalf("report terminal event: %v", err)
@@ -267,25 +267,8 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	if session.WorkspacePath.String != "/var/lib/runner/"+rec.ID+"/workspace" {
 		t.Fatalf("workspace_path = %s", session.WorkspacePath.String)
 	}
-	if session.CheckpointID.String == "" {
-		t.Fatal("expected checkpoint_id to be set")
-	}
-
-	chk, err := q.GetLatestAgentSessionCheckpoint(ctx, session.ID)
-	if err != nil {
-		t.Fatalf("get checkpoint: %v", err)
-	}
-	if chk.Status != "ready" {
-		t.Fatalf("checkpoint status = %s, want ready", chk.Status)
-	}
-	if chk.RunnerID != "runner_1" {
-		t.Fatalf("checkpoint runner_id = %s, want runner_1", chk.RunnerID)
-	}
-	if chk.CheckpointPath != "/var/lib/docker/containers/chetter-task-"+rec.ID+"/checkpoints/cp1" {
-		t.Fatalf("checkpoint_path = %s", chk.CheckpointPath)
-	}
-	if chk.WorkspacePath != "/var/lib/runner/"+rec.ID+"/workspace" {
-		t.Fatalf("checkpoint workspace_path = %s", chk.WorkspacePath)
+	if session.HarnessSessionID.String != "oc_session_123" {
+		t.Fatalf("harness_session_id = %s, want oc_session_123", session.HarnessSessionID.String)
 	}
 }
 

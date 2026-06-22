@@ -43,6 +43,7 @@ func (p *Pi) Env(wsDir string, secret string) map[string]string {
 }
 
 func (p *Pi) ServeArgs(port int) []string { return nil }
+func (p *Pi) ServeArgsResume(port int) []string { return nil }
 
 func (p *Pi) ServerPassword() string { return "" }
 

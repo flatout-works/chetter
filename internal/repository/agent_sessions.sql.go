@@ -178,7 +178,7 @@ WHERE a.repo = ?
   AND a.number = ?
   AND a.artifact_type = ?
   AND s.status = 'paused_waiting_review'
-  AND s.resume_mode = 'gvisor_checkpoint'
+  AND s.resume_mode IN ('gvisor_checkpoint', 'harness_session')
 ORDER BY a.discovered_at DESC
 LIMIT 1
 `
@@ -626,6 +626,7 @@ SET status = ?,
     checkpoint_id = COALESCE(NULLIF(?, ''), checkpoint_id),
     workspace_path = COALESCE(NULLIF(?, ''), workspace_path),
     container_name = COALESCE(NULLIF(?, ''), container_name),
+    harness_session_id = COALESCE(NULLIF(?, ''), harness_session_id),
     paused_at = ?,
     updated_at = ?
 WHERE id = (
@@ -638,14 +639,15 @@ AND status = 'running'
 `
 
 type PauseAgentSessionByTaskIDParams struct {
-	Status         string       `json:"status"`
-	PinnedRunnerID interface{}  `json:"pinned_runner_id"`
-	CheckpointID   interface{}  `json:"checkpoint_id"`
-	WorkspacePath  interface{}  `json:"workspace_path"`
-	ContainerName  interface{}  `json:"container_name"`
-	PausedAt       sql.NullTime `json:"paused_at"`
-	UpdatedAt      time.Time    `json:"updated_at"`
-	TaskID         string       `json:"task_id"`
+	Status           string       `json:"status"`
+	PinnedRunnerID   interface{}  `json:"pinned_runner_id"`
+	CheckpointID     interface{}  `json:"checkpoint_id"`
+	WorkspacePath    interface{}  `json:"workspace_path"`
+	ContainerName    interface{}  `json:"container_name"`
+	HarnessSessionID interface{}  `json:"harness_session_id"`
+	PausedAt         sql.NullTime `json:"paused_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
+	TaskID           string       `json:"task_id"`
 }
 
 func (q *Queries) PauseAgentSessionByTaskID(ctx context.Context, arg PauseAgentSessionByTaskIDParams) (int64, error) {
@@ -655,6 +657,7 @@ func (q *Queries) PauseAgentSessionByTaskID(ctx context.Context, arg PauseAgentS
 		arg.CheckpointID,
 		arg.WorkspacePath,
 		arg.ContainerName,
+		arg.HarnessSessionID,
 		arg.PausedAt,
 		arg.UpdatedAt,
 		arg.TaskID,

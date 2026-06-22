@@ -302,7 +302,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	var expiresAt sql.NullTime
 	checkpointAfterSuccess := false
 	if in.SessionMode == "resumable" {
-		resumeMode = "gvisor_checkpoint"
+		resumeMode = "harness_session"
 		checkpointAfterSuccess = true
 		if in.PauseReason != "" {
 			pauseReason = in.PauseReason
@@ -396,22 +396,30 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	if session.Status != "paused_waiting_review" && session.Status != "paused" {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not paused (status: %s)", session.Status)
 	}
-	if session.ResumeMode != "gvisor_checkpoint" {
+	if session.ResumeMode != "gvisor_checkpoint" && session.ResumeMode != "harness_session" {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not resumable (resume_mode: %s)", session.ResumeMode)
 	}
 	if !session.PinnedRunnerID.Valid || session.PinnedRunnerID.String == "" {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no pinned runner")
 	}
-	if !session.CheckpointID.Valid || session.CheckpointID.String == "" {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no checkpoint")
+	if !session.WorkspacePath.Valid || session.WorkspacePath.String == "" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no workspace path")
 	}
-
-	chk, err := s.repo.GetLatestAgentSessionCheckpoint(ctx, sessionID)
-	if err != nil {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("get checkpoint: %w", err)
-	}
-	if chk.Status != "ready" {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("checkpoint not ready (status: %s)", chk.Status)
+	if session.ResumeMode == "gvisor_checkpoint" {
+		if !session.CheckpointID.Valid || session.CheckpointID.String == "" {
+			return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no checkpoint")
+		}
+		chk, err := s.repo.GetLatestAgentSessionCheckpoint(ctx, sessionID)
+		if err != nil {
+			return ResumeAgentSessionOutput{}, fmt.Errorf("get checkpoint: %w", err)
+		}
+		if chk.Status != "ready" {
+			return ResumeAgentSessionOutput{}, fmt.Errorf("checkpoint not ready (status: %s)", chk.Status)
+		}
+	} else {
+		if !session.HarnessSessionID.Valid || session.HarnessSessionID.String == "" {
+			return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no harness session ID")
+		}
 	}
 
 	runnerAlive, err := s.repo.IsRunnerAlive(ctx, repository.IsRunnerAliveParams{

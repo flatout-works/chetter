@@ -79,12 +79,10 @@ COPY --from=runner-builder /out/runner /usr/local/bin/runner
 COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
 
-# Skills and agents (most frequently changing -- placed last)
-COPY tools/skills/ /opt/opencode/.agents/skills/
-COPY .opencode/agent/ /opt/opencode/.config/opencode/agent/
+# Skills and agents are now injected at runtime by the runner
+# via resolveTaskDefinitions. See internal/service/runner_rpc.go.
 
-RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
-    && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent
+RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint
 
 ENV RUNNER_LOCAL=true
 ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces

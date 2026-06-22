@@ -39,6 +39,10 @@ func (oc *OpenCode) ServeArgs(port int) []string {
 	return opencodeServeArgs(port)
 }
 
+func (oc *OpenCode) ServeArgsResume(port int) []string {
+	return opencodeServeArgsResume(port)
+}
+
 func (oc *OpenCode) ServerPassword() string {
 	return generatePassword()
 }

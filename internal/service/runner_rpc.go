@@ -1,6 +1,9 @@
 package service
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -122,15 +125,31 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		if err == nil {
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
+			resumeHarnessSessionID := ""
 			if task.RequiredRunnerID.Valid {
-				chk, chkErr := s.db.GetLatestAgentSessionCheckpointByTaskID(ctx, task.ID)
-				if chkErr == nil && chk.Status == "ready" {
-					resumeCheckpointPath = chk.CheckpointPath
-					resumeWorkspacePath = chk.WorkspacePath
+				sess, sessErr := s.db.GetAgentSessionByTaskID(ctx, task.ID)
+				if sessErr == nil {
+					if sess.WorkspacePath.Valid {
+						resumeWorkspacePath = sess.WorkspacePath.String
+					}
+					if sess.HarnessSessionID.Valid {
+						resumeHarnessSessionID = sess.HarnessSessionID.String
+					}
+					if sess.ResumeMode == "gvisor_checkpoint" && sess.CheckpointID.Valid {
+						chk, chkErr := s.db.GetLatestAgentSessionCheckpoint(ctx, sess.ID)
+						if chkErr == nil && chk.Status == "ready" {
+							resumeCheckpointPath = chk.CheckpointPath
+							if resumeWorkspacePath == "" {
+								resumeWorkspacePath = chk.WorkspacePath
+							}
+						}
+					}
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			s.resolveTaskModel(ctx, protoTask)
+			s.resolveTaskDefinitions(ctx, protoTask)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -179,6 +198,104 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderName = resolved.ProviderName
 	task.ProviderBaseUrl = resolved.ProviderBaseURL
 	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
+}
+
+func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) {
+	if task == nil {
+		return
+	}
+	if task.Agent != "" {
+		var content string
+		err := s.rawDB.QueryRowContext(ctx,
+			`SELECT content FROM definitions WHERE definition_type='agent' AND name=? AND active=true ORDER BY updated_at DESC LIMIT 1`,
+			task.Agent,
+		).Scan(&content)
+		if err == nil {
+			task.AgentDefinition = content
+		}
+	}
+	if len(task.Skills) > 0 {
+		skillDefs := s.resolveSkillDefinitions(ctx, task.Skills)
+		if len(skillDefs) > 0 {
+			task.SkillDefinitions = skillDefs
+		}
+	}
+}
+
+func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
+	placeholders := strings.Repeat(",?", len(skillNames))[1:]
+	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + placeholders + `) AND active=true`
+	args := make([]any, len(skillNames))
+	for i, n := range skillNames {
+		args[i] = n
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		slog.Warn("resolve skill definitions query", "err", err)
+		return nil
+	}
+	defer rows.Close()
+
+	grouped := make(map[string][]skillFileEntry, len(skillNames))
+	for rows.Next() {
+		var name, path, content string
+		if err := rows.Scan(&name, &path, &content); err != nil {
+			slog.Warn("scan skill definition row", "err", err)
+			continue
+		}
+		grouped[name] = append(grouped[name], skillFileEntry{path: path, content: content})
+	}
+	if len(grouped) == 0 {
+		return nil
+	}
+
+	out := make(map[string][]byte, len(grouped))
+	for name, files := range grouped {
+		tarBytes, err := tarSkill(name, files)
+		if err != nil {
+			slog.Warn("tar skill", "skill", name, "err", err)
+			continue
+		}
+		out[name] = tarBytes
+	}
+	return out
+}
+
+type skillFileEntry struct {
+	path    string
+	content string
+}
+
+func tarSkill(name string, files []skillFileEntry) ([]byte, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	prefix := "skills/" + name + "/"
+	for _, f := range files {
+		entryName := strings.TrimPrefix(f.path, prefix)
+		if entryName == f.path {
+			entryName = f.path
+		}
+		hdr := &tar.Header{
+			Name:     entryName,
+			Size:     int64(len(f.content)),
+			Mode:     0644,
+			Format:   tar.FormatUSTAR,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return nil, fmt.Errorf("write tar header for %s: %w", entryName, err)
+		}
+		if _, err := tw.Write([]byte(f.content)); err != nil {
+			return nil, fmt.Errorf("write tar content for %s: %w", entryName, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return nil, fmt.Errorf("close tar writer: %w", err)
+	}
+	if err := gw.Close(); err != nil {
+		return nil, fmt.Errorf("close gzip writer: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func resolveModelForTask(catalog *modelcatalog.Catalog, task *runnerv1.Task) resolvedModelConfig {
@@ -587,38 +704,57 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			}
 
 			sessionStatus := terminalSessionStatus
-			if terminalSessionStatus == "completed" && event.CheckpointPath != "" && event.WorkspacePath != "" {
+			if terminalSessionStatus == "completed" && event.WorkspacePath != "" {
 				var session repository.ChetterAgentSession
-				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil && session.ResumeMode == "gvisor_checkpoint" {
-					chkID, _ := randomID("chk")
-					containerName := "chetter-task-" + event.TaskId
-					if err := q.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
-						ID:             chkID,
-						AgentSessionID: session.ID,
-						RunnerID:       runnerID,
-						CheckpointPath: event.CheckpointPath,
-						WorkspacePath:  event.WorkspacePath,
-						ContainerName:  nullString(containerName),
-						Status:         "ready",
-						CreatedAt:      now,
-						UpdatedAt:      now,
-					}); err != nil {
-						return err
+				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil {
+					if session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "" {
+						chkID, _ := randomID("chk")
+						containerName := "chetter-task-" + event.TaskId
+						if err := q.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
+							ID:             chkID,
+							AgentSessionID: session.ID,
+							RunnerID:       runnerID,
+							CheckpointPath: event.CheckpointPath,
+							WorkspacePath:  event.WorkspacePath,
+							ContainerName:  nullString(containerName),
+							Status:         "ready",
+							CreatedAt:      now,
+							UpdatedAt:      now,
+						}); err != nil {
+							return err
+						}
+						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
+							Status:           "paused_waiting_review",
+							PinnedRunnerID:   nullString(runnerID),
+							CheckpointID:     nullString(chkID),
+							WorkspacePath:    nullString(event.WorkspacePath),
+							ContainerName:    nullString(containerName),
+							HarnessSessionID: nullString(event.OpencodeSessionId),
+							PausedAt:         sql.NullTime{Time: now, Valid: true},
+							UpdatedAt:        now,
+							TaskID:           event.TaskId,
+						}); err != nil {
+							return err
+						}
+						slog.Info("agent session paused with checkpoint", "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
+						sessionStatus = ""
+					} else if session.ResumeMode == "harness_session" || session.ResumeMode == "gvisor_checkpoint" {
+						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
+							Status:           "paused_waiting_review",
+							PinnedRunnerID:   nullString(runnerID),
+							CheckpointID:     sql.NullString{},
+							WorkspacePath:    nullString(event.WorkspacePath),
+							ContainerName:    sql.NullString{},
+							HarnessSessionID: nullString(event.OpencodeSessionId),
+							PausedAt:         sql.NullTime{Time: now, Valid: true},
+							UpdatedAt:        now,
+							TaskID:           event.TaskId,
+						}); err != nil {
+							return err
+						}
+						slog.Info("agent session paused for resume", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID)
+						sessionStatus = ""
 					}
-					if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
-						Status:         "paused_waiting_review",
-						PinnedRunnerID: nullString(runnerID),
-						CheckpointID:   nullString(chkID),
-						WorkspacePath:  nullString(event.WorkspacePath),
-						ContainerName:  nullString(containerName),
-						PausedAt:       sql.NullTime{Time: now, Valid: true},
-						UpdatedAt:      now,
-						TaskID:         event.TaskId,
-					}); err != nil {
-						return err
-					}
-					slog.Info("agent session paused with checkpoint", "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
-					sessionStatus = ""
 				}
 			}
 

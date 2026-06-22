@@ -44,6 +44,7 @@ SET status = ?,
     checkpoint_id = COALESCE(NULLIF(sqlc.arg(checkpoint_id), ''), checkpoint_id),
     workspace_path = COALESCE(NULLIF(sqlc.arg(workspace_path), ''), workspace_path),
     container_name = COALESCE(NULLIF(sqlc.arg(container_name), ''), container_name),
+    harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
     paused_at = ?,
     updated_at = ?
 WHERE id = (
@@ -73,7 +74,7 @@ WHERE a.repo = sqlc.arg(repo)
   AND a.number = sqlc.arg(number)
   AND a.artifact_type = sqlc.arg(artifact_type)
   AND s.status = 'paused_waiting_review'
-  AND s.resume_mode = 'gvisor_checkpoint'
+  AND s.resume_mode IN ('gvisor_checkpoint', 'harness_session')
 ORDER BY a.discovered_at DESC
 LIMIT 1;
 

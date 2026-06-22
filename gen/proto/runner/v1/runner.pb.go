@@ -502,10 +502,13 @@ type Task struct {
 	CheckpointAfterSuccess bool                   `protobuf:"varint,16,opt,name=checkpoint_after_success,json=checkpointAfterSuccess,proto3" json:"checkpoint_after_success,omitempty"`
 	ResumeCheckpointPath   string                 `protobuf:"bytes,17,opt,name=resume_checkpoint_path,json=resumeCheckpointPath,proto3" json:"resume_checkpoint_path,omitempty"`
 	ResumeWorkspacePath    string                 `protobuf:"bytes,18,opt,name=resume_workspace_path,json=resumeWorkspacePath,proto3" json:"resume_workspace_path,omitempty"`
-	Harness                string                 `protobuf:"bytes,19,opt,name=harness,proto3" json:"harness,omitempty"`
+	ResumeHarnessSessionId string                 `protobuf:"bytes,19,opt,name=resume_harness_session_id,json=resumeHarnessSessionId,proto3" json:"resume_harness_session_id,omitempty"`
+	Harness                string                 `protobuf:"bytes,25,opt,name=harness,proto3" json:"harness,omitempty"`
 	ProviderName           string                 `protobuf:"bytes,20,opt,name=provider_name,json=providerName,proto3" json:"provider_name,omitempty"`
 	ProviderBaseUrl        string                 `protobuf:"bytes,21,opt,name=provider_base_url,json=providerBaseUrl,proto3" json:"provider_base_url,omitempty"`
 	ProviderApiKeyEnv      string                 `protobuf:"bytes,22,opt,name=provider_api_key_env,json=providerApiKeyEnv,proto3" json:"provider_api_key_env,omitempty"`
+	AgentDefinition        string                 `protobuf:"bytes,23,opt,name=agent_definition,json=agentDefinition,proto3" json:"agent_definition,omitempty"`
+	SkillDefinitions       map[string][]byte      `protobuf:"bytes,24,rep,name=skill_definitions,json=skillDefinitions,proto3" json:"skill_definitions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -666,6 +669,13 @@ func (x *Task) GetResumeWorkspacePath() string {
 	return ""
 }
 
+func (x *Task) GetResumeHarnessSessionId() string {
+	if x != nil {
+		return x.ResumeHarnessSessionId
+	}
+	return ""
+}
+
 func (x *Task) GetHarness() string {
 	if x != nil {
 		return x.Harness
@@ -692,6 +702,20 @@ func (x *Task) GetProviderApiKeyEnv() string {
 		return x.ProviderApiKeyEnv
 	}
 	return ""
+}
+
+func (x *Task) GetAgentDefinition() string {
+	if x != nil {
+		return x.AgentDefinition
+	}
+	return ""
+}
+
+func (x *Task) GetSkillDefinitions() map[string][]byte {
+	if x != nil {
+		return x.SkillDefinitions
+	}
+	return nil
 }
 
 type ClaimTaskResponse struct {
@@ -1038,7 +1062,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb7\x06\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb6\b\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -1061,14 +1085,20 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\aattempt\x18\x0f \x01(\x05R\aattempt\x128\n" +
 	"\x18checkpoint_after_success\x18\x10 \x01(\bR\x16checkpointAfterSuccess\x124\n" +
 	"\x16resume_checkpoint_path\x18\x11 \x01(\tR\x14resumeCheckpointPath\x122\n" +
-	"\x15resume_workspace_path\x18\x12 \x01(\tR\x13resumeWorkspacePath\x12\x18\n" +
-	"\aharness\x18\x13 \x01(\tR\aharness\x12#\n" +
+	"\x15resume_workspace_path\x18\x12 \x01(\tR\x13resumeWorkspacePath\x129\n" +
+	"\x19resume_harness_session_id\x18\x13 \x01(\tR\x16resumeHarnessSessionId\x12\x18\n" +
+	"\aharness\x18\x19 \x01(\tR\aharness\x12#\n" +
 	"\rprovider_name\x18\x14 \x01(\tR\fproviderName\x12*\n" +
 	"\x11provider_base_url\x18\x15 \x01(\tR\x0fproviderBaseUrl\x12/\n" +
-	"\x14provider_api_key_env\x18\x16 \x01(\tR\x11providerApiKeyEnv\x1a6\n" +
+	"\x14provider_api_key_env\x18\x16 \x01(\tR\x11providerApiKeyEnv\x12)\n" +
+	"\x10agent_definition\x18\x17 \x01(\tR\x0fagentDefinition\x12R\n" +
+	"\x11skill_definitions\x18\x18 \x03(\v2%.runner.v1.Task.SkillDefinitionsEntryR\x10skillDefinitions\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
+	"\x15SkillDefinitionsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
 	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xd2\x04\n" +
 	"\tTaskEvent\x12 \n" +
@@ -1117,7 +1147,7 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*RunnerInfo)(nil),               // 0: runner.v1.RunnerInfo
 	(*RegisterRunnerRequest)(nil),    // 1: runner.v1.RegisterRunnerRequest
@@ -1132,27 +1162,29 @@ var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*ReportTaskEventsRequest)(nil),  // 10: runner.v1.ReportTaskEventsRequest
 	(*ReportTaskEventsResponse)(nil), // 11: runner.v1.ReportTaskEventsResponse
 	nil,                              // 12: runner.v1.Task.EnvEntry
+	nil,                              // 13: runner.v1.Task.SkillDefinitionsEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 0: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
 	0,  // 1: runner.v1.HeartbeatRequest.runner:type_name -> runner.v1.RunnerInfo
 	4,  // 2: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
 	12, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
-	7,  // 4: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
-	9,  // 5: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
-	1,  // 6: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
-	3,  // 7: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
-	6,  // 8: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
-	10, // 9: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
-	2,  // 10: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	5,  // 11: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	8,  // 12: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	11, // 13: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	13, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
+	7,  // 5: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
+	9,  // 6: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
+	1,  // 7: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
+	3,  // 8: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
+	6,  // 9: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
+	10, // 10: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
+	2,  // 11: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	5,  // 12: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	8,  // 13: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	11, // 14: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_proto_runner_v1_runner_proto_init() }
@@ -1166,7 +1198,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

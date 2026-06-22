@@ -71,10 +71,13 @@ message Task {
   bool checkpoint_after_success = 16;
   string resume_checkpoint_path = 17;
   string resume_workspace_path = 18;
-  string harness = 19;
+  string resume_harness_session_id = 19;
+  string harness = 25;
   string provider_name = 20;
   string provider_base_url = 21;
   string provider_api_key_env = 22;
+  string agent_definition = 23;
+  map<string, bytes> skill_definitions = 24;
 }
 
 message ClaimTaskResponse {

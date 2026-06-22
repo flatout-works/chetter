@@ -120,6 +120,8 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		ResumeCheckpointPath:   t.ResumeCheckpointPath,
 		ResumeWorkspacePath:    t.ResumeWorkspacePath,
 		Harness:                t.Harness,
+		AgentDefinition:        t.AgentDefinition,
+		SkillDefinitions:       t.SkillDefinitions,
 	}
 }
 

@@ -29,9 +29,12 @@ type TaskRequest struct {
 	MaxMemoryMB            int               `json:"max_memory_mb"`
 	MaxCPU                 int               `json:"max_cpu"`
 	Env                    map[string]string `json:"env,omitempty"`
-	CheckpointAfterSuccess bool              `json:"checkpoint_after_success,omitempty"`
-	ResumeCheckpointPath   string            `json:"resume_checkpoint_path,omitempty"`
-	ResumeWorkspacePath    string            `json:"resume_workspace_path,omitempty"`
+	CheckpointAfterSuccess  bool              `json:"checkpoint_after_success,omitempty"`
+	ResumeCheckpointPath    string            `json:"resume_checkpoint_path,omitempty"`
+	ResumeWorkspacePath     string            `json:"resume_workspace_path,omitempty"`
+	ResumeHarnessSessionID string            `json:"resume_harness_session_id,omitempty"`
+	AgentDefinition        string            `json:"agent_definition,omitempty"`
+	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
 }
 
 // TaskResponse carries a task status event reported back to the control plane.

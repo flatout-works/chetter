@@ -20,6 +20,7 @@ type Harness interface {
 
 	// Serve mode (local + Docker).
 	ServeArgs(port int) []string
+	ServeArgsResume(port int) []string
 	ServerPassword() string
 	WaitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error
 	CreateSession(ctx context.Context, baseURL, secret string) (string, error)

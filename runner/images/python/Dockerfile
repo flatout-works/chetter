@@ -81,9 +81,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
 COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
-
-COPY tools/skills/ /opt/opencode/.agents/skills/
-COPY .opencode/agent/ /opt/opencode/.config/opencode/agent/
+# Agent and skill definitions are injected at runtime.
 
 RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
     && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent

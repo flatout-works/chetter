@@ -1,8 +1,12 @@
 package opencode
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -199,9 +203,81 @@ func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 	if err := os.WriteFile(globalConfigPath, out, 0644); err != nil {
 		return fmt.Errorf("write opencode global config: %w", err)
 	}
+	writeAgentAndSkillDefinitions(wsDir, req)
 	copyOpenCodeState(wsDir, isLocal)
 	slog.Info("wrote opencode config", "path", wsConfigPath)
 	slog.Info("wrote opencode global config", "path", globalConfigPath)
+	return nil
+}
+
+func writeAgentAndSkillDefinitions(wsDir string, req task.TaskRequest) {
+	if req.AgentDefinition != "" && req.Agent != "" {
+		agentDir := wsDir + "/.config/opencode/agent"
+		if err := os.MkdirAll(agentDir, 0750); err != nil {
+			slog.Warn("create agent dir", "err", err)
+		} else {
+			path := agentDir + "/" + req.Agent + ".md"
+			if err := os.WriteFile(path, []byte(req.AgentDefinition), 0644); err != nil {
+				slog.Warn("write agent definition", "agent", req.Agent, "err", err)
+			} else {
+				slog.Info("injected agent definition", "agent", req.Agent, "path", path)
+			}
+		}
+	}
+	if len(req.SkillDefinitions) > 0 {
+		skillsBase := wsDir + "/.config/opencode/skill"
+		for name, tarBytes := range req.SkillDefinitions {
+			skillDir := skillsBase + "/" + name
+			if err := os.MkdirAll(skillDir, 0750); err != nil {
+				slog.Warn("create skill dir", "skill", name, "err", err)
+				continue
+			}
+			if err := untarSkill(tarBytes, skillDir); err != nil {
+				slog.Warn("extract skill", "skill", name, "err", err)
+			} else {
+				slog.Info("injected skill", "skill", name, "dir", skillDir, "bytes", len(tarBytes))
+			}
+		}
+	}
+}
+
+func untarSkill(data []byte, destDir string) error {
+	gr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("gzip reader: %w", err)
+	}
+	defer gr.Close()
+	tr := tar.NewReader(gr)
+	destPrefix := filepath.Clean(destDir) + string(os.PathSeparator)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("tar next: %w", err)
+		}
+		path := filepath.Join(destDir, filepath.Clean(hdr.Name))
+		if !strings.HasPrefix(path, destPrefix) {
+			return fmt.Errorf("tar entry escapes dest dir: %s", hdr.Name)
+		}
+		if hdr.Size == 0 && hdr.Name == "" || strings.HasSuffix(hdr.Name, "/") {
+			if err := os.MkdirAll(path, 0750); err != nil {
+				return fmt.Errorf("mkdir %s: %w", path, err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+			return fmt.Errorf("mkdir parent %s: %w", path, err)
+		}
+		content, err := io.ReadAll(io.LimitReader(tr, hdr.Size))
+		if err != nil {
+			return fmt.Errorf("read %s: %w", hdr.Name, err)
+		}
+		if err := os.WriteFile(path, content, 0644); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+	}
 	return nil
 }
 
