@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 @plugin "flowbite/plugin";
-@source "../../node_modules/flowbite-svelte/dist";
+@source "../node_modules/flowbite-svelte/dist";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -77,4 +77,9 @@ body {
 .dark .chetter-table td,
 .dark .chetter-table th {
   border-bottom-color: var(--color-slate-800);
+}
+
+main select {
+  min-width: 10rem;
+  padding-right: 2.5rem;
 }

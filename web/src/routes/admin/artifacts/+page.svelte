@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
+  import { Alert, Button, Card, Input, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner } from "flowbite-svelte";
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
@@ -76,24 +76,24 @@
     <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
   </div>
 
-  <div class="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+  <Card class="mb-6" shadow="sm">
     <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-      <input bind:value={taskId} placeholder="Task ID" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-      <input bind:value={repo} placeholder="Repository" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-      <select bind:value={artifactType} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+      <Input bind:value={taskId} placeholder="Task ID" />
+      <Input bind:value={repo} placeholder="Repository" />
+      <Select bind:value={artifactType}>
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
         <option value="pull_request">Pull Request</option>
         <option value="issue_comment">Issue Comment</option>
         <option value="pr_review">PR Review</option>
-      </select>
-      <input type="number" bind:value={limit} min="1" max="500" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
+      </Select>
+      <Input type="number" bind:value={limit} min="1" max="500" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Search</Button>
     </div>
-  </div>
+  </Card>
 
   {#if error}
-    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">{error}</div>
+    <Alert color="red" class="mb-4">{error}</Alert>
   {/if}
 
   {#if loading}
@@ -143,7 +143,7 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Showing {offset + 1}–{offset + artifacts.length} of {artifacts.length < limit ? offset + artifacts.length : `${offset + artifacts.length}+`}</span>
+      <span>Showing {artifacts.length > 0 ? offset + 1 : 0}–{offset + artifacts.length} of {artifacts.length < limit ? offset + artifacts.length : `${offset + artifacts.length}+`}</span>
       <div class="flex gap-2">
         <Button size="xs" color="alternative" onclick={() => { offset = prevOffset; load(); }} disabled={offset === 0}>← Prev</Button>
         <Button size="xs" color="alternative" onclick={() => { offset = nextOffset; load(); }} disabled={artifacts.length < limit}>Next →</Button>

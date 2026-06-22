@@ -7,7 +7,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
+  import { Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner, Button } from "flowbite-svelte";
 
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
@@ -71,26 +71,26 @@
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
     <div class="flex items-center gap-3">
-      <select bind:value={eventTypeFilter} onchange={() => { offset = 0; load(); }} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+      <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="min-w-40">
         <option value="">All types</option>
         <option value="webhook_received">Webhook Received</option>
         <option value="task_submitted">Task Submitted</option>
         <option value="trigger_matched">Trigger Matched</option>
         <option value="artifact_discovered">Artifact Discovered</option>
-      </select>
-      <select bind:value={sourceTypeFilter} onchange={() => { offset = 0; load(); }} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+      </Select>
+      <Select bind:value={sourceTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="min-w-40">
         <option value="">All sources</option>
         <option value="webhook">Webhook</option>
         <option value="trigger">Trigger</option>
         <option value="task">Task</option>
-      </select>
-      <select bind:value={sinceHours} onchange={() => { offset = 0; load(); }} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+      </Select>
+      <Select bind:value={sinceHours} placeholder="" onchange={() => { offset = 0; load(); }} class="min-w-44">
         <option value={1}>Last hour</option>
         <option value={6}>Last 6 hours</option>
         <option value={24}>Last 24 hours</option>
         <option value={72}>Last 3 days</option>
         <option value={168}>Last 7 days</option>
-      </select>
+      </Select>
       <input type="number" bind:value={limit} placeholder="Limit" class="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
     </div>
@@ -153,7 +153,7 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Showing {offset + 1}–{offset + events.length} of {events.length < limit ? offset + events.length : `${offset + events.length}+`}</span>
+      <span>Showing {events.length > 0 ? offset + 1 : 0}–{offset + events.length} of {events.length < limit ? offset + events.length : `${offset + events.length}+`}</span>
       <div class="flex gap-2">
         <Button size="xs" color="alternative" onclick={() => { offset = prevOffset; load(); }} disabled={offset === 0}>← Prev</Button>
         <Button size="xs" color="alternative" onclick={() => { offset = nextOffset; load(); }} disabled={events.length < limit}>Next →</Button>

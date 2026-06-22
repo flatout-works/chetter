@@ -7,7 +7,7 @@
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Button } from "flowbite-svelte";
+  import { Alert, Button, Card, Input, Label, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
   let statusFilter = $state("");
@@ -91,10 +91,9 @@
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tasks</h1>
     <div class="flex items-center gap-3">
-      <select
+      <Select
         bind:value={statusFilter}
         onchange={applyFilter}
-        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
       >
         <option value="">All statuses</option>
         <option value="running">Running</option>
@@ -102,17 +101,16 @@
         <option value="done">Done</option>
         <option value="error">Error</option>
         <option value="cancelled">Cancelled</option>
-      </select>
-      <select
+      </Select>
+      <Select
         bind:value={pageSize}
         onchange={() => { page = 0; }}
-        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
       >
         <option value={10}>10 / page</option>
         <option value={25}>25 / page</option>
         <option value={50}>50 / page</option>
         <option value={100}>100 / page</option>
-      </select>
+      </Select>
       <Button
         color="blue"
         onclick={() => { showSubmitForm = !showSubmitForm; formError = null; }}
@@ -123,27 +121,27 @@
   </div>
 
   {#if showSubmitForm}
-    <form onsubmit={submitTask} class="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 space-y-4">
-      <div>
-        <label for="task-prompt" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prompt</label>
-        <textarea id="task-prompt" bind:value={prompt} rows="4" placeholder="Describe the task for the agent"
-          class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-        ></textarea>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <input bind:value={gitUrl} placeholder="Git URL (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={gitRef} placeholder="Git ref (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={agentImage} placeholder="Agent image override (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={agent} placeholder="Agent (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={modelId} placeholder="Model ID (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-      </div>
+    <Card class="mb-6" shadow="sm">
+      <form onsubmit={submitTask} class="space-y-4">
+        <div>
+          <Label for="task-prompt" class="mb-1">Prompt</Label>
+          <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" />
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input bind:value={gitUrl} placeholder="Git URL (optional)" />
+          <Input bind:value={gitRef} placeholder="Git ref (optional)" />
+          <Input bind:value={agentImage} placeholder="Agent image override (optional)" />
+          <Input bind:value={agent} placeholder="Agent (optional)" />
+          <Input bind:value={modelId} placeholder="Model ID (optional)" />
+        </div>
       {#if formError}
-        <p class="text-sm text-red-600 dark:text-red-400">{formError}</p>
+        <Alert color="red">{formError}</Alert>
       {/if}
       <Button type="submit" color="blue" disabled={submitting}>
         {submitting ? "Submitting…" : "Submit"}
       </Button>
-    </form>
+      </form>
+    </Card>
   {/if}
 
   <TableCard title="Tasks" subtitle="Sorted by creation time, newest first unless you choose another column.">
