@@ -93,9 +93,9 @@ const (
 	// TriggerServiceRunTriggerProcedure is the fully-qualified name of the TriggerService's RunTrigger
 	// RPC.
 	TriggerServiceRunTriggerProcedure = "/api.v1.TriggerService/RunTrigger"
-	// TriggerServiceListScheduleRunsProcedure is the fully-qualified name of the TriggerService's
-	// ListScheduleRuns RPC.
-	TriggerServiceListScheduleRunsProcedure = "/api.v1.TriggerService/ListScheduleRuns"
+	// TriggerServiceListTriggerRunsProcedure is the fully-qualified name of the TriggerService's
+	// ListTriggerRuns RPC.
+	TriggerServiceListTriggerRunsProcedure = "/api.v1.TriggerService/ListTriggerRuns"
 	// FleetServiceGetRunnerHealthProcedure is the fully-qualified name of the FleetService's
 	// GetRunnerHealth RPC.
 	FleetServiceGetRunnerHealthProcedure = "/api.v1.FleetService/GetRunnerHealth"
@@ -618,7 +618,7 @@ type TriggerServiceClient interface {
 	ListTriggers(context.Context, *connect.Request[v1.ListTriggersRequest]) (*connect.Response[v1.ListTriggersResponse], error)
 	DeleteTrigger(context.Context, *connect.Request[v1.DeleteTriggerRequest]) (*connect.Response[v1.DeleteTriggerResponse], error)
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
-	ListScheduleRuns(context.Context, *connect.Request[v1.ListScheduleRunsRequest]) (*connect.Response[v1.ListScheduleRunsResponse], error)
+	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
 }
 
 // NewTriggerServiceClient constructs a client for the api.v1.TriggerService service. By default, it
@@ -662,10 +662,10 @@ func NewTriggerServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(triggerServiceMethods.ByName("RunTrigger")),
 			connect.WithClientOptions(opts...),
 		),
-		listScheduleRuns: connect.NewClient[v1.ListScheduleRunsRequest, v1.ListScheduleRunsResponse](
+		listTriggerRuns: connect.NewClient[v1.ListTriggerRunsRequest, v1.ListTriggerRunsResponse](
 			httpClient,
-			baseURL+TriggerServiceListScheduleRunsProcedure,
-			connect.WithSchema(triggerServiceMethods.ByName("ListScheduleRuns")),
+			baseURL+TriggerServiceListTriggerRunsProcedure,
+			connect.WithSchema(triggerServiceMethods.ByName("ListTriggerRuns")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -673,12 +673,12 @@ func NewTriggerServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // triggerServiceClient implements TriggerServiceClient.
 type triggerServiceClient struct {
-	createTrigger    *connect.Client[v1.CreateTriggerRequest, v1.CreateTriggerResponse]
-	updateTrigger    *connect.Client[v1.UpdateTriggerRequest, v1.UpdateTriggerResponse]
-	listTriggers     *connect.Client[v1.ListTriggersRequest, v1.ListTriggersResponse]
-	deleteTrigger    *connect.Client[v1.DeleteTriggerRequest, v1.DeleteTriggerResponse]
-	runTrigger       *connect.Client[v1.RunTriggerRequest, v1.RunTriggerResponse]
-	listScheduleRuns *connect.Client[v1.ListScheduleRunsRequest, v1.ListScheduleRunsResponse]
+	createTrigger   *connect.Client[v1.CreateTriggerRequest, v1.CreateTriggerResponse]
+	updateTrigger   *connect.Client[v1.UpdateTriggerRequest, v1.UpdateTriggerResponse]
+	listTriggers    *connect.Client[v1.ListTriggersRequest, v1.ListTriggersResponse]
+	deleteTrigger   *connect.Client[v1.DeleteTriggerRequest, v1.DeleteTriggerResponse]
+	runTrigger      *connect.Client[v1.RunTriggerRequest, v1.RunTriggerResponse]
+	listTriggerRuns *connect.Client[v1.ListTriggerRunsRequest, v1.ListTriggerRunsResponse]
 }
 
 // CreateTrigger calls api.v1.TriggerService.CreateTrigger.
@@ -706,9 +706,9 @@ func (c *triggerServiceClient) RunTrigger(ctx context.Context, req *connect.Requ
 	return c.runTrigger.CallUnary(ctx, req)
 }
 
-// ListScheduleRuns calls api.v1.TriggerService.ListScheduleRuns.
-func (c *triggerServiceClient) ListScheduleRuns(ctx context.Context, req *connect.Request[v1.ListScheduleRunsRequest]) (*connect.Response[v1.ListScheduleRunsResponse], error) {
-	return c.listScheduleRuns.CallUnary(ctx, req)
+// ListTriggerRuns calls api.v1.TriggerService.ListTriggerRuns.
+func (c *triggerServiceClient) ListTriggerRuns(ctx context.Context, req *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error) {
+	return c.listTriggerRuns.CallUnary(ctx, req)
 }
 
 // TriggerServiceHandler is an implementation of the api.v1.TriggerService service.
@@ -718,7 +718,7 @@ type TriggerServiceHandler interface {
 	ListTriggers(context.Context, *connect.Request[v1.ListTriggersRequest]) (*connect.Response[v1.ListTriggersResponse], error)
 	DeleteTrigger(context.Context, *connect.Request[v1.DeleteTriggerRequest]) (*connect.Response[v1.DeleteTriggerResponse], error)
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
-	ListScheduleRuns(context.Context, *connect.Request[v1.ListScheduleRunsRequest]) (*connect.Response[v1.ListScheduleRunsResponse], error)
+	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
 }
 
 // NewTriggerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -758,10 +758,10 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 		connect.WithSchema(triggerServiceMethods.ByName("RunTrigger")),
 		connect.WithHandlerOptions(opts...),
 	)
-	triggerServiceListScheduleRunsHandler := connect.NewUnaryHandler(
-		TriggerServiceListScheduleRunsProcedure,
-		svc.ListScheduleRuns,
-		connect.WithSchema(triggerServiceMethods.ByName("ListScheduleRuns")),
+	triggerServiceListTriggerRunsHandler := connect.NewUnaryHandler(
+		TriggerServiceListTriggerRunsProcedure,
+		svc.ListTriggerRuns,
+		connect.WithSchema(triggerServiceMethods.ByName("ListTriggerRuns")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/api.v1.TriggerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -776,8 +776,8 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 			triggerServiceDeleteTriggerHandler.ServeHTTP(w, r)
 		case TriggerServiceRunTriggerProcedure:
 			triggerServiceRunTriggerHandler.ServeHTTP(w, r)
-		case TriggerServiceListScheduleRunsProcedure:
-			triggerServiceListScheduleRunsHandler.ServeHTTP(w, r)
+		case TriggerServiceListTriggerRunsProcedure:
+			triggerServiceListTriggerRunsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -807,8 +807,8 @@ func (UnimplementedTriggerServiceHandler) RunTrigger(context.Context, *connect.R
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.RunTrigger is not implemented"))
 }
 
-func (UnimplementedTriggerServiceHandler) ListScheduleRuns(context.Context, *connect.Request[v1.ListScheduleRunsRequest]) (*connect.Response[v1.ListScheduleRunsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.ListScheduleRuns is not implemented"))
+func (UnimplementedTriggerServiceHandler) ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.ListTriggerRuns is not implemented"))
 }
 
 // FleetServiceClient is a client for the api.v1.FleetService service.

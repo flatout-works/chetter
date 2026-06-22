@@ -117,7 +117,7 @@ func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()
 	next := now.Add(time.Hour)
-	record := triggerToolRecord(store.ScheduleRecord{
+	record := triggerToolRecord(store.TriggerRecord{
 		ID:            "trig_1",
 		TeamID:        "team_123",
 		Name:          "hourly",
@@ -148,7 +148,7 @@ func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
 		t.Fatalf("expected model and harness fields to be preserved: %+v", record)
 	}
 	if len(record.Skills) != 1 || record.NextRunAt == nil || !record.NextRunAt.Equal(next) {
-		t.Fatalf("expected skills and schedule timestamps to be preserved: %+v", record)
+		t.Fatalf("expected skills and trigger timestamps to be preserved: %+v", record)
 	}
 }
 

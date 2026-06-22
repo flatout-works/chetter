@@ -177,9 +177,9 @@ func TestWebAPITriggerRunHistory(t *testing.T) {
 		t.Fatalf("run task prompt = %q", run.Msg.Task.GetPrompt())
 	}
 
-	runs, err := triggers.ListScheduleRuns(context.Background(), connect.NewRequest(&apiv1.ListScheduleRunsRequest{ScheduleName: "hourly-smoke", Limit: 10}))
+	runs, err := triggers.ListTriggerRuns(context.Background(), connect.NewRequest(&apiv1.ListTriggerRunsRequest{TriggerName: "hourly-smoke", Limit: 10}))
 	if err != nil {
-		t.Fatalf("ListScheduleRuns: %v", err)
+		t.Fatalf("ListTriggerRuns: %v", err)
 	}
 	if len(runs.Msg.Runs) != 1 {
 		t.Fatalf("runs = %d, want 1", len(runs.Msg.Runs))

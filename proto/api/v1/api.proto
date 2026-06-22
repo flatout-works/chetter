@@ -92,6 +92,7 @@ message Trigger {
   string updated_at = 20;
   optional string last_run_at = 21;
   optional string next_run_at = 22;
+  optional string source_id = 23;
 }
 
 message TaskEvent {
@@ -111,12 +112,12 @@ message TaskProgressEntry {
   string error = 4;
 }
 
-message ScheduleRun {
+message TriggerRun {
   string id = 1;
-  string schedule_name = 2;
+  string trigger_name = 2;
   string task_id = 3;
   string status = 4;
-  string scheduled_for = 5;
+  string triggered_at = 5;
   string created_at = 6;
 }
 
@@ -393,7 +394,7 @@ service TriggerService {
   rpc ListTriggers(ListTriggersRequest) returns (ListTriggersResponse);
   rpc DeleteTrigger(DeleteTriggerRequest) returns (DeleteTriggerResponse);
   rpc RunTrigger(RunTriggerRequest) returns (RunTriggerResponse);
-  rpc ListScheduleRuns(ListScheduleRunsRequest) returns (ListScheduleRunsResponse);
+  rpc ListTriggerRuns(ListTriggerRunsRequest) returns (ListTriggerRunsResponse);
 }
 
 message CreateTriggerRequest {
@@ -476,14 +477,14 @@ message RunTriggerResponse {
   Task task = 1;
 }
 
-message ListScheduleRunsRequest {
-  string schedule_name = 1;
+message ListTriggerRunsRequest {
+  string trigger_name = 1;
   int32 limit = 2;
   int32 offset = 3;
 }
 
-message ListScheduleRunsResponse {
-  repeated ScheduleRun runs = 1;
+message ListTriggerRunsResponse {
+  repeated TriggerRun runs = 1;
 }
 
 // --- FleetService ---

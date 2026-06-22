@@ -76,7 +76,7 @@ type RecordArtifactParams struct {
 const (
 	defaultMaxMemoryMB      = 4096
 	defaultMaxCPU           = 2
-	scheduleRunTimeout      = 30 * time.Second
+	triggerRunTimeout      = 30 * time.Second
 	eventHandlerTimeout     = 10 * time.Second
 	reaperInterval          = 30 * time.Second
 	definitionsSyncInterval = 5 * time.Minute
@@ -131,10 +131,10 @@ func New(cfg config.Config, st *store.Store) *Service {
 	return svc
 }
 
-// Start loads schedules, starts cron, and starts the stale-task reaper.
+// Start loads triggers, starts cron, and starts the stale-task reaper.
 func (s *Service) Start(ctx context.Context) error {
 	s.cron.Start()
-	if err := s.loadSchedules(ctx); err != nil {
+	if err := s.loadTriggers(ctx); err != nil {
 		return err
 	}
 	go s.taskReaper()
@@ -144,7 +144,7 @@ func (s *Service) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the scheduler and the reaper.
+// Stop stops the cron scheduler and the reaper.
 func (s *Service) Stop() {
 	close(s.reaperStop)
 	ctx := s.cron.Stop()
@@ -683,26 +683,26 @@ func emptyTriggerConfig() json.RawMessage {
 }
 
 // CreateTrigger persists and activates a trigger (cron, pr_review, issue).
-func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (store.ScheduleRecord, error) {
+func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (store.TriggerRecord, error) {
 	if in.Name == "" {
-		return store.ScheduleRecord{}, fmt.Errorf("name is required")
+		return store.TriggerRecord{}, fmt.Errorf("name is required")
 	}
 	if in.TriggerType == "" {
 		in.TriggerType = store.TriggerTypeCron
 	}
 	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview && in.TriggerType != store.TriggerTypeIssue {
-		return store.ScheduleRecord{}, fmt.Errorf("prompt is required")
+		return store.TriggerRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.ID == "" {
 		id, err := randomID("trig")
 		if err != nil {
-			return store.ScheduleRecord{}, fmt.Errorf("generate trigger id: %w", err)
+			return store.TriggerRecord{}, fmt.Errorf("generate trigger id: %w", err)
 		}
 		in.ID = id
 	}
 	if in.AgentImage == "" {
 		if s.cfg.DefaultAgentImage == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("agent_image is required (no default configured)")
+			return store.TriggerRecord{}, fmt.Errorf("agent_image is required (no default configured)")
 		}
 		in.AgentImage = s.cfg.DefaultAgentImage
 	}
@@ -712,35 +712,35 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 	switch in.TriggerType {
 	case store.TriggerTypeCron:
 		if in.CronExpr == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("cron_expr is required for cron triggers")
+			return store.TriggerRecord{}, fmt.Errorf("cron_expr is required for cron triggers")
 		}
 		if _, err := defaultCronParser.Parse(in.CronExpr); err != nil {
-			return store.ScheduleRecord{}, fmt.Errorf("parse cron: %w", err)
+			return store.TriggerRecord{}, fmt.Errorf("parse cron: %w", err)
 		}
 	case store.TriggerTypePRReview:
 		var cfg store.PRReviewTriggerConfig
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
+			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
 		}
 	case store.TriggerTypeIssue:
 		var cfg struct{ Repo string }
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("repo is required in trigger_config for issue triggers")
+			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for issue triggers")
 		}
 	default:
-		return store.ScheduleRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
+		return store.TriggerRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
 	}
 	now := time.Now().UTC()
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
 	teamID := teamIDFromContext(ctx)
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
 	}
-	if err := s.repo.CreateSchedule(ctx, repository.CreateScheduleParams{
+	if err := s.repo.CreateTrigger(ctx, repository.CreateTriggerParams{
 		ID:            in.ID,
 		TeamID:        nullString(teamID),
 		Name:          in.Name,
@@ -761,33 +761,33 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.ScheduleInput) (st
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}); err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("create trigger: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("create trigger: %w", err)
 	}
-	record, err := s.repo.GetScheduleByID(ctx, in.ID)
+	record, err := s.repo.GetTriggerByID(ctx, in.ID)
 	if err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("get trigger: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
-	sRecord := scheduleToStoreRecord(record)
+	sRecord := triggerToStoreRecord(record)
 	if in.TriggerType == store.TriggerTypeCron {
-		if err := s.activateSchedule(ctx, sRecord); err != nil {
-			return store.ScheduleRecord{}, fmt.Errorf("activate schedule: %w", err)
+		if err := s.activateTrigger(ctx, sRecord); err != nil {
+			return store.TriggerRecord{}, fmt.Errorf("activate trigger: %w", err)
 		}
-		updated, err := s.repo.GetScheduleByID(ctx, in.ID)
+		updated, err := s.repo.GetTriggerByID(ctx, in.ID)
 		if err != nil {
-			return store.ScheduleRecord{}, fmt.Errorf("get trigger after activation: %w", err)
+			return store.TriggerRecord{}, fmt.Errorf("get trigger after activation: %w", err)
 		}
-		return scheduleToStoreRecord(updated), nil
+		return triggerToStoreRecord(updated), nil
 	}
 	return sRecord, nil
 }
 
 // UpdateTrigger updates all mutable fields on an existing trigger.
-func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.ScheduleInput, enabled bool) (store.ScheduleRecord, error) {
+func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.TriggerInput, enabled bool) (store.TriggerRecord, error) {
 	if in.Name == "" {
-		return store.ScheduleRecord{}, fmt.Errorf("name is required")
+		return store.TriggerRecord{}, fmt.Errorf("name is required")
 	}
 	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview {
-		return store.ScheduleRecord{}, fmt.Errorf("prompt is required")
+		return store.TriggerRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.TriggerType == "" {
 		in.TriggerType = store.TriggerTypeCron
@@ -795,26 +795,26 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 	switch in.TriggerType {
 	case store.TriggerTypeCron:
 		if in.CronExpr == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("cron_expr is required for cron triggers")
+			return store.TriggerRecord{}, fmt.Errorf("cron_expr is required for cron triggers")
 		}
 		if _, err := defaultCronParser.Parse(in.CronExpr); err != nil {
-			return store.ScheduleRecord{}, fmt.Errorf("parse cron: %w", err)
+			return store.TriggerRecord{}, fmt.Errorf("parse cron: %w", err)
 		}
 	case store.TriggerTypePRReview:
 		var cfg store.PRReviewTriggerConfig
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
-			return store.ScheduleRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
+			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
 		}
 	}
 	if in.AgentImage == "" {
-		return store.ScheduleRecord{}, fmt.Errorf("agent_image is required")
+		return store.TriggerRecord{}, fmt.Errorf("agent_image is required")
 	}
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
-	existing, err := s.scheduleForToolAccess(ctx, name)
+	existing, err := s.triggerForToolAccess(ctx, name)
 	if err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("get trigger: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 
 	// Deactivate cron trigger if it's a cron type.
@@ -827,13 +827,13 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 	now := time.Now().UTC()
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("marshal skills: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
 	}
-	if err := s.repo.UpdateSchedule(ctx, repository.UpdateScheduleParams{
+	if err := s.repo.UpdateTrigger(ctx, repository.UpdateTriggerParams{
 		NewName:       in.Name,
 		TriggerType:   in.TriggerType,
 		TriggerConfig: triggerConfig,
@@ -853,25 +853,25 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Sched
 		UpdatedAt:     now,
 		OldName:       name,
 	}); err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("update trigger: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("update trigger: %w", err)
 	}
-	record, err := s.scheduleForToolAccess(ctx, in.Name)
+	record, err := s.triggerForToolAccess(ctx, in.Name)
 	if err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("get trigger: %w", err)
+		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
-	sRecord := scheduleToStoreRecord(record)
+	sRecord := triggerToStoreRecord(record)
 	if !enabled || in.TriggerType != store.TriggerTypeCron {
 		return sRecord, nil
 	}
-	if err := s.activateSchedule(ctx, sRecord); err != nil {
-		return store.ScheduleRecord{}, fmt.Errorf("reactivate schedule: %w", err)
+	if err := s.activateTrigger(ctx, sRecord); err != nil {
+		return store.TriggerRecord{}, fmt.Errorf("reactivate trigger: %w", err)
 	}
 	return sRecord, nil
 }
 
 // DeleteTrigger removes a trigger by name and stops its cron job if applicable.
 func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
-	sch, err := s.scheduleForToolAccess(ctx, name)
+	sch, err := s.triggerForToolAccess(ctx, name)
 	if err != nil {
 		return fmt.Errorf("get trigger: %w", err)
 	}
@@ -882,7 +882,7 @@ func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
 		delete(s.cronEntries, targetID)
 	}
 	s.cronMu.Unlock()
-	if err := s.repo.DeleteSchedule(ctx, name); err != nil {
+	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
 		return fmt.Errorf("delete trigger: %w", err)
 	}
 	return nil
@@ -893,14 +893,14 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if name == "" {
 		return store.TaskRecord{}, fmt.Errorf("name is required")
 	}
-	sch, err := s.scheduleForToolAccess(ctx, name)
+	sch, err := s.triggerForToolAccess(ctx, name)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := []string(nil)
 	_ = json.Unmarshal(sch.Skills, &targetSkills)
-	return s.submitScheduleTask(ctx,
+	return s.submitTriggerTask(ctx,
 		sch.ID,
 		sch.Name,
 		sch.TriggerType,
@@ -921,64 +921,64 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	)
 }
 
-func (s *Service) loadSchedules(ctx context.Context) error {
+func (s *Service) loadTriggers(ctx context.Context) error {
 	triggers, err := s.repo.ListEnabledTriggersByType(ctx, store.TriggerTypeCron)
 	if err != nil {
 		return fmt.Errorf("load cron triggers: %w", err)
 	}
 	for _, trigger := range triggers {
-		if err := s.activateSchedule(ctx, scheduleToStoreRecord(trigger)); err != nil {
+		if err := s.activateTrigger(ctx, triggerToStoreRecord(trigger)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) activateSchedule(ctx context.Context, schedule store.ScheduleRecord) error {
+func (s *Service) activateTrigger(ctx context.Context, trigger store.TriggerRecord) error {
 	s.cronMu.Lock()
 	defer s.cronMu.Unlock()
-	if existing, ok := s.cronEntries[schedule.ID]; ok {
+	if existing, ok := s.cronEntries[trigger.ID]; ok {
 		s.cron.Remove(existing)
 	}
-	entryID, err := s.cron.AddFunc(schedule.CronExpr, func() {
-		runCtx, cancel := context.WithTimeout(context.Background(), scheduleRunTimeout)
+	entryID, err := s.cron.AddFunc(trigger.CronExpr, func() {
+		runCtx, cancel := context.WithTimeout(context.Background(), triggerRunTimeout)
 		defer cancel()
-		if err := s.runSchedule(runCtx, schedule.ID, time.Now().UTC()); err != nil {
-			slog.Error("schedule run failed", "scheduleID", schedule.ID, "err", err)
+		if err := s.runTrigger(runCtx, trigger.ID, time.Now().UTC()); err != nil {
+			slog.Error("trigger run failed", "triggerID", trigger.ID, "err", err)
 		}
 	})
 	if err != nil {
-		return fmt.Errorf("activate schedule %s: %w", schedule.ID, err)
+		return fmt.Errorf("activate trigger %s: %w", trigger.ID, err)
 	}
-	s.cronEntries[schedule.ID] = entryID
+	s.cronEntries[trigger.ID] = entryID
 	entry := s.cron.Entry(entryID)
 	if !entry.Next.IsZero() {
-		if err := s.repo.SetScheduleNextRun(ctx, repository.SetScheduleNextRunParams{
+		if err := s.repo.SetTriggerNextRun(ctx, repository.SetTriggerNextRunParams{
 			NextRunAt: sql.NullTime{Time: entry.Next, Valid: true},
 			UpdatedAt: time.Now().UTC(),
-			ID:        schedule.ID,
+			ID:        trigger.ID,
 		}); err != nil {
-			return fmt.Errorf("set schedule next run: %w", err)
+			return fmt.Errorf("set trigger next run: %w", err)
 		}
 	}
 	return nil
 }
 
-func (s *Service) runSchedule(ctx context.Context, scheduleID string, scheduledFor time.Time) error {
-	schedule, err := s.repo.GetScheduleByID(ctx, scheduleID)
+func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt time.Time) error {
+	trigger, err := s.repo.GetTriggerByID(ctx, triggerID)
 	if err != nil {
-		return fmt.Errorf("get schedule %s: %w", scheduleID, err)
+		return fmt.Errorf("get trigger %s: %w", triggerID, err)
 	}
 	var skills []string
-	_ = json.Unmarshal(schedule.Skills, &skills)
-	runtime := triggerRuntimeConfigFromJSON(schedule.TriggerConfig)
-	_, err = s.submitScheduleTask(ctx, schedule.ID, schedule.Name, schedule.TriggerType, schedule.TeamID.String, schedule.Prompt, schedule.GitUrl.String, schedule.GitRef.String,
-		schedule.AgentImage.String, schedule.Agent.String, schedule.ProviderID.String, schedule.ModelID.String, schedule.VariantID.String,
-		schedule.Harness.String, skills, int(schedule.TimeoutSec), runtime, scheduledFor)
+	_ = json.Unmarshal(trigger.Skills, &skills)
+	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
+	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
+		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
+		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
 	return err
 }
 
-func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, scheduledFor time.Time) (store.TaskRecord, error) {
+func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		TeamID:      teamID,
 		Prompt:      prompt,
@@ -999,37 +999,37 @@ func (s *Service) submitScheduleTask(ctx context.Context, scheduleID, triggerNam
 		TTLHours:    runtime.TTLHours,
 	})
 	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("submit scheduled task: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
 	}
 	runID, err := randomID("run")
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate run id: %w", err)
 	}
-	if err := s.repo.InsertScheduleRun(ctx, repository.InsertScheduleRunParams{
+	if err := s.repo.InsertTriggerRun(ctx, repository.InsertTriggerRunParams{
 		ID:           runID,
-		ScheduleID:   scheduleID,
+		TriggerID:   triggerID,
 		TeamID:       nullString(teamID),
 		TaskID:       task.ID,
 		Status:       "submitted",
-		ScheduledFor: scheduledFor.UTC(),
+		TriggeredAt: triggeredAt.UTC(),
 		CreatedAt:    time.Now().UTC(),
 	}); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("insert schedule run: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("insert trigger run: %w", err)
 	}
-	if err := s.repo.SetScheduleLastRun(ctx, repository.SetScheduleLastRunParams{
-		LastRunAt: sql.NullTime{Time: scheduledFor.UTC(), Valid: true},
+	if err := s.repo.SetTriggerLastRun(ctx, repository.SetTriggerLastRunParams{
+		LastRunAt: sql.NullTime{Time: triggeredAt.UTC(), Valid: true},
 		UpdatedAt: time.Now().UTC(),
-		ID:        scheduleID,
+		ID:        triggerID,
 	}); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("set schedule last run: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("set trigger last run: %w", err)
 	}
-	if entryID, ok := s.cronEntries[scheduleID]; ok {
+	if entryID, ok := s.cronEntries[triggerID]; ok {
 		entry := s.cron.Entry(entryID)
 		if !entry.Next.IsZero() {
-			if err := s.repo.SetScheduleNextRun(ctx, repository.SetScheduleNextRunParams{
+			if err := s.repo.SetTriggerNextRun(ctx, repository.SetTriggerNextRunParams{
 				NextRunAt: sql.NullTime{Time: entry.Next, Valid: true},
 				UpdatedAt: time.Now().UTC(),
-				ID:        scheduleID,
+				ID:        triggerID,
 			}); err != nil {
 				return store.TaskRecord{}, err
 			}
@@ -1140,23 +1140,23 @@ func teamIDFromContext(ctx context.Context) string {
 	return scope.TeamID
 }
 
-func (s *Service) scheduleForToolAccess(ctx context.Context, name string) (repository.ChetterSchedule, error) {
-	schedule, err := s.repo.GetScheduleByName(ctx, name)
+func (s *Service) triggerForToolAccess(ctx context.Context, name string) (repository.ChetterTrigger, error) {
+	trigger, err := s.repo.GetTriggerByName(ctx, name)
 	if err != nil {
-		return repository.ChetterSchedule{}, err
+		return repository.ChetterTrigger{}, err
 	}
-	if err := authorizeScheduleAccess(ctx, schedule); err != nil {
-		return repository.ChetterSchedule{}, err
+	if err := authorizeTriggerAccess(ctx, trigger); err != nil {
+		return repository.ChetterTrigger{}, err
 	}
-	return schedule, nil
+	return trigger, nil
 }
 
-func authorizeScheduleAccess(ctx context.Context, schedule repository.ChetterSchedule) error {
+func authorizeTriggerAccess(ctx context.Context, trigger repository.ChetterTrigger) error {
 	scope, scoped := auth.GetScope(ctx)
 	if !scoped || scope.Admin {
 		return nil
 	}
-	if scope.TeamID == "" || !schedule.TeamID.Valid || schedule.TeamID.String != scope.TeamID {
+	if scope.TeamID == "" || !trigger.TeamID.Valid || trigger.TeamID.String != scope.TeamID {
 		return fmt.Errorf("trigger not found")
 	}
 	return nil

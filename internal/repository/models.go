@@ -122,41 +122,6 @@ type ChetterRunner struct {
 	Metadata       json.RawMessage `json:"metadata"`
 }
 
-type ChetterSchedule struct {
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	TriggerType   string          `json:"trigger_type"`
-	TriggerConfig json.RawMessage `json:"trigger_config"`
-	CronExpr      string          `json:"cron_expr"`
-	Prompt        string          `json:"prompt"`
-	GitUrl        sql.NullString  `json:"git_url"`
-	GitRef        sql.NullString  `json:"git_ref"`
-	AgentImage    sql.NullString  `json:"agent_image"`
-	Agent         sql.NullString  `json:"agent"`
-	ProviderID    sql.NullString  `json:"provider_id"`
-	ModelID       sql.NullString  `json:"model_id"`
-	VariantID     sql.NullString  `json:"variant_id"`
-	Harness       sql.NullString  `json:"harness"`
-	Skills        json.RawMessage `json:"skills"`
-	TimeoutSec    int32           `json:"timeout_sec"`
-	Enabled       bool            `json:"enabled"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	LastRunAt     sql.NullTime    `json:"last_run_at"`
-	NextRunAt     sql.NullTime    `json:"next_run_at"`
-	TeamID        sql.NullString  `json:"team_id"`
-}
-
-type ChetterScheduleRun struct {
-	ID           string         `json:"id"`
-	ScheduleID   string         `json:"schedule_id"`
-	TaskID       string         `json:"task_id"`
-	Status       string         `json:"status"`
-	ScheduledFor time.Time      `json:"scheduled_for"`
-	CreatedAt    time.Time      `json:"created_at"`
-	TeamID       sql.NullString `json:"team_id"`
-}
-
 type ChetterSessionRun struct {
 	ID               string         `json:"id"`
 	AgentSessionID   string         `json:"agent_session_id"`
@@ -236,6 +201,42 @@ type ChetterTaskEvent struct {
 	Payload   json.RawMessage `json:"payload"`
 	CreatedAt time.Time       `json:"created_at"`
 	EventType string          `json:"event_type"`
+}
+
+type ChetterTrigger struct {
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	TriggerType   string          `json:"trigger_type"`
+	TriggerConfig json.RawMessage `json:"trigger_config"`
+	CronExpr      string          `json:"cron_expr"`
+	Prompt        string          `json:"prompt"`
+	GitUrl        sql.NullString  `json:"git_url"`
+	GitRef        sql.NullString  `json:"git_ref"`
+	AgentImage    sql.NullString  `json:"agent_image"`
+	Agent         sql.NullString  `json:"agent"`
+	ProviderID    sql.NullString  `json:"provider_id"`
+	ModelID       sql.NullString  `json:"model_id"`
+	VariantID     sql.NullString  `json:"variant_id"`
+	Harness       sql.NullString  `json:"harness"`
+	Skills        json.RawMessage `json:"skills"`
+	TimeoutSec    int32           `json:"timeout_sec"`
+	Enabled       bool            `json:"enabled"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	LastRunAt     sql.NullTime    `json:"last_run_at"`
+	NextRunAt     sql.NullTime    `json:"next_run_at"`
+	TeamID        sql.NullString  `json:"team_id"`
+	SourceID      sql.NullString  `json:"source_id"`
+}
+
+type ChetterTriggerRun struct {
+	ID          string         `json:"id"`
+	TaskID      string         `json:"task_id"`
+	Status      string         `json:"status"`
+	CreatedAt   time.Time      `json:"created_at"`
+	TeamID      sql.NullString `json:"team_id"`
+	TriggerID   string         `json:"trigger_id"`
+	TriggeredAt time.Time      `json:"triggered_at"`
 }
 
 type Definition struct {

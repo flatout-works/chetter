@@ -342,8 +342,8 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 			}
 		}
 		for _, t := range triggerEntries {
-			if err := q.UpsertSchedule(ctx, t.params); err != nil {
-				return fmt.Errorf("upsert trigger schedule %q: %w", t.def.Name, err)
+			if err := q.UpsertTrigger(ctx, t.params); err != nil {
+				return fmt.Errorf("upsert trigger %q: %w", t.def.Name, err)
 			}
 		}
 		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
@@ -358,7 +358,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
 	}
-	activateTriggerSchedules(ctx, s, triggerEntries)
+	activateTriggerEntries(ctx, s, triggerEntries)
 	if yamlText == "" {
 		record, _, err := s.activeModelCatalogRecord(ctx)
 		if err != nil {
@@ -539,7 +539,7 @@ func definitionsSource(defs interface {
 
 type triggerSyncEntry struct {
 	def    definitions.TriggerDef
-	params repository.UpsertScheduleParams
+	params repository.UpsertTriggerParams
 }
 
 func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]triggerSyncEntry, error) {
@@ -561,7 +561,7 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 		skillsJSON, _ := json.Marshal(nonEmptyStrings(td.Skills))
 		entries = append(entries, triggerSyncEntry{
 			def: td,
-			params: repository.UpsertScheduleParams{
+			params: repository.UpsertTriggerParams{
 				ID:            id,
 				TeamID:        sql.NullString{},
 				Name:          td.Name,
@@ -580,6 +580,7 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 				Skills:        skillsJSON,
 				TimeoutSec:    int32(td.TimeoutSec),
 				Enabled:       td.Enabled,
+				SourceID:      nullString(defaultDefinitionSourceID),
 				CreatedAt:     now,
 				UpdatedAt:     now,
 			},
@@ -588,26 +589,26 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 	return entries, nil
 }
 
-func activateTriggerSchedules(ctx context.Context, s *Service, entries []triggerSyncEntry) {
+func activateTriggerEntries(ctx context.Context, s *Service, entries []triggerSyncEntry) {
 	for _, t := range entries {
 		if t.def.TriggerType != "cron" {
 			continue
 		}
-		schedule, err := s.repo.GetScheduleByName(ctx, t.def.Name)
+		trigger, err := s.repo.GetTriggerByName(ctx, t.def.Name)
 		if err != nil {
-			slog.Warn("activate synced cron trigger: get schedule", "name", t.def.Name, "err", err)
+			slog.Warn("activate synced cron trigger: get trigger", "name", t.def.Name, "err", err)
 			continue
 		}
 		if t.def.Enabled {
-			record := scheduleToStoreRecord(schedule)
-			if err := s.activateSchedule(ctx, record); err != nil {
+			record := triggerToStoreRecord(trigger)
+			if err := s.activateTrigger(ctx, record); err != nil {
 				slog.Warn("activate synced cron trigger", "name", t.def.Name, "err", err)
 			}
 		} else {
 			s.cronMu.Lock()
-			if existing, ok := s.cronEntries[schedule.ID]; ok {
+			if existing, ok := s.cronEntries[trigger.ID]; ok {
 				s.cron.Remove(existing)
-				delete(s.cronEntries, schedule.ID)
+				delete(s.cronEntries, trigger.ID)
 			}
 			s.cronMu.Unlock()
 		}

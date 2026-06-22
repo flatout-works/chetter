@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-const createSchedule = `-- name: CreateSchedule :exec
-INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+const createTrigger = `-- name: CreateTrigger :exec
+INSERT INTO chetter_triggers
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
 `
 
-type CreateScheduleParams struct {
+type CreateTriggerParams struct {
 	ID            string          `json:"id"`
 	TeamID        sql.NullString  `json:"team_id"`
 	Name          string          `json:"name"`
@@ -36,12 +36,13 @@ type CreateScheduleParams struct {
 	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
 	TimeoutSec    int32           `json:"timeout_sec"`
+	SourceID      sql.NullString  `json:"source_id"`
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) error {
-	_, err := q.db.ExecContext(ctx, createSchedule,
+func (q *Queries) CreateTrigger(ctx context.Context, arg CreateTriggerParams) error {
+	_, err := q.db.ExecContext(ctx, createTrigger,
 		arg.ID,
 		arg.TeamID,
 		arg.Name,
@@ -59,30 +60,31 @@ func (q *Queries) CreateSchedule(ctx context.Context, arg CreateScheduleParams) 
 		arg.Harness,
 		arg.Skills,
 		arg.TimeoutSec,
+		arg.SourceID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
 	return err
 }
 
-const deleteSchedule = `-- name: DeleteSchedule :exec
-DELETE FROM chetter_schedules
+const deleteTrigger = `-- name: DeleteTrigger :exec
+DELETE FROM chetter_triggers
 WHERE name = ?
 `
 
-func (q *Queries) DeleteSchedule(ctx context.Context, name string) error {
-	_, err := q.db.ExecContext(ctx, deleteSchedule, name)
+func (q *Queries) DeleteTrigger(ctx context.Context, name string) error {
+	_, err := q.db.ExecContext(ctx, deleteTrigger, name)
 	return err
 }
 
-const getScheduleByID = `-- name: GetScheduleByID :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+const getTriggerByID = `-- name: GetTriggerByID :one
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE id = ?
 `
 
-func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedule, error) {
-	row := q.db.QueryRowContext(ctx, getScheduleByID, id)
-	var i ChetterSchedule
+func (q *Queries) GetTriggerByID(ctx context.Context, id string) (ChetterTrigger, error) {
+	row := q.db.QueryRowContext(ctx, getTriggerByID, id)
+	var i ChetterTrigger
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -106,18 +108,19 @@ func (q *Queries) GetScheduleByID(ctx context.Context, id string) (ChetterSchedu
 		&i.LastRunAt,
 		&i.NextRunAt,
 		&i.TeamID,
+		&i.SourceID,
 	)
 	return i, err
 }
 
-const getScheduleByName = `-- name: GetScheduleByName :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+const getTriggerByName = `-- name: GetTriggerByName :one
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE name = ?
 `
 
-func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSchedule, error) {
-	row := q.db.QueryRowContext(ctx, getScheduleByName, name)
-	var i ChetterSchedule
+func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTrigger, error) {
+	row := q.db.QueryRowContext(ctx, getTriggerByName, name)
+	var i ChetterTrigger
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -141,55 +144,56 @@ func (q *Queries) GetScheduleByName(ctx context.Context, name string) (ChetterSc
 		&i.LastRunAt,
 		&i.NextRunAt,
 		&i.TeamID,
+		&i.SourceID,
 	)
 	return i, err
 }
 
-const insertScheduleRun = `-- name: InsertScheduleRun :exec
-INSERT INTO chetter_schedule_runs (id, schedule_id, team_id, task_id, status, scheduled_for, created_at)
+const insertTriggerRun = `-- name: InsertTriggerRun :exec
+INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
-type InsertScheduleRunParams struct {
-	ID           string         `json:"id"`
-	ScheduleID   string         `json:"schedule_id"`
-	TeamID       sql.NullString `json:"team_id"`
-	TaskID       string         `json:"task_id"`
-	Status       string         `json:"status"`
-	ScheduledFor time.Time      `json:"scheduled_for"`
-	CreatedAt    time.Time      `json:"created_at"`
+type InsertTriggerRunParams struct {
+	ID          string         `json:"id"`
+	TriggerID   string         `json:"trigger_id"`
+	TeamID      sql.NullString `json:"team_id"`
+	TaskID      string         `json:"task_id"`
+	Status      string         `json:"status"`
+	TriggeredAt time.Time      `json:"triggered_at"`
+	CreatedAt   time.Time      `json:"created_at"`
 }
 
-func (q *Queries) InsertScheduleRun(ctx context.Context, arg InsertScheduleRunParams) error {
-	_, err := q.db.ExecContext(ctx, insertScheduleRun,
+func (q *Queries) InsertTriggerRun(ctx context.Context, arg InsertTriggerRunParams) error {
+	_, err := q.db.ExecContext(ctx, insertTriggerRun,
 		arg.ID,
-		arg.ScheduleID,
+		arg.TriggerID,
 		arg.TeamID,
 		arg.TaskID,
 		arg.Status,
-		arg.ScheduledFor,
+		arg.TriggeredAt,
 		arg.CreatedAt,
 	)
 	return err
 }
 
 const listEnabledIssueTriggersByRepo = `-- name: ListEnabledIssueTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'issue'
   AND trigger_config->>'$.repo' = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterSchedule, error) {
+func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterTrigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledIssueTriggersByRepo, repo)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -213,6 +217,7 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -228,22 +233,22 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 }
 
 const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'pr_review'
   AND trigger_config->>'$.repo' = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterSchedule, error) {
+func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterTrigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledPRReviewTriggersByRepo, repo)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -267,6 +272,7 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -281,21 +287,21 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 	return items, nil
 }
 
-const listEnabledSchedules = `-- name: ListEnabledSchedules :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+const listEnabledTriggers = `-- name: ListEnabledTriggers :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, error) {
-	rows, err := q.db.QueryContext(ctx, listEnabledSchedules)
+func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]ChetterTrigger, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledTriggers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -319,6 +325,7 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -333,22 +340,22 @@ func (q *Queries) ListEnabledSchedules(ctx context.Context) ([]ChetterSchedule, 
 	return items, nil
 }
 
-const listEnabledSchedulesByTeam = `-- name: ListEnabledSchedulesByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+const listEnabledTriggersByTeam = `-- name: ListEnabledTriggersByTeam :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE team_id = ?
   AND enabled = TRUE
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterSchedule, error) {
-	rows, err := q.db.QueryContext(ctx, listEnabledSchedulesByTeam, teamID)
+func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterTrigger, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledTriggersByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -372,6 +379,7 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -387,21 +395,21 @@ func (q *Queries) ListEnabledSchedulesByTeam(ctx context.Context, teamID sql.Nul
 }
 
 const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]ChetterSchedule, error) {
+func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]ChetterTrigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledTriggersByType, triggerType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -425,6 +433,7 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -439,103 +448,47 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 	return items, nil
 }
 
-const listScheduleRunsBySchedule = `-- name: ListScheduleRunsBySchedule :many
-SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
-FROM chetter_schedule_runs sr
-JOIN chetter_schedules s ON s.id = sr.schedule_id
-WHERE sr.schedule_id = ?
-ORDER BY sr.created_at DESC
-LIMIT ? OFFSET ?
-`
-
-type ListScheduleRunsByScheduleParams struct {
-	ScheduleID string `json:"schedule_id"`
-	Limit      int32  `json:"limit"`
-	Offset     int32  `json:"offset"`
-}
-
-type ListScheduleRunsByScheduleRow struct {
-	ID           string    `json:"id"`
-	ScheduleID   string    `json:"schedule_id"`
-	ScheduleName string    `json:"schedule_name"`
-	TaskID       string    `json:"task_id"`
-	Status       string    `json:"status"`
-	ScheduledFor time.Time `json:"scheduled_for"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-func (q *Queries) ListScheduleRunsBySchedule(ctx context.Context, arg ListScheduleRunsByScheduleParams) ([]ListScheduleRunsByScheduleRow, error) {
-	rows, err := q.db.QueryContext(ctx, listScheduleRunsBySchedule, arg.ScheduleID, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListScheduleRunsByScheduleRow{}
-	for rows.Next() {
-		var i ListScheduleRunsByScheduleRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ScheduleID,
-			&i.ScheduleName,
-			&i.TaskID,
-			&i.Status,
-			&i.ScheduledFor,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listScheduleRunsByTeam = `-- name: ListScheduleRunsByTeam :many
-SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
-FROM chetter_schedule_runs sr
-JOIN chetter_schedules s ON s.id = sr.schedule_id
+const listTriggerRunsByTeam = `-- name: ListTriggerRunsByTeam :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
 WHERE s.team_id = ?
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?
 `
 
-type ListScheduleRunsByTeamParams struct {
+type ListTriggerRunsByTeamParams struct {
 	TeamID sql.NullString `json:"team_id"`
 	Limit  int32          `json:"limit"`
 	Offset int32          `json:"offset"`
 }
 
-type ListScheduleRunsByTeamRow struct {
-	ID           string    `json:"id"`
-	ScheduleID   string    `json:"schedule_id"`
-	ScheduleName string    `json:"schedule_name"`
-	TaskID       string    `json:"task_id"`
-	Status       string    `json:"status"`
-	ScheduledFor time.Time `json:"scheduled_for"`
-	CreatedAt    time.Time `json:"created_at"`
+type ListTriggerRunsByTeamRow struct {
+	ID          string    `json:"id"`
+	TriggerID   string    `json:"trigger_id"`
+	TriggerName string    `json:"trigger_name"`
+	TaskID      string    `json:"task_id"`
+	Status      string    `json:"status"`
+	TriggeredAt time.Time `json:"triggered_at"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
-func (q *Queries) ListScheduleRunsByTeam(ctx context.Context, arg ListScheduleRunsByTeamParams) ([]ListScheduleRunsByTeamRow, error) {
-	rows, err := q.db.QueryContext(ctx, listScheduleRunsByTeam, arg.TeamID, arg.Limit, arg.Offset)
+func (q *Queries) ListTriggerRunsByTeam(ctx context.Context, arg ListTriggerRunsByTeamParams) ([]ListTriggerRunsByTeamRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTriggerRunsByTeam, arg.TeamID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListScheduleRunsByTeamRow{}
+	items := []ListTriggerRunsByTeamRow{}
 	for rows.Next() {
-		var i ListScheduleRunsByTeamRow
+		var i ListTriggerRunsByTeamRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ScheduleID,
-			&i.ScheduleName,
+			&i.TriggerID,
+			&i.TriggerName,
 			&i.TaskID,
 			&i.Status,
-			&i.ScheduledFor,
+			&i.TriggeredAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -551,20 +504,76 @@ func (q *Queries) ListScheduleRunsByTeam(ctx context.Context, arg ListScheduleRu
 	return items, nil
 }
 
-const listSchedules = `-- name: ListSchedules :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
-ORDER BY created_at DESC
+const listTriggerRunsByTrigger = `-- name: ListTriggerRunsByTrigger :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
+WHERE sr.trigger_id = ?
+ORDER BY sr.created_at DESC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) {
-	rows, err := q.db.QueryContext(ctx, listSchedules)
+type ListTriggerRunsByTriggerParams struct {
+	TriggerID string `json:"trigger_id"`
+	Limit     int32  `json:"limit"`
+	Offset    int32  `json:"offset"`
+}
+
+type ListTriggerRunsByTriggerRow struct {
+	ID          string    `json:"id"`
+	TriggerID   string    `json:"trigger_id"`
+	TriggerName string    `json:"trigger_name"`
+	TaskID      string    `json:"task_id"`
+	Status      string    `json:"status"`
+	TriggeredAt time.Time `json:"triggered_at"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListTriggerRunsByTrigger(ctx context.Context, arg ListTriggerRunsByTriggerParams) ([]ListTriggerRunsByTriggerRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTriggerRunsByTrigger, arg.TriggerID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ListTriggerRunsByTriggerRow{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ListTriggerRunsByTriggerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TriggerID,
+			&i.TriggerName,
+			&i.TaskID,
+			&i.Status,
+			&i.TriggeredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTriggers = `-- name: ListTriggers :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTriggers(ctx context.Context) ([]ChetterTrigger, error) {
+	rows, err := q.db.QueryContext(ctx, listTriggers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTrigger{}
+	for rows.Next() {
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -588,6 +597,7 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -602,21 +612,21 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]ChetterSchedule, error) 
 	return items, nil
 }
 
-const listSchedulesByTeam = `-- name: ListSchedulesByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id FROM chetter_schedules
+const listTriggersByTeam = `-- name: ListTriggersByTeam :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE team_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterSchedule, error) {
-	rows, err := q.db.QueryContext(ctx, listSchedulesByTeam, teamID)
+func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterTrigger, error) {
+	rows, err := q.db.QueryContext(ctx, listTriggersByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSchedule{}
+	items := []ChetterTrigger{}
 	for rows.Next() {
-		var i ChetterSchedule
+		var i ChetterTrigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -640,6 +650,7 @@ func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString
 			&i.LastRunAt,
 			&i.NextRunAt,
 			&i.TeamID,
+			&i.SourceID,
 		); err != nil {
 			return nil, err
 		}
@@ -654,42 +665,42 @@ func (q *Queries) ListSchedulesByTeam(ctx context.Context, teamID sql.NullString
 	return items, nil
 }
 
-const setScheduleLastRun = `-- name: SetScheduleLastRun :exec
-UPDATE chetter_schedules
+const setTriggerLastRun = `-- name: SetTriggerLastRun :exec
+UPDATE chetter_triggers
 SET last_run_at = ?, updated_at = ?
 WHERE id = ?
 `
 
-type SetScheduleLastRunParams struct {
+type SetTriggerLastRunParams struct {
 	LastRunAt sql.NullTime `json:"last_run_at"`
 	UpdatedAt time.Time    `json:"updated_at"`
 	ID        string       `json:"id"`
 }
 
-func (q *Queries) SetScheduleLastRun(ctx context.Context, arg SetScheduleLastRunParams) error {
-	_, err := q.db.ExecContext(ctx, setScheduleLastRun, arg.LastRunAt, arg.UpdatedAt, arg.ID)
+func (q *Queries) SetTriggerLastRun(ctx context.Context, arg SetTriggerLastRunParams) error {
+	_, err := q.db.ExecContext(ctx, setTriggerLastRun, arg.LastRunAt, arg.UpdatedAt, arg.ID)
 	return err
 }
 
-const setScheduleNextRun = `-- name: SetScheduleNextRun :exec
-UPDATE chetter_schedules
+const setTriggerNextRun = `-- name: SetTriggerNextRun :exec
+UPDATE chetter_triggers
 SET next_run_at = ?, updated_at = ?
 WHERE id = ?
 `
 
-type SetScheduleNextRunParams struct {
+type SetTriggerNextRunParams struct {
 	NextRunAt sql.NullTime `json:"next_run_at"`
 	UpdatedAt time.Time    `json:"updated_at"`
 	ID        string       `json:"id"`
 }
 
-func (q *Queries) SetScheduleNextRun(ctx context.Context, arg SetScheduleNextRunParams) error {
-	_, err := q.db.ExecContext(ctx, setScheduleNextRun, arg.NextRunAt, arg.UpdatedAt, arg.ID)
+func (q *Queries) SetTriggerNextRun(ctx context.Context, arg SetTriggerNextRunParams) error {
+	_, err := q.db.ExecContext(ctx, setTriggerNextRun, arg.NextRunAt, arg.UpdatedAt, arg.ID)
 	return err
 }
 
-const updateSchedule = `-- name: UpdateSchedule :exec
-UPDATE chetter_schedules
+const updateTrigger = `-- name: UpdateTrigger :exec
+UPDATE chetter_triggers
 SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
@@ -698,7 +709,7 @@ SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
 WHERE name = ?
 `
 
-type UpdateScheduleParams struct {
+type UpdateTriggerParams struct {
 	NewName       string          `json:"new_name"`
 	TriggerType   string          `json:"trigger_type"`
 	TriggerConfig json.RawMessage `json:"trigger_config"`
@@ -719,8 +730,8 @@ type UpdateScheduleParams struct {
 	OldName       string          `json:"old_name"`
 }
 
-func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) error {
-	_, err := q.db.ExecContext(ctx, updateSchedule,
+func (q *Queries) UpdateTrigger(ctx context.Context, arg UpdateTriggerParams) error {
+	_, err := q.db.ExecContext(ctx, updateTrigger,
 		arg.NewName,
 		arg.TriggerType,
 		arg.TriggerConfig,
@@ -743,10 +754,10 @@ func (q *Queries) UpdateSchedule(ctx context.Context, arg UpdateScheduleParams) 
 	return err
 }
 
-const upsertSchedule = `-- name: UpsertSchedule :exec
-INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const upsertTrigger = `-- name: UpsertTrigger :exec
+INSERT INTO chetter_triggers
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     trigger_type = VALUES(trigger_type),
     trigger_config = VALUES(trigger_config),
@@ -763,10 +774,11 @@ ON DUPLICATE KEY UPDATE
     skills = VALUES(skills),
     timeout_sec = VALUES(timeout_sec),
     enabled = VALUES(enabled),
+    source_id = VALUES(source_id),
     updated_at = VALUES(updated_at)
 `
 
-type UpsertScheduleParams struct {
+type UpsertTriggerParams struct {
 	ID            string          `json:"id"`
 	TeamID        sql.NullString  `json:"team_id"`
 	Name          string          `json:"name"`
@@ -785,12 +797,13 @@ type UpsertScheduleParams struct {
 	Skills        json.RawMessage `json:"skills"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	Enabled       bool            `json:"enabled"`
+	SourceID      sql.NullString  `json:"source_id"`
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
-func (q *Queries) UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) error {
-	_, err := q.db.ExecContext(ctx, upsertSchedule,
+func (q *Queries) UpsertTrigger(ctx context.Context, arg UpsertTriggerParams) error {
+	_, err := q.db.ExecContext(ctx, upsertTrigger,
 		arg.ID,
 		arg.TeamID,
 		arg.Name,
@@ -809,6 +822,7 @@ func (q *Queries) UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) 
 		arg.Skills,
 		arg.TimeoutSec,
 		arg.Enabled,
+		arg.SourceID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)

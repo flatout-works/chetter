@@ -659,7 +659,7 @@ func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
 	}
 }
 
-func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
+func TestServiceCreateTriggerPersistsAndActivates(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -668,7 +668,7 @@ func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
 	}
 	defer svc.Stop()
 
-	rec, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	rec, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name:        "hourly-check",
 		TriggerType: store.TriggerTypeCron,
 		CronExpr:    "@hourly",
@@ -683,16 +683,16 @@ func TestServiceCreateSchedulePersistsAndActivates(t *testing.T) {
 		t.Errorf("name: %s", rec.Name)
 	}
 	if !rec.Enabled {
-		t.Error("new schedule should be enabled")
+		t.Error("new trigger should be enabled")
 	}
 	if rec.NextRunAt == nil {
 		t.Error("next_run_at should be set after activation")
 	}
 
 	q := repository.New(tdb.DB)
-	row, err := q.GetScheduleByName(ctx, "hourly-check")
+	row, err := q.GetTriggerByName(ctx, "hourly-check")
 	if err != nil {
-		t.Fatalf("get schedule: %v", err)
+		t.Fatalf("get trigger: %v", err)
 	}
 	if row.Prompt != "check the logs" {
 		t.Errorf("prompt: %s", row.Prompt)
@@ -705,7 +705,7 @@ func TestRunTriggerNowStampsTaskAttribution(t *testing.T) {
 	ctx := context.Background()
 	teamID, _ := seedTeam(t, tdb.DB, "automation", "alice")
 
-	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamID), store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamID), store.TriggerInput{
 		Name:        "attributed-check",
 		TriggerType: store.TriggerTypeCron,
 		CronExpr:    "@hourly",
@@ -733,10 +733,10 @@ func TestRunTriggerNowStampsTaskAttribution(t *testing.T) {
 	}
 }
 
-func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
+func TestServiceCreateTriggerRejectsInvalidCron(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	_, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+	_, err := svc.CreateTrigger(context.Background(), store.TriggerInput{
 		Name:        "bad",
 		TriggerType: store.TriggerTypeCron,
 		CronExpr:    "not a cron",
@@ -749,11 +749,11 @@ func TestServiceCreateScheduleRejectsInvalidCron(t *testing.T) {
 	}
 }
 
-func TestServiceCreateScheduleAppliesDefaultAgentImage(t *testing.T) {
+func TestServiceCreateTriggerAppliesDefaultAgentImage(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
 
-	rec, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+	rec, err := svc.CreateTrigger(context.Background(), store.TriggerInput{
 		Name:        "default-image",
 		TriggerType: store.TriggerTypeCron,
 		CronExpr:    "@hourly",
@@ -768,10 +768,10 @@ func TestServiceCreateScheduleAppliesDefaultAgentImage(t *testing.T) {
 	}
 }
 
-func TestServiceCreateScheduleRequiresPrompt(t *testing.T) {
+func TestServiceCreateTriggerRequiresPrompt(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
-	_, err := svc.CreateTrigger(context.Background(), store.ScheduleInput{
+	_, err := svc.CreateTrigger(context.Background(), store.TriggerInput{
 		Name:        "no-prompt",
 		TriggerType: store.TriggerTypeCron,
 		CronExpr:    "@hourly",
@@ -783,24 +783,24 @@ func TestServiceCreateScheduleRequiresPrompt(t *testing.T) {
 	}
 }
 
-func TestServiceListSchedulesReturnsEnabled(t *testing.T) {
+func TestServiceListTriggersReturnsEnabled(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name: "enabled", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "x",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name: "disabled", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "y",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svc.UpdateTrigger(ctx, "disabled", store.ScheduleInput{
+	if _, err := svc.UpdateTrigger(ctx, "disabled", store.TriggerInput{
 		Name: "disabled", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "y",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}, false); err != nil {
@@ -808,7 +808,7 @@ func TestServiceListSchedulesReturnsEnabled(t *testing.T) {
 	}
 
 	q := repository.New(svc.repo.DB())
-	enabled, err := q.ListEnabledSchedules(ctx)
+	enabled, err := q.ListEnabledTriggers(ctx)
 	if err != nil {
 		t.Fatalf("list enabled: %v", err)
 	}
@@ -833,7 +833,7 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 	}
 
 	// Create one pr_review trigger for our repo.
-	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name:          "deep-review",
 		TriggerType:   store.TriggerTypePRReview,
 		TriggerConfig: string(triggerConfig),
@@ -849,7 +849,7 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 	// Create a pr_review trigger for a different repo to confirm filtering.
 	cfg2 := store.PRReviewTriggerConfig{Repo: "flatout-works/other"}
 	triggerConfig2, _ := json.Marshal(cfg2)
-	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name:          "other-review",
 		TriggerType:   store.TriggerTypePRReview,
 		TriggerConfig: string(triggerConfig2),
@@ -878,12 +878,12 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 	}
 }
 
-func TestServiceDeleteScheduleRemovesRow(t *testing.T) {
+func TestServiceDeleteTriggerRemovesRow(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	if _, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name: "doomed", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "x",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
@@ -893,8 +893,8 @@ func TestServiceDeleteScheduleRemovesRow(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 	q := repository.New(svc.repo.DB())
-	if _, err := q.GetScheduleByName(ctx, "doomed"); err == nil {
-		t.Error("expected schedule to be gone")
+	if _, err := q.GetTriggerByName(ctx, "doomed"); err == nil {
+		t.Error("expected trigger to be gone")
 	}
 }
 
@@ -1239,9 +1239,9 @@ func TestUnscopedToolsRequireAdmin(t *testing.T) {
 	}
 }
 
-// --- Team-scoped schedule tests ---
+// --- Team-scoped trigger tests ---
 
-func TestCreateScheduleWithTeamContextStampsTeamID(t *testing.T) {
+func TestCreateTriggerWithTeamContextStampsTeamID(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -1249,7 +1249,7 @@ func TestCreateScheduleWithTeamContextStampsTeamID(t *testing.T) {
 	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
 
 	ctx = ctxWithTeam(ctx, teamID)
-	rec, err := svc.CreateTrigger(ctx, store.ScheduleInput{
+	rec, err := svc.CreateTrigger(ctx, store.TriggerInput{
 		Name: "hourly-check", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "check the logs",
 		AgentImage: "runner:latest", TimeoutSec: 300,
 	})
@@ -1261,16 +1261,16 @@ func TestCreateScheduleWithTeamContextStampsTeamID(t *testing.T) {
 	}
 
 	q := repository.New(tdb.DB)
-	row, err := q.GetScheduleByName(ctx, "hourly-check")
+	row, err := q.GetTriggerByName(ctx, "hourly-check")
 	if err != nil {
-		t.Fatalf("get schedule: %v", err)
+		t.Fatalf("get trigger: %v", err)
 	}
 	if row.TeamID.String != teamID {
 		t.Errorf("db team_id=%s, want %s", row.TeamID.String, teamID)
 	}
 }
 
-func TestListSchedulesByTeamScopesCorrectly(t *testing.T) {
+func TestListTriggersByTeamScopesCorrectly(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -1278,13 +1278,13 @@ func TestListSchedulesByTeamScopesCorrectly(t *testing.T) {
 	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
 	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
 
-	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamA), store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamA), store.TriggerInput{
 		Name: "a-check", TriggerType: store.TriggerTypeCron, CronExpr: "@hourly", Prompt: "a",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
 		t.Fatalf("create trigger a: %v", err)
 	}
-	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamB), store.ScheduleInput{
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamB), store.TriggerInput{
 		Name: "b-check", TriggerType: store.TriggerTypeCron, CronExpr: "@daily", Prompt: "b",
 		AgentImage: "runner:latest", TimeoutSec: 60,
 	}); err != nil {
@@ -1293,20 +1293,20 @@ func TestListSchedulesByTeamScopesCorrectly(t *testing.T) {
 
 	q := repository.New(tdb.DB)
 
-	aSchedules, err := q.ListSchedulesByTeam(ctx, sql.NullString{String: teamA, Valid: true})
+	aTriggers, err := q.ListTriggersByTeam(ctx, sql.NullString{String: teamA, Valid: true})
 	if err != nil {
 		t.Fatalf("list team a: %v", err)
 	}
-	if len(aSchedules) != 1 || aSchedules[0].Name != "a-check" {
-		t.Errorf("team A: got %d schedules, expected 1 (a-check)", len(aSchedules))
+	if len(aTriggers) != 1 || aTriggers[0].Name != "a-check" {
+		t.Errorf("team A: got %d triggers, expected 1 (a-check)", len(aTriggers))
 	}
 
-	bSchedules, err := q.ListSchedulesByTeam(ctx, sql.NullString{String: teamB, Valid: true})
+	bTriggers, err := q.ListTriggersByTeam(ctx, sql.NullString{String: teamB, Valid: true})
 	if err != nil {
 		t.Fatalf("list team b: %v", err)
 	}
-	if len(bSchedules) != 1 || bSchedules[0].Name != "b-check" {
-		t.Errorf("team B: got %d schedules, expected 1 (b-check)", len(bSchedules))
+	if len(bTriggers) != 1 || bTriggers[0].Name != "b-check" {
+		t.Errorf("team B: got %d triggers, expected 1 (b-check)", len(bTriggers))
 	}
 }
 

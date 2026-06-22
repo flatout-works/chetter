@@ -570,6 +570,7 @@ type Trigger struct {
 	UpdatedAt     string                 `protobuf:"bytes,20,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	LastRunAt     *string                `protobuf:"bytes,21,opt,name=last_run_at,json=lastRunAt,proto3,oneof" json:"last_run_at,omitempty"`
 	NextRunAt     *string                `protobuf:"bytes,22,opt,name=next_run_at,json=nextRunAt,proto3,oneof" json:"next_run_at,omitempty"`
+	SourceId      *string                `protobuf:"bytes,23,opt,name=source_id,json=sourceId,proto3,oneof" json:"source_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -758,6 +759,13 @@ func (x *Trigger) GetNextRunAt() string {
 	return ""
 }
 
+func (x *Trigger) GetSourceId() string {
+	if x != nil && x.SourceId != nil {
+		return *x.SourceId
+	}
+	return ""
+}
+
 type TaskEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -918,32 +926,32 @@ func (x *TaskProgressEntry) GetError() string {
 	return ""
 }
 
-type ScheduleRun struct {
+type TriggerRun struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ScheduleName  string                 `protobuf:"bytes,2,opt,name=schedule_name,json=scheduleName,proto3" json:"schedule_name,omitempty"`
+	TriggerName   string                 `protobuf:"bytes,2,opt,name=trigger_name,json=triggerName,proto3" json:"trigger_name,omitempty"`
 	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	ScheduledFor  string                 `protobuf:"bytes,5,opt,name=scheduled_for,json=scheduledFor,proto3" json:"scheduled_for,omitempty"`
+	TriggeredAt   string                 `protobuf:"bytes,5,opt,name=triggered_at,json=triggeredAt,proto3" json:"triggered_at,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ScheduleRun) Reset() {
-	*x = ScheduleRun{}
+func (x *TriggerRun) Reset() {
+	*x = TriggerRun{}
 	mi := &file_proto_api_v1_api_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ScheduleRun) String() string {
+func (x *TriggerRun) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ScheduleRun) ProtoMessage() {}
+func (*TriggerRun) ProtoMessage() {}
 
-func (x *ScheduleRun) ProtoReflect() protoreflect.Message {
+func (x *TriggerRun) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_api_v1_api_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -955,47 +963,47 @@ func (x *ScheduleRun) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ScheduleRun.ProtoReflect.Descriptor instead.
-func (*ScheduleRun) Descriptor() ([]byte, []int) {
+// Deprecated: Use TriggerRun.ProtoReflect.Descriptor instead.
+func (*TriggerRun) Descriptor() ([]byte, []int) {
 	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *ScheduleRun) GetId() string {
+func (x *TriggerRun) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *ScheduleRun) GetScheduleName() string {
+func (x *TriggerRun) GetTriggerName() string {
 	if x != nil {
-		return x.ScheduleName
+		return x.TriggerName
 	}
 	return ""
 }
 
-func (x *ScheduleRun) GetTaskId() string {
+func (x *TriggerRun) GetTaskId() string {
 	if x != nil {
 		return x.TaskId
 	}
 	return ""
 }
 
-func (x *ScheduleRun) GetStatus() string {
+func (x *TriggerRun) GetStatus() string {
 	if x != nil {
 		return x.Status
 	}
 	return ""
 }
 
-func (x *ScheduleRun) GetScheduledFor() string {
+func (x *TriggerRun) GetTriggeredAt() string {
 	if x != nil {
-		return x.ScheduledFor
+		return x.TriggeredAt
 	}
 	return ""
 }
 
-func (x *ScheduleRun) GetCreatedAt() string {
+func (x *TriggerRun) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
 	}
@@ -4066,29 +4074,29 @@ func (x *RunTriggerResponse) GetTask() *Task {
 	return nil
 }
 
-type ListScheduleRunsRequest struct {
+type ListTriggerRunsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ScheduleName  string                 `protobuf:"bytes,1,opt,name=schedule_name,json=scheduleName,proto3" json:"schedule_name,omitempty"`
+	TriggerName   string                 `protobuf:"bytes,1,opt,name=trigger_name,json=triggerName,proto3" json:"trigger_name,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListScheduleRunsRequest) Reset() {
-	*x = ListScheduleRunsRequest{}
+func (x *ListTriggerRunsRequest) Reset() {
+	*x = ListTriggerRunsRequest{}
 	mi := &file_proto_api_v1_api_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListScheduleRunsRequest) String() string {
+func (x *ListTriggerRunsRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListScheduleRunsRequest) ProtoMessage() {}
+func (*ListTriggerRunsRequest) ProtoMessage() {}
 
-func (x *ListScheduleRunsRequest) ProtoReflect() protoreflect.Message {
+func (x *ListTriggerRunsRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_api_v1_api_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4100,53 +4108,53 @@ func (x *ListScheduleRunsRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListScheduleRunsRequest.ProtoReflect.Descriptor instead.
-func (*ListScheduleRunsRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListTriggerRunsRequest.ProtoReflect.Descriptor instead.
+func (*ListTriggerRunsRequest) Descriptor() ([]byte, []int) {
 	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{51}
 }
 
-func (x *ListScheduleRunsRequest) GetScheduleName() string {
+func (x *ListTriggerRunsRequest) GetTriggerName() string {
 	if x != nil {
-		return x.ScheduleName
+		return x.TriggerName
 	}
 	return ""
 }
 
-func (x *ListScheduleRunsRequest) GetLimit() int32 {
+func (x *ListTriggerRunsRequest) GetLimit() int32 {
 	if x != nil {
 		return x.Limit
 	}
 	return 0
 }
 
-func (x *ListScheduleRunsRequest) GetOffset() int32 {
+func (x *ListTriggerRunsRequest) GetOffset() int32 {
 	if x != nil {
 		return x.Offset
 	}
 	return 0
 }
 
-type ListScheduleRunsResponse struct {
+type ListTriggerRunsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Runs          []*ScheduleRun         `protobuf:"bytes,1,rep,name=runs,proto3" json:"runs,omitempty"`
+	Runs          []*TriggerRun          `protobuf:"bytes,1,rep,name=runs,proto3" json:"runs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListScheduleRunsResponse) Reset() {
-	*x = ListScheduleRunsResponse{}
+func (x *ListTriggerRunsResponse) Reset() {
+	*x = ListTriggerRunsResponse{}
 	mi := &file_proto_api_v1_api_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListScheduleRunsResponse) String() string {
+func (x *ListTriggerRunsResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListScheduleRunsResponse) ProtoMessage() {}
+func (*ListTriggerRunsResponse) ProtoMessage() {}
 
-func (x *ListScheduleRunsResponse) ProtoReflect() protoreflect.Message {
+func (x *ListTriggerRunsResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_api_v1_api_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4158,12 +4166,12 @@ func (x *ListScheduleRunsResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListScheduleRunsResponse.ProtoReflect.Descriptor instead.
-func (*ListScheduleRunsResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListTriggerRunsResponse.ProtoReflect.Descriptor instead.
+func (*ListTriggerRunsResponse) Descriptor() ([]byte, []int) {
 	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{52}
 }
 
-func (x *ListScheduleRunsResponse) GetRuns() []*ScheduleRun {
+func (x *ListTriggerRunsResponse) GetRuns() []*TriggerRun {
 	if x != nil {
 		return x.Runs
 	}
@@ -6176,7 +6184,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	" \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
 	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01B\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\x9e\x05\n" +
+	"\t_ended_at\"\xce\x05\n" +
 	"\aTrigger\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x12\n" +
@@ -6206,9 +6214,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x14 \x01(\tR\tupdatedAt\x12#\n" +
 	"\vlast_run_at\x18\x15 \x01(\tH\x00R\tlastRunAt\x88\x01\x01\x12#\n" +
-	"\vnext_run_at\x18\x16 \x01(\tH\x01R\tnextRunAt\x88\x01\x01B\x0e\n" +
+	"\vnext_run_at\x18\x16 \x01(\tH\x01R\tnextRunAt\x88\x01\x01\x12 \n" +
+	"\tsource_id\x18\x17 \x01(\tH\x02R\bsourceId\x88\x01\x01B\x0e\n" +
 	"\f_last_run_atB\x0e\n" +
-	"\f_next_run_at\"\xbe\x01\n" +
+	"\f_next_run_atB\f\n" +
+	"\n" +
+	"_source_id\"\xbe\x01\n" +
 	"\tTaskEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +
@@ -6223,13 +6234,14 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x04time\x18\x01 \x01(\tR\x04time\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +
 	"\asummary\x18\x03 \x01(\tR\asummary\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"\xb7\x01\n" +
-	"\vScheduleRun\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
-	"\rschedule_name\x18\x02 \x01(\tR\fscheduleName\x12\x17\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\xb2\x01\n" +
+	"\n" +
+	"TriggerRun\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\ftrigger_name\x18\x02 \x01(\tR\vtriggerName\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\x12#\n" +
-	"\rscheduled_for\x18\x05 \x01(\tR\fscheduledFor\x12\x1d\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12!\n" +
+	"\ftriggered_at\x18\x05 \x01(\tR\vtriggeredAt\x12\x1d\n" +
 	"\n" +
 	"created_at\x18\x06 \x01(\tR\tcreatedAt\"\xd8\x03\n" +
 	"\x11RunnerFleetHealth\x12\x1f\n" +
@@ -6506,13 +6518,13 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x11RunTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\"6\n" +
 	"\x12RunTriggerResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"l\n" +
-	"\x17ListScheduleRunsRequest\x12#\n" +
-	"\rschedule_name\x18\x01 \x01(\tR\fscheduleName\x12\x14\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"i\n" +
+	"\x16ListTriggerRunsRequest\x12!\n" +
+	"\ftrigger_name\x18\x01 \x01(\tR\vtriggerName\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"C\n" +
-	"\x18ListScheduleRunsResponse\x12'\n" +
-	"\x04runs\x18\x01 \x03(\v2\x13.api.v1.ScheduleRunR\x04runs\"=\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"A\n" +
+	"\x17ListTriggerRunsResponse\x12&\n" +
+	"\x04runs\x18\x01 \x03(\v2\x12.api.v1.TriggerRunR\x04runs\"=\n" +
 	"\x16GetRunnerHealthRequest\x12#\n" +
 	"\rinclude_tasks\x18\x01 \x01(\bR\fincludeTasks\"L\n" +
 	"\x17GetRunnerHealthResponse\x121\n" +
@@ -6657,15 +6669,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\fListSessions\x12\x1b.api.v1.ListSessionsRequest\x1a\x1c.api.v1.ListSessionsResponse\x12C\n" +
 	"\n" +
 	"GetSession\x12\x19.api.v1.GetSessionRequest\x1a\x1a.api.v1.GetSessionResponse\x12L\n" +
-	"\rResumeSession\x12\x1c.api.v1.ResumeSessionRequest\x1a\x1d.api.v1.ResumeSessionResponse2\xe1\x03\n" +
+	"\rResumeSession\x12\x1c.api.v1.ResumeSessionRequest\x1a\x1d.api.v1.ResumeSessionResponse2\xde\x03\n" +
 	"\x0eTriggerService\x12L\n" +
 	"\rCreateTrigger\x12\x1c.api.v1.CreateTriggerRequest\x1a\x1d.api.v1.CreateTriggerResponse\x12L\n" +
 	"\rUpdateTrigger\x12\x1c.api.v1.UpdateTriggerRequest\x1a\x1d.api.v1.UpdateTriggerResponse\x12I\n" +
 	"\fListTriggers\x12\x1b.api.v1.ListTriggersRequest\x1a\x1c.api.v1.ListTriggersResponse\x12L\n" +
 	"\rDeleteTrigger\x12\x1c.api.v1.DeleteTriggerRequest\x1a\x1d.api.v1.DeleteTriggerResponse\x12C\n" +
 	"\n" +
-	"RunTrigger\x12\x19.api.v1.RunTriggerRequest\x1a\x1a.api.v1.RunTriggerResponse\x12U\n" +
-	"\x10ListScheduleRuns\x12\x1f.api.v1.ListScheduleRunsRequest\x1a .api.v1.ListScheduleRunsResponse2\xb8\x01\n" +
+	"RunTrigger\x12\x19.api.v1.RunTriggerRequest\x1a\x1a.api.v1.RunTriggerResponse\x12R\n" +
+	"\x0fListTriggerRuns\x12\x1e.api.v1.ListTriggerRunsRequest\x1a\x1f.api.v1.ListTriggerRunsResponse2\xb8\x01\n" +
 	"\fFleetService\x12R\n" +
 	"\x0fGetRunnerHealth\x12\x1e.api.v1.GetRunnerHealthRequest\x1a\x1f.api.v1.GetRunnerHealthResponse\x12T\n" +
 	"\x15SubscribeFleetUpdates\x12$.api.v1.SubscribeFleetUpdatesRequest\x1a\x13.api.v1.FleetUpdate0\x012\x9f\x05\n" +
@@ -6712,7 +6724,7 @@ var file_proto_api_v1_api_proto_goTypes = []any{
 	(*Trigger)(nil),                           // 3: api.v1.Trigger
 	(*TaskEvent)(nil),                         // 4: api.v1.TaskEvent
 	(*TaskProgressEntry)(nil),                 // 5: api.v1.TaskProgressEntry
-	(*ScheduleRun)(nil),                       // 6: api.v1.ScheduleRun
+	(*TriggerRun)(nil),                        // 6: api.v1.TriggerRun
 	(*RunnerFleetHealth)(nil),                 // 7: api.v1.RunnerFleetHealth
 	(*RunnerImageInfo)(nil),                   // 8: api.v1.RunnerImageInfo
 	(*RunnerInfo)(nil),                        // 9: api.v1.RunnerInfo
@@ -6757,8 +6769,8 @@ var file_proto_api_v1_api_proto_goTypes = []any{
 	(*DeleteTriggerResponse)(nil),             // 48: api.v1.DeleteTriggerResponse
 	(*RunTriggerRequest)(nil),                 // 49: api.v1.RunTriggerRequest
 	(*RunTriggerResponse)(nil),                // 50: api.v1.RunTriggerResponse
-	(*ListScheduleRunsRequest)(nil),           // 51: api.v1.ListScheduleRunsRequest
-	(*ListScheduleRunsResponse)(nil),          // 52: api.v1.ListScheduleRunsResponse
+	(*ListTriggerRunsRequest)(nil),            // 51: api.v1.ListTriggerRunsRequest
+	(*ListTriggerRunsResponse)(nil),           // 52: api.v1.ListTriggerRunsResponse
 	(*GetRunnerHealthRequest)(nil),            // 53: api.v1.GetRunnerHealthRequest
 	(*GetRunnerHealthResponse)(nil),           // 54: api.v1.GetRunnerHealthResponse
 	(*SubscribeFleetUpdatesRequest)(nil),      // 55: api.v1.SubscribeFleetUpdatesRequest
@@ -6819,7 +6831,7 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	3,  // 18: api.v1.UpdateTriggerResponse.trigger:type_name -> api.v1.Trigger
 	3,  // 19: api.v1.ListTriggersResponse.triggers:type_name -> api.v1.Trigger
 	0,  // 20: api.v1.RunTriggerResponse.task:type_name -> api.v1.Task
-	6,  // 21: api.v1.ListScheduleRunsResponse.runs:type_name -> api.v1.ScheduleRun
+	6,  // 21: api.v1.ListTriggerRunsResponse.runs:type_name -> api.v1.TriggerRun
 	7,  // 22: api.v1.GetRunnerHealthResponse.health:type_name -> api.v1.RunnerFleetHealth
 	0,  // 23: api.v1.FleetUpdate.task:type_name -> api.v1.Task
 	9,  // 24: api.v1.FleetUpdate.runner:type_name -> api.v1.RunnerInfo
@@ -6850,7 +6862,7 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	45, // 49: api.v1.TriggerService.ListTriggers:input_type -> api.v1.ListTriggersRequest
 	47, // 50: api.v1.TriggerService.DeleteTrigger:input_type -> api.v1.DeleteTriggerRequest
 	49, // 51: api.v1.TriggerService.RunTrigger:input_type -> api.v1.RunTriggerRequest
-	51, // 52: api.v1.TriggerService.ListScheduleRuns:input_type -> api.v1.ListScheduleRunsRequest
+	51, // 52: api.v1.TriggerService.ListTriggerRuns:input_type -> api.v1.ListTriggerRunsRequest
 	53, // 53: api.v1.FleetService.GetRunnerHealth:input_type -> api.v1.GetRunnerHealthRequest
 	55, // 54: api.v1.FleetService.SubscribeFleetUpdates:input_type -> api.v1.SubscribeFleetUpdatesRequest
 	57, // 55: api.v1.AdminService.CreateToken:input_type -> api.v1.CreateTokenRequest
@@ -6885,7 +6897,7 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	46, // 84: api.v1.TriggerService.ListTriggers:output_type -> api.v1.ListTriggersResponse
 	48, // 85: api.v1.TriggerService.DeleteTrigger:output_type -> api.v1.DeleteTriggerResponse
 	50, // 86: api.v1.TriggerService.RunTrigger:output_type -> api.v1.RunTriggerResponse
-	52, // 87: api.v1.TriggerService.ListScheduleRuns:output_type -> api.v1.ListScheduleRunsResponse
+	52, // 87: api.v1.TriggerService.ListTriggerRuns:output_type -> api.v1.ListTriggerRunsResponse
 	54, // 88: api.v1.FleetService.GetRunnerHealth:output_type -> api.v1.GetRunnerHealthResponse
 	56, // 89: api.v1.FleetService.SubscribeFleetUpdates:output_type -> api.v1.FleetUpdate
 	58, // 90: api.v1.AdminService.CreateToken:output_type -> api.v1.CreateTokenResponse

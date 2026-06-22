@@ -412,7 +412,7 @@ func TestRunnerHeartbeat(t *testing.T) {
 	}
 }
 
-func TestSchedulesCRUD(t *testing.T) {
+func TestTriggersCRUD(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -420,7 +420,7 @@ func TestSchedulesCRUD(t *testing.T) {
 
 	null := sql.NullString{}
 	nullJSON := json.RawMessage("null")
-	err := q.CreateSchedule(ctx, CreateScheduleParams{
+	err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "sched-1", Name: "daily-report",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * *",
@@ -431,125 +431,125 @@ func TestSchedulesCRUD(t *testing.T) {
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
-	byName, err := q.GetScheduleByName(ctx, "daily-report")
+	byName, err := q.GetTriggerByName(ctx, "daily-report")
 	if err != nil {
-		t.Fatalf("GetScheduleByName: %v", err)
+		t.Fatalf("GetTriggerByName: %v", err)
 	}
 	if byName.CronExpr != "0 9 * * *" {
-		t.Errorf("GetScheduleByName = %+v", byName)
+		t.Errorf("GetTriggerByName = %+v", byName)
 	}
 
-	byID, err := q.GetScheduleByID(ctx, "sched-1")
+	byID, err := q.GetTriggerByID(ctx, "sched-1")
 	if err != nil {
-		t.Fatalf("GetScheduleByID: %v", err)
+		t.Fatalf("GetTriggerByID: %v", err)
 	}
 	if byID.Name != "daily-report" {
-		t.Errorf("GetScheduleByID = %+v", byID)
+		t.Errorf("GetTriggerByID = %+v", byID)
 	}
 
-	list, err := q.ListSchedules(ctx)
+	list, err := q.ListTriggers(ctx)
 	if err != nil {
-		t.Fatalf("ListSchedules: %v", err)
+		t.Fatalf("ListTriggers: %v", err)
 	}
 	if len(list) != 1 || list[0].Name != "daily-report" {
-		t.Errorf("ListSchedules = %+v", list)
+		t.Errorf("ListTriggers = %+v", list)
 	}
 
-	enabled, err := q.ListEnabledSchedules(ctx)
+	enabled, err := q.ListEnabledTriggers(ctx)
 	if err != nil {
-		t.Fatalf("ListEnabledSchedules: %v", err)
+		t.Fatalf("ListEnabledTriggers: %v", err)
 	}
 	if len(enabled) != 1 {
-		t.Errorf("expected 1 enabled schedule, got %d", len(enabled))
+		t.Errorf("expected 1 enabled trigger, got %d", len(enabled))
 	}
 
-	if err := q.DeleteSchedule(ctx, "daily-report"); err != nil {
-		t.Fatalf("DeleteSchedule: %v", err)
+	if err := q.DeleteTrigger(ctx, "daily-report"); err != nil {
+		t.Fatalf("DeleteTrigger: %v", err)
 	}
-	list, _ = q.ListSchedules(ctx)
+	list, _ = q.ListTriggers(ctx)
 	if len(list) != 0 {
-		t.Errorf("expected 0 schedules after delete, got %d", len(list))
+		t.Errorf("expected 0 triggers after delete, got %d", len(list))
 	}
 }
 
-func TestScheduleTeamScoping(t *testing.T) {
+func TestTriggerTeamScoping(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
 	nullJSON := json.RawMessage("null")
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s1", Name: "team-a-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
 		Prompt:   "a", TeamID: sql.NullString{String: "team-a", Valid: true},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s2", Name: "global-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
 		Prompt:   "global", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
-	teamScheds, err := q.ListSchedulesByTeam(ctx, sql.NullString{String: "team-a", Valid: true})
+	teamScheds, err := q.ListTriggersByTeam(ctx, sql.NullString{String: "team-a", Valid: true})
 	if err != nil {
-		t.Fatalf("ListSchedulesByTeam: %v", err)
+		t.Fatalf("ListTriggersByTeam: %v", err)
 	}
 	if len(teamScheds) != 1 || teamScheds[0].Name != "team-a-sched" {
-		t.Errorf("expected 1 team schedule, got %d: %+v", len(teamScheds), teamScheds)
+		t.Errorf("expected 1 team trigger, got %d: %+v", len(teamScheds), teamScheds)
 	}
 
-	teamEnabled, err := q.ListEnabledSchedulesByTeam(ctx, sql.NullString{String: "team-a", Valid: true})
+	teamEnabled, err := q.ListEnabledTriggersByTeam(ctx, sql.NullString{String: "team-a", Valid: true})
 	if err != nil {
-		t.Fatalf("ListEnabledSchedulesByTeam: %v", err)
+		t.Fatalf("ListEnabledTriggersByTeam: %v", err)
 	}
 	if len(teamEnabled) != 1 {
-		t.Errorf("expected 1 enabled team schedule, got %d", len(teamEnabled))
+		t.Errorf("expected 1 enabled team trigger, got %d", len(teamEnabled))
 	}
 }
 
-func TestScheduleLastAndNextRun(t *testing.T) {
+func TestTriggerLastAndNextRun(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	nullJSON := json.RawMessage("null")
 
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s1", Name: "test-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "*/5 * * * *",
 		Prompt:   "test", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
 	lastRun := now.Add(-time.Hour)
-	if err := q.SetScheduleLastRun(ctx, SetScheduleLastRunParams{
+	if err := q.SetTriggerLastRun(ctx, SetTriggerLastRunParams{
 		ID: "s1", LastRunAt: sql.NullTime{Time: lastRun, Valid: true}, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("SetScheduleLastRun: %v", err)
+		t.Fatalf("SetTriggerLastRun: %v", err)
 	}
 
 	nextRun := now.Add(time.Hour)
-	if err := q.SetScheduleNextRun(ctx, SetScheduleNextRunParams{
+	if err := q.SetTriggerNextRun(ctx, SetTriggerNextRunParams{
 		ID: "s1", NextRunAt: sql.NullTime{Time: nextRun, Valid: true}, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("SetScheduleNextRun: %v", err)
+		t.Fatalf("SetTriggerNextRun: %v", err)
 	}
 
-	got, _ := q.GetScheduleByName(ctx, "test-sched")
+	got, _ := q.GetTriggerByName(ctx, "test-sched")
 	if !got.LastRunAt.Time.Equal(lastRun) {
 		t.Errorf("LastRunAt = %v, want %v", got.LastRunAt.Time, lastRun)
 	}
@@ -558,63 +558,63 @@ func TestScheduleLastAndNextRun(t *testing.T) {
 	}
 }
 
-func TestUpdateSchedule(t *testing.T) {
+func TestUpdateTrigger(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	nullJSON := json.RawMessage("null")
 
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s1", Name: "old-name",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
 		Prompt:   "old", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
-	if err := q.UpdateSchedule(ctx, UpdateScheduleParams{
+	if err := q.UpdateTrigger(ctx, UpdateTriggerParams{
 		NewName: "new-name", TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "*/30 * * * *", Prompt: "new",
 		Skills: nullJSON, TimeoutSec: 600, Enabled: true,
 		UpdatedAt: now, OldName: "old-name",
 	}); err != nil {
-		t.Fatalf("UpdateSchedule: %v", err)
+		t.Fatalf("UpdateTrigger: %v", err)
 	}
 
-	got, err := q.GetScheduleByID(ctx, "s1")
+	got, err := q.GetTriggerByID(ctx, "s1")
 	if err != nil {
-		t.Fatalf("GetScheduleByID: %v", err)
+		t.Fatalf("GetTriggerByID: %v", err)
 	}
 	if got.Name != "new-name" || got.CronExpr != "*/30 * * * *" || got.Prompt != "new" {
-		t.Errorf("updated schedule = %+v", got)
+		t.Errorf("updated trigger = %+v", got)
 	}
 }
 
-func TestInsertScheduleRun(t *testing.T) {
+func TestInsertTriggerRun(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 	nullJSON := json.RawMessage("null")
 
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s1", Name: "my-sched",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 * * * *",
 		Prompt:   "run", TeamID: sql.NullString{},
 		Skills: nullJSON, TimeoutSec: 300, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
-	if err := q.InsertScheduleRun(ctx, InsertScheduleRunParams{
-		ID: "run-1", ScheduleID: "s1", TaskID: "task-1",
-		Status: "pending", ScheduledFor: now, CreatedAt: now,
+	if err := q.InsertTriggerRun(ctx, InsertTriggerRunParams{
+		ID: "run-1", TriggerID: "s1", TaskID: "task-1",
+		Status: "pending", TriggeredAt: now, CreatedAt: now,
 	}); err != nil {
-		t.Fatalf("InsertScheduleRun: %v", err)
+		t.Fatalf("InsertTriggerRun: %v", err)
 	}
 }
 
@@ -852,7 +852,7 @@ func TestListUsersAndCascadeDelete(t *testing.T) {
 	}
 }
 
-func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
+func TestListTriggerRunsByTeamAndByTrigger(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -862,56 +862,56 @@ func TestListScheduleRunsByTeamAndBySchedule(t *testing.T) {
 	if err := q.CreateTeam(ctx, CreateTeamParams{ID: "t1", Name: "eng", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s1", Name: "daily",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * *",
 		Prompt:   "daily report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
-	if err := q.CreateSchedule(ctx, CreateScheduleParams{
+	if err := q.CreateTrigger(ctx, CreateTriggerParams{
 		ID: "s2", Name: "weekly",
 		TriggerType: "cron", TriggerConfig: json.RawMessage("{}"),
 		CronExpr: "0 9 * * 1",
 		Prompt:   "weekly report", TeamID: sql.NullString{String: "t1", Valid: true},
 		Skills: nullJSON, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		t.Fatalf("CreateSchedule: %v", err)
+		t.Fatalf("CreateTrigger: %v", err)
 	}
 
 	for i, sid := range []string{"s1", "s1", "s2"} {
 		rid := fmt.Sprintf("run-%d", i)
-		if err := q.InsertScheduleRun(ctx, InsertScheduleRunParams{
-			ID: rid, ScheduleID: sid, TeamID: sql.NullString{String: "t1", Valid: true},
+		if err := q.InsertTriggerRun(ctx, InsertTriggerRunParams{
+			ID: rid, TriggerID: sid, TeamID: sql.NullString{String: "t1", Valid: true},
 			TaskID: "task-" + rid, Status: "submitted",
-			ScheduledFor: now, CreatedAt: now,
+			TriggeredAt: now, CreatedAt: now,
 		}); err != nil {
-			t.Fatalf("InsertScheduleRun(%s): %v", rid, err)
+			t.Fatalf("InsertTriggerRun(%s): %v", rid, err)
 		}
 	}
 
-	teamRuns, err := q.ListScheduleRunsByTeam(ctx, ListScheduleRunsByTeamParams{
+	teamRuns, err := q.ListTriggerRunsByTeam(ctx, ListTriggerRunsByTeamParams{
 		TeamID: sql.NullString{String: "t1", Valid: true}, Limit: 100,
 	})
 	if err != nil {
-		t.Fatalf("ListScheduleRunsByTeam: %v", err)
+		t.Fatalf("ListTriggerRunsByTeam: %v", err)
 	}
 	if len(teamRuns) != 3 {
-		t.Fatalf("expected 3 schedule runs for team t1, got %d", len(teamRuns))
+		t.Fatalf("expected 3 trigger runs for team t1, got %d", len(teamRuns))
 	}
 
-	schedRuns, err := q.ListScheduleRunsBySchedule(ctx, ListScheduleRunsByScheduleParams{
-		ScheduleID: "s1", Limit: 100,
+	schedRuns, err := q.ListTriggerRunsByTrigger(ctx, ListTriggerRunsByTriggerParams{
+		TriggerID: "s1", Limit: 100,
 	})
 	if err != nil {
-		t.Fatalf("ListScheduleRunsBySchedule: %v", err)
+		t.Fatalf("ListTriggerRunsByTrigger: %v", err)
 	}
 	if len(schedRuns) != 2 {
-		t.Fatalf("expected 2 runs for schedule s1, got %d", len(schedRuns))
+		t.Fatalf("expected 2 runs for trigger s1, got %d", len(schedRuns))
 	}
-	if schedRuns[0].ScheduleName != "daily" || schedRuns[1].ScheduleName != "daily" {
-		t.Errorf("ListScheduleRunsBySchedule names: %+v", schedRuns)
+	if schedRuns[0].TriggerName != "daily" || schedRuns[1].TriggerName != "daily" {
+		t.Errorf("ListTriggerRunsByTrigger names: %+v", schedRuns)
 	}
 }

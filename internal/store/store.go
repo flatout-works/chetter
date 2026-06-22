@@ -93,8 +93,8 @@ type PRReviewTriggerConfig struct {
 	Repo string `json:"repo"`
 }
 
-// ScheduleRecord is a persisted task trigger (cron, pr_review, etc.).
-type ScheduleRecord struct {
+// TriggerRecord is a persisted task trigger (cron, pr_review, etc.).
+type TriggerRecord struct {
 	ID            string     `json:"id"`
 	TeamID        string     `json:"team_id,omitempty"`
 	Name          string     `json:"name"`
@@ -113,14 +113,15 @@ type ScheduleRecord struct {
 	Skills        []string   `json:"skills"`
 	TimeoutSec    int        `json:"timeout_sec"`
 	Enabled       bool       `json:"enabled"`
+	SourceID      string     `json:"source_id,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
 	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
 }
 
-// ScheduleInput contains fields needed to create a trigger.
-type ScheduleInput struct {
+// TriggerInput contains fields needed to create a trigger.
+type TriggerInput struct {
 	ID            string
 	TeamID        string
 	Name          string
@@ -138,6 +139,7 @@ type ScheduleInput struct {
 	Harness       string
 	Skills        []string
 	TimeoutSec    int
+	SourceID      string
 }
 
 // Open creates a database pool and applies conservative connection limits.
@@ -229,7 +231,7 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureScheduleMetadataColumns(ctx); err != nil {
+	if err := s.ensureTriggerMetadataColumns(ctx); err != nil {
 		return err
 	}
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
@@ -238,7 +240,7 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureScheduleRunTeamIDColumn(ctx); err != nil {
+	if err := s.ensureTriggerRunTeamIDColumn(ctx); err != nil {
 		return err
 	}
 	if err := s.ensureSessionExportColumn(ctx); err != nil {
@@ -294,20 +296,21 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) ensureScheduleMetadataColumns(ctx context.Context) error {
+func (s *Store) ensureTriggerMetadataColumns(ctx context.Context) error {
 	columns := []struct {
 		name string
 		ddl  string
 	}{
-		{"agent", "ALTER TABLE chetter_schedules ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image"},
-		{"provider_id", "ALTER TABLE chetter_schedules ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
-		{"model_id", "ALTER TABLE chetter_schedules ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
-		{"variant_id", "ALTER TABLE chetter_schedules ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
-		{"harness", "ALTER TABLE chetter_schedules ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
-		{"team_id", "ALTER TABLE chetter_schedules ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
+		{"agent", "ALTER TABLE chetter_triggers ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image"},
+		{"provider_id", "ALTER TABLE chetter_triggers ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
+		{"model_id", "ALTER TABLE chetter_triggers ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
+		{"variant_id", "ALTER TABLE chetter_triggers ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
+		{"harness", "ALTER TABLE chetter_triggers ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
+		{"team_id", "ALTER TABLE chetter_triggers ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
+		{"source_id", "ALTER TABLE chetter_triggers ADD COLUMN source_id VARCHAR(64) NULL AFTER enabled"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_schedules", column.name)
+		exists, err := s.columnExists(ctx, "chetter_triggers", column.name)
 		if err != nil {
 			return err
 		}
@@ -315,7 +318,7 @@ func (s *Store) ensureScheduleMetadataColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_schedules.%s: %w", column.name, err)
+			return fmt.Errorf("add chetter_triggers.%s: %w", column.name, err)
 		}
 	}
 	return nil
@@ -359,11 +362,11 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"trigger_type", "ALTER TABLE chetter_schedules ADD COLUMN trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron' AFTER name"},
-		{"trigger_config", "ALTER TABLE chetter_schedules ADD COLUMN trigger_config JSON NULL AFTER trigger_type"},
+		{"trigger_type", "ALTER TABLE chetter_triggers ADD COLUMN trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron' AFTER name"},
+		{"trigger_config", "ALTER TABLE chetter_triggers ADD COLUMN trigger_config JSON NULL AFTER trigger_type"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_schedules", column.name)
+		exists, err := s.columnExists(ctx, "chetter_triggers", column.name)
 		if err != nil {
 			return err
 		}
@@ -371,26 +374,26 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_schedules.%s: %w", column.name, err)
+			return fmt.Errorf("add chetter_triggers.%s: %w", column.name, err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_schedules SET trigger_config = '{}' WHERE trigger_config IS NULL"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_triggers SET trigger_config = '{}' WHERE trigger_config IS NULL"); err != nil {
 		return fmt.Errorf("backfill trigger_config: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) ensureScheduleRunTeamIDColumn(ctx context.Context) error {
-	exists, err := s.columnExists(ctx, "chetter_schedule_runs", "team_id")
+func (s *Store) ensureTriggerRunTeamIDColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "chetter_trigger_runs", "team_id")
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_schedule_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER schedule_id")
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_trigger_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER trigger_id")
 	if err != nil {
-		return fmt.Errorf("add chetter_schedule_runs.team_id: %w", err)
+		return fmt.Errorf("add chetter_trigger_runs.team_id: %w", err)
 	}
 	return nil
 }

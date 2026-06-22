@@ -209,7 +209,7 @@ type DeleteEventCallbackOutput struct {
 }
 
 // TriggerToolRecord is the stable MCP trigger response shape. Store-level
-// schedule records may grow internal fields without breaking MCP clients.
+// trigger records may grow internal fields without breaking MCP clients.
 type TriggerToolRecord struct {
 	ID            string     `json:"id"`
 	TeamID        string     `json:"team_id,omitempty"`
@@ -428,7 +428,7 @@ type ListTeamsOutput struct {
 
 // DeleteTeamInput is the input for chetter_delete_team.
 type DeleteTeamInput struct {
-	Name string `json:"name" jsonschema:"Name of the team to delete. Cascades to users, tokens, tasks, and schedules."`
+	Name string `json:"name" jsonschema:"Name of the team to delete. Cascades to users, tokens, tasks, and triggers."`
 }
 
 // DeleteTeamOutput is the output for chetter_delete_team.
@@ -454,27 +454,27 @@ type ListUsersOutput struct {
 	Users []UserInfo `json:"users"`
 }
 
-// --- Schedule Run Tools ---
+// --- Trigger Run Tools ---
 
-// ListScheduleRunsInput is the input for chetter_list_schedule_runs.
-type ListScheduleRunsInput struct {
-	ScheduleName string `json:"schedule_name,omitempty" jsonschema:"Optional schedule name to filter runs by"`
+// ListTriggerRunsInput is the input for chetter_list_trigger_runs.
+type ListTriggerRunsInput struct {
+	TriggerName string `json:"trigger_name,omitempty" jsonschema:"Optional trigger name to filter runs by"`
 	Limit        int    `json:"limit,omitempty" jsonschema:"Maximum runs to return, capped at 100"`
 }
 
-// ScheduleRunInfo is a single schedule run entry in the list.
-type ScheduleRunInfo struct {
+// TriggerRunInfo is a single trigger run entry in the list.
+type TriggerRunInfo struct {
 	ID           string    `json:"id"`
-	ScheduleName string    `json:"schedule_name"`
+	TriggerName string    `json:"trigger_name"`
 	TaskID       string    `json:"task_id"`
 	Status       string    `json:"status"`
-	ScheduledFor time.Time `json:"scheduled_for"`
+	TriggeredAt time.Time `json:"triggered_at"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// ListScheduleRunsOutput is the output for chetter_list_schedule_runs.
-type ListScheduleRunsOutput struct {
-	Runs []ScheduleRunInfo `json:"runs"`
+// ListTriggerRunsOutput is the output for chetter_list_trigger_runs.
+type ListTriggerRunsOutput struct {
+	Runs []TriggerRunInfo `json:"runs"`
 }
 
 // TaskExportInput is the input for chetter_task_export.
@@ -561,7 +561,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_agent_sessions", Description: "List recent chetter agent sessions, optionally filtered by status."}, svc.listAgentSessionsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its session runs."}, svc.agentSessionStatusTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_resume_agent_session", Description: "Resume a paused agent session with a follow-up prompt."}, svc.resumeAgentSessionTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron schedule or PR review webhook)."}, svc.createTriggerTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron trigger or PR review webhook)."}, svc.createTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_trigger", Description: "Update a trigger by name. Only provided fields are changed."}, svc.updateTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_triggers", Description: "List triggers, optionally filtered by type and enabled status."}, svc.listTriggersTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_trigger", Description: "Delete a trigger by name."}, svc.deleteTriggerTool)
@@ -594,7 +594,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_token", Description: "Delete an API token by name. Admin only."}, svc.deleteTokenTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only."}, svc.createTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and schedules. Admin only."}, svc.deleteTeamTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and triggers. Admin only."}, svc.deleteTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_get_model_catalog", Description: "Get the current model/provider catalog and its source."}, svc.getModelCatalogTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_sync_definitions", Description: "Re-pull the definitions repo and reload configs (model catalog, triggers, etc.). Admin only."}, svc.syncDefinitionsTool)
@@ -606,7 +606,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_definition_proposal", Description: "Create a GitHub pull request proposing definition file changes."}, svc.createDefinitionProposalTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_definition_proposals", Description: "List definition change proposals created by Chetter."}, svc.listDefinitionProposalsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_get_definition_proposal", Description: "Get a definition change proposal, including live PR status when GitHub is configured."}, svc.getDefinitionProposalTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_schedule_runs", Description: "List schedule runs for the current team, optionally filtered by schedule name."}, svc.listScheduleRunsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_trigger_runs", Description: "List trigger runs for the current team, optionally filtered by trigger name."}, svc.listTriggerRunsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
 }
@@ -889,7 +889,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 			triggerConfig = string(data)
 		}
 	}
-	trigger, err := s.CreateTrigger(ctx, store.ScheduleInput{
+	trigger, err := s.CreateTrigger(ctx, store.TriggerInput{
 		Name:          in.Name,
 		TriggerType:   in.TriggerType,
 		TriggerConfig: triggerConfig,
@@ -932,7 +932,7 @@ func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, 
 	return nil, ListTriggersOutput{Triggers: triggers}, nil
 }
 
-func triggerToolRecord(s store.ScheduleRecord) TriggerToolRecord {
+func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 	return TriggerToolRecord{
 		ID:            s.ID,
 		TeamID:        s.TeamID,
@@ -959,10 +959,10 @@ func triggerToolRecord(s store.ScheduleRecord) TriggerToolRecord {
 	}
 }
 
-func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
+func triggerToStoreRecord(s repository.ChetterTrigger) store.TriggerRecord {
 	var skills []string
 	_ = json.Unmarshal(s.Skills, &skills)
-	return store.ScheduleRecord{
+	return store.TriggerRecord{
 		ID:            s.ID,
 		TeamID:        s.TeamID.String,
 		Name:          s.Name,
@@ -981,6 +981,7 @@ func scheduleToStoreRecord(s repository.ChetterSchedule) store.ScheduleRecord {
 		Skills:        skills,
 		TimeoutSec:    int(s.TimeoutSec),
 		Enabled:       s.Enabled,
+		SourceID:      s.SourceID.String,
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 		LastRunAt:     store.NullTimePtr(s.LastRunAt),
@@ -1052,7 +1053,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 	if in.Name == "" {
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("name is required")
 	}
-	existing, err := s.GetScheduleByName(ctx, in.Name)
+	existing, err := s.GetTriggerByName(ctx, in.Name)
 	if err != nil {
 		return nil, UpdateTriggerOutput{}, fmt.Errorf("get trigger %q: %w", in.Name, err)
 	}
@@ -1062,7 +1063,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	triggerType := store.NonZero(in.TriggerType, existing.TriggerType)
 	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels, in.SessionMode, in.PauseReason, in.TTLHours)
-	merged := store.ScheduleInput{
+	merged := store.TriggerInput{
 		Name:          in.Name,
 		TriggerType:   triggerType,
 		TriggerConfig: triggerConfig,
@@ -1076,7 +1077,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		ModelID:       store.NonZero(in.ModelID, existing.ModelID.String),
 		VariantID:     store.NonZero(in.VariantID, existing.VariantID.String),
 		Harness:       store.NonZero(in.Harness, existing.Harness.String),
-		Skills:        store.NonNilSlice(in.Skills, scheduleSkillsToStrings(existing.Skills)),
+		Skills:        store.NonNilSlice(in.Skills, triggerSkillsToStrings(existing.Skills)),
 		TimeoutSec:    store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
 	}
 	trigger, err := s.UpdateTrigger(ctx, in.Name, merged, enabled)
@@ -1126,7 +1127,7 @@ func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason stri
 	}
 }
 
-func scheduleSkillsToStrings(skills json.RawMessage) []string {
+func triggerSkillsToStrings(skills json.RawMessage) []string {
 	var out []string
 	_ = json.Unmarshal(skills, &out)
 	return out
@@ -1266,14 +1267,14 @@ func (s *Service) listUsersTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 	return nil, ListUsersOutput{Users: users}, nil
 }
 
-// --- Schedule Run Tool Handlers ---
+// --- Trigger Run Tool Handlers ---
 
-func (s *Service) listScheduleRunsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListScheduleRunsInput) (*mcp.CallToolResult, ListScheduleRunsOutput, error) {
-	runs, err := s.ListScheduleRuns(ctx, in.ScheduleName, in.Limit, 0)
+func (s *Service) listTriggerRunsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTriggerRunsInput) (*mcp.CallToolResult, ListTriggerRunsOutput, error) {
+	runs, err := s.ListTriggerRuns(ctx, in.TriggerName, in.Limit, 0)
 	if err != nil {
-		return nil, ListScheduleRunsOutput{}, err
+		return nil, ListTriggerRunsOutput{}, err
 	}
-	return nil, ListScheduleRunsOutput{Runs: runs}, nil
+	return nil, ListTriggerRunsOutput{Runs: runs}, nil
 }
 
 func isAdmin(ctx context.Context) bool {

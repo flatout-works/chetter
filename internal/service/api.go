@@ -466,22 +466,22 @@ func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentS
 // --- Trigger Methods ---
 
 // ListTriggers returns triggers, optionally filtered by type and enabled status, respecting team scope.
-func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string) ([]store.ScheduleRecord, error) {
+func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string) ([]store.TriggerRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
-	var repoRecords []repository.ChetterSchedule
+	var repoRecords []repository.ChetterTrigger
 	var err error
 	if scoped && !scope.Admin && scope.TeamID != "" {
 		teamID := sql.NullString{String: scope.TeamID, Valid: true}
 		if enabledOnly {
-			repoRecords, err = s.repo.ListEnabledSchedulesByTeam(ctx, teamID)
+			repoRecords, err = s.repo.ListEnabledTriggersByTeam(ctx, teamID)
 		} else {
-			repoRecords, err = s.repo.ListSchedulesByTeam(ctx, teamID)
+			repoRecords, err = s.repo.ListTriggersByTeam(ctx, teamID)
 		}
 	} else {
 		if enabledOnly {
-			repoRecords, err = s.repo.ListEnabledSchedules(ctx)
+			repoRecords, err = s.repo.ListEnabledTriggers(ctx)
 		} else {
-			repoRecords, err = s.repo.ListSchedules(ctx)
+			repoRecords, err = s.repo.ListTriggers(ctx)
 		}
 	}
 	if err != nil {
@@ -496,43 +496,43 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 		}
 		repoRecords = filtered
 	}
-	triggers := make([]store.ScheduleRecord, len(repoRecords))
+	triggers := make([]store.TriggerRecord, len(repoRecords))
 	for i, r := range repoRecords {
-		triggers[i] = scheduleToStoreRecord(r)
+		triggers[i] = triggerToStoreRecord(r)
 	}
 	return triggers, nil
 }
 
-// ListScheduleRuns returns schedule runs, optionally filtered by schedule name, respecting team scope.
-func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, limit, offset int) ([]ScheduleRunInfo, error) {
+// ListTriggerRuns returns trigger runs, optionally filtered by trigger name, respecting team scope.
+func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit, offset int) ([]TriggerRunInfo, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 
-	if scheduleName != "" {
-		schedule, err := s.repo.GetScheduleByName(ctx, scheduleName)
+	if triggerName != "" {
+		trigger, err := s.repo.GetTriggerByName(ctx, triggerName)
 		if err != nil {
-			return nil, fmt.Errorf("schedule %q not found", scheduleName)
+			return nil, fmt.Errorf("trigger %q not found", triggerName)
 		}
-		if scoped && !scope.Admin && scope.TeamID != "" && schedule.TeamID.String != scope.TeamID {
-			return nil, fmt.Errorf("schedule %q not found", scheduleName)
+		if scoped && !scope.Admin && scope.TeamID != "" && trigger.TeamID.String != scope.TeamID {
+			return nil, fmt.Errorf("trigger %q not found", triggerName)
 		}
-		rows, err := s.repo.ListScheduleRunsBySchedule(ctx, repository.ListScheduleRunsByScheduleParams{
-			ScheduleID: schedule.ID,
+		rows, err := s.repo.ListTriggerRunsByTrigger(ctx, repository.ListTriggerRunsByTriggerParams{
+			TriggerID: trigger.ID,
 			Limit:      clamped,
 			Offset:     clampedOffset,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("list schedule runs: %w", err)
+			return nil, fmt.Errorf("list trigger runs: %w", err)
 		}
-		out := make([]ScheduleRunInfo, len(rows))
+		out := make([]TriggerRunInfo, len(rows))
 		for i, r := range rows {
-			out[i] = ScheduleRunInfo{
+			out[i] = TriggerRunInfo{
 				ID:           r.ID,
-				ScheduleName: r.ScheduleName,
+				TriggerName: r.TriggerName,
 				TaskID:       r.TaskID,
 				Status:       r.Status,
-				ScheduledFor: r.ScheduledFor,
+				TriggeredAt: r.TriggeredAt,
 				CreatedAt:    r.CreatedAt,
 			}
 		}
@@ -540,29 +540,29 @@ func (s *Service) ListScheduleRuns(ctx context.Context, scheduleName string, lim
 	}
 
 	if scoped && !scope.Admin && scope.TeamID != "" {
-		rows, err := s.repo.ListScheduleRunsByTeam(ctx, repository.ListScheduleRunsByTeamParams{
+		rows, err := s.repo.ListTriggerRunsByTeam(ctx, repository.ListTriggerRunsByTeamParams{
 			TeamID: sql.NullString{String: scope.TeamID, Valid: true},
 			Limit:  clamped,
 			Offset: clampedOffset,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("list schedule runs: %w", err)
+			return nil, fmt.Errorf("list trigger runs: %w", err)
 		}
-		out := make([]ScheduleRunInfo, len(rows))
+		out := make([]TriggerRunInfo, len(rows))
 		for i, r := range rows {
-			out[i] = ScheduleRunInfo{
+			out[i] = TriggerRunInfo{
 				ID:           r.ID,
-				ScheduleName: r.ScheduleName,
+				TriggerName: r.TriggerName,
 				TaskID:       r.TaskID,
 				Status:       r.Status,
-				ScheduledFor: r.ScheduledFor,
+				TriggeredAt: r.TriggeredAt,
 				CreatedAt:    r.CreatedAt,
 			}
 		}
 		return out, nil
 	}
 
-	return nil, fmt.Errorf("admin access required to list all schedule runs without a schedule_name filter")
+	return nil, fmt.Errorf("admin access required to list all trigger runs without a trigger_name filter")
 }
 
 // --- Fleet Health ---
@@ -743,7 +743,7 @@ func (s *Service) ListTeams(ctx context.Context) ([]TeamInfo, error) {
 	return out, nil
 }
 
-// DeleteTeam deletes a team and cascades to its users, tokens, tasks, and schedules. Admin only.
+// DeleteTeam deletes a team and cascades to its users, tokens, tasks, and triggers. Admin only.
 func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if !isAdmin(ctx) {
 		return fmt.Errorf("admin access required")
@@ -761,8 +761,8 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if err := s.repo.DeleteUsersByTeam(ctx, team.ID); err != nil {
 		return fmt.Errorf("delete users for team: %w", err)
 	}
-	if err := s.repo.DeleteSchedule(ctx, name); err != nil {
-		slog.Debug("delete team: schedule not deleted", "team", name, "err", err)
+	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
+		slog.Debug("delete team: trigger not deleted", "team", name, "err", err)
 	}
 	if err := s.repo.DeleteTeam(ctx, name); err != nil {
 		return fmt.Errorf("delete team: %w", err)
@@ -905,14 +905,14 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 	return out, nil
 }
 
-// --- Schedule Lookup ---
+// --- Trigger Lookup ---
 
 func (s *Service) ArcaneIsConfigured() bool {
 	return s.arcane != nil && s.arcane.IsConfigured()
 }
 
-func (s *Service) GetScheduleByName(ctx context.Context, name string) (repository.ChetterSchedule, error) {
-	return s.repo.GetScheduleByName(ctx, name)
+func (s *Service) GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error) {
+	return s.repo.GetTriggerByName(ctx, name)
 }
 
 // --- Arcane Methods ---

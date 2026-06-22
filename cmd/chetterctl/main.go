@@ -97,7 +97,7 @@ func tokenCmd(args []string, serverURL, token string) error {
 		fmt.Println(`  For per-service grouping, create multiple teams:`)
 		fmt.Println(`    "platform-api", "platform-worker", "frontend-web"`)
 		fmt.Println(`  Or use a team like "platform" and group by git_url in list views.`)
-		fmt.Println("  Tasks and schedules already carry the repo (git_url) field.")
+		fmt.Println("  Tasks and triggers already carry the repo (git_url) field.")
 
 	case "list":
 		_ = fs.Parse(args[1:])

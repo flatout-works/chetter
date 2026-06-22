@@ -127,8 +127,8 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 func (tdb *TestDB) Truncate(t *testing.T) {
 	t.Helper()
 	for _, table := range []string{
-		"chetter_schedule_runs",
-		"chetter_schedules",
+		"chetter_trigger_runs",
+		"chetter_triggers",
 		"chetter_runners",
 		"chetter_task_events",
 		"chetter_tasks",

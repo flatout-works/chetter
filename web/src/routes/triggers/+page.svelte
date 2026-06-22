@@ -3,7 +3,7 @@
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
-  import type { ScheduleRun, Trigger } from "$gen/proto/api/v1/api_pb";
+  import type { TriggerRun, Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import { addToast } from "$lib/stores/toast.svelte";
@@ -29,7 +29,7 @@
   let agent = $state("");
   let modelId = $state("");
 
-  let scheduleRuns = $state<ScheduleRun[]>([]);
+  let scheduleRuns = $state<TriggerRun[]>([]);
   let runsTriggerName = $state<string | null>(null);
   let loadingRuns = $state(false);
   let runsPage = $state(0);
@@ -96,7 +96,7 @@
     runsPage = 0;
     try {
       const client = createClient(TriggerService, getTransport());
-      const resp = await client.listScheduleRuns({ scheduleName: name, limit: 25 });
+      const resp = await client.listTriggerRuns({ triggerName: name, limit: 25 });
       scheduleRuns = resp.runs ?? [];
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
@@ -202,6 +202,10 @@
   function running(trigger: Trigger) {
     return runsTriggerName === trigger.name;
   }
+
+  function isGitManaged(trigger: Trigger): boolean {
+    return !!trigger.sourceId;
+  }
 </script>
 
 <svelte:head>
@@ -266,6 +270,9 @@
               <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{trigger.name}</span>
               <StatusBadge status={trigger.triggerType} />
               <span class="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:block">{triggerTarget(trigger)}</span>
+              {#if isGitManaged(trigger)}
+                <span class="text-xs text-gray-400 dark:text-gray-500 italic">(git-managed)</span>
+              {/if}
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-4">
               <button
@@ -276,7 +283,7 @@
                 <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform {trigger.enabled ? 'translate-x-5' : ''}"></span>
               </button>
               <Button color="blue" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); runNow(trigger.name); }}>Run</Button>
-              <Button color="red" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>
+              <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>
               <span class="text-gray-400 transition-transform {expandedId === trigger.id ? 'rotate-180' : ''}">▼</span>
             </div>
           </div>
@@ -399,6 +406,12 @@
                     <p class="text-gray-900 dark:text-white">{formatTime(trigger.nextRunAt)}</p>
                   </div>
                 {/if}
+                {#if trigger.sourceId}
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">Source</span>
+                    <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.sourceId}</p>
+                  </div>
+                {/if}
               </div>
 
               {#if trigger.prompt}
@@ -413,7 +426,7 @@
                   {running(trigger) ? "Hide Runs" : "Show Runs"}
                 </Button>
                 <Button color="blue" size="xs" onclick={() => runNow(trigger.name)}>Run Now</Button>
-                <Button color="red" size="xs" onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
+                <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
               </div>
 
               {#if running(trigger)}
@@ -434,7 +447,7 @@
                         <TableHeadCell>Run ID</TableHeadCell>
                         <TableHeadCell>Task</TableHeadCell>
                         <TableHeadCell>Status</TableHeadCell>
-                        <TableHeadCell>Scheduled For</TableHeadCell>
+                        <TableHeadCell>Triggered</TableHeadCell>
                         <TableHeadCell>Created</TableHeadCell>
                       </TableHead>
                       <TableBody>
@@ -447,7 +460,7 @@
                               </a>
                             </TableBodyCell>
                             <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
-                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.scheduledFor)}</TableBodyCell>
+                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.triggeredAt)}</TableBodyCell>
                             <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
                           </TableBodyRow>
                         {/each}

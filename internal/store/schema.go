@@ -164,7 +164,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_runners_status_seen (status, last_seen_at),
 		KEY idx_chetter_runners_digest_seen (image_digest, last_seen_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_schedules (
+	`CREATE TABLE IF NOT EXISTS chetter_triggers (
 		id VARCHAR(64) NOT NULL,
 		name VARCHAR(128) NOT NULL,
 		trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron',
@@ -182,25 +182,26 @@ var schemaStatements = []string{
 		skills JSON NOT NULL,
 		timeout_sec INT NOT NULL,
 		enabled BOOL NOT NULL,
+		source_id VARCHAR(64) NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		last_run_at DATETIME(6) NULL,
 		next_run_at DATETIME(6) NULL,
 		PRIMARY KEY (id),
-		UNIQUE KEY uq_chetter_schedules_name (name),
-		KEY idx_chetter_schedules_enabled_next (enabled, next_run_at)
+		UNIQUE KEY uq_chetter_triggers_name (name),
+		KEY idx_chetter_triggers_enabled_next (enabled, next_run_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_schedule_runs (
+	`CREATE TABLE IF NOT EXISTS chetter_trigger_runs (
 		id VARCHAR(64) NOT NULL,
-		schedule_id VARCHAR(64) NOT NULL,
+		trigger_id VARCHAR(64) NOT NULL,
 		team_id VARCHAR(64) NULL,
 		task_id VARCHAR(64) NOT NULL,
 		status VARCHAR(32) NOT NULL,
-		scheduled_for DATETIME(6) NOT NULL,
+		triggered_at DATETIME(6) NOT NULL,
 		created_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),
-		KEY idx_chetter_schedule_runs_schedule_created (schedule_id, created_at),
-		KEY idx_chetter_schedule_runs_task (task_id)
+		KEY idx_chetter_trigger_runs_trigger_created (trigger_id, created_at),
+		KEY idx_chetter_trigger_runs_task (task_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS teams (
 		id VARCHAR(64) NOT NULL,

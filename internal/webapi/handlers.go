@@ -49,6 +49,13 @@ func optTimeStr(t *time.Time) *string {
 	return &s
 }
 
+func optStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 func timeStrPtr(t *time.Time) string {
 	if t == nil {
 		return ""
@@ -105,7 +112,7 @@ func protoRun(r service.SessionRunRecord) *apiv1.SessionRun {
 	}
 }
 
-func protoTrigger(t store.ScheduleRecord) *apiv1.Trigger {
+func protoTrigger(t store.TriggerRecord) *apiv1.Trigger {
 	return &apiv1.Trigger{
 		Id:            t.ID,
 		TeamId:        t.TeamID,
@@ -129,6 +136,7 @@ func protoTrigger(t store.ScheduleRecord) *apiv1.Trigger {
 		UpdatedAt:     t.UpdatedAt.Format(time.RFC3339),
 		LastRunAt:     optTimeStr(t.LastRunAt),
 		NextRunAt:     optTimeStr(t.NextRunAt),
+		SourceId:      optStr(t.SourceID),
 	}
 }
 
@@ -391,7 +399,7 @@ type triggerHandler struct {
 
 func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request[apiv1.CreateTriggerRequest]) (*connect.Response[apiv1.CreateTriggerResponse], error) {
 	triggerConfig := buildTriggerConfig(req.Msg.TriggerType, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours))
-	trigger, err := h.svc.CreateTrigger(ctx, store.ScheduleInput{
+	trigger, err := h.svc.CreateTrigger(ctx, store.TriggerInput{
 		Name:          req.Msg.Name,
 		TriggerType:   req.Msg.TriggerType,
 		TriggerConfig: triggerConfig,
@@ -415,7 +423,7 @@ func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request
 }
 
 func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request[apiv1.UpdateTriggerRequest]) (*connect.Response[apiv1.UpdateTriggerResponse], error) {
-	existing, err := h.svc.GetScheduleByName(ctx, req.Msg.Name)
+	existing, err := h.svc.GetTriggerByName(ctx, req.Msg.Name)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("get trigger %q: %w", req.Msg.Name, err))
 	}
@@ -425,7 +433,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 	}
 	triggerType := store.NonZero(req.Msg.TriggerType, existing.TriggerType)
 	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours))
-	merged := store.ScheduleInput{
+	merged := store.TriggerInput{
 		Name:          req.Msg.Name,
 		TriggerType:   triggerType,
 		TriggerConfig: triggerConfig,
@@ -439,7 +447,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 		ModelID:       store.NonZero(req.Msg.ModelId, existing.ModelID.String),
 		VariantID:     store.NonZero(req.Msg.VariantId, existing.VariantID.String),
 		Harness:       store.NonZero(req.Msg.Harness, existing.Harness.String),
-		Skills:        store.NonNilSlice(req.Msg.Skills, scheduleSkillsToStrings(existing.Skills)),
+		Skills:        store.NonNilSlice(req.Msg.Skills, triggerSkillsToStrings(existing.Skills)),
 		TimeoutSec:    store.NonZeroInt(int(req.Msg.TimeoutSec), int(existing.TimeoutSec)),
 	}
 	trigger, err := h.svc.UpdateTrigger(ctx, req.Msg.Name, merged, enabled)
@@ -482,23 +490,23 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 	})}), nil
 }
 
-func (h *triggerHandler) ListScheduleRuns(ctx context.Context, req *connect.Request[apiv1.ListScheduleRunsRequest]) (*connect.Response[apiv1.ListScheduleRunsResponse], error) {
-	runs, err := h.svc.ListScheduleRuns(ctx, req.Msg.ScheduleName, int(req.Msg.Limit), int(req.Msg.Offset))
+func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Request[apiv1.ListTriggerRunsRequest]) (*connect.Response[apiv1.ListTriggerRunsResponse], error) {
+	runs, err := h.svc.ListTriggerRuns(ctx, req.Msg.TriggerName, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	out := make([]*apiv1.ScheduleRun, len(runs))
+	out := make([]*apiv1.TriggerRun, len(runs))
 	for i, r := range runs {
-		out[i] = &apiv1.ScheduleRun{
+		out[i] = &apiv1.TriggerRun{
 			Id:           r.ID,
-			ScheduleName: r.ScheduleName,
+			TriggerName: r.TriggerName,
 			TaskId:       r.TaskID,
 			Status:       r.Status,
-			ScheduledFor: r.ScheduledFor.Format(time.RFC3339),
+			TriggeredAt: r.TriggeredAt.Format(time.RFC3339),
 			CreatedAt:    r.CreatedAt.Format(time.RFC3339),
 		}
 	}
-	return connect.NewResponse(&apiv1.ListScheduleRunsResponse{Runs: out}), nil
+	return connect.NewResponse(&apiv1.ListTriggerRunsResponse{Runs: out}), nil
 }
 
 // --- FleetServiceHandler (unary only; streaming in streaming.go) ---
@@ -821,15 +829,15 @@ func applyWebTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason s
 	}
 }
 
-func scheduleSkillsToStrings(skills json.RawMessage) []string {
+func triggerSkillsToStrings(skills json.RawMessage) []string {
 	var out []string
 	_ = json.Unmarshal(skills, &out)
 	return out
 }
 
-// Ensure service has the schedule lookup method we need for UpdateTrigger.
+// Ensure service has the trigger lookup method we need for UpdateTrigger.
 // If not present, this is a compile-time check.
-var _ repository.ChetterSchedule
+var _ repository.ChetterTrigger
 
-// GetScheduleByName is a helper that delegates to the service's repo.
+// GetTriggerByName is a helper that delegates to the service's repo.
 // We need to expose this from service if not already available.

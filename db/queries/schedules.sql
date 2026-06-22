@@ -1,58 +1,58 @@
--- name: GetScheduleByID :one
-SELECT * FROM chetter_schedules
+-- name: GetTriggerByID :one
+SELECT * FROM chetter_triggers
 WHERE id = ?;
 
--- name: GetScheduleByName :one
-SELECT * FROM chetter_schedules
+-- name: GetTriggerByName :one
+SELECT * FROM chetter_triggers
 WHERE name = ?;
 
--- name: ListSchedules :many
-SELECT * FROM chetter_schedules
+-- name: ListTriggers :many
+SELECT * FROM chetter_triggers
 ORDER BY created_at DESC;
 
--- name: ListEnabledSchedules :many
-SELECT * FROM chetter_schedules
+-- name: ListEnabledTriggers :many
+SELECT * FROM chetter_triggers
 WHERE enabled = TRUE
 ORDER BY created_at DESC;
 
--- name: ListSchedulesByTeam :many
-SELECT * FROM chetter_schedules
+-- name: ListTriggersByTeam :many
+SELECT * FROM chetter_triggers
 WHERE team_id = sqlc.arg(team_id)
 ORDER BY created_at DESC;
 
--- name: ListEnabledSchedulesByTeam :many
-SELECT * FROM chetter_schedules
+-- name: ListEnabledTriggersByTeam :many
+SELECT * FROM chetter_triggers
 WHERE team_id = sqlc.arg(team_id)
   AND enabled = TRUE
 ORDER BY created_at DESC;
 
 -- name: ListEnabledTriggersByType :many
-SELECT * FROM chetter_schedules
+SELECT * FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = sqlc.arg(trigger_type)
 ORDER BY created_at DESC;
 
 -- name: ListEnabledPRReviewTriggersByRepo :many
-SELECT * FROM chetter_schedules
+SELECT * FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'pr_review'
   AND trigger_config->>'$.repo' = sqlc.arg(repo)
 ORDER BY created_at DESC;
 
 -- name: ListEnabledIssueTriggersByRepo :many
-SELECT * FROM chetter_schedules
+SELECT * FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'issue'
   AND trigger_config->>'$.repo' = sqlc.arg(repo)
 ORDER BY created_at DESC;
 
--- name: CreateSchedule :exec
-INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?);
+-- name: CreateTrigger :exec
+INSERT INTO chetter_triggers
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?);
 
--- name: UpdateSchedule :exec
-UPDATE chetter_schedules
+-- name: UpdateTrigger :exec
+UPDATE chetter_triggers
 SET name = sqlc.arg(new_name), trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
@@ -60,15 +60,15 @@ SET name = sqlc.arg(new_name), trigger_type = ?, trigger_config = ?, cron_expr =
     updated_at = ?
 WHERE name = sqlc.arg(old_name);
 
--- name: SetScheduleNextRun :exec
-UPDATE chetter_schedules
+-- name: SetTriggerNextRun :exec
+UPDATE chetter_triggers
 SET next_run_at = ?, updated_at = ?
 WHERE id = ?;
 
--- name: UpsertSchedule :exec
-INSERT INTO chetter_schedules
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-- name: UpsertTrigger :exec
+INSERT INTO chetter_triggers
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     trigger_type = VALUES(trigger_type),
     trigger_config = VALUES(trigger_config),
@@ -85,33 +85,34 @@ ON DUPLICATE KEY UPDATE
     skills = VALUES(skills),
     timeout_sec = VALUES(timeout_sec),
     enabled = VALUES(enabled),
+    source_id = VALUES(source_id),
     updated_at = VALUES(updated_at);
 
--- name: DeleteSchedule :exec
-DELETE FROM chetter_schedules
+-- name: DeleteTrigger :exec
+DELETE FROM chetter_triggers
 WHERE name = ?;
 
--- name: SetScheduleLastRun :exec
-UPDATE chetter_schedules
+-- name: SetTriggerLastRun :exec
+UPDATE chetter_triggers
 SET last_run_at = ?, updated_at = ?
 WHERE id = ?;
 
--- name: InsertScheduleRun :exec
-INSERT INTO chetter_schedule_runs (id, schedule_id, team_id, task_id, status, scheduled_for, created_at)
+-- name: InsertTriggerRun :exec
+INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
--- name: ListScheduleRunsByTeam :many
-SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
-FROM chetter_schedule_runs sr
-JOIN chetter_schedules s ON s.id = sr.schedule_id
+-- name: ListTriggerRunsByTeam :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
 WHERE s.team_id = sqlc.arg(team_id)
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?;
 
--- name: ListScheduleRunsBySchedule :many
-SELECT sr.id, sr.schedule_id, s.name AS schedule_name, sr.task_id, sr.status, sr.scheduled_for, sr.created_at
-FROM chetter_schedule_runs sr
-JOIN chetter_schedules s ON s.id = sr.schedule_id
-WHERE sr.schedule_id = ?
+-- name: ListTriggerRunsByTrigger :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
+WHERE sr.trigger_id = ?
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?;
