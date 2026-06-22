@@ -641,7 +641,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	checkpointPath := ""
 	workspacePath := ""
 	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
-		ckDir, containerID, cpErr := createDockerCheckpoint(containerName, session.WorkspaceDir, req.TaskID)
+		ckDir, containerID, cpErr := createDockerCheckpoint(containerName, req.TaskID, req.AgentImage)
 		if cpErr != nil {
 			slog.Error("docker checkpoint failed", "taskID", req.TaskID, "err", cpErr)
 		} else {
@@ -685,9 +685,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	const containerPort = 9999
 	ckDir := req.ResumeCheckpointPath
-	// The checkpoint path is now a custom directory in the workspace.
-	containerID, checkpointName := checkpointDirParts(ckDir)
-	if containerID == "" || checkpointName == "" {
+	containerID, checkpointName, ok := dockerCheckpointParts(ckDir)
+	if !ok {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid checkpoint dir: %s", ckDir), nil)
 		return
 	}
@@ -712,10 +711,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("restoring Docker container from checkpoint", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "dir", ckDir, "socket", mountedSocketPath)
 	r.publishStatusForRequest(req, "running", "Restoring dev container from checkpoint...", nil)
 
-	if err := clearCheckpointNetNS(checkpointConfigDir(ckDir, checkpointName)); err != nil {
+	if err := clearCheckpointNetNSWithFallback(ckDir, req.AgentImage); err != nil {
 		slog.Warn("clear checkpoint netns before restore", "taskID", req.TaskID, "dir", ckDir, "err", err)
 	}
-	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName, checkpointRestoreRoot(ckDir, checkpointName)); err != nil {
+	if err := dockerStartWithCheckpoint(ctx, containerID, checkpointName, ""); err != nil {
 		slog.Error("docker checkpoint restore failed", "taskID", req.TaskID, "containerID", containerID, "checkpoint", checkpointName, "err", err)
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker checkpoint restore: %v", err), nil)
 		return
@@ -773,7 +772,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
 	checkpointPath := ""
 	if req.CheckpointAfterSuccess && r.cfg.Execution.UseGVisor {
-		ckDir, checkpointContainerID, cpErr := createDockerCheckpoint(containerID, workspaceDir, req.TaskID)
+		ckDir, checkpointContainerID, cpErr := createDockerCheckpoint(containerID, req.TaskID, req.AgentImage)
 		if cpErr != nil {
 			slog.Error("docker checkpoint failed on resume", "taskID", req.TaskID, "err", cpErr)
 		} else {
@@ -818,26 +817,28 @@ func dockerCheckpointParts(checkpointPath string) (containerID, checkpointName s
 	return "", "", false
 }
 
-func createDockerCheckpoint(containerRef, workspaceDir, taskID string) (checkpointPath, containerID string, err error) {
-	checkpointName := "chetter-checkpoint-" + taskID
-	checkpointRoot := filepath.Join(workspaceDir, ".checkpoint")
-	if err := os.MkdirAll(checkpointRoot, 0755); err != nil {
-		return "", "", fmt.Errorf("create checkpoint root: %w", err)
+func dockerCheckpointPath(containerName, checkpointName string) string {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
+	containerID := strings.TrimSpace(string(out))
+	if err != nil || containerID == "" {
+		containerID = containerName
 	}
-	cpOut, cpErr := exec.Command("docker", "checkpoint", "create", "--checkpoint-dir", checkpointRoot, containerRef, checkpointName).CombinedOutput()
+	return fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerID, checkpointName)
+}
+
+func createDockerCheckpoint(containerRef, taskID, helperImage string) (checkpointPath, containerID string, err error) {
+	checkpointName := "chetter-checkpoint-" + taskID
+	cpOut, cpErr := exec.Command("docker", "checkpoint", "create", containerRef, checkpointName).CombinedOutput()
 	if cpErr != nil {
 		return "", "", fmt.Errorf("docker checkpoint create: %w: %s", cpErr, strings.TrimSpace(string(cpOut)))
 	}
-	checkpointPath = filepath.Join(checkpointRoot, checkpointName)
-	if err := clearCheckpointNetNS(checkpointPath); err != nil {
+	checkpointPath = dockerCheckpointPath(containerRef, checkpointName)
+	if err := clearCheckpointNetNSWithFallback(checkpointPath, helperImage); err != nil {
 		slog.Warn("clear checkpoint netns", "dir", checkpointPath, "err", err)
 	}
 	containerID = containerIDFromName(containerRef)
 	if containerID == "" {
 		containerID = containerRef
-	}
-	if err := os.WriteFile(filepath.Join(checkpointPath, ".container_id"), []byte(containerID+"\n"), 0644); err != nil {
-		slog.Warn("write checkpoint container sidecar", "dir", checkpointPath, "err", err)
 	}
 	return checkpointPath, containerID, nil
 }
@@ -923,38 +924,19 @@ func clearCheckpointNetNS(ckDir string) error {
 	return os.WriteFile(cfgPath, data, 0644)
 }
 
-// checkpointDirParts extracts the container ID and checkpoint name from a
-// checkpoint directory path. The container ID is read from a sidecar file
-// written alongside the checkpoint.
-func checkpointDirParts(dir string) (containerID, checkpointName string) {
-	base := filepath.Base(dir)
-	if !strings.HasPrefix(base, "chetter-checkpoint-") {
-		return "", ""
+func clearCheckpointNetNSWithFallback(ckDir, helperImage string) error {
+	if err := clearCheckpointNetNS(ckDir); err == nil {
+		return nil
+	} else if !strings.HasPrefix(ckDir, "/var/lib/docker/") || helperImage == "" {
+		return err
 	}
-	idPath := filepath.Join(dir, ".container_id")
-	data, err := os.ReadFile(idPath)
-	if err == nil && strings.TrimSpace(string(data)) != "" {
-		return strings.TrimSpace(string(data)), base
+	cfgPath := filepath.Join("/hostdocker", strings.TrimPrefix(ckDir, "/var/lib/docker/"), "config.json")
+	script := `cfg="$1"; sed -i -E 's/"net_ns_path"[[:space:]]*:[[:space:]]*"[^"]*"/"net_ns_path":""/g' "$cfg"`
+	out, err := exec.Command("docker", "run", "--rm", "-v", "/var/lib/docker:/hostdocker", helperImage, "sh", "-lc", script, "sh", cfgPath).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("helper clear checkpoint netns: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return "chetter-task-" + strings.TrimPrefix(base, "chetter-checkpoint-"), base
-}
-
-func checkpointConfigDir(checkpointPath, checkpointName string) string {
-	if _, err := os.Stat(filepath.Join(checkpointPath, "config.json")); err == nil {
-		return checkpointPath
-	}
-	nested := filepath.Join(checkpointPath, checkpointName)
-	if _, err := os.Stat(filepath.Join(nested, "config.json")); err == nil {
-		return nested
-	}
-	return checkpointPath
-}
-
-func checkpointRestoreRoot(checkpointPath, checkpointName string) string {
-	if _, err := os.Stat(filepath.Join(checkpointPath, checkpointName, "config.json")); err == nil {
-		return checkpointPath
-	}
-	return filepath.Dir(checkpointPath)
+	return nil
 }
 
 func dockerAPICheckpointRestore(ctx context.Context, containerID, checkpointName, ckDir string) error {
