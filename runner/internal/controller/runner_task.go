@@ -505,7 +505,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	if gvisor {
 		netName = runcNetwork()
-		dockerArgs = append(dockerArgs, "--runtime", "runsc")
+		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		if sharedRunnerNetwork {
 			dockerArgs = append(dockerArgs,
 				"--network", "container:"+os.Getenv("HOSTNAME"),
@@ -513,7 +513,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 				"--label", "chetter.network_mode=runner",
 			)
 		} else {
-			dockerArgs = append(dockerArgs, "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 			dockerArgs = append(dockerArgs, "--network", netName)
 			dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 		}
