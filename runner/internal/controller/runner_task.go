@@ -807,15 +807,6 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 	r.publishTaskResponse(resp)
 }
 
-func dockerCheckpointPath(containerName, checkpointName string) string {
-	out, err := exec.Command("docker", "inspect", "-f", "{{.Id}}", containerName).CombinedOutput()
-	containerID := strings.TrimSpace(string(out))
-	if err != nil || containerID == "" {
-		containerID = containerName
-	}
-	return fmt.Sprintf("/var/lib/docker/containers/%s/checkpoints/%s", containerID, checkpointName)
-}
-
 func dockerCheckpointParts(checkpointPath string) (containerID, checkpointName string, ok bool) {
 	checkpointPath = filepath.Clean(checkpointPath)
 	parts := strings.Split(checkpointPath, string(os.PathSeparator))
