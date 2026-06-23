@@ -12,7 +12,7 @@
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Label, Modal, Spinner, Textarea } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, CardPlaceholder, Label, Modal, Progressbar, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
 
   let { params } = $props();
@@ -103,6 +103,19 @@
   });
 
   let duration = $derived(now && formatDuration(task?.startedAt, task?.endedAt));
+
+  let taskProgressPercent = $derived.by(() => {
+    if (!task || (task.status !== "running" && task.status !== "pending") || task.timeoutSec <= 0) return 0;
+    if (!task.startedAt) return task.status === "pending" ? 2 : 0;
+    const elapsedSec = Math.max(0, (now - new Date(task.startedAt).getTime()) / 1000);
+    return Math.min(100, Math.max(2, Math.round((elapsedSec / task.timeoutSec) * 100)));
+  });
+
+  let taskProgressLabel = $derived.by(() => {
+    if (!task || (task.status !== "running" && task.status !== "pending")) return "";
+    if (task.status === "pending") return "Waiting for a runner";
+    return `${duration} elapsed of ${task.timeoutSec}s timeout`;
+  });
 
   let statusText = $derived.by(() => {
     if (!task) return "";
@@ -273,9 +286,8 @@
 </svelte:head>
 
 {#if loading}
-  <div class="p-6 flex items-center gap-3 text-gray-500 dark:text-gray-400">
-    <Spinner size="5" />
-    <span>Loading task…</span>
+  <div class="p-6">
+    <CardPlaceholder />
   </div>
 {:else if error}
   <div class="p-6">
@@ -312,6 +324,16 @@
         {/if}
       </div>
     </div>
+
+    {#if task.status === "running" || task.status === "pending"}
+      <Card size="xl" class="mb-6 w-full !p-4" shadow="sm">
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Task progress</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400">{taskProgressLabel}</span>
+        </div>
+        <Progressbar progress={taskProgressPercent} size="h-3" color={task.status === "pending" ? "yellow" : "green"} />
+      </Card>
+    {/if}
 
     <!-- Task metadata -->
     <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
@@ -402,53 +424,44 @@
             </Badge>
           {/if}
         </div>
-        <div class="mt-4 max-h-[34rem] overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 dark:divide-gray-700 dark:border-gray-700">
-          {#each mergedTimeline as entry (progressKey(entry))}
-            <div>
-              <button
-                onclick={() => toggleProgress(progressKey(entry))}
-                class="w-full flex gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 items-start"
-              >
-                <span class="mt-2 w-2 h-2 rounded-full shrink-0 {entry.status === 'done' || entry.status === 'error' ? 'bg-blue-500' : entry.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                <span class="min-w-0 flex-1">
-                  <span class="flex flex-wrap items-center gap-2">
-                    <span class="text-sm text-gray-700 dark:text-gray-300">{humanReadableStatus(entry.status, entry.summary)}</span>
-                    <StatusBadge status={entry.status} />
-                  </span>
-                  <span class="mt-1 block text-xs font-mono text-gray-400 dark:text-gray-500">{formatTime(entry.time)}</span>
-                </span>
-                {#if entry.error}
-                  <span class="text-red-500 shrink-0">Error</span>
-                {/if}
-                <Badge color="gray" class="mt-0.5 inline-flex shrink-0 items-center gap-1">
-                  <span class="text-sm leading-none">{expandedProgress.has(progressKey(entry)) ? "▾" : "▸"}</span>
-                  <span>{expandedProgress.has(progressKey(entry)) ? "Hide details" : "Details"}</span>
-                </Badge>
-              </button>
-              {#if expandedProgress.has(progressKey(entry))}
-                <div class="mx-4 mb-4 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
+        <div class="mt-4 max-h-[34rem] overflow-y-auto rounded-lg border border-gray-100 p-4 dark:border-gray-700">
+          <Timeline>
+            {#each mergedTimeline as entry, i (progressKey(entry))}
+              <TimelineItem title={humanReadableStatus(entry.status, entry.summary)} date={formatTime(entry.time)} isLast={i === mergedTimeline.length - 1}>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={entry.status} />
                   {#if entry.error}
-                    <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
+                    <Badge color="red">Error</Badge>
                   {/if}
-                  {#if entry.rawEvents.length > 0}
-                    <div class="space-y-2 font-mono text-xs">
-                      {#each entry.rawEvents as ev (ev.id)}
-                        <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
-                          <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
-                            <span>{formatTime(ev.createdAt)}</span>
-                            <span>{ev.eventType || ev.status}</span>
-                          </div>
-                          <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">{ev.payload?.slice(0, 1200) || "—"}</pre>
-                        </div>
-                      {/each}
-                    </div>
-                  {:else}
-                    <p class="text-xs text-gray-500 dark:text-gray-400">No raw event payload was matched to this progress item.</p>
-                  {/if}
+                  <Button color="alternative" size="xs" onclick={() => toggleProgress(progressKey(entry))}>
+                    {expandedProgress.has(progressKey(entry)) ? "Hide details" : "Details"}
+                  </Button>
                 </div>
-              {/if}
-            </div>
-          {/each}
+                {#if expandedProgress.has(progressKey(entry))}
+                  <div class="mt-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
+                    {#if entry.error}
+                      <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
+                    {/if}
+                    {#if entry.rawEvents.length > 0}
+                      <div class="space-y-2 font-mono text-xs">
+                        {#each entry.rawEvents as ev (ev.id)}
+                          <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
+                            <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
+                              <span>{formatTime(ev.createdAt)}</span>
+                              <span>{ev.eventType || ev.status}</span>
+                            </div>
+                            <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">{ev.payload?.slice(0, 1200) || "—"}</pre>
+                          </div>
+                        {/each}
+                      </div>
+                    {:else}
+                      <p class="text-xs text-gray-500 dark:text-gray-400">No raw event payload was matched to this progress item.</p>
+                    {/if}
+                  </div>
+                {/if}
+              </TimelineItem>
+            {/each}
+          </Timeline>
         </div>
       </Card>
     {/if}

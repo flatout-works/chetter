@@ -10,7 +10,7 @@
   import { startServerInfoPolling, stopServerInfoPolling, getServerInfo } from "$lib/stores/serverInfo.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
-  import { Alert, Button, Card, Input, Label, Sidebar, SidebarGroup, SidebarItem, SidebarWrapper } from "flowbite-svelte";
+  import { Alert, Button, Card, Input, Label, Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Tooltip } from "flowbite-svelte";
 
   let { children } = $props();
 

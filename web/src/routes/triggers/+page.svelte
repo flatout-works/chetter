@@ -9,7 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Input, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, CardPlaceholder, Input, Listgroup, ListgroupItem, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
@@ -254,9 +254,7 @@
   {/if}
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-      <Spinner size="4" /> Loading…
-    </div>
+    <CardPlaceholder />
   {:else}
     <div class="space-y-2">
       {#each triggers as trigger (trigger.id)}
@@ -289,17 +287,21 @@
 
           {#if expandedId === trigger.id}
             <div class="px-4 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-                <div>
+              <Listgroup class="w-full sm:max-w-xl">
+                <ListgroupItem class="flex items-center justify-between gap-4">
                   <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
-                  <p class="text-gray-900 dark:text-white">
-                    <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
-                  </p>
-                </div>
-                <div>
+                  <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
+                </ListgroupItem>
+                <ListgroupItem class="flex items-center justify-between gap-4">
                   <span class="text-xs text-gray-400 dark:text-gray-500">Type</span>
-                  <p class="text-gray-900 dark:text-white">{trigger.triggerType}</p>
-                </div>
+                  <span class="text-sm text-gray-900 dark:text-white">{trigger.triggerType}</span>
+                </ListgroupItem>
+                <ListgroupItem class="flex items-center justify-between gap-4">
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Target</span>
+                  <span class="text-right text-sm font-mono text-gray-900 dark:text-white">{triggerTarget(trigger)}</span>
+                </ListgroupItem>
+              </Listgroup>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
                 {#if trigger.cronExpr}
                   <div>
                     <span class="text-xs text-gray-400 dark:text-gray-500">Cron</span>
@@ -474,14 +476,12 @@
                     </div>
                     <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
                       <span>{triggerRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, triggerRuns.length)} of {triggerRuns.length}</span>
-                      <div class="flex gap-1">
-                        <Button size="xs" color="alternative" disabled={runsPage === 0} onclick={() => { runsPage = Math.max(0, runsPage - 1); }}>←</Button>
-                        {#each { length: Math.min(totalRunsPages, 7) } as _, i}
-                          {@const p = totalRunsPages <= 7 ? i : runsPage < 4 ? i : runsPage > totalRunsPages - 4 ? totalRunsPages - 7 + i : runsPage - 3 + i}
-                          <Button size="xs" color={p === runsPage ? "blue" : "alternative"} onclick={() => { runsPage = p; }}>{p + 1}</Button>
-                        {/each}
-                        <Button size="xs" color="alternative" disabled={runsPage >= totalRunsPages - 1} onclick={() => { runsPage = Math.min(totalRunsPages - 1, runsPage + 1); }}>→</Button>
-                      </div>
+                      <PaginationNav
+                        currentPage={runsPage + 1}
+                        totalPages={totalRunsPages}
+                        visiblePages={5}
+                        onPageChange={(nextPage) => { runsPage = nextPage - 1; }}
+                      />
                     </div>
                   {/if}
                 </Card>

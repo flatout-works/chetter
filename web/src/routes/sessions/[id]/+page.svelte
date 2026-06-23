@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Alert, Button, Card, CardPlaceholder, Label, Modal, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
@@ -60,7 +60,7 @@
 
 <div class="p-6 max-w-6xl">
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
+    <CardPlaceholder />
   {:else if error}
     <Alert color="red">{error}</Alert>
   {:else if session}

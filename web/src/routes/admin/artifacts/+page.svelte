@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Input, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Spinner } from "flowbite-svelte";
+  import { Alert, Button, CardPlaceholder, Input, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
@@ -36,8 +36,8 @@
     });
   });
 
-  let nextOffset = $derived(offset + artifacts.length);
-  let prevOffset = $derived(Math.max(0, offset - limit));
+  let currentPage = $derived(Math.floor(offset / limit) + 1);
+  let totalPages = $derived(currentPage + (artifacts.length >= limit ? 1 : 0));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -93,7 +93,7 @@
   {/if}
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
+    <CardPlaceholder />
   {:else}
     <TableCard title="Task artifacts" subtitle="GitHub issues, PRs, comments, and reviews created by Chetter tasks.">
     <Table hoverable={true} shadow={false}>
@@ -140,10 +140,12 @@
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {artifacts.length > 0 ? offset + 1 : 0}–{offset + artifacts.length} of {artifacts.length < limit ? offset + artifacts.length : `${offset + artifacts.length}+`}</span>
-      <div class="flex gap-2">
-        <Button size="xs" color="alternative" onclick={() => { offset = prevOffset; load(); }} disabled={offset === 0}>← Prev</Button>
-        <Button size="xs" color="alternative" onclick={() => { offset = nextOffset; load(); }} disabled={artifacts.length < limit}>Next →</Button>
-      </div>
+      <PaginationNav
+        {currentPage}
+        {totalPages}
+        visiblePages={5}
+        onPageChange={(nextPage) => { offset = (nextPage - 1) * limit; load(); }}
+      />
     </div>
   {/if}
 </div>

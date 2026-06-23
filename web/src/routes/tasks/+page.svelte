@@ -9,7 +9,7 @@
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Input, Label, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Alert, Button, Card, Dropdown, DropdownItem, Input, Label, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
   let statusFilter = $state("");
@@ -81,6 +81,16 @@
   function applyFilter() {
     refreshTasks(statusFilter, 100);
     page = 0;
+  }
+
+  function applyTemplate(kind: "review" | "fix" | "docs") {
+    const templates = {
+      review: "Review the current branch for bugs, regressions, missing tests, and maintainability risks. Prioritize findings with file and line references.",
+      fix: "Diagnose and fix the failing behavior. Keep the change minimal, run the relevant checks, and summarize the root cause.",
+      docs: "Update the relevant documentation to match the current behavior. Keep examples concise and verify links or commands where possible.",
+    } satisfies Record<string, string>;
+    prompt = templates[kind];
+    showSubmitForm = true;
   }
 
   async function loadCatalog() {
@@ -169,6 +179,12 @@
       >
         {showSubmitForm ? "Cancel" : "Submit Task"}
       </Button>
+      <Button id="task-template-menu" color="alternative">Templates</Button>
+      <Dropdown triggeredBy="#task-template-menu">
+        <DropdownItem onclick={() => applyTemplate("review")}>Code review</DropdownItem>
+        <DropdownItem onclick={() => applyTemplate("fix")}>Bug fix</DropdownItem>
+        <DropdownItem onclick={() => applyTemplate("docs")}>Docs update</DropdownItem>
+      </Dropdown>
     </div>
   </div>
 
@@ -305,19 +321,13 @@
   </Table>
   </TableCard>
 
-  <!-- Pagination -->
   <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
     <span>Showing {sortedTasks.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, sortedTasks.length)} of {sortedTasks.length}</span>
-    <div class="flex gap-2">
-      <Button size="xs" color="alternative" disabled={page === 0} onclick={() => { page = Math.max(0, page - 1); }}>← Prev</Button>
-      {#each { length: totalPages } as _, i}
-        <Button
-          size="xs"
-          color={i === page ? "blue" : "alternative"}
-          onclick={() => { page = i; }}
-        >{i + 1}</Button>
-      {/each}
-      <Button size="xs" color="alternative" disabled={page >= totalPages - 1} onclick={() => { page = Math.min(totalPages - 1, page + 1); }}>Next →</Button>
-    </div>
+    <PaginationNav
+      currentPage={page + 1}
+      {totalPages}
+      visiblePages={5}
+      onPageChange={(nextPage) => { page = nextPage - 1; }}
+    />
   </div>
 </div>

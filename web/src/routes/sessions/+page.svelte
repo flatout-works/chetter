@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, Label, Modal, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Button, CardPlaceholder, Label, Modal, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "created";
   let sessions = $state<AgentSession[]>([]);
@@ -35,7 +35,6 @@
 
   let totalPages = $derived(Math.max(1, Math.ceil(sortedSessions.length / pageSize)));
   let pagedSessions = $derived(sortedSessions.slice(page * pageSize, (page + 1) * pageSize));
-  let pageNumbers = $derived(Array.from({ length: totalPages }, (_, i) => i));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -108,7 +107,7 @@
   </div>
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
+    <CardPlaceholder />
   {:else}
     <TableCard title="Agent sessions" subtitle="Recent resumable agent sessions, newest first.">
     <Table hoverable={true} shadow={false}>
@@ -151,13 +150,12 @@
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {sortedSessions.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, sortedSessions.length)} of {sortedSessions.length}</span>
-      <div class="flex gap-2">
-        <Button size="xs" color="alternative" onclick={() => { page = Math.max(0, page - 1); }} disabled={page === 0}>← Prev</Button>
-        {#each pageNumbers as i (i)}
-          <Button size="xs" color={i === page ? "blue" : "alternative"} onclick={() => { page = i; }}>{i + 1}</Button>
-        {/each}
-        <Button size="xs" color="alternative" onclick={() => { page = Math.min(totalPages - 1, page + 1); }} disabled={page >= totalPages - 1}>Next →</Button>
-      </div>
+      <PaginationNav
+        currentPage={page + 1}
+        {totalPages}
+        visiblePages={5}
+        onPageChange={(nextPage) => { page = nextPage - 1; }}
+      />
     </div>
   {/if}
 </div>

@@ -6,7 +6,7 @@
   import { getTransport } from "$lib/api/client";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
-  import { Alert, Button, Card, Input, Spinner } from "flowbite-svelte";
+  import { Alert, Button, Card, CardPlaceholder, Input } from "flowbite-svelte";
 
   let tokens = $state<TokenInfo[]>([]);
   let teams = $state<TeamInfo[]>([]);
@@ -130,9 +130,7 @@
   {/if}
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-      <Spinner size="4" /> Loading…
-    </div>
+    <CardPlaceholder />
   {:else}
     {#if createdToken}
       <Alert color="green" class="mb-6">

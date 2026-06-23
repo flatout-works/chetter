@@ -7,7 +7,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, Input, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Button, CardPlaceholder, Input, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
@@ -34,8 +34,8 @@
     });
   });
 
-  let nextOffset = $derived(offset + events.length);
-  let prevOffset = $derived(Math.max(0, offset - limit));
+  let currentPage = $derived(Math.floor(offset / limit) + 1);
+  let totalPages = $derived(currentPage + (events.length >= limit ? 1 : 0));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -97,7 +97,7 @@
   </div>
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
+    <CardPlaceholder />
   {:else}
     <TableCard title="Audit events" subtitle="Server-side event history for webhook, task, trigger, and artifact activity.">
     <Table hoverable={true} shadow={false}>
@@ -154,10 +154,12 @@
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>Showing {events.length > 0 ? offset + 1 : 0}–{offset + events.length} of {events.length < limit ? offset + events.length : `${offset + events.length}+`}</span>
-      <div class="flex gap-2">
-        <Button size="xs" color="alternative" onclick={() => { offset = prevOffset; load(); }} disabled={offset === 0}>← Prev</Button>
-        <Button size="xs" color="alternative" onclick={() => { offset = nextOffset; load(); }} disabled={events.length < limit}>Next →</Button>
-      </div>
+      <PaginationNav
+        {currentPage}
+        {totalPages}
+        visiblePages={5}
+        onPageChange={(nextPage) => { offset = (nextPage - 1) * limit; load(); }}
+      />
     </div>
   {/if}
 </div>
