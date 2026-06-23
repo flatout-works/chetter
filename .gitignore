@@ -26,5 +26,8 @@ coverage.out
 # Go workspace
 vendor/
 
+# Session exports (agent dumps)
+session-exports/
+
 # JS dependencies
 web/node_modules/
