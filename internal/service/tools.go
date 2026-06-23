@@ -750,7 +750,7 @@ func sessionRunRecord(run repository.ChetterSessionRun) SessionRunRecord {
 		RequiredRunnerID: run.RequiredRunnerID.String,
 		Summary:          run.Summary.String,
 		Error:            run.Error.String,
-		Prompt:           run.Prompt.String,
+		Prompt:           run.Prompt,
 		CreatedAt:        run.CreatedAt,
 		UpdatedAt:        run.UpdatedAt,
 		StartedAt:        nullTimePtr(run.StartedAt),

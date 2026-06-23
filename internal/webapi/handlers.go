@@ -106,6 +106,7 @@ func protoRun(r service.SessionRunRecord) *apiv1.SessionRun {
 		RequiredRunnerId: r.RequiredRunnerID,
 		Summary:          r.Summary,
 		Error:            r.Error,
+		Prompt:           r.Prompt,
 		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        r.UpdatedAt.Format(time.RFC3339),
 		StartedAt:        optTimeStr(r.StartedAt),

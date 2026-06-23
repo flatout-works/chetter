@@ -443,6 +443,7 @@ type SessionRun struct {
 	UpdatedAt        string                 `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	StartedAt        *string                `protobuf:"bytes,10,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
 	EndedAt          *string                `protobuf:"bytes,11,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
+	Prompt           string                 `protobuf:"bytes,12,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -550,6 +551,13 @@ func (x *SessionRun) GetStartedAt() string {
 func (x *SessionRun) GetEndedAt() string {
 	if x != nil && x.EndedAt != nil {
 		return *x.EndedAt
+	}
+	return ""
+}
+
+func (x *SessionRun) GetPrompt() string {
+	if x != nil {
+		return x.Prompt
 	}
 	return ""
 }
@@ -6422,7 +6430,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x05error\x18\x14 \x01(\tR\x05errorB\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
-	"\v_expires_at\"\xf3\x02\n" +
+	"\v_expires_at\"\x8b\x03\n" +
 	"\n" +
 	"SessionRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
@@ -6439,7 +6447,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\n" +
 	" \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
-	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01B\r\n" +
+	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01\x12\x16\n" +
+	"\x06prompt\x18\f \x01(\tR\x06promptB\r\n" +
 	"\v_started_atB\v\n" +
 	"\t_ended_at\"\xce\x05\n" +
 	"\aTrigger\x12\x0e\n" +
