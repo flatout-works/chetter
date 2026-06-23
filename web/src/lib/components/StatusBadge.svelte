@@ -61,7 +61,7 @@
   const displayLabel = $derived((label === "paused_waiting_review" ? "paused" : label).replaceAll("_", " "));
 </script>
 
-<Badge color={meta.color} rounded class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10">
+<Badge color={meta.color} rounded class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10" title={status}>
   <span class={`h-1.5 w-1.5 rounded-full ${meta.dot}`}></span>
   {displayLabel}
 </Badge>

@@ -49,6 +49,7 @@
         shadow="sm"
         href="#"
         class="!p-4 text-left hover:shadow-md transition-shadow w-full {card.filter && activeFilter === card.filter ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}"
+        title={card.runners ? "View runner fleet" : `Filter by ${card.label.toLowerCase()} tasks`}
         onclick={(e) => { e.preventDefault(); handleCardClick(card); }}
       >
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{card.label}</p>
