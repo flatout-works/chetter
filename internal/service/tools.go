@@ -521,6 +521,7 @@ type SessionRunRecord struct {
 	RequiredRunnerID string     `json:"required_runner_id,omitempty"`
 	Summary          string     `json:"summary,omitempty"`
 	Error            string     `json:"error,omitempty"`
+	Prompt           string     `json:"prompt,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	StartedAt        *time.Time `json:"started_at,omitempty"`
@@ -749,6 +750,7 @@ func sessionRunRecord(run repository.ChetterSessionRun) SessionRunRecord {
 		RequiredRunnerID: run.RequiredRunnerID.String,
 		Summary:          run.Summary.String,
 		Error:            run.Error.String,
+		Prompt:           run.Prompt.String,
 		CreatedAt:        run.CreatedAt,
 		UpdatedAt:        run.UpdatedAt,
 		StartedAt:        nullTimePtr(run.StartedAt),
