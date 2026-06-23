@@ -31,10 +31,6 @@
   let progress = $state<TaskProgressEntry[]>([]);
   let connected = $state(false);
 
-  $effect(() => { events = $taskEvents; });
-  $effect(() => { progress = $taskProgress; });
-  $effect(() => { connected = $streamConnected; });
-
   let expandedProgress = new SvelteSet<string>();
 
   function progressKey(entry: { time: string; summary: string; status: string }) {
@@ -125,8 +121,14 @@
 
   let timerInterval: ReturnType<typeof setInterval> | undefined;
   let progressRefreshCounter = $state(0);
+  let unsubStores: (() => void)[] = [];
 
   onMount(async () => {
+    unsubStores = [
+      taskEvents.subscribe(v => events = v),
+      taskProgress.subscribe(v => progress = v),
+      streamConnected.subscribe(v => connected = v),
+    ];
     timerInterval = setInterval(() => {
       now = Date.now();
       progressRefreshCounter++;
@@ -166,6 +168,7 @@
     clearTaskDetail();
     if (unsub) unsub();
     if (timerInterval) clearInterval(timerInterval);
+    for (const u of unsubStores) u();
   });
 
   async function refreshTask() {
