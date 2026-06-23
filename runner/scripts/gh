@@ -7,6 +7,21 @@ fi
 
 cmd="${1:-} ${2:-}"
 case "$cmd" in
+  "api"*)
+    cat >&2 <<'EOF'
+Chetter-managed GitHub writes must use MCP tools so signatures, audit logs,
+and artifact records are correct:
+
+- use chetter_create_issue instead of gh issue create or gh api
+- use chetter_issue_comment instead of gh issue comment/gh pr comment/gh api
+- use chetter_create_pr instead of gh pr create or gh api
+- use chetter_pr_review instead of gh pr review or gh api
+
+Read-only gh commands are still allowed (issue view, pr view, etc.).
+Set CHETTER_ALLOW_GH_WRITES=1 only for manual debugging outside Chetter tasks.
+EOF
+    exit 64
+    ;;
   "issue create"|"issue comment"|"pr create"|"pr review"|"pr comment")
     cat >&2 <<'EOF'
 Chetter-managed GitHub writes must use MCP tools so signatures, audit logs,
