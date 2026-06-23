@@ -24,7 +24,11 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 	if err != nil {
 		return TaskToolRecord{}, err
 	}
-	return repoTaskToToolRecord(task), nil
+	rec := repoTaskToToolRecord(task)
+	if run, err := s.repo.GetSessionRunByTaskID(ctx, taskID); err == nil {
+		rec.AgentSessionID = run.AgentSessionID
+	}
+	return rec, nil
 }
 
 // ExportTask returns the session export (markdown transcript) for a task.
@@ -182,8 +186,7 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 	var out []TaskProgressRecord
 	var lastStatus string
 	for _, ev := range events {
-		var resp store.TaskResponse
-		_ = json.Unmarshal(ev.Payload, &resp)
+		resp := parseJSON[store.TaskResponse](ev.Payload, "event:"+ev.ID+" payload")
 		if isProgressHeartbeat(resp.Summary) {
 			continue
 		}
@@ -220,10 +223,7 @@ func humanProgressSummary(summary string) string {
 	detail := strings.TrimSpace(strings.TrimPrefix(summary, "opencode: "))
 	eventType, payload, _ := strings.Cut(detail, " ")
 	payload = strings.TrimSpace(payload)
-	props := map[string]any{}
-	if payload != "" {
-		_ = json.Unmarshal([]byte(payload), &props)
-	}
+	props := parseJSON[map[string]any](json.RawMessage(payload), "progress_summary")
 
 	switch eventType {
 	case "server.connected":
@@ -519,8 +519,8 @@ func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit
 		}
 		rows, err := s.repo.ListTriggerRunsByTrigger(ctx, repository.ListTriggerRunsByTriggerParams{
 			TriggerID: trigger.ID,
-			Limit:      clamped,
-			Offset:     clampedOffset,
+			Limit:     clamped,
+			Offset:    clampedOffset,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("list trigger runs: %w", err)
@@ -528,12 +528,12 @@ func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit
 		out := make([]TriggerRunInfo, len(rows))
 		for i, r := range rows {
 			out[i] = TriggerRunInfo{
-				ID:           r.ID,
+				ID:          r.ID,
 				TriggerName: r.TriggerName,
-				TaskID:       r.TaskID,
-				Status:       r.Status,
+				TaskID:      r.TaskID,
+				Status:      r.Status,
 				TriggeredAt: r.TriggeredAt,
-				CreatedAt:    r.CreatedAt,
+				CreatedAt:   r.CreatedAt,
 			}
 		}
 		return out, nil
@@ -551,12 +551,12 @@ func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit
 		out := make([]TriggerRunInfo, len(rows))
 		for i, r := range rows {
 			out[i] = TriggerRunInfo{
-				ID:           r.ID,
+				ID:          r.ID,
 				TriggerName: r.TriggerName,
-				TaskID:       r.TaskID,
-				Status:       r.Status,
+				TaskID:      r.TaskID,
+				Status:      r.Status,
 				TriggeredAt: r.TriggeredAt,
-				CreatedAt:    r.CreatedAt,
+				CreatedAt:   r.CreatedAt,
 			}
 		}
 		return out, nil

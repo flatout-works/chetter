@@ -15,7 +15,7 @@ A `session_run` is one prompt execution inside that session.
 ```text
 agent_session sess_1
   session_run run_1 -> creates PR
-agent_session -> paused_waiting_review
+agent_session -> paused
 
 review feedback arrives
 
@@ -55,7 +55,7 @@ Every submitted task creates:
 
 When `session_mode: resumable` is set:
 
-- `resume_mode` becomes `gvisor_checkpoint`.
+- `resume_mode` becomes `harness_session`.
 - `checkpoint_after_success` is set on the task.
 - `pause_reason` is stored if provided.
 - `expires_at` defaults to 72 hours unless `ttl_hours` is provided.
@@ -85,7 +85,7 @@ When a resumable gVisor task completes successfully, the runner attempts:
 docker checkpoint create <container> chetter-checkpoint-<taskID>
 ```
 
-The runner reports checkpoint and workspace paths back to the server. The server stores a `ready` checkpoint row and moves the session to `paused_waiting_review`.
+The runner reports checkpoint and workspace paths back to the server. The server stores a `ready` checkpoint row and moves the session to `paused`.
 
 ### Manual Resume
 
@@ -97,11 +97,13 @@ MCP tools:
 
 `chetter_resume_agent_session` checks that:
 
-- The session is `paused` or `paused_waiting_review`.
-- The session uses `resume_mode: gvisor_checkpoint`.
+- The session is `paused` or `recoverable`.
+- The session uses `resume_mode: harness_session` or `gvisor_checkpoint`.
 - A pinned runner exists.
-- A ready checkpoint exists.
+- `harness_session` has preserved workspace plus harness session metadata, or `gvisor_checkpoint` has a ready checkpoint.
 - The pinned runner is alive.
+
+If a resumable harness session times out after the runner has captured workspace and harness session metadata, the server marks it `recoverable` instead of `error`, so it can be resumed manually from the UI or API.
 
 It then creates a follow-up task and `session_run` with `required_runner_id` set to the pinned runner.
 
@@ -131,7 +133,7 @@ After the task completes, inspect sessions:
 
 ```json
 {
-  "status": "paused_waiting_review",
+  "status": "paused",
   "limit": 20
 }
 ```
@@ -150,8 +152,8 @@ Resume manually:
 
 - True process resume requires gVisor.
 - Resume is same-runner only for the current implementation.
-- A session can resume only from a ready checkpoint.
-- Non-gVisor sessions remain one-shot. They still create session/run records, but they should not fake process resume.
+- A `gvisor_checkpoint` session can resume only from a ready checkpoint.
+- A `harness_session` session can resume from preserved workspace and harness session metadata.
 - Resume runs inherit the original session's repo, ref, image, agent, provider, model, and variant.
 - Resume runs are pinned with `required_runner_id`.
 

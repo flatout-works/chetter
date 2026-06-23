@@ -2,8 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
-  import { TaskService, AdminService } from "$gen/proto/api/v1/api_pb";
-  import type { Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
+  import { TaskService, AdminService, SessionService } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
@@ -16,6 +16,7 @@
 
   let { params } = $props();
   let task = $state<Task | null>(null);
+  let taskSession = $state<AgentSession | null>(null);
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -95,6 +96,12 @@
     return "";
   });
 
+  let canResumeTask = $derived(
+    taskSession?.status === "paused" ||
+    taskSession?.status === "recoverable" ||
+    taskSession?.status === "paused_waiting_review"
+  );
+
   let timerInterval: ReturnType<typeof setInterval> | undefined;
   let progressRefreshCounter = $state(0);
 
@@ -111,6 +118,7 @@
       const client = createClient(TaskService, getTransport());
       const resp = await client.getTask({ taskId: params.id });
       task = resp.task ?? null;
+      await loadTaskSession();
       loading = false;
 
       await loadTaskEvents(params.id, 100);
@@ -144,6 +152,7 @@
       const client = createClient(TaskService, getTransport());
       const resp = await client.getTask({ taskId: params.id });
       task = resp.task ?? null;
+      await loadTaskSession();
       if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
         try {
           const adminClient = createClient(AdminService, getTransport());
@@ -166,6 +175,31 @@
       if (unsub) { unsub(); unsub = null; }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to cancel task";
+    }
+  }
+
+  async function loadTaskSession() {
+    taskSession = null;
+    if (!task?.agentSessionId) return;
+    try {
+      const client = createClient(SessionService, getTransport());
+      const resp = await client.getSession({ sessionId: task.agentSessionId });
+      taskSession = resp.session ?? null;
+    } catch {
+      taskSession = null;
+    }
+  }
+
+  async function resumeTask() {
+    if (!taskSession) return;
+    const followUpPrompt = window.prompt("Enter follow-up prompt:");
+    if (!followUpPrompt) return;
+    try {
+      const client = createClient(SessionService, getTransport());
+      await client.resumeSession({ sessionId: taskSession.id, prompt: followUpPrompt });
+      await refreshTask();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to resume session";
     }
   }
 
@@ -232,6 +266,9 @@
       <div class="flex gap-2">
         {#if task.status === "running" || task.status === "pending"}
           <Button color="red" size="sm" onclick={cancelTask}>Cancel</Button>
+        {/if}
+        {#if canResumeTask}
+          <Button color="green" size="sm" onclick={resumeTask}>Resume</Button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
           <Button size="sm" onclick={viewExport} disabled={viewLoading}>

@@ -440,7 +440,7 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	query := `SELECT DISTINCT t.id
 		FROM chetter_tasks t
 		LEFT JOIN chetter_session_runs sr ON sr.task_id = t.id
-		LEFT JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id AND s.status IN ('paused_waiting_review', 'paused')
+		LEFT JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id AND s.status IN ('paused', 'recoverable', 'paused_waiting_review')
 		WHERE t.id IN (` + strings.Join(placeholders, ",") + `)
 		  AND (t.status IN ('running', 'pending') OR s.id IS NOT NULL)`
 
@@ -620,7 +620,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		task.UpdatedAt = now
 		task.LastEventAt = sql.NullTime{Time: now, Valid: true}
 		task.Attempt++
-		eventPayload, _ = json.Marshal(map[string]any{
+		eventPayload = mustMarshalJSON(map[string]any{
 			"task_id":   task.ID,
 			"runner_id": runnerID,
 			"status":    "running",
@@ -754,10 +754,27 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			}
 
 			sessionStatus := terminalSessionStatus
-			if terminalSessionStatus == "completed" && event.WorkspacePath != "" {
+			if event.WorkspacePath != "" {
 				var session repository.ChetterAgentSession
 				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil {
-					if session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "" {
+					switch {
+					case terminalSessionStatus == "error" && errorCategory == "timeout" && session.ResumeMode == "harness_session" && event.OpencodeSessionId != "":
+						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
+							Status:           "recoverable",
+							PinnedRunnerID:   nullString(runnerID),
+							CheckpointID:     sql.NullString{},
+							WorkspacePath:    nullString(event.WorkspacePath),
+							ContainerName:    sql.NullString{},
+							HarnessSessionID: nullString(event.OpencodeSessionId),
+							PausedAt:         sql.NullTime{Time: now, Valid: true},
+							UpdatedAt:        now,
+							TaskID:           event.TaskId,
+						}); err != nil {
+							return err
+						}
+						slog.Info("agent session marked recoverable after timeout", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID)
+						sessionStatus = ""
+					case terminalSessionStatus == "completed" && session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "":
 						chkID, _ := randomID("chk")
 						containerName := "chetter-task-" + event.TaskId
 						if err := q.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
@@ -774,7 +791,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 							return err
 						}
 						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
-							Status:           "paused_waiting_review",
+							Status:           "paused",
 							PinnedRunnerID:   nullString(runnerID),
 							CheckpointID:     nullString(chkID),
 							WorkspacePath:    nullString(event.WorkspacePath),
@@ -788,9 +805,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						}
 						slog.Info("agent session paused with checkpoint", "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
 						sessionStatus = ""
-					} else if session.ResumeMode == "harness_session" || session.ResumeMode == "gvisor_checkpoint" {
+					case terminalSessionStatus == "completed" && (session.ResumeMode == "harness_session" || session.ResumeMode == "gvisor_checkpoint"):
 						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
-							Status:           "paused_waiting_review",
+							Status:           "paused",
 							PinnedRunnerID:   nullString(runnerID),
 							CheckpointID:     sql.NullString{},
 							WorkspacePath:    nullString(event.WorkspacePath),
@@ -951,10 +968,8 @@ func sanitizeEventTypePart(part string) string {
 }
 
 func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
-	var skills []string
-	_ = json.Unmarshal(task.Skills, &skills)
-	env := map[string]string{}
-	_ = json.Unmarshal(task.Env, &env)
+	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	harness := env["__chetter_harness"]
 	delete(env, "__chetter_harness")
 	return &runnerv1.Task{

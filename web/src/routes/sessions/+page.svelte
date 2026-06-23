@@ -35,6 +35,7 @@
 
   let totalPages = $derived(Math.max(1, Math.ceil(sortedSessions.length / pageSize)));
   let pagedSessions = $derived(sortedSessions.slice(page * pageSize, (page + 1) * pageSize));
+  let pageNumbers = $derived(Array.from({ length: totalPages }, (_, i) => i));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -80,7 +81,8 @@
       <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }}>
           <option value="">All</option>
           <option value="running">Running</option>
-          <option value="paused_waiting_review">Paused</option>
+          <option value="paused">Paused</option>
+          <option value="recoverable">Recoverable</option>
           <option value="completed">Completed</option>
           <option value="error">Error</option>
         </Select>
@@ -118,7 +120,7 @@
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.modelId || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
             <TableBodyCell class="text-right">
-              {#if session.status === "paused_waiting_review"}
+              {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
                 <Button color="green" size="xs" onclick={() => resume(session.id)}>Resume</Button>
               {/if}
             </TableBodyCell>
@@ -138,7 +140,7 @@
       <span>Showing {sortedSessions.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, sortedSessions.length)} of {sortedSessions.length}</span>
       <div class="flex gap-2">
         <Button size="xs" color="alternative" onclick={() => { page = Math.max(0, page - 1); }} disabled={page === 0}>← Prev</Button>
-        {#each { length: totalPages } as _, i}
+        {#each pageNumbers as i (i)}
           <Button size="xs" color={i === page ? "blue" : "alternative"} onclick={() => { page = i; }}>{i + 1}</Button>
         {/each}
         <Button size="xs" color="alternative" onclick={() => { page = Math.min(totalPages - 1, page + 1); }} disabled={page >= totalPages - 1}>Next →</Button>

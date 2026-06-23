@@ -258,8 +258,8 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get agent session: %v", err)
 	}
-	if session.Status != "paused_waiting_review" {
-		t.Fatalf("agent session status = %s, want paused_waiting_review", session.Status)
+	if session.Status != "paused" {
+		t.Fatalf("agent session status = %s, want paused", session.Status)
 	}
 	if session.PinnedRunnerID.String != "runner_1" {
 		t.Fatalf("pinned_runner_id = %s, want runner_1", session.PinnedRunnerID.String)
@@ -349,8 +349,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get agent session after pause: %v", err)
 	}
-	if session.Status != "paused_waiting_review" {
-		t.Fatalf("session status = %s, want paused_waiting_review", session.Status)
+	if session.Status != "paused" {
+		t.Fatalf("session status = %s, want paused", session.Status)
 	}
 	if session.PinnedRunnerID.String != "runner_1" {
 		t.Fatalf("pinned_runner_id = %s, want runner_1", session.PinnedRunnerID.String)
@@ -428,9 +428,90 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get agent session after resume complete: %v", err)
 	}
-	if session.Status != "paused_waiting_review" {
-		t.Fatalf("session status after resume complete = %s, want paused_waiting_review", session.Status)
+	if session.Status != "paused" {
+		t.Fatalf("session status after resume complete = %s, want paused", session.Status)
 	}
+
+	t.Run("resumable timeout becomes recoverable", func(t *testing.T) {
+		rec3, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+			Prompt: "continue work", AgentImage: "runner:latest", SessionMode: "resumable",
+		})
+		if err != nil {
+			t.Fatalf("submit recoverable task: %v", err)
+		}
+		if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+			RunnerId: "runner_1", WaitSeconds: 1,
+		})); err != nil {
+			t.Fatalf("claim recoverable task: %v", err)
+		}
+		if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+			RunnerId: "runner_1",
+			Events: []*runnerv1.TaskEvent{{
+				TaskId:            rec3.ID,
+				Status:            "error",
+				Error:             "prompt failed: context deadline exceeded",
+				ErrorCategory:     "timeout",
+				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
+				OpencodeSessionId: "oc_sid_timeout",
+				WorkspacePath:     "/var/lib/runner/" + rec3.ID + "/workspace",
+			}},
+		})); err != nil {
+			t.Fatalf("report timeout terminal event: %v", err)
+		}
+
+		run3, err := q.GetSessionRunByTaskID(ctx, rec3.ID)
+		if err != nil {
+			t.Fatalf("get timeout run: %v", err)
+		}
+		if run3.Status != "failed" {
+			t.Fatalf("timeout run status = %s, want failed", run3.Status)
+		}
+		sess3, err := q.GetAgentSessionByID(ctx, run3.AgentSessionID)
+		if err != nil {
+			t.Fatalf("get recoverable session: %v", err)
+		}
+		if sess3.Status != "recoverable" {
+			t.Fatalf("session status = %s, want recoverable", sess3.Status)
+		}
+		if sess3.WorkspacePath.String != "/var/lib/runner/"+rec3.ID+"/workspace" {
+			t.Fatalf("recoverable workspace_path = %s", sess3.WorkspacePath.String)
+		}
+		if sess3.HarnessSessionID.String != "oc_sid_timeout" {
+			t.Fatalf("recoverable harness_session_id = %s", sess3.HarnessSessionID.String)
+		}
+
+		resume3, err := svc.ResumeAgentSession(ctx, sess3.ID, "continue after timeout", 600)
+		if err != nil {
+			t.Fatalf("resume recoverable session: %v", err)
+		}
+		claim3, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+			RunnerId: "runner_1", WaitSeconds: 0,
+		}))
+		if err != nil {
+			t.Fatalf("claim recoverable resume task: %v", err)
+		}
+		if claim3.Msg.Task == nil || claim3.Msg.Task.TaskId != resume3.Task.ID {
+			t.Fatalf("wrong recoverable resume task claimed: %+v", claim3.Msg.Task)
+		}
+		if claim3.Msg.Task.ResumeWorkspacePath != "/var/lib/runner/"+rec3.ID+"/workspace" {
+			t.Fatalf("resume workspace_path = %q", claim3.Msg.Task.ResumeWorkspacePath)
+		}
+		if claim3.Msg.Task.ResumeHarnessSessionId != "oc_sid_timeout" {
+			t.Fatalf("resume harness_session_id = %q", claim3.Msg.Task.ResumeHarnessSessionId)
+		}
+		if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+			RunnerId: "runner_1",
+			Events: []*runnerv1.TaskEvent{{
+				TaskId:            resume3.Task.ID,
+				Status:            "done",
+				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
+				OpencodeSessionId: "oc_sid_timeout",
+				WorkspacePath:     "/var/lib/runner/" + rec3.ID + "/workspace",
+			}},
+		})); err != nil {
+			t.Fatalf("finish recoverable resume task: %v", err)
+		}
+	})
 
 	t.Run("other runner cannot claim pinned resume task", func(t *testing.T) {
 		rec2, err := svc.SubmitTask(ctx, SubmitTaskRequest{

@@ -73,7 +73,7 @@ JOIN chetter_task_artifacts a ON a.agent_session_id = s.id
 WHERE a.repo = sqlc.arg(repo)
   AND a.number = sqlc.arg(number)
   AND a.artifact_type = sqlc.arg(artifact_type)
-  AND s.status = 'paused_waiting_review'
+  AND s.status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND s.resume_mode IN ('gvisor_checkpoint', 'harness_session')
 ORDER BY a.discovered_at DESC
 LIMIT 1;
@@ -82,7 +82,7 @@ LIMIT 1;
 UPDATE chetter_agent_sessions
 SET status = 'expired',
     updated_at = ?
-WHERE status = 'paused_waiting_review'
+WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
   AND expires_at < ?;
 

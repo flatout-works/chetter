@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
@@ -62,33 +63,35 @@ type ListTasksOutput struct {
 // TaskToolRecord is the stable MCP task response shape. Store-level task
 // records may grow internal audit fields without breaking existing MCP clients.
 //
-// Keep fields isomorphic with store.TaskRecord. Avoid *time.Time in new fields
-// as it breaks MCP JSON Schema validation (jsonschema-go v0.3.0 maps time.Time
-// but not *time.Time to string schema).
+// Keep fields isomorphic with store.TaskRecord unless adding API/UI linkage
+// fields such as AgentSessionID. Avoid *time.Time in new fields as it breaks
+// MCP JSON Schema validation (jsonschema-go v0.3.0 maps time.Time but not
+// *time.Time to string schema).
 type TaskToolRecord struct {
-	ID            string            `json:"id"`
-	TeamID        string            `json:"team_id,omitempty"`
-	Status        string            `json:"status"`
-	Prompt        string            `json:"prompt"`
-	GitURL        string            `json:"git_url,omitempty"`
-	GitRef        string            `json:"git_ref,omitempty"`
-	AgentImage    string            `json:"agent_image,omitempty"`
-	Agent         string            `json:"agent,omitempty"`
-	ProviderID    string            `json:"provider_id,omitempty"`
-	ModelID       string            `json:"model_id,omitempty"`
-	VariantID     string            `json:"variant_id,omitempty"`
-	TriggerName   string            `json:"trigger_name,omitempty"`
-	TriggerType   string            `json:"trigger_type,omitempty"`
-	Skills        []string          `json:"skills,omitempty"`
-	Env           map[string]string `json:"env,omitempty"`
-	TimeoutSec    int               `json:"timeout_sec"`
-	Summary       string            `json:"summary,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	ErrorCategory string            `json:"error_category,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
-	StartedAt     *time.Time        `json:"started_at,omitempty"`
-	EndedAt       *time.Time        `json:"ended_at,omitempty"`
+	ID             string            `json:"id"`
+	TeamID         string            `json:"team_id,omitempty"`
+	Status         string            `json:"status"`
+	Prompt         string            `json:"prompt"`
+	GitURL         string            `json:"git_url,omitempty"`
+	GitRef         string            `json:"git_ref,omitempty"`
+	AgentImage     string            `json:"agent_image,omitempty"`
+	Agent          string            `json:"agent,omitempty"`
+	ProviderID     string            `json:"provider_id,omitempty"`
+	ModelID        string            `json:"model_id,omitempty"`
+	VariantID      string            `json:"variant_id,omitempty"`
+	TriggerName    string            `json:"trigger_name,omitempty"`
+	TriggerType    string            `json:"trigger_type,omitempty"`
+	Skills         []string          `json:"skills,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	TimeoutSec     int               `json:"timeout_sec"`
+	Summary        string            `json:"summary,omitempty"`
+	Error          string            `json:"error,omitempty"`
+	ErrorCategory  string            `json:"error_category,omitempty"`
+	AgentSessionID string            `json:"agent_session_id,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+	StartedAt      *time.Time        `json:"started_at,omitempty"`
+	EndedAt        *time.Time        `json:"ended_at,omitempty"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -454,17 +457,17 @@ type ListUsersOutput struct {
 // ListTriggerRunsInput is the input for chetter_list_trigger_runs.
 type ListTriggerRunsInput struct {
 	TriggerName string `json:"trigger_name,omitempty" jsonschema:"Optional trigger name to filter runs by"`
-	Limit        int    `json:"limit,omitempty" jsonschema:"Maximum runs to return, capped at 100"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum runs to return, capped at 100"`
 }
 
 // TriggerRunInfo is a single trigger run entry in the list.
 type TriggerRunInfo struct {
-	ID           string    `json:"id"`
+	ID          string    `json:"id"`
 	TriggerName string    `json:"trigger_name"`
-	TaskID       string    `json:"task_id"`
-	Status       string    `json:"status"`
+	TaskID      string    `json:"task_id"`
+	Status      string    `json:"status"`
 	TriggeredAt time.Time `json:"triggered_at"`
-	CreatedAt    time.Time `json:"created_at"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // ListTriggerRunsOutput is the output for chetter_list_trigger_runs.
@@ -555,7 +558,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tasks", Description: "List recent chetter tasks, optionally filtered by status."}, svc.listTasksTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_agent_sessions", Description: "List recent chetter agent sessions, optionally filtered by status."}, svc.listAgentSessionsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its session runs."}, svc.agentSessionStatusTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_resume_agent_session", Description: "Resume a paused agent session with a follow-up prompt."}, svc.resumeAgentSessionTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_resume_agent_session", Description: "Resume a paused or recoverable agent session with a follow-up prompt."}, svc.resumeAgentSessionTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron trigger or PR review webhook)."}, svc.createTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_trigger", Description: "Update a trigger by name. Only provided fields are changed."}, svc.updateTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_triggers", Description: "List triggers, optionally filtered by type and enabled status."}, svc.listTriggersTool)
@@ -789,10 +792,8 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 }
 
 func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
-	var skills []string
-	_ = json.Unmarshal(task.Skills, &skills)
-	env := map[string]string{}
-	_ = json.Unmarshal(task.Env, &env)
+	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	return TaskToolRecord{
 		ID:            task.ID,
 		TeamID:        task.TeamID.String,
@@ -942,8 +943,7 @@ func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 }
 
 func triggerToStoreRecord(s repository.ChetterTrigger) store.TriggerRecord {
-	var skills []string
-	_ = json.Unmarshal(s.Skills, &skills)
+	skills := parseJSON[[]string](s.Skills, "trigger:"+s.ID+" skills")
 	return store.TriggerRecord{
 		ID:            s.ID,
 		TeamID:        s.TeamID.String,
@@ -1078,7 +1078,7 @@ func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabel
 	}
 	var cfg map[string]any
 	if len(existing) > 0 {
-		_ = json.Unmarshal(existing, &cfg)
+		cfg = parseJSON[map[string]any](existing, "merge_trigger_config")
 	}
 	if cfg == nil {
 		cfg = make(map[string]any)
@@ -1093,7 +1093,11 @@ func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabel
 		cfg["match_labels"] = matchLabels
 	}
 	applyTriggerRuntimeConfig(cfg, sessionMode, pauseReason, ttlHours)
-	data, _ := json.Marshal(cfg)
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		slog.Warn("failed to marshal merged trigger config", "err", err)
+		return string(existing)
+	}
 	return string(data)
 }
 
@@ -1109,10 +1113,28 @@ func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason stri
 	}
 }
 
+func parseJSON[T any](raw json.RawMessage, context string) T {
+	if len(raw) == 0 {
+		var zero T
+		return zero
+	}
+	var result T
+	if err := json.Unmarshal(raw, &result); err != nil {
+		slog.Warn("failed to parse JSON", "context", context, "err", err)
+	}
+	return result
+}
+
+func mustMarshalJSON[T any](v T) []byte {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("marshal JSON: %v", err))
+	}
+	return data
+}
+
 func triggerSkillsToStrings(skills json.RawMessage) []string {
-	var out []string
-	_ = json.Unmarshal(skills, &out)
-	return out
+	return parseJSON[[]string](skills, "trigger_skills")
 }
 
 func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskEventsInput) (*mcp.CallToolResult, TaskEventsOutput, error) {

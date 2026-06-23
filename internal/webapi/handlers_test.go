@@ -170,7 +170,7 @@ func TestProtoTask(t *testing.T) {
 		GitURL: "https://github.com/org/repo", GitRef: "main",
 		AgentImage: "img:latest", Agent: "opencode", ProviderID: "p", ModelID: "m", VariantID: "v",
 		Skills: []string{"go"}, Env: map[string]string{"K": "V"},
-		TimeoutSec: 600, Summary: "summary", Error: "err",
+		TimeoutSec: 600, Summary: "summary", Error: "err", AgentSessionID: "sess_1",
 		CreatedAt: now, UpdatedAt: now, StartedAt: &now, EndedAt: nil,
 	}
 	got := protoTask(task)
@@ -185,6 +185,9 @@ func TestProtoTask(t *testing.T) {
 	}
 	if len(got.Skills) != 1 || got.Skills[0] != "go" {
 		t.Errorf("Skills = %v, want [go]", got.Skills)
+	}
+	if got.AgentSessionId != "sess_1" {
+		t.Errorf("AgentSessionId = %q, want sess_1", got.AgentSessionId)
 	}
 }
 

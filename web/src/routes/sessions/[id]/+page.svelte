@@ -64,7 +64,7 @@
           Created {formatTime(session.createdAt)} · Updated {formatTime(session.updatedAt)}
         </p>
       </div>
-      {#if session.status === "paused_waiting_review" || session.status === "paused"}
+      {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
         <Button color="green" size="sm" onclick={resume}>Resume</Button>
       {/if}
     </div>

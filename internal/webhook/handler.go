@@ -94,7 +94,7 @@ type TaskSubmitter interface {
 	SubmitTask(ctx context.Context, req SubmitTaskRequest) (any, error)
 }
 
-// SessionResumer is the interface for resuming paused agent sessions.
+// SessionResumer is the interface for resuming paused or recoverable agent sessions.
 type SessionResumer interface {
 	ResumeSessionForPR(ctx context.Context, repo string, prNumber int) error
 }

@@ -21,6 +21,8 @@
       case "paused_waiting_review":
       case "stale":
         return { color: "yellow", dot: "bg-yellow-500" };
+      case "recoverable":
+        return { color: "orange", dot: "bg-orange-500" };
       case "done":
       case "completed":
         return { color: "blue", dot: "bg-blue-500" };
@@ -55,9 +57,11 @@
         return { color: "gray", dot: "bg-slate-400" };
     }
   });
+
+  const displayLabel = $derived((label === "paused_waiting_review" ? "paused" : label).replaceAll("_", " "));
 </script>
 
 <Badge color={meta.color} rounded class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10">
   <span class={`h-1.5 w-1.5 rounded-full ${meta.dot}`}></span>
-  {label.replaceAll("_", " ")}
+  {displayLabel}
 </Badge>

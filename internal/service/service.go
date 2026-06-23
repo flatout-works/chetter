@@ -77,7 +77,7 @@ type RecordArtifactParams struct {
 const (
 	defaultMaxMemoryMB      = 4096
 	defaultMaxCPU           = 2
-	triggerRunTimeout      = 30 * time.Second
+	triggerRunTimeout       = 30 * time.Second
 	eventHandlerTimeout     = 10 * time.Second
 	reaperInterval          = 30 * time.Second
 	definitionsSyncInterval = 5 * time.Minute
@@ -476,7 +476,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	return repoTaskToStoreRecord(task), nil
 }
 
-// ResumeAgentSession creates a follow-up run for a paused agent session.
+// ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
 	if err != nil {
@@ -485,8 +485,8 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	if err := authorizeAgentSessionAccess(ctx, session); err != nil {
 		return ResumeAgentSessionOutput{}, err
 	}
-	if session.Status != "paused_waiting_review" && session.Status != "paused" {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not paused (status: %s)", session.Status)
+	if session.Status != "paused" && session.Status != "recoverable" && session.Status != "paused_waiting_review" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not resumable from status: %s", session.Status)
 	}
 	if session.ResumeMode != "gvisor_checkpoint" && session.ResumeMode != "harness_session" {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session is not resumable (resume_mode: %s)", session.ResumeMode)
@@ -540,8 +540,8 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
 
-	skills, _ := json.Marshal([]string{})
-	env, _ := json.Marshal(map[string]string{})
+	skills := mustMarshalJSON([]string{})
+	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
@@ -654,10 +654,8 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 }
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
-	var skills []string
-	_ = json.Unmarshal(task.Skills, &skills)
-	env := map[string]string{}
-	_ = json.Unmarshal(task.Env, &env)
+	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
 		startedAt = &task.StartedAt.Time
@@ -956,8 +954,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
-	targetSkills := []string(nil)
-	_ = json.Unmarshal(sch.Skills, &targetSkills)
+	targetSkills := parseJSON[[]string](sch.Skills, "trigger:"+sch.ID+" skills")
 	return s.submitTriggerTask(ctx,
 		sch.ID,
 		sch.Name,
@@ -1027,8 +1024,7 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 	if err != nil {
 		return fmt.Errorf("get trigger %s: %w", triggerID, err)
 	}
-	var skills []string
-	_ = json.Unmarshal(trigger.Skills, &skills)
+	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
 	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
@@ -1064,13 +1060,13 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 		return store.TaskRecord{}, fmt.Errorf("generate run id: %w", err)
 	}
 	if err := s.repo.InsertTriggerRun(ctx, repository.InsertTriggerRunParams{
-		ID:           runID,
+		ID:          runID,
 		TriggerID:   triggerID,
-		TeamID:       nullString(teamID),
-		TaskID:       task.ID,
-		Status:       "submitted",
+		TeamID:      nullString(teamID),
+		TaskID:      task.ID,
+		Status:      "submitted",
 		TriggeredAt: triggeredAt.UTC(),
-		CreatedAt:    time.Now().UTC(),
+		CreatedAt:   time.Now().UTC(),
 	}); err != nil {
 		return store.TaskRecord{}, fmt.Errorf("insert trigger run: %w", err)
 	}
@@ -1107,8 +1103,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	}
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
-		var skills []string
-		_ = json.Unmarshal(t.Skills, &skills)
+		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1141,8 +1136,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 	}
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
-		var skills []string
-		_ = json.Unmarshal(t.Skills, &skills)
+		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1177,9 +1171,7 @@ type triggerRuntimeConfig struct {
 }
 
 func triggerRuntimeConfigFromJSON(cfg json.RawMessage) triggerRuntimeConfig {
-	var parsed triggerRuntimeConfig
-	_ = json.Unmarshal(cfg, &parsed)
-	return parsed
+	return parseJSON[triggerRuntimeConfig](cfg, "trigger_runtime_config")
 }
 
 func randomID(prefix string) (string, error) {
