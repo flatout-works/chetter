@@ -332,6 +332,12 @@
                       <p class="text-gray-900 dark:text-white">{parsed.ttl_hours}h</p>
                     </div>
                   {/if}
+                  {#if parsed.pause_reason}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Pause Reason</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.pause_reason}</p>
+                    </div>
+                  {/if}
                 {/if}
                 {#if trigger.agent}
                   <div>
