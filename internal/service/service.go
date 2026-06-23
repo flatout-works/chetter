@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
@@ -89,18 +90,48 @@ const (
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
 type Service struct {
-	cfg         config.Config
-	store       *store.Store
-	repo        *repository.Queries
-	rawDB       *sql.DB
-	arcane      *ArcaneClient
-	github      *webhook.Client
-	runnerRPC   *RunnerRPCService
-	cron        *cron.Cron
-	cronMu      sync.Mutex
-	cronEntries map[string]cron.EntryID
-	reaperStop  chan struct{}
-	definitions *definitions.Manager
+	cfg            config.Config
+	store          *store.Store
+	repo           *repository.Queries
+	rawDB          *sql.DB
+	arcane         *ArcaneClient
+	github         *webhook.Client
+	runnerRPC      *RunnerRPCService
+	cron           *cron.Cron
+	cronMu         sync.Mutex
+	cronEntries    map[string]cron.EntryID
+	reaperStop     chan struct{}
+	definitions    *definitions.Manager
+	quotaExhausted atomic.Bool
+}
+
+func (s *Service) QuotaExhausted() bool {
+	return s.quotaExhausted.Load()
+}
+
+func isQuotaExhaustedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "quota being exhausted") ||
+		strings.Contains(msg, "access has been restricted") ||
+		strings.Contains(msg, "Error 1105")
+}
+
+func (s *Service) checkDBQuota(ctx context.Context) {
+	err := s.rawDB.PingContext(ctx)
+	if err != nil {
+		if isQuotaExhaustedError(err) {
+			if !s.quotaExhausted.Swap(true) {
+				slog.Warn("database quota exhausted")
+			}
+		}
+		return
+	}
+	if s.quotaExhausted.Swap(false) {
+		slog.Info("database quota restored")
+	}
 }
 
 func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
@@ -155,19 +186,25 @@ func (s *Service) Stop() {
 // heartbeat for longer than their configured timeout + grace period and marks
 // them as error so they do not stay as zombie "running" rows forever.
 func (s *Service) taskReaper() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 	s.reapStaleTasks()
 	s.reapExpiredLeases()
 	s.reapUnavailablePinnedResumeTasks()
 	s.reapExpiredSessions()
+	s.checkDBQuota(ctx)
+	cancel()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 			s.reapStaleTasks()
 			s.reapExpiredLeases()
 			s.reapUnavailablePinnedResumeTasks()
 			s.reapExpiredSessions()
+			s.checkDBQuota(ctx)
+			cancel()
 		case <-s.reaperStop:
 			return
 		}
@@ -202,6 +239,9 @@ func (s *Service) reapExpiredLeases() {
 	})
 	if err != nil {
 		slog.Error("lease reaper reclaim failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	failed, err := s.repo.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
@@ -212,6 +252,9 @@ func (s *Service) reapExpiredLeases() {
 	})
 	if err != nil {
 		slog.Error("lease reaper fail failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	if reclaimed > 0 || failed > 0 {
@@ -231,6 +274,9 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 	})
 	if err != nil {
 		slog.Error("pinned resume reaper task failure failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	failedRuns, err := s.repo.FailPendingSessionRunsForUnavailableRunner(ctx, repository.FailPendingSessionRunsForUnavailableRunnerParams{
@@ -239,11 +285,17 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 	})
 	if err != nil {
 		slog.Error("pinned resume reaper run failure failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	failedSessions, err := s.repo.MarkResumingSessionsFailedForUnavailableRunner(ctx, now)
 	if err != nil {
 		slog.Error("pinned resume reaper session failure failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	if failedTasks > 0 || failedRuns > 0 || failedSessions > 0 {
@@ -257,6 +309,9 @@ func (s *Service) reapStaleTasks() {
 	n, err := s.store.ReapStaleTasks(ctx, reaperGrace)
 	if err != nil {
 		slog.Error("task reaper failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	if n > 0 {
@@ -274,6 +329,9 @@ func (s *Service) reapExpiredSessions() {
 	})
 	if err != nil {
 		slog.Error("session expiration failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
 		return
 	}
 	if n > 0 {

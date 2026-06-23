@@ -149,7 +149,10 @@ func run() error {
 	webMux.HandleFunc("GET /api/server-info", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"serverVersion":%q,"gitHash":%q}`, serverVersion, _gitHash)))
+		_, _ = w.Write([]byte(fmt.Sprintf(
+			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t}`,
+			serverVersion, _gitHash, svc.QuotaExhausted(),
+		)))
 	})
 	webMux.Handle("/", webui.Handler())
 
