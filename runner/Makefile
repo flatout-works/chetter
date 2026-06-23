@@ -2,14 +2,14 @@ IMAGE ?= chetter/runner
 CONTAINER ?= chetter-runner
 CONFIG ?= $(CURDIR)/runner.docker.yaml
 PROXY_PORT ?= 18080
-STATICCHECK ?= $(shell go env GOPATH)/bin/staticcheck
-STATICCHECK_VERSION ?= latest
+STATICCHECK ?= $(abspath $(CURDIR)/../bin/staticcheck)
+STATICCHECK_VERSION ?= 2025.1.1
 ROOT := $(abspath $(CURDIR)/..)
 
 .PHONY: local build rebuild verify-image preflight-netns rm run restart wait logs follow ps test vet lint check coverage
 
 $(STATICCHECK):
-	go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+	GOBIN=$(abspath $(CURDIR)/../bin) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 
 local:
 	go build -o runner ./cmd/runner

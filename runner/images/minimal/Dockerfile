@@ -12,7 +12,6 @@
 
 FROM golang:1.26-bookworm AS runner-builder
 
-ARG CACHEBUST
 WORKDIR /src
 COPY go.mod go.sum* ./
 COPY gen/ ./gen/

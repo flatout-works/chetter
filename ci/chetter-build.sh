@@ -26,25 +26,23 @@ else
   SKIP_MAIN=false
 fi
 
-CACHEBUST="${NEW:0:7}"
 BASE_IMAGE_ARG="--build-arg BASE_IMAGE=chetter-runner-base:latest"
 
 if [ "${SKIP_MAIN}" != "true" ]; then
 
   if [ "${BUILD_BASE:-false}" = "true" ] || ! docker image inspect chetter-runner-base:latest >/dev/null 2>&1; then
     echo "=== Building runner base image ==="
-    docker build --build-arg "CACHEBUST=$CACHEBUST" \
+    docker build \
       -f runner/Dockerfile.chetter-base \
       -t "chetter-runner-base:latest" .
   fi
 
   echo "=== Building MCP image ==="
-  docker build --no-cache --build-arg "CACHEBUST=$CACHEBUST" \
+  docker build \
     -t "chetter-mcp:latest" .
 
   echo "=== Building runner image ==="
   docker build $BASE_IMAGE_ARG \
-    --build-arg "CACHEBUST=$CACHEBUST" \
     -f runner/Dockerfile.chetter \
     -t "chetter-runner:latest" .
 fi
@@ -54,7 +52,6 @@ build_variant() {
   local dockerfile="runner/images/$name/Dockerfile"
   echo "=== Building $name variant ==="
   docker build $BASE_IMAGE_ARG \
-    --build-arg "CACHEBUST=$CACHEBUST" \
     -f "$dockerfile" \
     -t "chetter-runner-$name:latest" .
 }

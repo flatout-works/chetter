@@ -22,3 +22,20 @@ coverage.out
 
 # Go workspace
 vendor/
+
+# Directories not needed in Docker build context
+docs/
+website/
+misc/
+ci/
+.github/
+tools/
+triggers-examples/
+schedules-examples/
+session-exports/
+deploy/
+.opencode/
+.opencode.json
+.opencode.jsonc
+AGENTS.md
+Makefile

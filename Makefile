@@ -8,8 +8,10 @@ BIN_DIR := $(CURDIR)/bin
 WEB_EMBED_DIR := internal/webui/dist
 BUF := $(BIN_DIR)/buf
 SQLC := $(BIN_DIR)/sqlc
+STATICCHECK := $(BIN_DIR)/staticcheck
 BUF_VERSION := v1.69.0
 SQLC_VERSION := v1.31.1
+STATICCHECK_VERSION := 2025.1.1
 
 generate: tools
 	$(BUF) dep update
@@ -37,7 +39,9 @@ web-build:
 	cp -R web/build/. $(WEB_EMBED_DIR)/
 
 web-check:
-	npm --prefix web ci
+	if [ ! -d web/node_modules ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then \
+		npm --prefix web ci; \
+	fi
 	npm --prefix web run check
 
 migrate:
@@ -59,8 +63,11 @@ test:
 vet:
 	go vet ./...
 
-lint:
-	go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+$(STATICCHECK):
+	GOBIN=$(BIN_DIR) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+
+lint: $(STATICCHECK)
+	$(STATICCHECK) ./...
 
 runner-test:
 	$(MAKE) -C runner test

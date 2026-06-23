@@ -13,16 +13,21 @@ COPY go.mod go.sum* ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
-ARG CACHEBUST
-RUN echo "$CACHEBUST" > /dev/null
-COPY . .
+COPY main.go go.mod go.sum* ./
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY gen/ ./gen/
+COPY pkg/ ./pkg/
+COPY db/ ./db/
 COPY --from=web-build /src/web/build ./internal/webui/dist
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -o /out/chetter ./
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
     openssh-client \
