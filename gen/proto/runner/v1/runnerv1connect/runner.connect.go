@@ -46,6 +46,18 @@ const (
 	// RunnerServicePruneWorkspacesProcedure is the fully-qualified name of the RunnerService's
 	// PruneWorkspaces RPC.
 	RunnerServicePruneWorkspacesProcedure = "/runner.v1.RunnerService/PruneWorkspaces"
+	// RunnerServiceGitHubCreateIssueProcedure is the fully-qualified name of the RunnerService's
+	// GitHubCreateIssue RPC.
+	RunnerServiceGitHubCreateIssueProcedure = "/runner.v1.RunnerService/GitHubCreateIssue"
+	// RunnerServiceGitHubIssueCommentProcedure is the fully-qualified name of the RunnerService's
+	// GitHubIssueComment RPC.
+	RunnerServiceGitHubIssueCommentProcedure = "/runner.v1.RunnerService/GitHubIssueComment"
+	// RunnerServiceGitHubCreatePRProcedure is the fully-qualified name of the RunnerService's
+	// GitHubCreatePR RPC.
+	RunnerServiceGitHubCreatePRProcedure = "/runner.v1.RunnerService/GitHubCreatePR"
+	// RunnerServiceGitHubPRReviewProcedure is the fully-qualified name of the RunnerService's
+	// GitHubPRReview RPC.
+	RunnerServiceGitHubPRReviewProcedure = "/runner.v1.RunnerService/GitHubPRReview"
 )
 
 // RunnerServiceClient is a client for the runner.v1.RunnerService service.
@@ -55,6 +67,13 @@ type RunnerServiceClient interface {
 	ClaimTask(context.Context, *connect.Request[v1.ClaimTaskRequest]) (*connect.Response[v1.ClaimTaskResponse], error)
 	ReportTaskEvents(context.Context, *connect.Request[v1.ReportTaskEventsRequest]) (*connect.Response[v1.ReportTaskEventsResponse], error)
 	PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error)
+	// GitHub operations — called by the runner on behalf of the agent.
+	// The server performs the GitHub API call, appends the Chetter signature,
+	// and records the artifact atomically, so the runner needs no GitHub token.
+	GitHubCreateIssue(context.Context, *connect.Request[v1.GitHubCreateIssueRequest]) (*connect.Response[v1.GitHubCreateIssueResponse], error)
+	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
+	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
+	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
 }
 
 // NewRunnerServiceClient constructs a client for the runner.v1.RunnerService service. By default,
@@ -98,16 +117,44 @@ func NewRunnerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(runnerServiceMethods.ByName("PruneWorkspaces")),
 			connect.WithClientOptions(opts...),
 		),
+		gitHubCreateIssue: connect.NewClient[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubCreateIssueProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubCreateIssue")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubIssueComment: connect.NewClient[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubIssueCommentProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubIssueComment")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubCreatePR: connect.NewClient[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubCreatePRProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubCreatePR")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubPRReview: connect.NewClient[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubPRReviewProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // runnerServiceClient implements RunnerServiceClient.
 type runnerServiceClient struct {
-	registerRunner   *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
-	heartbeat        *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
-	claimTask        *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
-	reportTaskEvents *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
-	pruneWorkspaces  *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
+	registerRunner     *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
+	heartbeat          *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	claimTask          *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
+	reportTaskEvents   *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
+	pruneWorkspaces    *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
+	gitHubCreateIssue  *connect.Client[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse]
+	gitHubIssueComment *connect.Client[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse]
+	gitHubCreatePR     *connect.Client[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse]
+	gitHubPRReview     *connect.Client[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse]
 }
 
 // RegisterRunner calls runner.v1.RunnerService.RegisterRunner.
@@ -135,6 +182,26 @@ func (c *runnerServiceClient) PruneWorkspaces(ctx context.Context, req *connect.
 	return c.pruneWorkspaces.CallUnary(ctx, req)
 }
 
+// GitHubCreateIssue calls runner.v1.RunnerService.GitHubCreateIssue.
+func (c *runnerServiceClient) GitHubCreateIssue(ctx context.Context, req *connect.Request[v1.GitHubCreateIssueRequest]) (*connect.Response[v1.GitHubCreateIssueResponse], error) {
+	return c.gitHubCreateIssue.CallUnary(ctx, req)
+}
+
+// GitHubIssueComment calls runner.v1.RunnerService.GitHubIssueComment.
+func (c *runnerServiceClient) GitHubIssueComment(ctx context.Context, req *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error) {
+	return c.gitHubIssueComment.CallUnary(ctx, req)
+}
+
+// GitHubCreatePR calls runner.v1.RunnerService.GitHubCreatePR.
+func (c *runnerServiceClient) GitHubCreatePR(ctx context.Context, req *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error) {
+	return c.gitHubCreatePR.CallUnary(ctx, req)
+}
+
+// GitHubPRReview calls runner.v1.RunnerService.GitHubPRReview.
+func (c *runnerServiceClient) GitHubPRReview(ctx context.Context, req *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error) {
+	return c.gitHubPRReview.CallUnary(ctx, req)
+}
+
 // RunnerServiceHandler is an implementation of the runner.v1.RunnerService service.
 type RunnerServiceHandler interface {
 	RegisterRunner(context.Context, *connect.Request[v1.RegisterRunnerRequest]) (*connect.Response[v1.RegisterRunnerResponse], error)
@@ -142,6 +209,13 @@ type RunnerServiceHandler interface {
 	ClaimTask(context.Context, *connect.Request[v1.ClaimTaskRequest]) (*connect.Response[v1.ClaimTaskResponse], error)
 	ReportTaskEvents(context.Context, *connect.Request[v1.ReportTaskEventsRequest]) (*connect.Response[v1.ReportTaskEventsResponse], error)
 	PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error)
+	// GitHub operations — called by the runner on behalf of the agent.
+	// The server performs the GitHub API call, appends the Chetter signature,
+	// and records the artifact atomically, so the runner needs no GitHub token.
+	GitHubCreateIssue(context.Context, *connect.Request[v1.GitHubCreateIssueRequest]) (*connect.Response[v1.GitHubCreateIssueResponse], error)
+	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
+	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
+	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
 }
 
 // NewRunnerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -181,6 +255,30 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(runnerServiceMethods.ByName("PruneWorkspaces")),
 		connect.WithHandlerOptions(opts...),
 	)
+	runnerServiceGitHubCreateIssueHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubCreateIssueProcedure,
+		svc.GitHubCreateIssue,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubCreateIssue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubIssueCommentHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubIssueCommentProcedure,
+		svc.GitHubIssueComment,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubIssueComment")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubCreatePRHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubCreatePRProcedure,
+		svc.GitHubCreatePR,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubCreatePR")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubPRReviewHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubPRReviewProcedure,
+		svc.GitHubPRReview,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/runner.v1.RunnerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RunnerServiceRegisterRunnerProcedure:
@@ -193,6 +291,14 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 			runnerServiceReportTaskEventsHandler.ServeHTTP(w, r)
 		case RunnerServicePruneWorkspacesProcedure:
 			runnerServicePruneWorkspacesHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubCreateIssueProcedure:
+			runnerServiceGitHubCreateIssueHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubIssueCommentProcedure:
+			runnerServiceGitHubIssueCommentHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubCreatePRProcedure:
+			runnerServiceGitHubCreatePRHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubPRReviewProcedure:
+			runnerServiceGitHubPRReviewHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -220,4 +326,20 @@ func (UnimplementedRunnerServiceHandler) ReportTaskEvents(context.Context, *conn
 
 func (UnimplementedRunnerServiceHandler) PruneWorkspaces(context.Context, *connect.Request[v1.PruneWorkspacesRequest]) (*connect.Response[v1.PruneWorkspacesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.PruneWorkspaces is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubCreateIssue(context.Context, *connect.Request[v1.GitHubCreateIssueRequest]) (*connect.Response[v1.GitHubCreateIssueResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubCreateIssue is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubIssueComment is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubCreatePR is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubPRReview is not implemented"))
 }

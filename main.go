@@ -30,12 +30,12 @@ import (
 var _gitHash = "unknown"
 
 const (
-	serverVersion      = "dev"
-	mcpServerName      = "chetter"
-	mcpServerVersion   = "v0.1.0"
-	initTimeout        = 30 * time.Second
-	shutdownTimeout    = 15 * time.Second
-	readHeaderTimeout  = 10 * time.Second
+	serverVersion     = "dev"
+	mcpServerName     = "chetter"
+	mcpServerVersion  = "v0.1.0"
+	initTimeout       = 30 * time.Second
+	shutdownTimeout   = 15 * time.Second
+	readHeaderTimeout = 10 * time.Second
 )
 
 func main() {
@@ -89,7 +89,7 @@ func run() error {
 		svc.SetGitHubClient(gh)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus).WithEventCallbacks(svc)
+	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)

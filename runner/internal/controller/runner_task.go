@@ -174,6 +174,7 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, workspaceDir, so
 	mcpServer.RegisterTool("workspace_read_file", ws.ReadFile)
 	mcpServer.RegisterTool("workspace_write_file", ws.WriteFile)
 	mcpServer.RegisterTool("workspace_list_directory", ws.ListDirectory)
+	r.registerGitHubMCPTools(mcpServer, taskID)
 	go mcpServer.Serve(ctx)
 	slog.Info("MCP server started", "taskID", taskID, "socket", socketPath)
 	return mcpServer, nil

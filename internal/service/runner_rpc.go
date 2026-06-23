@@ -39,6 +39,7 @@ type RunnerRPCService struct {
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	eventBus      TaskEventPublisher
 	callbacks     TaskEventCallbackDispatcher
+	ghActions     GitHubActionService
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.

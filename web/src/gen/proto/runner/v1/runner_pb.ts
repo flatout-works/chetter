@@ -11,7 +11,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file proto/runner/v1/runner.proto.
  */
 export const file_proto_runner_v1_runner: GenFile = /*@__PURE__*/
-  fileDesc("Chxwcm90by9ydW5uZXIvdjEvcnVubmVyLnByb3RvEglydW5uZXIudjEikQMKClJ1bm5lckluZm8SGgoJcnVubmVyX2lkGAEgASgJQge6SARyAhABEg4KBnN0YXR1cxgCIAEoCRIRCglpbWFnZV9yZWYYAyABKAkSFAoMaW1hZ2VfZGlnZXN0GAQgASgJEg8KB3ZlcnNpb24YBSABKAkSFgoObWF4X2NvbmN1cnJlbnQYBiABKAUSFQoNcnVubmluZ190YXNrcxgHIAEoBRIXCg9hdmFpbGFibGVfc2xvdHMYCCABKAUSFQoNdG90YWxfc3RhcnRlZBgJIAEoAxIXCg90b3RhbF9jb21wbGV0ZWQYCiABKAMSFAoMdG90YWxfZXJyb3JzGAsgASgDEhgKEGN1cnJlbnRfdGFza19pZHMYDCADKAkSFgoOZXhlY3V0aW9uX21vZGUYDSABKAkSEgoKc3RhcnRlZF9hdBgOIAEoCRIWCg5ndmlzb3JfZW5hYmxlZBgPIAEoCBIaChJjaGVja3BvaW50X3Jlc3RvcmUYECABKAgSFQoNcnVuc2NfdmVyc2lvbhgRIAEoCSJGChVSZWdpc3RlclJ1bm5lclJlcXVlc3QSLQoGcnVubmVyGAEgASgLMhUucnVubmVyLnYxLlJ1bm5lckluZm9CBrpIA8gBASIYChZSZWdpc3RlclJ1bm5lclJlc3BvbnNlIkEKEEhlYXJ0YmVhdFJlcXVlc3QSLQoGcnVubmVyGAEgASgLMhUucnVubmVyLnYxLlJ1bm5lckluZm9CBrpIA8gBASI+Cg1SdW5uZXJDb21tYW5kEgwKBHR5cGUYASABKAkSDwoHdGFza19pZBgCIAEoCRIOCgZyZWFzb24YAyABKAkiPwoRSGVhcnRiZWF0UmVzcG9uc2USKgoIY29tbWFuZHMYASADKAsyGC5ydW5uZXIudjEuUnVubmVyQ29tbWFuZCJuChBDbGFpbVRhc2tSZXF1ZXN0EhoKCXJ1bm5lcl9pZBgBIAEoCUIHukgEcgIQARIdCgx3YWl0X3NlY29uZHMYAiABKAVCB7pIBBoCGB4SHwoNbGVhc2Vfc2Vjb25kcxgDIAEoBUIIukgFGgMYkBwi1wUKBFRhc2sSDwoHdGFza19pZBgBIAEoCRITCgthZ2VudF9pbWFnZRgCIAEoCRIOCgZwcm9tcHQYAyABKAkSDwoHZ2l0X3VybBgEIAEoCRIPCgdnaXRfcmVmGAUgASgJEg0KBWFnZW50GAYgASgJEhMKC3Byb3ZpZGVyX2lkGAcgASgJEhAKCG1vZGVsX2lkGAggASgJEhIKCnZhcmlhbnRfaWQYCSABKAkSDgoGc2tpbGxzGAogAygJEhcKD3RpbWVvdXRfc2Vjb25kcxgLIAEoBRIVCg1tYXhfbWVtb3J5X21iGAwgASgFEg8KB21heF9jcHUYDSABKAUSJQoDZW52GA4gAygLMhgucnVubmVyLnYxLlRhc2suRW52RW50cnkSDwoHYXR0ZW1wdBgPIAEoBRIgChhjaGVja3BvaW50X2FmdGVyX3N1Y2Nlc3MYECABKAgSHgoWcmVzdW1lX2NoZWNrcG9pbnRfcGF0aBgRIAEoCRIdChVyZXN1bWVfd29ya3NwYWNlX3BhdGgYEiABKAkSIQoZcmVzdW1lX2hhcm5lc3Nfc2Vzc2lvbl9pZBgTIAEoCRIPCgdoYXJuZXNzGBkgASgJEhUKDXByb3ZpZGVyX25hbWUYFCABKAkSGQoRcHJvdmlkZXJfYmFzZV91cmwYFSABKAkSHAoUcHJvdmlkZXJfYXBpX2tleV9lbnYYFiABKAkSGAoQYWdlbnRfZGVmaW5pdGlvbhgXIAEoCRJAChFza2lsbF9kZWZpbml0aW9ucxgYIAMoCzIlLnJ1bm5lci52MS5UYXNrLlNraWxsRGVmaW5pdGlvbnNFbnRyeRoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGjcKFVNraWxsRGVmaW5pdGlvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAw6AjgBIjIKEUNsYWltVGFza1Jlc3BvbnNlEh0KBHRhc2sYASABKAsyDy5ydW5uZXIudjEuVGFzayKDAwoJVGFza0V2ZW50EhgKB3Rhc2tfaWQYASABKAlCB7pIBHICEAESFwoGc3RhdHVzGAIgASgJQge6SARyAhABEg8KB3N1bW1hcnkYAyABKAkSDQoFZXJyb3IYBCABKAkSEQoJYXJ0aWZhY3RzGAUgAygJEhMKC3Byb3ZpZGVyX2lkGAYgASgJEhAKCG1vZGVsX2lkGAcgASgJEhIKCnZhcmlhbnRfaWQYCCABKAkSGwoTb3BlbmNvZGVfc2Vzc2lvbl9pZBgJIAEoCRIbChNydW5uZXJfaW1hZ2VfZGlnZXN0GAogASgJEhIKCnN0YXJ0ZWRfYXQYCyABKAkSEAoIZW5kZWRfYXQYDCABKAkSFAoMcGF5bG9hZF9qc29uGA0gASgJEhYKDnNlc3Npb25fZXhwb3J0GA4gASgJEhcKD2NoZWNrcG9pbnRfcGF0aBgPIAEoCRIWCg53b3Jrc3BhY2VfcGF0aBgQIAEoCRIWCg5lcnJvcl9jYXRlZ29yeRgRIAEoCSJlChdSZXBvcnRUYXNrRXZlbnRzUmVxdWVzdBIaCglydW5uZXJfaWQYASABKAlCB7pIBHICEAESLgoGZXZlbnRzGAIgAygLMhQucnVubmVyLnYxLlRhc2tFdmVudEIIukgFkgECCAEiGgoYUmVwb3J0VGFza0V2ZW50c1Jlc3BvbnNlIkYKFlBydW5lV29ya3NwYWNlc1JlcXVlc3QSGgoJcnVubmVyX2lkGAEgASgJQge6SARyAhABEhAKCHRhc2tfaWRzGAIgAygJIjEKF1BydW5lV29ya3NwYWNlc1Jlc3BvbnNlEhYKDnNhZmVfdG9fZGVsZXRlGAEgAygJMrcDCg1SdW5uZXJTZXJ2aWNlElcKDlJlZ2lzdGVyUnVubmVyEiAucnVubmVyLnYxLlJlZ2lzdGVyUnVubmVyUmVxdWVzdBohLnJ1bm5lci52MS5SZWdpc3RlclJ1bm5lclJlc3BvbnNlIgASSAoJSGVhcnRiZWF0EhsucnVubmVyLnYxLkhlYXJ0YmVhdFJlcXVlc3QaHC5ydW5uZXIudjEuSGVhcnRiZWF0UmVzcG9uc2UiABJICglDbGFpbVRhc2sSGy5ydW5uZXIudjEuQ2xhaW1UYXNrUmVxdWVzdBocLnJ1bm5lci52MS5DbGFpbVRhc2tSZXNwb25zZSIAEl0KEFJlcG9ydFRhc2tFdmVudHMSIi5ydW5uZXIudjEuUmVwb3J0VGFza0V2ZW50c1JlcXVlc3QaIy5ydW5uZXIudjEuUmVwb3J0VGFza0V2ZW50c1Jlc3BvbnNlIgASWgoPUHJ1bmVXb3Jrc3BhY2VzEiEucnVubmVyLnYxLlBydW5lV29ya3NwYWNlc1JlcXVlc3QaIi5ydW5uZXIudjEuUHJ1bmVXb3Jrc3BhY2VzUmVzcG9uc2UiAEKgAQoNY29tLnJ1bm5lci52MUILUnVubmVyUHJvdG9QAVo9Z2l0aHViLmNvbS9mbGF0b3V0LXdvcmtzL2NoZXR0ZXIvZ2VuL3Byb3RvL3J1bm5lci92MTtydW5uZXJ2MaICA1JYWKoCCVJ1bm5lci5WMcoCCVJ1bm5lclxWMeICFVJ1bm5lclxWMVxHUEJNZXRhZGF0YeoCClJ1bm5lcjo6VjFiBnByb3RvMw", [file_buf_validate_validate]);
+  fileDesc("Chxwcm90by9ydW5uZXIvdjEvcnVubmVyLnByb3RvEglydW5uZXIudjEikQMKClJ1bm5lckluZm8SGgoJcnVubmVyX2lkGAEgASgJQge6SARyAhABEg4KBnN0YXR1cxgCIAEoCRIRCglpbWFnZV9yZWYYAyABKAkSFAoMaW1hZ2VfZGlnZXN0GAQgASgJEg8KB3ZlcnNpb24YBSABKAkSFgoObWF4X2NvbmN1cnJlbnQYBiABKAUSFQoNcnVubmluZ190YXNrcxgHIAEoBRIXCg9hdmFpbGFibGVfc2xvdHMYCCABKAUSFQoNdG90YWxfc3RhcnRlZBgJIAEoAxIXCg90b3RhbF9jb21wbGV0ZWQYCiABKAMSFAoMdG90YWxfZXJyb3JzGAsgASgDEhgKEGN1cnJlbnRfdGFza19pZHMYDCADKAkSFgoOZXhlY3V0aW9uX21vZGUYDSABKAkSEgoKc3RhcnRlZF9hdBgOIAEoCRIWCg5ndmlzb3JfZW5hYmxlZBgPIAEoCBIaChJjaGVja3BvaW50X3Jlc3RvcmUYECABKAgSFQoNcnVuc2NfdmVyc2lvbhgRIAEoCSJGChVSZWdpc3RlclJ1bm5lclJlcXVlc3QSLQoGcnVubmVyGAEgASgLMhUucnVubmVyLnYxLlJ1bm5lckluZm9CBrpIA8gBASIYChZSZWdpc3RlclJ1bm5lclJlc3BvbnNlIkEKEEhlYXJ0YmVhdFJlcXVlc3QSLQoGcnVubmVyGAEgASgLMhUucnVubmVyLnYxLlJ1bm5lckluZm9CBrpIA8gBASI+Cg1SdW5uZXJDb21tYW5kEgwKBHR5cGUYASABKAkSDwoHdGFza19pZBgCIAEoCRIOCgZyZWFzb24YAyABKAkiPwoRSGVhcnRiZWF0UmVzcG9uc2USKgoIY29tbWFuZHMYASADKAsyGC5ydW5uZXIudjEuUnVubmVyQ29tbWFuZCJuChBDbGFpbVRhc2tSZXF1ZXN0EhoKCXJ1bm5lcl9pZBgBIAEoCUIHukgEcgIQARIdCgx3YWl0X3NlY29uZHMYAiABKAVCB7pIBBoCGB4SHwoNbGVhc2Vfc2Vjb25kcxgDIAEoBUIIukgFGgMYkBwi1wUKBFRhc2sSDwoHdGFza19pZBgBIAEoCRITCgthZ2VudF9pbWFnZRgCIAEoCRIOCgZwcm9tcHQYAyABKAkSDwoHZ2l0X3VybBgEIAEoCRIPCgdnaXRfcmVmGAUgASgJEg0KBWFnZW50GAYgASgJEhMKC3Byb3ZpZGVyX2lkGAcgASgJEhAKCG1vZGVsX2lkGAggASgJEhIKCnZhcmlhbnRfaWQYCSABKAkSDgoGc2tpbGxzGAogAygJEhcKD3RpbWVvdXRfc2Vjb25kcxgLIAEoBRIVCg1tYXhfbWVtb3J5X21iGAwgASgFEg8KB21heF9jcHUYDSABKAUSJQoDZW52GA4gAygLMhgucnVubmVyLnYxLlRhc2suRW52RW50cnkSDwoHYXR0ZW1wdBgPIAEoBRIgChhjaGVja3BvaW50X2FmdGVyX3N1Y2Nlc3MYECABKAgSHgoWcmVzdW1lX2NoZWNrcG9pbnRfcGF0aBgRIAEoCRIdChVyZXN1bWVfd29ya3NwYWNlX3BhdGgYEiABKAkSIQoZcmVzdW1lX2hhcm5lc3Nfc2Vzc2lvbl9pZBgTIAEoCRIPCgdoYXJuZXNzGBkgASgJEhUKDXByb3ZpZGVyX25hbWUYFCABKAkSGQoRcHJvdmlkZXJfYmFzZV91cmwYFSABKAkSHAoUcHJvdmlkZXJfYXBpX2tleV9lbnYYFiABKAkSGAoQYWdlbnRfZGVmaW5pdGlvbhgXIAEoCRJAChFza2lsbF9kZWZpbml0aW9ucxgYIAMoCzIlLnJ1bm5lci52MS5UYXNrLlNraWxsRGVmaW5pdGlvbnNFbnRyeRoqCghFbnZFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGjcKFVNraWxsRGVmaW5pdGlvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAw6AjgBIjIKEUNsYWltVGFza1Jlc3BvbnNlEh0KBHRhc2sYASABKAsyDy5ydW5uZXIudjEuVGFzayKDAwoJVGFza0V2ZW50EhgKB3Rhc2tfaWQYASABKAlCB7pIBHICEAESFwoGc3RhdHVzGAIgASgJQge6SARyAhABEg8KB3N1bW1hcnkYAyABKAkSDQoFZXJyb3IYBCABKAkSEQoJYXJ0aWZhY3RzGAUgAygJEhMKC3Byb3ZpZGVyX2lkGAYgASgJEhAKCG1vZGVsX2lkGAcgASgJEhIKCnZhcmlhbnRfaWQYCCABKAkSGwoTb3BlbmNvZGVfc2Vzc2lvbl9pZBgJIAEoCRIbChNydW5uZXJfaW1hZ2VfZGlnZXN0GAogASgJEhIKCnN0YXJ0ZWRfYXQYCyABKAkSEAoIZW5kZWRfYXQYDCABKAkSFAoMcGF5bG9hZF9qc29uGA0gASgJEhYKDnNlc3Npb25fZXhwb3J0GA4gASgJEhcKD2NoZWNrcG9pbnRfcGF0aBgPIAEoCRIWCg53b3Jrc3BhY2VfcGF0aBgQIAEoCRIWCg5lcnJvcl9jYXRlZ29yeRgRIAEoCSJlChdSZXBvcnRUYXNrRXZlbnRzUmVxdWVzdBIaCglydW5uZXJfaWQYASABKAlCB7pIBHICEAESLgoGZXZlbnRzGAIgAygLMhQucnVubmVyLnYxLlRhc2tFdmVudEIIukgFkgECCAEiGgoYUmVwb3J0VGFza0V2ZW50c1Jlc3BvbnNlIkYKFlBydW5lV29ya3NwYWNlc1JlcXVlc3QSGgoJcnVubmVyX2lkGAEgASgJQge6SARyAhABEhAKCHRhc2tfaWRzGAIgAygJIjEKF1BydW5lV29ya3NwYWNlc1Jlc3BvbnNlEhYKDnNhZmVfdG9fZGVsZXRlGAEgAygJIoEBChhHaXRIdWJDcmVhdGVJc3N1ZVJlcXVlc3QSGAoHdGFza19pZBgBIAEoCUIHukgEcgIQARIVCgRyZXBvGAIgASgJQge6SARyAhABEhYKBXRpdGxlGAMgASgJQge6SARyAhABEgwKBGJvZHkYBCABKAkSDgoGbGFiZWxzGAUgAygJIjgKGUdpdEh1YkNyZWF0ZUlzc3VlUmVzcG9uc2USDgoGbnVtYmVyGAEgASgFEgsKA3VybBgCIAEoCSKCAQoZR2l0SHViSXNzdWVDb21tZW50UmVxdWVzdBIYCgd0YXNrX2lkGAEgASgJQge6SARyAhABEhUKBHJlcG8YAiABKAlCB7pIBHICEAESHQoMaXNzdWVfbnVtYmVyGAMgASgFQge6SAQaAiAAEhUKBGJvZHkYBCABKAlCB7pIBHICEAEiKQoaR2l0SHViSXNzdWVDb21tZW50UmVzcG9uc2USCwoDdXJsGAEgASgJIqsBChVHaXRIdWJDcmVhdGVQUlJlcXVlc3QSGAoHdGFza19pZBgBIAEoCUIHukgEcgIQARIVCgRyZXBvGAIgASgJQge6SARyAhABEhYKBXRpdGxlGAMgASgJQge6SARyAhABEgwKBGJvZHkYBCABKAkSFQoEaGVhZBgFIAEoCUIHukgEcgIQARIVCgRiYXNlGAYgASgJQge6SARyAhABEg0KBWRyYWZ0GAcgASgIIjUKFkdpdEh1YkNyZWF0ZVBSUmVzcG9uc2USDgoGbnVtYmVyGAEgASgFEgsKA3VybBgCIAEoCSKKAQoVR2l0SHViUFJSZXZpZXdSZXF1ZXN0EhgKB3Rhc2tfaWQYASABKAlCB7pIBHICEAESFQoEcmVwbxgCIAEoCUIHukgEcgIQARIaCglwcl9udW1iZXIYAyABKAVCB7pIBBoCIAASFQoEYm9keRgEIAEoCUIHukgEcgIQARINCgVldmVudBgFIAEoCSIlChZHaXRIdWJQUlJldmlld1Jlc3BvbnNlEgsKA3VybBgBIAEoCTKwBgoNUnVubmVyU2VydmljZRJXCg5SZWdpc3RlclJ1bm5lchIgLnJ1bm5lci52MS5SZWdpc3RlclJ1bm5lclJlcXVlc3QaIS5ydW5uZXIudjEuUmVnaXN0ZXJSdW5uZXJSZXNwb25zZSIAEkgKCUhlYXJ0YmVhdBIbLnJ1bm5lci52MS5IZWFydGJlYXRSZXF1ZXN0GhwucnVubmVyLnYxLkhlYXJ0YmVhdFJlc3BvbnNlIgASSAoJQ2xhaW1UYXNrEhsucnVubmVyLnYxLkNsYWltVGFza1JlcXVlc3QaHC5ydW5uZXIudjEuQ2xhaW1UYXNrUmVzcG9uc2UiABJdChBSZXBvcnRUYXNrRXZlbnRzEiIucnVubmVyLnYxLlJlcG9ydFRhc2tFdmVudHNSZXF1ZXN0GiMucnVubmVyLnYxLlJlcG9ydFRhc2tFdmVudHNSZXNwb25zZSIAEloKD1BydW5lV29ya3NwYWNlcxIhLnJ1bm5lci52MS5QcnVuZVdvcmtzcGFjZXNSZXF1ZXN0GiIucnVubmVyLnYxLlBydW5lV29ya3NwYWNlc1Jlc3BvbnNlIgASYAoRR2l0SHViQ3JlYXRlSXNzdWUSIy5ydW5uZXIudjEuR2l0SHViQ3JlYXRlSXNzdWVSZXF1ZXN0GiQucnVubmVyLnYxLkdpdEh1YkNyZWF0ZUlzc3VlUmVzcG9uc2UiABJjChJHaXRIdWJJc3N1ZUNvbW1lbnQSJC5ydW5uZXIudjEuR2l0SHViSXNzdWVDb21tZW50UmVxdWVzdBolLnJ1bm5lci52MS5HaXRIdWJJc3N1ZUNvbW1lbnRSZXNwb25zZSIAElcKDkdpdEh1YkNyZWF0ZVBSEiAucnVubmVyLnYxLkdpdEh1YkNyZWF0ZVBSUmVxdWVzdBohLnJ1bm5lci52MS5HaXRIdWJDcmVhdGVQUlJlc3BvbnNlIgASVwoOR2l0SHViUFJSZXZpZXcSIC5ydW5uZXIudjEuR2l0SHViUFJSZXZpZXdSZXF1ZXN0GiEucnVubmVyLnYxLkdpdEh1YlBSUmV2aWV3UmVzcG9uc2UiAEKgAQoNY29tLnJ1bm5lci52MUILUnVubmVyUHJvdG9QAVo9Z2l0aHViLmNvbS9mbGF0b3V0LXdvcmtzL2NoZXR0ZXIvZ2VuL3Byb3RvL3J1bm5lci92MTtydW5uZXJ2MaICA1JYWKoCCVJ1bm5lci5WMcoCCVJ1bm5lclxWMeICFVJ1bm5lclxWMVxHUEJNZXRhZGF0YeoCClJ1bm5lcjo6VjFiBnByb3RvMw", [file_buf_validate_validate]);
 
 /**
  * @generated from message runner.v1.RunnerInfo
@@ -554,6 +554,239 @@ export const PruneWorkspacesResponseSchema: GenMessage<PruneWorkspacesResponse> 
   messageDesc(file_proto_runner_v1_runner, 13);
 
 /**
+ * @generated from message runner.v1.GitHubCreateIssueRequest
+ */
+export type GitHubCreateIssueRequest = Message<"runner.v1.GitHubCreateIssueRequest"> & {
+  /**
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string repo = 2;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string body = 4;
+   */
+  body: string;
+
+  /**
+   * @generated from field: repeated string labels = 5;
+   */
+  labels: string[];
+};
+
+/**
+ * Describes the message runner.v1.GitHubCreateIssueRequest.
+ * Use `create(GitHubCreateIssueRequestSchema)` to create a new message.
+ */
+export const GitHubCreateIssueRequestSchema: GenMessage<GitHubCreateIssueRequest> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 14);
+
+/**
+ * @generated from message runner.v1.GitHubCreateIssueResponse
+ */
+export type GitHubCreateIssueResponse = Message<"runner.v1.GitHubCreateIssueResponse"> & {
+  /**
+   * @generated from field: int32 number = 1;
+   */
+  number: number;
+
+  /**
+   * @generated from field: string url = 2;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubCreateIssueResponse.
+ * Use `create(GitHubCreateIssueResponseSchema)` to create a new message.
+ */
+export const GitHubCreateIssueResponseSchema: GenMessage<GitHubCreateIssueResponse> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 15);
+
+/**
+ * @generated from message runner.v1.GitHubIssueCommentRequest
+ */
+export type GitHubIssueCommentRequest = Message<"runner.v1.GitHubIssueCommentRequest"> & {
+  /**
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string repo = 2;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: int32 issue_number = 3;
+   */
+  issueNumber: number;
+
+  /**
+   * @generated from field: string body = 4;
+   */
+  body: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubIssueCommentRequest.
+ * Use `create(GitHubIssueCommentRequestSchema)` to create a new message.
+ */
+export const GitHubIssueCommentRequestSchema: GenMessage<GitHubIssueCommentRequest> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 16);
+
+/**
+ * @generated from message runner.v1.GitHubIssueCommentResponse
+ */
+export type GitHubIssueCommentResponse = Message<"runner.v1.GitHubIssueCommentResponse"> & {
+  /**
+   * @generated from field: string url = 1;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubIssueCommentResponse.
+ * Use `create(GitHubIssueCommentResponseSchema)` to create a new message.
+ */
+export const GitHubIssueCommentResponseSchema: GenMessage<GitHubIssueCommentResponse> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 17);
+
+/**
+ * @generated from message runner.v1.GitHubCreatePRRequest
+ */
+export type GitHubCreatePRRequest = Message<"runner.v1.GitHubCreatePRRequest"> & {
+  /**
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string repo = 2;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string body = 4;
+   */
+  body: string;
+
+  /**
+   * @generated from field: string head = 5;
+   */
+  head: string;
+
+  /**
+   * @generated from field: string base = 6;
+   */
+  base: string;
+
+  /**
+   * @generated from field: bool draft = 7;
+   */
+  draft: boolean;
+};
+
+/**
+ * Describes the message runner.v1.GitHubCreatePRRequest.
+ * Use `create(GitHubCreatePRRequestSchema)` to create a new message.
+ */
+export const GitHubCreatePRRequestSchema: GenMessage<GitHubCreatePRRequest> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 18);
+
+/**
+ * @generated from message runner.v1.GitHubCreatePRResponse
+ */
+export type GitHubCreatePRResponse = Message<"runner.v1.GitHubCreatePRResponse"> & {
+  /**
+   * @generated from field: int32 number = 1;
+   */
+  number: number;
+
+  /**
+   * @generated from field: string url = 2;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubCreatePRResponse.
+ * Use `create(GitHubCreatePRResponseSchema)` to create a new message.
+ */
+export const GitHubCreatePRResponseSchema: GenMessage<GitHubCreatePRResponse> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 19);
+
+/**
+ * @generated from message runner.v1.GitHubPRReviewRequest
+ */
+export type GitHubPRReviewRequest = Message<"runner.v1.GitHubPRReviewRequest"> & {
+  /**
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string repo = 2;
+   */
+  repo: string;
+
+  /**
+   * @generated from field: int32 pr_number = 3;
+   */
+  prNumber: number;
+
+  /**
+   * @generated from field: string body = 4;
+   */
+  body: string;
+
+  /**
+   * COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
+   *
+   * @generated from field: string event = 5;
+   */
+  event: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubPRReviewRequest.
+ * Use `create(GitHubPRReviewRequestSchema)` to create a new message.
+ */
+export const GitHubPRReviewRequestSchema: GenMessage<GitHubPRReviewRequest> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 20);
+
+/**
+ * @generated from message runner.v1.GitHubPRReviewResponse
+ */
+export type GitHubPRReviewResponse = Message<"runner.v1.GitHubPRReviewResponse"> & {
+  /**
+   * @generated from field: string url = 1;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message runner.v1.GitHubPRReviewResponse.
+ * Use `create(GitHubPRReviewResponseSchema)` to create a new message.
+ */
+export const GitHubPRReviewResponseSchema: GenMessage<GitHubPRReviewResponse> = /*@__PURE__*/
+  messageDesc(file_proto_runner_v1_runner, 21);
+
+/**
  * @generated from service runner.v1.RunnerService
  */
 export const RunnerService: GenService<{
@@ -596,6 +829,42 @@ export const RunnerService: GenService<{
     methodKind: "unary";
     input: typeof PruneWorkspacesRequestSchema;
     output: typeof PruneWorkspacesResponseSchema;
+  },
+  /**
+   * GitHub operations — called by the runner on behalf of the agent.
+   * The server performs the GitHub API call, appends the Chetter signature,
+   * and records the artifact atomically, so the runner needs no GitHub token.
+   *
+   * @generated from rpc runner.v1.RunnerService.GitHubCreateIssue
+   */
+  gitHubCreateIssue: {
+    methodKind: "unary";
+    input: typeof GitHubCreateIssueRequestSchema;
+    output: typeof GitHubCreateIssueResponseSchema;
+  },
+  /**
+   * @generated from rpc runner.v1.RunnerService.GitHubIssueComment
+   */
+  gitHubIssueComment: {
+    methodKind: "unary";
+    input: typeof GitHubIssueCommentRequestSchema;
+    output: typeof GitHubIssueCommentResponseSchema;
+  },
+  /**
+   * @generated from rpc runner.v1.RunnerService.GitHubCreatePR
+   */
+  gitHubCreatePR: {
+    methodKind: "unary";
+    input: typeof GitHubCreatePRRequestSchema;
+    output: typeof GitHubCreatePRResponseSchema;
+  },
+  /**
+   * @generated from rpc runner.v1.RunnerService.GitHubPRReview
+   */
+  gitHubPRReview: {
+    methodKind: "unary";
+    input: typeof GitHubPRReviewRequestSchema;
+    output: typeof GitHubPRReviewResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_proto_runner_v1_runner, 0);

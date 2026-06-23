@@ -157,6 +157,18 @@ func (s *Service) githubClient() *webhook.Client {
 	return s.github
 }
 
+func (s *Service) GitHubClient() *webhook.Client {
+	return s.githubClient()
+}
+
+func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, error) {
+	task, sessionRun, err := s.githubToolTaskContext(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	return githubToolSignature(task, sessionRun), nil
+}
+
 func requireGitHubToolFields(taskID, repo string) error {
 	if strings.TrimSpace(taskID) == "" {
 		return fmt.Errorf("task_id is required")

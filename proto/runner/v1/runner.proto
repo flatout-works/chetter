@@ -120,10 +120,69 @@ message PruneWorkspacesResponse {
   repeated string safe_to_delete = 1;
 }
 
+message GitHubCreateIssueRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo    = 2 [(buf.validate.field).string.min_len = 1];
+  string title   = 3 [(buf.validate.field).string.min_len = 1];
+  string body    = 4;
+  repeated string labels = 5;
+}
+
+message GitHubCreateIssueResponse {
+  int32  number = 1;
+  string url    = 2;
+}
+
+message GitHubIssueCommentRequest {
+  string task_id      = 1 [(buf.validate.field).string.min_len = 1];
+  string repo         = 2 [(buf.validate.field).string.min_len = 1];
+  int32  issue_number = 3 [(buf.validate.field).int32.gt = 0];
+  string body         = 4 [(buf.validate.field).string.min_len = 1];
+}
+
+message GitHubIssueCommentResponse {
+  string url = 1;
+}
+
+message GitHubCreatePRRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo    = 2 [(buf.validate.field).string.min_len = 1];
+  string title   = 3 [(buf.validate.field).string.min_len = 1];
+  string body    = 4;
+  string head    = 5 [(buf.validate.field).string.min_len = 1];
+  string base    = 6 [(buf.validate.field).string.min_len = 1];
+  bool   draft   = 7;
+}
+
+message GitHubCreatePRResponse {
+  int32  number = 1;
+  string url    = 2;
+}
+
+message GitHubPRReviewRequest {
+  string task_id   = 1 [(buf.validate.field).string.min_len = 1];
+  string repo      = 2 [(buf.validate.field).string.min_len = 1];
+  int32  pr_number = 3 [(buf.validate.field).int32.gt = 0];
+  string body      = 4 [(buf.validate.field).string.min_len = 1];
+  string event     = 5; // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
+}
+
+message GitHubPRReviewResponse {
+  string url = 1;
+}
+
 service RunnerService {
   rpc RegisterRunner(RegisterRunnerRequest) returns (RegisterRunnerResponse) {}
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {}
   rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
   rpc ReportTaskEvents(ReportTaskEventsRequest) returns (ReportTaskEventsResponse) {}
   rpc PruneWorkspaces(PruneWorkspacesRequest) returns (PruneWorkspacesResponse) {}
+
+  // GitHub operations — called by the runner on behalf of the agent.
+  // The server performs the GitHub API call, appends the Chetter signature,
+  // and records the artifact atomically, so the runner needs no GitHub token.
+  rpc GitHubCreateIssue(GitHubCreateIssueRequest) returns (GitHubCreateIssueResponse) {}
+  rpc GitHubIssueComment(GitHubIssueCommentRequest) returns (GitHubIssueCommentResponse) {}
+  rpc GitHubCreatePR(GitHubCreatePRRequest) returns (GitHubCreatePRResponse) {}
+  rpc GitHubPRReview(GitHubPRReviewRequest) returns (GitHubPRReviewResponse) {}
 }
