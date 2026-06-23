@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-23
+
+### Added
+
+- CatalogService ConnectRPC endpoint exposing the active model catalog. Web UI task submit form now shows model, provider, and harness dropdowns populated from the catalog.
+- Audit events for all manual API actions: task submission, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync, recorded to `chetter_audit_log`.
+- Session run chain display on the task detail page, showing the sequence of runs within a multi-run session.
+- Runner GitHub MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) exposed as local MCP tools routed via ConnectRPC to the server, so runners need no GitHub token.
+- TiDB quota exhaustion detection: the server pings the database on each reaper cycle and sets an `atomic.Bool` flag; the web UI displays a banner when the database is in a quota-exhausted state and clears it when restored.
+- Pause reason displayed in the trigger detail panel.
+- Session mode, pause reason, and TTL hours fields on the manual task submit form.
+- `prompt` field added to `SessionRunRecord` for tracking the resume prompt text.
+- `recoverable` session status alongside the rename of `paused_waiting_review` to `paused`.
+
+### Changed
+
+- `paused_waiting_review` agent session status renamed to `paused` (migration 018). A new `recoverable` boolean status distinguishes sessions that can be resumed.
+- Skills moved from `tools/skills/` into the chetter-config definitions repository. `ScanDefinitions` now recursively walks skill directories to capture all files (SKILL.md, references/, scripts/).
+- `gh` wrapper now also blocks `gh api` (the generic passthrough previously bypassed subcommand-level checks).
+- Claude Code harness: fixed Claude Code npm install path, added Synthetic provider environment variable mapping (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`), added unit tests and harness support matrix documentation.
+- `make check` runs `check-root`, `web-check`, and `runner-check` in parallel with `make -j3`.
+- CI pipeline speed improvements: `.dockerignore` excludes unnecessary files, Dockerfile layer ordering optimized, runner variant images no longer force-reinstall `@anthropic-ai/claude-code` on every build, image build script removes `--pull` flag.
+- `AGENTS.md` updated with Flowbite component usage conventions (Card, Input, Button, Badge, Table, Modal, Toast, etc.) and a checklist for verifying no raw HTML elements remain.
+
+### Fixed
+
+- Reaper now syncs session runs and agent sessions when tasks are marked terminal, preventing orphaned session runs from remaining in a running state indefinitely.
+- Orphaned session runs are reverted to `pending` when a task's lease is reclaimed, so they can be retried on the next claim.
+- Resume prompt now sent with role `user` to the OpenCode session (was sent as `assistant`), fixing the conversation turn order.
+- Web UI lock caused by Svelte 5 `$effect` reactivity: replaced `$effect`-based store subscriptions with explicit `subscribe`/`unsubscribe` in task detail and timeline stores.
+- Flowbite Card padding: replaced invalid `contentClass` prop with `class` across all card usages.
+- Confirm dialog "Run" button works on subsequent clicks (not only the first).
+- Task metadata is re-fetched when the event stream reports a terminal status, ensuring the UI reflects the final state immediately.
+- Trigger page: closed unclosed HTML elements in the expanded-content section and conditional block.
+- Create trigger form card width fixed with `max-w-none`.
+- Pause reason alert only rendered when the session is actually paused.
+- Various web UI polish: artifacts filter bar alignment, stat card padding, session link navigation, merged timeline view, panel spacing, submit form textarea width, trigger card width, running task timeline controls.
+
+### Documentation
+
+- `docs/MANUAL.md` updated: `gh` wrapper now documents `gh api` blocking; Claude Code harness support matrix table added with per-harness capability comparison (execution model, config generation, streaming, resume, session export).
+- `docs/FEATURES.md` updated with the `gh api` block.
+
 ## 2026-06-22
 
 ### Added
