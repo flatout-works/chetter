@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { RunnerFleetHealth } from "$gen/proto/api/v1/api_pb";
@@ -73,28 +74,28 @@
       <Spinner size="4" /> Loading…
     </div>
   {:else if health}
-    <div class="grid grid-cols-3 md:grid-cols-6 gap-4 mb-8">
-      <Card size="md" shadow="sm" contentClass="!p-4">
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-8">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Total</p>
         <p class="text-2xl font-bold text-gray-900 dark:text-white">{health.totalTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Running</p>
         <p class="text-2xl font-bold text-green-600 dark:text-green-400">{health.runningTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
         <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{health.pendingTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Done</p>
         <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{health.doneTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Error</p>
         <p class="text-2xl font-bold text-red-600 dark:text-red-400">{health.errorTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Stale</p>
         <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{health.staleTasks}</p>
       </Card>
@@ -106,9 +107,9 @@
       </div>
       <div class="divide-y divide-gray-200 dark:divide-gray-700">
         {#each health.runners as runner (runner.runnerId)}
-          <div class="px-4 py-3">
-            <div class="flex items-center justify-between">
-              <div>
+          <div class="px-5 py-4">
+            <div class="flex items-center justify-between gap-4">
+              <div class="min-w-0">
                 <p class="text-sm font-mono font-medium text-gray-900 dark:text-white">{runner.runnerId}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   {runner.imageRef || "—"} · v{runner.version || "?"} · {runner.runningTasks}/{runner.maxConcurrent} tasks{runner.imageDigest ? ` · digest:${runner.imageDigest.slice(0, 12)}` : ""}
@@ -117,8 +118,8 @@
               <div class="flex items-center gap-3">
                 {#if runner.currentTaskIds?.length}
                   <div class="text-right">
-                    {#each runner.currentTaskIds as tid}
-                      <a href={`/tasks/${tid}`} class="block text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline">
+                    {#each runner.currentTaskIds as tid (tid)}
+                      <a href={resolve("/tasks/[id]", { id: tid })} class="block text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline">
                         {tid.slice(0, 20)}…
                       </a>
                     {/each}
@@ -141,8 +142,8 @@
         </div>
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each health.runningTaskInfos as info (info.taskId)}
-            <a href={`/tasks/${info.taskId}`} class="block px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              <div class="flex items-center justify-between">
+            <a href={resolve("/tasks/[id]", { id: info.taskId })} class="block px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <div class="flex items-center justify-between gap-4">
                 <span class="text-sm font-mono text-blue-600 dark:text-blue-400">{info.taskId.slice(0, 24)}…</span>
                 <div class="flex items-center gap-3">
                   {#if info.isStale}

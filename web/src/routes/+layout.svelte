@@ -15,6 +15,7 @@
   let { children } = $props();
 
   let serverInfo = $derived(getServerInfo());
+  const webGitHash = __WEB_GIT_HASH__;
 
   onMount(() => {
     initAuth();
@@ -118,9 +119,14 @@
           >
             Sign Out
           </Button>
-          {#if serverInfo.gitHash}
-            <div class="pt-2 text-center text-xs text-gray-400 dark:text-gray-500 font-mono">
-              {serverInfo.gitHash}
+          {#if webGitHash !== "unknown" || serverInfo.gitHash}
+            <div class="space-y-1 pt-2 text-center text-[11px] font-mono text-gray-400 dark:text-gray-500">
+              {#if webGitHash !== "unknown"}
+                <div>web {webGitHash}</div>
+              {/if}
+              {#if serverInfo.gitHash}
+                <div>server {serverInfo.gitHash}</div>
+              {/if}
             </div>
           {/if}
         </div>
