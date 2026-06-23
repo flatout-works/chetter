@@ -120,12 +120,13 @@ func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, r
 		"providerID": providerID,
 		"modelID":    modelID,
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"parts": []map[string]any{
-			{"type": "text", "text": promptWithSkillHints(req.Prompt, req.Skills)},
-		},
-		"model": model,
-	})
+payload, _ := json.Marshal(map[string]any{
+    "role": "user",
+    "parts": []map[string]any{
+        {"type": "text", "text": promptWithSkillHints(req.Prompt, req.Skills)},
+    },
+    "model": model,
+})
 
 	url := baseURL + "/session/" + sessionID + "/message"
 	httpClient := &http.Client{Timeout: timeout}
