@@ -8,7 +8,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Button, Card, CardPlaceholder } from "flowbite-svelte";
+  import { Alert, Button, Card, Spinner } from "flowbite-svelte";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
@@ -70,7 +70,9 @@
   {/if}
 
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+      <Spinner size="4" /> Loading…
+    </div>
   {:else if health}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-8">
       <Card size="md" shadow="sm" class="w-full max-w-none !p-4">

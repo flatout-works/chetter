@@ -3,16 +3,16 @@
   import { resolve } from "$app/paths";
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
-  import { TaskService, AdminService, SessionService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry } from "$gen/proto/api/v1/api_pb";
+  import { TaskService, AdminService, SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
+  import { formatDuration, formatTime, formatTimeShort, humanReadableStatus } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, CardPlaceholder, Label, Modal, Progressbar, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
 
   let { params } = $props();
@@ -30,6 +30,7 @@
   let events = $state<TaskEvent[]>([]);
   let progress = $state<TaskProgressEntry[]>([]);
   let connected = $state(false);
+  let activeRunners = $state<string[]>([]);
 
   let expandedProgress = new SvelteSet<string>();
 
@@ -127,9 +128,10 @@
   });
 
   let canResumeTask = $derived(
-    taskSession?.status === "paused" ||
+    (taskSession?.status === "paused" ||
     taskSession?.status === "recoverable" ||
-    taskSession?.status === "paused_waiting_review"
+    taskSession?.status === "paused_waiting_review") &&
+    (!taskSession?.pinnedRunnerId || activeRunners.includes(taskSession.pinnedRunnerId))
   );
 
   let timerInterval: ReturnType<typeof setInterval> | undefined;
@@ -155,6 +157,7 @@
       const resp = await client.getTask({ taskId: params.id });
       task = resp.task ?? null;
       await loadTaskSession();
+      await loadActiveRunners();
       loading = false;
 
       await loadTaskEvents(params.id, 100);
@@ -190,6 +193,7 @@
       const resp = await client.getTask({ taskId: params.id });
       task = resp.task ?? null;
       await loadTaskSession();
+      await loadActiveRunners();
       if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
         try {
           const adminClient = createClient(AdminService, getTransport());
@@ -224,6 +228,16 @@
       taskSession = resp.session ?? null;
     } catch {
       taskSession = null;
+    }
+  }
+
+  async function loadActiveRunners() {
+    try {
+      const client = createClient(FleetService, getTransport());
+      const resp = await client.getRunnerHealth({ includeTasks: false });
+      activeRunners = (resp.health?.runners ?? []).map((r) => r.runnerId);
+    } catch {
+      activeRunners = [];
     }
   }
 
@@ -286,8 +300,9 @@
 </svelte:head>
 
 {#if loading}
-  <div class="p-6">
-    <CardPlaceholder />
+  <div class="p-6 flex items-center gap-3 text-gray-500 dark:text-gray-400">
+    <Spinner size="5" />
+    <span>Loading task…</span>
   </div>
 {:else if error}
   <div class="p-6">
@@ -360,9 +375,14 @@
       {#if task.agentSessionId}
         <Card size="md" shadow="sm" class="!p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session</p>
-          <a href={resolve("/sessions/[id]", { id: task.agentSessionId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
-            {task.agentSessionId.slice(0, 20)}…
-          </a>
+          <div class="flex items-center gap-2">
+            <a href={resolve("/sessions/[id]", { id: task.agentSessionId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
+              {task.agentSessionId.slice(0, 20)}…
+            </a>
+            {#if canResumeTask}
+              <Badge color="green">Resumable</Badge>
+            {/if}
+          </div>
         </Card>
       {/if}
     </div>
@@ -427,7 +447,7 @@
         <div class="mt-4 max-h-[34rem] overflow-y-auto rounded-lg border border-gray-100 p-4 dark:border-gray-700">
           <Timeline>
             {#each mergedTimeline as entry, i (progressKey(entry))}
-              <TimelineItem title={humanReadableStatus(entry.status, entry.summary)} date={formatTime(entry.time)} isLast={i === mergedTimeline.length - 1}>
+              <TimelineItem title={humanReadableStatus(entry.status, entry.summary)} date={formatTimeShort(entry.time)} isLast={i === mergedTimeline.length - 1}>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={entry.status} />
                   {#if entry.error}
@@ -447,7 +467,7 @@
                         {#each entry.rawEvents as ev (ev.id)}
                           <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
                             <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
-                              <span>{formatTime(ev.createdAt)}</span>
+                              <span>{formatTimeShort(ev.createdAt)}</span>
                               <span>{ev.eventType || ev.status}</span>
                             </div>
                             <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">{ev.payload?.slice(0, 1200) || "—"}</pre>

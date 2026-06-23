@@ -7,7 +7,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, CardPlaceholder, Input, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Button, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
@@ -97,7 +97,7 @@
   </div>
 
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
     <TableCard title="Audit events" subtitle="Server-side event history for webhook, task, trigger, and artifact activity.">
     <Table hoverable={true} shadow={false}>

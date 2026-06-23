@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, CardPlaceholder, Input, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Alert, Button, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
@@ -93,7 +93,7 @@
   {/if}
 
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
     <TableCard title="Task artifacts" subtitle="GitHub issues, PRs, comments, and reviews created by Chetter tasks.">
     <Table hoverable={true} shadow={false}>

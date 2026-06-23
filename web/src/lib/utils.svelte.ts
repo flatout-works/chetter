@@ -35,25 +35,43 @@ export function formatTime(ts: string): string {
   }
 }
 
+export function formatTimeShort(ts: string): string {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return ts;
+  }
+}
+
 export function humanReadableStatus(status: string, summary: string): string {
+  if (summary && summary !== status) return summary;
   switch (status) {
     case "pending":
-      return "Task is queued and waiting for a runner";
+      return "Queued — waiting for an available runner to pick up the task";
     case "running":
-      if (summary) return summary;
-      return "Task is actively being worked on";
+      return "Running — agent is actively working";
     case "done":
-      return summary || "Task completed successfully";
+      return "Completed successfully";
     case "error":
-      return summary || "Task encountered an error";
+      return "Failed with an error";
     case "cancelled":
-      return summary || "Task was cancelled";
+      return "Cancelled by user or trigger";
     case "claimed":
-      return "Task has been claimed by a runner";
+      return "Runner claimed the task and is preparing the environment";
     case "submitted":
-      return "Task was submitted to the runner";
+      return "Task submitted to the runner harness";
     case "lease_renewed":
-      return "Runner renewed lease on task";
+      return "Runner renewed its lease, still alive";
+    case "tool_use":
+      return "Agent is using a tool";
+    case "model_response":
+      return "Agent received a model response";
+    case "progress":
+      return summary || "Agent updated progress";
+    case "opencode: server.heartbeat":
+      return "Runner heartbeat — connection alive";
     default:
       return summary || status;
   }

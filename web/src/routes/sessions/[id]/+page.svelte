@@ -2,19 +2,24 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
-  import { SessionService } from "$gen/proto/api/v1/api_pb";
+  import { SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, CardPlaceholder, Label, Modal, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Alert, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
   let runs = $state<SessionRun[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let activeRunners = $state<string[]>([]);
+
+  let pinnedRunnerAvailable = $derived(
+    !session?.pinnedRunnerId || activeRunners.includes(session.pinnedRunnerId)
+  );
 
   let showResume = $state(false);
   let resumePrompt = $state("");
@@ -41,10 +46,13 @@
 
   async function load() {
     try {
-      const client = createClient(SessionService, getTransport());
-      const resp = await client.getSession({ sessionId: params.id });
-      session = resp.session ?? null;
-      runs = resp.runs ?? [];
+      const [sessionResp, fleetResp] = await Promise.all([
+        createClient(SessionService, getTransport()).getSession({ sessionId: params.id }),
+        createClient(FleetService, getTransport()).getRunnerHealth({ includeTasks: false }),
+      ]);
+      session = sessionResp.session ?? null;
+      runs = sessionResp.runs ?? [];
+      activeRunners = (fleetResp.health?.runners ?? []).map((r) => r.runnerId);
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load session.";
       console.error(e);
@@ -60,7 +68,7 @@
 
 <div class="p-6 max-w-6xl">
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else if error}
     <Alert color="red">{error}</Alert>
   {:else if session}
@@ -75,7 +83,12 @@
         </p>
       </div>
       {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
-        <Button color="green" size="sm" onclick={resume}>Resume</Button>
+        <Button color="green" size="sm" onclick={resume} disabled={!pinnedRunnerAvailable}>
+          Resume
+          {#if !pinnedRunnerAvailable}
+            <span class="ml-1 opacity-70">(pinned runner offline)</span>
+          {/if}
+        </Button>
       {/if}
     </div>
 

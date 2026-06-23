@@ -2,17 +2,18 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
-  import { SessionService } from "$gen/proto/api/v1/api_pb";
+  import { SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, CardPlaceholder, Label, Modal, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Button, Label, Modal, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "created";
   let sessions = $state<AgentSession[]>([]);
   let loading = $state(true);
+  let activeRunners = $state<string[]>([]);
   let statusFilter = $state("");
   let page = $state(0);
   let pageSize = $state(25);
@@ -49,11 +50,20 @@
 
   async function load() {
     try {
-      const client = createClient(SessionService, getTransport());
-      const resp = await client.listSessions({ status: statusFilter, limit: 50 });
-      sessions = resp.sessions ?? [];
+      const [sessionResp, fleetResp] = await Promise.all([
+        createClient(SessionService, getTransport()).listSessions({ status: statusFilter, limit: 50 }),
+        createClient(FleetService, getTransport()).getRunnerHealth({ includeTasks: false }),
+      ]);
+      sessions = sessionResp.sessions ?? [];
+      activeRunners = (fleetResp.health?.runners ?? []).map((r) => r.runnerId);
     } catch (e) { console.error(e); }
     finally { loading = false; }
+  }
+
+  function canResume(session: AgentSession): boolean {
+    if (session.status !== "paused" && session.status !== "recoverable" && session.status !== "paused_waiting_review") return false;
+    if (session.pinnedRunnerId && !activeRunners.includes(session.pinnedRunnerId)) return false;
+    return true;
   }
 
   onMount(load);
@@ -107,7 +117,7 @@
   </div>
 
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
     <TableCard title="Agent sessions" subtitle="Recent resumable agent sessions, newest first.">
     <Table hoverable={true} shadow={false}>
@@ -133,7 +143,9 @@
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
             <TableBodyCell class="text-right">
               {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
-                <Button color="green" size="xs" onclick={() => resume(session.id)}>Resume</Button>
+                <Button color="green" size="xs" onclick={() => resume(session.id)} disabled={!canResume(session)}>
+                  Resume
+                </Button>
               {/if}
             </TableBodyCell>
           </TableBodyRow>

@@ -9,7 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, CardPlaceholder, Input, Listgroup, ListgroupItem, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, Listgroup, ListgroupItem, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
@@ -254,7 +254,9 @@
   {/if}
 
   {#if loading}
-    <CardPlaceholder />
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+      <Spinner size="4" /> Loading…
+    </div>
   {:else}
     <div class="space-y-2">
       {#each triggers as trigger (trigger.id)}
