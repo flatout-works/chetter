@@ -4,7 +4,7 @@
   import { formatTime, formatAge, formatDuration } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let health = $derived($fleetHealth);
   let allTasks = $derived($tasks);
@@ -44,13 +44,16 @@
 
   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
     {#each cards as card}
-      <button
-        onclick={() => handleCardClick(card)}
-        class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-gray-200 dark:border-gray-700 text-left cursor-pointer hover:shadow-md transition-shadow {card.filter && activeFilter === card.filter ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}"
+      <Card
+        size="sm"
+        shadow="sm"
+        href="#"
+        class="!p-4 text-left hover:shadow-md transition-shadow w-full {card.filter && activeFilter === card.filter ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}"
+        onclick={(e) => { e.preventDefault(); handleCardClick(card); }}
       >
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{card.label}</p>
-        <p class={`text-2xl font-bold ${card.color}`}>{card.value}</p>
-      </button>
+        <p class="text-2xl font-bold {card.color}">{card.value}</p>
+      </Card>
     {/each}
   </div>
 

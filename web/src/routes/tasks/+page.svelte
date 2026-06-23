@@ -166,7 +166,7 @@
   </div>
 
   {#if showSubmitForm}
-    <Card class="mb-6 w-full" shadow="sm" contentClass="!p-5">
+    <Card class="mb-6 w-full !p-5" size="xl" shadow="sm">
       <form onsubmit={submitTask} class="space-y-4">
         <div>
           <Label for="task-prompt" class="mb-1">Prompt</Label>

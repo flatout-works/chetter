@@ -69,7 +69,7 @@
 {#if !authState.authenticated}
   <div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
     <div class="w-full max-w-md">
-      <Card size="lg" shadow="md">
+      <Card size="lg" shadow="md" class="!p-6">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Chetter</h1>
         <p class="text-gray-500 dark:text-gray-400 mb-6">Agent fleet control plane</p>
         {#if authState.error}

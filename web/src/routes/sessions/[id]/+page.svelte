@@ -70,19 +70,19 @@
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <Card size="sm" shadow="sm">
+      <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.agent || "—"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.modelId || "—"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Resume Mode</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{session.resumeMode || "none"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Pinned Runner</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{session.pinnedRunnerId || "—"}</p>
       </Card>

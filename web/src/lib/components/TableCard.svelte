@@ -15,7 +15,7 @@
   } = $props();
 </script>
 
-<Card size="xl" shadow="sm" class="w-full max-w-full overflow-hidden" contentClass="!p-0">
+<Card size="xl" shadow="sm" class="w-full max-w-full overflow-hidden !p-0">
   {#if title || actions}
     <div class="flex items-center justify-between gap-4 border-b border-gray-200 bg-gray-50 px-5 py-4 dark:border-gray-700 dark:bg-gray-800/80">
       <div>

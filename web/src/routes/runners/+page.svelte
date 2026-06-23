@@ -75,33 +75,33 @@
     </div>
   {:else if health}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-8">
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Total</p>
         <p class="text-2xl font-bold text-gray-900 dark:text-white">{health.totalTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Running</p>
         <p class="text-2xl font-bold text-green-600 dark:text-green-400">{health.runningTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
         <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{health.pendingTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Done</p>
         <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{health.doneTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Error</p>
         <p class="text-2xl font-bold text-red-600 dark:text-red-400">{health.errorTasks}</p>
       </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">Stale</p>
         <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{health.staleTasks}</p>
       </Card>
     </div>
 
-    <Card size="xl" class="mb-8 w-full" shadow="sm" contentClass="!p-0">
+    <Card size="xl" class="mb-8 w-full !p-0" shadow="sm">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h2 class="font-semibold text-gray-900 dark:text-white">Active Runners</h2>
       </div>
@@ -136,7 +136,7 @@
     </Card>
 
     {#if health.runningTaskInfos?.length}
-      <Card size="xl" class="w-full" shadow="sm" contentClass="!p-0">
+      <Card size="xl" class="w-full !p-0" shadow="sm">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 class="font-semibold text-gray-900 dark:text-white">Running Task Details</h2>
         </div>

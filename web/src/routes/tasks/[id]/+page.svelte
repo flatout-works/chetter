@@ -281,30 +281,30 @@
 
     <!-- Task metadata -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "default"}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
       </Card>
-      <Card size="md" shadow="sm" contentClass="!p-4">
+      <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
       </Card>
     </div>
 
     <!-- Prompt -->
-    <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
+    <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
       <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt</h2>
       <pre class="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">{task.prompt}</pre>
     </Card>
@@ -323,7 +323,7 @@
 
     <!-- Artifacts -->
     {#if artifacts.length > 0}
-      <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
         <div class="space-y-2">
           {#each artifacts as art (art.id)}
@@ -347,7 +347,7 @@
 
     <!-- Merged Progress Timeline (with expandable raw event details) -->
     {#if mergedTimeline.length > 0}
-      <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Timeline</h2>
