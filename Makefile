@@ -81,7 +81,16 @@ runner-lint:
 runner-check:
 	$(MAKE) -C runner check
 
-check: test vet lint web-check runner-check
+check:
+	$(MAKE) -j3 check-root check-web check-runner
+
+check-root: test vet lint
+
+check-web:
+	$(MAKE) web-check
+
+check-runner:
+	$(MAKE) runner-check
 
 docker-build-mcp:
 	docker build -t $(MCP_IMAGE) .
