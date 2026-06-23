@@ -335,6 +335,17 @@ func (s *Service) reapStaleSessionRuns() {
 	if n > 0 {
 		slog.Info("reaped stale session runs", "count", n)
 	}
+	o, err := s.repo.RevertOrphanedRunningSessionRuns(ctx)
+	if err != nil {
+		slog.Error("revert orphaned session runs failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	if o > 0 {
+		slog.Info("reverted orphaned session runs to pending", "count", o)
+	}
 	m, err := s.repo.ReapStaleSessionsForTerminalRuns(ctx)
 	if err != nil {
 		slog.Error("session reaper for terminal runs failed", "error", err)
@@ -502,6 +513,15 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return store.TaskRecord{}, err
 	}
 	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "session_run_id", runID)
+	if in.TriggerName == "" {
+		s.auditAsync(AuditEventParams{
+			EventType:  "task_submitted",
+			SourceType: "api",
+			TargetType: "task",
+			TargetID:   taskID,
+			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
+		})
+	}
 	return repoTaskToStoreRecord(task), nil
 }
 
@@ -635,6 +655,14 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	slog.Info("agent session resumed", "session_id", sessionID, "task_id", taskID, "session_run_id", runID)
+	s.auditAsync(AuditEventParams{
+		EventType:  "session_resumed",
+		SourceType: "api",
+		TargetType: "session",
+		TargetID:   sessionID,
+		SourceID:   taskID,
+		Detail:     fmt.Sprintf("session resumed via API: prompt=%.100s", prompt),
+	})
 	return ResumeAgentSessionOutput{
 		Task: taskToolRecord(repoTaskToStoreRecord(task)),
 		Run:  sessionRunRecord(run),
@@ -853,6 +881,13 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	sRecord := triggerToStoreRecord(record)
+	s.auditAsync(AuditEventParams{
+		EventType:  "trigger_created",
+		SourceType: "api",
+		TargetType: "trigger",
+		TargetID:   in.Name,
+		Detail:     fmt.Sprintf("trigger %q created (type=%s)", in.Name, in.TriggerType),
+	})
 	if in.TriggerType == store.TriggerTypeCron {
 		if err := s.activateTrigger(ctx, sRecord); err != nil {
 			return store.TriggerRecord{}, fmt.Errorf("activate trigger: %w", err)
@@ -945,6 +980,14 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	sRecord := triggerToStoreRecord(record)
+	s.auditAsync(AuditEventParams{
+		EventType:  "trigger_updated",
+		SourceType: "api",
+		SourceID:   name,
+		TargetType: "trigger",
+		TargetID:   in.Name,
+		Detail:     fmt.Sprintf("trigger %q updated (was %q, type=%s)", in.Name, name, in.TriggerType),
+	})
 	if !enabled || in.TriggerType != store.TriggerTypeCron {
 		return sRecord, nil
 	}
@@ -970,6 +1013,13 @@ func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
 	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
 		return fmt.Errorf("delete trigger: %w", err)
 	}
+	s.auditAsync(AuditEventParams{
+		EventType:  "trigger_deleted",
+		SourceType: "api",
+		TargetType: "trigger",
+		TargetID:   name,
+		Detail:     fmt.Sprintf("trigger %q deleted", name),
+	})
 	return nil
 }
 
@@ -984,7 +1034,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := parseJSON[[]string](sch.Skills, "trigger:"+sch.ID+" skills")
-	return s.submitTriggerTask(ctx,
+	task, err := s.submitTriggerTask(ctx,
 		sch.ID,
 		sch.Name,
 		sch.TriggerType,
@@ -1003,6 +1053,17 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		runtime,
 		time.Now().UTC(),
 	)
+	if err == nil {
+		s.auditAsync(AuditEventParams{
+			EventType:  "trigger_run",
+			SourceType: "api",
+			SourceID:   name,
+			TargetType: "task",
+			TargetID:   task.ID,
+			Detail:     fmt.Sprintf("trigger %q run manually", name),
+		})
+	}
+	return task, err
 }
 
 func (s *Service) loadTriggers(ctx context.Context) error {
@@ -1055,9 +1116,19 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 	}
 	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
-	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
+	task, err := s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
 		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
+	if err == nil {
+		s.auditAsync(AuditEventParams{
+			EventType:  "trigger_run",
+			SourceType: "cron",
+			SourceID:   trigger.Name,
+			TargetType: "task",
+			TargetID:   task.ID,
+			Detail:     fmt.Sprintf("trigger %q run automatically", trigger.Name),
+		})
+	}
 	return err
 }
 
@@ -1274,6 +1345,14 @@ func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) er
 		Detail:           nullString(params.Detail),
 		Payload:          (*json.RawMessage)(&params.Payload),
 	})
+}
+
+func (s *Service) auditAsync(params AuditEventParams) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.LogAuditEvent(ctx, params); err != nil {
+		slog.Warn("audit event", "err", err, "event_type", params.EventType)
+	}
 }
 
 func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParams) error {

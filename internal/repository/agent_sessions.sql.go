@@ -807,3 +807,21 @@ func (q *Queries) ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, 
 	}
 	return result.RowsAffected()
 }
+
+const revertOrphanedRunningSessionRuns = `-- name: RevertOrphanedRunningSessionRuns :execrows
+UPDATE chetter_session_runs sr
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET sr.status = 'pending',
+    sr.started_at = NULL,
+    sr.updated_at = NOW()
+WHERE sr.status = 'running'
+  AND t.status = 'pending'
+`
+
+func (q *Queries) RevertOrphanedRunningSessionRuns(ctx context.Context) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revertOrphanedRunningSessionRuns)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

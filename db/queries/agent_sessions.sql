@@ -214,3 +214,12 @@ s.updated_at = NOW()
 WHERE s.status = 'running'
   AND sr.status IN ('failed', 'completed', 'cancelled')
   AND t.status IN ('done', 'error', 'cancelled');
+
+-- name: RevertOrphanedRunningSessionRuns :execrows
+UPDATE chetter_session_runs sr
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET sr.status = 'pending',
+    sr.started_at = NULL,
+    sr.updated_at = NOW()
+WHERE sr.status = 'running'
+  AND t.status = 'pending';
