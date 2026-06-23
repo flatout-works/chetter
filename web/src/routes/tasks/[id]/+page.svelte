@@ -4,7 +4,7 @@
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService, SessionService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
@@ -27,9 +27,13 @@
   let viewLoading = $state(false);
   let showExportViewer = $state(false);
 
-  let events = $derived($taskEvents);
-  let progress = $derived($taskProgress);
-  let connected = $derived($streamConnected);
+  let events = $state<TaskEvent[]>([]);
+  let progress = $state<TaskProgressEntry[]>([]);
+  let connected = $state(false);
+
+  $effect(() => { events = $taskEvents; });
+  $effect(() => { progress = $taskProgress; });
+  $effect(() => { connected = $streamConnected; });
 
   let expandedProgress = new SvelteSet<string>();
 
