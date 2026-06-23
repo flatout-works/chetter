@@ -225,7 +225,7 @@
   {/if}
 
   {#if showCreateForm}
-    <Card class="mb-6 w-full !p-4" shadow="sm">
+    <Card class="mb-6 w-full max-w-none !p-4" shadow="sm">
     <form onsubmit={createTrigger} class="space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Input bind:value={name} placeholder="Name" />
