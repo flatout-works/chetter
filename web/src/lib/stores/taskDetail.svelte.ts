@@ -32,12 +32,14 @@ export async function loadTaskProgress(taskId: string) {
   }
 }
 
-export function subscribeToTaskEvents(taskId: string, since: string) {
+export function subscribeToTaskEvents(taskId: string, since: string, onTerminal?: () => void) {
   if (abortController) {
     abortController.abort();
   }
 
   abortController = new AbortController();
+
+  const terminalStatuses = new Set(["done", "error", "cancelled"]);
 
   (async () => {
     try {
@@ -56,6 +58,10 @@ export function subscribeToTaskEvents(taskId: string, since: string) {
           }
           return [...events, event];
         });
+        if (terminalStatuses.has(event.status)) {
+          onTerminal?.();
+          break;
+        }
       }
     } catch (e) {
       if (e instanceof Error && e.name !== "AbortError") {

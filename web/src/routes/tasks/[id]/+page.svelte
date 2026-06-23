@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService } from "$gen/proto/api/v1/api_pb";
   import type { Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
@@ -28,15 +29,18 @@
   let progress = $derived($taskProgress);
   let connected = $derived($streamConnected);
 
-  let expandedProgress = $state<Set<number>>(new Set());
+  let expandedProgress = new SvelteSet<string>();
 
-  function toggleProgress(i: number) {
-    if (expandedProgress.has(i)) { expandedProgress.delete(i); }
-    else { expandedProgress.add(i); }
-    expandedProgress = new Set(expandedProgress);
+  function progressKey(entry: { time: string; summary: string; status: string }) {
+    return `${entry.time}:${entry.status}:${entry.summary}`;
   }
 
-  // Events sorted chronologically (oldest first) for matching with progress entries
+  function toggleProgress(key: string) {
+    if (expandedProgress.has(key)) { expandedProgress.delete(key); }
+    else { expandedProgress.add(key); }
+  }
+
+  // Events sorted chronologically for matching raw events to progress entries.
   let eventsChrono = $derived(
     [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   );
@@ -77,7 +81,7 @@
         result[closest].rawEvents.push(ev);
       }
     }
-    return result;
+    return result.sort((a, b) => b.time.localeCompare(a.time));
   });
 
   let duration = $derived(now && formatDuration(task?.startedAt, task?.endedAt));
@@ -121,7 +125,7 @@
       }
 
       if (task?.status === "running" || task?.status === "pending") {
-        unsub = subscribeToTaskEvents(params.id, streamSince);
+        unsub = subscribeToTaskEvents(params.id, streamSince, () => refreshTask());
       }
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load task";
@@ -134,6 +138,25 @@
     if (unsub) unsub();
     if (timerInterval) clearInterval(timerInterval);
   });
+
+  async function refreshTask() {
+    try {
+      const client = createClient(TaskService, getTransport());
+      const resp = await client.getTask({ taskId: params.id });
+      task = resp.task ?? null;
+      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
+        try {
+          const adminClient = createClient(AdminService, getTransport());
+          const artResp = await adminClient.listTaskArtifacts({ taskId: params.id });
+          artifacts = artResp.artifacts ?? [];
+        } catch { /* silently skip */ }
+      }
+      await loadTaskProgress(params.id);
+      if (unsub) { unsub(); unsub = null; }
+    } catch (e) {
+      console.error("Failed to refresh task after completion:", e);
+    }
+  }
 
   async function cancelTask() {
     try {
@@ -291,7 +314,7 @@
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Timeline</h2>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Chronological progress with raw event details available on expand.</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Newest progress first. Use Details to expand raw event payloads.</p>
           </div>
           {#if connected}
             <span class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
@@ -301,10 +324,10 @@
           {/if}
         </div>
         <div class="mt-4 max-h-[34rem] overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 dark:divide-gray-700 dark:border-gray-700">
-          {#each mergedTimeline as entry, i (entry.time + entry.summary)}
+          {#each mergedTimeline as entry (progressKey(entry))}
             <div>
               <button
-                onclick={() => toggleProgress(i)}
+                onclick={() => toggleProgress(progressKey(entry))}
                 class="w-full flex gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 items-start"
               >
                 <span class="mt-2 w-2 h-2 rounded-full shrink-0 {entry.status === 'done' || entry.status === 'error' ? 'bg-blue-500' : entry.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}"></span>
@@ -318,16 +341,19 @@
                 {#if entry.error}
                   <span class="text-red-500 shrink-0">Error</span>
                 {/if}
-                <span class="text-xs text-gray-400 shrink-0 mt-1">{expandedProgress.has(i) ? "Hide" : "Details"}</span>
+                <span class="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:text-gray-300">
+                  <span class="text-sm leading-none">{expandedProgress.has(progressKey(entry)) ? "▾" : "▸"}</span>
+                  <span>{expandedProgress.has(progressKey(entry)) ? "Hide details" : "Details"}</span>
+                </span>
               </button>
-              {#if expandedProgress.has(i)}
+              {#if expandedProgress.has(progressKey(entry))}
                 <div class="mx-4 mb-4 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
                   {#if entry.error}
                     <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
                   {/if}
                   {#if entry.rawEvents.length > 0}
                     <div class="space-y-2 font-mono text-xs">
-                      {#each entry.rawEvents as ev}
+                      {#each entry.rawEvents as ev (ev.id)}
                         <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
                           <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
                             <span>{formatTime(ev.createdAt)}</span>
