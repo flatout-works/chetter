@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { resolve } from "$app/paths";
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService, SessionService } from "$gen/proto/api/v1/api_pb";
@@ -59,8 +60,24 @@
       rawEvents: [] as typeof events,
       index: i,
     }));
+
+    // If there are no progress entries, promote raw events to standalone entries
+    if (result.length === 0) {
+      for (const ev of eventsChrono) {
+        result.push({
+          type: "progress" as const,
+          time: ev.createdAt,
+          status: ev.status,
+          summary: ev.eventType || ev.status,
+          error: "",
+          rawEvents: [ev],
+          index: 0,
+        });
+      }
+      return result.sort((a, b) => b.time.localeCompare(a.time));
+    }
+
     // Add any raw events that don't correspond to existing progress entries
-    // (events that happened between progress timestamps or after the last one)
     for (const ev of eventsChrono) {
       // Find the nearest progress entry by time proximity
       if (result.length === 0) {
@@ -280,7 +297,7 @@
     </div>
 
     <!-- Task metadata -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
@@ -301,6 +318,14 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
       </Card>
+      {#if task.agentSessionId}
+        <Card size="md" shadow="sm" class="!p-4">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session</p>
+          <a href={resolve("/sessions/[id]", { id: task.agentSessionId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
+            {task.agentSessionId.slice(0, 20)}…
+          </a>
+        </Card>
+      {/if}
     </div>
 
     <!-- Prompt -->

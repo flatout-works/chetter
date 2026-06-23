@@ -170,7 +170,7 @@
       <form onsubmit={submitTask} class="space-y-4">
         <div>
           <Label for="task-prompt" class="mb-1">Prompt</Label>
-          <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" rows={4} />
+          <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" rows={4} class="w-full" />
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
