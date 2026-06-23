@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { page } from "$app/stores";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService } from "$gen/proto/api/v1/api_pb";
-  import type { Task, TaskArtifact, TaskEvent } from "$gen/proto/api/v1/api_pb";
+  import type { Task, TaskArtifact } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
@@ -28,17 +27,6 @@
   let events = $derived($taskEvents);
   let progress = $derived($taskProgress);
   let connected = $derived($streamConnected);
-
-  // Extract session ID from event payloads for navigation to session page
-  let sessionId = $derived.by(() => {
-    for (const ev of events) {
-      try {
-        const payload = JSON.parse(ev.payload);
-        if (payload.sessionID) return payload.sessionID;
-      } catch {}
-    }
-    return null;
-  });
 
   let expandedProgress = $state<Set<number>>(new Set());
 
@@ -200,7 +188,7 @@
   </div>
 {:else if error}
   <div class="p-6">
-    <div class="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-4 rounded-lg">{error}</div>
+    <Alert color="red">{error}</Alert>
   </div>
 {:else if task}
   <div class="p-6">
@@ -216,9 +204,6 @@
         </div>
         <p class="text-sm text-gray-500 dark:text-gray-400">
           Created {formatTime(task.createdAt)} · Updated {formatTime(task.updatedAt)}
-          {#if sessionId}
-            · <a href={`/sessions/${sessionId}`} class="text-blue-600 dark:text-blue-400 hover:underline">View Session</a>
-          {/if}
         </p>
       </div>
       <div class="flex gap-2">
@@ -236,30 +221,30 @@
 
     <!-- Task metadata -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "default"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
       </Card>
-      <Card size="sm" shadow="sm">
+      <Card size="md" shadow="sm" contentClass="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
       </Card>
     </div>
 
     <!-- Prompt -->
-    <Card class="mb-6" shadow="sm">
+    <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
       <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt</h2>
       <pre class="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">{task.prompt}</pre>
     </Card>
@@ -278,7 +263,7 @@
 
     <!-- Artifacts -->
     {#if artifacts.length > 0}
-      <Card class="mb-6" shadow="sm">
+      <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
         <div class="space-y-2">
           {#each artifacts as art (art.id)}
@@ -302,9 +287,12 @@
 
     <!-- Merged Progress Timeline (with expandable raw event details) -->
     {#if mergedTimeline.length > 0}
-      <Card class="mb-6" shadow="sm">
+      <Card size="xl" class="mb-6 w-full" shadow="sm" contentClass="!p-5">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Timeline</h2>
+          <div>
+            <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Timeline</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Chronological progress with raw event details available on expand.</p>
+          </div>
           {#if connected}
             <span class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
               <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -312,38 +300,46 @@
             </span>
           {/if}
         </div>
-        <div class="space-y-1 max-h-[32rem] overflow-y-auto font-mono text-xs mt-3 -mx-4 px-4">
+        <div class="mt-4 max-h-[34rem] overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 dark:divide-gray-700 dark:border-gray-700">
           {#each mergedTimeline as entry, i (entry.time + entry.summary)}
-            <div class="border-b border-gray-100 dark:border-gray-700/50">
+            <div>
               <button
                 onclick={() => toggleProgress(i)}
-                class="w-full flex gap-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 px-1 rounded items-start"
+                class="w-full flex gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 items-start"
               >
-                <span class="text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0 mt-0.5">{formatTime(entry.time)}</span>
-                <span class="w-2 h-2 rounded-full shrink-0 mt-1.5 {entry.status === 'done' || entry.status === 'error' ? 'bg-blue-500' : entry.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                <span class="px-1 rounded font-medium shrink-0 {entry.status === 'keepalive' ? 'text-gray-400' : 'text-gray-600 dark:text-gray-300'}">
-                  {entry.status}
-                </span>
-                <span class="text-gray-500 dark:text-gray-400 flex-1 truncate text-left">
-                  {humanReadableStatus(entry.status, entry.summary)}
+                <span class="mt-2 w-2 h-2 rounded-full shrink-0 {entry.status === 'done' || entry.status === 'error' ? 'bg-blue-500' : entry.status === 'running' ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                <span class="min-w-0 flex-1">
+                  <span class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{humanReadableStatus(entry.status, entry.summary)}</span>
+                    <StatusBadge status={entry.status} />
+                  </span>
+                  <span class="mt-1 block text-xs font-mono text-gray-400 dark:text-gray-500">{formatTime(entry.time)}</span>
                 </span>
                 {#if entry.error}
                   <span class="text-red-500 shrink-0">Error</span>
                 {/if}
-                <span class="text-gray-400 shrink-0">{expandedProgress.has(i) ? "▲" : "▼"}</span>
+                <span class="text-xs text-gray-400 shrink-0 mt-1">{expandedProgress.has(i) ? "Hide" : "Details"}</span>
               </button>
               {#if expandedProgress.has(i)}
-                <div class="ml-1 mb-2 px-3 py-2 bg-gray-50 dark:bg-gray-900/50 rounded space-y-1">
+                <div class="mx-4 mb-4 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
                   {#if entry.error}
                     <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
                   {/if}
-                  {#each entry.rawEvents as ev}
-                    <div class="flex items-start gap-2">
-                      <span class="text-gray-400 whitespace-nowrap">{formatTime(ev.createdAt)}</span>
-                      <span class="text-gray-500 shrink-0">{ev.eventType || ev.status}</span>
-                      <pre class="text-gray-500 overflow-x-auto whitespace-pre-wrap flex-1">{ev.payload?.slice(0, 300) || "—"}</pre>
+                  {#if entry.rawEvents.length > 0}
+                    <div class="space-y-2 font-mono text-xs">
+                      {#each entry.rawEvents as ev}
+                        <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
+                          <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
+                            <span>{formatTime(ev.createdAt)}</span>
+                            <span>{ev.eventType || ev.status}</span>
+                          </div>
+                          <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">{ev.payload?.slice(0, 1200) || "—"}</pre>
+                        </div>
+                      {/each}
                     </div>
-                  {/each}
+                  {:else}
+                    <p class="text-xs text-gray-500 dark:text-gray-400">No raw event payload was matched to this progress item.</p>
+                  {/if}
                 </div>
               {/if}
             </div>

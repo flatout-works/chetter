@@ -100,7 +100,7 @@
       </Card>
     </div>
 
-    <Card class="mb-8" shadow="sm">
+    <Card size="xl" class="mb-8 w-full" shadow="sm" contentClass="!p-0">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
         <h2 class="font-semibold text-gray-900 dark:text-white">Active Runners</h2>
       </div>
@@ -132,10 +132,10 @@
           <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No active runners</p>
         {/each}
       </div>
-      </Card>
+    </Card>
 
     {#if health.runningTaskInfos?.length}
-      <Card shadow="sm">
+      <Card size="xl" class="w-full" shadow="sm" contentClass="!p-0">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 class="font-semibold text-gray-900 dark:text-white">Running Task Details</h2>
         </div>
