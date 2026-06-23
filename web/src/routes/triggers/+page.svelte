@@ -481,10 +481,10 @@
                       </div>
                     </div>
                   {/if}
-                </div>
-              {/if}
                 </Card>
               {/if}
+            </div>
+          {/if}
         </Card>
       {:else}
         <Card shadow="sm" class="w-full !p-8 text-center">
