@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Alert, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
@@ -16,17 +16,27 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
 
+  let showResume = $state(false);
+  let resumePrompt = $state("");
+  let resuming = $state(false);
+
   async function resume() {
-    const followUpPrompt = window.prompt("Enter follow-up prompt:");
-    if (!followUpPrompt) return;
+    resumePrompt = "";
+    showResume = true;
+  }
+
+  async function doResume() {
+    if (!resumePrompt.trim()) return;
+    resuming = true;
     try {
       const client = createClient(SessionService, getTransport());
-      await client.resumeSession({ sessionId: params.id, prompt: followUpPrompt });
+      await client.resumeSession({ sessionId: params.id, prompt: resumePrompt.trim() });
+      showResume = false;
       await load();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to resume session.";
       console.error(e);
-    }
+    } finally { resuming = false; }
   }
 
   async function load() {
@@ -134,3 +144,15 @@
     </TableCard>
   {/if}
 </div>
+
+<Modal title="Resume Session" bind:open={showResume} size="md" onclose={() => showResume = false}>
+  <div class="space-y-4">
+    <div>
+      <Label for="rs-prompt" class="mb-2">Follow-up prompt</Label>
+      <Textarea id="rs-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" />
+    </div>
+    <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
+      {resuming ? "Resuming…" : "Resume"}
+    </Button>
+  </div>
+</Modal>

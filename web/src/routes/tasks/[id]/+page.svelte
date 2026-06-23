@@ -12,7 +12,7 @@
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, humanReadableStatus } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Modal, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Label, Modal, Spinner, Textarea } from "flowbite-svelte";
   import { marked } from "marked";
 
   let { params } = $props();
@@ -214,17 +214,27 @@
     }
   }
 
+  let showResumeModal = $state(false);
+  let resumePrompt = $state("");
+  let resuming = $state(false);
+
   async function resumeTask() {
     if (!taskSession) return;
-    const followUpPrompt = window.prompt("Enter follow-up prompt:");
-    if (!followUpPrompt) return;
+    resumePrompt = "";
+    showResumeModal = true;
+  }
+
+  async function doResume() {
+    if (!resumePrompt.trim() || !taskSession) return;
+    resuming = true;
     try {
       const client = createClient(SessionService, getTransport());
-      await client.resumeSession({ sessionId: taskSession.id, prompt: followUpPrompt });
+      await client.resumeSession({ sessionId: taskSession.id, prompt: resumePrompt.trim() });
+      showResumeModal = false;
       await refreshTask();
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to resume session";
-    }
+    } finally { resuming = false; }
   }
 
   async function exportTask() {
@@ -444,6 +454,19 @@
     {/if}
   </div>
 {/if}
+
+<!-- Resume session modal -->
+<Modal title="Resume Session" bind:open={showResumeModal} size="md" onclose={() => showResumeModal = false}>
+  <div class="space-y-4">
+    <div>
+      <Label for="rt-prompt" class="mb-2">Follow-up prompt</Label>
+      <Textarea id="rt-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" />
+    </div>
+    <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
+      {resuming ? "Resuming…" : "Resume"}
+    </Button>
+  </div>
+</Modal>
 
 <!-- Export viewer modal -->
 <Modal title="Session Export" bind:open={showExportViewer} size="xl" onclose={closeView}>

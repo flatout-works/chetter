@@ -8,7 +8,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Button, Label, Modal, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "created";
   let sessions = $state<AgentSession[]>([]);
@@ -59,14 +59,27 @@
 
   onMount(load);
 
+  let showResume = $state(false);
+  let resumeTarget = $state("");
+  let resumePrompt = $state("");
+  let resuming = $state(false);
+
   async function resume(sessionId: string) {
-    const followUpPrompt = window.prompt("Enter follow-up prompt:");
-    if (!followUpPrompt) return;
+    resumeTarget = sessionId;
+    resumePrompt = "";
+    showResume = true;
+  }
+
+  async function doResume() {
+    if (!resumePrompt.trim()) return;
+    resuming = true;
     try {
       const client = createClient(SessionService, getTransport());
-      await client.resumeSession({ sessionId, prompt: followUpPrompt });
+      await client.resumeSession({ sessionId: resumeTarget, prompt: resumePrompt.trim() });
+      showResume = false;
       await load();
     } catch (e) { console.error(e); }
+    finally { resuming = false; }
   }
 </script>
 
@@ -148,3 +161,15 @@
     </div>
   {/if}
 </div>
+
+<Modal title="Resume Session" bind:open={showResume} size="md" onclose={() => showResume = false}>
+  <div class="space-y-4">
+    <div>
+      <Label for="resume-prompt" class="mb-2">Follow-up prompt</Label>
+      <Textarea id="resume-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" />
+    </div>
+    <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
+      {resuming ? "Resuming…" : "Resume"}
+    </Button>
+  </div>
+</Modal>
