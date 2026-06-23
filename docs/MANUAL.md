@@ -513,7 +513,7 @@ Today Chetter bakes these into `chetter-runner-base` and derived images:
 | Category | Examples |
 |---|---|
 | Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
-| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands such as `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, and `gh pr review`; the real binary is `/usr/local/bin/gh-real`. |
+| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`); the real binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` to bypass for debugging. |
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
 | Agent harnesses | OpenCode, Claude Code, Pi, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
@@ -533,10 +533,34 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 | Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
 | Git identity | `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` are set to the Chetter runner identity. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
-| Runner-owned secrets | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. User-supplied task env cannot override these runner-owned keys. |
+| Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
 | Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
 
 `gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+
+### Harness Interface Support Matrix
+
+Use the `harness` field on tasks and triggers to select the agent runtime. The trigger value for Claude Code is `claude-code`.
+
+| Harness capability | OpenCode (`opencode`) | Claude Code (`claude-code`) | Pi (`pi`) |
+|---|---|---|---|
+| Binary | `opencode` | `claude` from `@anthropic-ai/claude-code` | `pi` from `@earendil-works/pi-coding-agent` |
+| Execution model | HTTP serve mode | Batch one-shot subprocess | JSONL RPC subprocess |
+| `SupportsServe()` | Yes | No | No |
+| `SupportsRpc()` | No | No | Yes |
+| Batch command | Fallback only | Yes: `claude --bare -p ... --output-format stream-json` | No |
+| Config generation | `.opencode.json` and global OpenCode config | `.claude/settings.json` and `.claude/mcp.json` | `.pi/settings.json` |
+| Runner bridge MCP | Yes | Yes | Yes, through `pi-mcp-adapter` |
+| Chetter MCP over HTTP | Yes | Yes | Yes, through `pi-mcp-adapter` |
+| Provider/model selection | OpenCode config and `CHETTER_MODEL_ID` | `--model`; optional Anthropic-compatible env (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`) for providers such as Synthetic | `--provider`, `--model`, and `CHETTER_MODEL_ID` |
+| Synthetic with Claude Code | Not applicable | Yes when `provider_id=synthetic`: runner sets `ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic` and `ANTHROPIC_AUTH_TOKEN` from `SYNTHETIC_API_KEY` | Not applicable |
+| Agent prompt support | OpenCode agent config | `--system-prompt` from `.claude/agents/<name>.md` or `.opencode/agent/<name>.md` | CLI model/provider only today |
+| Skill hints | OpenCode skills/config | Skill names are prepended to prompt text | No direct skill injection today |
+| Streaming/progress | SSE events from serve mode | stdout/stderr plus stream-json summary parsing | JSONL RPC events |
+| Abort/cancel | Runner stops session/container | Runner kills subprocess | RPC `abort` support in harness model |
+| Resume/follow-up | Supported through serve resume paths | Not supported | RPC follow-up/steering support exists in Pi, but Chetter exposes only the implemented runner flow today |
+| Session export | Reads OpenCode SQLite transcript | Not supported; returns empty export | Reads Pi messages into markdown |
+| Per-task Docker/gVisor isolation | Yes for Docker mode | No; batch subprocess runs in the runner process environment | RPC subprocess runs in the agent image container path for Docker RPC mode |
 
 ### Planned Runtime Definition Injection
 
