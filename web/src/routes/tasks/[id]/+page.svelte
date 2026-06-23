@@ -4,7 +4,7 @@
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService, SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
@@ -18,6 +18,7 @@
   let { params } = $props();
   let task = $state<Task | null>(null);
   let taskSession = $state<AgentSession | null>(null);
+  let sessionRuns = $state<SessionRun[]>([]);
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -127,11 +128,15 @@
     return "";
   });
 
+  let pinnedRunnerAvailable = $derived(
+    !taskSession?.pinnedRunnerId || activeRunners.includes(taskSession.pinnedRunnerId)
+  );
+
   let canResumeTask = $derived(
     (taskSession?.status === "paused" ||
     taskSession?.status === "recoverable" ||
     taskSession?.status === "paused_waiting_review") &&
-    (!taskSession?.pinnedRunnerId || activeRunners.includes(taskSession.pinnedRunnerId))
+    pinnedRunnerAvailable
   );
 
   let timerInterval: ReturnType<typeof setInterval> | undefined;
@@ -221,11 +226,13 @@
 
   async function loadTaskSession() {
     taskSession = null;
+    sessionRuns = [];
     if (!task?.agentSessionId) return;
     try {
       const client = createClient(SessionService, getTransport());
       const resp = await client.getSession({ sessionId: task.agentSessionId });
       taskSession = resp.session ?? null;
+      sessionRuns = resp.runs ?? [];
     } catch {
       taskSession = null;
     }
@@ -328,8 +335,10 @@
         {#if task.status === "running" || task.status === "pending"}
           <Button color="red" size="sm" onclick={cancelTask}>Cancel</Button>
         {/if}
-        {#if canResumeTask}
-          <Button color="green" size="sm" onclick={resumeTask}>Resume</Button>
+        {#if taskSession && (taskSession.status === "paused" || taskSession.status === "recoverable" || taskSession.status === "paused_waiting_review")}
+          <Button color="green" size="sm" onclick={resumeTask} disabled={!pinnedRunnerAvailable}>
+            Resume{#if !pinnedRunnerAvailable} (pinned runner offline){/if}
+          </Button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
           <Button size="sm" onclick={viewExport} disabled={viewLoading}>
@@ -403,6 +412,34 @@
         </div>
         <p class="text-sm font-mono">{task.error}</p>
       </Alert>
+    {/if}
+
+    <!-- Session Run Chain -->
+    {#if sessionRuns.length > 1}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Session Runs</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">This task is part of a resumed session. Each follow-up prompt creates a new session run.</p>
+        <div class="space-y-1">
+          {#each sessionRuns as run (run.id)}
+            <div class="flex items-center gap-3 px-3 py-2 rounded {run.taskId === task.id ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : 'bg-gray-50 dark:bg-gray-800/50'}">
+              <StatusBadge status={run.status} />
+              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="flex-1 min-w-0">
+                <span class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
+                  {run.taskId.slice(0, 24)}…
+                </span>
+              </a>
+              {#if run.prompt}
+                <span class="text-xs text-gray-400 dark:text-gray-500 truncate hidden sm:block">{run.prompt.slice(0, 60)}</span>
+              {/if}
+              {#if run.taskId === task.id}
+                <Badge color="blue">current</Badge>
+              {:else if run.id === sessionRuns[0].id}
+                <span class="text-xs text-gray-400">initial</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </Card>
     {/if}
 
     <!-- Artifacts -->

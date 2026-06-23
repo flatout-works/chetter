@@ -68,6 +68,7 @@ message SessionRun {
   string updated_at = 9;
   optional string started_at = 10;
   optional string ended_at = 11;
+  string prompt = 12;
 }
 
 message Trigger {

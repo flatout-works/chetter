@@ -304,12 +304,6 @@
                 </ListgroupItem>
               </Listgroup>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-                {#if trigger.cronExpr}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Cron</span>
-                    <p class="text-gray-900 dark:text-white font-mono">{trigger.cronExpr}</p>
-                  </div>
-                {/if}
                 {#if trigger.triggerConfig}
                   {@const parsed = (() => { try { return JSON.parse(trigger.triggerConfig); } catch { return {}; } })()}
                   {#if parsed.repo}
@@ -322,6 +316,12 @@
                     <div>
                       <span class="text-xs text-gray-400 dark:text-gray-500">Event</span>
                       <p class="text-gray-900 dark:text-white">{parsed.event}</p>
+                    </div>
+                  {/if}
+                  {#if parsed.match_labels && parsed.match_labels.length > 0}
+                    <div>
+                      <span class="text-xs text-gray-400 dark:text-gray-500">Labels</span>
+                      <p class="text-gray-900 dark:text-white">{parsed.match_labels.join(", ")}</p>
                     </div>
                   {/if}
                   {#if parsed.session_mode}

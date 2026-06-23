@@ -1305,8 +1305,8 @@ func TestUnscopedToolsRequireAdmin(t *testing.T) {
 	adminCtx := ctxWithAdmin(ctx)
 	if _, out, err := svc.listAuditEventsTool(adminCtx, nil, AuditEventFilterInput{}); err != nil {
 		t.Fatalf("admin audit list: %v", err)
-	} else if len(out.Events) != 1 {
-		t.Fatalf("admin audit list returned %d events, want 1", len(out.Events))
+	} else if len(out.Events) != 2 {
+		t.Fatalf("admin audit list returned %d events, want 2 (auto-audited SubmitTask + manual insert)", len(out.Events))
 	}
 	if _, out, err := svc.listTaskArtifactsTool(adminCtx, nil, TaskArtifactFilterInput{}); err != nil {
 		t.Fatalf("admin artifact list: %v", err)

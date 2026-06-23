@@ -95,6 +95,13 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 	if rows == 0 {
 		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
 	}
+	s.auditAsync(AuditEventParams{
+		EventType:  "task_cancelled",
+		SourceType: "api",
+		TargetType: "task",
+		TargetID:   taskID,
+		Detail:     fmt.Sprintf("task cancelled: %s", reason),
+	})
 	return s.GetTask(ctx, taskID)
 }
 
@@ -112,6 +119,12 @@ func (s *Service) ClearQueue(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cancel pending tasks: %w", err)
 	}
+	s.auditAsync(AuditEventParams{
+		EventType:  "queue_cleared",
+		SourceType: "api",
+		TargetType: "task",
+		Detail:     fmt.Sprintf("cleared %d pending tasks", cancelled),
+	})
 	return int(cancelled), nil
 }
 
@@ -653,6 +666,14 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 		return CreateTokenOutput{}, fmt.Errorf("create token: %w", err)
 	}
 
+	s.auditAsync(AuditEventParams{
+		EventType:  "token_created",
+		SourceType: "api",
+		TargetType: "token",
+		TargetID:   tokenName,
+		Detail:     fmt.Sprintf("token %q created for user %q in team %q", tokenName, userName, teamName),
+	})
+
 	return CreateTokenOutput{
 		Token:    rawToken,
 		TeamID:   team.ID,
@@ -661,7 +682,6 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 		UserName: userName,
 	}, nil
 }
-
 // ListTokens returns all API tokens. Admin only.
 func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 	if !isAdmin(ctx) {
@@ -694,6 +714,13 @@ func (s *Service) DeleteToken(ctx context.Context, name string) error {
 	if err := s.repo.DeleteToken(ctx, name); err != nil {
 		return fmt.Errorf("delete token: %w", err)
 	}
+	s.auditAsync(AuditEventParams{
+		EventType:  "token_deleted",
+		SourceType: "api",
+		TargetType: "token",
+		TargetID:   name,
+		Detail:     fmt.Sprintf("token %q deleted", name),
+	})
 	return nil
 }
 
@@ -720,6 +747,15 @@ func (s *Service) CreateTeam(ctx context.Context, name string) (CreateTeamOutput
 	}); err != nil {
 		return CreateTeamOutput{}, fmt.Errorf("create team: %w", err)
 	}
+
+	s.auditAsync(AuditEventParams{
+		EventType:  "team_created",
+		SourceType: "api",
+		TargetType: "team",
+		TargetID:   name,
+		Detail:     fmt.Sprintf("team %q created", name),
+	})
+
 	return CreateTeamOutput{
 		TeamID:    teamID,
 		TeamName:  name,
@@ -767,6 +803,13 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if err := s.repo.DeleteTeam(ctx, name); err != nil {
 		return fmt.Errorf("delete team: %w", err)
 	}
+	s.auditAsync(AuditEventParams{
+		EventType:  "team_deleted",
+		SourceType: "api",
+		TargetType: "team",
+		TargetID:   name,
+		Detail:     fmt.Sprintf("team %q deleted", name),
+	})
 	return nil
 }
 

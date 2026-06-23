@@ -66,6 +66,10 @@
     return true;
   }
 
+  function pinnedRunnerOffline(session: AgentSession): boolean {
+    return !!session.pinnedRunnerId && !activeRunners.includes(session.pinnedRunnerId);
+  }
+
   onMount(load);
 
   let showResume = $state(false);
@@ -143,8 +147,8 @@
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
             <TableBodyCell class="text-right">
               {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
-                <Button color="green" size="xs" onclick={() => resume(session.id)} disabled={!canResume(session)}>
-                  Resume
+                <Button color="green" size="xs" onclick={() => resume(session.id)} disabled={pinnedRunnerOffline(session)}>
+                  Resume{#if pinnedRunnerOffline(session)} (pinned runner offline){/if}
                 </Button>
               {/if}
             </TableBodyCell>
