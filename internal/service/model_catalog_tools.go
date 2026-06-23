@@ -476,6 +476,14 @@ func definitionToolRecord(def repository.Definition) DefinitionToolRecord {
 	}
 }
 
+func (s *Service) GetModelCatalog(ctx context.Context) (*modelcatalog.Catalog, error) {
+	_, catalog, _, err := s.loadActiveModelCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return catalog, nil
+}
+
 func (s *Service) activeModelCatalogRecord(ctx context.Context) (ModelCatalogRecord, string, error) {
 	row, catalog, yamlText, err := s.loadActiveModelCatalog(ctx)
 	if err != nil {
@@ -558,7 +566,11 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			slog.Warn("skipping trigger definition: id generation error", "path", def.Path, "err", err)
 			continue
 		}
-		skillsJSON, _ := json.Marshal(nonEmptyStrings(td.Skills))
+		skillsJSON, err := json.Marshal(nonEmptyStrings(td.Skills))
+		if err != nil {
+			slog.Warn("skipping trigger definition: marshal skills error", "path", def.Path, "err", err)
+			continue
+		}
 		entries = append(entries, triggerSyncEntry{
 			def: td,
 			params: repository.UpsertTriggerParams{

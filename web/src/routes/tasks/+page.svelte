@@ -1,7 +1,9 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import { onMount } from "svelte";
   import { createClient } from "@connectrpc/connect";
-  import { TaskService } from "$gen/proto/api/v1/api_pb";
+  import { TaskService, CatalogService } from "$gen/proto/api/v1/api_pb";
+  import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks } from "$lib/stores/tasks.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
@@ -20,7 +22,22 @@
   let gitRef = $state("");
   let agentImage = $state("");
   let agent = $state("");
+  let providerId = $state("");
   let modelId = $state("");
+  let harness = $state("");
+
+  let providers = $state.raw<CatalogProvider[]>([]);
+  let defaultProvider = $state("");
+  let defaultModel = $state("");
+
+  const harnessOptions = [
+    { value: "", label: "Default" },
+    { value: "opencode", label: "OpenCode" },
+    { value: "claude-code", label: "Claude Code" },
+    { value: "pi", label: "Pi" },
+  ];
+
+  let selectedProvider = $derived(providers.find((p) => p.id === providerId));
 
   let page = $state(0);
   let pageSize = $state(25);
@@ -63,6 +80,31 @@
     page = 0;
   }
 
+  async function loadCatalog() {
+    try {
+      const client = createClient(CatalogService, getTransport());
+      const resp = await client.getModelCatalog({});
+      providers = resp.providers ?? [];
+      defaultProvider = resp.defaultProvider;
+      defaultModel = resp.defaultModel;
+      if (!providerId) providerId = defaultProvider;
+      if (!modelId) modelId = defaultModel;
+    } catch (e) {
+      console.error("Failed to load model catalog:", e);
+    }
+  }
+
+  onMount(loadCatalog);
+
+  function onProviderChange() {
+    const p = providers.find((p) => p.id === providerId);
+    if (p && p.models.length > 0) {
+      modelId = p.models[0];
+    } else {
+      modelId = "";
+    }
+  }
+
   async function submitTask(e: Event) {
     e.preventDefault();
     formError = null;
@@ -72,9 +114,12 @@
       const client = createClient(TaskService, getTransport());
       await client.submitTask({
         prompt: prompt.trim(), gitUrl: gitUrl.trim(), gitRef: gitRef.trim(),
-        agentImage: agentImage.trim(), agent: agent.trim(), modelId: modelId.trim(),
+        agentImage: agentImage.trim(), agent: agent.trim(),
+        providerId: providerId.trim(), modelId: modelId.trim(),
+        harness: harness.trim(),
       });
-      prompt = ""; gitUrl = ""; gitRef = ""; agentImage = ""; agent = ""; modelId = "";
+      prompt = ""; gitUrl = ""; gitRef = ""; agentImage = ""; agent = "";
+      providerId = defaultProvider; modelId = defaultModel; harness = "";
       showSubmitForm = false;
       await refreshTasks(statusFilter, 100);
     } catch (err) {
@@ -121,18 +166,47 @@
   </div>
 
   {#if showSubmitForm}
-    <Card class="mb-6" shadow="sm">
+    <Card class="mb-6 w-full" shadow="sm" contentClass="!p-5">
       <form onsubmit={submitTask} class="space-y-4">
         <div>
           <Label for="task-prompt" class="mb-1">Prompt</Label>
-          <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" />
+          <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" rows={4} />
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label for="task-provider" class="mb-1">Provider</Label>
+            <Select id="task-provider" bind:value={providerId} onchange={onProviderChange}>
+              {#each providers as p (p.id)}
+                <option value={p.id}>{p.name || p.id}</option>
+              {/each}
+            </Select>
+          </div>
+          <div>
+            <Label for="task-model" class="mb-1">Model</Label>
+            <Select id="task-model" bind:value={modelId}>
+              {#if selectedProvider}
+                {#each selectedProvider.models as m (m)}
+                  <option value={m}>{m}</option>
+                {/each}
+              {:else}
+                <option value="">—</option>
+              {/if}
+            </Select>
+          </div>
+          <div>
+            <Label for="task-harness" class="mb-1">Harness</Label>
+            <Select id="task-harness" bind:value={harness}>
+              {#each harnessOptions as opt (opt.value)}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </Select>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input bind:value={gitUrl} placeholder="Git URL (optional)" />
           <Input bind:value={gitRef} placeholder="Git ref (optional)" />
           <Input bind:value={agentImage} placeholder="Agent image override (optional)" />
           <Input bind:value={agent} placeholder="Agent (optional)" />
-          <Input bind:value={modelId} placeholder="Model ID (optional)" />
         </div>
       {#if formError}
         <Alert color="red">{formError}</Alert>

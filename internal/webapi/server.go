@@ -18,6 +18,7 @@ type Handlers struct {
 	Fleet   *fleetHandler
 	Admin   *adminHandler
 	Arcane  *arcaneHandler
+	Catalog *catalogHandler
 }
 
 // NewHandlers creates all ConnectRPC handlers wrapping the shared service.
@@ -30,6 +31,7 @@ func NewHandlers(svc *service.Service, bus *EventBus) *Handlers {
 		Fleet:   &fleetHandler{svc: svc, bus: bus},
 		Admin:   &adminHandler{svc: svc},
 		Arcane:  &arcaneHandler{svc: svc},
+		Catalog: &catalogHandler{svc: svc},
 	}
 }
 
@@ -44,6 +46,7 @@ func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sq
 	mux.Handle(apiv1connect.NewTriggerServiceHandler(h.Trigger, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewFleetServiceHandler(h.Fleet, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewAdminServiceHandler(h.Admin, connect.WithInterceptors(interceptor)))
+	mux.Handle(apiv1connect.NewCatalogServiceHandler(h.Catalog, connect.WithInterceptors(interceptor)))
 
 	if h.Arcane.svc.ArcaneIsConfigured() {
 		mux.Handle(apiv1connect.NewArcaneServiceHandler(h.Arcane, connect.WithInterceptors(interceptor)))
@@ -59,6 +62,7 @@ var (
 	_ apiv1connect.FleetServiceHandler   = (*fleetHandler)(nil)
 	_ apiv1connect.AdminServiceHandler   = (*adminHandler)(nil)
 	_ apiv1connect.ArcaneServiceHandler  = (*arcaneHandler)(nil)
+	_ apiv1connect.CatalogServiceHandler = (*catalogHandler)(nil)
 )
 
 var _ = http.StatusNotFound
