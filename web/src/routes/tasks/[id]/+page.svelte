@@ -142,6 +142,50 @@
   let timerInterval: ReturnType<typeof setInterval> | undefined;
   let progressRefreshCounter = $state(0);
   let unsubStores: (() => void)[] = [];
+  let prevTaskId = $state("");
+
+  $effect(() => {
+    if (prevTaskId && prevTaskId !== params.id) {
+      loadTaskData(params.id);
+    }
+    prevTaskId = params.id;
+  });
+
+  async function loadTaskData(taskId: string) {
+    loading = true;
+    error = null;
+    artifacts = [];
+    if (unsub) { unsub(); unsub = null; }
+    clearTaskDetail();
+
+    await loadTaskEvents(taskId, 100);
+    await loadTaskProgress(taskId);
+
+    try {
+      const client = createClient(TaskService, getTransport());
+      const resp = await client.getTask({ taskId });
+      task = resp.task ?? null;
+      await loadTaskSession();
+      await loadActiveRunners();
+      loading = false;
+
+      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
+        try {
+          const adminClient = createClient(AdminService, getTransport());
+          const artResp = await adminClient.listTaskArtifacts({ taskId });
+          artifacts = artResp.artifacts ?? [];
+        } catch { /* silently skip */ }
+      }
+
+      if (task?.status === "running" || task?.status === "pending") {
+        const streamSince = new Date().toISOString();
+        unsub = subscribeToTaskEvents(taskId, streamSince, () => refreshTask());
+      }
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load task";
+      loading = false;
+    }
+  }
 
   onMount(async () => {
     unsubStores = [
@@ -156,33 +200,7 @@
         loadTaskProgress(params.id);
       }
     }, 1000);
-    try {
-      const streamSince = new Date().toISOString();
-      const client = createClient(TaskService, getTransport());
-      const resp = await client.getTask({ taskId: params.id });
-      task = resp.task ?? null;
-      await loadTaskSession();
-      await loadActiveRunners();
-      loading = false;
-
-      await loadTaskEvents(params.id, 100);
-      await loadTaskProgress(params.id);
-
-      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
-        try {
-          const adminClient = createClient(AdminService, getTransport());
-          const artResp = await adminClient.listTaskArtifacts({ taskId: params.id });
-          artifacts = artResp.artifacts ?? [];
-        } catch { /* artifacts are admin-only; silently skip */ }
-      }
-
-      if (task?.status === "running" || task?.status === "pending") {
-        unsub = subscribeToTaskEvents(params.id, streamSince, () => refreshTask());
-      }
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to load task";
-      loading = false;
-    }
+    await loadTaskData(params.id);
   });
 
   onDestroy(() => {
@@ -337,7 +355,7 @@
         {/if}
         {#if taskSession && (taskSession.status === "paused" || taskSession.status === "recoverable" || taskSession.status === "paused_waiting_review")}
           <Button color="green" size="sm" onclick={resumeTask} disabled={!pinnedRunnerAvailable}>
-            Resume{#if !pinnedRunnerAvailable} (pinned runner offline){/if}
+            {pinnedRunnerAvailable ? "Resume" : "Pinned runner offline, can not resume"}
           </Button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
