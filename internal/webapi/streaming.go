@@ -6,8 +6,6 @@ import (
 
 	"connectrpc.com/connect"
 	apiv1 "github.com/flatout-works/chetter/gen/proto/api/v1"
-	"github.com/flatout-works/chetter/internal/repository"
-	"github.com/flatout-works/chetter/internal/service"
 )
 
 // SubscribeTaskEvents streams task events to the client. It first replays
@@ -107,7 +105,3 @@ func (h *fleetHandler) SubscribeFleetUpdates(
 	}
 }
 
-// Ensure service has the GetTaskEventsSince method.
-// If not present, we add it here as a thin wrapper around repo queries.
-var _ = repository.ChetterTaskEvent{}
-var _ = service.Service{}

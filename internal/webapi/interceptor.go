@@ -23,7 +23,7 @@ func NewAuthInterceptor(adminToken string, db *sql.DB) connect.Interceptor {
 
 func (a *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		scope, ok := a.resolve(req.Header())
+		scope, ok := a.resolve(ctx, req.Header())
 		if !ok {
 			return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 		}
@@ -33,7 +33,7 @@ func (a *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 
 func (a *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		scope, ok := a.resolve(conn.RequestHeader())
+		scope, ok := a.resolve(ctx, conn.RequestHeader())
 		if !ok {
 			return connect.NewError(connect.CodeUnauthenticated, nil)
 		}
@@ -45,9 +45,9 @@ func (a *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) 
 	return next
 }
 
-func (a *authInterceptor) resolve(h http.Header) (auth.Scope, bool) {
+func (a *authInterceptor) resolve(ctx context.Context, h http.Header) (auth.Scope, bool) {
 	token := bearerToken(h)
-	return auth.ResolveToken(context.Background(), a.adminToken, a.db, token)
+	return auth.ResolveToken(ctx, a.adminToken, a.db, token)
 }
 
 func bearerToken(h http.Header) string {

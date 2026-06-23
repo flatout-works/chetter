@@ -193,6 +193,9 @@ func (s *Service) taskReaper() {
 	s.reapUnavailablePinnedResumeTasks()
 	s.reapExpiredSessions()
 	s.checkDBQuota(ctx)
+	if s.runnerRPC != nil {
+		s.runnerRPC.cleanupHeartbeatSeen()
+	}
 	cancel()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
@@ -206,6 +209,9 @@ func (s *Service) taskReaper() {
 			s.reapUnavailablePinnedResumeTasks()
 			s.reapExpiredSessions()
 			s.checkDBQuota(ctx)
+			if s.runnerRPC != nil {
+				s.runnerRPC.cleanupHeartbeatSeen()
+			}
 			cancel()
 		case <-s.reaperStop:
 			return

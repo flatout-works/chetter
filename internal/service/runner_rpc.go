@@ -1025,3 +1025,15 @@ func (s *RunnerRPCService) shouldStoreHeartbeat(taskID string) bool {
 	s.heartbeatSeen.Store(taskID, now)
 	return true
 }
+
+// cleanupHeartbeatSeen removes entries older than 2x the throttle interval
+// to prevent unbounded memory growth in the heartbeatSeen sync.Map.
+func (s *RunnerRPCService) cleanupHeartbeatSeen() {
+	deadline := time.Now().Add(-heartbeatEventMinInterval * 2)
+	s.heartbeatSeen.Range(func(key, value any) bool {
+		if last, ok := value.(time.Time); ok && last.Before(deadline) {
+			s.heartbeatSeen.Delete(key)
+		}
+		return true
+	})
+}

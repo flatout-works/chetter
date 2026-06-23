@@ -22,6 +22,9 @@ var svcTestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	svcTestDB = testdb.StartPackageDB(m)
+	if svcTestDB == nil {
+		os.Exit(0)
+	}
 	code := m.Run()
 	svcTestDB.Close()
 	os.Exit(code)

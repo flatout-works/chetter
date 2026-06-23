@@ -282,8 +282,7 @@ func StartPackageDB(m *testing.M) *PackageDB {
 	port, err := freePort()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testdb: find free port: %v\n", err)
-		m.Run()
-		os.Exit(0)
+		return nil
 	}
 	image := os.Getenv("CHETTER_TEST_TIDB_IMAGE")
 	if image == "" {
@@ -293,8 +292,7 @@ func StartPackageDB(m *testing.M) *PackageDB {
 	defer cancel()
 	if !startTiDBContainer(startCtx, containerName, image, port) {
 		fmt.Fprintf(os.Stderr, "testdb: TiDB container failed to start; skipping integration tests\n")
-		m.Run()
-		os.Exit(0)
+		return nil
 	}
 	dsn = fmt.Sprintf("root@tcp(127.0.0.1:%d)/?parseTime=true&multiStatements=true", port)
 	return &PackageDB{containerName: containerName, ownsContainer: true, adminDSN: dsn}

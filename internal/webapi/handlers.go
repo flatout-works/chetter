@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
@@ -68,7 +69,10 @@ func parseTime(s string) time.Time {
 	if s == "" {
 		return time.Time{}
 	}
-	t, _ := time.Parse(time.RFC3339, s)
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		slog.Debug("parseTime: invalid timestamp", "input", s, "error", err)
+	}
 	return t
 }
 

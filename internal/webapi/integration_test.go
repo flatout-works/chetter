@@ -23,6 +23,9 @@ var webAPITestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	webAPITestDB = testdb.StartPackageDB(m)
+	if webAPITestDB == nil {
+		os.Exit(0)
+	}
 	code := m.Run()
 	webAPITestDB.Close()
 	os.Exit(code)
