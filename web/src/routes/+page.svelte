@@ -4,7 +4,7 @@
   import { formatTime, formatAge, formatDuration } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Button, Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   let health = $derived($fleetHealth);
   let allTasks = $derived($tasks);
@@ -60,7 +60,7 @@
   {#if activeFilter}
     <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
       Showing <strong class="text-gray-700 dark:text-gray-200">{activeFilter}</strong> tasks.
-      <button onclick={() => { activeFilter = ""; }} class="text-blue-600 dark:text-blue-400 hover:underline ml-1">Clear filter</button>
+      <Button color="blue" size="xs" onclick={() => { activeFilter = ""; }}>Clear filter</Button>
     </p>
   {/if}
 

@@ -104,6 +104,52 @@ chetter/
 - Do not add cross-module circular imports.
 - The `bin/` directory holds tool binaries (buf, sqlc) shared by both modules.
 
+## Web UI
+
+The web frontend is in `web/` — a SvelteKit app with **flowbite-svelte** for all UI components. Custom hand-rolled HTML/CSS is forbidden.
+
+### Components
+
+Always use Flowbite-Svelte components instead of raw HTML elements. The following are available:
+
+| Instead of raw | Use Flowbite component |
+|---|---|
+| `<button class="...">` | `<Button>` |
+| `<input>` / `<input type="number">` | `<Input>` / `<Input type="number">` |
+| `<select>` | `<Select>` |
+| `<textarea>` | `<Textarea>` |
+| `<div>` alert/error box | `<Alert color="red">` |
+| `<span>` status pill | `<Badge>` |
+| `<div>` card/panel | `<Card>` |
+| `<input type="checkbox">` toggle | `<Toggle>` |
+| `<table>` / `<tr>` / `<td>` | `<Table>`, `<TableHead>`, `<TableBody>`, `<TableHeadCell>`, `<TableBodyRow>`, `<TableBodyCell>` |
+| Loading text | `<Spinner>` |
+| Custom modal | `<Modal>` |
+| Custom toast | `<Toast>` (via `addToast`) |
+
+### Card Usage
+
+- Use `class` (not `contentClass`) to add padding: `class="!p-4"`, `class="!p-5"`, `class="!p-0"`
+- Use `size="xl"` for full-width cards (default `size="sm"` applies `max-w-sm`)
+- For list-style cards with section headers, use `class="!p-0"` and add padding on child elements
+- Never hand-roll `<div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border...">` — use `<Card>`
+
+### Form Inputs
+
+- Always wrap inputs in proper Flowbite `<Input>`, `<Select>`, `<Textarea>` components
+- Never use raw `<input class="px-3 py-2 border...">` with hand-rolled Tailwind classes
+- The Flowbite form components include proper dark mode, focus rings, and sizing
+
+### Checking Your Work
+
+Before committing, verify:
+1. No raw `<input>`, `<select>`, or `<textarea>` elements outside of `<script>` context
+2. No hand-rolled `<div>` cards — all cards use `<Card>`
+3. No hand-rolled `<button>` elements — all buttons use `<Button>`
+4. No hand-rolled status/indicator `<span>` pills — use `<Badge>` or `<StatusBadge>`
+5. No `contentClass` prop on any component
+6. Cards that need full width have `size="xl"`
+
 ## Key Architecture Notes
 
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.

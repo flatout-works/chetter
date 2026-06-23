@@ -379,10 +379,10 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Newest progress first. Use Details to expand raw event payloads.</p>
           </div>
           {#if connected}
-            <span class="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+            <Badge color="green" class="inline-flex items-center gap-1.5">
               <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
               Live
-            </span>
+            </Badge>
           {/if}
         </div>
         <div class="mt-4 max-h-[34rem] overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 dark:divide-gray-700 dark:border-gray-700">
@@ -403,10 +403,10 @@
                 {#if entry.error}
                   <span class="text-red-500 shrink-0">Error</span>
                 {/if}
-                <span class="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-500 shadow-sm dark:border-gray-700 dark:text-gray-300">
+                <Badge color="gray" class="mt-0.5 inline-flex shrink-0 items-center gap-1">
                   <span class="text-sm leading-none">{expandedProgress.has(progressKey(entry)) ? "▾" : "▸"}</span>
                   <span>{expandedProgress.has(progressKey(entry)) ? "Hide details" : "Details"}</span>
-                </span>
+                </Badge>
               </button>
               {#if expandedProgress.has(progressKey(entry))}
                 <div class="mx-4 mb-4 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">

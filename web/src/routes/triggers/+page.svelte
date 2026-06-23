@@ -9,7 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Button, Card, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
@@ -221,31 +221,31 @@
   </div>
 
   {#if actionError}
-    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg text-sm">{actionError}</div>
+    <Alert color="red" class="mb-4">{actionError}</Alert>
   {/if}
 
   {#if showCreateForm}
-    <Card class="mb-6 w-full max-w-none !p-4" shadow="sm">
+    <Card class="mb-6 w-full !p-4" shadow="sm">
     <form onsubmit={createTrigger} class="space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <input bind:value={name} placeholder="Name" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <select bind:value={triggerType} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+        <Input bind:value={name} placeholder="Name" />
+        <Select bind:value={triggerType}>
           <option value="cron">Cron</option>
           <option value="pr_review">PR Review</option>
           <option value="issue">Issue</option>
-        </select>
-        <input bind:value={cronExpr} placeholder="Cron expression" disabled={triggerType !== "cron"} class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 disabled:bg-gray-100 dark:disabled:bg-gray-800 text-gray-900 dark:text-white text-sm" />
+        </Select>
+        <Input bind:value={cronExpr} placeholder="Cron expression" disabled={triggerType !== "cron"} />
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <input bind:value={repo} placeholder="Repository, e.g. org/repo" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={event} placeholder="Event (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={gitUrl} placeholder="Git URL (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={gitRef} placeholder="Git ref (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={agentImage} placeholder="Agent image override (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={agent} placeholder="Agent (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-        <input bind:value={modelId} placeholder="Model ID (optional)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
+        <Input bind:value={repo} placeholder="Repository, e.g. org/repo" />
+        <Input bind:value={event} placeholder="Event (optional)" />
+        <Input bind:value={gitUrl} placeholder="Git URL (optional)" />
+        <Input bind:value={gitRef} placeholder="Git ref (optional)" />
+        <Input bind:value={agentImage} placeholder="Agent image override (optional)" />
+        <Input bind:value={agent} placeholder="Agent (optional)" />
+        <Input bind:value={modelId} placeholder="Model ID (optional)" />
       </div>
-      <textarea bind:value={prompt} rows="3" placeholder="Prompt override (optional)" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"></textarea>
+      <Textarea bind:value={prompt} rows={3} placeholder="Prompt override (optional)" class="w-full" />
       <Button type="submit" color="blue" disabled={creating}>
         {creating ? "Creating…" : "Create"}
       </Button>
@@ -273,17 +273,14 @@
               <StatusBadge status={trigger.triggerType} />
               <span class="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:block">{triggerTarget(trigger)}</span>
               {#if isGitManaged(trigger)}
-                <span class="text-xs text-gray-400 dark:text-gray-500 italic">(git-managed)</span>
+                <Badge color="gray">git-managed</Badge>
               {/if}
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-4">
-              <button
-                onclick={(ev) => { ev.stopPropagation(); toggleEnabled(trigger); }}
-                aria-label={`${trigger.enabled ? "Disable" : "Enable"} ${trigger.name}`}
-                class="relative w-10 h-5 rounded-full transition-colors {trigger.enabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"
-              >
-                <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform {trigger.enabled ? 'translate-x-5' : ''}"></span>
-              </button>
+              <Toggle
+                checked={trigger.enabled}
+                onchange={() => toggleEnabled(trigger)}
+              />
               <Button color="blue" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); runNow(trigger.name); }}>Run</Button>
               <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>
               <span class="text-gray-400 transition-transform {expandedId === trigger.id ? 'rotate-180' : ''}">▼</span>
