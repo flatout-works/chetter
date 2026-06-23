@@ -25,6 +25,9 @@
   let providerId = $state("");
   let modelId = $state("");
   let harness = $state("");
+  let sessionMode = $state("");
+  let pauseReason = $state("");
+  let ttlHours = $state(72);
 
   let providers = $state.raw<CatalogProvider[]>([]);
   let defaultProvider = $state("");
@@ -117,9 +120,13 @@
         agentImage: agentImage.trim(), agent: agent.trim(),
         providerId: providerId.trim(), modelId: modelId.trim(),
         harness: harness.trim(),
+        sessionMode: sessionMode || "",
+        pauseReason: sessionMode === "resumable" ? pauseReason.trim() || "" : "",
+        ttlHours: sessionMode === "resumable" ? ttlHours : 0,
       });
       prompt = ""; gitUrl = ""; gitRef = ""; agentImage = ""; agent = "";
       providerId = defaultProvider; modelId = defaultModel; harness = "";
+      sessionMode = ""; pauseReason = ""; ttlHours = 72;
       showSubmitForm = false;
       await refreshTasks(statusFilter, 100);
     } catch (err) {
@@ -201,6 +208,25 @@
               {/each}
             </Select>
           </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label for="task-session-mode" class="mb-1">Session Mode</Label>
+            <Select id="task-session-mode" bind:value={sessionMode}>
+              <option value="">None (one-shot)</option>
+              <option value="resumable">Resumable</option>
+            </Select>
+          </div>
+          {#if sessionMode === "resumable"}
+            <div>
+              <Label for="task-pause-reason" class="mb-1">Pause Reason (optional)</Label>
+              <Input id="task-pause-reason" bind:value={pauseReason} placeholder="e.g. awaiting review" />
+            </div>
+            <div>
+              <Label for="task-ttl" class="mb-1">TTL (hours)</Label>
+              <Input id="task-ttl" type="number" bind:value={ttlHours} min={1} max={720} />
+            </div>
+          {/if}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input bind:value={gitUrl} placeholder="Git URL (optional)" />
