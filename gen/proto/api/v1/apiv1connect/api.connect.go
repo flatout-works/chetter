@@ -35,6 +35,8 @@ const (
 	AdminServiceName = "api.v1.AdminService"
 	// ArcaneServiceName is the fully-qualified name of the ArcaneService service.
 	ArcaneServiceName = "api.v1.ArcaneService"
+	// CatalogServiceName is the fully-qualified name of the CatalogService service.
+	CatalogServiceName = "api.v1.CatalogService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -139,6 +141,9 @@ const (
 	// ArcaneServiceListVulnerabilitiesProcedure is the fully-qualified name of the ArcaneService's
 	// ListVulnerabilities RPC.
 	ArcaneServiceListVulnerabilitiesProcedure = "/api.v1.ArcaneService/ListVulnerabilities"
+	// CatalogServiceGetModelCatalogProcedure is the fully-qualified name of the CatalogService's
+	// GetModelCatalog RPC.
+	CatalogServiceGetModelCatalogProcedure = "/api.v1.CatalogService/GetModelCatalog"
 )
 
 // TaskServiceClient is a client for the api.v1.TaskService service.
@@ -1357,4 +1362,74 @@ func (UnimplementedArcaneServiceHandler) GetImageSummary(context.Context, *conne
 
 func (UnimplementedArcaneServiceHandler) ListVulnerabilities(context.Context, *connect.Request[v1.ArcaneListVulnerabilitiesRequest]) (*connect.Response[v1.ArcaneListVulnerabilitiesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.ArcaneService.ListVulnerabilities is not implemented"))
+}
+
+// CatalogServiceClient is a client for the api.v1.CatalogService service.
+type CatalogServiceClient interface {
+	GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error)
+}
+
+// NewCatalogServiceClient constructs a client for the api.v1.CatalogService service. By default, it
+// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewCatalogServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) CatalogServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	catalogServiceMethods := v1.File_proto_api_v1_api_proto.Services().ByName("CatalogService").Methods()
+	return &catalogServiceClient{
+		getModelCatalog: connect.NewClient[v1.GetModelCatalogRequest, v1.GetModelCatalogResponse](
+			httpClient,
+			baseURL+CatalogServiceGetModelCatalogProcedure,
+			connect.WithSchema(catalogServiceMethods.ByName("GetModelCatalog")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// catalogServiceClient implements CatalogServiceClient.
+type catalogServiceClient struct {
+	getModelCatalog *connect.Client[v1.GetModelCatalogRequest, v1.GetModelCatalogResponse]
+}
+
+// GetModelCatalog calls api.v1.CatalogService.GetModelCatalog.
+func (c *catalogServiceClient) GetModelCatalog(ctx context.Context, req *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error) {
+	return c.getModelCatalog.CallUnary(ctx, req)
+}
+
+// CatalogServiceHandler is an implementation of the api.v1.CatalogService service.
+type CatalogServiceHandler interface {
+	GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error)
+}
+
+// NewCatalogServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewCatalogServiceHandler(svc CatalogServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	catalogServiceMethods := v1.File_proto_api_v1_api_proto.Services().ByName("CatalogService").Methods()
+	catalogServiceGetModelCatalogHandler := connect.NewUnaryHandler(
+		CatalogServiceGetModelCatalogProcedure,
+		svc.GetModelCatalog,
+		connect.WithSchema(catalogServiceMethods.ByName("GetModelCatalog")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/api.v1.CatalogService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case CatalogServiceGetModelCatalogProcedure:
+			catalogServiceGetModelCatalogHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedCatalogServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedCatalogServiceHandler struct{}
+
+func (UnimplementedCatalogServiceHandler) GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.CatalogService.GetModelCatalog is not implemented"))
 }

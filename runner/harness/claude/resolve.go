@@ -29,6 +29,46 @@ func claudeModelFields(req task.TaskRequest) (provider, model string) {
 	return
 }
 
+func claudeEnv(wsDir string, req task.TaskRequest) map[string]string {
+	env := map[string]string{
+		"CLAUDE_CONFIG_DIR":                        wsDir + "/.claude",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+		"CLAUDE_CODE_ATTRIBUTION_HEADER":           "0",
+	}
+
+	provider := strings.ToLower(strings.TrimSpace(req.ProviderID))
+	baseURL := strings.TrimSpace(req.ProviderBaseURL)
+	apiKeyEnv := strings.TrimSpace(req.ProviderAPIKeyEnv)
+	if provider == "synthetic" {
+		if baseURL == "" {
+			baseURL = "https://api.synthetic.new/anthropic"
+		}
+		if apiKeyEnv == "" {
+			apiKeyEnv = "SYNTHETIC_API_KEY"
+		}
+	}
+
+	useCustomAnthropicEndpoint := provider == "synthetic" || baseURL != ""
+
+	if baseURL != "" {
+		env["ANTHROPIC_BASE_URL"] = baseURL
+	}
+	if useCustomAnthropicEndpoint && apiKeyEnv != "" {
+		if apiKey := os.Getenv(apiKeyEnv); apiKey != "" {
+			env["ANTHROPIC_AUTH_TOKEN"] = apiKey
+		}
+	}
+
+	if model := strings.TrimSpace(req.ModelID); model != "" && useCustomAnthropicEndpoint {
+		env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = model
+		env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = model
+		env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model
+		env["CLAUDE_CODE_SUBAGENT_MODEL"] = model
+	}
+
+	return env
+}
+
 func buildClaudeCommand(req task.TaskRequest) []string {
 	prompt := req.Prompt
 	if len(req.Skills) > 0 {

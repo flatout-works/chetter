@@ -61,7 +61,7 @@ RUN curl -fsSL https://opencode.ai/install | bash \
     && ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
 
 RUN npm install -g @anthropic-ai/claude-code \
-    && ln -sf "$(npm root -g)/node_modules/.bin/claude" /usr/local/bin/claude
+    && claude --version
 
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
     && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi

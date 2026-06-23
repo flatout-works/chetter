@@ -28,7 +28,7 @@ func (oc *OpenCode) ConfigFilePathGlobal(wsDir string) string {
 	return wsDir + "/.config/opencode/config.json"
 }
 
-func (oc *OpenCode) Env(wsDir string, secret string) map[string]string {
+func (oc *OpenCode) Env(wsDir string, secret string, _ task.TaskRequest) map[string]string {
 	return map[string]string{
 		"OPENCODE_CONFIG":          wsDir + "/.opencode.json",
 		"OPENCODE_SERVER_PASSWORD": secret,

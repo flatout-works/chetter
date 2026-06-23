@@ -32,6 +32,15 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	if !isRunnerOwnedEnv("DEEPSEEK_API_KEY") {
 		t.Fatal("DEEPSEEK_API_KEY should be runner-owned")
 	}
+	if !isRunnerOwnedEnv("ANTHROPIC_AUTH_TOKEN") {
+		t.Fatal("ANTHROPIC_AUTH_TOKEN should be runner-owned")
+	}
+	if !isRunnerOwnedEnv("ANTHROPIC_BASE_URL") {
+		t.Fatal("ANTHROPIC_BASE_URL should be runner-owned")
+	}
+	if !isRunnerOwnedEnv("CLAUDE_CODE_SUBAGENT_MODEL") {
+		t.Fatal("CLAUDE_CODE_SUBAGENT_MODEL should be runner-owned")
+	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
 	}

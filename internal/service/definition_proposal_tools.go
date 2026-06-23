@@ -158,7 +158,10 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("generate proposal id: %w", err)
 	}
-	filesJSON, _ := json.Marshal(files)
+	filesJSON, err := json.Marshal(files)
+	if err != nil {
+		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("marshal files: %w", err)
+	}
 	now := time.Now().UTC()
 	params := repository.InsertDefinitionChangeProposalParams{
 		ID:         proposalID,
@@ -266,8 +269,7 @@ func (s *Service) liveDefinitionProposalStatus(ctx context.Context, row reposito
 }
 
 func definitionProposalToolRecord(row repository.DefinitionChangeProposal, live *DefinitionProposalStatus) DefinitionProposalToolRecord {
-	var files []DefinitionProposalFile
-	_ = json.Unmarshal(row.Files, &files)
+	files := parseJSON[[]DefinitionProposalFile](row.Files, "proposal:"+row.ID+" files")
 	return DefinitionProposalToolRecord{
 		ID:         row.ID,
 		SourceID:   row.SourceID,

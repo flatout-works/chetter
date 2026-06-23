@@ -30,6 +30,7 @@ message Task {
   optional string started_at = 19;
   optional string ended_at = 20;
   string error_category = 21;
+  string agent_session_id = 22;
 }
 
 message AgentSession {
@@ -700,4 +701,34 @@ message Vulnerability {
 message ArcaneListVulnerabilitiesResponse {
   repeated Vulnerability vulnerabilities = 1;
   int32 total_items = 2;
+}
+
+// --- CatalogService ---
+
+service CatalogService {
+  rpc GetModelCatalog(GetModelCatalogRequest) returns (GetModelCatalogResponse);
+}
+
+message GetModelCatalogRequest {}
+
+message CatalogProvider {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+  string base_url = 4;
+  string api_key_env = 5;
+  repeated string models = 6;
+}
+
+message CatalogHarnessDefault {
+  string harness = 1;
+  string provider = 2;
+  string model = 3;
+}
+
+message GetModelCatalogResponse {
+  string default_provider = 1;
+  string default_model = 2;
+  repeated CatalogHarnessDefault defaults = 3;
+  repeated CatalogProvider providers = 4;
 }

@@ -16,7 +16,7 @@ type Harness interface {
 	ConfigFilePath(wsDir string) string
 	ConfigFilePathGlobal(wsDir string) string
 
-	Env(wsDir string, secret string) map[string]string
+	Env(wsDir string, secret string, req task.TaskRequest) map[string]string
 
 	// Serve mode (local + Docker).
 	ServeArgs(port int) []string

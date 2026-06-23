@@ -32,7 +32,7 @@ func (p *Pi) ConfigFilePathGlobal(wsDir string) string {
 	return wsDir + "/.pi/agent/settings.json"
 }
 
-func (p *Pi) Env(wsDir string, secret string) map[string]string {
+func (p *Pi) Env(wsDir string, secret string, _ task.TaskRequest) map[string]string {
 	return map[string]string{
 		"PI_CODING_AGENT_DIR":         wsDir + "/.pi/agent",
 		"PI_CODING_AGENT_SESSION_DIR": wsDir + "/.pi/sessions",
@@ -42,7 +42,7 @@ func (p *Pi) Env(wsDir string, secret string) map[string]string {
 	}
 }
 
-func (p *Pi) ServeArgs(port int) []string { return nil }
+func (p *Pi) ServeArgs(port int) []string       { return nil }
 func (p *Pi) ServeArgsResume(port int) []string { return nil }
 
 func (p *Pi) ServerPassword() string { return "" }

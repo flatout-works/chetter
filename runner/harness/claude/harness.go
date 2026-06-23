@@ -32,10 +32,8 @@ func (cc *ClaudeCode) ConfigFilePathGlobal(wsDir string) string {
 	return wsDir + "/.claude/settings.local.json"
 }
 
-func (cc *ClaudeCode) Env(wsDir string, secret string) map[string]string {
-	return map[string]string{
-		"CLAUDE_CONFIG_DIR": wsDir + "/.claude",
-	}
+func (cc *ClaudeCode) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
+	return claudeEnv(wsDir, req)
 }
 
 func (cc *ClaudeCode) ServeArgs(port int) []string {

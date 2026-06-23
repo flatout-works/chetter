@@ -240,7 +240,10 @@ func (s *Service) recordGitHubToolArtifact(ctx context.Context, task repository.
 	}); err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("record GitHub artifact: %w", err)
 	}
-	payload, _ := json.Marshal(detail)
+	payload, err := json.Marshal(detail)
+	if err != nil {
+		return nil, GitHubArtifactOutput{}, fmt.Errorf("marshal payload: %w", err)
+	}
 	if err := s.LogAuditEvent(ctx, AuditEventParams{
 		EventType:  "github_artifact_created",
 		SourceType: "task",

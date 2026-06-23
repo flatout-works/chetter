@@ -114,7 +114,7 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 
 # Claude Code (via npm)
 RUN npm install -g @anthropic-ai/claude-code \
-    && ln -sf "$(npm root -g)/node_modules/.bin/claude" /usr/local/bin/claude
+    && claude --version
 
 # Pi coding agent (via npm) + MCP adapter extension.
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \

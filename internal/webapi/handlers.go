@@ -17,27 +17,28 @@ import (
 
 func protoTask(t service.TaskToolRecord) *apiv1.Task {
 	return &apiv1.Task{
-		Id:            t.ID,
-		TeamId:        t.TeamID,
-		Status:        t.Status,
-		Prompt:        t.Prompt,
-		GitUrl:        t.GitURL,
-		GitRef:        t.GitRef,
-		AgentImage:    t.AgentImage,
-		Agent:         t.Agent,
-		ProviderId:    t.ProviderID,
-		ModelId:       t.ModelID,
-		VariantId:     t.VariantID,
-		Skills:        t.Skills,
-		Env:           t.Env,
-		TimeoutSec:    int32(t.TimeoutSec),
-		Summary:       t.Summary,
-		Error:         t.Error,
-		ErrorCategory: t.ErrorCategory,
-		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     t.UpdatedAt.Format(time.RFC3339),
-		StartedAt:     optTimeStr(t.StartedAt),
-		EndedAt:       optTimeStr(t.EndedAt),
+		Id:             t.ID,
+		TeamId:         t.TeamID,
+		Status:         t.Status,
+		Prompt:         t.Prompt,
+		GitUrl:         t.GitURL,
+		GitRef:         t.GitRef,
+		AgentImage:     t.AgentImage,
+		Agent:          t.Agent,
+		ProviderId:     t.ProviderID,
+		ModelId:        t.ModelID,
+		VariantId:      t.VariantID,
+		Skills:         t.Skills,
+		Env:            t.Env,
+		TimeoutSec:     int32(t.TimeoutSec),
+		Summary:        t.Summary,
+		Error:          t.Error,
+		ErrorCategory:  t.ErrorCategory,
+		CreatedAt:      t.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      t.UpdatedAt.Format(time.RFC3339),
+		StartedAt:      optTimeStr(t.StartedAt),
+		EndedAt:        optTimeStr(t.EndedAt),
+		AgentSessionId: t.AgentSessionID,
 	}
 }
 
@@ -498,12 +499,12 @@ func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Reque
 	out := make([]*apiv1.TriggerRun, len(runs))
 	for i, r := range runs {
 		out[i] = &apiv1.TriggerRun{
-			Id:           r.ID,
+			Id:          r.ID,
 			TriggerName: r.TriggerName,
-			TaskId:       r.TaskID,
-			Status:       r.Status,
+			TaskId:      r.TaskID,
+			Status:      r.Status,
 			TriggeredAt: r.TriggeredAt.Format(time.RFC3339),
-			CreatedAt:    r.CreatedAt.Format(time.RFC3339),
+			CreatedAt:   r.CreatedAt.Format(time.RFC3339),
 		}
 	}
 	return connect.NewResponse(&apiv1.ListTriggerRunsResponse{Runs: out}), nil
@@ -841,3 +842,48 @@ var _ repository.ChetterTrigger
 
 // GetTriggerByName is a helper that delegates to the service's repo.
 // We need to expose this from service if not already available.
+
+// --- CatalogServiceHandler ---
+
+type catalogHandler struct {
+	svc *service.Service
+}
+
+func (h *catalogHandler) GetModelCatalog(ctx context.Context, _ *connect.Request[apiv1.GetModelCatalogRequest]) (*connect.Response[apiv1.GetModelCatalogResponse], error) {
+	catalog, err := h.svc.GetModelCatalog(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	providers := make([]*apiv1.CatalogProvider, 0, len(catalog.Providers))
+	for id, p := range catalog.Providers {
+		models := make([]string, 0, len(p.Models))
+		for _, m := range p.Models {
+			models = append(models, m.ID)
+		}
+		providers = append(providers, &apiv1.CatalogProvider{
+			Id:        id,
+			Name:      p.Name,
+			Kind:      p.Kind,
+			BaseUrl:   p.BaseURL,
+			ApiKeyEnv: p.APIKeyEnv,
+			Models:    models,
+		})
+	}
+
+	defaults := make([]*apiv1.CatalogHarnessDefault, 0, len(catalog.Defaults))
+	for harness, d := range catalog.Defaults {
+		defaults = append(defaults, &apiv1.CatalogHarnessDefault{
+			Harness:  harness,
+			Provider: d.Provider,
+			Model:    d.Model,
+		})
+	}
+
+	return connect.NewResponse(&apiv1.GetModelCatalogResponse{
+		DefaultProvider: catalog.DefaultProvider,
+		DefaultModel:    catalog.DefaultModel,
+		Defaults:        defaults,
+		Providers:       providers,
+	}), nil
+}

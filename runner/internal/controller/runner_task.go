@@ -217,12 +217,33 @@ func addRunnerOwnedEnv(env map[string]string) {
 }
 
 func runnerOwnedEnvKeys() []string {
-	return []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY"}
+	return []string{
+		"ANTHROPIC_API_KEY",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL",
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL",
+		"CLAUDE_CODE_SUBAGENT_MODEL",
+		"GITHUB_TOKEN",
+		"MEM9_API_KEY",
+		"MEM9_API_URL",
+		"MEM9_DEBUG",
+		"MEM9_HOME",
+		"OPENAI_API_KEY",
+		"DEEPSEEK_API_KEY",
+		"OPENCODE_API_KEY",
+		"SYNTHETIC_API_KEY",
+		"ZAI_API_KEY",
+		"GEMINI_API_KEY",
+		"GROQ_API_KEY",
+		"XAI_API_KEY",
+	}
 }
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "ANTHROPIC_API_KEY", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
+	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
 		return true
 	default:
 		return false
@@ -382,7 +403,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"WORKSPACE="+session.WorkspaceDir,
 		"MCP_SOCKET_PATH="+socketPath,
 	)
-	for k, v := range h.Env(session.WorkspaceDir, secret) {
+	for k, v := range h.Env(session.WorkspaceDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
 	env = append(env, "HOME="+session.WorkspaceDir)
@@ -541,7 +562,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		)
 	}
 
-	for k, v := range h.Env("/workspace", secret) {
+	for k, v := range h.Env("/workspace", secret, req) {
 		key := k
 		switch key {
 		case "OPENCODE_CONFIG":
@@ -621,6 +642,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if err != nil {
+		workspacePath := ""
+		if req.CheckpointAfterSuccess && classifyErrorCategory("error", fmt.Sprintf("prompt failed: %v", err)) == "timeout" {
+			workspacePath = session.WorkspaceDir
+			session.PreserveWorkspace = true
+			slog.Info("preserving workspace for recoverable timed-out session", "taskID", req.TaskID, "workspace", workspacePath)
+		}
 		if sid != "" {
 			if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
 				r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
@@ -629,7 +656,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -747,7 +774,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			"-e", "no_proxy=localhost,127.0.0.1,.local,chetter-mcp",
 		)
 	}
-	for k, v := range h.Env("/workspace", secret) {
+	for k, v := range h.Env("/workspace", secret, req) {
 		key := k
 		switch key {
 		case "OPENCODE_CONFIG":
@@ -845,8 +872,6 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 	}
 	r.publishTaskResponse(resp)
 }
-
-
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
 	if export, err := h.ReadSessionExport(wsDir, sid); err == nil {
@@ -994,7 +1019,7 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, socketPath, containerName string
 		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
 	}
 
-	for k, v := range h.Env(containerWorkspaceDir, "") {
+	for k, v := range h.Env(containerWorkspaceDir, "", req) {
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
@@ -1165,7 +1190,7 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, socketPath, secret string
 		"MCP_SOCKET_PATH="+socketPath,
 		"HOME="+wsDir,
 	)
-	for k, v := range h.Env(wsDir, secret) {
+	for k, v := range h.Env(wsDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
 	return env
