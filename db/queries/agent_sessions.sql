@@ -185,3 +185,32 @@ JOIN chetter_session_runs r ON r.agent_session_id = chk.agent_session_id
 WHERE r.task_id = ?
 ORDER BY chk.created_at DESC
 LIMIT 1;
+
+-- name: ReapStaleSessionRuns :execrows
+UPDATE chetter_session_runs sr
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET sr.status = CASE
+    WHEN t.status = 'done' THEN 'completed'
+    WHEN t.status = 'cancelled' THEN 'cancelled'
+    ELSE 'failed'
+END,
+sr.error = COALESCE(NULLIF(sr.error, ''), t.error, sr.error),
+sr.ended_at = COALESCE(sr.ended_at, t.ended_at, NOW()),
+sr.updated_at = NOW()
+WHERE sr.status = 'running'
+  AND t.status IN ('done', 'error', 'cancelled');
+
+-- name: ReapStaleSessionsForTerminalRuns :execrows
+UPDATE chetter_agent_sessions s
+JOIN chetter_session_runs sr ON sr.agent_session_id = s.id
+JOIN chetter_tasks t ON t.id = sr.task_id
+SET s.status = CASE
+    WHEN t.status = 'done' THEN 'completed'
+    WHEN t.status = 'cancelled' THEN 'error'
+    ELSE 'error'
+END,
+s.error = COALESCE(NULLIF(s.error, ''), t.error, s.error),
+s.updated_at = NOW()
+WHERE s.status = 'running'
+  AND sr.status IN ('failed', 'completed', 'cancelled')
+  AND t.status IN ('done', 'error', 'cancelled');

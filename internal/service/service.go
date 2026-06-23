@@ -189,6 +189,7 @@ func (s *Service) taskReaper() {
 	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 	s.reapStaleTasks()
 	s.reapExpiredLeases()
+	s.reapStaleSessionRuns()
 	s.reapUnavailablePinnedResumeTasks()
 	s.reapExpiredSessions()
 	s.checkDBQuota(ctx)
@@ -201,6 +202,7 @@ func (s *Service) taskReaper() {
 			ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 			s.reapStaleTasks()
 			s.reapExpiredLeases()
+			s.reapStaleSessionRuns()
 			s.reapUnavailablePinnedResumeTasks()
 			s.reapExpiredSessions()
 			s.checkDBQuota(ctx)
@@ -315,7 +317,34 @@ func (s *Service) reapStaleTasks() {
 		return
 	}
 	if n > 0 {
-		slog.Info("reaped expired leases", "count", n)
+		slog.Info("reaped stale tasks", "count", n)
+	}
+}
+
+func (s *Service) reapStaleSessionRuns() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	defer cancel()
+	n, err := s.repo.ReapStaleSessionRuns(ctx)
+	if err != nil {
+		slog.Error("session run reaper failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	if n > 0 {
+		slog.Info("reaped stale session runs", "count", n)
+	}
+	m, err := s.repo.ReapStaleSessionsForTerminalRuns(ctx)
+	if err != nil {
+		slog.Error("session reaper for terminal runs failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	if m > 0 {
+		slog.Info("reaped stale agent sessions for terminal runs", "count", m)
 	}
 }
 
