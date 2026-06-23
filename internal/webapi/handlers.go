@@ -326,7 +326,7 @@ func (h *eventHandler) GetTaskProgress(ctx context.Context, req *connect.Request
 	out := make([]*apiv1.TaskProgressEntry, len(entries))
 	for i, e := range entries {
 		out[i] = &apiv1.TaskProgressEntry{
-			Time:    e.Time.Format(time.RFC3339),
+			Time:    e.Time.Format(time.RFC3339Nano),
 			Status:  e.Status,
 			Summary: e.Summary,
 			Error:   e.Error,
