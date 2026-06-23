@@ -88,7 +88,7 @@
       </Card>
     </div>
 
-    {#if session.pauseReason}
+    {#if session.pauseReason && (session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review")}
       <Alert color="yellow" class="mb-6">
         <p class="text-sm"><span class="font-semibold">Pause reason:</span> {session.pauseReason}</p>
       </Alert>
