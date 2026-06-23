@@ -152,7 +152,6 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 	}{
 		{DefinitionTypeAgent, filepath.Join("agents", "*.md"), stemName},
 		{DefinitionTypeSkill, filepath.Join("skills", "*.md"), stemName},
-		{DefinitionTypeSkill, filepath.Join("skills", "*", "SKILL.md"), parentName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yaml"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yml"), stemName},
 		{DefinitionTypeTaskTemplate, filepath.Join("task-templates", "*.md"), stemName},
@@ -195,6 +194,55 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 			})
 		}
 	}
+
+	// Skills with subdirectories: walk each skill directory to capture all
+	// files (SKILL.md plus references/, scripts/, etc.).
+	skillDirs, err := filepath.Glob(filepath.Join(m.cacheDir, "skills", "*"))
+	if err != nil {
+		return nil, fmt.Errorf("scan skill dirs: %w", err)
+	}
+	for _, dir := range skillDirs {
+		info, err := os.Stat(dir)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		skillName := filepath.Base(dir)
+		err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(m.cacheDir, path)
+			if err != nil {
+				return fmt.Errorf("relative path: %w", err)
+			}
+			rel = filepath.ToSlash(rel)
+			key := DefinitionTypeSkill + ":" + rel
+			if _, ok := seen[key]; ok {
+				return nil
+			}
+			seen[key] = struct{}{}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read %s: %w", rel, err)
+			}
+			sum := sha256.Sum256(data)
+			out = append(out, Definition{
+				Type:        DefinitionTypeSkill,
+				Name:        skillName,
+				Path:        rel,
+				Content:     string(data),
+				ContentHash: hex.EncodeToString(sum[:]),
+			})
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("walk skill dir %s: %w", skillName, err)
+		}
+	}
+
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Type != out[j].Type {
 			return out[i].Type < out[j].Type
@@ -210,10 +258,6 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 func stemName(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(base, filepath.Ext(base))
-}
-
-func parentName(path string) string {
-	return filepath.Base(filepath.Dir(path))
 }
 
 func (m *Manager) Catalog() *modelcatalog.Catalog {
