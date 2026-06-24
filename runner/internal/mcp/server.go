@@ -57,17 +57,10 @@ func NewServer(socketPath string) (*Server, error) {
 
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
-	var inputSchema any = def.InputSchema
-	if inputSchema == nil {
-		schemaBytes, err := json.Marshal(map[string]any{"type": "object"})
-		if err == nil {
-			inputSchema = json.RawMessage(schemaBytes)
-		}
-	}
 	s.sdkServer.AddTool(&mcplib.Tool{
 		Name:        def.Name,
 		Description: def.Description,
-		InputSchema: inputSchema,
+		InputSchema: def.InputSchema,
 	}, adaptHandler(handler))
 }
 
