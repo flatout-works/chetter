@@ -134,34 +134,6 @@ func compactJSON(value any) string {
 	return text
 }
 
-func summarizeJSONL(out string) string {
-	type event struct {
-		Type string `json:"type"`
-		Part struct {
-			Text string `json:"text"`
-		} `json:"part"`
-	}
-
-	var texts []string
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "{") {
-			continue
-		}
-		var evt event
-		if err := json.Unmarshal([]byte(line), &evt); err != nil {
-			continue
-		}
-		if evt.Type == "text" && strings.TrimSpace(evt.Part.Text) != "" {
-			texts = append(texts, evt.Part.Text)
-		}
-	}
-	if len(texts) > 0 {
-		return strings.Join(texts, "\n")
-	}
-	return out
-}
-
 func truncate(s string) string {
 	const maxSummaryBytes = 8000
 	if len(s) > maxSummaryBytes {

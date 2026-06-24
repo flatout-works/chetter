@@ -89,39 +89,6 @@ func modelFlag(req task.TaskRequest) string {
 	return ""
 }
 
-func resolveCommand(req task.TaskRequest) []string {
-	if len(req.Command) > 0 {
-		return req.Command
-	}
-	if req.Prompt != "" {
-		model := modelFlag(req)
-		cmd := []string{
-			"opencode", "run",
-		}
-		if !mem9Enabled() {
-			cmd = append(cmd, "--pure")
-		}
-		cmd = append(cmd,
-			"--port", "0",
-			"--dir", "/workspace",
-			"--print-logs",
-			"--log-level", "DEBUG",
-		)
-		if model != "" {
-			cmd = append(cmd, "-m", model)
-		}
-		if req.VariantID != "" {
-			cmd = append(cmd, "--variant", req.VariantID)
-		}
-		if req.Agent != "" {
-			cmd = append(cmd, "--agent", req.Agent)
-		}
-		cmd = append(cmd, promptWithSkillHints(req.Prompt, req.Skills), "--format", "json", "--dangerously-skip-permissions")
-		return cmd
-	}
-	return nil
-}
-
 func envValue(env map[string]string, key, fallback string) string {
 	if env != nil {
 		if value := strings.TrimSpace(env[key]); value != "" {

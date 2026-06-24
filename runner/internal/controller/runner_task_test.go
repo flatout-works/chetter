@@ -551,9 +551,6 @@ func TestSelectHarnessByName_Pi(t *testing.T) {
 	if !h.SupportsRpc() {
 		t.Fatal("pi should support RPC")
 	}
-	if h.SupportsServe() {
-		t.Fatal("pi should not support serve")
-	}
 }
 
 func TestSelectHarnessByName_Claude(t *testing.T) {
@@ -567,9 +564,6 @@ func TestSelectHarnessByName_Claude(t *testing.T) {
 	if h.SupportsRpc() {
 		t.Fatal("claude-code should not support RPC")
 	}
-	if h.SupportsServe() {
-		t.Fatal("claude-code should not support serve")
-	}
 }
 
 func TestSelectHarnessByName_OpenCode(t *testing.T) {
@@ -582,9 +576,6 @@ func TestSelectHarnessByName_OpenCode(t *testing.T) {
 	}
 	if h.SupportsRpc() {
 		t.Fatal("opencode should not support RPC")
-	}
-	if !h.SupportsServe() {
-		t.Fatal("opencode should support serve")
 	}
 }
 

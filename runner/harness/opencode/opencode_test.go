@@ -160,22 +160,6 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 	}
 }
 
-func TestResolveCommand_Mem9DisabledKeepsPure(t *testing.T) {
-	t.Setenv("MEM9_API_KEY", "")
-	cmd := resolveCommand(task.TaskRequest{Prompt: "Do work"})
-	if !hasArg(cmd, "--pure") {
-		t.Fatalf("expected --pure without mem9, got %v", cmd)
-	}
-}
-
-func TestResolveCommand_Mem9EnabledRemovesPure(t *testing.T) {
-	t.Setenv("MEM9_API_KEY", "mem9-test-key")
-	cmd := resolveCommand(task.TaskRequest{Prompt: "Do work"})
-	if hasArg(cmd, "--pure") {
-		t.Fatalf("did not expect --pure with mem9 enabled, got %v", cmd)
-	}
-}
-
 func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "")
 	args := opencodeServeArgs(1234)
@@ -350,30 +334,6 @@ func hasAny(values []any, want string) bool {
 		}
 	}
 	return false
-}
-
-func TestSummarizeJSONL(t *testing.T) {
-	t.Run("empty string", func(t *testing.T) {
-		got := summarizeJSONL("")
-		if got != "" {
-			t.Errorf("expected empty string, got %q", got)
-		}
-	})
-	t.Run("valid jsonl with text event", func(t *testing.T) {
-		line := `{"type":"text","part":{"text":"hello world"}}`
-		got := summarizeJSONL(line)
-		if !strings.Contains(got, "hello world") {
-			t.Errorf("expected text content in summary, got %q", got)
-		}
-	})
-	t.Run("multiple lines", func(t *testing.T) {
-		line1 := `{"type":"text","part":{"text":"hello"}}`
-		line2 := `{"type":"text","part":{"text":"world"}}`
-		got := summarizeJSONL(line1 + "\n" + line2)
-		if !strings.Contains(got, "hello") || !strings.Contains(got, "world") {
-			t.Errorf("expected both texts in summary, got %q", got)
-		}
-	})
 }
 
 func TestSummarizeOpenCodeEvent(t *testing.T) {
