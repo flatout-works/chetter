@@ -10,7 +10,7 @@
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus } from "$lib/utils.svelte";
+  import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
@@ -27,6 +27,22 @@
   let viewMarkdown = $state<string | null>(null);
   let viewLoading = $state(false);
   let showExportViewer = $state(false);
+
+  let totalTokens = $derived.by(() => {
+    const tu = task?.tokenUsage;
+    if (!tu) return 0;
+    return (tu.inputTokens || 0) + (tu.outputTokens || 0) + (tu.cacheReadTokens || 0) + (tu.reasoningTokens || 0);
+  });
+
+  function fmtCost(cents: number): string {
+    return `$${(cents / 100).toFixed(4)}`;
+  }
+
+  function fmtTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return n.toString();
+  }
 
   let events = $state<TaskEvent[]>([]);
   let progress = $state<TaskProgressEntry[]>([]);
@@ -458,6 +474,38 @@
       {/if}
     </div>
 
+    {#if task.tokenUsage && totalTokens > 0}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Token Consumption</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Input tokens</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(task.tokenUsage.inputTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Output tokens</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(task.tokenUsage.outputTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Cache (R/W)</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(task.tokenUsage.cacheReadTokens)}/{fmtTokens(task.tokenUsage.cacheWriteTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Reasoning tokens</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(task.tokenUsage.reasoningTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Total tokens</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(totalTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Est. cost</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtCost(task.tokenUsage.costCents)}</p>
+          </div>
+        </div>
+      </Card>
+    {/if}
+
     <!-- Prompt -->
     <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
       <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Prompt</h2>
@@ -546,7 +594,7 @@
         <div class="mt-4 max-h-[34rem] overflow-y-auto rounded-lg border border-gray-100 p-4 dark:border-gray-700">
           <Timeline>
             {#each mergedTimeline as entry, i (progressKey(entry))}
-              <TimelineItem title={humanReadableStatus(entry.status, entry.summary)} date={formatTimeShort(entry.time)} isLast={i === mergedTimeline.length - 1}>
+              <TimelineItem title={entry.status === "done" ? "Completed successfully" : humanReadableStatus(entry.status, entry.summary)} date={formatTimeShort(entry.time)} isLast={i === mergedTimeline.length - 1}>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={entry.status} />
                   {#if entry.error}
@@ -556,6 +604,14 @@
                     {expandedProgress.has(progressKey(entry)) ? "Hide details" : "Details"}
                   </Button>
                 </div>
+                {#if entry.status === "done" && entry.summary && entry.summary !== entry.status}
+                  <div class="mt-3">
+                    <p class="text-xs text-gray-400 dark:text-gray-500 mb-1">Agent says:</p>
+                    <div class="prose prose-sm dark:prose-invert max-w-none">
+                      {@html renderMarkdown(entry.summary)}
+                    </div>
+                  </div>
+                {/if}
                 {#if expandedProgress.has(progressKey(entry))}
                   <div class="mt-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
                     {#if entry.error}

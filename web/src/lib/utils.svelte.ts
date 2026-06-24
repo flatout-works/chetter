@@ -1,4 +1,9 @@
 import { getSettings } from "$lib/stores/settings.svelte";
+import { lexer, parser } from "marked";
+
+export function renderMarkdown(text: string): string {
+  return parser(lexer(text));
+}
 
 export function formatDuration(startedAt?: string | null, endedAt?: string | null): string {
   if (!startedAt) return "—";
