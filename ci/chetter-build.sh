@@ -38,7 +38,9 @@ if [ "${SKIP_MAIN}" != "true" ]; then
   fi
 
   echo "=== Building MCP image ==="
+  GIT_HASH=$(git rev-parse --short HEAD)
   docker build \
+    --build-arg GIT_HASH="$GIT_HASH" \
     -t "chetter-mcp:latest" .
 
   echo "=== Building runner image ==="
