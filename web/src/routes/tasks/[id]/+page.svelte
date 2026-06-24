@@ -446,12 +446,12 @@
       {#if task.agentSessionId}
         <Card size="md" shadow="sm" class="!p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session</p>
-          <div class="flex items-center gap-2">
-            <a href={resolve("/sessions/[id]", { id: task.agentSessionId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
-              {task.agentSessionId.slice(0, 20)}…
+          <div class="flex items-center gap-2 min-w-0">
+            <a href={resolve("/sessions/[id]", { id: task.agentSessionId })} class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline truncate">
+              {task.agentSessionId.slice(0, 11)}…
             </a>
             {#if canResumeTask}
-              <Badge color="green">Resumable</Badge>
+              <Badge color="green" class="shrink-0">Resumable</Badge>
             {/if}
           </div>
         </Card>
