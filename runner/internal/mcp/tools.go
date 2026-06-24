@@ -11,39 +11,6 @@ package mcp
 func ToolDefinitions() []map[string]any {
 	return []map[string]any{
 		{
-			"name":        "workspace_read_file",
-			"description": "Read a file from the workspace.",
-			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]string{"type": "string", "description": "Path relative to /workspace"},
-				},
-				"required": []string{"path"},
-			},
-		},
-		{
-			"name":        "workspace_write_file",
-			"description": "Write or overwrite a file in the workspace.",
-			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path":    map[string]string{"type": "string"},
-					"content": map[string]string{"type": "string"},
-				},
-				"required": []string{"path", "content"},
-			},
-		},
-		{
-			"name":        "workspace_list_directory",
-			"description": "List files and directories in the workspace.",
-			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path": map[string]string{"type": "string", "description": "Directory path relative to /workspace", "default": "."},
-				},
-			},
-		},
-		{
 			"name":        "chetter_create_issue",
 			"description": "Create a GitHub issue with a canonical Chetter signature and artifact tracking.",
 			"inputSchema": map[string]any{

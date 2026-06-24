@@ -18,7 +18,6 @@ import (
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
-	"github.com/flatout-works/chetter/runner/internal/tools"
 )
 
 const (
@@ -170,10 +169,6 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, workspaceDir, so
 	if err != nil {
 		return nil, err
 	}
-	ws := tools.NewWorkspace(workspaceDir)
-	mcpServer.RegisterTool("workspace_read_file", ws.ReadFile)
-	mcpServer.RegisterTool("workspace_write_file", ws.WriteFile)
-	mcpServer.RegisterTool("workspace_list_directory", ws.ListDirectory)
 	r.registerGitHubMCPTools(mcpServer, taskID)
 	go mcpServer.Serve(ctx)
 	slog.Info("MCP server started", "taskID", taskID, "socket", socketPath)
