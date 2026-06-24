@@ -37,7 +37,7 @@ type ToolDef struct {
 
 // NewServer creates a new MCP server listening on a random TCP port.
 func NewServer() (*Server, error) {
-	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	ln, err := net.Listen("tcp4", "0.0.0.0:0") // tcp4 to avoid IPv6 which gVisor can't reach
 	if err != nil {
 		return nil, fmt.Errorf("listen: %w", err)
 	}
