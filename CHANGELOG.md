@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-24
+
+### Added
+
+- Token consumption tracking: parsed from OpenCode SSE `message.part.updated` events, accumulated per step, forwarded to server via protobuf, stored in new `chetter_tasks` columns (`total_input_tokens`, `total_output_tokens`, `total_cache_read_tokens`, `total_cache_write_tokens`, `total_reasoning_tokens`, `cost_cents`). Web UI shows token breakdown on task detail, session totals, and per-run token column on trigger runs.
+- Claude serve-proxy binary (`claude-serve-proxy`): Go HTTP server wrapping the Claude CLI behind the same serve API used by OpenCode (`/health`, `/config`, `/session`, `/event`, `/abort`, `/export`). Supports session resume via `--resume`. Built and installed in the runner base image via a multi-stage proxy-builder.
+- Universal harness architecture: `ServeCommand(port)` and `DockerConfigPath(wsDir)` methods on the `Harness` interface replace hardcoded entrypoint/config path detection. `UNIVERSAL_HARNESS.md` documents the serve-proxy pattern for unifying all harnesses under HTTP serve mode with Docker/gVisor isolation.
+- Git hash injection: runner and MCP images now receive `GITHUB_SHA` and `CHETTER_RUNNER_IMAGE_DIGEST` at build time via `GIT_HASH` build arg from CI. Heartbeats report the correct commit hash instead of `unknown`.
+- Settings page with timezone, time format, and theme preferences stored in `localStorage`.
+- Runner fleet page redesign with runner-specific stat cards (Runners, Active, Draining, Capacity, Busy, Idle). Cards are clickable to filter the runner list. Each row shows uptime and last heartbeat.
+- Sidebar with SVG icons, mobile toggle, responsive wrapping, and configurable API proxy target.
+- Audit log toggle filters to hide noisy event types (`definitions_synced`, `trigger_run`, `session_resumed`).
+- Trigger type filter toggles (Cron / Issue / PR Review) on the triggers page.
+- "Agent says:" markdown prefix for done timeline entries.
+- Last heartbeat age display on running task detail pages.
+- Per-trigger-type environment variable reference table in `docs/MANUAL.md`.
+
+### Changed
+
+- MCP JSON-RPC server replaced with the official Go MCP SDK (`github.com/mark3labs/mcp-go`). Unix-socket connections handled via `server.Connect()` + `IOTransport`. Tool handlers adapted via `adaptHandler` bridge. `ToolDefinitions` return typed `ToolDef` structs with `Name`/`Description`/`InputSchema`.
+- Batch dispatch removed: `runBatchAgent`, `readBatchOutput`, `eventDetail`, and `SupportsServe` checks deleted. All harnesses now use serve mode or RPC mode.
+- Signature format expanded: `Task: task_xxx | Agent: <name> | Model: <model>` with an optional `[View task](CHETTER_WEB_URL)` deep link when `CHETTER_WEB_URL` is configured. `stripExistingChetterSignature` regex updated for both old and new formats.
+- Task deep link inlined into the `Task:` label in GitHub artifact signatures.
+- MCP URL now uses the runner's own IP on the Docker network directly, avoiding gVisor hostname resolution issues. Dev containers (gVisor and non-gVisor) placed on the same Docker network as the runner.
+- Trigger cards switched to vertical layout with expandable detail panel, always-visible action buttons.
+- Task status filter persisted across page navigation via shared writable store instead of component-local state.
+- Timeline shows all raw events with array-index tiebreaker for same-microsecond entries; 1200-char payload truncation removed.
+- Heartbeat events filtered from the merged timeline display.
+- Audit log event-type toggles flipped to ON = show (Syncs OFF by default, Triggers/Resumes ON).
+- Theme toggle now syncs with the Settings page store.
+- Session ID truncated to 11 chars in task detail view; git hash shown in both collapsed and expanded sidebar states.
+- Redundant workspace MCP tools (`workspace_read_file`, `workspace_write_file`, `workspace_list_directory`) removed from the runner bridge — OpenCode has built-in equivalents.
+- API proxy uses `^/api` regex instead of `/api` glob to correctly match `/api.v1.*` paths.
+- Runner runner IP added to proxy allowlist so MCP traffic passes through gVisor.
+
+### Fixed
+
+- MCP bridge server: tools capability declaration added to initialize response, and `notifications/initialized` handled silently. Without the capabilities declaration, MCP clients skipped `tools/list` discovery.
+- Abort OpenCode session before `docker stop` on task timeout via new `AbortSession` harness method. Prevents corrupted opencode.db state on resume. Claude and Pi get no-op stubs.
+- MCP tool permissions added to generated opencode config (`mcp__runner-bridge__*`) — deny-by-default was silently blocking agents from calling `chetter_create_issue`, `chetter_create_pr`, `chetter_issue_comment`, `chetter_pr_review`.
+- `--pure` flag removed from opencode serve arguments, restoring MCP bridge loading (`mcp-bridge`) and all 4 GitHub tools for agent discovery.
+- MCP URL: fall back to `dockerGatewayIP` when the runner is not on the gVisor network (`hostIP()` returns empty).
+- MCP listener forced to `tcp4` to avoid gVisor containers being unable to reach IPv6 listeners.
+- MCP port extraction uses `net.SplitHostPort` for IPv6-safe parsing of addresses like `[::]:39633`.
+- Git hash injected into MCP image via `--build-arg GIT_HASH` in the Dockerfile (was using plain `go build` without ldflags).
+- Session export captured on timeout for Pi/RPC and batch agents (previously only on successful completion).
+- Pi/RPC timeout abort reads session transcript with `get_messages` before tearing down.
+- Batch mode passes accumulated stdout as `sessionExport` on all terminal statuses, not only success.
+- Code review findings: `StartPackageDB` returns nil when TiDB unavailable (guarded `TestMain`), periodic `cleanupHeartbeatSeen` prevents unbounded memory growth, request context threaded through auth interceptor instead of `context.Background()`, `parseTime` errors logged at debug level, unused imports and dead guard lines removed from `streaming.go`.
+- Duplicate timeline keys fixed by using `entry.index` in `progressKey`.
+- Progress entry timestamps use `RFC3339Nano` to avoid duplicate keys.
+- Impossible nil check (`def.InputSchema` is `map[string]any`, never nil) removed — fixes `SA4023` lint.
+- MCP command format in opencode config changed to array format (`["mcp-bridge", "/socket"]`) — the old string-with-`args` format was silently stripped by OpenCode.
+- Settings theme sync: `toggleTheme()` now writes `chetter-settings` so the Settings page stays in sync with the sidebar toggle.
+- Audit log toggles and trigger page layout: closed unclosed HTML, fixed per-trigger enable toggle to match gray/small flowbite style.
+- Session ID sidebar: git hash only shown in expanded state (collapsed sidebar is 64px with no room).
+- Task view: session ID truncated with `truncate+shrink-0` so the Resumable badge fits.
+
+### Documentation
+
+- `docs/UNIVERSAL_HARNESS.md` — describes the serve-proxy pattern for unifying all harnesses under HTTP serve mode with Docker/gVisor isolation.
+- `docs/HARNESSES.md` — updated for new `ServeCommand`/`DockerConfigPath` interface, batch mode references removed, Claude section updated to reflect serve-proxy execution model.
+- `docs/MANUAL.md` — per-trigger-type environment variable reference table added.
+
 ## 2026-06-23
 
 ### Added
