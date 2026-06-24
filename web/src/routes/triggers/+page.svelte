@@ -9,7 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Input, Listgroup, ListgroupItem, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
@@ -285,16 +285,15 @@
       {#each visibleTriggers as trigger (trigger.id)}
         <Card shadow="sm" class="w-full max-w-none !p-0 overflow-hidden">
           <div
-            class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+            class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer select-none"
             onclick={() => toggleExpand(trigger.id)}
             role="button"
             tabindex="0"
             onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") toggleExpand(trigger.id); }}
           >
-            <div class="flex items-center gap-4 min-w-0">
-              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">{trigger.name}</span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{trigger.name}</span>
               <StatusBadge status={trigger.triggerType} />
-              <span class="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:block">{triggerTarget(trigger)}</span>
               {#if isGitManaged(trigger)}
                 <Badge color="gray">git-managed</Badge>
               {/if}
@@ -306,29 +305,25 @@
                 color="gray"
                 size="small"
               />
-              <Button color="blue" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); runNow(trigger.name); }}>Run</Button>
-              <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>
               <span class="text-gray-400 transition-transform {expandedId === trigger.id ? 'rotate-180' : ''}">▼</span>
             </div>
           </div>
 
           {#if expandedId === trigger.id}
             <div class="px-4 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 space-y-3">
-              <Listgroup class="w-full sm:max-w-xl">
-                <ListgroupItem class="flex items-center justify-between gap-4">
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
-                  <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
-                </ListgroupItem>
-                <ListgroupItem class="flex items-center justify-between gap-4">
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Type</span>
-                  <span class="text-sm text-gray-900 dark:text-white">{trigger.triggerType}</span>
-                </ListgroupItem>
-                <ListgroupItem class="flex items-center justify-between gap-4">
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Target</span>
-                  <span class="text-right text-sm font-mono text-gray-900 dark:text-white">{triggerTarget(trigger)}</span>
-                </ListgroupItem>
-              </Listgroup>
               <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
+                  <p class="mt-0.5"><StatusBadge status={trigger.enabled ? "enabled" : "disabled"} /></p>
+                </div>
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Type</span>
+                  <p class="text-gray-900 dark:text-white">{trigger.triggerType}</p>
+                </div>
+                <div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">Target</span>
+                  <p class="text-gray-900 dark:text-white font-mono">{triggerTarget(trigger)}</p>
+                </div>
                 {#if trigger.triggerConfig}
                   {@const parsed = (() => { try { return JSON.parse(trigger.triggerConfig); } catch { return {}; } })()}
                   {#if parsed.repo}
@@ -454,67 +449,69 @@
                   <pre class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-wrap bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">{trigger.prompt}</pre>
                 </div>
               {/if}
-
-              <div class="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <Button color={running(trigger) ? "blue" : "alternative"} size="xs" onclick={() => loadRuns(trigger.name)}>
-                  {running(trigger) ? "Hide Runs" : "Show Runs"}
-                </Button>
-                <Button color="blue" size="xs" onclick={() => runNow(trigger.name)}>Run Now</Button>
-                <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
-              </div>
-
-              {#if running(trigger)}
-                <Card shadow="sm" class="mt-3 w-full max-w-none !p-0 overflow-hidden">
-                  <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Recent Runs</h3>
-                  </div>
-                  {#if loadingRuns}
-                    <div class="flex items-center gap-2 px-3 py-6 text-gray-500 dark:text-gray-400">
-                      <Spinner size="4" /> Loading runs…
-                    </div>
-                  {:else if triggerRuns.length === 0}
-                    <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
-                  {:else}
-                    <div class="chetter-table overflow-x-auto">
-                    <Table hoverable={true} shadow={false}>
-                      <TableHead>
-                        <TableHeadCell>Run ID</TableHeadCell>
-                        <TableHeadCell>Task</TableHeadCell>
-                        <TableHeadCell>Status</TableHeadCell>
-                        <TableHeadCell>Triggered</TableHeadCell>
-                        <TableHeadCell>Created</TableHeadCell>
-                      </TableHead>
-                      <TableBody>
-                        {#each pagedRuns as run (run.id)}
-                          <TableBodyRow>
-                            <TableBodyCell class="font-mono text-xs">{run.id.slice(0, 16)}…</TableBodyCell>
-                            <TableBodyCell>
-                              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                                {run.taskId.slice(0, 16)}…
-                              </a>
-                            </TableBodyCell>
-                            <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
-                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.triggeredAt)}</TableBodyCell>
-                            <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
-                          </TableBodyRow>
-                        {/each}
-                      </TableBody>
-                    </Table>
-                    </div>
-                    <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
-                      <span>{triggerRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, triggerRuns.length)} of {triggerRuns.length}</span>
-                      <PaginationNav
-                        currentPage={runsPage + 1}
-                        totalPages={totalRunsPages}
-                        visiblePages={5}
-                        onPageChange={(nextPage) => { runsPage = nextPage - 1; }}
-                      />
-                    </div>
-                  {/if}
-                </Card>
-              {/if}
             </div>
           {/if}
+
+          <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
+            <div class="flex items-center gap-2">
+              <Button color={running(trigger) ? "blue" : "alternative"} size="xs" onclick={() => loadRuns(trigger.name)}>
+                {running(trigger) ? "Hide Runs" : "Show Runs"}
+              </Button>
+              <Button color="blue" size="xs" onclick={() => runNow(trigger.name)}>Run Now</Button>
+              <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
+            </div>
+
+            {#if running(trigger)}
+              <Card shadow="sm" class="w-full max-w-none !p-0 overflow-hidden">
+                <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Recent Runs</h3>
+                </div>
+                {#if loadingRuns}
+                  <div class="flex items-center gap-2 px-3 py-6 text-gray-500 dark:text-gray-400">
+                    <Spinner size="4" /> Loading runs…
+                  </div>
+                {:else if triggerRuns.length === 0}
+                  <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
+                {:else}
+                  <div class="chetter-table overflow-x-auto">
+                  <Table hoverable={true} shadow={false}>
+                    <TableHead>
+                      <TableHeadCell>Run ID</TableHeadCell>
+                      <TableHeadCell>Task</TableHeadCell>
+                      <TableHeadCell>Status</TableHeadCell>
+                      <TableHeadCell>Triggered</TableHeadCell>
+                      <TableHeadCell>Created</TableHeadCell>
+                    </TableHead>
+                    <TableBody>
+                      {#each pagedRuns as run (run.id)}
+                        <TableBodyRow>
+                          <TableBodyCell class="font-mono text-xs">{run.id.slice(0, 16)}…</TableBodyCell>
+                          <TableBodyCell>
+                            <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                              {run.taskId.slice(0, 16)}…
+                            </a>
+                          </TableBodyCell>
+                          <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
+                          <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.triggeredAt)}</TableBodyCell>
+                          <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
+                        </TableBodyRow>
+                      {/each}
+                    </TableBody>
+                  </Table>
+                  </div>
+                  <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+                    <span>{triggerRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, triggerRuns.length)} of {triggerRuns.length}</span>
+                    <PaginationNav
+                      currentPage={runsPage + 1}
+                      totalPages={totalRunsPages}
+                      visiblePages={5}
+                      onPageChange={(nextPage) => { runsPage = nextPage - 1; }}
+                    />
+                  </div>
+                {/if}
+              </Card>
+            {/if}
+          </div>
         </Card>
       {:else}
         <Card shadow="sm" class="w-full max-w-none !p-8 text-center">
