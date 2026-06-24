@@ -7,7 +7,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Button, Input, PaginationNav, Select, Spinner, Toggle, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
@@ -19,6 +19,16 @@
   let offset = $state(0);
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
+
+  let hideDefinitionsSynced = $state(true);
+  let hideTriggerRun = $state(false);
+  let hideSessionResumed = $state(false);
+
+  const hiddenTypes = $derived(new Set([
+    ...(hideDefinitionsSynced ? ["definitions_synced"] : []),
+    ...(hideTriggerRun ? ["trigger_run"] : []),
+    ...(hideSessionResumed ? ["session_resumed"] : []),
+  ]));
 
   let sortedEvents = $derived.by(() => {
     return [...events].sort((a, b) => {
@@ -55,7 +65,9 @@
         eventType: eventTypeFilter || undefined, sourceType: sourceTypeFilter || undefined,
         sinceHours, limit, offset,
       });
-      events = resp.events ?? [];
+      let filtered = resp.events ?? [];
+      filtered = filtered.filter((e) => !hiddenTypes.has(e.eventType));
+      events = filtered;
     } catch (e) { console.error(e); }
     finally { loading = false; }
   }
@@ -93,6 +105,11 @@
       </Select>
       <Input type="number" bind:value={limit} placeholder="Limit" class="w-20" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
+      <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
+        <Toggle bind:checked={hideDefinitionsSynced} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
+        <Toggle bind:checked={hideTriggerRun} onchange={() => { offset = 0; load(); }} color="gray" size="small">Triggers</Toggle>
+        <Toggle bind:checked={hideSessionResumed} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resumes</Toggle>
+      </div>
     </div>
   </div>
 
