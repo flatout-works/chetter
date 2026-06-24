@@ -186,6 +186,17 @@ func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 		"/tmp/*":  "allow",
 		"/tmp/**": "allow",
 	}
+
+	if includeRunnerMCP {
+		perms["mcp__runner-bridge__workspace_read_file"] = "allow"
+		perms["mcp__runner-bridge__workspace_write_file"] = "allow"
+		perms["mcp__runner-bridge__workspace_list_directory"] = "allow"
+		perms["mcp__runner-bridge__chetter_create_issue"] = "allow"
+		perms["mcp__runner-bridge__chetter_issue_comment"] = "allow"
+		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
+		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
+	}
+
 	cfg["permission"] = perms
 
 	out, err := json.MarshalIndent(cfg, "", "  ")
