@@ -14,6 +14,7 @@ $(STATICCHECK):
 local:
 	go build -o runner ./cmd/runner
 	go build -o mcp-bridge ./harness/mcp-bridge
+	go build -o claude-serve-proxy ./cmd/claude-serve-proxy
 
 build:
 	docker build -f $(CURDIR)/Dockerfile.runner -t $(IMAGE) $(ROOT)

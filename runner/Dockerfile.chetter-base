@@ -64,7 +64,23 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${
     && chmod +x /usr/local/bin/docker
 
 # --------------------------------------------------------------------------
-# Stage 3: Final base image — all runtime packages + tooling
+# Stage 3: Build claude-serve-proxy (Go HTTP wrapper for Claude CLI headless mode)
+# --------------------------------------------------------------------------
+FROM golang:1.26-bookworm AS proxy-builder
+
+WORKDIR /src
+COPY go.mod go.sum* ./
+COPY gen/ ./gen/
+COPY runner/go.mod runner/go.sum* ./runner/
+WORKDIR /src/runner
+RUN go mod download 2>/dev/null || true
+WORKDIR /src
+COPY runner/ ./runner/
+WORKDIR /src/runner
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o claude-serve-proxy ./cmd/claude-serve-proxy
+
+# --------------------------------------------------------------------------
+# Stage 4: Final base image — all runtime packages + tooling
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
@@ -115,6 +131,9 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 # Claude Code (via npm)
 RUN npm install -g @anthropic-ai/claude-code \
     && claude --version
+
+# claude-serve-proxy — Go HTTP wrapper for Claude CLI headless mode
+COPY --from=proxy-builder /src/runner/claude-serve-proxy /usr/local/bin/claude-serve-proxy
 
 # Pi coding agent (via npm) + MCP adapter extension.
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
