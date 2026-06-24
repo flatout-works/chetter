@@ -654,7 +654,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 				r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
 			}
 			exec.Command("docker", "stop", containerName).Run()
-			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+			dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
+			os.MkdirAll(dst, 0755)
+			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath)
@@ -673,7 +675,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
 		}
 		exec.Command("docker", "stop", containerName).Run()
-		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+		dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
+		os.MkdirAll(dst, 0755)
+		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath)
@@ -833,7 +837,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	var sessionExport string
 	if sid != "" {
 		exec.Command("docker", "stop", containerName).Run()
-		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/opencode.db", filepath.Join(session.WorkspaceDir, ".local", "share", "opencode", "opencode.db")).Run()
+		dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
+		os.MkdirAll(dst, 0755)
+		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	workspacePath := ""
@@ -1103,8 +1109,20 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		line, err := readRPCLine(ctx, reader)
 		if err != nil {
 			if ctx.Err() != nil {
+				var sessionExport string
+				msgCtx, msgCancel := context.WithTimeout(context.Background(), 10*time.Second)
+				messagesCmd := map[string]any{"id": "messages", "type": "get_messages"}
+				if err := writeRPCCommand(stdin, messagesCmd); err == nil {
+					if resp, err := r.waitForRPCResponse(msgCtx, req, reader, stdin, "messages", state); err == nil {
+						sessionExport = renderRPCMessages(resp)
+						if err := writeRPCSessionExport(session.WorkspaceDir, sessionExport); err != nil {
+							slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
+						}
+					}
+				}
+				msgCancel()
 				r.abortRPC(ctx, req, stdin, reader, state)
-				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, "")
+				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, sessionExport)
 				return
 			}
 			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "")
@@ -1437,29 +1455,28 @@ func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, r
 
 	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
-	var summary string
 	readCtx, readCancel := context.WithCancel(ctx)
 	defer readCancel()
-	if out, err := readBatchOutput(readCtx, stdout, req.TaskID, func(detail string) {
+	out, err := readBatchOutput(readCtx, stdout, req.TaskID, func(detail string) {
 		r.publishEvent(req.TaskID, fmt.Sprintf("%s: %s", name, detail))
-	}); err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s: %v", name, err), nil)
+	})
+	summary := out
+	if err != nil {
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, "", summary)
 		return
-	} else {
-		summary = out
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("%s timed out", name), nil)
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, "", summary)
 			return
 		}
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil)
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil, "", summary)
 		return
 	}
 
 	slog.Info("batch agent completed", "taskID", req.TaskID)
-	r.publishStatusForRequest(req, "done", truncateSummary(summary), nil)
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, "", summary)
 }
 
 func (r *Runner) publishEvent(taskID, detail string) {
