@@ -149,8 +149,7 @@ func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 		}
 		mcpServers["runner-bridge"] = map[string]any{
 			"type":    "local",
-			"command": mcpBridgePath,
-			"args":    []string{socketPath},
+			"command": append([]string{mcpBridgePath}, socketPath),
 			"enabled": true,
 		}
 	}

@@ -116,7 +116,9 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 		return nil
 
 	case "tools/list":
-		return s.resultResp(req.ID, map[string]any{"tools": ToolDefinitions()})
+		tools := ToolDefinitions()
+		slog.Info("MCP tools/list called", "tool_count", len(tools))
+		return s.resultResp(req.ID, map[string]any{"tools": tools})
 
 	case "tools/call":
 		name, ok := req.Params["name"].(string)

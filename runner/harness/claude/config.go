@@ -76,8 +76,7 @@ func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPT
 	if mcpBridgePath != "" {
 		mcpServers["runner-bridge"] = map[string]any{
 			"type":    "local",
-			"command": mcpBridgePath,
-			"args":    []string{socketPath},
+			"command": []string{mcpBridgePath, socketPath},
 			"enabled": true,
 		}
 	}
