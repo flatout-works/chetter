@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
+	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -451,6 +452,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 	slog.Info("harness serve ready", "taskID", req.TaskID, "url", baseURL)
+	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -628,6 +630,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
+	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -840,6 +843,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)
+	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
