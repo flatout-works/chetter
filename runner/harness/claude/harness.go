@@ -60,6 +60,10 @@ func (cc *ClaudeCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret
 	return "", nil
 }
 
+func (cc *ClaudeCode) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	return nil
+}
+
 func (cc *ClaudeCode) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
 	return "", nil
 }

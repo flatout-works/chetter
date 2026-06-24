@@ -223,3 +223,19 @@ func opencodeServeArgs(port int) []string {
 func opencodeServeArgsResume(port int) []string {
 	return []string{"serve", "--port", strconv.Itoa(port)}
 }
+
+func abortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	abortCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := doPost(abortCtx, baseURL+"/session/"+sessionID+"/abort", "application/json", secret, strings.NewReader("{}"))
+	if err != nil {
+		return fmt.Errorf("POST /session/%s/abort: %w", sessionID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return fmt.Errorf("POST /session/%s/abort: status %d: %s", sessionID, resp.StatusCode, string(body))
+	}
+	slog.Info("session aborted", "sessionID", sessionID)
+	return nil
+}

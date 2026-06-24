@@ -59,6 +59,10 @@ func (oc *OpenCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret s
 	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
 }
 
+func (oc *OpenCode) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	return abortSession(ctx, baseURL, sessionID, secret)
+}
+
 func (oc *OpenCode) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
 	return exportSession(ctx, baseURL, sessionID, secret)
 }

@@ -59,6 +59,10 @@ func (p *Pi) SendPrompt(ctx context.Context, baseURL, sessionID, secret string, 
 	return "", nil
 }
 
+func (p *Pi) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	return nil
+}
+
 func (p *Pi) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
 	return "", nil
 }

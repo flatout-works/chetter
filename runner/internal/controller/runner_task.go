@@ -650,6 +650,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			slog.Info("preserving workspace for recoverable timed-out session", "taskID", req.TaskID, "workspace", workspacePath)
 		}
 		if sid != "" {
+			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
+			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
+				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
+			}
 			if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
 				r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
 			}
@@ -836,6 +840,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if sid != "" {
+		slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
+		if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
+			slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
+		}
 		exec.Command("docker", "stop", containerName).Run()
 		dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
 		os.MkdirAll(dst, 0755)
