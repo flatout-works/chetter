@@ -28,7 +28,7 @@ cp .env.example .env
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 ```
 
-The MCP server is at `http://localhost:18088`, the web UI at `http://localhost:18089`.
+The MCP server is at `http://localhost:18088`, the web UI at `http://localhost:18090`.
 See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and operations.
 
 ## Connect Your AI Client

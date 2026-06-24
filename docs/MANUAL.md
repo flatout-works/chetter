@@ -468,7 +468,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
 COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
-COPY tools/skills/ /opt/opencode/.agents/skills/
 COPY .opencode/agent/ /opt/opencode/.config/opencode/agent/
 RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
     && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent
@@ -517,7 +516,7 @@ Today Chetter bakes these into `chetter-runner-base` and derived images:
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
 | Agent harnesses | OpenCode, Claude Code, Pi, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
-| Current fallback agents and skills | `.opencode/agent/` and `tools/skills/` are copied into runner images today. These are intended to become fallback defaults once Git-backed runtime injection is complete. |
+| Current fallback agents | `.opencode/agent/` is copied into runner images today. These are intended to become fallback defaults once Git-backed runtime injection is complete. |
 
 Image rebuilds are still required for toolchain and harness changes. They should not be required for normal prompt, skill, agent, trigger, or model catalog updates once those definitions are managed through `DEFINITIONS_REPO`.
 

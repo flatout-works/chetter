@@ -196,7 +196,7 @@ Severity filters: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN`.
 
 ## Audit And Observability
 
-Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, and GitHub artifact creation.
+Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync.
 
 Tools:
 
