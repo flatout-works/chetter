@@ -47,7 +47,7 @@ func main() {
 		cancel()
 	}()
 
-	slog.Info("runner starting")
+	slog.Info("runner starting", "build", _gitHash)
 	if err := runner.Start(ctx); err != nil {
 		slog.Error("runner start", "error", err)
 		os.Exit(1)
