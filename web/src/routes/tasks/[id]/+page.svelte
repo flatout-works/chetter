@@ -44,16 +44,30 @@
     else { expandedProgress.add(key); }
   }
 
-  // Events sorted chronologically for matching raw events to progress entries.
+  // Events sorted chronologically, with index as tiebreaker for same-second timestamps.
   let eventsChrono = $derived(
-    [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    [...events].map((e, i) => ({ e, i }))
+               .sort((a, b) => a.e.createdAt.localeCompare(b.e.createdAt) || a.i - b.i)
+               .map(x => x.e)
   );
 
-  // Build merged timeline: progress entries with their matching raw events
+  // Build merged timeline: progress entries with their matching raw events.
+  // Unmatched raw events become standalone entries.
   let mergedTimeline = $derived.by(() => {
     if (progress.length === 0 && events.length === 0) return [];
+
+    const matchedEventIds = new Set<string>();
+
     // Start with progress entries
-    const result = progress.map((entry, i) => ({
+    const result: Array<{
+      type: "progress";
+      time: string;
+      status: string;
+      summary: string;
+      error: string;
+      rawEvents: typeof events;
+      index: number;
+    }> = progress.map((entry, i) => ({
       type: "progress" as const,
       time: entry.time,
       status: entry.status,
@@ -63,9 +77,10 @@
       index: i,
     }));
 
-    // If there are no progress entries, promote raw events to standalone entries
+    // If there are no progress entries, promote all raw events to standalone entries
     if (result.length === 0) {
-      for (const ev of eventsChrono) {
+      for (let i = 0; i < eventsChrono.length; i++) {
+        const ev = eventsChrono[i];
         result.push({
           type: "progress" as const,
           time: ev.createdAt,
@@ -73,20 +88,14 @@
           summary: ev.eventType || ev.status,
           error: "",
           rawEvents: [ev],
-          index: 0,
+          index: i,
         });
       }
-      return result.sort((a, b) => b.time.localeCompare(a.time));
+      return result.sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
     }
 
-    // Add any raw events that don't correspond to existing progress entries
+    // Attach raw events to the closest progress entry within 10 seconds
     for (const ev of eventsChrono) {
-      // Find the nearest progress entry by time proximity
-      if (result.length === 0) {
-        // No progress entries yet, skip raw-only events
-        continue;
-      }
-      // Find which progress entry this event belongs to (by time window)
       let closest = 0;
       let closestDiff = Infinity;
       for (let i = 0; i < result.length; i++) {
@@ -96,12 +105,31 @@
           closest = i;
         }
       }
-      // Only attach if within 10 seconds of the progress entry
       if (closestDiff < 10000) {
         result[closest].rawEvents.push(ev);
+        matchedEventIds.add(ev.id);
       }
     }
-    return result.sort((a, b) => b.time.localeCompare(a.time));
+
+    // Any unmatched events become standalone entries at the end
+    if (matchedEventIds.size < eventsChrono.length) {
+      const unmatched = eventsChrono
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => !matchedEventIds.has(e.id));
+      for (const { e: ev, i } of unmatched) {
+        result.push({
+          type: "progress" as const,
+          time: ev.createdAt,
+          status: ev.status,
+          summary: `[raw] ${ev.eventType || ev.status}`,
+          error: "",
+          rawEvents: [ev],
+          index: 100000 + i,
+        });
+      }
+    }
+
+    return result.sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
   });
 
   let duration = $derived(now && formatDuration(task?.startedAt, task?.endedAt));
@@ -525,12 +553,14 @@
                               <span>{formatTimeShort(ev.createdAt)}</span>
                               <span>{ev.eventType || ev.status}</span>
                             </div>
-                            <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-gray-500 dark:text-gray-400">{ev.payload?.slice(0, 1200) || "—"}</pre>
+                            <pre class="max-h-96 overflow-auto whitespace-pre-wrap text-gray-600 dark:text-gray-400">{ev.payload || "—"}</pre>
                           </div>
                         {/each}
                       </div>
+                    {:else if entry.error}
+                      <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
                     {:else}
-                      <p class="text-xs text-gray-500 dark:text-gray-400">No raw event payload was matched to this progress item.</p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">No raw events for this entry.</p>
                     {/if}
                   </div>
                 {/if}
