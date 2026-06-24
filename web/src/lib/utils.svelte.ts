@@ -1,3 +1,5 @@
+import { getSettings } from "$lib/stores/settings.svelte";
+
 export function formatDuration(startedAt?: string | null, endedAt?: string | null): string {
   if (!startedAt) return "—";
   const start = new Date(startedAt).getTime();
@@ -29,7 +31,15 @@ export function formatAge(ts: string): string {
 export function formatTime(ts: string): string {
   if (!ts) return "—";
   try {
-    return new Date(ts).toLocaleString();
+    const s = getSettings();
+    const opts: Intl.DateTimeFormatOptions = {
+      dateStyle: "medium",
+      timeStyle: "medium",
+    };
+    if (s.timezone) opts.timeZone = s.timezone;
+    if (s.timeFormat === "12h") opts.hour12 = true;
+    else if (s.timeFormat === "24h") opts.hour12 = false;
+    return new Date(ts).toLocaleString(undefined, opts);
   } catch {
     return ts;
   }
@@ -38,8 +48,17 @@ export function formatTime(ts: string): string {
 export function formatTimeShort(ts: string): string {
   if (!ts) return "—";
   try {
+    const s = getSettings();
+    const opts: Intl.DateTimeFormatOptions = {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    };
+    if (s.timezone) opts.timeZone = s.timezone;
+    if (s.timeFormat === "12h") opts.hour12 = true;
+    else if (s.timeFormat === "24h") opts.hour12 = false;
     const d = new Date(ts);
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return d.toLocaleTimeString(undefined, opts);
   } catch {
     return ts;
   }
