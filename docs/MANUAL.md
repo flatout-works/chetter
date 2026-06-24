@@ -225,6 +225,27 @@ For a resumable session:
 | `chetter_pr_review` | Create a GitHub PR review with Chetter footer. |
 | `chetter_list_task_artifacts` | Admin-only artifact browser/filter. |
 
+### Runner Bridge MCP Tools (Agent-Side)
+
+These tools run inside the runner, exposed over a Unix socket to the agent harness
+via `mcp-bridge`. They give agents controlled access to the workspace filesystem and
+GitHub write operations with automatic audit logging and Chetter signatures.
+
+| Tool | Purpose |
+|---|---|
+| `workspace_read_file` | Read a file from `/workspace` (paths relative to workspace root). |
+| `workspace_write_file` | Write or overwrite a file in `/workspace`. |
+| `workspace_list_directory` | List files and directories relative to `/workspace`. |
+| `chetter_create_issue` | Create a GitHub issue with a canonical Chetter signature and artifact/audit records. `task_id` is auto-injected by the runner. |
+| `chetter_issue_comment` | Comment on a GitHub issue or PR with Chetter signature and artifact/audit records. |
+| `chetter_create_pr` | Create a GitHub pull request with Chetter signature and artifact/audit records. |
+| `chetter_pr_review` | Submit a review on a GitHub PR with Chetter signature and artifact/audit records. |
+
+Agents must use these tools rather than direct `gh` or `curl` commands for GitHub
+writes so that every artifact receives a task-linked audit record and a canonical
+Chetter footer. The `gh` wrapper blocks write commands and guides agents to the
+MCP tools. Read-only `gh` commands remain available for inspection.
+
 ### Admin, Definitions, And Audit
 
 | Tool | Purpose |
@@ -513,7 +534,7 @@ Today Chetter bakes these into `chetter-runner-base` and derived images:
 | Category | Examples |
 |---|---|
 | Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
-| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`); the real binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` to bypass for debugging. |
+| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`) and guides agents to the MCP tools. The real binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` for manual debugging only (not advertised to agents). |
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
 | Agent harnesses | OpenCode, Claude Code, Pi, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
@@ -535,6 +556,26 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
 | Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
 | Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
+
+### Trigger-Type Environment Variables
+
+Webhook-triggered tasks receive these event-specific variables in addition to the standard task identity and runner-owned variables above. References below use shell syntax (`$VAR`) but the agent harness resolves them natively:
+
+| Variable | Trigger type(s) | Description |
+|---|---|---|
+| `GITHUB_REPO` | `issue`, `pr_review` | Full repository name (e.g. `owner/repo`) |
+| `GITHUB_TOKEN` | `issue`, `pr_review` | GitHub App installation token with read/write access |
+| `ISSUE_NUMBER` | `issue` | Issue number |
+| `ISSUE_TITLE` | `issue` | Issue title text |
+| `ISSUE_URL` | `issue` | Issue HTML URL |
+| `ISSUE_BODY` | `issue` | Issue body text |
+| `ISSUE_ACTION` | `issue` | Webhook action (e.g. `opened`, `labeled`) |
+| `COMMENT_BODY` | `issue` | Comment body text (only for `comment` events) |
+| `COMMENT_USER` | `issue` | Comment author login (only for `comment` events) |
+| `PR_NUMBER` | `pr_review` | Pull request number |
+| `COMMENT_AUTHOR` | `pr_review` | User who requested the review via `/chetter-review` |
+
+**Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
 `gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
 
