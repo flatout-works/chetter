@@ -35,6 +35,10 @@ func (oc *OpenCode) Env(wsDir string, secret string, _ task.TaskRequest) map[str
 	}
 }
 
+func (oc *OpenCode) ServeCommand(port int) []string {
+	return opencodeServeCommand(port)
+}
+
 func (oc *OpenCode) ServeArgs(port int) []string {
 	return opencodeServeArgs(port)
 }
@@ -75,20 +79,14 @@ func (oc *OpenCode) PipeOutput(taskID, stream string, reader io.Reader) {
 	pipeOutput(taskID, stream, reader)
 }
 
-func (oc *OpenCode) RunBatchCommand(req task.TaskRequest) []string {
-	return resolveCommand(req)
-}
-
-func (oc *OpenCode) SummarizeBatchOutput(raw string) string {
-	return summarizeJSONL(raw)
-}
-
-func (oc *OpenCode) SupportsServe() bool { return true }
-
 func (oc *OpenCode) SupportsRpc() bool { return false }
 
 func (oc *OpenCode) RpcCommand(req task.TaskRequest) []string { return nil }
 
 func (oc *OpenCode) ResolvedModelID(req task.TaskRequest) string {
 	return resolvedChetterModelID(req)
+}
+
+func (oc *OpenCode) DockerConfigPath(wsDir string) string {
+	return wsDir + "/.opencode.json"
 }

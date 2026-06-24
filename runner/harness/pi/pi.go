@@ -16,8 +16,6 @@ func New() *Pi {
 
 func (p *Pi) Name() string { return "pi" }
 
-func (p *Pi) SupportsServe() bool { return false }
-
 func (p *Pi) SupportsRpc() bool { return true }
 
 func (p *Pi) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
@@ -42,6 +40,7 @@ func (p *Pi) Env(wsDir string, secret string, _ task.TaskRequest) map[string]str
 	}
 }
 
+func (p *Pi) ServeCommand(port int) []string    { return nil }
 func (p *Pi) ServeArgs(port int) []string       { return nil }
 func (p *Pi) ServeArgsResume(port int) []string { return nil }
 
@@ -78,10 +77,10 @@ func (p *Pi) PipeOutput(taskID, stream string, reader io.Reader) {
 	pipeOutput(taskID, stream, reader)
 }
 
-func (p *Pi) RunBatchCommand(req task.TaskRequest) []string { return nil }
-
-func (p *Pi) SummarizeBatchOutput(raw string) string { return "" }
-
 func (p *Pi) RpcCommand(req task.TaskRequest) []string { return buildRPCCommand(req) }
 
 func (p *Pi) ResolvedModelID(req task.TaskRequest) string { return resolvedModelID(req) }
+
+func (p *Pi) DockerConfigPath(wsDir string) string {
+	return wsDir + "/.mcp.json"
+}

@@ -16,10 +16,6 @@ func New() *ClaudeCode {
 
 func (cc *ClaudeCode) Name() string { return "claude" }
 
-func (cc *ClaudeCode) SupportsServe() bool { return false }
-
-func (cc *ClaudeCode) SupportsRpc() bool { return false }
-
 func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
 	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, isLocal)
 }
@@ -36,59 +32,60 @@ func (cc *ClaudeCode) Env(wsDir string, secret string, req task.TaskRequest) map
 	return claudeEnv(wsDir, req)
 }
 
-func (cc *ClaudeCode) ServeArgs(port int) []string {
-	return nil
+func (cc *ClaudeCode) ServeCommand(port int) []string {
+	return claudeServeCommand(port)
 }
 
 func (cc *ClaudeCode) ServeArgsResume(port int) []string {
-	return nil
+	return claudeServeArgsResume(port)
 }
 
 func (cc *ClaudeCode) ServerPassword() string {
-	return ""
+	return generatePassword()
 }
 
 func (cc *ClaudeCode) WaitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
-	return nil
+	return waitForReady(ctx, baseURL, secret, timeout)
 }
 
 func (cc *ClaudeCode) CreateSession(ctx context.Context, baseURL, secret string) (string, error) {
-	return "", nil
+	return createSession(ctx, baseURL, secret)
 }
 
 func (cc *ClaudeCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
-	return "", nil
+	return sendPrompt(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
 }
 
 func (cc *ClaudeCode) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
-	return nil
+	return abortSession(ctx, baseURL, sessionID, secret)
 }
 
 func (cc *ClaudeCode) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	return "", nil
+	return exportSession(ctx, baseURL, sessionID, secret)
 }
 
 func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
-	return "", nil
+	return readSessionExport(wsDir, sessionID)
 }
 
 func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+	watchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn)
 }
 
 func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
 	pipeOutput(taskID, stream, reader)
 }
 
-func (cc *ClaudeCode) RunBatchCommand(req task.TaskRequest) []string {
-	return buildClaudeCommand(req)
+func (cc *ClaudeCode) ResolvedModelID(req task.TaskRequest) string {
+	return resolvedClaudeModelID(req)
 }
+
+func (cc *ClaudeCode) SupportsRpc() bool { return false }
 
 func (cc *ClaudeCode) RpcCommand(req task.TaskRequest) []string { return nil }
 
-func (cc *ClaudeCode) SummarizeBatchOutput(raw string) string {
-	return summarizeStreamJSON(raw)
-}
+func (cc *ClaudeCode) ServeArgs(port int) []string { return claudeServeCommand(port)[1:] }
 
-func (cc *ClaudeCode) ResolvedModelID(req task.TaskRequest) string {
-	return resolvedClaudeModelID(req)
+func (cc *ClaudeCode) DockerConfigPath(wsDir string) string {
+	return wsDir + "/.claude/mcp.json"
 }

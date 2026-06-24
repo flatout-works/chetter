@@ -216,6 +216,10 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 	return strings.Join(lines, "\n"), nil
 }
 
+func opencodeServeCommand(port int) []string {
+	return []string{"opencode", "serve", "--port", strconv.Itoa(port)}
+}
+
 func opencodeServeArgs(port int) []string {
 	return []string{"serve", "--port", strconv.Itoa(port)}
 }
