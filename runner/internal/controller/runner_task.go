@@ -69,10 +69,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			return
 		}
 		defer mcpServer.Close()
-	mcpURL := fmt.Sprintf("http://127.0.0.1:%s/mcp", func() string {
-		_, port, _ := net.SplitHostPort(mcpServer.Addr())
-		return port
-	}())
+		mcpURL := runnerMCPURL(r, mcpServer)
 		r.runDockerAgentResume(ctx, session, req, mcpURL, h)
 		return
 	}
@@ -133,10 +130,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		return
 	}
 	defer mcpServer.Close()
-	mcpURL := fmt.Sprintf("http://127.0.0.1:%s/mcp", func() string {
-		_, port, _ := net.SplitHostPort(mcpServer.Addr())
-		return port
-	}())
+	mcpURL := runnerMCPURL(r, mcpServer)
 
 	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
@@ -181,6 +175,19 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID string) (*mcp.Ser
 	return mcpServer, nil
 }
 
+func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
+	_, port, _ := net.SplitHostPort(mcpServer.Addr())
+	if r.executionMode() == "local" {
+		return "http://127.0.0.1:" + port + "/mcp"
+	}
+	// For Docker: use the runner's own IP on the Docker network.
+	// gVisor containers route through HTTP_PROXY (running on the runner)
+	// which can reach this IP. Non-gVisor containers connect directly
+	// via the shared Docker network.
+	runnerIP := hostIP(runcNetwork())
+	return "http://" + runnerIP + ":" + port + "/mcp"
+}
+
 func hostWorkspaceDir(containerPath string) string {
 	if hostRoot := os.Getenv("HOST_WORKSPACE_ROOT"); hostRoot != "" {
 		if after, found := strings.CutPrefix(containerPath, "/var/lib/chetter-runner"); found {
@@ -188,20 +195,6 @@ func hostWorkspaceDir(containerPath string) string {
 		}
 	}
 	return containerPath
-}
-
-func rewriteMCPURL(configPath, hostIP string) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return
-	}
-	replaced := strings.ReplaceAll(string(data),
-		"\"url\":\"http://127.0.0.1:",
-		"\"url\":\"http://"+hostIP+":",
-	)
-	if replaced != string(data) {
-		os.WriteFile(configPath, []byte(replaced), 0644)
-	}
 }
 
 func appendRunnerOwnedEnv(env []string) []string {
@@ -529,7 +522,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
-	netName := ""
+	netName := runcNetwork()
 	runnerIP := ""
 	serveCmd := h.ServeCommand(containerPort)
 	if len(serveCmd) == 0 {
@@ -545,11 +538,13 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"--name", containerName,
 	}
 	if gvisor {
-		netName = runcNetwork()
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
-		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
+	// Put the dev container on the same network as the runner so it can
+	// reach the runner's MCP server directly (non-gVisor) or via the
+	// HTTP proxy (gVisor).
+	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	dockerArgs = append(dockerArgs,
 		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
@@ -610,22 +605,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
-	if r.executionMode() == "docker" {
-		mcpConfigPath := filepath.Join(session.WorkspaceDir, ".opencode.json")
-		var mcpHostIP string
-		if gvisor {
-			mcpHostIP = dockerGatewayIP(netName)
-			if mcpHostIP == "" {
-				mcpHostIP = runnerIP
-			}
-		} else {
-			mcpHostIP = "host.docker.internal"
-		}
-		if mcpHostIP != "" {
-			rewriteMCPURL(mcpConfigPath, mcpHostIP)
-		}
-	}
-	}
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
@@ -763,7 +742,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	secret := h.ServerPassword()
 	gvisor := r.cfg.Execution.UseGVisor
-	netName := ""
+	netName := runcNetwork()
 	serveCmd := h.ServeCommand(containerPort)
 	if len(serveCmd) == 0 {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
@@ -778,11 +757,13 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"--name", containerName,
 	}
 	if gvisor {
-		netName = runcNetwork()
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
-		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
+	// Put the dev container on the same network as the runner so it can
+	// reach the runner's MCP server directly (non-gVisor) or via the
+	// HTTP proxy (gVisor).
+	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	dockerArgs = append(dockerArgs,
 		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
@@ -841,14 +822,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
 
-	if r.executionMode() == "docker" {
-		mcpConfigPath := h.DockerConfigPath(workspaceDir)
-		if gvisor {
-			rewriteMCPURL(mcpConfigPath, runnerIP)
-		} else {
-			rewriteMCPURL(mcpConfigPath, "host.docker.internal")
-		}
-	}
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
