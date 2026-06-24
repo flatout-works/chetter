@@ -14,6 +14,22 @@
   let triggers = $state<Trigger[]>([]);
   let expandedId = $state<string | null>(null);
   let loading = $state(true);
+
+  let showCron = $state(true);
+  let showIssue = $state(true);
+  let showPrReview = $state(true);
+
+  let visibleTriggers = $derived.by(() => {
+    if (showCron && showIssue && showPrReview) return triggers;
+    return triggers.filter((t) => {
+      switch (t.triggerType) {
+        case "cron": return showCron;
+        case "issue": return showIssue;
+        case "pr_review": return showPrReview;
+        default: return true;
+      }
+    });
+  });
   let showCreateForm = $state(false);
   let creating = $state(false);
   let actionError = $state<string | null>(null);
@@ -215,9 +231,16 @@
 <div class="p-6">
   <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Triggers</h1>
-    <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}>
-      {showCreateForm ? "Cancel" : "Create Trigger"}
-    </Button>
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-3 mr-2 border-r border-gray-300 dark:border-gray-600 pr-3">
+        <Toggle bind:checked={showCron} color="gray" size="small">Cron</Toggle>
+        <Toggle bind:checked={showIssue} color="gray" size="small">Issue</Toggle>
+        <Toggle bind:checked={showPrReview} color="gray" size="small">PR Review</Toggle>
+      </div>
+      <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}>
+        {showCreateForm ? "Cancel" : "Create Trigger"}
+      </Button>
+    </div>
   </div>
 
   {#if actionError}
@@ -259,7 +282,7 @@
     </div>
   {:else}
     <div class="space-y-2">
-      {#each triggers as trigger (trigger.id)}
+      {#each visibleTriggers as trigger (trigger.id)}
         <Card shadow="sm" class="w-full max-w-none !p-0 overflow-hidden">
           <div
             class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
@@ -280,6 +303,8 @@
               <Toggle
                 checked={trigger.enabled}
                 onchange={() => toggleEnabled(trigger)}
+                color="gray"
+                size="small"
               />
               <Button color="blue" size="xs" onclick={(ev: MouseEvent) => { ev.stopPropagation(); runNow(trigger.name); }}>Run</Button>
               <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={(ev: MouseEvent) => { ev.stopPropagation(); deleteTrigger(trigger.name); }}>Delete</Button>

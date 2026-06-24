@@ -20,14 +20,14 @@
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
-  let hideDefinitionsSynced = $state(true);
-  let hideTriggerRun = $state(false);
-  let hideSessionResumed = $state(false);
+  let showSync = $state(false);
+  let showTriggers = $state(true);
+  let showResumes = $state(true);
 
-  const hiddenTypes = $derived(new Set([
-    ...(hideDefinitionsSynced ? ["definitions_synced"] : []),
-    ...(hideTriggerRun ? ["trigger_run"] : []),
-    ...(hideSessionResumed ? ["session_resumed"] : []),
+  const excludedTypes = $derived(new Set([
+    ...(showSync ? [] : ["definitions_synced"]),
+    ...(showTriggers ? [] : ["trigger_run"]),
+    ...(showResumes ? [] : ["session_resumed"]),
   ]));
 
   let sortedEvents = $derived.by(() => {
@@ -66,7 +66,7 @@
         sinceHours, limit, offset,
       });
       let filtered = resp.events ?? [];
-      filtered = filtered.filter((e) => !hiddenTypes.has(e.eventType));
+      filtered = filtered.filter((e) => !excludedTypes.has(e.eventType));
       events = filtered;
     } catch (e) { console.error(e); }
     finally { loading = false; }
@@ -106,9 +106,9 @@
       <Input type="number" bind:value={limit} placeholder="Limit" class="w-20" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
       <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
-        <Toggle bind:checked={hideDefinitionsSynced} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
-        <Toggle bind:checked={hideTriggerRun} onchange={() => { offset = 0; load(); }} color="gray" size="small">Triggers</Toggle>
-        <Toggle bind:checked={hideSessionResumed} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resumes</Toggle>
+        <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Syncs</Toggle>
+        <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Triggers</Toggle>
+        <Toggle bind:checked={showResumes} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resumes</Toggle>
       </div>
     </div>
   </div>

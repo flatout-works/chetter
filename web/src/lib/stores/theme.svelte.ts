@@ -1,4 +1,5 @@
 import { writable } from "svelte/store";
+import { updateSettings } from "./settings.svelte";
 
 export type ThemeMode = "light" | "dark";
 
@@ -24,7 +25,8 @@ export function setTheme(mode: ThemeMode) {
 }
 
 export function toggleTheme() {
-  theme.update((t) => (t === "dark" ? "light" : "dark")) as void;
-  const current = localStorage.getItem("chetter-theme");
-  setTheme(current === "dark" ? "light" : "dark");
+  const current = localStorage.getItem("chetter-theme") ?? "light";
+  const next = current === "dark" ? "light" : "dark";
+  setTheme(next as ThemeMode);
+  updateSettings({ theme: next as ThemeMode });
 }
