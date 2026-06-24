@@ -10,7 +10,7 @@
     loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatTime, formatTimeShort, humanReadableStatus } from "$lib/utils.svelte";
+  import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
@@ -45,10 +45,13 @@
   }
 
   // Events sorted chronologically, with index as tiebreaker for same-second timestamps.
+  // Heartbeat events are shown as a summary metric, not individual timeline entries.
   let eventsChrono = $derived(
-    [...events].map((e, i) => ({ e, i }))
-               .sort((a, b) => a.e.createdAt.localeCompare(b.e.createdAt) || a.i - b.i)
-               .map(x => x.e)
+    [...events]
+      .filter(e => !e.eventType?.includes("heartbeat") && !e.subject?.includes("heartbeat"))
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => a.e.createdAt.localeCompare(b.e.createdAt) || a.i - b.i)
+      .map(x => x.e)
   );
 
   // Build merged timeline: progress entries with their matching raw events.
@@ -133,6 +136,13 @@
   });
 
   let duration = $derived(now && formatDuration(task?.startedAt, task?.endedAt));
+
+  let heartbeatAge = $derived.by(() => {
+    const hb = events
+      .filter(e => e.eventType?.includes("heartbeat") || e.subject?.includes("heartbeat"))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return hb ? formatAge(hb.createdAt) : null;
+  });
 
   let taskProgressPercent = $derived.by(() => {
     if (!task || (task.status !== "running" && task.status !== "pending") || task.timeoutSec <= 0) return 0;
@@ -427,6 +437,12 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
       </Card>
+      {#if heartbeatAge}
+        <Card size="md" shadow="sm" class="!p-4">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Last heartbeat</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{heartbeatAge} ago</p>
+        </Card>
+      {/if}
       {#if task.agentSessionId}
         <Card size="md" shadow="sm" class="!p-4">
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session</p>
