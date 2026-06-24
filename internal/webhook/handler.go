@@ -315,6 +315,10 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 
 	// Gate fork and opened triggers on author write access.
 	if triggerAction == TriggerEventFork || triggerAction == TriggerEventOpened {
+		if h.isBotUser(ev.PullRequest.User.Login) {
+			slog.Debug("webhook: skipping bot-authored PR", "repo", repo, "pr", ev.Number)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
@@ -458,8 +462,24 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		return
 	}
 
-	// Gate issue comment triggers on author write access.
-	{
+	// Bot-comment filtering: skip comments from the Chetter App itself unless
+	// the trigger explicitly allows bot comments. Do this before the author
+	// write-access gate to avoid noisy audit-log entries for the bot.
+	appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
+	isBotComment := appLogin != "" && ev.Comment.User.Login == appLogin
+	if isBotComment {
+		var botMatch []ReviewTrigger
+		for _, t := range matching {
+			if triggerAllowsBotComments(t) {
+				botMatch = append(botMatch, t)
+			}
+		}
+		if len(botMatch) == 0 {
+			slog.Debug("webhook: skipping bot comment (no triggers with bot_comments:true)", "repo", repo, "issue", ev.Issue.Number)
+			return
+		}
+		matching = botMatch
+	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if !h.checkAuthorWriteAccess(ctx, repo, ev.Comment.User.Login, deliveryID) {
@@ -467,21 +487,12 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		}
 	}
 
-	// Bot-comment filtering: skip comments from the Chetter App itself unless
-	// the trigger explicitly allows bot comments.
-	appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
-	isBotComment := appLogin != "" && ev.Comment.User.Login == appLogin
-
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token for issue comment", "err", err)
 		return
 	}
 	for _, t := range matching {
-		if isBotComment && !triggerAllowsBotComments(t) {
-			slog.Info("webhook: skipping bot comment for trigger", "trigger", t.Name, "issue", ev.Issue.Number)
-			continue
-		}
 		prompt := t.Prompt
 		if prompt == "" {
 			prompt = fmt.Sprintf(
@@ -672,6 +683,10 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 
 	// Gate issue triggers on author write access.
 	if ev.Action == "opened" || ev.Action == "reopened" {
+		if h.isBotUser(ev.Issue.User.Login) {
+			slog.Debug("webhook: skipping bot-authored issue", "repo", repo, "issue", ev.Issue.Number)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if !h.checkAuthorWriteAccess(ctx, repo, ev.Issue.User.Login, deliveryID) {
@@ -800,6 +815,12 @@ func (h *Handler) logAudit(params AuditEventParams) {
 	if err := h.audit.LogAuditEvent(asyncCtx(10*time.Second), params); err != nil {
 		slog.Warn("webhook: log audit event", "err", err, "event_type", params.EventType)
 	}
+}
+
+// isBotUser returns true if the given username is the Chetter GitHub App bot login.
+func (h *Handler) isBotUser(username string) bool {
+	appLogin, err := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
+	return err == nil && appLogin != "" && username == appLogin
 }
 
 // checkAuthorWriteAccess returns true if the user has write or admin access to
