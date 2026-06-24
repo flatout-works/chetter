@@ -35,8 +35,8 @@
 
   let expandedProgress = new SvelteSet<string>();
 
-  function progressKey(entry: { time: string; summary: string; status: string }) {
-    return `${entry.time}:${entry.status}:${entry.summary}`;
+  function progressKey(entry: { time: string; index: number }) {
+    return `${entry.time}:${entry.index}`;
   }
 
   function toggleProgress(key: string) {
