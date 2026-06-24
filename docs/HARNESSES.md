@@ -11,53 +11,58 @@ All harnesses implement `harness.Harness` in `runner/harness/harness.go`:
 ```go
 type Harness interface {
     Name() string
-    GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error
+    GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req TaskRequest, isLocal bool) error
     ConfigFilePath(wsDir string) string
     ConfigFilePathGlobal(wsDir string) string
-    Env(wsDir string, secret string) map[string]string
+    Env(wsDir string, secret string, req TaskRequest) map[string]string
 
-    // Serve mode (HTTP)
-    ServeArgs(port int) []string
+    // Serve mode (HTTP API)
+    ServeCommand(port int) []string
+    ServeArgsResume(port int) []string
     ServerPassword() string
     WaitForReady(ctx, baseURL, secret, timeout) error
     CreateSession(ctx, baseURL, secret) (string, error)
     SendPrompt(ctx, baseURL, sessionID, secret, req, wsDir, timeout) (string, error)
+    AbortSession(ctx, baseURL, sessionID, secret) error
     ExportSession(ctx, baseURL, sessionID, secret) (string, error)
     ReadSessionExport(wsDir, sessionID) (string, error)
-    WatchEvents(ctx, taskID, baseURL, secret, publishFn)
+    WatchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn)
+    PipeOutput(taskID, stream string, reader io.Reader)
 
-    // Output piping
-    PipeOutput(taskID, stream, reader)
+    ResolvedModelID(req TaskRequest) string
 
-    // Batch mode (one-shot subprocess)
-    RunBatchCommand(req) []string
-    SummarizeBatchOutput(raw) string
-
-    // RPC mode (long-lived stdin/stdout JSONL subprocess)
+    // RPC mode (Pi only — kept for transitional RPC → serve migration)
     SupportsRpc() bool
-    RpcCommand(req) []string
+    RpcCommand(req TaskRequest) []string
 
-    ResolvedModelID(req) string
-    SupportsServe() bool
+    // Docker
+    DockerConfigPath(wsDir string) string
 }
 ```
 
+**Key changes from the old interface:**
+- `ServeCommand(port)` replaces `ServeArgs(port)` — returns `[binary, arg...]` so the
+  runner knows the Docker entrypoint independently of the harness name.
+- `RunBatchCommand()`, `SummarizeBatchOutput()`, `SupportsServe()` removed — batch
+  mode is gone; all harnesses use serve mode (HTTP API).
+- `DockerConfigPath()` added — each harness tells the runner where its MCP config
+  file lives (no more hardcoded `.opencode.json`).
+- `SupportsRpc()` / `RpcCommand()` remain for Pi's RPC mode (will be removed
+  when Pi gets its own serve-proxy).
+
 ## Execution Models
 
-Three dispatch paths exist in `runner_task.go`, selected via capability flags:
+Two dispatch paths exist in `runner_task.go`:
 
 | Flag | Method | How the runner talks to the agent |
 |------|--------|-----------------------------------|
-| `SupportsServe()` | `runLocalAgent` / `runDockerAgent` | HTTP API (start serve, poll ready, create session, send prompt, watch SSE) |
-| `SupportsRpc()` | `runRpcAgent` | stdin/stdout JSONL subprocess (send commands, read events) |
-| neither | `runBatchAgent` | One-shot subprocess (capture stdout, parse, exit) |
+| `SupportsRpc()` | `runRpcAgent` / `runDockerRpcAgent` | stdin/stdout JSONL subprocess (Pi only) |
+| (default) | `runLocalAgent` / `runDockerAgent` | HTTP API (start serve, poll ready, create session, send prompt, watch SSE) |
 
-Dispatch order: **RPC -> Serve -> Batch**. A harness that supports both RPC and
-serve will use RPC.
+Dispatch order: **RPC → Serve**. All harnesses without RPC use serve mode.
 
-Per-task Docker isolation (gVisor, separate containers) is only available in
-serve mode. RPC and batch harnesses run as subprocesses of the runner itself,
-relying on the runner container for isolation.
+Per-task Docker isolation (gVisor, separate containers) is the standard execution
+model. RPC mode runs as a subprocess of the runner (no gVisor), available only for Pi.
 
 ## Selection
 
@@ -141,41 +146,44 @@ session API is needed.
 ## Claude Code
 
 **Binary:** `claude` (npm: `@anthropic-ai/claude-code`)
-**Execution model:** Batch (one-shot subprocess, stream-json output)
+**Execution model:** Serve (HTTP API via claude-serve-proxy)
 
-Claude Code runs as a one-shot CLI invocation. The runner builds a command
-like `claude --bare -p <prompt> --output-format stream-json --model <model>
---permission-mode bypassPermissions --max-turns 100`, captures stdout, and
-parses stream-json lines for text deltas.
+Claude Code runs via a **serve-proxy** — a thin Go HTTP server (`claude-serve-proxy`)
+that wraps Claude's headless CLI mode. The proxy starts as the Docker entrypoint,
+accepts HTTP requests from the runner, and delegates to `claude -p ...` in a
+subprocess. Claude's `--output-format stream-json` output is parsed and streamed
+as SSE events. Sessions persist as JSONL files in the workspace (bind-mounted),
+enabling resume via `claude --resume`.
 
 ### Why chosen
 
-Claude Code is Anthropic's official CLI. It was the first alternative harness
-added to Chetter, providing Claude model access without OpenCode.
+Claude Code is Anthropic's official CLI. The serve-proxy brings it to parity with
+OpenCode's serve mode: per-task Docker isolation with gVisor, live progress via
+SSE, session export, and resume support.
 
 ### Pros
 
 - Official Anthropic CLI, well-maintained
+- Per-task Docker isolation with gVisor (via serve-proxy)
+- SSE streaming events for live progress
+- Session resume support (`--resume`)
+- Session export from JSONL files
 - Clean stream-json output format
-- Simple integration (no HTTP server, no SQLite)
 - Permission system (allow/deny lists in settings.json)
 - MCP support built-in (.claude/mcp.json)
-- System prompt override via `--system-prompt`
 
 ### Cons
 
 - Anthropic-only (no other providers)
-- No session persistence (batch mode only)
-- No session export (returns empty string)
-- No steering or follow-up
-- No abort command (must kill process)
-- Requires `--permission-mode bypassPermissions` hack for autonomy
-- No per-task Docker isolation (subprocess of runner)
+- No mid-task steering or follow-up
+- No mid-session model switching
+- Requires serve-proxy binary (extra maintenance)
+- Abort is SIGINT→SIGTERM escalation (no graceful HTTP abort in Claude CLI)
 
 ### When to use
 
-When you need Claude models specifically. Simpler than OpenCode but less
-capable for long-running or interactive tasks.
+When you need Claude models with full Docker/gVisor isolation. Matches OpenCode's
+serve-mode capabilities.
 
 ## Pi
 
@@ -247,42 +255,44 @@ for long-running tasks that may need course correction.
 
 | Feature | OpenCode | Claude Code | Pi |
 |---------|----------|-------------|-----|
-| Execution model | Serve (HTTP) | Batch (one-shot) | RPC (subprocess) |
-| Streaming | SSE events | stream-json lines | JSONL events |
-| Abort | Kill process | Kill process | `abort` command |
+| Execution model | Serve (HTTP) | Serve (proxy) | RPC (subprocess) |
+| Streaming | SSE events | SSE events | JSONL events |
+| Abort | Kill process | SIGINT→SIGTERM | `abort` command |
 | Steering | No | No | `steer` / `follow_up` |
 | Model switching | Per-session config | Per-task flag | `set_model` mid-session |
 | MCP support | Built-in | Built-in | via pi-mcp-adapter |
-| Session export | SQLite DB | None | `get_messages` -> markdown |
-| Per-task Docker isolation | Yes (gVisor) | No | No |
+| Session export | SQLite DB | JSONL files | `get_messages` → markdown |
+| Per-task Docker isolation | Yes (gVisor) | Yes (gVisor) | No |
 | Provider breadth | Multiple | Anthropic only | 30+ |
-| Permission system | Config-based | `bypassPermissions` | None (container-reliant) |
+| Permission system | Config-based | Settings-based | None (container-reliant) |
 | Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh |
 | Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) |
 | License | Apache 2.0 | Proprietary (CLI) | MIT |
 
 ## Adding a New Harness
 
-1. Create `runner/harness/<name>/` with a struct implementing all
-   `Harness` interface methods. Use Claude's `harness.go` as a template
-   for batch harnesses, or Pi's for RPC harnesses.
-2. Add `case "<name>": return <pkg>.New()` in `selectHarnessByName()` in
+1. If the harness binary has a native HTTP serve mode (like OpenCode):
+   - Create `runner/harness/<name>/` with a struct implementing `Harness`.
+   - Implement all serve-mode methods directly.
+2. If the harness is CLI-only (no HTTP serve mode):
+   - Build a serve-proxy binary in `runner/cmd/<name>-serve-proxy/main.go` that
+     wraps the CLI behind the standard HTTP API (see `claude-serve-proxy` for reference).
+   - Create `runner/harness/<name>/` with HTTP client methods that talk to the proxy.
+3. Add `case "<name>": return <pkg>.New()` in `selectHarnessByName()` in
    `runner/internal/controller/runner.go`.
-3. If the harness needs env var passthrough, add keys to
+4. If the harness needs env var passthrough, add keys to
    `runnerOwnedEnvKeys()` and `isRunnerOwnedEnv()` in
    `runner/internal/controller/runner_task.go`.
-4. Install the harness binary in `runner/Dockerfile.chetter-base`, the final
-   runner image layer, and `runner/images/minimal/Dockerfile` if applicable.
-5. Add `Harness` to MCP input schemas in `internal/service/tools.go`
+5. Install the harness binary in `runner/Dockerfile.chetter-base`, and the
+   serve-proxy binary (if applicable).
+6. Add `Harness` to MCP input schemas in `internal/service/tools.go`
    (`SubmitTaskInput`, `CreateTriggerInput`, `UpdateTriggerInput`).
-6. Add `Harness` to `store.ScheduleInput` and `store.ScheduleRecord`
+7. Add `Harness` to `store.ScheduleInput` and `store.ScheduleRecord`
    in `internal/store/store.go`.
-7. Wire the field through `CreateTrigger`, `UpdateTrigger`, and
+8. Wire the field through `CreateTrigger`, `UpdateTrigger`, and
    `runSchedule` in `internal/service/service.go`.
-8. Add harness column to `chetter_schedules` via `ensureScheduleMetadataColumns`
-   in `internal/store/store.go`.
-9. Update `docs/HARNESSES.md` with the new harness's section.
-6. Run `make check` in `runner/` (vet + lint + test).
+9. Update `docs/HARNESSES.md` with the new harness section.
+10. Run `make check` in `runner/` (vet + lint + test).
 
 ## Future Harness Candidates
 
