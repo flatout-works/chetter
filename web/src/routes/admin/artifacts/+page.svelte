@@ -74,8 +74,8 @@
   <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Task Artifacts</h1>
     <div class="flex flex-wrap items-center gap-2">
-      <Input bind:value={taskId} placeholder="Task ID" class="w-40" />
-      <Input bind:value={repo} placeholder="Repository" class="w-44" />
+      <Input bind:value={taskId} placeholder="Task ID" class="!w-40" />
+      <Input bind:value={repo} placeholder="Repository" class="!w-44" />
       <Select bind:value={artifactType} class="!w-auto min-w-44">
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
@@ -83,7 +83,7 @@
         <option value="issue_comment">Issue Comment</option>
         <option value="pr_review">PR Review</option>
       </Select>
-      <Input type="number" bind:value={limit} min="1" max="500" class="w-20" placeholder="Limit" />
+      <Input type="number" bind:value={limit} min="1" max="500" class="!w-20" placeholder="Limit" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Search</Button>
     </div>
   </div>
