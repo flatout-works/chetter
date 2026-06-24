@@ -35,7 +35,7 @@ The docs need consolidation before or alongside this work. Several files describ
 | `SCHEDULES.md` | Cron trigger guide | Keep as a focused how-to, or merge into a broader `AUTOMATION.md`. Update to explain Git-synced trigger definitions if that is now the intended source of truth. |
 | `REVIEWS.md` | Current PR review architecture | Keep as canonical PR review docs. |
 | `REVIEWER.md` | Old PR reviewer implementation plan | Marked archived in Milestone 1. Use `REVIEWS.md` for current behavior. |
-| `TRIGGERS_PROPOSAL.md` | Remaining trigger future work | Marked archived in Milestone 1. Merge remaining ideas into `AUTOMATION.md` later. |
+| `TRIGGERS_PROPOSAL.md` | Remaining trigger future work | Removed; ideas migrated to `docs/PLAN.md` line items. |
 | `CONFIG_IN_GIT.md` | Configuration-as-code design | Keep, but update shipped status. Model catalog sync is implemented; broader definitions are still planned. |
 | `MODEL_CATALOG.md` | Model catalog reference | Keep, or merge with `CONFIG_IN_GIT.md` into `CONFIGURATION.md`. |
 | `HARNESSES.md` | Runner harness reference | Keep. Use it as canonical harness architecture docs. |
@@ -84,7 +84,7 @@ Items addressed:
 - `FEATURES.md` now documents only the runner MCP bridge tools that are exposed today.
 - `PAUSED_SESSIONS.md` now describes current session/run/checkpoint behavior and remaining work.
 - `DAYTONA.md` now treats Daytona as a future optional backend and no longer frames Kata as current.
-- `REVIEWER.md`, `TRIGGERS_PROPOSAL.md`, `GVISOR.md`, `SNAPSHOTS.md`, and `OPENHANDS.md` are marked as archived, proposal, research, or reference docs.
+- `REVIEWER.md`, `GVISOR.md`, `SNAPSHOTS.md`, and `OPENHANDS.md` are marked as archived, proposal, research, or reference docs. `TRIGGERS_PROPOSAL.md` is removed.
 - `GVISOR.md`, `DAYTONA.md`, and `OPENHANDS.md` moved to `docs/research/` for documentation restructure.
 
 ## Product Roadmap
@@ -100,7 +100,7 @@ Deliverables:
 - Update `MANUAL.md` env reference and tool list.
 - Update `FEATURES.md` from current MCP registration and runner features.
 - Convert `PAUSED_SESSIONS.md` from future plan to current status plus remaining work.
-- Mark `REVIEWER.md`, `TRIGGERS_PROPOSAL.md`, `DAYTONA.md`, `GVISOR.md`, and `OPENHANDS.md` as reference or research documents, then move research docs to `docs/research/`.
+- Mark `REVIEWER.md`, `DAYTONA.md`, `GVISOR.md`, and `OPENHANDS.md` as reference or research documents, then move research docs to `docs/research/`. `TRIGGERS_PROPOSAL.md` is removed.
 - Add a short docs index, either in `docs/README.md` or at the top of `MANUAL.md`.
 - Move research/reference docs (`GVISOR.md`, `DAYTONA.md`, `OPENHANDS.md`) into `docs/research/`.
 

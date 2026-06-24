@@ -23,7 +23,6 @@ Use this page to pick the right document. `MANUAL.md` and `FEATURES.md` are the 
 | Document | Purpose |
 |---|---|
 | [PLAN.md](PLAN.md) | Consolidation plan and product roadmap. |
-| [TRIGGERS_PROPOSAL.md](TRIGGERS_PROPOSAL.md) | Archived trigger proposal with remaining trigger ideas. |
 
 ## Research And Reference
 
