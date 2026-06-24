@@ -43,7 +43,6 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
 
 	wsDir := t.TempDir()
-	socketPath := filepath.Join(wsDir, "chetter.sock")
 	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}

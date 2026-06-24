@@ -138,7 +138,7 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 		ProviderAPIKeyEnv: "SYNTHETIC_OPENAI_KEY",
 		ModelID:           "mapped-model",
 	}
-	if err := GenerateConfigForTask(wsDir, "/tmp/chetter.sock", "mcp-bridge", "", "", false, req, false); err != nil {
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, req, false); err != nil {
 		t.Fatalf("GenerateConfigForTask failed: %v", err)
 	}
 	data, err := os.ReadFile(wsDir + "/.opencode.json")
