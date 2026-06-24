@@ -101,9 +101,9 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Agent Sessions</h1>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-2">
       <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }}>
           <option value="">All</option>
           <option value="running">Running</option>
@@ -164,7 +164,7 @@
     </Table>
     </TableCard>
 
-    <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
+    <div class="flex flex-wrap items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400 gap-3">
       <span>Showing {sortedSessions.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, sortedSessions.length)} of {sortedSessions.length}</span>
       <PaginationNav
         currentPage={page + 1}

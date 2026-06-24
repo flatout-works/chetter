@@ -57,13 +57,15 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Runner Fleet</h1>
+    <div class="flex flex-wrap items-center gap-2">
     {#if health && health.pendingTasks > 0}
       <Button color="red" disabled={clearing} onclick={clearQueue}>
         {clearing ? "Clearing…" : `Clear Queue (${health.pendingTasks} pending)`}
       </Button>
     {/if}
+    </div>
   </div>
   {#if clearError}
     <Alert color="red" class="mb-4">{clearError}</Alert>

@@ -336,10 +336,10 @@
 {:else if task}
   <div class="p-6">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
       <div>
-        <div class="flex items-center gap-3 mb-1">
-          <h1 class="text-xl font-mono font-bold text-gray-900 dark:text-white">{task.id}</h1>
+        <div class="flex flex-wrap items-center gap-3 mb-1">
+          <h1 class="text-xl font-mono font-bold text-gray-900 dark:text-white break-all">{task.id}</h1>
           <StatusBadge status={task.status} />
           {#if statusText}
             <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">({statusText})</span>
@@ -349,7 +349,7 @@
           Created {formatTime(task.createdAt)} · Updated {formatTime(task.updatedAt)}
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         {#if task.status === "running" || task.status === "pending"}
           <Button color="red" size="sm" onclick={cancelTask}>Cancel</Button>
         {/if}

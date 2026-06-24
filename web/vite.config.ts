@@ -11,6 +11,8 @@ function gitHash() {
   }
 }
 
+const proxyTarget = process.env.VITE_DEV_PROXY_TARGET || "http://localhost:8090";
+
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   define: {
@@ -18,9 +20,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api.v1": {
-        target: "http://localhost:8090",
+      "^/api(\\.v1)?": {
+        target: proxyTarget,
         changeOrigin: true,
+        secure: process.env.VITE_DEV_PROXY_SECURE === "true",
       },
     },
   },

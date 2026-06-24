@@ -213,7 +213,7 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Triggers</h1>
     <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}>
       {showCreateForm ? "Cancel" : "Create Trigger"}

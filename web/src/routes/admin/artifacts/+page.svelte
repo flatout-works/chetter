@@ -71,9 +71,9 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Task Artifacts</h1>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-2">
       <Input bind:value={taskId} placeholder="Task ID" class="w-40" />
       <Input bind:value={repo} placeholder="Repository" class="w-44" />
       <Select bind:value={artifactType} class="min-w-44">

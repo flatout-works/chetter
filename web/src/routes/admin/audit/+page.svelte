@@ -68,9 +68,9 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-2">
       <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="min-w-40">
         <option value="">All types</option>
         <option value="webhook_received">Webhook Received</option>
