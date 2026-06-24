@@ -64,3 +64,5 @@ make check && make build
 ## License
 
 MIT
+
+*This is a test addition for a PR workflow demonstration.*
