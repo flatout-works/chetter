@@ -176,19 +176,25 @@ func TestResolveCommand_Mem9EnabledRemovesPure(t *testing.T) {
 	}
 }
 
-func TestOpenCodeServeArgs_Mem9DisabledKeepsPure(t *testing.T) {
+func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "")
 	args := opencodeServeArgs(1234)
-	if !hasArg(args, "--pure") {
-		t.Fatalf("expected --pure without mem9, got %v", args)
+	if hasArg(args, "--pure") {
+		t.Fatalf("unexpected --pure in serve args, got %v", args)
+	}
+	if !hasArg(args, "--port") {
+		t.Fatalf("expected --port in serve args, got %v", args)
 	}
 }
 
-func TestOpenCodeServeArgs_Mem9EnabledKeepsPure(t *testing.T) {
+func TestOpenCodeServeArgs_NoPureWithMem9(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "mem9-test-key")
 	args := opencodeServeArgs(1234)
-	if !hasArg(args, "--pure") {
-		t.Fatalf("expected --pure in serve mode with mem9 enabled, got %v", args)
+	if hasArg(args, "--pure") {
+		t.Fatalf("unexpected --pure in serve args with mem9, got %v", args)
+	}
+	if !hasArg(args, "--port") {
+		t.Fatalf("expected --port in serve args, got %v", args)
 	}
 }
 
