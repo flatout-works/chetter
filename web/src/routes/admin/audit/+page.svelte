@@ -86,6 +86,7 @@
       <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-40">
         <option value="">All types</option>
         <option value="webhook_received">Webhook Received</option>
+        <option value="webhook_author_gate_denied">Webhook Author Gate Denied</option>
         <option value="task_submitted">Task Submitted</option>
         <option value="trigger_matched">Trigger Matched</option>
         <option value="artifact_discovered">Artifact Discovered</option>
@@ -103,7 +104,7 @@
         <option value={72}>Last 3 days</option>
         <option value={168}>Last 7 days</option>
       </Select>
-      <Input type="number" bind:value={limit} placeholder="Limit" class="w-20" />
+      <Input type="number" bind:value={limit} placeholder="Limit" class="!w-20" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
       <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
         <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Syncs</Toggle>
@@ -121,6 +122,7 @@
       <TableHead>
         <TableHeadCell onclick={() => toggleSort("time")} class="cursor-pointer select-none">Time {sortIcon("time")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("event")} class="cursor-pointer select-none">Event Type {sortIcon("event")}</TableHeadCell>
+        <TableHeadCell>Repo</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("source")} class="cursor-pointer select-none">Source {sortIcon("source")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("target")} class="cursor-pointer select-none">Target {sortIcon("target")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("detail")} class="cursor-pointer select-none">Detail {sortIcon("detail")}</TableHeadCell>
@@ -131,11 +133,14 @@
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(event.createdAt)}</span></TableBodyCell>
             <TableBodyCell><StatusBadge status={event.eventType} /></TableBodyCell>
             <TableBodyCell>
+              <span class="text-gray-700 dark:text-gray-300 text-sm">{event.repo || "—"}</span>
+            </TableBodyCell>
+            <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.sourceType}
                   <span class="font-medium">{event.sourceType}</span>
                   {#if event.sourceId}
-                    <span class="text-gray-500">: {event.sourceId.slice(0, 24)}</span>
+                    <span class="text-gray-500" title={event.sourceId}>: {event.sourceId.slice(0, 24)}</span>
                   {/if}
                 {:else}
                   <span class="text-gray-400">—</span>
@@ -147,7 +152,7 @@
                 {#if event.targetType}
                   <span class="font-medium">{event.targetType}</span>
                   {#if event.targetId}
-                    <span class="text-gray-500">: {event.targetId.slice(0, 24)}</span>
+                    <span class="text-gray-500" title={event.targetId}>: {event.targetId.slice(0, 24)}</span>
                   {/if}
                 {:else}
                   <span class="text-gray-400">—</span>
@@ -155,12 +160,12 @@
               </span>
             </TableBodyCell>
             <TableBodyCell class="max-w-xs">
-              <span class="text-gray-500 dark:text-gray-400 truncate block">{event.detail || "—"}</span>
+              <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>{event.detail || "—"}</span>
             </TableBodyCell>
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={5}>
+            <TableBodyCell colspan={6}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No audit events found</div>
             </TableBodyCell>
           </TableBodyRow>
