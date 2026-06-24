@@ -44,7 +44,7 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 
 	wsDir := t.TempDir()
 	socketPath := filepath.Join(wsDir, "chetter.sock")
-	if err := GenerateConfig(wsDir, socketPath, "/usr/local/bin/mcp-bridge", "https://chetter.example.com/mcp", "token", false); err != nil {
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 

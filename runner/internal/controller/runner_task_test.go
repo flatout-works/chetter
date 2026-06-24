@@ -148,7 +148,7 @@ func TestGenerateOpenCodeConfig_UsesMCPKeyNotMCPservers(t *testing.T) {
 	wsDir := t.TempDir()
 	socketPath := filepath.Join(wsDir, "socket.sock")
 
-	if err := opencode.GenerateConfig(wsDir, socketPath, "mcp-bridge", "", "", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", false, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -177,7 +177,7 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 	wsDir := t.TempDir()
 	socketPath := filepath.Join(wsDir, "socket.sock")
 
-	if err := opencode.GenerateConfig(wsDir, socketPath, "mcp-bridge", "https://chetter.example.com/mcp", "test-token", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "test-token", false, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -229,7 +229,7 @@ func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 	wsDir := t.TempDir()
 	socketPath := filepath.Join(wsDir, "socket.sock")
 
-	if err := opencode.GenerateConfig(wsDir, socketPath, "/usr/local/bin/mcp-bridge", "", "", true, true); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", true, true); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -273,7 +273,7 @@ func TestGenerateOpenCodeConfig_NoMCPBridgeWhenNotRequested(t *testing.T) {
 	wsDir := t.TempDir()
 	socketPath := filepath.Join(wsDir, "socket.sock")
 
-	if err := opencode.GenerateConfig(wsDir, socketPath, "mcp-bridge", "", "", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", false, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestGenerateOpenCodeConfig_ValidatedByOpenCode(t *testing.T) {
 			wsDir := t.TempDir()
 			socketPath := filepath.Join(wsDir, "socket.sock")
 
-			if err := opencode.GenerateConfig(wsDir, socketPath, "mcp-bridge", tt.chetterURL, tt.chetterToken, tt.includeBridge, false); err != nil {
+			if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", tt.chetterURL, tt.chetterToken, tt.includeBridge, false); err != nil {
 				t.Fatalf("GenerateConfig failed: %v", err)
 			}
 
@@ -679,10 +679,10 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	if imageIdx == len(args)-1 || args[imageIdx+1] != "--mode" {
 		t.Fatalf("expected pi RPC args after image, got %v", args[imageIdx:])
 	}
-	if !hasAdjacentArgs(args, "-v", "/tmp/chetter.sock:"+containerSocketPath) {
-		t.Fatalf("expected socket mounted at %s, got %v", containerSocketPath, args)
+	if !hasAdjacentArgs(args, "-v", "/tmp/chetter.sock:"+"/workspace/.chetter.sock") {
+		t.Fatalf("expected socket mounted at %s, got %v", "/workspace/.chetter.sock", args)
 	}
-	if !hasAdjacentArgs(args, "-e", "MCP_SOCKET_PATH="+containerSocketPath) {
+	if !hasAdjacentArgs(args, "-e", "MCP_SOCKET_PATH="+"/workspace/.chetter.sock") {
 		t.Fatalf("expected MCP_SOCKET_PATH to use container socket, got %v", args)
 	}
 	if !hasAdjacentArgs(args, "-e", "WORKSPACE="+containerWorkspaceDir) {
