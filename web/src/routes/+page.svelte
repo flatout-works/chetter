@@ -1,6 +1,8 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { tasks, fleetHealth } from "$lib/stores/tasks.svelte";
+  import { onMount } from "svelte";
+  import { get } from "svelte/store";
+  import { tasks, fleetHealth, statusFilter } from "$lib/stores/tasks.svelte";
   import { formatTime, formatAge, formatDuration } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
@@ -10,6 +12,10 @@
   let allTasks = $derived($tasks);
 
   let activeFilter = $state("");
+
+  onMount(() => {
+    activeFilter = get(statusFilter);
+  });
 
   let filteredTasks = $derived.by(() => {
     let list = allTasks;
@@ -30,8 +36,8 @@
 
   function handleCardClick(card: typeof cards[number]) {
     if (card.runners) { goto("/runners"); }
-    else if (activeFilter === card.filter) { activeFilter = ""; }
-    else { activeFilter = card.filter; }
+    else if (activeFilter === card.filter) { activeFilter = ""; statusFilter.set(""); }
+    else { activeFilter = card.filter; statusFilter.set(card.filter); }
   }
 </script>
 
@@ -61,7 +67,7 @@
   {#if activeFilter}
     <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
       Showing <strong class="text-gray-700 dark:text-gray-200">{activeFilter}</strong> tasks.
-      <Button color="blue" size="xs" onclick={() => { activeFilter = ""; }}>Clear filter</Button>
+      <Button color="blue" size="xs" onclick={() => { activeFilter = ""; statusFilter.set(""); }}>Clear filter</Button>
     </p>
   {/if}
 

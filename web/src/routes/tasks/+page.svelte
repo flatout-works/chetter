@@ -1,18 +1,19 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, CatalogService } from "$gen/proto/api/v1/api_pb";
   import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { refreshTasks, tasks } from "$lib/stores/tasks.svelte";
+  import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Button, Card, Dropdown, DropdownItem, Input, Label, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
-  let statusFilter = $state("");
+  let selectedStatus = $state("");
   let taskList = $derived($tasks);
   let showSubmitForm = $state(false);
   let submitting = $state(false);
@@ -79,7 +80,8 @@
   }
 
   function applyFilter() {
-    refreshTasks(statusFilter, 100);
+    statusFilter.set(selectedStatus);
+    refreshTasks(selectedStatus, 100);
     page = 0;
   }
 
@@ -107,7 +109,11 @@
     }
   }
 
-  onMount(loadCatalog);
+  onMount(() => {
+    selectedStatus = get(statusFilter);
+    if (selectedStatus) refreshTasks(selectedStatus, 100);
+    loadCatalog();
+  });
 
   function onProviderChange() {
     const p = providers.find((p) => p.id === providerId);
@@ -138,7 +144,7 @@
       providerId = defaultProvider; modelId = defaultModel; harness = "";
       sessionMode = ""; pauseReason = ""; ttlHours = 72;
       showSubmitForm = false;
-      await refreshTasks(statusFilter, 100);
+      await refreshTasks(selectedStatus, 100);
     } catch (err) {
       formError = err instanceof Error ? err.message : "Failed to submit task.";
     } finally { submitting = false; }
@@ -154,8 +160,9 @@
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tasks</h1>
     <div class="flex flex-wrap items-center gap-2">
       <Select
-        bind:value={statusFilter}
+        bind:value={selectedStatus}
         onchange={applyFilter}
+        class="!w-auto"
       >
         <option value="">All statuses</option>
         <option value="running">Running</option>
@@ -167,6 +174,7 @@
       <Select
         bind:value={pageSize}
         onchange={() => { page = 0; }}
+        class="!w-auto"
       >
         <option value={10}>10 / page</option>
         <option value={25}>25 / page</option>

@@ -25,14 +25,12 @@ export const fleetHealth = writable<{
   runnerCount: 0,
 });
 
+export const statusFilter = writable("");
+
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let fleetStream: AbortController | null = null;
-let currentStatus = "";
-let currentLimit = 50;
 
-export async function refreshTasks(status = currentStatus, limit = currentLimit) {
-  currentStatus = status;
-  currentLimit = limit;
+export async function refreshTasks(status = "", limit = 100) {
   try {
     const client = createClient(TaskService, getTransport());
     const resp = await client.listTasks({ status, limit });
@@ -66,10 +64,10 @@ export async function refreshFleetHealth() {
 
 export function startLiveUpdates() {
   stopLiveUpdates();
-  refreshTasks(currentStatus, currentLimit);
+  refreshTasks(get(statusFilter));
   refreshFleetHealth();
   pollInterval = setInterval(() => {
-    refreshTasks(currentStatus, currentLimit);
+    refreshTasks(get(statusFilter));
     refreshFleetHealth();
   }, 5000);
 }
