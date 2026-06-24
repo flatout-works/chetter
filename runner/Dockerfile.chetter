@@ -14,6 +14,8 @@ ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
 # --------------------------------------------------------------------------
 FROM golang:1.26-bookworm AS runner-builder
 
+ARG GIT_HASH=unknown
+
 WORKDIR /src
 COPY go.mod go.sum* ./
 COPY gen/ ./gen/
@@ -27,7 +29,7 @@ COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/flatout-works/chetter/runner/cmd/runner._gitHash=${GIT_HASH}'" -o /out/runner ./cmd/runner
 
 # --------------------------------------------------------------------------
 # Stage 2: Build mcp-bridge
@@ -44,6 +46,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage 3: Final runtime image (base + app layer)
 # --------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
+
+ARG GIT_HASH=unknown
+
+ENV GITHUB_SHA=${GIT_HASH}
+ENV CHETTER_RUNNER_IMAGE_DIGEST=${GIT_HASH}
 
 # Keep Pi in the app layer so rebuilding chetter-runner picks it up even if
 # the published base image tag has not been refreshed yet.

@@ -45,6 +45,7 @@ if [ "${SKIP_MAIN}" != "true" ]; then
 
   echo "=== Building runner image ==="
   docker build $BASE_IMAGE_ARG \
+    --build-arg GIT_HASH="$GIT_HASH" \
     -f runner/Dockerfile.chetter \
     -t "chetter-runner:latest" .
 fi

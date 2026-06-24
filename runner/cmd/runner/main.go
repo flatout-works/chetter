@@ -12,6 +12,8 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/controller"
 )
 
+var _gitHash = "unknown"
+
 func main() {
 	var configPath string
 	flag.StringVar(&configPath, "config", "runner.yaml", "path to runner configuration")
