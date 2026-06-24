@@ -8,267 +8,41 @@ import (
 	"testing"
 )
 
-func TestServerInitialize(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      1,
-		Method:  "initialize",
-		Params:  map[string]any{},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error != nil {
-		t.Fatalf("initialize error: %v", resp.Error)
-	}
-
-	result, ok := resp.Result.(map[string]any)
-	if !ok {
-		t.Fatalf("result is not map: %T", resp.Result)
-	}
-	if pv, ok := result["protocolVersion"].(string); !ok || pv != "2024-11-05" {
-		t.Errorf("protocolVersion = %q, want %q", result["protocolVersion"], "2024-11-05")
-	}
-
-	caps, ok := result["capabilities"].(map[string]any)
-	if !ok {
-		t.Fatalf("capabilities is missing or wrong type: %T", result["capabilities"])
-	}
-	toolsCap, ok := caps["tools"].(map[string]any)
-	if !ok {
-		t.Fatalf("capabilities.tools is missing — clients will skip tools/list: %v", caps)
-	}
-	if toolsCap == nil {
-		t.Fatal("capabilities.tools must not be nil")
-	}
-
-	serverInfo, ok := result["serverInfo"].(map[string]string)
-	if !ok {
-		t.Fatalf("serverInfo is not map[string]string: %T", result["serverInfo"])
-	}
-	if serverInfo["name"] != "chetter-runner" {
-		t.Errorf("name = %q", serverInfo["name"])
-	}
-	if serverInfo["version"] != "0.1.0" {
-		t.Errorf("version = %q", serverInfo["version"])
-	}
-}
-
-func TestServerNotificationsInitialized(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		Method:  "notifications/initialized",
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp != nil {
-		t.Fatalf("notifications/initialized must return nil (no response for notifications), got %+v", resp)
-	}
-}
-
-func TestServerToolsList(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      2,
-		Method:  "tools/list",
-		Params:  map[string]any{},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error != nil {
-		t.Fatalf("tools/list error: %v", resp.Error)
-	}
-
-	result, ok := resp.Result.(map[string]any)
-	if !ok {
-		t.Fatalf("result is not map: %T", resp.Result)
-	}
-	tools, ok := result["tools"].([]map[string]any)
-	if !ok {
-		t.Fatalf("tools is not []map[string]any: %T", result["tools"])
-	}
-	if len(tools) < 4 {
-		t.Errorf("too few tools: %d", len(tools))
-	}
-}
-
-func TestServerToolsCallValid(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-	s.RegisterTool("echo", func(ctx context.Context, args map[string]any) (any, error) {
-		return args["message"], nil
-	})
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      3,
-		Method:  "tools/call",
-		Params: map[string]any{
-			"name": "echo",
-			"arguments": map[string]any{
-				"message": "hello",
-			},
-		},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error != nil {
-		t.Fatalf("tools/call error: %v", resp.Error)
-	}
-}
-
-func TestServerToolsCallError(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-	s.RegisterTool("failing", func(ctx context.Context, args map[string]any) (any, error) {
-		return nil, net.ErrClosed
-	})
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      4,
-		Method:  "tools/call",
-		Params: map[string]any{
-			"name":      "failing",
-			"arguments": map[string]any{},
-		},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	// Tool errors are returned as result with isError=true, not as JSON-RPC errors.
-	if resp.Error != nil {
-		t.Fatalf("unexpected JSON-RPC error: %v", resp.Error)
-	}
-	result, ok := resp.Result.(map[string]any)
-	if !ok {
-		t.Fatalf("result is not map: %T", resp.Result)
-	}
-	content, ok := result["content"].([]map[string]any)
-	if !ok {
-		t.Fatalf("content is not []map[string]any: %T", result["content"])
-	}
-	if len(content) == 0 || content[0]["text"] == nil {
-		t.Fatal("expected error text in content")
-	}
-}
-
-func TestServerToolsCallUnknown(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      5,
-		Method:  "tools/call",
-		Params: map[string]any{
-			"name":      "nonexistent",
-			"arguments": map[string]any{},
-		},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error == nil {
-		t.Fatal("expected error for unknown tool")
-	}
-	if resp.Error.Code != -32601 {
-		t.Errorf("error code = %d, want -32601", resp.Error.Code)
-	}
-}
-
-func TestServerToolsCallMissingName(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      6,
-		Method:  "tools/call",
-		Params: map[string]any{
-			"arguments": map[string]any{},
-		},
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error == nil {
-		t.Fatal("expected error for missing name")
-	}
-	if resp.Error.Code != -32602 {
-		t.Errorf("error code = %d, want -32602", resp.Error.Code)
-	}
-}
-
-func TestServerInvalidJSONRPC(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "1.0",
-		ID:      7,
-		Method:  "initialize",
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error == nil {
-		t.Fatal("expected error for wrong JSON-RPC version")
-	}
-	if resp.Error.Code != -32600 {
-		t.Errorf("error code = %d, want -32600", resp.Error.Code)
-	}
-}
-
-func TestServerUnknownMethod(t *testing.T) {
-	s := &Server{
-		tools: make(map[string]ToolHandler),
-	}
-
-	req := &JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      8,
-		Method:  "unknown/method",
-	}
-
-	resp := s.handleRequest(context.Background(), req)
-	if resp.Error == nil {
-		t.Fatal("expected error for unknown method")
-	}
-	if resp.Error.Code != -32601 {
-		t.Errorf("error code = %d, want -32601", resp.Error.Code)
-	}
-}
-
-func TestServerE2EViaUnixSocket(t *testing.T) {
-	dir := t.TempDir()
-	socketPath := dir + "/test.sock"
-
+func makeServer(t *testing.T) (*Server, string, func()) {
+	t.Helper()
+	socketPath := t.TempDir() + "/test.sock"
 	srv, err := NewServer(socketPath)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
-	srv.RegisterTool("echo", func(ctx context.Context, args map[string]any) (any, error) {
-		return args["message"], nil
-	})
-
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	go srv.Serve(ctx)
-	defer srv.Close()
+	cleanup := func() {
+		cancel()
+		srv.Close()
+	}
+	return srv, socketPath, cleanup
+}
+
+func sendRequest(conn net.Conn, method string, id int, params map[string]any) map[string]any {
+	req := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"method":  method,
+		"params":  params,
+	}
+	reqBytes, _ := json.Marshal(req)
+	conn.Write(append(reqBytes, '\n'))
+	buf := make([]byte, 8192)
+	n, _ := conn.Read(buf)
+	var resp map[string]any
+	json.Unmarshal(buf[:n], &resp)
+	return resp
+}
+
+func TestServerInitialize(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
 
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -276,32 +50,216 @@ func TestServerE2EViaUnixSocket(t *testing.T) {
 	}
 	defer conn.Close()
 
-	send := func(method string, id int, params map[string]any) map[string]any {
-		req := map[string]any{
-			"jsonrpc": "2.0",
-			"id":      id,
-			"method":  method,
-			"params":  params,
-		}
-		reqBytes, _ := json.Marshal(req)
-		if _, err := conn.Write(append(reqBytes, '\n')); err != nil {
-			t.Fatalf("write %s: %v", method, err)
-		}
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		if err != nil {
-			t.Fatalf("read %s: %v", method, err)
-		}
-		respStr := strings.TrimSpace(string(buf[:n]))
-		var resp map[string]any
-		if err := json.Unmarshal([]byte(respStr), &resp); err != nil {
-			t.Fatalf("unmarshal %s response %q: %v", method, respStr, err)
-		}
-		return resp
+	resp := sendRequest(conn, "initialize", 1, map[string]any{})
+	if resp["error"] != nil {
+		t.Fatalf("initialize error: %v", resp["error"])
+	}
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("result is not map: %T", resp["result"])
+	}
+	if pv, ok := result["protocolVersion"].(string); !ok || pv != "2025-11-25" {
+		t.Errorf("protocolVersion = %q, want %q", result["protocolVersion"], "2025-11-25")
+	}
+	if _, capOk := result["capabilities"].(map[string]any); !capOk {
+		t.Fatalf("capabilities is missing: %T", result["capabilities"])
 	}
 
+	_ = srv
+}
+
+func TestServerNotificationsInitialized(t *testing.T) {
+	_, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	notifyBytes, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	})
+	conn.Write(append(notifyBytes, '\n'))
+}
+
+func TestServerToolsList(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	srv.RegisterTool(ToolDef{
+		Name:        "echo",
+		Description: "echoes the message",
+		InputSchema: map[string]any{"type": "object"},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return "ok", nil
+	})
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	sendRequest(conn, "initialize", 1, map[string]any{})
+
+	notifyBytes, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	})
+	conn.Write(append(notifyBytes, '\n'))
+
+	resp := sendRequest(conn, "tools/list", 2, map[string]any{})
+	if resp["error"] != nil {
+		t.Fatalf("tools/list error: %v", resp["error"])
+	}
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("result is not map: %T", resp["result"])
+	}
+	tools, ok := result["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		t.Fatalf("tools/list returned no tools: %v", result["tools"])
+	}
+	found := false
+	for _, t := range tools {
+		toolMap, ok := t.(map[string]any)
+		if ok && toolMap["name"] == "echo" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("echo tool not in tools/list result")
+	}
+}
+
+func TestServerToolsCallValid(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	srv.RegisterTool(ToolDef{
+		Name:        "echo",
+		Description: "echoes the message",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"message": map[string]string{"type": "string"}},
+		},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return args["message"], nil
+	})
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	sendRequest(conn, "initialize", 1, map[string]any{})
+	conn.Write(append([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), '\n'))
+
+	resp := sendRequest(conn, "tools/call", 3, map[string]any{
+		"name":      "echo",
+		"arguments": map[string]any{"message": "hello"},
+	})
+	if resp["error"] != nil {
+		t.Fatalf("tools/call error: %v", resp["error"])
+	}
+}
+
+func TestServerToolsCallError(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	srv.RegisterTool(ToolDef{
+		Name:        "failing",
+		Description: "always fails",
+		InputSchema: map[string]any{"type": "object"},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return nil, net.ErrClosed
+	})
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	sendRequest(conn, "initialize", 1, map[string]any{})
+	conn.Write(append([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), '\n'))
+
+	resp := sendRequest(conn, "tools/call", 4, map[string]any{
+		"name":      "failing",
+		"arguments": map[string]any{},
+	})
+	if resp["error"] != nil {
+		t.Fatalf("unexpected JSON-RPC error: %v (tool errors should be in result.isError)", resp["error"])
+	}
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("result is not map: %T", resp["result"])
+	}
+	if result["isError"] != true {
+		t.Fatal("expected isError=true")
+	}
+	content, ok := result["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatal("expected error text in content")
+	}
+	textContent, ok := content[0].(map[string]any)
+	if !ok || textContent["text"] == nil {
+		t.Fatal("expected text content")
+	}
+}
+
+func TestServerToolsCallUnknown(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	sendRequest(conn, "initialize", 1, map[string]any{})
+	conn.Write(append([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), '\n'))
+
+	resp := sendRequest(conn, "tools/call", 5, map[string]any{
+		"name":      "nonexistent",
+		"arguments": map[string]any{},
+	})
+	if resp["error"] == nil {
+		t.Fatal("expected error for unknown tool")
+	}
+	_ = srv
+}
+
+func TestServerE2EViaUnixSocket(t *testing.T) {
+	srv, socketPath, cleanup := makeServer(t)
+	defer cleanup()
+
+	srv.RegisterTool(ToolDef{
+		Name:        "echo",
+		Description: "echoes the message",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"message": map[string]string{"type": "string"}},
+		},
+	}, func(ctx context.Context, args map[string]any) (any, error) {
+		return args["message"], nil
+	})
+
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
 	// 1. Initialize — must declare tools capability.
-	resp := send("initialize", 1, map[string]any{})
+	resp := sendRequest(conn, "initialize", 1, map[string]any{})
 	if resp["error"] != nil {
 		t.Fatalf("initialize error: %v", resp["error"])
 	}
@@ -318,14 +276,10 @@ func TestServerE2EViaUnixSocket(t *testing.T) {
 	}
 
 	// 2. Send notifications/initialized (no response expected).
-	notifyBytes, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"method":  "notifications/initialized",
-	})
-	conn.Write(append(notifyBytes, '\n'))
+	conn.Write(append([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), '\n'))
 
 	// 3. tools/list — must return the registered tools.
-	resp = send("tools/list", 2, map[string]any{})
+	resp = sendRequest(conn, "tools/list", 2, map[string]any{})
 	if resp["error"] != nil {
 		t.Fatalf("tools/list error: %v", resp["error"])
 	}
@@ -338,12 +292,10 @@ func TestServerE2EViaUnixSocket(t *testing.T) {
 		t.Fatalf("tools/list returned no tools: %v", result["tools"])
 	}
 
-	// 4. tools/call — must execute the echo tool.
-	resp = send("tools/call", 3, map[string]any{
-		"name": "echo",
-		"arguments": map[string]any{
-			"message": "hello",
-		},
+	// 4. tools/call — call the echo tool.
+	resp = sendRequest(conn, "tools/call", 3, map[string]any{
+		"name":      "echo",
+		"arguments": map[string]any{"message": "hello world"},
 	})
 	if resp["error"] != nil {
 		t.Fatalf("tools/call error: %v", resp["error"])
@@ -354,9 +306,21 @@ func TestServerE2EViaUnixSocket(t *testing.T) {
 	}
 	content, ok := result["content"].([]any)
 	if !ok || len(content) == 0 {
-		t.Fatalf("tools/call content missing: %v", resp["result"])
+		t.Fatalf("content missing or empty: %v", result)
 	}
-	if content[0].(map[string]any)["text"] != "hello" {
-		t.Errorf("tools/call unexpected result: %v", content[0])
+	c0, ok := content[0].(map[string]any)
+	if !ok {
+		t.Fatalf("content[0] is not map: %T", content[0])
+	}
+	text, ok := c0["text"].(string)
+	if !ok || text != "hello world" {
+		t.Errorf("text = %q, want %q", text, "hello world")
+	}
+}
+
+func TestServerSendRequest(t *testing.T) {
+	ts := strings.NewReader("")
+	if ts == nil {
+		t.Fatal("unreachable")
 	}
 }

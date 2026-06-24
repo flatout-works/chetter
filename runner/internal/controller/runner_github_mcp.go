@@ -15,10 +15,18 @@ import (
 const githubToolTimeout = 30 * time.Second
 
 func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID string) {
-	server.RegisterTool("chetter_create_issue", r.githubCreateIssueTool(taskID))
-	server.RegisterTool("chetter_issue_comment", r.githubIssueCommentTool(taskID))
-	server.RegisterTool("chetter_create_pr", r.githubCreatePRTool(taskID))
-	server.RegisterTool("chetter_pr_review", r.githubPRReviewTool(taskID))
+	for _, def := range runnermcp.ToolDefinitions() {
+		switch def.Name {
+		case "chetter_create_issue":
+			server.RegisterTool(def, r.githubCreateIssueTool(taskID))
+		case "chetter_issue_comment":
+			server.RegisterTool(def, r.githubIssueCommentTool(taskID))
+		case "chetter_create_pr":
+			server.RegisterTool(def, r.githubCreatePRTool(taskID))
+		case "chetter_pr_review":
+			server.RegisterTool(def, r.githubPRReviewTool(taskID))
+		}
+	}
 }
 
 func (r *Runner) githubCreateIssueTool(taskID string) runnermcp.ToolHandler {

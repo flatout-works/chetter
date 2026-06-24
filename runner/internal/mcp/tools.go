@@ -1,19 +1,14 @@
 package mcp
 
-// ToolDefinitions returns the full JSON schema (name, description,
-// inputSchema) for every MCP tool the runner exposes to agents.
-//
-// Only file I/O tools that operate within the workspace directory are
-// exposed. Tools that execute commands on the runner host (workspace_bash,
-// git_*, deploy_*, fetch_url) are intentionally excluded to prevent sandbox
-// escape — the agent already has shell access inside its container via the
-// harness.
-func ToolDefinitions() []map[string]any {
-	return []map[string]any{
+// ToolDefinitions returns tool definitions for all MCP tools the runner
+// exposes to agents. These are pure metadata; handlers are registered
+// separately via Server.RegisterTool.
+func ToolDefinitions() []ToolDef {
+	return []ToolDef{
 		{
-			"name":        "chetter_create_issue",
-			"description": "Create a GitHub issue with a canonical Chetter signature and artifact tracking.",
-			"inputSchema": map[string]any{
+			Name:        "chetter_create_issue",
+			Description: "Create a GitHub issue with a canonical Chetter signature and artifact tracking.",
+			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"repo":   map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
@@ -25,9 +20,9 @@ func ToolDefinitions() []map[string]any {
 			},
 		},
 		{
-			"name":        "chetter_issue_comment",
-			"description": "Create a GitHub issue or PR comment with a canonical Chetter signature and artifact tracking.",
-			"inputSchema": map[string]any{
+			Name:        "chetter_issue_comment",
+			Description: "Create a GitHub issue or PR comment with a canonical Chetter signature and artifact tracking.",
+			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"repo":         map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
@@ -38,9 +33,9 @@ func ToolDefinitions() []map[string]any {
 			},
 		},
 		{
-			"name":        "chetter_create_pr",
-			"description": "Create a GitHub pull request with a canonical Chetter signature and artifact tracking.",
-			"inputSchema": map[string]any{
+			Name:        "chetter_create_pr",
+			Description: "Create a GitHub pull request with a canonical Chetter signature and artifact tracking.",
+			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"repo":  map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
@@ -54,9 +49,9 @@ func ToolDefinitions() []map[string]any {
 			},
 		},
 		{
-			"name":        "chetter_pr_review",
-			"description": "Create a GitHub pull request review with a canonical Chetter signature and artifact tracking.",
-			"inputSchema": map[string]any{
+			Name:        "chetter_pr_review",
+			Description: "Create a GitHub pull request review with a canonical Chetter signature and artifact tracking.",
+			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"repo":      map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
