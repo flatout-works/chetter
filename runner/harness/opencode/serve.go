@@ -224,25 +224,6 @@ func opencodeServeArgsResume(port int) []string {
 	return []string{"serve", "--port", strconv.Itoa(port)}
 }
 
-func LogMCPStatus(ctx context.Context, baseURL, secret string) {
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/mcp", nil)
-	if err != nil {
-		slog.Warn("mcp status request failed", "err", err)
-		return
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", basicAuthHeader(secret))
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		slog.Warn("mcp status fetch failed", "err", err)
-		return
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	slog.Info("opencode MCP server status", "status", resp.StatusCode, "body", string(body))
-}
-
 func abortSession(ctx context.Context, baseURL, sessionID, secret string) error {
 	abortCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
-	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -452,7 +451,6 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 	slog.Info("harness serve ready", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -463,16 +461,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	var tokenUsage task.TokenUsage
 	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
@@ -482,12 +472,12 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, tokenUsage)
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport, tokenUsage)
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -630,7 +620,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -641,16 +630,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	var tokenUsage task.TokenUsage
 	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
@@ -677,7 +658,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -698,7 +679,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -843,20 +824,11 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
-	var tokenUsage task.TokenUsage
 	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
 	})
 
 	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
@@ -878,16 +850,16 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		workspacePath = session.WorkspaceDir
 	}
 	if err != nil {
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker resume)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport, checkpointPath, workspacePath string, tokenUsage task.TokenUsage) {
+func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport, checkpointPath, workspacePath string) {
 	resp := task.TaskResponse{
 		TaskID:         req.TaskID,
 		Status:         status,
@@ -895,7 +867,6 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 		SessionExport:  sessionExport,
 		CheckpointPath: checkpointPath,
 		WorkspacePath:  workspacePath,
-		TokenUsage:     tokenUsage,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, sessionID)
 	if isTerminalStatus(status) {
@@ -922,13 +893,12 @@ func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness)
 	return ""
 }
 
-func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string, tokenUsage task.TokenUsage) {
+func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string) {
 	resp := task.TaskResponse{
 		TaskID:        req.TaskID,
 		Status:        status,
 		Artifacts:     artifacts,
 		SessionExport: sessionExport,
-		TokenUsage:    tokenUsage,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, sessionID)
 	if isTerminalStatus(status) {
@@ -1130,11 +1100,11 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
 	if err := writeRPCCommand(stdin, promptCmd); err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("write prompt: %v", err), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("write prompt: %v", err), nil, state.sessionID, "")
 		return
 	}
 	if _, err := r.waitForRPCResponse(ctx, req, reader, stdin, "prompt", state); err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s prompt: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s prompt: %v", name, err), nil, state.sessionID, "")
 		return
 	}
 
@@ -1155,14 +1125,14 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 				}
 				msgCancel()
 				r.abortRPC(ctx, req, stdin, reader, state)
-				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, sessionExport, task.TokenUsage{})
+				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, sessionExport)
 				return
 			}
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "")
 			return
 		}
 		if err := r.handleRPCLine(req, stdin, line, state); err != nil {
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s event: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s event: %v", name, err), nil, state.sessionID, "")
 			return
 		}
 	}
@@ -1199,14 +1169,14 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 
 	_ = stdin.Close()
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, state.sessionID, sessionExport)
 		exited = true
 		return
 	}
 	exited = true
 
 	if state.errorMessage != "" {
-		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s failed", req.TaskID), "failed", state.errorMessage, time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -1214,7 +1184,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		resultText = "Pi completed without assistant text."
 	}
 	slog.Info("RPC agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport, task.TokenUsage{})
+	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (rpc)", req.TaskID), "success", truncateSummary(resultText), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -1495,21 +1465,21 @@ func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, r
 	})
 	summary := out
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, "", summary, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, "", summary)
 		return
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() != nil {
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, "", summary, task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, "", summary)
 			return
 		}
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil, "", summary, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil, "", summary)
 		return
 	}
 
 	slog.Info("batch agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, "", summary, task.TokenUsage{})
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, "", summary)
 }
 
 func (r *Runner) publishEvent(taskID, detail string) {
