@@ -103,12 +103,17 @@ func (s *Server) handleRequest(ctx context.Context, req *JSONRPCRequest) *JSONRP
 	case "initialize":
 		return s.resultResp(req.ID, map[string]any{
 			"protocolVersion": "2024-11-05",
-			"capabilities":    map[string]any{},
+			"capabilities": map[string]any{
+				"tools": map[string]any{},
+			},
 			"serverInfo": map[string]string{
 				"name":    "chetter-runner",
 				"version": "0.1.0",
 			},
 		})
+
+	case "notifications/initialized":
+		return nil
 
 	case "tools/list":
 		return s.resultResp(req.ID, map[string]any{"tools": ToolDefinitions()})
