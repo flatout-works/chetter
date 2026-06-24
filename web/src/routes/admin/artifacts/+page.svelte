@@ -76,7 +76,7 @@
     <div class="flex flex-wrap items-center gap-2">
       <Input bind:value={taskId} placeholder="Task ID" class="w-40" />
       <Input bind:value={repo} placeholder="Repository" class="w-44" />
-      <Select bind:value={artifactType} class="min-w-44">
+      <Select bind:value={artifactType} class="!w-auto min-w-44">
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
         <option value="pull_request">Pull Request</option>

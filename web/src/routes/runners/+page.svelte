@@ -8,12 +8,48 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import { formatAge } from "$lib/utils.svelte";
   import { Alert, Button, Card, Spinner } from "flowbite-svelte";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
   let clearing = $state(false);
   let clearError = $state<string | null>(null);
+  let activeFilter = $state("");
+
+  let totalRunners = $derived(health?.runners?.length ?? 0);
+  let activeRunners = $derived(health?.runners?.filter(r => r.status === "active").length ?? 0);
+  let drainingRunners = $derived(health?.runners?.filter(r => r.status === "draining").length ?? 0);
+  let totalCapacity = $derived(health?.runners?.reduce((sum, r) => sum + r.maxConcurrent, 0) ?? 0);
+  let busySlots = $derived(health?.runners?.reduce((sum, r) => sum + r.runningTasks, 0) ?? 0);
+  let idleSlots = $derived(totalCapacity - busySlots);
+
+  let filteredRunners = $derived.by(() => {
+    const all = health?.runners ?? [];
+    if (!activeFilter) return all;
+    switch (activeFilter) {
+      case "active": return all.filter(r => r.status === "active");
+      case "draining": return all.filter(r => r.status === "draining");
+      case "busy": return all.filter(r => r.runningTasks > 0);
+      case "idle": return all.filter(r => r.runningTasks === 0);
+      default: return all;
+    }
+  });
+
+  const cards = $derived([
+    { label: "Runners", value: totalRunners, color: "text-gray-900 dark:text-white", filter: "" },
+    { label: "Active", value: activeRunners, color: "text-green-600 dark:text-green-400", filter: "active" },
+    { label: "Draining", value: drainingRunners, color: "text-yellow-600 dark:text-yellow-400", filter: "draining" },
+    { label: "Capacity", value: totalCapacity, color: "text-blue-600 dark:text-blue-400", filter: "" },
+    { label: "Busy", value: busySlots, color: "text-purple-600 dark:text-purple-400", filter: "busy" },
+    { label: "Idle", value: idleSlots, color: "text-slate-600 dark:text-slate-400", filter: "idle" },
+  ]);
+
+  function handleCardClick(card: typeof cards[number]) {
+    if (activeFilter === card.filter) { activeFilter = ""; }
+    else if (card.filter) { activeFilter = card.filter; }
+    else { activeFilter = ""; }
+  }
 
   async function clearQueue() {
     const ok = await confirm({
@@ -76,45 +112,53 @@
       <Spinner size="4" /> Loading…
     </div>
   {:else if health}
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-8">
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Total</p>
-        <p class="text-2xl font-bold text-gray-900 dark:text-white">{health.totalTasks}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Running</p>
-        <p class="text-2xl font-bold text-green-600 dark:text-green-400">{health.runningTasks}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
-        <p class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{health.pendingTasks}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Done</p>
-        <p class="text-2xl font-bold text-blue-600 dark:text-blue-400">{health.doneTasks}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Error</p>
-        <p class="text-2xl font-bold text-red-600 dark:text-red-400">{health.errorTasks}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="w-full max-w-none !p-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Stale</p>
-        <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">{health.staleTasks}</p>
-      </Card>
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+      {#each cards as card}
+        <Card
+          size="sm"
+          shadow="sm"
+          href="#"
+          class="!p-4 w-full text-left hover:shadow-md transition-shadow {card.filter && activeFilter === card.filter ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}"
+          title={card.filter ? `Show ${card.filter} runners` : card.label === "Runners" ? "Show all runners" : "Clear filter"}
+          onclick={(e) => { e.preventDefault(); handleCardClick(card); }}
+        >
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{card.label}</p>
+          <p class="text-2xl font-bold {card.color}">{card.value}</p>
+        </Card>
+      {/each}
     </div>
 
-    <Card size="xl" class="mb-8 w-full !p-0" shadow="sm">
+    {#if activeFilter}
+      <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        Showing <strong class="text-gray-700 dark:text-gray-200">{activeFilter}</strong> runners.
+        <Button color="blue" size="xs" onclick={() => { activeFilter = ""; }}>Clear filter</Button>
+      </p>
+    {/if}
+
+    <Card size="xl" class="w-full !p-0" shadow="sm">
       <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h2 class="font-semibold text-gray-900 dark:text-white">Active Runners</h2>
+        <h2 class="font-semibold text-gray-900 dark:text-white">
+          {activeFilter ? `${activeFilter.charAt(0).toUpperCase() + activeFilter.slice(1)} Runners` : "Runners"}
+          <span class="ml-1 font-normal text-gray-500 dark:text-gray-400 text-sm">({filteredRunners.length})</span>
+        </h2>
       </div>
       <div class="divide-y divide-gray-200 dark:divide-gray-700">
-        {#each health.runners as runner (runner.runnerId)}
+        {#each filteredRunners as runner (runner.runnerId)}
           <div class="px-5 py-4">
             <div class="flex items-center justify-between gap-4">
               <div class="min-w-0">
                 <p class="text-sm font-mono font-medium text-gray-900 dark:text-white">{runner.runnerId}</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {runner.imageRef || "—"} · v{runner.version || "?"} · {runner.runningTasks}/{runner.maxConcurrent} tasks{runner.imageDigest ? ` · digest:${runner.imageDigest.slice(0, 12)}` : ""}
+                  {runner.imageRef || "—"} · v{runner.version || "?"} · {runner.runningTasks}/{runner.maxConcurrent} tasks
+                  {#if runner.imageDigest}
+                    · digest:{runner.imageDigest.slice(0, 12)}
+                  {/if}
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Uptime: {formatAge(runner.startedAt)}
+                  {#if runner.lastHeartbeat}
+                    · Last HB: {formatAge(runner.lastHeartbeat)}
+                  {/if}
                 </p>
               </div>
               <div class="flex items-center gap-3">
@@ -132,13 +176,13 @@
             </div>
           </div>
         {:else}
-          <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No active runners</p>
+          <p class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No runners match the filter</p>
         {/each}
       </div>
     </Card>
 
     {#if health.runningTaskInfos?.length}
-      <Card size="xl" class="w-full !p-0" shadow="sm">
+      <Card size="xl" class="mt-8 w-full !p-0" shadow="sm">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
           <h2 class="font-semibold text-gray-900 dark:text-white">Running Task Details</h2>
         </div>

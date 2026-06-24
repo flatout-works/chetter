@@ -18,8 +18,10 @@
   const webGitHash = __WEB_GIT_HASH__;
 
   let sidebarOpen = $state(false);
+  let sidebarCollapsed = $state(false);
 
   function closeSidebar() { sidebarOpen = false; }
+  function toggleCollapsed() { sidebarCollapsed = !sidebarCollapsed; }
 
   onMount(() => {
     initAuth();
@@ -69,54 +71,101 @@
 
   let activePath = $derived($page.url.pathname);
 
-  let activePathUpstream = $derived(activePath);
   $effect(() => {
-    if (activePathUpstream) sidebarOpen = false;
+    if (activePath) sidebarOpen = false;
   });
+
+  let isActiveLink = (href: string): boolean => {
+    if (href === "/") return activePath === "/";
+    return activePath.startsWith(href);
+  };
 </script>
 
 {#snippet sidebarInner()}
   <SidebarWrapper class="flex flex-col h-full">
-    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
-      <h1 class="text-xl font-bold text-gray-900 dark:text-white">Chetter</h1>
+    <div class="flex items-center p-4 border-b border-gray-200 dark:border-gray-700 gap-2">
+      {#if sidebarCollapsed}
+        <span class="text-xl font-bold text-gray-900 dark:text-white flex-1 text-center">C</span>
+      {:else}
+        <h1 class="text-xl font-bold text-gray-900 dark:text-white flex-1">Chetter</h1>
+        <button onclick={toggleCollapsed} title="Collapse sidebar"
+                class="p-1 rounded-sm text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-700 shrink-0"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      {/if}
     </div>
-    <SidebarGroup border={false} class="flex-1 overflow-y-auto px-3 py-2">
-      {#each navItems as item (item.href)}
-        <SidebarItem href={resolve(item.href)} label={item.label}>
-          {#snippet icon()}
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    {#if sidebarCollapsed}
+      <div class="px-1 py-1 border-b border-gray-200 dark:border-gray-700">
+        <button onclick={toggleCollapsed} title="Expand sidebar"
+                class="flex items-center justify-center w-full py-2 rounded-sm text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-700"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    {/if}
+    <SidebarGroup border={false} class={sidebarCollapsed ? "flex-1 overflow-y-auto px-1 py-2" : "flex-1 overflow-y-auto px-3 py-2"}>
+      {#if sidebarCollapsed}
+        {#each navItems as item (item.href)}
+          <a href={resolve(item.href)} title={item.label}
+             class="flex items-center justify-center py-2.5 rounded-sm mb-0.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+             class:bg-gray-200={isActiveLink(item.href)}
+             class:dark:bg-gray-700={isActiveLink(item.href)}
+             class:text-gray-900={isActiveLink(item.href)}
+             class:dark:text-white={isActiveLink(item.href)}
+          >
+            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />
             </svg>
-          {/snippet}
-        </SidebarItem>
-      {/each}
+          </a>
+        {/each}
+      {:else}
+        {#each navItems as item (item.href)}
+          <SidebarItem href={resolve(item.href)} label={item.label}>
+            {#snippet icon()}
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />
+              </svg>
+            {/snippet}
+          </SidebarItem>
+        {/each}
+      {/if}
     </SidebarGroup>
-    <div class="p-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
-      <Button
-        onclick={toggleTheme}
-        color="alternative"
-        size="sm"
-        class="w-full justify-start"
-      >
-        {$theme === "dark" ? "☀ Light" : "🌙 Dark"}
-      </Button>
-      <Button
-        onclick={logout}
-        color="red"
-        size="sm"
-        class="w-full justify-start"
-      >
-        Sign Out
-      </Button>
-      {#if webGitHash !== "unknown" || serverInfo.gitHash}
-        <div class="space-y-1 pt-2 text-center text-[11px] font-mono text-gray-400 dark:text-gray-500">
-          {#if webGitHash !== "unknown"}
-            <div>web {webGitHash}</div>
-          {/if}
-          {#if serverInfo.gitHash}
-            <div>server {serverInfo.gitHash}</div>
-          {/if}
-        </div>
+    <div class="p-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+      {#if sidebarCollapsed}
+        <button onclick={toggleTheme} title={$theme === "dark" ? "Light mode" : "Dark mode"}
+                class="flex items-center justify-center w-full py-2.5 rounded-sm text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{$theme === "dark" ? "M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" : "M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"}" />
+          </svg>
+        </button>
+        <button onclick={logout} title="Sign Out"
+                class="flex items-center justify-center w-full py-2.5 rounded-sm text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      {:else}
+        <Button onclick={toggleTheme} color="alternative" size="sm" class="w-full justify-start">
+          {$theme === "dark" ? "☀ Light" : "🌙 Dark"}
+        </Button>
+        <Button onclick={logout} color="red" size="sm" class="w-full justify-start">Sign Out</Button>
+        {#if webGitHash !== "unknown" || serverInfo.gitHash}
+          <div class="space-y-1 pt-2 text-center text-[11px] font-mono text-gray-400 dark:text-gray-500">
+            {#if webGitHash !== "unknown"}
+              <div>web {webGitHash}</div>
+            {/if}
+            {#if serverInfo.gitHash}
+              <div>server {serverInfo.gitHash}</div>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </div>
   </SidebarWrapper>
@@ -149,11 +198,16 @@
 {:else}
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
 
-    <div class="hidden md:block w-64 flex-shrink-0">
+    {#snippet sidebarContainer(isMobile: boolean)}
+      {@const widthClass = sidebarCollapsed ? "w-16" : "w-64"}
       <Sidebar activeUrl={activePath} position="static" alwaysOpen={true} activateClickOutside={false} backdrop={false}
-               class="h-screen sticky top-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+               class="{widthClass} {isMobile ? 'fixed inset-y-0 left-0 z-40' : 'h-screen sticky top-0'} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-[width] duration-200">
         {@render sidebarInner()}
       </Sidebar>
+    {/snippet}
+
+    <div class="hidden md:block {sidebarCollapsed ? 'w-16' : 'w-64'} flex-shrink-0">
+      {@render sidebarContainer(false)}
     </div>
 
     {#if sidebarOpen}
@@ -161,16 +215,23 @@
               onclick={() => sidebarOpen = false}
               aria-label="Close sidebar"
               type="button"></button>
-      <Sidebar activeUrl={activePath} position="static" alwaysOpen={true} activateClickOutside={false} backdrop={false}
-               class="md:hidden fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-        {@render sidebarInner()}
-      </Sidebar>
+      {@render sidebarContainer(true)}
     {/if}
 
     <div class="flex-1 flex flex-col min-w-0 min-h-screen">
       <div class="md:hidden sticky top-0 z-20 flex items-center gap-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
         <SidebarButton onclick={() => sidebarOpen = true} />
         <h1 class="text-lg font-bold text-gray-900 dark:text-white">Chetter</h1>
+        <div class="flex-1"></div>
+        <button onclick={toggleCollapsed} class="p-1 text-gray-500 dark:text-gray-400" title="Toggle sidebar width">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {#if sidebarCollapsed}
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            {:else}
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            {/if}
+          </svg>
+        </button>
       </div>
 
       {#if serverInfo.quotaExhausted}

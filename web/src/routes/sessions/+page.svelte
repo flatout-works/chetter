@@ -104,7 +104,7 @@
   <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Agent Sessions</h1>
     <div class="flex flex-wrap items-center gap-2">
-      <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }}>
+      <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }} class="!w-auto">
           <option value="">All</option>
           <option value="running">Running</option>
           <option value="paused">Paused</option>
@@ -112,7 +112,7 @@
           <option value="completed">Completed</option>
           <option value="error">Error</option>
         </Select>
-        <Select bind:value={pageSize} onchange={() => { page = 0; }}>
+        <Select bind:value={pageSize} onchange={() => { page = 0; }} class="!w-auto">
           <option value={10}>10 / page</option>
           <option value={25}>25 / page</option>
           <option value={50}>50 / page</option>
