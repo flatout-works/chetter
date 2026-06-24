@@ -20,8 +20,8 @@ func (cc *ClaudeCode) SupportsServe() bool { return false }
 
 func (cc *ClaudeCode) SupportsRpc() bool { return false }
 
-func (cc *ClaudeCode) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
-	return GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, isLocal)
+func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
+	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, isLocal)
 }
 
 func (cc *ClaudeCode) ConfigFilePath(wsDir string) string {

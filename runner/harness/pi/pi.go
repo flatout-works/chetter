@@ -20,8 +20,8 @@ func (p *Pi) SupportsServe() bool { return false }
 
 func (p *Pi) SupportsRpc() bool { return true }
 
-func (p *Pi) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
-	return GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, isLocal)
+func (p *Pi) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
+	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, isLocal)
 }
 
 func (p *Pi) ConfigFilePath(wsDir string) string {

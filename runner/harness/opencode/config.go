@@ -118,15 +118,15 @@ func ensureProvider(cfg map[string]any, providerID string) {
 	}
 }
 
-func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
+func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
 }
 
-func GenerateConfigWithEnv(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
+func GenerateConfigWithEnv(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
 }
 
-func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
+func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
 	configSource := wsConfigPath
@@ -141,15 +141,15 @@ func GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chet
 	ensureMem9Plugin(cfg)
 	ensureRunnerProvider(cfg, req)
 
-	if includeRunnerMCP {
+	if includeRunnerMCP && runnerMCPURL != "" {
 		mcpServers, _ := cfg["mcp"].(map[string]any)
 		if mcpServers == nil {
 			mcpServers = make(map[string]any)
 			cfg["mcp"] = mcpServers
 		}
 		mcpServers["runner-bridge"] = map[string]any{
-			"type":    "local",
-			"command": append([]string{mcpBridgePath}, socketPath),
+			"type":    "remote",
+			"url":     runnerMCPURL,
 			"enabled": true,
 		}
 	}

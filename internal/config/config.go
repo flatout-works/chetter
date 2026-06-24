@@ -26,6 +26,7 @@ type Config struct {
 	GitHubInstallationID   int64
 	DefinitionsRepo        string
 	DefinitionsBranch      string
+	WebURL                 string
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -47,6 +48,7 @@ func Load() Config {
 		GitHubInstallationID:   envInt64("GITHUB_INSTALLATION_ID", 0),
 		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
 		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
+		WebURL:                 env("CHETTER_WEB_URL", ""),
 	}
 }
 

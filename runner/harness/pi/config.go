@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
 	piDir := filepath.Join(wsDir, ".pi")
 	agentDir := filepath.Join(piDir, "agent")
 	if err := os.MkdirAll(agentDir, 0750); err != nil {
@@ -43,10 +43,10 @@ func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPT
 	}
 
 	mcpServers := map[string]any{}
-	if mcpBridgePath != "" {
+	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"command":     []string{mcpBridgePath, socketPath},
-			"lifecycle":   "keep-alive",
+			"url":       runnerMCPURL,
+			"lifecycle": "keep-alive",
 			"idleTimeout": 0,
 		}
 	}

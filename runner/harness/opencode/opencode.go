@@ -16,8 +16,8 @@ func New() *OpenCode {
 
 func (oc *OpenCode) Name() string { return "opencode" }
 
-func (oc *OpenCode) GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken, true, req, isLocal)
+func (oc *OpenCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, true, req, isLocal)
 }
 
 func (oc *OpenCode) ConfigFilePath(wsDir string) string {

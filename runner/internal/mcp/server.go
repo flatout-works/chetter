@@ -1,9 +1,9 @@
 // Package mcp exposes the MCP (Model Context Protocol) server for the
 // runner. Each task gets its own MCP server instance that registers tools
-// (GitHub operations, workspace I/O) and listens on a Unix domain socket.
+// (GitHub operations) and serves them over HTTP Streamable transport.
 //
-// The mcp-bridge binary connects to this socket and bridges the MCP
-// traffic over stdio to agents running inside the dev container.
+// A random TCP port is allocated per task, and the agent container connects
+// via a remote URL. This avoids gVisor Unix socket incompatibility.
 package mcp
 
 import (
@@ -12,16 +12,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
+	"net/http"
+	"sync"
 
 	mcplib "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type Server struct {
-	socketPath string
-	sdkServer  *mcplib.Server
-	listener   net.Listener
+	sdkServer *mcplib.Server
+	httpSrv   *http.Server
+	addr      string
+	wg        sync.WaitGroup
 }
 
 // ToolHandler is the function signature for tool implementations.
@@ -34,26 +35,38 @@ type ToolDef struct {
 	InputSchema map[string]any
 }
 
-// NewServer creates a new MCP server listening on the given Unix socket path.
-func NewServer(socketPath string) (*Server, error) {
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0750); err != nil {
-		return nil, fmt.Errorf("create socket dir: %w", err)
-	}
-	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("remove old socket: %w", err)
-	}
-
-	l, err := net.Listen("unix", socketPath)
+// NewServer creates a new MCP server listening on a random TCP port.
+func NewServer() (*Server, error) {
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
-		return nil, fmt.Errorf("listen on socket: %w", err)
+		return nil, fmt.Errorf("listen: %w", err)
 	}
+	addr := ln.Addr().String()
 
-	return &Server{
-		socketPath: socketPath,
-		sdkServer:  mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil),
-		listener:   l,
-	}, nil
+	sdkServer := mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil)
+
+	getServer := func(_ *http.Request) *mcplib.Server { return sdkServer }
+	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true})
+
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", handler)
+
+	httpSrv := &http.Server{Handler: mux}
+	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr}
+	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return context.WithoutCancel(context.Background()) }
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := httpSrv.Serve(ln); err != http.ErrServerClosed {
+			slog.Error("mcp server error", "err", err)
+		}
+	}()
+	return s, nil
 }
+
+// Addr returns the listen address for the MCP server (e.g. "127.0.0.1:12345").
+func (s *Server) Addr() string { return s.addr }
 
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
@@ -64,40 +77,13 @@ func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 	}, adaptHandler(handler))
 }
 
-// Serve accepts connections until the context is cancelled.
-func (s *Server) Serve(ctx context.Context) error {
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-				continue
-			}
-		}
-		go s.handleConn(ctx, conn)
-	}
-}
-
-// Close closes the Unix socket listener.
+// Close shuts down the HTTP server.
 func (s *Server) Close() error {
-	return s.listener.Close()
-}
-
-func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
-	session, err := s.sdkServer.Connect(ctx, &mcplib.IOTransport{
-		Reader: conn,
-		Writer: conn,
-	}, nil)
-	if err != nil {
-		slog.Error("mcp server connect failed", "err", err)
-		conn.Close()
-		return
+	if err := s.httpSrv.Shutdown(context.Background()); err != nil {
+		return err
 	}
-	slog.Info("mcp client connected", "session_id", session.ID())
-	<-ctx.Done()
-	session.Close()
+	s.wg.Wait()
+	return nil
 }
 
 func adaptHandler(h ToolHandler) mcplib.ToolHandler {

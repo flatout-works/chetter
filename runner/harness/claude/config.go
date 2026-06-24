@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
 	claudeDir := wsDir + "/.claude"
 	if err := os.MkdirAll(claudeDir, 0750); err != nil {
 		return err
@@ -73,10 +73,10 @@ func GenerateConfig(wsDir, socketPath, mcpBridgePath, chetterMCPURL, chetterMCPT
 
 	mcpServers := map[string]any{}
 
-	if mcpBridgePath != "" {
+	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"type":    "local",
-			"command": []string{mcpBridgePath, socketPath},
+			"type":    "remote",
+			"url":     runnerMCPURL,
 			"enabled": true,
 		}
 	}
