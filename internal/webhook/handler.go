@@ -829,7 +829,7 @@ func (h *Handler) checkAuthorWriteAccess(ctx context.Context, repo, username, de
 	return true
 }
 
-var taskIDFooterRe = regexp.MustCompile(`Task:\s*(task_[a-f0-9]+)`)
+var taskIDFooterRe = regexp.MustCompile(`Task:\s*\[?(task_[a-f0-9]+)`)
 var agentSessionIDFooterRe = regexp.MustCompile(`Session:\s*(sess_[a-f0-9]+)`)
 var sessionRunIDFooterRe = regexp.MustCompile(`Run:\s*(run_[a-f0-9]+)`)
 

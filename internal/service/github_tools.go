@@ -205,16 +205,16 @@ func githubToolSignature(task repository.ChetterTask, sessionRun repository.Chet
 	model := nonEmpty(task.ModelID.String, "unknown")
 	runner := nonEmpty(task.AgentImage.String, "unknown")
 	digest := nonEmpty(task.RunnerImageDigest.String, "unknown")
-	taskLink := ""
+	taskLink := task.ID
 	if webURL != "" {
-		taskLink = fmt.Sprintf("\n[View task %s in Chetter](%s/tasks/%s)", task.ID, strings.TrimRight(webURL, "/"), task.ID)
+		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", task.ID, strings.TrimRight(webURL, "/"), task.ID)
 	}
 	if sessionRun.ID != "" && sessionRun.AgentSessionID != "" {
-		return fmt.Sprintf("---\nSession: %s | Run: %s | Task: %s\nAgent: %s | Model: %s | Runner: %s (%s)%s",
-			sessionRun.AgentSessionID, sessionRun.ID, task.ID, agent, model, runner, digest, taskLink)
+		return fmt.Sprintf("---\nSession: %s | Run: %s | Task: %s\nAgent: %s | Model: %s | Runner: %s (%s)",
+			sessionRun.AgentSessionID, sessionRun.ID, taskLink, agent, model, runner, digest)
 	}
-	return fmt.Sprintf("---\nTask: %s | Agent: %s | Model: %s | Runner: %s (%s)%s",
-		task.ID, agent, model, runner, digest, taskLink)
+	return fmt.Sprintf("---\nTask: %s | Agent: %s | Model: %s | Runner: %s (%s)",
+		taskLink, agent, model, runner, digest)
 }
 
 func appendChetterSignature(body, signature string) string {
