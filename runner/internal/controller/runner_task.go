@@ -2,7 +2,6 @@ package controller
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -147,18 +146,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.runRpcAgent(ctx, session, req, mcpURL, h)
 			return
 		}
-		if !h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, mcpURL, h)
-			return
-		}
 		r.runLocalAgent(ctx, session, req, mcpURL, h)
 	default:
 		if h.SupportsRpc() {
 			r.runDockerRpcAgent(ctx, session, req, mcpURL, h)
-			return
-		}
-		if !h.SupportsServe() {
-			r.runBatchAgent(ctx, session, req, mcpURL, h)
 			return
 		}
 		r.runDockerAgent(ctx, session, req, mcpURL, h)
@@ -1447,58 +1438,6 @@ func writeRPCSessionExport(wsDir, export string) error {
 	return os.WriteFile(path, []byte(export), 0644)
 }
 
-func (r *Runner) runBatchAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
-	args := h.RunBatchCommand(req)
-	name := h.Name()
-	slog.Info("starting batch harness", "taskID", req.TaskID, "harness", name, "args", args)
-	r.publishStatusForRequest(req, "running", "Starting agent (batch mode)...", nil)
-
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.Dir = session.WorkspaceDir
-	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("stdout pipe: %v", err), nil)
-		return
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("stderr pipe: %v", err), nil)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s: %v", name, err), nil)
-		return
-	}
-
-	go h.PipeOutput(req.TaskID, "stderr", stderr)
-
-	readCtx, readCancel := context.WithCancel(ctx)
-	defer readCancel()
-	out, err := readBatchOutput(readCtx, stdout, req.TaskID, func(detail string) {
-		r.publishEvent(req.TaskID, fmt.Sprintf("%s: %s", name, detail))
-	})
-	summary := out
-	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, "", summary, task.TokenUsage{})
-		return
-	}
-
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, "", summary, task.TokenUsage{})
-			return
-		}
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v\n%s", name, err, truncateSummary(summary)), nil, "", summary, task.TokenUsage{})
-		return
-	}
-
-	slog.Info("batch agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, "", summary, task.TokenUsage{})
-}
-
 func (r *Runner) publishEvent(taskID, detail string) {
 	resp := task.TaskResponse{
 		TaskID:  taskID,
@@ -1507,65 +1446,4 @@ func (r *Runner) publishEvent(taskID, detail string) {
 	}
 	r.decorateTaskResponse(&resp, nil, "")
 	r.reportTaskResponse(resp)
-}
-
-func readBatchOutput(ctx context.Context, reader io.Reader, taskID string, onEvent func(detail string)) (string, error) {
-	var buf bytes.Buffer
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), 64*1024*1024)
-
-	var lastDetail string
-	lastPublished := time.Now()
-
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return buf.String(), ctx.Err()
-		default:
-		}
-		line := scanner.Text()
-		buf.WriteString(line)
-		buf.WriteByte('\n')
-
-		var ev map[string]any
-		if err := json.Unmarshal([]byte(line), &ev); err != nil {
-			continue
-		}
-		if detail := eventDetail(ev); detail != "" {
-			lastDetail = detail
-		}
-		if time.Since(lastPublished) >= 3*time.Second && lastDetail != "" {
-			onEvent(lastDetail)
-			lastPublished = time.Now()
-		}
-	}
-	return buf.String(), scanner.Err()
-}
-
-func eventDetail(ev map[string]any) string {
-	typ, _ := ev["type"].(string)
-	if typ == "system" {
-		sub, _ := ev["subtype"].(string)
-		return "system." + sub
-	}
-	if typ == "stream_event" {
-		if event, ok := ev["event"].(map[string]any); ok {
-			if delta, ok := event["delta"].(map[string]any); ok {
-				if t, _ := delta["type"].(string); t == "text_delta" {
-					if text, _ := delta["text"].(string); text != "" {
-						return text
-					}
-				}
-			}
-			return "stream_event"
-		}
-	}
-	if typ == "user" {
-		if msg, ok := ev["message"].(map[string]any); ok {
-			if text, _ := msg["text"].(string); text != "" {
-				return text
-			}
-		}
-	}
-	return ""
 }
