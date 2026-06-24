@@ -162,6 +162,12 @@ type ChetterTask struct {
 	TimeoutSec             int32           `json:"timeout_sec"`
 	Summary                sql.NullString  `json:"summary"`
 	Error                  sql.NullString  `json:"error"`
+	TotalInputTokens       int64           `json:"total_input_tokens"`
+	TotalOutputTokens      int64           `json:"total_output_tokens"`
+	TotalCacheReadTokens   int64           `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens  int64           `json:"total_cache_write_tokens"`
+	TotalReasoningTokens   int64           `json:"total_reasoning_tokens"`
+	CostCents              int64           `json:"cost_cents"`
 	CreatedAt              time.Time       `json:"created_at"`
 	UpdatedAt              time.Time       `json:"updated_at"`
 	LastEventAt            sql.NullTime    `json:"last_event_at"`

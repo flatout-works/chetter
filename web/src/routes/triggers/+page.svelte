@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
-  import { TriggerService } from "$gen/proto/api/v1/api_pb";
+  import { TriggerService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { TriggerRun, Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
@@ -46,6 +46,7 @@
   let modelId = $state("");
 
   let triggerRuns = $state<TriggerRun[]>([]);
+  let runTokenTotals = $state<Map<string, bigint>>(new Map());
   let runsTriggerName = $state<string | null>(null);
   let loadingRuns = $state(false);
   let runsPage = $state(0);
@@ -114,6 +115,22 @@
       const client = createClient(TriggerService, getTransport());
       const resp = await client.listTriggerRuns({ triggerName: name, limit: 25 });
       triggerRuns = resp.runs ?? [];
+      const taskClient = createClient(TaskService, getTransport());
+      const tasks = await Promise.allSettled(
+        triggerRuns.map(async (run) => {
+          const taskResp = await taskClient.getTask({ taskId: run.taskId });
+          return taskResp.task;
+        })
+      );
+      const m = new Map<string, bigint>();
+      tasks.forEach((result) => {
+        if (result.status === "fulfilled" && result.value?.tokenUsage) {
+          const tu = result.value.tokenUsage;
+          const total = (tu.inputTokens ?? 0n) + (tu.outputTokens ?? 0n) + (tu.reasoningTokens ?? 0n);
+          m.set(result.value.id, total);
+        }
+      });
+      runTokenTotals = m;
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
       addToast(actionError, "error");
@@ -221,6 +238,13 @@
 
   function isGitManaged(trigger: Trigger): boolean {
     return !!trigger.sourceId;
+  }
+
+  function fmtTokens(n: bigint): string {
+    const v = Number(n);
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    return v.toString();
   }
 </script>
 
@@ -479,6 +503,7 @@
                       <TableHeadCell>Run ID</TableHeadCell>
                       <TableHeadCell>Task</TableHeadCell>
                       <TableHeadCell>Status</TableHeadCell>
+                      <TableHeadCell>Tokens</TableHeadCell>
                       <TableHeadCell>Triggered</TableHeadCell>
                       <TableHeadCell>Created</TableHeadCell>
                     </TableHead>
@@ -492,6 +517,13 @@
                             </a>
                           </TableBodyCell>
                           <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
+                          <TableBodyCell>
+                            {#if runTokenTotals.has(run.taskId)}
+                              <span class="font-mono text-xs text-gray-900 dark:text-white">{fmtTokens(runTokenTotals.get(run.taskId)!)}</span>
+                            {:else}
+                              <span class="text-gray-400 dark:text-gray-600 text-xs">—</span>
+                            {/if}
+                          </TableBodyCell>
                           <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.triggeredAt)}</TableBodyCell>
                           <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
                         </TableBodyRow>

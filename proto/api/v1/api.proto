@@ -8,6 +8,15 @@ option go_package = "github.com/flatout-works/chetter/gen/api/v1;apiv1";
 
 // --- Shared message types ---
 
+message TokenUsage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 cache_read_tokens = 3;
+  int64 cache_write_tokens = 4;
+  int64 reasoning_tokens = 5;
+  int64 cost_cents = 6;
+}
+
 message Task {
   string id = 1;
   string team_id = 2;
@@ -31,6 +40,7 @@ message Task {
   optional string ended_at = 20;
   string error_category = 21;
   string agent_session_id = 22;
+  TokenUsage token_usage = 23;
 }
 
 message AgentSession {

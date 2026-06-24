@@ -708,23 +708,29 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		CreatedAt: now,
 	}
 	updateParams := repository.UpdateTaskFromRunnerEventParams{
-		Status:            status,
-		Summary:           nullString(event.Summary),
-		Error:             nullString(event.Error),
-		ErrorCategory:     errorCategory,
-		SessionExport:     nullString(event.SessionExport),
-		ProviderID:        event.ProviderId,
-		ModelID:           event.ModelId,
-		VariantID:         event.VariantId,
-		OpencodeSessionID: event.OpencodeSessionId,
-		RunnerImageDigest: event.RunnerImageDigest,
-		LeaseExpiresAt:    lease,
-		StartedAt:         parseOptionalTime(event.StartedAt),
-		EndedAt:           parseOptionalTime(event.EndedAt),
-		UpdatedAt:         now,
-		LastEventAt:       sql.NullTime{Time: now, Valid: true},
-		ID:                event.TaskId,
-		RunnerID:          sql.NullString{String: runnerID, Valid: true},
+		Status:                status,
+		Summary:               nullString(event.Summary),
+		Error:                 nullString(event.Error),
+		ErrorCategory:         errorCategory,
+		SessionExport:         nullString(event.SessionExport),
+		ProviderID:            event.ProviderId,
+		ModelID:               event.ModelId,
+		VariantID:             event.VariantId,
+		OpencodeSessionID:     event.OpencodeSessionId,
+		RunnerImageDigest:     event.RunnerImageDigest,
+		LeaseExpiresAt:        lease,
+		StartedAt:             parseOptionalTime(event.StartedAt),
+		EndedAt:               parseOptionalTime(event.EndedAt),
+		UpdatedAt:             now,
+		LastEventAt:           sql.NullTime{Time: now, Valid: true},
+		TotalInputTokens:      tokenUsageInputTokens(event.TokenUsage),
+		TotalOutputTokens:     tokenUsageOutputTokens(event.TokenUsage),
+		TotalCacheReadTokens:  tokenUsageCacheReadTokens(event.TokenUsage),
+		TotalCacheWriteTokens: tokenUsageCacheWriteTokens(event.TokenUsage),
+		TotalReasoningTokens:  tokenUsageReasoningTokens(event.TokenUsage),
+		CostCents:             tokenUsageCostCents(event.TokenUsage),
+		ID:                    event.TaskId,
+		RunnerID:              sql.NullString{String: runnerID, Valid: true},
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
@@ -1036,4 +1042,46 @@ func (s *RunnerRPCService) cleanupHeartbeatSeen() {
 		}
 		return true
 	})
+}
+
+func tokenUsageInputTokens(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.InputTokens
+}
+
+func tokenUsageOutputTokens(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.OutputTokens
+}
+
+func tokenUsageCacheReadTokens(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.CacheReadTokens
+}
+
+func tokenUsageCacheWriteTokens(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.CacheWriteTokens
+}
+
+func tokenUsageReasoningTokens(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.ReasoningTokens
+}
+
+func tokenUsageCostCents(tu *runnerv1.TokenUsage) int64 {
+	if tu == nil {
+		return 0
+	}
+	return tu.CostCents
 }

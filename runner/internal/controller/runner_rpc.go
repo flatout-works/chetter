@@ -163,6 +163,14 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		CheckpointPath:    resp.CheckpointPath,
 		WorkspacePath:     resp.WorkspacePath,
 		ErrorCategory:     resp.ErrorCategory,
+		TokenUsage: &runnerv1.TokenUsage{
+			InputTokens:     resp.TokenUsage.InputTokens,
+			OutputTokens:    resp.TokenUsage.OutputTokens,
+			CacheReadTokens: resp.TokenUsage.CacheReadTokens,
+			CacheWriteTokens: resp.TokenUsage.CacheWriteTokens,
+			ReasoningTokens: resp.TokenUsage.ReasoningTokens,
+			CostCents:       resp.TokenUsage.CostCents,
+		},
 	}
 	report := func(ctx context.Context) error {
 		_, err := r.rpcClient.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{

@@ -754,6 +754,12 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		UpdatedAt:         task.UpdatedAt,
 		StartedAt:         startedAt,
 		EndedAt:           endedAt,
+		TotalInputTokens:      task.TotalInputTokens,
+		TotalOutputTokens:     task.TotalOutputTokens,
+		TotalCacheReadTokens:  task.TotalCacheReadTokens,
+		TotalCacheWriteTokens: task.TotalCacheWriteTokens,
+		TotalReasoningTokens:  task.TotalReasoningTokens,
+		CostCents:             task.CostCents,
 	}
 }
 

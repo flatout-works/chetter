@@ -71,7 +71,7 @@ func (p *Pi) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	return readSessionExport(wsDir)
 }
 
-func (p *Pi) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
+func (p *Pi) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 }
 
 func (p *Pi) PipeOutput(taskID, stream string, reader io.Reader) {

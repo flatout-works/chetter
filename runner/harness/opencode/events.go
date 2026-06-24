@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 func pipeOutput(taskID, stream string, r io.Reader) {
@@ -29,7 +32,7 @@ func pipeOutput(taskID, stream string, r io.Reader) {
 	}
 }
 
-func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
+func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/event", nil)
 	if err != nil {
 		slog.Warn("opencode event request failed", "taskID", taskID, "err", err)
@@ -72,6 +75,11 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 					if time.Since(lastPublished) >= 3*time.Second || strings.Contains(detail, "error") || strings.Contains(detail, "permission") {
 						publishFn("running", "opencode: "+detail)
 						lastPublished = time.Now()
+					}
+				}
+				if tokenFn != nil {
+					if usage := extractTokenUsage(dataLines); usage != nil {
+						tokenFn(*usage)
 					}
 				}
 				dataLines = nil
@@ -160,4 +168,62 @@ func truncate(s string) string {
 		return s[:maxSummaryBytes] + "\n... (truncated)"
 	}
 	return s
+}
+
+func extractTokenUsage(dataLines []string) *task.TokenUsage {
+	for _, line := range dataLines {
+		var evt map[string]any
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+		typeName, _ := evt["type"].(string)
+		if typeName != "message.part.updated" {
+			continue
+		}
+		props, _ := evt["properties"].(map[string]any)
+		if props == nil {
+			continue
+		}
+		part, _ := props["part"].(map[string]any)
+		if part == nil {
+			continue
+		}
+		partType, _ := part["type"].(string)
+		if partType != "step-finish" {
+			continue
+		}
+		tokens, _ := part["tokens"].(map[string]any)
+		if tokens == nil {
+			continue
+		}
+		cache, _ := tokens["cache"].(map[string]any)
+		cost, _ := part["cost"].(float64)
+		usage := &task.TokenUsage{
+			InputTokens:      floatToInt64(tokens["input"]),
+			OutputTokens:     floatToInt64(tokens["output"]),
+			ReasoningTokens:  floatToInt64(tokens["reasoning"]),
+			CostCents:        int64(math.Round(cost * 100)),
+		}
+		if cache != nil {
+			usage.CacheReadTokens = floatToInt64(cache["read"])
+			usage.CacheWriteTokens = floatToInt64(cache["write"])
+		}
+		return usage
+	}
+	return nil
+}
+
+func floatToInt64(v any) int64 {
+	switch val := v.(type) {
+	case float64:
+		return int64(val)
+	case float32:
+		return int64(val)
+	case int64:
+		return val
+	case int:
+		return int64(val)
+	default:
+		return 0
+	}
 }

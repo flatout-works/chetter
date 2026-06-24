@@ -84,6 +84,15 @@ message ClaimTaskResponse {
   Task task = 1;
 }
 
+message TokenUsage {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 cache_read_tokens = 3;
+  int64 cache_write_tokens = 4;
+  int64 reasoning_tokens = 5;
+  int64 cost_cents = 6;
+}
+
 message TaskEvent {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
   string status = 2 [(buf.validate.field).string.min_len = 1];
@@ -102,6 +111,7 @@ message TaskEvent {
   string checkpoint_path = 15;
   string workspace_path = 16;
   string error_category = 17;
+  TokenUsage token_usage = 18;
 }
 
 message ReportTaskEventsRequest {

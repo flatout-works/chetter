@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
-  import { SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
+  import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
@@ -24,6 +24,21 @@
   let showResume = $state(false);
   let resumePrompt = $state("");
   let resuming = $state(false);
+
+  let runTokenUsages = $state<Map<string, { totalTokens: bigint; costCents: bigint }>>(new Map());
+  let totalSessionTokens = $state<bigint>(0n);
+  let totalSessionCost = $state<bigint>(0n);
+
+  function fmtCost(cents: bigint): string {
+    return `$${(Number(cents) / 100).toFixed(4)}`;
+  }
+
+  function fmtTokens(n: bigint): string {
+    const v = Number(n);
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    return v.toString();
+  }
 
   async function resume() {
     resumePrompt = "";
@@ -53,6 +68,29 @@
       session = sessionResp.session ?? null;
       runs = sessionResp.runs ?? [];
       activeRunners = (fleetResp.health?.runners ?? []).map((r) => r.runnerId);
+
+      const taskClient = createClient(TaskService, getTransport());
+      const taskResults = await Promise.allSettled(
+        runs.map(async (run) => {
+          const resp = await taskClient.getTask({ taskId: run.taskId });
+          return resp.task;
+        })
+      );
+      const m = new Map<string, { totalTokens: bigint; costCents: bigint }>();
+      let sessionTotal = 0n;
+      let costTotal = 0n;
+      taskResults.forEach((result) => {
+        if (result.status === "fulfilled" && result.value?.tokenUsage) {
+          const tu = result.value.tokenUsage;
+          const total = (tu.inputTokens ?? 0n) + (tu.outputTokens ?? 0n) + (tu.reasoningTokens ?? 0n);
+          m.set(result.value.id, { totalTokens: total, costCents: tu.costCents ?? 0n });
+          sessionTotal += total;
+          costTotal += tu.costCents ?? 0n;
+        }
+      });
+      runTokenUsages = m;
+      totalSessionTokens = sessionTotal;
+      totalSessionCost = costTotal;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load session.";
       console.error(e);
@@ -123,12 +161,28 @@
       </Alert>
     {/if}
 
+    {#if totalSessionTokens > 0n}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <div class="grid grid-cols-2 md:grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Total tokens</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtTokens(totalSessionTokens)}</p>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Est. cost</p>
+            <p class="text-lg font-mono font-medium text-gray-900 dark:text-white">{fmtCost(totalSessionCost)}</p>
+          </div>
+        </div>
+      </Card>
+    {/if}
+
     <TableCard title={`Session runs (${runs.length})`}>
     <Table hoverable={true} shadow={false}>
       <TableHead>
         <TableHeadCell>Run ID</TableHeadCell>
         <TableHeadCell>Task</TableHeadCell>
         <TableHeadCell>Status</TableHeadCell>
+        <TableHeadCell>Tokens</TableHeadCell>
         <TableHeadCell>Summary</TableHeadCell>
         <TableHeadCell>Started</TableHeadCell>
       </TableHead>
@@ -142,12 +196,19 @@
               </a>
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
+            <TableBodyCell>
+              {#if runTokenUsages.has(run.taskId)}
+                <span class="font-mono text-xs text-gray-900 dark:text-white">{fmtTokens(runTokenUsages.get(run.taskId)!.totalTokens)}</span>
+              {:else}
+                <span class="text-gray-400 dark:text-gray-600 text-xs">—</span>
+              {/if}
+            </TableBodyCell>
             <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{run.summary || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(run.startedAt || "")}</span></TableBodyCell>
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={5}>
+            <TableBodyCell colspan={6}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No runs recorded</div>
             </TableBodyCell>
           </TableBodyRow>

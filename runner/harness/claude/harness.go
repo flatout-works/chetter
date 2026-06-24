@@ -72,7 +72,7 @@ func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error)
 	return "", nil
 }
 
-func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
+func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 }
 
 func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {

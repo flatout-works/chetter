@@ -102,7 +102,7 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const getClaimableTaskForUpdate = `-- name: GetClaimableTaskForUpdate :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
 WHERE status = 'pending'
   AND (required_runner_id IS NULL OR required_runner_id = '' OR required_runner_id = ?)
 ORDER BY created_at ASC
@@ -137,6 +137,12 @@ func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.Nu
 		&i.TimeoutSec,
 		&i.Summary,
 		&i.Error,
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.TotalCacheReadTokens,
+		&i.TotalCacheWriteTokens,
+		&i.TotalReasoningTokens,
+		&i.CostCents,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastEventAt,
@@ -177,7 +183,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
 WHERE id = ?
 `
 
@@ -208,6 +214,12 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.TimeoutSec,
 		&i.Summary,
 		&i.Error,
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.TotalCacheReadTokens,
+		&i.TotalCacheWriteTokens,
+		&i.TotalReasoningTokens,
+		&i.CostCents,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastEventAt,
@@ -344,7 +356,7 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
 WHERE (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
 ORDER BY created_at DESC
@@ -398,6 +410,12 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.TimeoutSec,
 			&i.Summary,
 			&i.Error,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalReasoningTokens,
+			&i.CostCents,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastEventAt,
@@ -426,7 +444,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
 WHERE team_id = ?
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
@@ -483,6 +501,12 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.TimeoutSec,
 			&i.Summary,
 			&i.Error,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalReasoningTokens,
+			&i.CostCents,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastEventAt,
@@ -664,30 +688,42 @@ SET status = ?,
     started_at = COALESCE(?, started_at),
     ended_at = COALESCE(?, ended_at),
     updated_at = ?,
-    last_event_at = ?
+    last_event_at = ?,
+    total_input_tokens = total_input_tokens + COALESCE(?, 0),
+    total_output_tokens = total_output_tokens + COALESCE(?, 0),
+    total_cache_read_tokens = total_cache_read_tokens + COALESCE(?, 0),
+    total_cache_write_tokens = total_cache_write_tokens + COALESCE(?, 0),
+    total_reasoning_tokens = total_reasoning_tokens + COALESCE(?, 0),
+    cost_cents = cost_cents + COALESCE(?, 0)
 WHERE id = ?
   AND runner_id = ?
   AND (status = 'running' OR status = ?)
 `
 
 type UpdateTaskFromRunnerEventParams struct {
-	Status            string         `json:"status"`
-	Summary           sql.NullString `json:"summary"`
-	Error             sql.NullString `json:"error"`
-	ErrorCategory     interface{}    `json:"error_category"`
-	SessionExport     sql.NullString `json:"session_export"`
-	ProviderID        interface{}    `json:"provider_id"`
-	ModelID           interface{}    `json:"model_id"`
-	VariantID         interface{}    `json:"variant_id"`
-	OpencodeSessionID interface{}    `json:"opencode_session_id"`
-	RunnerImageDigest interface{}    `json:"runner_image_digest"`
-	LeaseExpiresAt    sql.NullTime   `json:"lease_expires_at"`
-	StartedAt         sql.NullTime   `json:"started_at"`
-	EndedAt           sql.NullTime   `json:"ended_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	LastEventAt       sql.NullTime   `json:"last_event_at"`
-	ID                string         `json:"id"`
-	RunnerID          sql.NullString `json:"runner_id"`
+	Status                string         `json:"status"`
+	Summary               sql.NullString `json:"summary"`
+	Error                 sql.NullString `json:"error"`
+	ErrorCategory         interface{}    `json:"error_category"`
+	SessionExport         sql.NullString `json:"session_export"`
+	ProviderID            interface{}    `json:"provider_id"`
+	ModelID               interface{}    `json:"model_id"`
+	VariantID             interface{}    `json:"variant_id"`
+	OpencodeSessionID     interface{}    `json:"opencode_session_id"`
+	RunnerImageDigest     interface{}    `json:"runner_image_digest"`
+	LeaseExpiresAt        sql.NullTime   `json:"lease_expires_at"`
+	StartedAt             sql.NullTime   `json:"started_at"`
+	EndedAt               sql.NullTime   `json:"ended_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
+	LastEventAt           sql.NullTime   `json:"last_event_at"`
+	TotalInputTokens      int64          `json:"total_input_tokens"`
+	TotalOutputTokens     int64          `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64          `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64          `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64          `json:"total_reasoning_tokens"`
+	CostCents             int64          `json:"cost_cents"`
+	ID                    string         `json:"id"`
+	RunnerID              sql.NullString `json:"runner_id"`
 }
 
 func (q *Queries) UpdateTaskFromRunnerEvent(ctx context.Context, arg UpdateTaskFromRunnerEventParams) (int64, error) {
@@ -707,6 +743,12 @@ func (q *Queries) UpdateTaskFromRunnerEvent(ctx context.Context, arg UpdateTaskF
 		arg.EndedAt,
 		arg.UpdatedAt,
 		arg.LastEventAt,
+		arg.TotalInputTokens,
+		arg.TotalOutputTokens,
+		arg.TotalCacheReadTokens,
+		arg.TotalCacheWriteTokens,
+		arg.TotalReasoningTokens,
+		arg.CostCents,
 		arg.ID,
 		arg.RunnerID,
 		arg.Status,

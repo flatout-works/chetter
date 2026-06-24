@@ -30,18 +30,19 @@
 
   let totalTokens = $derived.by(() => {
     const tu = task?.tokenUsage;
-    if (!tu) return 0;
-    return (tu.inputTokens || 0) + (tu.outputTokens || 0) + (tu.cacheReadTokens || 0) + (tu.reasoningTokens || 0);
+    if (!tu) return 0n;
+    return (tu.inputTokens || 0n) + (tu.outputTokens || 0n) + (tu.cacheReadTokens || 0n) + (tu.reasoningTokens || 0n);
   });
 
-  function fmtCost(cents: number): string {
-    return `$${(cents / 100).toFixed(4)}`;
+  function fmtCost(cents: bigint): string {
+    return `$${(Number(cents) / 100).toFixed(4)}`;
   }
 
-  function fmtTokens(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return n.toString();
+  function fmtTokens(n: bigint): string {
+    const v = Number(n);
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+    return v.toString();
   }
 
   let events = $state<TaskEvent[]>([]);

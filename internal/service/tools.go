@@ -92,6 +92,12 @@ type TaskToolRecord struct {
 	UpdatedAt      time.Time         `json:"updated_at"`
 	StartedAt      *time.Time        `json:"started_at,omitempty"`
 	EndedAt        *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64      `json:"total_input_tokens"`
+	TotalOutputTokens     int64      `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64      `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64      `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64      `json:"total_reasoning_tokens"`
+	CostCents             int64      `json:"cost_cents"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -790,6 +796,12 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		UpdatedAt:     task.UpdatedAt,
 		StartedAt:     task.StartedAt,
 		EndedAt:       task.EndedAt,
+		TotalInputTokens:      task.TotalInputTokens,
+		TotalOutputTokens:     task.TotalOutputTokens,
+		TotalCacheReadTokens:  task.TotalCacheReadTokens,
+		TotalCacheWriteTokens: task.TotalCacheWriteTokens,
+		TotalReasoningTokens:  task.TotalReasoningTokens,
+		CostCents:             task.CostCents,
 	}
 }
 
@@ -820,6 +832,12 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		UpdatedAt:     task.UpdatedAt,
 		StartedAt:     store.NullTimePtr(task.StartedAt),
 		EndedAt:       store.NullTimePtr(task.EndedAt),
+		TotalInputTokens:      task.TotalInputTokens,
+		TotalOutputTokens:     task.TotalOutputTokens,
+		TotalCacheReadTokens:  task.TotalCacheReadTokens,
+		TotalCacheWriteTokens: task.TotalCacheWriteTokens,
+		TotalReasoningTokens:  task.TotalReasoningTokens,
+		CostCents:             task.CostCents,
 	}
 }
 

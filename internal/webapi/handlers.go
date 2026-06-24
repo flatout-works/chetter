@@ -40,6 +40,14 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		StartedAt:      optTimeStr(t.StartedAt),
 		EndedAt:        optTimeStr(t.EndedAt),
 		AgentSessionId: t.AgentSessionID,
+		TokenUsage: &apiv1.TokenUsage{
+			InputTokens:     t.TotalInputTokens,
+			OutputTokens:    t.TotalOutputTokens,
+			CacheReadTokens: t.TotalCacheReadTokens,
+			CacheWriteTokens: t.TotalCacheWriteTokens,
+			ReasoningTokens: t.TotalReasoningTokens,
+			CostCents:       t.CostCents,
+		},
 	}
 }
 

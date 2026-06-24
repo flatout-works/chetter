@@ -62,6 +62,12 @@ type TaskRecord struct {
 	UpdatedAt         time.Time         `json:"updated_at"`
 	StartedAt         *time.Time        `json:"started_at,omitempty"`
 	EndedAt           *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64         `json:"total_input_tokens"`
+	TotalOutputTokens     int64         `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64         `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64         `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64         `json:"total_reasoning_tokens"`
+	CostCents             int64         `json:"cost_cents"`
 }
 
 // TaskResponse is the runner status event shape.
@@ -250,6 +256,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureTaskEventTypeColumn(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureTokenColumns(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -453,6 +462,33 @@ func (s *Store) ensureTaskEventTypeColumn(ctx context.Context) error {
 	if !indexExists {
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD KEY idx_chetter_task_events_type_created (event_type, created_at)"); err != nil {
 			return fmt.Errorf("add chetter_task_events event_type index: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTokenColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER session_export"},
+		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},
+		{"total_cache_read_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_read_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_output_tokens"},
+		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
+		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
+		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
 		}
 	}
 	return nil

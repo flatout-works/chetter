@@ -50,7 +50,13 @@ SET status = sqlc.arg(status),
     started_at = COALESCE(?, started_at),
     ended_at = COALESCE(?, ended_at),
     updated_at = ?,
-    last_event_at = ?
+    last_event_at = ?,
+    total_input_tokens = total_input_tokens + COALESCE(sqlc.arg(total_input_tokens), 0),
+    total_output_tokens = total_output_tokens + COALESCE(sqlc.arg(total_output_tokens), 0),
+    total_cache_read_tokens = total_cache_read_tokens + COALESCE(sqlc.arg(total_cache_read_tokens), 0),
+    total_cache_write_tokens = total_cache_write_tokens + COALESCE(sqlc.arg(total_cache_write_tokens), 0),
+    total_reasoning_tokens = total_reasoning_tokens + COALESCE(sqlc.arg(total_reasoning_tokens), 0),
+    cost_cents = cost_cents + COALESCE(sqlc.arg(cost_cents), 0)
 WHERE id = ?
   AND runner_id = sqlc.arg(runner_id)
   AND (status = 'running' OR status = sqlc.arg(status));

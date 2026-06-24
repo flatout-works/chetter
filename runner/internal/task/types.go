@@ -37,24 +37,35 @@ type TaskRequest struct {
 	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
 }
 
+// TokenUsage tracks cumulative token consumption for a task.
+type TokenUsage struct {
+	InputTokens     int64 `json:"input_tokens"`
+	OutputTokens    int64 `json:"output_tokens"`
+	CacheReadTokens int64 `json:"cache_read_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
+	ReasoningTokens int64 `json:"reasoning_tokens"`
+	CostCents       int64 `json:"cost_cents"`
+}
+
 // TaskResponse carries a task status event reported back to the control plane.
 type TaskResponse struct {
-	TaskID            string    `json:"task_id"`
-	Status            string    `json:"status"`
-	Summary           string    `json:"summary,omitempty"`
-	Error             string    `json:"error,omitempty"`
-	Artifacts         []string  `json:"artifacts,omitempty"`
-	ProviderID        string    `json:"provider_id,omitempty"`
-	ModelID           string    `json:"model_id,omitempty"`
-	VariantID         string    `json:"variant_id,omitempty"`
-	OpenCodeSessionID string    `json:"opencode_session_id,omitempty"`
-	RunnerImageDigest string    `json:"runner_image_digest,omitempty"`
-	SessionExport     string    `json:"session_export,omitempty"`
-	StartedAt         time.Time `json:"started_at,omitempty"`
-	EndedAt           time.Time `json:"ended_at,omitempty"`
-	CheckpointPath    string    `json:"checkpoint_path,omitempty"`
-	WorkspacePath     string    `json:"workspace_path,omitempty"`
-	ErrorCategory     string    `json:"error_category,omitempty"`
+	TaskID            string     `json:"task_id"`
+	Status            string     `json:"status"`
+	Summary           string     `json:"summary,omitempty"`
+	Error             string     `json:"error,omitempty"`
+	Artifacts         []string   `json:"artifacts,omitempty"`
+	ProviderID        string     `json:"provider_id,omitempty"`
+	ModelID           string     `json:"model_id,omitempty"`
+	VariantID         string     `json:"variant_id,omitempty"`
+	OpenCodeSessionID string     `json:"opencode_session_id,omitempty"`
+	RunnerImageDigest string     `json:"runner_image_digest,omitempty"`
+	SessionExport     string     `json:"session_export,omitempty"`
+	StartedAt         time.Time  `json:"started_at,omitempty"`
+	EndedAt           time.Time  `json:"ended_at,omitempty"`
+	CheckpointPath    string     `json:"checkpoint_path,omitempty"`
+	WorkspacePath     string     `json:"workspace_path,omitempty"`
+	ErrorCategory     string     `json:"error_category,omitempty"`
+	TokenUsage        TokenUsage `json:"token_usage,omitempty"`
 }
 
 // TaskSession represents one running task inside the runner.

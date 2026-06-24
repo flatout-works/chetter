@@ -28,7 +28,7 @@ type Harness interface {
 	AbortSession(ctx context.Context, baseURL, sessionID, secret string) error
 	ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error)
 	ReadSessionExport(wsDir, sessionID string) (string, error)
-	WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string))
+	WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage))
 
 	// Output piping for serve mode stdout/stderr.
 	PipeOutput(taskID, stream string, reader io.Reader)

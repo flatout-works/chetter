@@ -67,8 +67,8 @@ func (oc *OpenCode) ExportSession(ctx context.Context, baseURL, sessionID, secre
 	return exportSession(ctx, baseURL, sessionID, secret)
 }
 
-func (oc *OpenCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string)) {
-	watchEvents(ctx, taskID, baseURL, secret, publishFn)
+func (oc *OpenCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+	watchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn)
 }
 
 func (oc *OpenCode) PipeOutput(taskID, stream string, reader io.Reader) {
