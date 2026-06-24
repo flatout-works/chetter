@@ -46,7 +46,7 @@ func NewServer() (*Server, error) {
 	sdkServer := mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil)
 
 	getServer := func(_ *http.Request) *mcplib.Server { return sdkServer }
-	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true})
+	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handler)
