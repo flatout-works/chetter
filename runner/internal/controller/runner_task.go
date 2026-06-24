@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
-	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -427,22 +426,27 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	ln.Close()
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	serveCmd := exec.CommandContext(ctx, h.Name(), h.ServeArgs(port)...)
+	serveCmdParts := h.ServeCommand(port)
+	if len(serveCmdParts) == 0 {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
+		return
+	}
+	serveCmd := exec.CommandContext(ctx, serveCmdParts[0], serveCmdParts[1:]...)
 	serveCmd.Dir = session.WorkspaceDir
 	serveCmd.Env = env
 	stdout, err := serveCmd.StdoutPipe()
 	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("opencode stdout pipe: %v", err), nil)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s stdout pipe: %v", h.Name(), err), nil)
 		return
 	}
 	stderr, err := serveCmd.StderrPipe()
 	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("opencode stderr pipe: %v", err), nil)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s stderr pipe: %v", h.Name(), err), nil)
 		return
 	}
 
 	if err := serveCmd.Start(); err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("start opencode serve: %v", err), nil)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s serve: %v", h.Name(), err), nil)
 		return
 	}
 	go h.PipeOutput(req.TaskID, "stdout", stdout)
@@ -460,7 +464,6 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 	slog.Info("harness serve ready", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -528,9 +531,17 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
 	runnerIP := ""
+	serveCmd := h.ServeCommand(containerPort)
+	if len(serveCmd) == 0 {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
+		return
+	}
+	entrypoint := serveCmd[0]
+	serveArgs := serveCmd[1:]
+
 	dockerArgs := []string{
 		"run", "-d",
-		"--entrypoint", "/usr/local/bin/opencode",
+		"--entrypoint", entrypoint,
 		"--name", containerName,
 	}
 	if gvisor {
@@ -558,7 +569,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	} else {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	}
 
 	if gvisor {
@@ -575,15 +586,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	for k, v := range h.Env("/workspace", secret, req) {
-		key := k
-		switch key {
-		case "OPENCODE_CONFIG":
-			key = "OPENCODE_CONFIG"
-			v = "/workspace/.opencode.json"
-		case "OPENCODE_SERVER_PASSWORD":
-			v = secret
-		}
-		dockerArgs = append(dockerArgs, "-e", key+"="+v)
+		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 
 	for k, v := range req.Env {
@@ -599,7 +602,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, h.ServeArgs(containerPort)...)
+	dockerArgs = append(dockerArgs, serveArgs...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
@@ -609,11 +612,19 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	if r.executionMode() == "docker" {
 		mcpConfigPath := filepath.Join(session.WorkspaceDir, ".opencode.json")
+		var mcpHostIP string
 		if gvisor {
-			rewriteMCPURL(mcpConfigPath, runnerIP)
+			mcpHostIP = dockerGatewayIP(netName)
+			if mcpHostIP == "" {
+				mcpHostIP = runnerIP
+			}
 		} else {
-			rewriteMCPURL(mcpConfigPath, "host.docker.internal")
+			mcpHostIP = "host.docker.internal"
 		}
+		if mcpHostIP != "" {
+			rewriteMCPURL(mcpConfigPath, mcpHostIP)
+		}
+	}
 	}
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
@@ -645,7 +656,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		return
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	sid, err := h.CreateSession(ctx, baseURL, secret)
 	if err != nil {
@@ -683,13 +693,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
 				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 			}
-			if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
-				r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
-			}
 			exec.Command("docker", "stop", containerName).Run()
-			dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
-			os.MkdirAll(dst, 0755)
-			exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
@@ -704,13 +708,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
-		if locOut, locErr := exec.Command("docker", "exec", containerName, "find", "/", "-maxdepth", "5", "-name", "opencode.db").CombinedOutput(); locErr == nil {
-			r.publishEvent(req.TaskID, fmt.Sprintf("opencode.db location: %s", strings.TrimSpace(string(locOut))))
-		}
 		exec.Command("docker", "stop", containerName).Run()
-		dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
-		os.MkdirAll(dst, 0755)
-		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
@@ -766,9 +764,17 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	secret := h.ServerPassword()
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
+	serveCmd := h.ServeCommand(containerPort)
+	if len(serveCmd) == 0 {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
+		return
+	}
+	entrypoint := serveCmd[0]
+	serveArgs := serveCmd[1:]
+
 	dockerArgs := []string{
 		"run", "-d",
-		"--entrypoint", "/usr/local/bin/opencode",
+		"--entrypoint", entrypoint,
 		"--name", containerName,
 	}
 	if gvisor {
@@ -796,7 +802,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if gvisor {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	} else {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
+		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	}
 	var runnerIP string
 	if gvisor {
@@ -812,15 +818,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		)
 	}
 	for k, v := range h.Env("/workspace", secret, req) {
-		key := k
-		switch key {
-		case "OPENCODE_CONFIG":
-			key = "OPENCODE_CONFIG"
-			v = "/workspace/.opencode.json"
-		case "OPENCODE_SERVER_PASSWORD":
-			v = secret
-		}
-		dockerArgs = append(dockerArgs, "-e", key+"="+v)
+		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
 		if isRunnerOwnedEnv(k) {
@@ -835,7 +833,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, h.ServeArgsResume(containerPort)...)
+	dockerArgs = append(dockerArgs, serveArgs...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
@@ -844,7 +842,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
 
 	if r.executionMode() == "docker" {
-		mcpConfigPath := filepath.Join(workspaceDir, ".opencode.json")
+		mcpConfigPath := h.DockerConfigPath(workspaceDir)
 		if gvisor {
 			rewriteMCPURL(mcpConfigPath, runnerIP)
 		} else {
@@ -866,7 +864,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)
-	opencode.LogMCPStatus(ctx, baseURL, secret)
 
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
@@ -891,9 +888,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 		}
 		exec.Command("docker", "stop", containerName).Run()
-		dst := filepath.Join(session.WorkspaceDir, ".local", "share", "opencode")
-		os.MkdirAll(dst, 0755)
-		exec.Command("docker", "cp", containerName+":/workspace/.local/share/opencode/.", dst).Run()
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	workspacePath := ""
