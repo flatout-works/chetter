@@ -70,7 +70,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			return
 		}
 		defer mcpServer.Close()
-		mcpURL := fmt.Sprintf("http://localhost:%s/mcp", strings.Split(mcpServer.Addr(), ":")[1])
+	mcpURL := fmt.Sprintf("http://127.0.0.1:%s/mcp", func() string {
+		_, port, _ := net.SplitHostPort(mcpServer.Addr())
+		return port
+	}())
 		r.runDockerAgentResume(ctx, session, req, mcpURL, h)
 		return
 	}
@@ -131,7 +134,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		return
 	}
 	defer mcpServer.Close()
-	mcpURL := fmt.Sprintf("http://localhost:%s/mcp", strings.Split(mcpServer.Addr(), ":")[1])
+	mcpURL := fmt.Sprintf("http://127.0.0.1:%s/mcp", func() string {
+		_, port, _ := net.SplitHostPort(mcpServer.Addr())
+		return port
+	}())
 
 	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
@@ -191,11 +197,7 @@ func rewriteMCPURL(configPath, hostIP string) {
 		return
 	}
 	replaced := strings.ReplaceAll(string(data),
-		"\"/mcp\"",
-		"\"/mcp\"",
-	)
-	replaced = strings.ReplaceAll(replaced,
-		"\"url\":\"http://localhost:",
+		"\"url\":\"http://127.0.0.1:",
 		"\"url\":\"http://"+hostIP+":",
 	)
 	if replaced != string(data) {
