@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -381,4 +382,19 @@ func codewhaleServeCommand(port int) []string {
 
 func codewhaleServeArgsResume(port int) []string {
 	return codewhaleServeCommand(port)[1:]
+}
+
+func codewhaleModelFields(req task.TaskRequest) (provider, model string) {
+	provider = req.ProviderID
+	model = req.ModelID
+	if model == "" {
+		model = os.Getenv("CODEWHALE_MODEL")
+	}
+	if model == "" {
+		model = "deepseek-v4-flash-free"
+	}
+	if provider == "" {
+		provider = "deepseek"
+	}
+	return
 }
