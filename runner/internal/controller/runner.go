@@ -159,6 +159,11 @@ func (r *Runner) Start(ctx context.Context) error {
 				slog.Info("added chetter MCP domain to proxy allowlist", "host", u.Host)
 			}
 		}
+		// Allow dev containers to reach the runner's own MCP server via HTTP_PROXY.
+		if runnerIP := hostIP(runcNetwork()); runnerIP != "" {
+			allowed = append(allowed, runnerIP)
+			slog.Info("added runner IP to proxy allowlist", "host", runnerIP)
+		}
 		r.proxy = network.NewProxy(r.cfg.Proxy.ListenAddr, allowed, r.cfg.Proxy.BlockedDomains)
 		go func() {
 			if err := r.proxy.Start(); err != nil {
