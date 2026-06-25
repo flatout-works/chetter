@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { createClient } from "@connectrpc/connect";
   import { AdminService } from "$gen/proto/api/v1/api_pb";
   import type { AuditEvent } from "$gen/proto/api/v1/api_pb";
@@ -23,6 +23,36 @@
   let showSync = $state(false);
   let showTriggers = $state(true);
   let showResumes = $state(true);
+  let expandedDetailId = $state<string | null>(null);
+
+  function sourceLink(event: AuditEvent): string | null {
+    if (!event.sourceType || !event.sourceId) return null;
+    if (event.sourceType === "task") return `/tasks/${event.sourceId}`;
+    if (event.sourceType === "trigger") return "/triggers";
+    return null;
+  }
+
+  function targetLink(event: AuditEvent): string | null {
+    if (!event.targetType || !event.targetId) return null;
+    if (event.targetType === "task") return `/tasks/${event.targetId}`;
+    if (event.targetType === "agent_session") return `/sessions/${event.targetId}`;
+    return null;
+  }
+
+  function targetGitHubLink(event: AuditEvent): string | null {
+    if (!event.targetId || !event.targetType) return null;
+    const hashIdx = event.targetId.lastIndexOf("#");
+    if (hashIdx < 0) return null;
+    const number = event.targetId.slice(hashIdx + 1);
+    const repo = event.targetId.slice(0, hashIdx);
+    if (event.targetType === "issue") return `https://github.com/${repo}/issues/${number}`;
+    if (event.targetType === "pull_request" || event.targetType === "pr") return `https://github.com/${repo}/pull/${number}`;
+    return null;
+  }
+
+  function toggleDetail(id: string) {
+    expandedDetailId = expandedDetailId === id ? null : id;
+  }
 
   const excludedTypes = $derived(new Set([
     ...(showSync ? [] : ["definitions_synced"]),
@@ -72,7 +102,16 @@
     finally { loading = false; }
   }
 
-  onMount(load);
+  let refreshInterval: ReturnType<typeof setInterval> | undefined;
+
+  onMount(() => {
+    load();
+    refreshInterval = setInterval(load, 15_000);
+  });
+
+  onDestroy(() => {
+    if (refreshInterval) clearInterval(refreshInterval);
+  });
 </script>
 
 <svelte:head>
@@ -138,7 +177,11 @@
             <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.sourceType}
-                  <span class="font-medium">{event.sourceType}</span>
+                  {#if sourceLink(event)}
+                    <a href={sourceLink(event)!} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.sourceType}</a>
+                  {:else}
+                    <span class="font-medium">{event.sourceType}</span>
+                  {/if}
                   {#if event.sourceId}
                     <span class="text-gray-500" title={event.sourceId}>: {event.sourceId.slice(0, 24)}</span>
                   {/if}
@@ -150,7 +193,13 @@
             <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.targetType}
-                  <span class="font-medium">{event.targetType}</span>
+                  {#if targetLink(event)}
+                    <a href={targetLink(event)!} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}</a>
+                  {:else if targetGitHubLink(event)}
+                    <a href={targetGitHubLink(event)!} target="_blank" rel="noopener" class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}</a>
+                  {:else}
+                    <span class="font-medium">{event.targetType}</span>
+                  {/if}
                   {#if event.targetId}
                     <span class="text-gray-500" title={event.targetId}>: {event.targetId.slice(0, 24)}</span>
                   {/if}
@@ -160,7 +209,15 @@
               </span>
             </TableBodyCell>
             <TableBodyCell class="max-w-xs">
-              <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>{event.detail || "—"}</span>
+              {#if expandedDetailId === event.id}
+                <span class="text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words block mb-1">{event.detail || "—"}</span>
+                <button class="text-blue-600 dark:text-blue-400 cursor-pointer text-xs bg-transparent border-0 p-0" onclick={() => toggleDetail(event.id)}>Show less</button>
+              {:else}
+                <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>{event.detail || "—"}</span>
+                {#if (event.detail?.length ?? 0) > 60}
+                  <button class="text-blue-600 dark:text-blue-400 cursor-pointer text-xs bg-transparent border-0 p-0" onclick={() => toggleDetail(event.id)}>Show more</button>
+                {/if}
+              {/if}
             </TableBodyCell>
           </TableBodyRow>
         {:else}
