@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { createClient } from "@connectrpc/connect";
   import { AdminService } from "$gen/proto/api/v1/api_pb";
   import type { AuditEvent } from "$gen/proto/api/v1/api_pb";
@@ -9,22 +11,47 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Button, Input, PaginationNav, Select, Spinner, Toggle, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
+  let p = $derived($page.url);
+
+  function boolParam(name: string, def = true): boolean {
+    const v = p.searchParams.get(name);
+    if (v === null) return def;
+    return v === "1";
+  }
+
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
   let loading = $state(true);
   let firstLoad = $state(true);
-  let eventTypeFilter = $state("");
-  let sourceTypeFilter = $state("");
-  let sinceHours = $state(24);
-  let limit = $state(100);
-  let offset = $state(0);
+  let eventTypeFilter = $state(p.searchParams.get("event") || "");
+  let sourceTypeFilter = $state(p.searchParams.get("source") || "");
+  let sinceHours = $state(Number(p.searchParams.get("hours")) || 24);
+  let limit = $state(Number(p.searchParams.get("limit")) || 250);
+  let offset = $state(Number(p.searchParams.get("o")) || 0);
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
-  let showSync = $state(true);
-  let showTriggers = $state(true);
-  let showResumes = $state(true);
-  let showGate = $state(true);
+  let showSync = $state(boolParam("sync", true));
+  let showTriggers = $state(boolParam("trigger", true));
+  let showResumes = $state(boolParam("resume", true));
+  let showGate = $state(boolParam("gate", true));
+
+  function syncURL() {
+    const u = new URL(p);
+    const s = (k: string, v: string, def: string = "") => v && v !== def ? u.searchParams.set(k, v) : u.searchParams.delete(k);
+    s("event", eventTypeFilter);
+    s("source", sourceTypeFilter);
+    s("hours", String(sinceHours), "24");
+    s("limit", String(limit), "250");
+    s("o", String(offset), "0");
+    s("sync", showSync ? "" : "0");
+    s("trigger", showTriggers ? "" : "0");
+    s("resume", showResumes ? "" : "0");
+    s("gate", showGate ? "" : "0");
+    if (u.href !== p.href) goto(u, { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
+  $effect(() => { eventTypeFilter; sourceTypeFilter; sinceHours; limit; offset; showSync; showTriggers; showResumes; showGate; syncURL(); });
   let expandedDetailId = $state<string | null>(null);
 
   function sourceLink(event: AuditEvent): string | null {
