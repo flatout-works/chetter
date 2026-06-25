@@ -146,7 +146,8 @@
     try {
       const client = createClient(AdminService, getTransport());
       const resp = await client.listAuditEvents({
-        eventType: eventTypeFilter || undefined, sourceType: sourceTypeFilter || undefined,
+        ...(eventTypeFilter ? { eventType: eventTypeFilter } : {}),
+        ...(sourceTypeFilter ? { sourceType: sourceTypeFilter } : {}),
         sinceHours, limit, offset,
       });
       let filtered = resp.events ?? [];
