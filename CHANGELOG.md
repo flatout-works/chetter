@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-25
+
+### Changed
+
+- GitHub artifact signature simplified from multi-line format (Session, Run, Task, Agent, Model, Runner, Digest) to single-line `Task: [task_xxx](URL) | Agent: <name> | Model: <model>`. Runner, Session, and Run fields removed — they are navigable from the task URL. Agent field only shown when non-empty (named agent definitions).
+
+### Fixed
+
+- Webhook bot-authored event handling: bot's own issue/PR/comments now skip the author write-access gate silently instead of logging noisy `webhook_author_gate_denied` audit entries. Bot-comment filter in `handleIssueComment` moved before the author gate — was dead code because the gate ran first and rejected bots before the filter could apply.
+- Runner `NO_PROXY` env var includes `0.0.0.0` so opencode self-requests to the MCP server bypass the HTTP proxy.
+
+### Web UI
+
+- Audit log table: added Repo column between Event Type and Source, title tooltips on truncated source/target IDs and detail text, `webhook_author_gate_denied` added to the event type filter dropdown.
+
 ## 2026-06-24
 
 ### Added
