@@ -152,7 +152,7 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND FTS_MATCH_WORD(_fts, ?)
+  AND FTS_MATCH_WORD(detail, ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `

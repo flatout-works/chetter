@@ -677,7 +677,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE (? = '' OR team_id = ?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
-  AND FTS_MATCH_WORD(_fts, ?)
+  AND FTS_MATCH_WORD(prompt, ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `

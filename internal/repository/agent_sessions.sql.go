@@ -830,7 +830,7 @@ const searchAgentSessions = `-- name: SearchAgentSessions :many
 SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error FROM chetter_agent_sessions
 WHERE (? = '' OR COALESCE(team_id, '') = ?)
   AND (? = '' OR status = ?)
-  AND FTS_MATCH_WORD(_fts, ?)
+  AND FTS_MATCH_WORD(id, ?)
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
 `

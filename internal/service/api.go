@@ -1025,21 +1025,7 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 			return nil, fmt.Errorf("search task artifacts: %w", err)
 		}
 		for _, r := range searchRows {
-			rows = append(rows, repository.ListTaskArtifactsRow{
-				ID:              r.ID,
-				TaskID:          r.TaskID,
-				AgentSessionID:  r.AgentSessionID,
-				SessionRunID:    r.SessionRunID,
-				ArtifactType:    r.ArtifactType,
-				Repo:            r.Repo,
-				Number:          r.Number,
-				Url:             r.Url,
-				Ref:             r.Ref,
-				Sha:             r.Sha,
-				CreatedAt:       r.CreatedAt,
-				DiscoveredAt:    r.DiscoveredAt,
-				DiscoverySource: r.DiscoverySource,
-			})
+			rows = append(rows, repository.ListTaskArtifactsRow(r))
 		}
 	} else {
 		rows, listErr = s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
