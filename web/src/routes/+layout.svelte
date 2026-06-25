@@ -21,6 +21,12 @@
   let sidebarOpen = $state(false);
   let sidebarCollapsed = $state(false);
 
+  let pageUrls = $state(new Map<string, string>());
+
+  $effect(() => {
+    pageUrls.set(activePath, $page.url.href);
+  });
+
   function closeSidebar() { sidebarOpen = false; }
   function toggleCollapsed() { sidebarCollapsed = !sidebarCollapsed; }
 
@@ -88,7 +94,7 @@
 
   function navHref(href: string): string {
     if (activePath === href) return $page.url.href;
-    return href;
+    return pageUrls.get(href) || href;
   }
 </script>
 
