@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import { goto } from "$app/navigation";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
   import { createClient } from "@connectrpc/connect";
@@ -12,9 +13,23 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Button, Card, Dropdown, DropdownItem, Input, Label, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
+  const sp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  function param(k: string, d = ""): string { return sp.get(k) || d; }
+  function syncURL() {
+    const u = new URL(window.location.href);
+    const s = (k: string, v: string, def = "") => v && v !== def ? u.searchParams.set(k, v) : u.searchParams.delete(k);
+    s("status", selectedStatus);
+    s("q", search.trim());
+    s("page", String(page), "0");
+    s("size", String(pageSize), "25");
+    s("sort", sortColumn, "created");
+    s("dir", sortDirection, "desc");
+    if (u.href !== window.location.href) goto(u, { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
-  let selectedStatus = $state("");
-  let search = $state("");
+  let selectedStatus = $state(param("status"));
+  let search = $state(param("q"));
   let taskList = $derived($tasks);
   let filteredTasks = $derived.by(() => {
     if (!search.trim()) return taskList;
@@ -53,10 +68,12 @@
 
   let selectedProvider = $derived(providers.find((p) => p.id === providerId));
 
-  let page = $state(0);
-  let pageSize = $state(25);
-  let sortColumn = $state<SortColumn>("created");
-  let sortDirection = $state<"asc" | "desc">("desc");
+  let page = $state(Number(param("page", "0")));
+  let pageSize = $state(Number(param("size", "25")));
+  let sortColumn = $state<SortColumn>((param("sort", "created")) as SortColumn);
+  let sortDirection = $state<"asc" | "desc">((param("dir", "desc")) as "asc" | "desc");
+
+  $effect(() => { selectedStatus; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
 
   let sortedTasks = $derived.by(() => {
     const sorted = [...filteredTasks].sort((a, b) => {
@@ -169,6 +186,12 @@
   <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tasks</h1>
     <div class="flex flex-wrap items-center gap-2">
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+          <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+        </div>
+        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" />
+      </div>
       <Select
         bind:value={selectedStatus}
         onchange={applyFilter}
@@ -181,7 +204,6 @@
         <option value="error">Error</option>
         <option value="cancelled">Cancelled</option>
       </Select>
-      <Input bind:value={search} placeholder="Search…" class="!w-44" />
       <Select
         bind:value={pageSize}
         onchange={() => { page = 0; }}
