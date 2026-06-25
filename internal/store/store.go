@@ -461,7 +461,7 @@ func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
-		_, _ = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''))) STORED")
+		_, _ = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''), ' ', COALESCE(session_export, ''))) STORED")
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (_fts) WITH PARSER MULTILINGUAL"); err != nil {
 			slog.Warn("failed to add tasks fulltext index", "err", err)
 			return nil

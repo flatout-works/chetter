@@ -50,7 +50,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_runner (runner_id, status),
 		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
 		KEY idx_chetter_tasks_required_runner (required_runner_id, status, created_at),
-		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''))) STORED,
+		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''), ' ', COALESCE(session_export, ''))) STORED,
 		FULLTEXT INDEX idx_tasks_search (_fts) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (
