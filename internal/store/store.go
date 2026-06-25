@@ -384,6 +384,19 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
+		// Clean up existing duplicates before creating the unique index.
+		// Keep the first row for each (task_id, artifact_type, repo, number) tuple.
+		if _, err := s.db.ExecContext(ctx, `
+			DELETE t1 FROM chetter_task_artifacts t1
+			INNER JOIN chetter_task_artifacts t2
+			WHERE t1.id > t2.id
+			  AND t1.task_id = t2.task_id
+			  AND t1.artifact_type = t2.artifact_type
+			  AND t1.repo = t2.repo
+			  AND t1.number = t2.number
+		`); err != nil {
+			return fmt.Errorf("dedup artifacts: %w", err)
+		}
 		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON chetter_task_artifacts (task_id, artifact_type, repo, number)"); err != nil {
 			return fmt.Errorf("add artifact dedup index: %w", err)
 		}
@@ -397,6 +410,15 @@ func (s *Store) ensureTriggerRunDedupIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
+		if _, err := s.db.ExecContext(ctx, `
+			DELETE t1 FROM chetter_trigger_runs t1
+			INNER JOIN chetter_trigger_runs t2
+			WHERE t1.id > t2.id
+			  AND t1.trigger_id = t2.trigger_id
+			  AND t1.task_id = t2.task_id
+		`); err != nil {
+			return fmt.Errorf("dedup trigger runs: %w", err)
+		}
 		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_trigger_runs_dedup ON chetter_trigger_runs (trigger_id, task_id)"); err != nil {
 			return fmt.Errorf("add trigger run dedup index: %w", err)
 		}
