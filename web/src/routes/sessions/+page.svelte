@@ -36,14 +36,8 @@
 
   $effect(() => { statusFilter; search; page; pageSize; syncURL(); });
 
-  let filteredSessions = $derived.by(() => {
-    if (!search.trim()) return sessions;
-    const q = search.toLowerCase();
-    return sessions.filter(s => s.id?.toLowerCase().includes(q) || s.agent?.toLowerCase().includes(q));
-  });
-
   let sortedSessions = $derived.by(() => {
-    return [...filteredSessions].sort((a, b) => {
+    return [...sessions].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -74,7 +68,7 @@
   async function load() {
     try {
       const [sessionResp, fleetResp] = await Promise.all([
-        createClient(SessionService, getTransport()).listSessions({ status: statusFilter, limit: 50 }),
+        createClient(SessionService, getTransport()).listSessions({ status: statusFilter, limit: 50, ...(search.trim() ? { search: search.trim() } : {}) }),
         createClient(FleetService, getTransport()).getRunnerHealth({ includeTasks: false }),
       ]);
       sessions = sessionResp.sessions ?? [];
@@ -131,7 +125,7 @@
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
-        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" />
+        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" onkeydown={(e) => { if (e.key === "Enter") { page = 0; load(); } }} />
       </div>
       <Select bind:value={statusFilter} onchange={() => { page = 0; load(); }} class="!w-auto">
           <option value="">All</option>

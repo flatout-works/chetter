@@ -31,15 +31,6 @@
   let selectedStatus = $state(param("status"));
   let search = $state(param("q"));
   let taskList = $derived($tasks);
-  let filteredTasks = $derived.by(() => {
-    if (!search.trim()) return taskList;
-    const q = search.toLowerCase();
-    return taskList.filter(t => 
-      t.prompt?.toLowerCase().includes(q) ||
-      t.id?.toLowerCase().includes(q) ||
-      t.summary?.toLowerCase().includes(q)
-    );
-  });
   let showSubmitForm = $state(false);
   let submitting = $state(false);
   let formError = $state<string | null>(null);
@@ -76,7 +67,7 @@
   $effect(() => { selectedStatus; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
 
   let sortedTasks = $derived.by(() => {
-    const sorted = [...filteredTasks].sort((a, b) => {
+    const sorted = [...taskList].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -108,7 +99,7 @@
 
   function applyFilter() {
     statusFilter.set(selectedStatus);
-    refreshTasks(selectedStatus, 100);
+    refreshTasks(selectedStatus, 100, search.trim());
     page = 0;
   }
 
@@ -190,7 +181,7 @@
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
-        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" />
+        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" onkeydown={(e) => { if (e.key === "Enter") applyFilter(); }} />
       </div>
       <Select
         bind:value={selectedStatus}

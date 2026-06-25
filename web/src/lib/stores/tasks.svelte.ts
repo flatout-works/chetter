@@ -30,10 +30,10 @@ export const statusFilter = writable("");
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let fleetStream: AbortController | null = null;
 
-export async function refreshTasks(status = "", limit = 100) {
+export async function refreshTasks(status = "", limit = 100, search = "") {
   try {
     const client = createClient(TaskService, getTransport());
-    const resp = await client.listTasks({ status, limit });
+    const resp = await client.listTasks({ status, limit, ...(search ? { search } : {}) });
     tasks.set(resp.tasks);
   } catch (e) {
     console.error("Failed to refresh tasks:", e);
