@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { createClient } from "@connectrpc/connect";
   import { AdminService } from "$gen/proto/api/v1/api_pb";
   import type { TaskArtifact } from "$gen/proto/api/v1/api_pb";
@@ -10,17 +12,33 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Button, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
+  const u = $derived($page.url);
+
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let taskId = $state("");
-  let artifactType = $state("");
-  let repo = $state("");
-  let limit = $state(100);
-  let offset = $state(0);
+  let taskId = $state(u.searchParams.get("task") || "");
+  let artifactType = $state(u.searchParams.get("type") || "");
+  let repo = $state(u.searchParams.get("repo") || "");
+  let pageNum = $state(Number(u.searchParams.get("page")) || 0);
+  let pageSize = $state(Number(u.searchParams.get("size")) || 25);
+  let offset = $derived(pageNum * pageSize);
   let sortColumn = $state<SortColumn>("discovered");
   let sortDirection = $state<"asc" | "desc">("desc");
+
+  function syncURL() {
+    const url = new URL(u);
+    const s = (k: string, v: string, d: string = "") => v && v !== d ? url.searchParams.set(k, v) : url.searchParams.delete(k);
+    s("task", taskId.trim());
+    s("type", artifactType);
+    s("repo", repo.trim());
+    s("page", String(pageNum), "0");
+    s("size", String(pageSize), "25");
+    if (url.href !== u.href) goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
+  $effect(() => { taskId; artifactType; repo; pageNum; pageSize; syncURL(); });
 
   let sortedArtifacts = $derived.by(() => {
     return [...artifacts].sort((a, b) => {
@@ -36,8 +54,8 @@
     });
   });
 
-  let currentPage = $derived(Math.floor(offset / limit) + 1);
-  let totalPages = $derived(currentPage + (artifacts.length >= limit ? 1 : 0));
+  let currentPage = $derived(pageNum + 1);
+  let totalPages = $derived(currentPage + (artifacts.length >= pageSize ? 1 : 0));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -54,7 +72,7 @@
     try {
       const client = createClient(AdminService, getTransport());
       const resp = await client.listTaskArtifacts({
-        taskId: taskId.trim(), artifactType, repo: repo.trim(), limit, offset,
+        taskId: taskId.trim(), artifactType, repo: repo.trim(), limit: pageSize, offset,
       });
       artifacts = resp.artifacts ?? [];
     } catch (e) {
@@ -83,8 +101,13 @@
         <option value="issue_comment">Issue Comment</option>
         <option value="pr_review">PR Review</option>
       </Select>
-      <Input type="number" bind:value={limit} min="1" max="500" class="!w-20" placeholder="Limit" />
-      <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Search</Button>
+      <Select bind:value={pageSize} onchange={() => { pageNum = 0; load(); }} class="!w-auto">
+        <option value={10}>10 / page</option>
+        <option value={25}>25 / page</option>
+        <option value={50}>50 / page</option>
+        <option value={100}>100 / page</option>
+      </Select>
+      <Button color="blue" size="sm" onclick={() => { pageNum = 0; load(); }}>Search</Button>
     </div>
   </div>
 
@@ -139,12 +162,12 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Showing {artifacts.length > 0 ? offset + 1 : 0}–{offset + artifacts.length} of {artifacts.length < limit ? offset + artifacts.length : `${offset + artifacts.length}+`}</span>
+      <span>Page {currentPage} of {totalPages} — {artifacts.length} artifacts</span>
       <PaginationNav
         {currentPage}
         {totalPages}
         visiblePages={5}
-        onPageChange={(nextPage) => { offset = (nextPage - 1) * limit; load(); }}
+        onPageChange={(nextPage) => { pageNum = nextPage - 1; load(); }}
       />
     </div>
   {/if}

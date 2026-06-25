@@ -26,8 +26,25 @@
   let eventTypeFilter = $state(p.searchParams.get("event") || "");
   let sourceTypeFilter = $state(p.searchParams.get("source") || "");
   let sinceHours = $state(Number(p.searchParams.get("hours")) || 24);
-  let limit = $state(Number(p.searchParams.get("limit")) || 250);
-  let offset = $state(Number(p.searchParams.get("o")) || 0);
+  let pageNum = $state(Number(p.searchParams.get("page")) || 0);
+  let pageSize = $state(Number(p.searchParams.get("size")) || 25);
+  let search = $state(p.searchParams.get("q") || "");
+  let offset = $derived(pageNum * pageSize);
+
+  let filteredEvents = $derived.by(() => {
+    let list = events;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(e =>
+        e.eventType?.toLowerCase().includes(q) ||
+        e.sourceId?.toLowerCase().includes(q) ||
+        e.targetId?.toLowerCase().includes(q) ||
+        e.detail?.toLowerCase().includes(q) ||
+        e.repo?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  });
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
@@ -42,8 +59,9 @@
     s("event", eventTypeFilter);
     s("source", sourceTypeFilter);
     s("hours", String(sinceHours), "24");
-    s("limit", String(limit), "250");
-    s("o", String(offset), "0");
+    s("size", String(pageSize), "25");
+    s("page", String(pageNum), "0");
+    s("q", search.trim());
     s("sync", showSync ? "" : "0");
     s("trigger", showTriggers ? "" : "0");
     s("resume", showResumes ? "" : "0");
@@ -51,7 +69,7 @@
     if (u.href !== p.href) goto(u, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  $effect(() => { eventTypeFilter; sourceTypeFilter; sinceHours; limit; offset; showSync; showTriggers; showResumes; showGate; syncURL(); });
+  $effect(() => { eventTypeFilter; sourceTypeFilter; sinceHours; pageSize; pageNum; search; showSync; showTriggers; showResumes; showGate; syncURL(); });
   let expandedDetailId = $state<string | null>(null);
 
   function sourceLink(event: AuditEvent): string | null {
@@ -144,7 +162,7 @@
   ]));
 
   let sortedEvents = $derived.by(() => {
-    return [...events].sort((a, b) => {
+    return [...filteredEvents].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "time": cmp = a.createdAt.localeCompare(b.createdAt); break;
@@ -157,8 +175,8 @@
     });
   });
 
-  let currentPage = $derived(Math.floor(offset / limit) + 1);
-  let totalPages = $derived(currentPage + (events.length >= limit ? 1 : 0));
+  let currentPage = $derived(pageNum + 1);
+  let totalPages = $derived(currentPage + (filteredEvents.length >= pageSize ? 1 : 0));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -177,7 +195,7 @@
       const resp = await client.listAuditEvents({
         ...(eventTypeFilter ? { eventType: eventTypeFilter } : {}),
         ...(sourceTypeFilter ? { sourceType: sourceTypeFilter } : {}),
-        sinceHours, limit, offset,
+        sinceHours, limit: pageSize, offset,
       });
       let filtered = resp.events ?? [];
       filtered = filtered.filter((e) => !excludedTypes.has(e.eventType));
@@ -235,8 +253,14 @@
         <option value={72}>Last 3 days</option>
         <option value={168}>Last 7 days</option>
       </Select>
-      <Input type="number" bind:value={limit} placeholder="Limit" class="!w-20" />
-      <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
+      <Select bind:value={pageSize} onchange={() => { pageNum = 0; load(); }} class="!w-auto">
+        <option value={10}>10 / page</option>
+        <option value={25}>25 / page</option>
+        <option value={50}>50 / page</option>
+        <option value={100}>100 / page</option>
+      </Select>
+      <Input bind:value={search} placeholder="Search…" class="!w-44" onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }} />
+      <Button color="blue" size="sm" onclick={() => { pageNum = 0; load(); }}>Refresh</Button>
       <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
         <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
         <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Trigger</Toggle>
@@ -352,12 +376,12 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Page {currentPage} — {events.length} events shown (limit: {limit})</span>
+      <span>Page {currentPage} of {totalPages} — {filteredEvents.length} events</span>
       <PaginationNav
         {currentPage}
         {totalPages}
         visiblePages={5}
-        onPageChange={(nextPage) => { offset = (nextPage - 1) * limit; load(); }}
+        onPageChange={(nextPage) => { pageNum = nextPage - 1; load(); }}
       />
     </div>
   {/if}
