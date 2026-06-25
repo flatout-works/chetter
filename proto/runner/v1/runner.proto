@@ -78,6 +78,7 @@ message Task {
   string provider_api_key_env = 22;
   string agent_definition = 23;
   map<string, bytes> skill_definitions = 24;
+  map<string, bytes> extra_files = 26;
 }
 
 message ClaimTaskResponse {

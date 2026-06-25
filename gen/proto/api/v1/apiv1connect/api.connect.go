@@ -57,6 +57,8 @@ const (
 	TaskServiceCancelTaskProcedure = "/api.v1.TaskService/CancelTask"
 	// TaskServiceExportTaskProcedure is the fully-qualified name of the TaskService's ExportTask RPC.
 	TaskServiceExportTaskProcedure = "/api.v1.TaskService/ExportTask"
+	// TaskServiceRecoverTaskProcedure is the fully-qualified name of the TaskService's RecoverTask RPC.
+	TaskServiceRecoverTaskProcedure = "/api.v1.TaskService/RecoverTask"
 	// TaskServiceClearQueueProcedure is the fully-qualified name of the TaskService's ClearQueue RPC.
 	TaskServiceClearQueueProcedure = "/api.v1.TaskService/ClearQueue"
 	// TaskServiceSubscribeTaskEventsProcedure is the fully-qualified name of the TaskService's
@@ -153,6 +155,7 @@ type TaskServiceClient interface {
 	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ExportTask(context.Context, *connect.Request[v1.ExportTaskRequest]) (*connect.Response[v1.ExportTaskResponse], error)
+	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
 	ClearQueue(context.Context, *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error)
 	SubscribeTaskEvents(context.Context, *connect.Request[v1.SubscribeTaskEventsRequest]) (*connect.ServerStreamForClient[v1.TaskEvent], error)
 }
@@ -198,6 +201,12 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("ExportTask")),
 			connect.WithClientOptions(opts...),
 		),
+		recoverTask: connect.NewClient[v1.RecoverTaskRequest, v1.RecoverTaskResponse](
+			httpClient,
+			baseURL+TaskServiceRecoverTaskProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("RecoverTask")),
+			connect.WithClientOptions(opts...),
+		),
 		clearQueue: connect.NewClient[v1.ClearQueueRequest, v1.ClearQueueResponse](
 			httpClient,
 			baseURL+TaskServiceClearQueueProcedure,
@@ -220,6 +229,7 @@ type taskServiceClient struct {
 	listTasks           *connect.Client[v1.ListTasksRequest, v1.ListTasksResponse]
 	cancelTask          *connect.Client[v1.CancelTaskRequest, v1.CancelTaskResponse]
 	exportTask          *connect.Client[v1.ExportTaskRequest, v1.ExportTaskResponse]
+	recoverTask         *connect.Client[v1.RecoverTaskRequest, v1.RecoverTaskResponse]
 	clearQueue          *connect.Client[v1.ClearQueueRequest, v1.ClearQueueResponse]
 	subscribeTaskEvents *connect.Client[v1.SubscribeTaskEventsRequest, v1.TaskEvent]
 }
@@ -249,6 +259,11 @@ func (c *taskServiceClient) ExportTask(ctx context.Context, req *connect.Request
 	return c.exportTask.CallUnary(ctx, req)
 }
 
+// RecoverTask calls api.v1.TaskService.RecoverTask.
+func (c *taskServiceClient) RecoverTask(ctx context.Context, req *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error) {
+	return c.recoverTask.CallUnary(ctx, req)
+}
+
 // ClearQueue calls api.v1.TaskService.ClearQueue.
 func (c *taskServiceClient) ClearQueue(ctx context.Context, req *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error) {
 	return c.clearQueue.CallUnary(ctx, req)
@@ -266,6 +281,7 @@ type TaskServiceHandler interface {
 	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ExportTask(context.Context, *connect.Request[v1.ExportTaskRequest]) (*connect.Response[v1.ExportTaskResponse], error)
+	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
 	ClearQueue(context.Context, *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error)
 	SubscribeTaskEvents(context.Context, *connect.Request[v1.SubscribeTaskEventsRequest], *connect.ServerStream[v1.TaskEvent]) error
 }
@@ -307,6 +323,12 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("ExportTask")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceRecoverTaskHandler := connect.NewUnaryHandler(
+		TaskServiceRecoverTaskProcedure,
+		svc.RecoverTask,
+		connect.WithSchema(taskServiceMethods.ByName("RecoverTask")),
+		connect.WithHandlerOptions(opts...),
+	)
 	taskServiceClearQueueHandler := connect.NewUnaryHandler(
 		TaskServiceClearQueueProcedure,
 		svc.ClearQueue,
@@ -331,6 +353,8 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceCancelTaskHandler.ServeHTTP(w, r)
 		case TaskServiceExportTaskProcedure:
 			taskServiceExportTaskHandler.ServeHTTP(w, r)
+		case TaskServiceRecoverTaskProcedure:
+			taskServiceRecoverTaskHandler.ServeHTTP(w, r)
 		case TaskServiceClearQueueProcedure:
 			taskServiceClearQueueHandler.ServeHTTP(w, r)
 		case TaskServiceSubscribeTaskEventsProcedure:
@@ -362,6 +386,10 @@ func (UnimplementedTaskServiceHandler) CancelTask(context.Context, *connect.Requ
 
 func (UnimplementedTaskServiceHandler) ExportTask(context.Context, *connect.Request[v1.ExportTaskRequest]) (*connect.Response[v1.ExportTaskResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.ExportTask is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.RecoverTask is not implemented"))
 }
 
 func (UnimplementedTaskServiceHandler) ClearQueue(context.Context, *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error) {

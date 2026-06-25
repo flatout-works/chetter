@@ -248,6 +248,7 @@ service TaskService {
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
   rpc ExportTask(ExportTaskRequest) returns (ExportTaskResponse);
+  rpc RecoverTask(RecoverTaskRequest) returns (RecoverTaskResponse);
   rpc ClearQueue(ClearQueueRequest) returns (ClearQueueResponse);
   rpc SubscribeTaskEvents(SubscribeTaskEventsRequest) returns (stream TaskEvent);
 }
@@ -307,6 +308,14 @@ message ExportTaskRequest {
 
 message ExportTaskResponse {
   string export = 1;
+}
+
+message RecoverTaskRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message RecoverTaskResponse {
+  Task task = 1;
 }
 
 message ClearQueueRequest {

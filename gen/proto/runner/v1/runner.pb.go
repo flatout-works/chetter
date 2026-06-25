@@ -509,6 +509,7 @@ type Task struct {
 	ProviderApiKeyEnv      string                 `protobuf:"bytes,22,opt,name=provider_api_key_env,json=providerApiKeyEnv,proto3" json:"provider_api_key_env,omitempty"`
 	AgentDefinition        string                 `protobuf:"bytes,23,opt,name=agent_definition,json=agentDefinition,proto3" json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte      `protobuf:"bytes,24,rep,name=skill_definitions,json=skillDefinitions,proto3" json:"skill_definitions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ExtraFiles             map[string][]byte      `protobuf:"bytes,26,rep,name=extra_files,json=extraFiles,proto3" json:"extra_files,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -714,6 +715,13 @@ func (x *Task) GetAgentDefinition() string {
 func (x *Task) GetSkillDefinitions() map[string][]byte {
 	if x != nil {
 		return x.SkillDefinitions
+	}
+	return nil
+}
+
+func (x *Task) GetExtraFiles() map[string][]byte {
+	if x != nil {
+		return x.ExtraFiles
 	}
 	return nil
 }
@@ -1754,7 +1762,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb6\b\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb7\t\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -1784,11 +1792,16 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x11provider_base_url\x18\x15 \x01(\tR\x0fproviderBaseUrl\x12/\n" +
 	"\x14provider_api_key_env\x18\x16 \x01(\tR\x11providerApiKeyEnv\x12)\n" +
 	"\x10agent_definition\x18\x17 \x01(\tR\x0fagentDefinition\x12R\n" +
-	"\x11skill_definitions\x18\x18 \x03(\v2%.runner.v1.Task.SkillDefinitionsEntryR\x10skillDefinitions\x1a6\n" +
+	"\x11skill_definitions\x18\x18 \x03(\v2%.runner.v1.Task.SkillDefinitionsEntryR\x10skillDefinitions\x12@\n" +
+	"\vextra_files\x18\x1a \x03(\v2\x1f.runner.v1.Task.ExtraFilesEntryR\n" +
+	"extraFiles\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
 	"\x15SkillDefinitionsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
+	"\x0fExtraFilesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
@@ -1895,7 +1908,7 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*RunnerInfo)(nil),                 // 0: runner.v1.RunnerInfo
 	(*RegisterRunnerRequest)(nil),      // 1: runner.v1.RegisterRunnerRequest
@@ -1922,6 +1935,7 @@ var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*GitHubPRReviewResponse)(nil),     // 22: runner.v1.GitHubPRReviewResponse
 	nil,                                // 23: runner.v1.Task.EnvEntry
 	nil,                                // 24: runner.v1.Task.SkillDefinitionsEntry
+	nil,                                // 25: runner.v1.Task.ExtraFilesEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 0: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
@@ -1929,32 +1943,33 @@ var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	4,  // 2: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
 	23, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
 	24, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
-	7,  // 5: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
-	9,  // 6: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
-	10, // 7: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
-	1,  // 8: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
-	3,  // 9: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
-	6,  // 10: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
-	11, // 11: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
-	13, // 12: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
-	15, // 13: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
-	17, // 14: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
-	19, // 15: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
-	21, // 16: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
-	2,  // 17: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	5,  // 18: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	8,  // 19: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	12, // 20: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	14, // 21: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
-	16, // 22: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
-	18, // 23: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
-	20, // 24: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
-	22, // 25: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
-	17, // [17:26] is the sub-list for method output_type
-	8,  // [8:17] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	25, // 5: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
+	7,  // 6: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
+	9,  // 7: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
+	10, // 8: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
+	1,  // 9: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
+	3,  // 10: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
+	6,  // 11: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
+	11, // 12: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
+	13, // 13: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
+	15, // 14: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
+	17, // 15: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
+	19, // 16: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
+	21, // 17: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
+	2,  // 18: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	5,  // 19: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	8,  // 20: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	12, // 21: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	14, // 22: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
+	16, // 23: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
+	18, // 24: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
+	20, // 25: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
+	22, // 26: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_proto_runner_v1_runner_proto_init() }
@@ -1968,7 +1983,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
