@@ -21,9 +21,10 @@
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
-  let showSync = $state(false);
+  let showSync = $state(true);
   let showTriggers = $state(true);
   let showResumes = $state(true);
+  let showGate = $state(true);
   let expandedDetailId = $state<string | null>(null);
 
   function sourceLink(event: AuditEvent): string | null {
@@ -110,8 +111,9 @@
 
   const excludedTypes = $derived(new Set([
     ...(showSync ? [] : ["definitions_synced"]),
-    ...(showTriggers ? [] : ["trigger_run"]),
+    ...(showTriggers ? [] : ["trigger_run", "trigger_updated"]),
     ...(showResumes ? [] : ["session_resumed"]),
+    ...(showGate ? [] : ["webhook_author_gate_denied"]),
   ]));
 
   let sortedEvents = $derived.by(() => {
@@ -180,19 +182,24 @@
   <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
     <div class="flex flex-wrap items-center gap-2">
-      <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-40">
+      <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-48">
         <option value="">All types</option>
         <option value="webhook_received">Webhook Received</option>
         <option value="webhook_author_gate_denied">Webhook Author Gate Denied</option>
         <option value="task_submitted">Task Submitted</option>
-        <option value="trigger_matched">Trigger Matched</option>
-        <option value="artifact_discovered">Artifact Discovered</option>
+        <option value="task_cancelled">Task Cancelled</option>
+        <option value="trigger_run">Trigger Run</option>
+        <option value="trigger_updated">Trigger Updated</option>
+        <option value="github_artifact_created">GitHub Artifact Created</option>
       </Select>
-      <Select bind:value={sourceTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-40">
+      <Select bind:value={sourceTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-48">
         <option value="">All sources</option>
         <option value="webhook">Webhook</option>
         <option value="trigger">Trigger</option>
+        <option value="api">API</option>
+        <option value="cron">Cron</option>
         <option value="task">Task</option>
+        <option value="rpc">RPC</option>
       </Select>
       <Select bind:value={sinceHours} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-44">
         <option value={1}>Last hour</option>
@@ -204,9 +211,10 @@
       <Input type="number" bind:value={limit} placeholder="Limit" class="!w-20" />
       <Button color="blue" size="sm" onclick={() => { offset = 0; load(); }}>Refresh</Button>
       <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
-        <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Syncs</Toggle>
-        <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Triggers</Toggle>
-        <Toggle bind:checked={showResumes} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resumes</Toggle>
+        <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
+        <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Trigger</Toggle>
+        <Toggle bind:checked={showResumes} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resume</Toggle>
+        <Toggle bind:checked={showGate} onchange={() => { offset = 0; load(); }} color="gray" size="small">Auth Gate</Toggle>
       </div>
     </div>
   </div>
@@ -317,7 +325,7 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Showing {events.length > 0 ? offset + 1 : 0}–{offset + events.length} of {events.length < limit ? offset + events.length : `${offset + events.length}+`}</span>
+      <span>Page {currentPage} — {events.length} events shown (limit: {limit})</span>
       <PaginationNav
         {currentPage}
         {totalPages}
