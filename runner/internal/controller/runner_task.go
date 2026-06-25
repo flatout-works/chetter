@@ -634,6 +634,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	slog.Info("session created", "taskID", req.TaskID, "sessionID", sid)
 
+	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
+
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
 	var tokenUsage task.TokenUsage
@@ -648,7 +650,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		tokenUsage.CostCents += usage.CostCents
 	})
 
-	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
 	if err != nil {
@@ -829,6 +830,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)
 
+	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
+
 	eventsCtx, stopEvents := context.WithCancel(ctx)
 	defer stopEvents()
 	var tokenUsage task.TokenUsage
@@ -843,25 +846,36 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		tokenUsage.CostCents += usage.CostCents
 	})
 
-	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
 	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
 	var sessionExport string
-	if sid != "" {
-		slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
-		if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
-			slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
+	if err != nil {
+		workspacePath := ""
+		if req.CheckpointAfterSuccess && classifyErrorCategory("error", fmt.Sprintf("prompt failed: %v", err)) == "timeout" {
+			workspacePath = session.WorkspaceDir
+			session.PreserveWorkspace = true
+			slog.Info("preserving workspace for recoverable timed-out session", "taskID", req.TaskID, "workspace", workspacePath)
 		}
-		exec.Command("docker", "stop", containerName).Run()
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		if sid != "" {
+			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
+			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
+				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
+			}
+			exec.Command("docker", "stop", containerName).Run()
+			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		}
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
+		return
 	}
 	workspacePath := ""
 	if req.CheckpointAfterSuccess {
 		workspacePath = session.WorkspaceDir
+		session.PreserveWorkspace = true
+		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
-	if err != nil {
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
-		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
-		return
+	if sid != "" {
+		exec.Command("docker", "stop", containerName).Run()
+		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
