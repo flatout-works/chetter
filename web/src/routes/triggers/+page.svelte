@@ -2,18 +2,19 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
-  import { TriggerService, TaskService } from "$gen/proto/api/v1/api_pb";
-  import type { TriggerRun, Trigger } from "$gen/proto/api/v1/api_pb";
+  import { TriggerService } from "$gen/proto/api/v1/api_pb";
+  import type { Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Input, PaginationNav, Select, Spinner, Table, TableHead, TableBody, TableHeadCell, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
+  import TableCard from "$lib/components/TableCard.svelte";
+  import { Alert, Badge, Button, Card, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
   let triggers = $state<Trigger[]>([]);
-  let expandedId = $state<string | null>(null);
   let loading = $state(true);
+  let error = $state<string | null>(null);
 
   let showCron = $state(true);
   let showIssue = $state(true);
@@ -30,9 +31,14 @@
       }
     });
   });
+
+  let page = $state(0);
+  let pageSize = $state(25);
+  let totalPages = $derived(Math.max(1, Math.ceil(visibleTriggers.length / pageSize)));
+  let pagedTriggers = $derived(visibleTriggers.slice(page * pageSize, (page + 1) * pageSize));
+
   let showCreateForm = $state(false);
   let creating = $state(false);
-  let actionError = $state<string | null>(null);
   let name = $state("");
   let triggerType = $state("cron");
   let cronExpr = $state("@hourly");
@@ -45,22 +51,25 @@
   let agent = $state("");
   let modelId = $state("");
 
-  let triggerRuns = $state<TriggerRun[]>([]);
-  let runTokenTotals = $state<Map<string, bigint>>(new Map());
-  let runsTriggerName = $state<string | null>(null);
-  let loadingRuns = $state(false);
-  let runsPage = $state(0);
-  let runsPageSize = 10;
-  let totalRunsPages = $derived(Math.max(1, Math.ceil(triggerRuns.length / runsPageSize)));
-  let pagedRuns = $derived(triggerRuns.slice(runsPage * runsPageSize, (runsPage + 1) * runsPageSize));
+  function triggerTarget(trigger: Trigger): string {
+    if (trigger.cronExpr) return trigger.cronExpr;
+    try { return JSON.parse(trigger.triggerConfig || "{}").repo || "—"; }
+    catch { return "—"; }
+  }
+
+  function isGitManaged(trigger: Trigger): boolean {
+    return !!trigger.sourceId;
+  }
 
   async function load() {
+    loading = true;
+    error = null;
     try {
       const client = createClient(TriggerService, getTransport());
       const resp = await client.listTriggers({});
       triggers = resp.triggers ?? [];
     } catch (e) {
-      console.error(e);
+      error = e instanceof Error ? e.message : "Failed to load triggers.";
     } finally {
       loading = false;
     }
@@ -69,16 +78,15 @@
   onMount(load);
 
   async function toggleEnabled(trigger: Trigger) {
-    actionError = null;
+    error = null;
     try {
       const client = createClient(TriggerService, getTransport());
       await client.updateTrigger({ name: trigger.name, enabled: !trigger.enabled });
       await load();
       addToast(`${trigger.name} ${trigger.enabled ? "disabled" : "enabled"}`, "success");
     } catch (e) {
-      actionError = e instanceof Error ? e.message : "Failed to update trigger.";
-      addToast(actionError, "error");
-      console.error(e);
+      error = e instanceof Error ? e.message : "Failed to update trigger.";
+      addToast(error, "error");
     }
   }
 
@@ -89,54 +97,14 @@
       confirmLabel: "Run",
     });
     if (!ok) return;
-    actionError = null;
+    error = null;
     try {
       const client = createClient(TriggerService, getTransport());
       await client.runTrigger({ name });
       addToast(`Trigger "${name}" started`, "success");
-      if (runsTriggerName === name) await loadRuns(name);
     } catch (e) {
-      actionError = e instanceof Error ? e.message : "Failed to run trigger.";
-      addToast(actionError, "error");
-      console.error(e);
-    }
-  }
-
-  async function loadRuns(name: string) {
-    if (runsTriggerName === name) {
-      runsTriggerName = null;
-      return;
-    }
-    runsTriggerName = name;
-    loadingRuns = true;
-    actionError = null;
-    runsPage = 0;
-    try {
-      const client = createClient(TriggerService, getTransport());
-      const resp = await client.listTriggerRuns({ triggerName: name, limit: 25 });
-      triggerRuns = resp.runs ?? [];
-      const taskClient = createClient(TaskService, getTransport());
-      const tasks = await Promise.allSettled(
-        triggerRuns.map(async (run) => {
-          const taskResp = await taskClient.getTask({ taskId: run.taskId });
-          return taskResp.task;
-        })
-      );
-      const m = new Map<string, bigint>();
-      tasks.forEach((result) => {
-        if (result.status === "fulfilled" && result.value?.tokenUsage) {
-          const tu = result.value.tokenUsage;
-          const total = (tu.inputTokens ?? 0n) + (tu.outputTokens ?? 0n) + (tu.reasoningTokens ?? 0n);
-          m.set(result.value.id, total);
-        }
-      });
-      runTokenTotals = m;
-    } catch (e) {
-      actionError = e instanceof Error ? e.message : "Failed to load trigger runs.";
-      addToast(actionError, "error");
-      console.error(e);
-    } finally {
-      loadingRuns = false;
+      error = e instanceof Error ? e.message : "Failed to run trigger.";
+      addToast(error, "error");
     }
   }
 
@@ -147,40 +115,37 @@
       confirmLabel: "Delete",
     });
     if (!ok) return;
-    actionError = null;
     try {
       const client = createClient(TriggerService, getTransport());
       await client.deleteTrigger({ name });
       addToast(`Trigger "${name}" deleted`, "success");
-      if (expandedId) expandedId = null;
+      if (page > 0 && pagedTriggers.length <= 1) page--;
       await load();
     } catch (e) {
-      actionError = e instanceof Error ? e.message : "Failed to delete trigger.";
-      addToast(actionError, "error");
-      console.error(e);
+      error = e instanceof Error ? e.message : "Failed to delete trigger.";
+      addToast(error, "error");
     }
   }
 
   async function createTrigger(e: Event) {
     e.preventDefault();
-    actionError = null;
+    error = null;
     if (!name.trim()) {
-      actionError = "Name is required.";
+      error = "Name is required.";
       return;
     }
     if (triggerType === "cron" && !cronExpr.trim()) {
-      actionError = "Cron expression is required for cron triggers.";
+      error = "Cron expression is required for cron triggers.";
       return;
     }
     if (triggerType !== "cron" && !repo.trim()) {
-      actionError = "Repository is required for webhook triggers.";
+      error = "Repository is required for webhook triggers.";
       return;
     }
     if (triggerType === "cron" && !prompt.trim()) {
-      actionError = "Prompt is required for cron triggers.";
+      error = "Prompt is required for cron triggers.";
       return;
     }
-
     creating = true;
     try {
       const client = createClient(TriggerService, getTransport());
@@ -212,39 +177,11 @@
       showCreateForm = false;
       await load();
     } catch (err) {
-      actionError = err instanceof Error ? err.message : "Failed to create trigger.";
-      addToast(actionError, "error");
+      error = err instanceof Error ? err.message : "Failed to create trigger.";
+      addToast(error, "error");
     } finally {
       creating = false;
     }
-  }
-
-  function triggerTarget(trigger: Trigger): string {
-    if (trigger.cronExpr) return trigger.cronExpr;
-    try {
-      return JSON.parse(trigger.triggerConfig || "{}").repo || "—";
-    } catch {
-      return "—";
-    }
-  }
-
-  function toggleExpand(id: string) {
-    expandedId = expandedId === id ? null : id;
-  }
-
-  function running(trigger: Trigger) {
-    return runsTriggerName === trigger.name;
-  }
-
-  function isGitManaged(trigger: Trigger): boolean {
-    return !!trigger.sourceId;
-  }
-
-  function fmtTokens(n: bigint): string {
-    const v = Number(n);
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-    return v.toString();
   }
 </script>
 
@@ -261,18 +198,24 @@
         <Toggle bind:checked={showIssue} color="gray" size="small">Issue</Toggle>
         <Toggle bind:checked={showPrReview} color="gray" size="small">PR Review</Toggle>
       </div>
-      <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; actionError = null; }}>
+      <Select bind:value={pageSize} onchange={() => { page = 0; }} class="!w-auto">
+        <option value={10}>10 / page</option>
+        <option value={25}>25 / page</option>
+        <option value={50}>50 / page</option>
+        <option value={100}>100 / page</option>
+      </Select>
+      <Button color="blue" onclick={() => { showCreateForm = !showCreateForm; error = null; }}>
         {showCreateForm ? "Cancel" : "Create Trigger"}
       </Button>
     </div>
   </div>
 
-  {#if actionError}
-    <Alert color="red" class="mb-4">{actionError}</Alert>
+  {#if error}
+    <Alert color="red" class="mb-4">{error}</Alert>
   {/if}
 
   {#if showCreateForm}
-    <Card class="mb-6 w-full max-w-none !p-4" shadow="sm">
+    <Card class="mb-6 w-full max-w-none !p-4" size="xl" shadow="sm">
     <form onsubmit={createTrigger} class="space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Input bind:value={name} placeholder="Name" />
@@ -301,255 +244,63 @@
   {/if}
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-      <Spinner size="4" /> Loading…
-    </div>
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
-    <div class="space-y-2">
-      {#each visibleTriggers as trigger (trigger.id)}
-        <Card shadow="sm" class="w-full max-w-none !p-0 overflow-hidden">
-          <div
-            class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer select-none"
-            onclick={() => toggleExpand(trigger.id)}
-            role="button"
-            tabindex="0"
-            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") toggleExpand(trigger.id); }}
-          >
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-sm font-medium text-gray-900 dark:text-white">{trigger.name}</span>
-              <StatusBadge status={trigger.triggerType} />
+    <TableCard title="Triggers" subtitle="Automated task triggers — cron schedules and GitHub webhook handlers.">
+    <Table hoverable={true} shadow={false}>
+      <TableHead>
+        <TableHeadCell>Name</TableHeadCell>
+        <TableHeadCell>Type</TableHeadCell>
+        <TableHeadCell>Enabled</TableHeadCell>
+        <TableHeadCell>Target</TableHeadCell>
+        <TableHeadCell>Agent</TableHeadCell>
+        <TableHeadCell>Last Run</TableHeadCell>
+        <TableHeadCell class="text-right">Actions</TableHeadCell>
+      </TableHead>
+      <TableBody>
+        {#each pagedTriggers as trigger (trigger.id)}
+          <TableBodyRow>
+            <TableBodyCell>
+              <a href={resolve("/triggers/[name]", { name: trigger.name })} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                {trigger.name}
+              </a>
               {#if isGitManaged(trigger)}
-                <Badge color="gray">git-managed</Badge>
+                <Badge color="gray" class="ml-1">git</Badge>
               {/if}
-            </div>
-            <div class="flex items-center gap-3 shrink-0 ml-4">
-              <Toggle
-                checked={trigger.enabled}
-                onchange={() => toggleEnabled(trigger)}
-                color="gray"
-                size="small"
-              />
-              <span class="text-gray-400 transition-transform {expandedId === trigger.id ? 'rotate-180' : ''}">▼</span>
-            </div>
-          </div>
-
-          {#if expandedId === trigger.id}
-            <div class="px-4 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 space-y-3">
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-                <div>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Status</span>
-                  <p class="mt-0.5"><StatusBadge status={trigger.enabled ? "enabled" : "disabled"} /></p>
-                </div>
-                <div>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Type</span>
-                  <p class="text-gray-900 dark:text-white">{trigger.triggerType}</p>
-                </div>
-                <div>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Target</span>
-                  <p class="text-gray-900 dark:text-white font-mono">{triggerTarget(trigger)}</p>
-                </div>
-                {#if trigger.triggerConfig}
-                  {@const parsed = (() => { try { return JSON.parse(trigger.triggerConfig); } catch { return {}; } })()}
-                  {#if parsed.repo}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Repository</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.repo}</p>
-                    </div>
-                  {/if}
-                  {#if parsed.event}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Event</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.event}</p>
-                    </div>
-                  {/if}
-                  {#if parsed.match_labels && parsed.match_labels.length > 0}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Labels</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.match_labels.join(", ")}</p>
-                    </div>
-                  {/if}
-                  {#if parsed.session_mode}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Session Mode</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.session_mode}</p>
-                    </div>
-                  {/if}
-                  {#if parsed.ttl_hours}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">TTL</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.ttl_hours}h</p>
-                    </div>
-                  {/if}
-                  {#if parsed.pause_reason}
-                    <div>
-                      <span class="text-xs text-gray-400 dark:text-gray-500">Pause Reason</span>
-                      <p class="text-gray-900 dark:text-white">{parsed.pause_reason}</p>
-                    </div>
-                  {/if}
-                {/if}
-                {#if trigger.agent}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Agent</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.agent}</p>
-                  </div>
-                {/if}
-                {#if trigger.modelId}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Model</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.modelId}</p>
-                  </div>
-                {/if}
-                {#if trigger.providerId}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Provider</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.providerId}</p>
-                  </div>
-                {/if}
-                {#if trigger.harness}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Harness</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.harness}</p>
-                  </div>
-                {/if}
-                {#if trigger.variantId}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Variant</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.variantId}</p>
-                  </div>
-                {/if}
-                {#if trigger.skills && trigger.skills.length > 0}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Skills</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.skills.join(", ")}</p>
-                  </div>
-                {/if}
-                {#if trigger.gitUrl}
-                  <div class="sm:col-span-2">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Git URL</span>
-                    <p class="text-gray-900 dark:text-white font-mono">{trigger.gitUrl}</p>
-                  </div>
-                {/if}
-                {#if trigger.gitRef}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Git Ref</span>
-                    <p class="text-gray-900 dark:text-white font-mono">{trigger.gitRef}</p>
-                  </div>
-                {/if}
-                {#if trigger.agentImage}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Agent Image</span>
-                    <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.agentImage}</p>
-                  </div>
-                {/if}
-                {#if trigger.timeoutSec > 0}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Timeout</span>
-                    <p class="text-gray-900 dark:text-white">{trigger.timeoutSec}s</p>
-                  </div>
-                {/if}
-                {#if trigger.lastRunAt}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Last Run</span>
-                    <p class="text-gray-900 dark:text-white">{formatTime(trigger.lastRunAt)}</p>
-                  </div>
-                {/if}
-                {#if trigger.nextRunAt}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Next Run</span>
-                    <p class="text-gray-900 dark:text-white">{formatTime(trigger.nextRunAt)}</p>
-                  </div>
-                {/if}
-                {#if trigger.sourceId}
-                  <div>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">Source</span>
-                    <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.sourceId}</p>
-                  </div>
-                {/if}
+            </TableBodyCell>
+            <TableBodyCell><StatusBadge status={trigger.triggerType} /></TableBodyCell>
+            <TableBodyCell>
+              <Toggle checked={trigger.enabled} onchange={() => toggleEnabled(trigger)} color="gray" size="small" disabled={isGitManaged(trigger)} />
+            </TableBodyCell>
+            <TableBodyCell><span class="text-gray-700 dark:text-gray-300 font-mono text-sm">{triggerTarget(trigger)}</span></TableBodyCell>
+            <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{trigger.agent || "—"}</span></TableBodyCell>
+            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{trigger.lastRunAt ? formatTime(trigger.lastRunAt) : "—"}</span></TableBodyCell>
+            <TableBodyCell class="text-right">
+              <div class="flex items-center justify-end gap-1">
+                <Button color="blue" size="xs" onclick={() => runNow(trigger.name)} title="Run now">Run</Button>
+                <Button color="red" size="xs" onclick={() => deleteTrigger(trigger.name)} disabled={isGitManaged(trigger)} title="Delete">Del</Button>
               </div>
+            </TableBodyCell>
+          </TableBodyRow>
+        {:else}
+          <TableBodyRow>
+            <TableBodyCell colspan={7}>
+              <div class="text-center text-gray-500 dark:text-gray-400 py-8">No triggers found</div>
+            </TableBodyCell>
+          </TableBodyRow>
+        {/each}
+      </TableBody>
+    </Table>
+    </TableCard>
 
-              {#if trigger.prompt}
-                <div>
-                  <span class="text-xs text-gray-400 dark:text-gray-500">Prompt</span>
-                  <pre class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-wrap bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600">{trigger.prompt}</pre>
-                </div>
-              {/if}
-            </div>
-          {/if}
-
-          <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 space-y-3">
-            <div class="flex items-center gap-2">
-              <Button color={running(trigger) ? "blue" : "alternative"} size="xs" onclick={() => loadRuns(trigger.name)}>
-                {running(trigger) ? "Hide Runs" : "Show Runs"}
-              </Button>
-              <Button color="blue" size="xs" onclick={() => runNow(trigger.name)}>Run Now</Button>
-              <Button color="red" size="xs" disabled={isGitManaged(trigger)} onclick={() => deleteTrigger(trigger.name)}>Delete</Button>
-            </div>
-
-            {#if running(trigger)}
-              <Card shadow="sm" class="w-full max-w-none !p-0 overflow-hidden">
-                <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Recent Runs</h3>
-                </div>
-                {#if loadingRuns}
-                  <div class="flex items-center gap-2 px-3 py-6 text-gray-500 dark:text-gray-400">
-                    <Spinner size="4" /> Loading runs…
-                  </div>
-                {:else if triggerRuns.length === 0}
-                  <p class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">No runs found</p>
-                {:else}
-                  <div class="chetter-table overflow-x-auto">
-                  <Table hoverable={true} shadow={false}>
-                    <TableHead>
-                      <TableHeadCell>Run ID</TableHeadCell>
-                      <TableHeadCell>Task</TableHeadCell>
-                      <TableHeadCell>Status</TableHeadCell>
-                      <TableHeadCell>Tokens</TableHeadCell>
-                      <TableHeadCell>Triggered</TableHeadCell>
-                      <TableHeadCell>Created</TableHeadCell>
-                    </TableHead>
-                    <TableBody>
-                      {#each pagedRuns as run (run.id)}
-                        <TableBodyRow>
-                          <TableBodyCell class="font-mono text-xs">{run.id.slice(0, 16)}…</TableBodyCell>
-                          <TableBodyCell>
-                            <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                              {run.taskId.slice(0, 16)}…
-                            </a>
-                          </TableBodyCell>
-                          <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
-                          <TableBodyCell>
-                            {#if runTokenTotals.has(run.taskId)}
-                              <span class="font-mono text-xs text-gray-900 dark:text-white">{fmtTokens(runTokenTotals.get(run.taskId)!)}</span>
-                            {:else}
-                              <span class="text-gray-400 dark:text-gray-600 text-xs">—</span>
-                            {/if}
-                          </TableBodyCell>
-                          <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.triggeredAt)}</TableBodyCell>
-                          <TableBodyCell class="text-xs text-gray-500 dark:text-gray-400">{formatTime(run.createdAt)}</TableBodyCell>
-                        </TableBodyRow>
-                      {/each}
-                    </TableBody>
-                  </Table>
-                  </div>
-                  <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
-                    <span>{triggerRuns.length > 0 ? runsPage * runsPageSize + 1 : 0}–{Math.min((runsPage + 1) * runsPageSize, triggerRuns.length)} of {triggerRuns.length}</span>
-                    <PaginationNav
-                      currentPage={runsPage + 1}
-                      totalPages={totalRunsPages}
-                      visiblePages={5}
-                      onPageChange={(nextPage) => { runsPage = nextPage - 1; }}
-                    />
-                  </div>
-                {/if}
-              </Card>
-            {/if}
-          </div>
-        </Card>
-      {:else}
-        <Card shadow="sm" class="w-full max-w-none !p-8 text-center">
-          No triggers found
-        </Card>
-      {/each}
+    <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
+      <span>Showing {visibleTriggers.length > 0 ? page * pageSize + 1 : 0}–{Math.min((page + 1) * pageSize, visibleTriggers.length)} of {visibleTriggers.length}</span>
+      <PaginationNav
+        currentPage={page + 1}
+        {totalPages}
+        visiblePages={5}
+        onPageChange={(nextPage) => { page = nextPage - 1; }}
+      />
     </div>
   {/if}
 </div>
