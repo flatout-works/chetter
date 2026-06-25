@@ -98,7 +98,7 @@ SET last_run_at = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: InsertTriggerRun :exec
-INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
+INSERT IGNORE INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListTriggerRunsByTeam :many

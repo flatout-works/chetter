@@ -243,6 +243,12 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureArtifactDedupIndex(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureTriggerRunDedupIndex(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
@@ -289,6 +295,12 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
+		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER cost_cents"},
+		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},
+		{"total_cache_read_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_read_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_output_tokens"},
+		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
+		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
+		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -361,6 +373,32 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_runners.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_task_artifacts_dedup")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON chetter_task_artifacts (task_id, artifact_type, repo, number)"); err != nil {
+			return fmt.Errorf("add artifact dedup index: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTriggerRunDedupIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_trigger_runs", "idx_trigger_runs_dedup")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_trigger_runs_dedup ON chetter_trigger_runs (trigger_id, task_id)"); err != nil {
+			return fmt.Errorf("add trigger run dedup index: %w", err)
 		}
 	}
 	return nil

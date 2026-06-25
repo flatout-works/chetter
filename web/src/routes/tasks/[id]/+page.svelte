@@ -20,6 +20,15 @@
   let taskSession = $state<AgentSession | null>(null);
   let sessionRuns = $state<SessionRun[]>([]);
   let artifacts = $state<TaskArtifact[]>([]);
+  let uniqueArtifacts = $derived.by(() => {
+    const seen = new Set<string>();
+    return artifacts.filter((a) => {
+      const key = `${a.artifactType}:${a.repo}:${a.number}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
   let loading = $state(true);
   let error = $state<string | null>(null);
   let unsub: (() => void) | null = null;
@@ -594,11 +603,11 @@
     {/if}
 
     <!-- Artifacts -->
-    {#if artifacts.length > 0}
+    {#if uniqueArtifacts.length > 0}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
         <div class="space-y-2">
-          {#each artifacts as art (art.id)}
+          {#each uniqueArtifacts as art (art.id)}
             <div class="flex items-center gap-3 text-sm">
               <StatusBadge status={art.artifactType === "pr_review" ? "pr_review_artifact" : art.artifactType} label={art.artifactType} />
               {#if art.url}

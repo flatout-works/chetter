@@ -1,5 +1,5 @@
 -- name: InsertTaskArtifact :exec
-INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source)
+INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListTaskArtifacts :many

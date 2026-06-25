@@ -150,7 +150,7 @@ func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTri
 }
 
 const insertTriggerRun = `-- name: InsertTriggerRun :exec
-INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
+INSERT IGNORE INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 

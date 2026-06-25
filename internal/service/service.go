@@ -519,7 +519,38 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return store.TaskRecord{}, err
 	}
 	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "session_run_id", runID)
-	if in.TriggerName == "" {
+	if in.TriggerName != "" {
+		trigger, err := s.repo.GetTriggerByName(ctx, in.TriggerName)
+		if err == nil {
+			runID, err := randomID("run")
+			if err == nil {
+				if err := s.repo.InsertTriggerRun(ctx, repository.InsertTriggerRunParams{
+					ID:          runID,
+					TriggerID:   trigger.ID,
+					TeamID:      nullString(teamID),
+					TaskID:      taskID,
+					Status:      "submitted",
+					TriggeredAt: now,
+					CreatedAt:   now,
+				}); err != nil {
+					slog.Warn("failed to insert trigger run", "trigger", in.TriggerName, "task", taskID, "err", err)
+				}
+				s.repo.SetTriggerLastRun(ctx, repository.SetTriggerLastRunParams{
+					LastRunAt: sql.NullTime{Time: now, Valid: true},
+					UpdatedAt: now,
+					ID:        trigger.ID,
+				})
+			}
+		}
+		s.auditAsync(AuditEventParams{
+			EventType:  "trigger_run",
+			SourceType: in.TriggerType,
+			SourceID:   in.TriggerName,
+			TargetType: "task",
+			TargetID:   taskID,
+			Detail:     fmt.Sprintf("trigger %q ran, task %s created", in.TriggerName, taskID),
+		})
+	} else {
 		s.auditAsync(AuditEventParams{
 			EventType:  "task_submitted",
 			SourceType: "api",
@@ -1128,19 +1159,9 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 	}
 	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
-	task, err := s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
+	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
 		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
-	if err == nil {
-		s.auditAsync(AuditEventParams{
-			EventType:  "trigger_run",
-			SourceType: "cron",
-			SourceID:   trigger.Name,
-			TargetType: "task",
-			TargetID:   task.ID,
-			Detail:     fmt.Sprintf("trigger %q run automatically", trigger.Name),
-		})
-	}
 	return err
 }
 
@@ -1166,28 +1187,6 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
-	}
-	runID, err := randomID("run")
-	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("generate run id: %w", err)
-	}
-	if err := s.repo.InsertTriggerRun(ctx, repository.InsertTriggerRunParams{
-		ID:          runID,
-		TriggerID:   triggerID,
-		TeamID:      nullString(teamID),
-		TaskID:      task.ID,
-		Status:      "submitted",
-		TriggeredAt: triggeredAt.UTC(),
-		CreatedAt:   time.Now().UTC(),
-	}); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("insert trigger run: %w", err)
-	}
-	if err := s.repo.SetTriggerLastRun(ctx, repository.SetTriggerLastRunParams{
-		LastRunAt: sql.NullTime{Time: triggeredAt.UTC(), Valid: true},
-		UpdatedAt: time.Now().UTC(),
-		ID:        triggerID,
-	}); err != nil {
-		return store.TaskRecord{}, fmt.Errorf("set trigger last run: %w", err)
 	}
 	if entryID, ok := s.cronEntries[triggerID]; ok {
 		entry := s.cron.Entry(entryID)

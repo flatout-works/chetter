@@ -191,7 +191,7 @@
         {#if triggerConfig.repo}
           <div>
             <span class="text-xs text-gray-400 dark:text-gray-500">Repository</span>
-            <a href={`https://github.com/${triggerConfig.repo}`} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline">{triggerConfig.repo}</a>
+            <p class="text-gray-900 dark:text-white"><a href={`https://github.com/${triggerConfig.repo}`} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline">{triggerConfig.repo}</a></p>
           </div>
         {/if}
         {#if triggerConfig.event}

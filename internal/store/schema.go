@@ -206,6 +206,7 @@ var schemaStatements = []string{
 		triggered_at DATETIME(6) NOT NULL,
 		created_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),
+		UNIQUE KEY idx_trigger_runs_dedup (trigger_id, task_id),
 		KEY idx_chetter_trigger_runs_trigger_created (trigger_id, created_at),
 		KEY idx_chetter_trigger_runs_task (task_id)
 	)`,
@@ -274,6 +275,7 @@ var schemaStatements = []string{
 		discovered_at DATETIME(6) NOT NULL,
 		discovery_source VARCHAR(32) NOT NULL,
 		PRIMARY KEY (id),
+		UNIQUE KEY idx_task_artifacts_dedup (task_id, artifact_type, repo, number),
 		KEY idx_task_artifacts_task (task_id),
 		KEY idx_task_artifacts_agent_session (agent_session_id),
 		KEY idx_task_artifacts_session_run (session_run_id),
