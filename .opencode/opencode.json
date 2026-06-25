@@ -29,6 +29,10 @@
       "description": "Get the session export (markdown transcript) for a completed Chetter task.",
       "template": "Ask for the task ID if not provided. Use chetter_task_export with the given ID. Return the full export markdown to the user. If no export is available, explain that the task may not have completed or the export failed."
     },
+    "chetter-recover": {
+      "description": "Recover a failed Chetter task by starting a new task with the previous session export.",
+      "template": "Ask for the task ID if not provided. Use chetter_recover_task with the given ID. Confirm the new task ID and explain that the agent will receive the previous session export as a workspace file."
+    },
     "chetter-sessions": {
       "description": "List recent Chetter agent sessions and their runs.",
       "template": "Run chetter_list_agent_sessions with limit=20. Summarize sessions by status and resume_mode. For any paused or errored session, call chetter_agent_session_status and show its runs, pinned runner, checkpoint, and latest error. Keep output concise."
