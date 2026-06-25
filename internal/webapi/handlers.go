@@ -651,6 +651,7 @@ func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request
 		TargetType: req.Msg.TargetType,
 		TargetID:   req.Msg.TargetId,
 		Repo:       req.Msg.Repo,
+		Search:     req.Msg.Search,
 		SinceHours: int(req.Msg.SinceHours),
 		Limit:      int(req.Msg.Limit),
 		Offset:     int(req.Msg.Offset),

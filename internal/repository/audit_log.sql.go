@@ -141,3 +141,102 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]C
 	}
 	return items, nil
 }
+
+const searchAuditLog = `-- name: SearchAuditLog :many
+SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+FROM chetter_audit_log
+WHERE (event_type = ? OR ? = '')
+  AND (source_type = ? OR ? = '')
+  AND (source_id = ? OR ? = '')
+  AND (target_type = ? OR ? = '')
+  AND (target_id = ? OR ? = '')
+  AND (repo = ? OR ? = '')
+  AND (created_at >= ? OR ? IS NULL)
+  AND (FTS_MATCH_WORD(detail, ?) OR FTS_MATCH_WORD(source_id, ?) OR FTS_MATCH_WORD(target_id, ?) OR FTS_MATCH_WORD(event_type, ?) OR FTS_MATCH_WORD(repo, ?))
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchAuditLogParams struct {
+	EventType      string         `json:"event_type"`
+	Column2        interface{}    `json:"column_2"`
+	SourceType     sql.NullString `json:"source_type"`
+	Column4        interface{}    `json:"column_4"`
+	SourceID       sql.NullString `json:"source_id"`
+	Column6        interface{}    `json:"column_6"`
+	TargetType     sql.NullString `json:"target_type"`
+	Column8        interface{}    `json:"column_8"`
+	TargetID       sql.NullString `json:"target_id"`
+	Column10       interface{}    `json:"column_10"`
+	Repo           sql.NullString `json:"repo"`
+	Column12       interface{}    `json:"column_12"`
+	CreatedAt      time.Time      `json:"created_at"`
+	Column14       interface{}    `json:"column_14"`
+	FtsMatchWord   interface{}    `json:"fts_match_word"`
+	FtsMatchWord_2 interface{}    `json:"fts_match_word_2"`
+	FtsMatchWord_3 interface{}    `json:"fts_match_word_3"`
+	FtsMatchWord_4 interface{}    `json:"fts_match_word_4"`
+	FtsMatchWord_5 interface{}    `json:"fts_match_word_5"`
+	Limit          int32          `json:"limit"`
+	Offset         int32          `json:"offset"`
+}
+
+func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) ([]ChetterAuditLog, error) {
+	rows, err := q.db.QueryContext(ctx, searchAuditLog,
+		arg.EventType,
+		arg.Column2,
+		arg.SourceType,
+		arg.Column4,
+		arg.SourceID,
+		arg.Column6,
+		arg.TargetType,
+		arg.Column8,
+		arg.TargetID,
+		arg.Column10,
+		arg.Repo,
+		arg.Column12,
+		arg.CreatedAt,
+		arg.Column14,
+		arg.FtsMatchWord,
+		arg.FtsMatchWord_2,
+		arg.FtsMatchWord_3,
+		arg.FtsMatchWord_4,
+		arg.FtsMatchWord_5,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterAuditLog{}
+	for rows.Next() {
+		var i ChetterAuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventType,
+			&i.CreatedAt,
+			&i.SourceType,
+			&i.SourceID,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Repo,
+			&i.GithubEvent,
+			&i.GithubAction,
+			&i.GithubDeliveryID,
+			&i.ParentEventID,
+			&i.Detail,
+			&i.Payload,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

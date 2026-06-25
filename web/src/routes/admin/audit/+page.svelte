@@ -30,21 +30,6 @@
   let pageSize = $state(Number(p.searchParams.get("size")) || 25);
   let search = $state(p.searchParams.get("q") || "");
   let offset = $derived(pageNum * pageSize);
-
-  let filteredEvents = $derived.by(() => {
-    let list = events;
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(e =>
-        e.eventType?.toLowerCase().includes(q) ||
-        e.sourceId?.toLowerCase().includes(q) ||
-        e.targetId?.toLowerCase().includes(q) ||
-        e.detail?.toLowerCase().includes(q) ||
-        e.repo?.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  });
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
@@ -162,7 +147,7 @@
   ]));
 
   let sortedEvents = $derived.by(() => {
-    return [...filteredEvents].sort((a, b) => {
+    return [...events].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "time": cmp = a.createdAt.localeCompare(b.createdAt); break;
@@ -176,7 +161,7 @@
   });
 
   let currentPage = $derived(pageNum + 1);
-  let totalPages = $derived(currentPage + (filteredEvents.length >= pageSize ? 1 : 0));
+  let totalPages = $derived(currentPage + (events.length >= pageSize ? 1 : 0));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -195,6 +180,7 @@
       const resp = await client.listAuditEvents({
         ...(eventTypeFilter ? { eventType: eventTypeFilter } : {}),
         ...(sourceTypeFilter ? { sourceType: sourceTypeFilter } : {}),
+        ...(search ? { search } : {}),
         sinceHours, limit: pageSize, offset,
       });
       let filtered = resp.events ?? [];
@@ -376,7 +362,7 @@
     </TableCard>
 
     <div class="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Page {currentPage} of {totalPages} — {filteredEvents.length} events</span>
+      <span>Page {currentPage} of {totalPages} — {events.length} events</span>
       <PaginationNav
         {currentPage}
         {totalPages}

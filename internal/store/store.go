@@ -249,6 +249,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerRunDedupIndex(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureAuditFulltextIndex(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
@@ -421,6 +424,20 @@ func (s *Store) ensureTriggerRunDedupIndex(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_trigger_runs_dedup ON chetter_trigger_runs (trigger_id, task_id)"); err != nil {
 			return fmt.Errorf("add trigger run dedup index: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_audit_log", "idx_audit_search")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (detail, source_id, target_id, event_type, repo) WITH PARSER MULTILINGUAL"); err != nil {
+			slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+			return nil
 		}
 	}
 	return nil

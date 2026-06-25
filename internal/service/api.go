@@ -902,7 +902,7 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 		sinceTime = sql.NullTime{Time: time.Now().UTC().Add(-time.Duration(filter.SinceHours) * time.Hour), Valid: true}
 	}
 
-	rows, err := s.repo.ListAuditLog(ctx, repository.ListAuditLogParams{
+	baseParams := repository.ListAuditLogParams{
 		EventType:  filter.EventType,
 		Column2:    filter.EventType,
 		SourceType: nullString(filter.SourceType),
@@ -919,9 +919,38 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 		Column14:   sinceTime,
 		Limit:      int32(limit),
 		Offset:     int32(max(filter.Offset, 0)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list audit log: %w", err)
+	}
+	var rows []repository.ChetterAuditLog
+	var listErr error
+	if filter.Search != "" {
+		rows, listErr = s.repo.SearchAuditLog(ctx, repository.SearchAuditLogParams{
+			EventType:      baseParams.EventType,
+			Column2:        baseParams.Column2,
+			SourceType:     baseParams.SourceType,
+			Column4:        baseParams.Column4,
+			SourceID:       baseParams.SourceID,
+			Column6:        baseParams.Column6,
+			TargetType:     baseParams.TargetType,
+			Column8:        baseParams.Column8,
+			TargetID:       baseParams.TargetID,
+			Column10:       baseParams.Column10,
+			Repo:           baseParams.Repo,
+			Column12:       baseParams.Column12,
+			CreatedAt:      baseParams.CreatedAt,
+			Column14:       baseParams.Column14,
+			FtsMatchWord:   filter.Search,
+			FtsMatchWord_2: filter.Search,
+			FtsMatchWord_3: filter.Search,
+			FtsMatchWord_4: filter.Search,
+			FtsMatchWord_5: filter.Search,
+			Limit:          baseParams.Limit,
+			Offset:         baseParams.Offset,
+		})
+	} else {
+		rows, listErr = s.repo.ListAuditLog(ctx, baseParams)
+	}
+	if listErr != nil {
+		return nil, fmt.Errorf("list audit log: %w", listErr)
 	}
 	out := make([]AuditEventRecord, len(rows))
 	for i, r := range rows {

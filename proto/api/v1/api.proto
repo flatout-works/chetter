@@ -616,6 +616,7 @@ message ListAuditEventsRequest {
   int32 since_hours = 7;
   int32 limit = 8;
   int32 offset = 9;
+  string search = 10;
 }
 
 message ListAuditEventsResponse {

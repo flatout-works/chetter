@@ -5241,6 +5241,7 @@ type ListAuditEventsRequest struct {
 	SinceHours    int32                  `protobuf:"varint,7,opt,name=since_hours,json=sinceHours,proto3" json:"since_hours,omitempty"`
 	Limit         int32                  `protobuf:"varint,8,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,9,opt,name=offset,proto3" json:"offset,omitempty"`
+	Search        string                 `protobuf:"bytes,10,opt,name=search,proto3" json:"search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5336,6 +5337,13 @@ func (x *ListAuditEventsRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListAuditEventsRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
 }
 
 type ListAuditEventsResponse struct {
@@ -7039,7 +7047,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x10ListUsersRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\";\n" +
 	"\x11ListUsersResponse\x12&\n" +
-	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\x96\x02\n" +
+	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\xae\x02\n" +
 	"\x16ListAuditEventsRequest\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x01 \x01(\tR\teventType\x12\x1f\n" +
@@ -7053,7 +7061,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\vsince_hours\x18\a \x01(\x05R\n" +
 	"sinceHours\x12\x14\n" +
 	"\x05limit\x18\b \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\t \x01(\x05R\x06offset\"E\n" +
+	"\x06offset\x18\t \x01(\x05R\x06offset\x12\x16\n" +
+	"\x06search\x18\n" +
+	" \x01(\tR\x06search\"E\n" +
 	"\x17ListAuditEventsResponse\x12*\n" +
 	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xc4\x01\n" +
 	"\x18ListTaskArtifactsRequest\x12\x17\n" +
