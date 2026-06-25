@@ -297,6 +297,14 @@ func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1
 	return connect.NewResponse(&apiv1.ExportTaskResponse{Export: export}), nil
 }
 
+func (h *taskHandler) RecoverTask(ctx context.Context, req *connect.Request[apiv1.RecoverTaskRequest]) (*connect.Response[apiv1.RecoverTaskResponse], error) {
+	task, err := h.svc.RecoverTask(ctx, req.Msg.TaskId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.RecoverTaskResponse{Task: protoTask(task)}), nil
+}
+
 func (h *taskHandler) ClearQueue(ctx context.Context, req *connect.Request[apiv1.ClearQueueRequest]) (*connect.Response[apiv1.ClearQueueResponse], error) {
 	if !req.Msg.Confirm {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("confirm must be true"))

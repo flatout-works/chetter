@@ -562,6 +562,70 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	return repoTaskToStoreRecord(task), nil
 }
 
+// RecoverTask creates a new task from a failed task's configuration, including
+// the previous session export as a recovery file so the agent can pick up where
+// it left off.
+func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
+	orig, err := s.taskForToolAccess(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get original task: %w", err)
+	}
+	if orig.Status != "error" && orig.Status != "done" && orig.Status != "cancelled" {
+		return TaskToolRecord{}, fmt.Errorf("task %s is %s, not a terminal state", taskID, orig.Status)
+	}
+	exportContent := ""
+	if orig.SessionExport.Valid {
+		exportContent = strings.ReplaceAll(orig.SessionExport.String, "\\n", "\n")
+	}
+	if exportContent == "" {
+		return TaskToolRecord{}, fmt.Errorf("no session export available for task %s", taskID)
+	}
+
+	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
+	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
+	if env == nil {
+		env = map[string]string{}
+	}
+	env["__recover_from"] = taskID
+
+	recoveryFileName := fmt.Sprintf("chetter_recovery_%s.md", taskID)
+	recoveryPrompt := fmt.Sprintf(
+		"The file %s in the workspace is the complete transcript of a previous session that attempted this work but did not succeed. "+
+			"Please review the previous session thoroughly, understand what was accomplished and what went wrong, then finish the work. "+
+			"Use the context from the previous session to continue efficiently — you don't need to redo work that was already completed successfully.\n\n"+
+			"Original task:\n%s",
+		recoveryFileName, orig.Prompt,
+	)
+
+	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     recoveryPrompt,
+		GitURL:     orig.GitUrl.String,
+		GitRef:     orig.GitRef.String,
+		AgentImage: orig.AgentImage.String,
+		Agent:      orig.Agent.String,
+		ProviderID: orig.ProviderID.String,
+		ModelID:    orig.ModelID.String,
+		VariantID:  orig.VariantID.String,
+		Skills:     skills,
+		Env:        env,
+		TimeoutSec: int(orig.TimeoutSec),
+	})
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
+	}
+
+	s.auditAsync(AuditEventParams{
+		EventType:  "task_recover",
+		SourceType: "task",
+		SourceID:   taskID,
+		TargetType: "task",
+		TargetID:   submitted.ID,
+		Detail:     fmt.Sprintf("recovery task created from %s", taskID),
+	})
+
+	return s.GetTask(ctx, submitted.ID)
+}
+
 // ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)

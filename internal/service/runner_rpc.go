@@ -149,6 +149,20 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
+			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {
+				delete(protoTask.Env, "__recover_from")
+				origTask, origErr := s.db.GetTaskByID(ctx, recoverFrom)
+				if origErr == nil && origTask.SessionExport.Valid {
+					exportContent := strings.ReplaceAll(origTask.SessionExport.String, "\\n", "\n")
+					if exportContent != "" {
+						protoTask.ExtraFiles = map[string][]byte{
+							fmt.Sprintf("chetter_recovery_%s.md", recoverFrom): []byte(exportContent),
+						}
+					}
+				} else if origErr != nil {
+					slog.Warn("recover task: lookup original session export", "taskID", task.ID, "recoverFrom", recoverFrom, "err", origErr)
+				}
+			}
 			s.resolveTaskModel(ctx, protoTask)
 			s.resolveTaskDefinitions(ctx, protoTask)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil

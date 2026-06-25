@@ -491,6 +491,16 @@ type TaskExportOutput struct {
 	Export string `json:"export"`
 }
 
+// TaskRecoverInput is the input for chetter_recover_task.
+type TaskRecoverInput struct {
+	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
+}
+
+// TaskRecoverOutput is the output for chetter_recover_task.
+type TaskRecoverOutput struct {
+	Task TaskToolRecord `json:"task"`
+}
+
 type ListAgentSessionsInput struct {
 	Status string `json:"status,omitempty" jsonschema:"Optional agent session status filter"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum sessions to return, capped at 100"`
@@ -583,6 +593,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_drain_runner", Description: "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically."}, svc.drainRunnerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a failed task by creating a new task with the previous session export as a workspace file."}, svc.taskRecoverTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_issue", Description: "Create a GitHub issue with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_issue_comment", Description: "Create a GitHub issue or PR comment with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueCommentTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_pr", Description: "Create a GitHub pull request with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubPRTool)
@@ -655,6 +666,14 @@ func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, TaskExportOutput{}, err
 	}
 	return nil, TaskExportOutput{Export: export}, nil
+}
+
+func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskRecoverInput) (*mcp.CallToolResult, TaskRecoverOutput, error) {
+	task, err := s.RecoverTask(ctx, in.TaskID)
+	if err != nil {
+		return nil, TaskRecoverOutput{}, err
+	}
+	return nil, TaskRecoverOutput{Task: task}, nil
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
@@ -1501,6 +1520,7 @@ type AuditEventFilterInput struct {
 	TargetType string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
 	TargetID   string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
 	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	Search     string `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires TiDB FULLTEXT index)"`
 	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
 	Offset     int    `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
