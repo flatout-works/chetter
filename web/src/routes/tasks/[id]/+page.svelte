@@ -183,6 +183,28 @@
     return "";
   });
 
+  let ghRepo = $derived(task?.env?.GITHUB_REPO || (task?.env && task.env["GITHUB_REPO"]));
+  let ghIssueNum = $derived(task?.env?.ISSUE_NUMBER || (task?.env && task.env["ISSUE_NUMBER"]));
+  let ghIssueTitle = $derived(task?.env?.ISSUE_TITLE || (task?.env && task.env["ISSUE_TITLE"]));
+  let ghIssueUrl = $derived(task?.env?.ISSUE_URL || (task?.env && task.env["ISSUE_URL"]));
+  let ghPrNum = $derived(task?.env?.PR_NUMBER || (task?.env && task.env["PR_NUMBER"]));
+
+  let ghLink = $derived.by(() => {
+    if (ghIssueUrl) return ghIssueUrl;
+    if (ghRepo && ghIssueNum) return `https://github.com/${ghRepo}/issues/${ghIssueNum}`;
+    if (ghRepo && ghPrNum) return `https://github.com/${ghRepo}/pull/${ghPrNum}`;
+    return null;
+  });
+
+  let ghLabel = $derived.by(() => {
+    if (ghIssueTitle) return `${ghRepo} — issue #${ghIssueNum}: ${ghIssueTitle}`;
+    if (ghIssueNum) return `${ghRepo}#${ghIssueNum}`;
+    if (ghPrNum) return `${ghRepo}#${ghPrNum} (PR)`;
+    return null;
+  });
+
+  let ghContext = $derived(ghRepo != null || ghIssueNum != null || ghPrNum != null);
+
   let pinnedRunnerAvailable = $derived(
     !taskSession?.pinnedRunnerId || activeRunners.includes(taskSession.pinnedRunnerId)
   );
@@ -474,6 +496,24 @@
         </Card>
       {/if}
     </div>
+
+    {#if ghContext}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">GitHub Context</h2>
+        <div class="flex items-center gap-3">
+          {#if ghLink}
+            <a href={ghLink} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium">
+              {ghLabel}
+            </a>
+          {:else}
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{ghLabel}</span>
+          {/if}
+          {#if ghIssueTitle}
+            <span class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-md">{ghIssueTitle}</span>
+          {/if}
+        </div>
+      </Card>
+    {/if}
 
     {#if task.tokenUsage && totalTokens > 0}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
