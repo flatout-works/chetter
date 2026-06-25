@@ -681,18 +681,8 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 		h.discoverArtifacts(ev.Issue.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue")
 	}
 
-	// Gate issue triggers on author write access.
-	if ev.Action == "opened" || ev.Action == "reopened" {
-		if h.isBotUser(ev.Issue.User.Login) {
-			slog.Debug("webhook: skipping bot-authored issue", "repo", repo, "issue", ev.Issue.Number)
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if !h.checkAuthorWriteAccess(ctx, repo, ev.Issue.User.Login, deliveryID) {
-			return
-		}
-	}
+	// Issue triggers for opened/reopened fire regardless of author.
+	// Triage is read-only analysis — no write access required.
 
 	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
