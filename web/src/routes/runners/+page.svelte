@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
@@ -84,7 +84,16 @@
     }
   }
 
-  onMount(load);
+  let refreshInterval: ReturnType<typeof setInterval> | undefined;
+
+  onMount(() => {
+    load();
+    refreshInterval = setInterval(load, 10_000);
+  });
+
+  onDestroy(() => {
+    if (refreshInterval) clearInterval(refreshInterval);
+  });
 
 </script>
 
