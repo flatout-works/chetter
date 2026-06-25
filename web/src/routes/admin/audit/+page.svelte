@@ -12,6 +12,7 @@
   type SortColumn = "time" | "event" | "source" | "target" | "detail";
   let events = $state<AuditEvent[]>([]);
   let loading = $state(true);
+  let firstLoad = $state(true);
   let eventTypeFilter = $state("");
   let sourceTypeFilter = $state("");
   let sinceHours = $state(24);
@@ -28,15 +29,17 @@
   function sourceLink(event: AuditEvent): string | null {
     if (!event.sourceType || !event.sourceId) return null;
     if (event.sourceType === "task") return `/tasks/${event.sourceId}`;
-    if (event.sourceType === "trigger") return "/triggers";
-    return null;
+    if (event.sourceType === "trigger") return `/triggers/${event.sourceId}`;
+    if (event.sourceType === "agent_session" || event.sourceType === "session") return `/sessions/${event.sourceId}`;
+    return parseIdLink(event.sourceId)?.href ?? null;
   }
 
   function targetLink(event: AuditEvent): string | null {
     if (!event.targetType || !event.targetId) return null;
     if (event.targetType === "task") return `/tasks/${event.targetId}`;
-    if (event.targetType === "agent_session") return `/sessions/${event.targetId}`;
-    return null;
+    if (event.targetType === "trigger") return `/triggers/${event.targetId}`;
+    if (event.targetType === "agent_session" || event.targetType === "session") return `/sessions/${event.targetId}`;
+    return parseIdLink(event.targetId)?.href ?? null;
   }
 
   function targetGitHubLink(event: AuditEvent): string | null {
@@ -48,6 +51,57 @@
     if (event.targetType === "issue") return `https://github.com/${repo}/issues/${number}`;
     if (event.targetType === "pull_request" || event.targetType === "pr") return `https://github.com/${repo}/pull/${number}`;
     return null;
+  }
+
+  function repoLink(repo: string): string {
+    return `https://github.com/${repo}`;
+  }
+
+  function parseIdLink(id: string): { label: string; href: string; external: boolean } | null {
+    if (!id) return null;
+    const triggerMatch = id.match(/^trigger\s*:\s*(\S+)/i);
+    if (triggerMatch) return { label: id, href: `/triggers/${triggerMatch[1]}`, external: false };
+    const sessionMatch = id.match(/^session\s*:\s*(\S+)/i);
+    if (sessionMatch) return { label: id, href: `/sessions/${sessionMatch[1]}`, external: false };
+    const repoPrefixMatch = id.match(/^repo\s*:\s*([\w.-]+\/[\w.-]+)/i);
+    if (repoPrefixMatch) return { label: id, href: `https://github.com/${repoPrefixMatch[1]}`, external: true };
+    const ghIssueMatch = id.match(/^(.+)#(\d+)$/);
+    if (ghIssueMatch) return { label: id, href: `https://github.com/${ghIssueMatch[1]}/issues/${ghIssueMatch[2]}`, external: true };
+    const bareRepoMatch = id.match(/^[\w.-]+\/[\w.-]+$/);
+    if (bareRepoMatch) return { label: id, href: `https://github.com/${bareRepoMatch[0]}`, external: true };
+    return null;
+  }
+
+  type DetailSegment = { type: "text"; text: string } | { type: "link"; text: string; href: string; external: boolean };
+
+  function linkifyDetail(detail: string | undefined): DetailSegment[] {
+    if (!detail) return [{ type: "text", text: "—" }];
+    const regex = /(cron|trigger|session|repo)\s*:\s*(\S+)/gi;
+    const segments: DetailSegment[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(detail)) !== null) {
+      const keyword = match[1].toLowerCase();
+      const value = match[2];
+      if (match.index > lastIndex) {
+        segments.push({ type: "text", text: detail.slice(lastIndex, match.index) });
+      }
+      let href: string;
+      let external = false;
+      switch (keyword) {
+        case "cron": href = "/triggers"; break;
+        case "trigger": href = `/triggers/${value}`; break;
+        case "session": href = `/sessions/${value}`; break;
+        case "repo": href = `https://github.com/${value}`; external = true; break;
+        default: href = "#";
+      }
+      segments.push({ type: "link", text: match[0], href, external });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < detail.length) {
+      segments.push({ type: "text", text: detail.slice(lastIndex) });
+    }
+    return segments.length > 0 ? segments : [{ type: "text", text: detail }];
   }
 
   function toggleDetail(id: string) {
@@ -87,8 +141,8 @@
     return sortDirection === "asc" ? "↑" : "↓";
   }
 
-  async function load() {
-    loading = true;
+  async function load(silent = false) {
+    if (!silent) loading = true;
     try {
       const client = createClient(AdminService, getTransport());
       const resp = await client.listAuditEvents({
@@ -99,14 +153,17 @@
       filtered = filtered.filter((e) => !excludedTypes.has(e.eventType));
       events = filtered;
     } catch (e) { console.error(e); }
-    finally { loading = false; }
+    finally {
+      loading = false;
+      firstLoad = false;
+    }
   }
 
   let refreshInterval: ReturnType<typeof setInterval> | undefined;
 
   onMount(() => {
     load();
-    refreshInterval = setInterval(load, 15_000);
+    refreshInterval = setInterval(() => load(true), 15_000);
   });
 
   onDestroy(() => {
@@ -153,7 +210,7 @@
     </div>
   </div>
 
-  {#if loading}
+  {#if firstLoad && loading}
     <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Spinner size="4" /> Loading…</div>
   {:else}
     <TableCard title="Audit events" subtitle="Server-side event history for webhook, task, trigger, and artifact activity.">
@@ -172,18 +229,24 @@
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(event.createdAt)}</span></TableBodyCell>
             <TableBodyCell><StatusBadge status={event.eventType} /></TableBodyCell>
             <TableBodyCell>
-              <span class="text-gray-700 dark:text-gray-300 text-sm">{event.repo || "—"}</span>
+              {#if event.repo}
+                <a href={repoLink(event.repo)} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">{event.repo}</a>
+              {:else}
+                <span class="text-gray-400 text-sm">—</span>
+              {/if}
             </TableBodyCell>
             <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.sourceType}
                   {#if sourceLink(event)}
-                    <a href={sourceLink(event)!} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.sourceType}</a>
+                    {@const href = sourceLink(event)!}
+                    {@const ext = href.startsWith("http")}
+                    <a href={href} target={ext ? "_blank" : undefined} rel={ext ? "noopener" : undefined} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.sourceType}: {event.sourceId.slice(0, 24)}</a>
                   {:else}
                     <span class="font-medium">{event.sourceType}</span>
-                  {/if}
-                  {#if event.sourceId}
-                    <span class="text-gray-500" title={event.sourceId}>: {event.sourceId.slice(0, 24)}</span>
+                    {#if event.sourceId}
+                      <span class="text-gray-500" title={event.sourceId}>: {event.sourceId.slice(0, 24)}</span>
+                    {/if}
                   {/if}
                 {:else}
                   <span class="text-gray-400">—</span>
@@ -194,14 +257,17 @@
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.targetType}
                   {#if targetLink(event)}
-                    <a href={targetLink(event)!} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}</a>
+                    {@const href = targetLink(event)!}
+                    {@const ext = href.startsWith("http")}
+                    <a href={href} target={ext ? "_blank" : undefined} rel={ext ? "noopener" : undefined} class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}: {event.targetId.slice(0, 24)}</a>
                   {:else if targetGitHubLink(event)}
-                    <a href={targetGitHubLink(event)!} target="_blank" rel="noopener" class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}</a>
+                    {@const ghHref = targetGitHubLink(event)!}
+                    <a href={ghHref} target="_blank" rel="noopener" class="font-medium text-blue-600 dark:text-blue-400 hover:underline">{event.targetType}: {event.targetId.slice(0, 24)}</a>
                   {:else}
                     <span class="font-medium">{event.targetType}</span>
-                  {/if}
-                  {#if event.targetId}
-                    <span class="text-gray-500" title={event.targetId}>: {event.targetId.slice(0, 24)}</span>
+                    {#if event.targetId}
+                      <span class="text-gray-500" title={event.targetId}>: {event.targetId.slice(0, 24)}</span>
+                    {/if}
                   {/if}
                 {:else}
                   <span class="text-gray-400">—</span>
@@ -210,10 +276,28 @@
             </TableBodyCell>
             <TableBodyCell class="max-w-xs">
               {#if expandedDetailId === event.id}
-                <span class="text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words block mb-1">{event.detail || "—"}</span>
+                {@const detailSegments = linkifyDetail(event.detail)}
+                <span class="text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words block mb-1">
+                  {#each detailSegments as seg}
+                    {#if seg.type === "link"}
+                      <a href={seg.href} target={seg.external ? "_blank" : undefined} rel={seg.external ? "noopener" : undefined} class="text-blue-600 dark:text-blue-400 hover:underline">{seg.text}</a>
+                    {:else}
+                      {seg.text}
+                    {/if}
+                  {/each}
+                </span>
                 <button class="text-blue-600 dark:text-blue-400 cursor-pointer text-xs bg-transparent border-0 p-0" onclick={() => toggleDetail(event.id)}>Show less</button>
               {:else}
-                <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>{event.detail || "—"}</span>
+                {@const detailSegments = linkifyDetail(event.detail)}
+                <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>
+                  {#each detailSegments as seg}
+                    {#if seg.type === "link"}
+                      <a href={seg.href} target={seg.external ? "_blank" : undefined} rel={seg.external ? "noopener" : undefined} class="text-blue-600 dark:text-blue-400 hover:underline">{seg.text}</a>
+                    {:else}
+                      {seg.text}
+                    {/if}
+                  {/each}
+                </span>
                 {#if (event.detail?.length ?? 0) > 60}
                   <button class="text-blue-600 dark:text-blue-400 cursor-pointer text-xs bg-transparent border-0 p-0" onclick={() => toggleDetail(event.id)}>Show more</button>
                 {/if}
