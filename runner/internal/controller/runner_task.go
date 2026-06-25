@@ -123,6 +123,21 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	isLocal := r.executionMode() == "local"
 
+	if len(req.ExtraFiles) > 0 {
+		for filename, content := range req.ExtraFiles {
+			filePath := filepath.Join(wsDir, filename)
+			if err := os.MkdirAll(filepath.Dir(filePath), 0750); err != nil {
+				slog.Warn("extra file mkdir", "taskID", req.TaskID, "file", filename, "err", err)
+				continue
+			}
+			if err := os.WriteFile(filePath, content, 0644); err != nil {
+				slog.Warn("extra file write", "taskID", req.TaskID, "file", filename, "err", err)
+			} else {
+				slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
+			}
+		}
+	}
+
 	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)

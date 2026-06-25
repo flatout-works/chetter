@@ -35,6 +35,7 @@ type TaskRequest struct {
 	ResumeHarnessSessionID string            `json:"resume_harness_session_id,omitempty"`
 	AgentDefinition        string            `json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
+	ExtraFiles             map[string][]byte `json:"extra_files,omitempty"`
 }
 
 // TokenUsage tracks cumulative token consumption for a task.

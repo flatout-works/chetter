@@ -135,6 +135,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		Harness:                t.Harness,
 		AgentDefinition:        t.AgentDefinition,
 		SkillDefinitions:       t.SkillDefinitions,
+		ExtraFiles:             t.ExtraFiles,
 	}
 }
 
