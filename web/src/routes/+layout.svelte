@@ -85,6 +85,11 @@
     if (href === "/") return activePath === "/";
     return activePath.startsWith(href);
   };
+
+  function navHref(href: string): string {
+    if (activePath === href) return $page.url.href;
+    return href;
+  }
 </script>
 
 {#snippet sidebarInner()}
@@ -117,7 +122,7 @@
     <SidebarGroup border={false} class={sidebarCollapsed ? "flex-1 overflow-y-auto px-1 py-2" : "flex-1 overflow-y-auto px-3 py-2"}>
       {#if sidebarCollapsed}
         {#each navItems as item (item.href)}
-          <a href={resolve(item.href)} title={item.label}
+             <a href={navHref(item.href)} title={item.label}
              class="flex items-center justify-center py-2.5 rounded-sm mb-0.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
              class:bg-gray-200={isActiveLink(item.href)}
              class:dark:bg-gray-700={isActiveLink(item.href)}
@@ -131,7 +136,7 @@
         {/each}
       {:else}
         {#each navItems as item (item.href)}
-          <SidebarItem href={resolve(item.href)} label={item.label}>
+          <SidebarItem href={navHref(item.href)} label={item.label}>
             {#snippet icon()}
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />
