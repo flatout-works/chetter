@@ -677,7 +677,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE (? = '' OR team_id = ?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
-  AND (FTS_MATCH_WORD(prompt, ?) OR FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(summary, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?))
+  AND FTS_MATCH_WORD(_fts, ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -687,10 +687,6 @@ type SearchTasksParams struct {
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
 	FtsMatchWord      interface{}    `json:"fts_match_word"`
-	FtsMatchWord_2    interface{}    `json:"fts_match_word_2"`
-	FtsMatchWord_3    interface{}    `json:"fts_match_word_3"`
-	FtsMatchWord_4    interface{}    `json:"fts_match_word_4"`
-	FtsMatchWord_5    interface{}    `json:"fts_match_word_5"`
 	Limit             int32          `json:"limit"`
 	Offset            int32          `json:"offset"`
 }
@@ -704,10 +700,6 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
 		arg.FtsMatchWord,
-		arg.FtsMatchWord_2,
-		arg.FtsMatchWord_3,
-		arg.FtsMatchWord_4,
-		arg.FtsMatchWord_5,
 		arg.Limit,
 		arg.Offset,
 	)

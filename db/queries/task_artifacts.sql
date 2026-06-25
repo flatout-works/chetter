@@ -19,6 +19,6 @@ WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
-  AND (FTS_MATCH_WORD(task_id, ?) OR FTS_MATCH_WORD(repo, ?) OR FTS_MATCH_WORD(artifact_type, ?) OR FTS_MATCH_WORD(ref, ?))
+  AND FTS_MATCH_WORD(_fts, ?)
 ORDER BY discovered_at DESC
 LIMIT ? OFFSET ?;

@@ -19,7 +19,7 @@ SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(team_filter) = '' OR team_id = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-  AND (FTS_MATCH_WORD(prompt, ?) OR FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(summary, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?))
+  AND FTS_MATCH_WORD(_fts, ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 

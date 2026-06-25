@@ -18,7 +18,7 @@ LIMIT ? OFFSET ?;
 SELECT * FROM chetter_agent_sessions
 WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?) OR FTS_MATCH_WORD(git_url, ?))
+  AND FTS_MATCH_WORD(_fts, ?)
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?;
 

@@ -59,10 +59,6 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 			TeamFilter:        teamFilter,
 			StatusFilter:      status,
 			FtsMatchWord:      search,
-			FtsMatchWord_2:    search,
-			FtsMatchWord_3:    search,
-			FtsMatchWord_4:    search,
-			FtsMatchWord_5:    search,
 			Limit:             clamped,
 			Offset:            clampedOffset,
 		})
@@ -465,9 +461,6 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 			TeamFilter:     teamID,
 			StatusFilter:   status,
 			FtsMatchWord:   search,
-			FtsMatchWord_2: search,
-			FtsMatchWord_3: search,
-			FtsMatchWord_4: search,
 			Limit:          clamped,
 			Offset:         clampedOffset,
 		})
@@ -972,10 +965,6 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 			CreatedAt:      baseParams.CreatedAt,
 			Column14:       baseParams.Column14,
 			FtsMatchWord:   filter.Search,
-			FtsMatchWord_2: filter.Search,
-			FtsMatchWord_3: filter.Search,
-			FtsMatchWord_4: filter.Search,
-			FtsMatchWord_5: filter.Search,
 			Limit:          baseParams.Limit,
 			Offset:         baseParams.Offset,
 		})
@@ -1029,9 +1018,6 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 			Repo:           filter.Repo,
 			Column8:        filter.Repo,
 			FtsMatchWord:   filter.Search,
-			FtsMatchWord_2: filter.Search,
-			FtsMatchWord_3: filter.Search,
-			FtsMatchWord_4: filter.Search,
 			Limit:          int32(limit),
 			Offset:         int32(max(filter.Offset, 0)),
 		})

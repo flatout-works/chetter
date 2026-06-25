@@ -25,6 +25,6 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND (FTS_MATCH_WORD(detail, ?) OR FTS_MATCH_WORD(source_id, ?) OR FTS_MATCH_WORD(target_id, ?) OR FTS_MATCH_WORD(event_type, ?) OR FTS_MATCH_WORD(repo, ?))
+  AND FTS_MATCH_WORD(_fts, ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;

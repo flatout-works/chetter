@@ -50,7 +50,8 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_runner (runner_id, status),
 		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
 		KEY idx_chetter_tasks_required_runner (required_runner_id, status, created_at),
-		FULLTEXT INDEX idx_tasks_search (prompt, summary, agent, model_id) WITH PARSER MULTILINGUAL
+		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''))) STORED,
+		FULLTEXT INDEX idx_tasks_search (_fts) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (
 		id VARCHAR(64) NOT NULL,
@@ -80,7 +81,8 @@ var schemaStatements = []string{
 		KEY idx_agent_sessions_team_status (team_id, status, updated_at),
 		KEY idx_agent_sessions_runner_status (pinned_runner_id, status),
 		KEY idx_agent_sessions_expires (expires_at),
-		FULLTEXT INDEX idx_sessions_search (id, agent, model_id, git_url) WITH PARSER MULTILINGUAL
+		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(id, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''), ' ', COALESCE(git_url, ''))) STORED,
+		FULLTEXT INDEX idx_sessions_search (_fts) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_session_runs (
 		id VARCHAR(64) NOT NULL,
@@ -260,7 +262,8 @@ var schemaStatements = []string{
 		KEY idx_audit_source (source_type, source_id),
 		KEY idx_audit_target (target_type, target_id),
 		KEY idx_audit_created (created_at),
-		FULLTEXT INDEX idx_audit_search (detail, source_id, target_id, event_type, repo) WITH PARSER MULTILINGUAL
+		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(detail, ''), ' ', COALESCE(source_id, ''), ' ', COALESCE(target_id, ''), ' ', COALESCE(event_type, ''), ' ', COALESCE(repo, ''))) STORED,
+		FULLTEXT INDEX idx_audit_search (_fts) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_task_artifacts (
 		id VARCHAR(64) NOT NULL,
@@ -283,7 +286,8 @@ var schemaStatements = []string{
 		KEY idx_task_artifacts_session_run (session_run_id),
 		KEY idx_task_artifacts_type_repo (artifact_type, repo),
 		KEY idx_task_artifacts_number (repo, number),
-		FULLTEXT INDEX idx_artifacts_search (task_id, repo, artifact_type, ref) WITH PARSER MULTILINGUAL
+		_fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(task_id, ''), ' ', COALESCE(repo, ''), ' ', COALESCE(artifact_type, ''), ' ', COALESCE(ref, ''))) STORED,
+		FULLTEXT INDEX idx_artifacts_search (_fts) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_model_catalogs (
 		id VARCHAR(64) NOT NULL,

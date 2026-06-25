@@ -444,8 +444,11 @@ func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (detail, source_id, target_id, event_type, repo) WITH PARSER MULTILINGUAL"); err != nil {
-			slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(detail, ''), ' ', COALESCE(source_id, ''), ' ', COALESCE(target_id, ''), ' ', COALESCE(event_type, ''), ' ', COALESCE(repo, ''))) STORED"); err != nil && !strings.Contains(err.Error(), "Duplicate") {
+			slog.Warn("failed to add audit _fts column", "err", err)
+		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (_fts) WITH PARSER MULTILINGUAL"); err != nil {
+			slog.Warn("failed to add audit fulltext index", "err", err)
 			return nil
 		}
 	}
@@ -458,7 +461,8 @@ func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (prompt, summary, agent, model_id) WITH PARSER MULTILINGUAL"); err != nil {
+		_, _ = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(prompt, ''), ' ', COALESCE(summary, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''))) STORED")
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (_fts) WITH PARSER MULTILINGUAL"); err != nil {
 			slog.Warn("failed to add tasks fulltext index", "err", err)
 			return nil
 		}
@@ -472,7 +476,8 @@ func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (id, agent, model_id, git_url) WITH PARSER MULTILINGUAL"); err != nil {
+		_, _ = s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(id, ''), ' ', COALESCE(agent, ''), ' ', COALESCE(model_id, ''), ' ', COALESCE(git_url, ''))) STORED")
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (_fts) WITH PARSER MULTILINGUAL"); err != nil {
 			slog.Warn("failed to add sessions fulltext index", "err", err)
 			return nil
 		}
@@ -486,7 +491,8 @@ func (s *Store) ensureArtifactFulltextIndex(ctx context.Context) error {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (task_id, repo, artifact_type, ref) WITH PARSER MULTILINGUAL"); err != nil {
+		_, _ = s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD COLUMN _fts TEXT GENERATED ALWAYS AS (CONCAT(COALESCE(task_id, ''), ' ', COALESCE(repo, ''), ' ', COALESCE(artifact_type, ''), ' ', COALESCE(ref, ''))) STORED")
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (_fts) WITH PARSER MULTILINGUAL"); err != nil {
 			slog.Warn("failed to add artifacts fulltext index", "err", err)
 			return nil
 		}
