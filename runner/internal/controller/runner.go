@@ -34,6 +34,7 @@ const (
 	serveReadyTimeout     = 15 * time.Second
 	servePollInterval     = 500 * time.Millisecond
 	serveHTTPTimeout      = 2 * time.Second
+	workspacePruneInterval = 10 * time.Minute
 )
 
 type Runner struct {
@@ -65,7 +66,7 @@ type Runner struct {
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
-	runnerID, err := newRunnerID()
+	runnerID, err := newRunnerID(cfg.Runner.WorkspaceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -378,4 +379,21 @@ func (r *Runner) pruneOrphanedWorkspaces(ctx context.Context) error {
 
 	slog.Info("workspace prune complete", "deleted", deleted, "skipped", skipped, "total", len(taskIDs))
 	return nil
+}
+
+func (r *Runner) pruneWorkspacesPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(workspacePruneInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			pruneCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			if err := r.pruneOrphanedWorkspaces(pruneCtx); err != nil {
+				slog.Warn("periodic workspace prune failed", "err", err)
+			}
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}
 }

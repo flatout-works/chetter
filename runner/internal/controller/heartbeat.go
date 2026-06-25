@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,9 +16,16 @@ import (
 
 const heartbeatInterval = 5 * time.Second
 
-func newRunnerID() (string, error) {
+func newRunnerID(workspaceRoot string) (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
 		return value, nil
+	}
+
+	idFile := filepath.Join(workspaceRoot, ".runner-id")
+	if data, err := os.ReadFile(idFile); err == nil {
+		if id := sanitizeSubjectToken(string(data)); id != "" {
+			return id, nil
+		}
 	}
 
 	var b [16]byte
@@ -26,7 +34,17 @@ func newRunnerID() (string, error) {
 	}
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("runner-%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
+	id := fmt.Sprintf("runner-%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+
+	if err := os.MkdirAll(workspaceRoot, 0750); err == nil {
+		if err := os.WriteFile(idFile, []byte(id+"\n"), 0640); err != nil {
+			slog.Warn("failed to persist runner ID", "err", err)
+		}
+	} else {
+		slog.Warn("cannot persist runner ID, workspace root not writable", "root", workspaceRoot, "err", err)
+	}
+
+	return id, nil
 }
 
 func sanitizeSubjectToken(value string) string {

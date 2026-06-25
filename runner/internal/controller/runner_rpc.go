@@ -52,6 +52,7 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 		slog.Warn("prune orphaned workspaces on startup", "err", err)
 	}
 	cancel()
+	go r.pruneWorkspacesPeriodically(ctx)
 
 	slog.Info("claiming tasks via ConnectRPC", "url", r.cfg.Server.URL)
 	for i := 0; i < r.cfg.Runner.MaxConcurrent; i++ {
