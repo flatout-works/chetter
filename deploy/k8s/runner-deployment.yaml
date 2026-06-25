@@ -50,4 +50,6 @@ spec:
         hostPath:
           path: /var/run/docker.sock
       - name: runner-data
-        emptyDir: {}
+        hostPath:
+          path: /var/lib/chetter-runner
+          type: DirectoryOrCreate
