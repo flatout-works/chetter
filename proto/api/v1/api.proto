@@ -64,6 +64,7 @@ message AgentSession {
   optional string expires_at = 18;
   string pause_reason = 19;
   string error = 20;
+  int32 run_count = 21;
 }
 
 message SessionRun {

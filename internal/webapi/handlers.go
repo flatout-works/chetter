@@ -106,6 +106,7 @@ func protoSession(s service.AgentSessionRecord) *apiv1.AgentSession {
 		ExpiresAt:        optTimeStr(s.ExpiresAt),
 		PauseReason:      s.PauseReason,
 		Error:            s.Error,
+		RunCount:         s.RunCount,
 	}
 }
 

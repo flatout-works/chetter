@@ -517,6 +517,7 @@ type AgentSessionRecord struct {
 	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
 	PauseReason      string     `json:"pause_reason,omitempty"`
 	Error            string     `json:"error,omitempty"`
+	RunCount         int32      `json:"run_count,omitempty"`
 }
 
 type SessionRunRecord struct {

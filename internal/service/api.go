@@ -453,6 +453,16 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 	for _, row := range rows {
 		out = append(out, agentSessionRecord(row))
 	}
+	if len(out) > 0 {
+		ids := make([]string, len(out))
+		for i, s := range out {
+			ids[i] = s.ID
+		}
+		counts := s.batchSessionRunCounts(ctx, ids)
+		for i := range out {
+			out[i].RunCount = counts[out[i].ID]
+		}
+	}
 	return out, nil
 }
 
@@ -474,6 +484,38 @@ func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentS
 		outRuns = append(outRuns, sessionRunRecord(run))
 	}
 	return agentSessionRecord(session), outRuns, nil
+}
+
+// batchSessionRunCounts returns a map of session_id -> run count for a batch of sessions.
+func (s *Service) batchSessionRunCounts(ctx context.Context, sessionIDs []string) map[string]int32 {
+	if len(sessionIDs) == 0 {
+		return nil
+	}
+	db := s.repo.DB()
+	if db == nil {
+		return nil
+	}
+	args := make([]interface{}, len(sessionIDs))
+	for i, v := range sessionIDs {
+		args[i] = v
+	}
+	query := "SELECT agent_session_id, COUNT(*) FROM chetter_session_runs WHERE agent_session_id IN (?" + strings.Repeat(",?", len(sessionIDs)-1) + ") GROUP BY agent_session_id"
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "batch session run counts", "err", err)
+		return nil
+	}
+	defer rows.Close()
+	counts := make(map[string]int32, len(sessionIDs))
+	for rows.Next() {
+		var id string
+		var count int32
+		if err := rows.Scan(&id, &count); err != nil {
+			continue
+		}
+		counts[id] = count
+	}
+	return counts
 }
 
 // --- Trigger Methods ---

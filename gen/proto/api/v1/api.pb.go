@@ -348,6 +348,7 @@ type AgentSession struct {
 	ExpiresAt        *string                `protobuf:"bytes,18,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expires_at,omitempty"`
 	PauseReason      string                 `protobuf:"bytes,19,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	Error            string                 `protobuf:"bytes,20,opt,name=error,proto3" json:"error,omitempty"`
+	RunCount         int32                  `protobuf:"varint,21,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -520,6 +521,13 @@ func (x *AgentSession) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *AgentSession) GetRunCount() int32 {
+	if x != nil {
+		return x.RunCount
+	}
+	return 0
 }
 
 type SessionRun struct {
@@ -6501,7 +6509,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\x8b\x05\n" +
+	"\t_ended_at\"\xa8\x05\n" +
 	"\fAgentSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -6530,7 +6538,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x12 \x01(\tH\x01R\texpiresAt\x88\x01\x01\x12!\n" +
 	"\fpause_reason\x18\x13 \x01(\tR\vpauseReason\x12\x14\n" +
-	"\x05error\x18\x14 \x01(\tR\x05errorB\f\n" +
+	"\x05error\x18\x14 \x01(\tR\x05error\x12\x1b\n" +
+	"\trun_count\x18\x15 \x01(\x05R\brunCountB\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
 	"\v_expires_at\"\x8b\x03\n" +
