@@ -37,6 +37,8 @@
   let viewLoading = $state(false);
   let showExportViewer = $state(false);
 
+  let recovering = $state(false);
+
   let totalTokens = $derived.by(() => {
     const tu = task?.tokenUsage;
     if (!tu) return 0n;
@@ -389,6 +391,18 @@
     }
   }
 
+  async function recoverTask() {
+    recovering = true;
+    try {
+      const client = createClient(TaskService, getTransport());
+      await client.recoverTask({ taskId: params.id });
+      window.location.href = resolve("/tasks");
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to recover task";
+      recovering = false;
+    }
+  }
+
   async function viewExport() {
     viewLoading = true;
     try {
@@ -445,6 +459,9 @@
           </Button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
+          <Button color="green" size="sm" onclick={recoverTask} disabled={recovering}>
+            {recovering ? "Recovering…" : "Recover"}
+          </Button>
           <Button size="sm" onclick={viewExport} disabled={viewLoading}>
             {viewLoading ? "Loading…" : "View"}
           </Button>
