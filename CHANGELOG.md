@@ -7,15 +7,35 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - GitHub artifact signature simplified from multi-line format (Session, Run, Task, Agent, Model, Runner, Digest) to single-line `Task: [task_xxx](URL) | Agent: <name> | Model: <model>`. Runner, Session, and Run fields removed — they are navigable from the task URL. Agent field only shown when non-empty (named agent definitions).
+- Runner persists auto-generated ID to `.runner-id` in the workspace root, reusing it across same-node restarts for pinned session continuity.
+
+### Added
+
+- Task detail page shows GitHub context card (repo, issue/PR link) extracted from environment variables.
+- Runner fleet page auto-refreshes every 10 seconds for a live dashboard view.
+- Audit log compact linkification: source/target columns link to their respective detail pages, repo column is a clickable GitHub link, detail text has expandable "Show more" for long entries.
+- Triggers page redesigned with paginated table and a standalone detail page (`/triggers/[name]`) showing config, enable/disable toggle, run history with pagination and token totals, and run/delete actions.
+- Sessions list now shows a run count per session via batch lookup on `ListSessions`.
+- `scripts/cloc-chetter.sh`: utility for counting repo lines excluding generated code.
+- Periodic workspace pruning every 10 minutes to prevent orphaned workspace accumulation.
 
 ### Fixed
 
 - Webhook bot-authored event handling: bot's own issue/PR/comments now skip the author write-access gate silently instead of logging noisy `webhook_author_gate_denied` audit entries. Bot-comment filter in `handleIssueComment` moved before the author gate — was dead code because the gate ran first and rejected bots before the filter could apply.
 - Runner `NO_PROXY` env var includes `0.0.0.0` so opencode self-requests to the MCP server bypass the HTTP proxy.
+- Webhook-triggered tasks (issue/PR) now record trigger runs and update `last_run_at`; previously only cron triggers recorded them. Added unique index `idx_trigger_runs_dedup` with `INSERT IGNORE` for safe deduplication.
+- Artifact deduplication: added unique index `idx_task_artifacts_dedup` on `(task_id, artifact_type, repo, number)` with `INSERT IGNORE` to prevent duplicates from MCP tool recording and webhook discovery.
+- Duplicate rows are cleaned up before creating unique indexes on startup, preventing crash on pre-existing duplicate data.
+- Audit log empty `sourceType`/`eventType` filter serialization sending `""` instead of omitting the field, causing incorrect query results.
+- Runner resume: `docker stop` and session export only run on the error path (was unconditional); `Sending prompt` status published before goroutine starts for correct status timing.
 
 ### Web UI
 
 - Audit log table: added Repo column between Event Type and Source, title tooltips on truncated source/target IDs and detail text, `webhook_author_gate_denied` added to the event type filter dropdown.
+- Triggers page: accordion layout replaced with paginated table and inline enable/disable toggles; trigger names link to new detail page.
+- Audit log source/target columns now link to `/tasks/[id]`, `/triggers/[name]`, `/sessions/[id]`, or GitHub URLs; detail text shows "Show more" expand/collapse for entries over 60 characters.
+- Task detail: GitHub context card showing linked issue/PR from env vars.
+- Live update mechanism refactored from imperative `auth.subscribe()` to Svelte 5 `$derived`/`$effect` runes.
 
 ## 2026-06-24
 
