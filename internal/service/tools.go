@@ -52,6 +52,7 @@ type TaskStatusOutput struct {
 type ListTasksInput struct {
 	Status      string `json:"status,omitempty" jsonschema:"Optional task status filter"`
 	TriggerName string `json:"trigger_name,omitempty" jsonschema:"Optional trigger name filter"`
+	Search      string `json:"search,omitempty" jsonschema:"Free-text search across prompt, summary, agent, model"`
 	Limit       int    `json:"limit,omitempty" jsonschema:"Maximum tasks to return, capped at 100"`
 }
 
@@ -503,6 +504,7 @@ type TaskRecoverOutput struct {
 
 type ListAgentSessionsInput struct {
 	Status string `json:"status,omitempty" jsonschema:"Optional agent session status filter"`
+	Search string `json:"search,omitempty" jsonschema:"Free-text search across session ID, agent, model"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum sessions to return, capped at 100"`
 }
 
@@ -677,36 +679,15 @@ func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	scope, scoped := auth.GetScope(ctx)
-	limit := clampListLimit(in.Limit)
-	var tasks []repository.ChetterTask
-	var err error
-	if scoped && !scope.Admin && scope.TeamID != "" {
-		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
-			TeamID:            sql.NullString{String: scope.TeamID, Valid: true},
-			StatusFilter:      in.Status,
-			TriggerNameFilter: sql.NullString{String: in.TriggerName, Valid: true},
-			Limit:             limit,
-		})
-	} else {
-		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
-			StatusFilter:      in.Status,
-			TriggerNameFilter: sql.NullString{String: in.TriggerName, Valid: true},
-			Limit:             limit,
-		})
-	}
+	tasks, err := s.ListTasks(ctx, in.Status, in.Limit, 0, in.Search)
 	if err != nil {
 		return nil, ListTasksOutput{}, err
 	}
-	out := make([]TaskToolRecord, 0, len(tasks))
-	for _, t := range tasks {
-		out = append(out, repoTaskToToolRecord(t))
-	}
-	return nil, ListTasksOutput{Tasks: out}, nil
+	return nil, ListTasksOutput{Tasks: tasks}, nil
 }
 
 func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {
-	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit, 0)
+	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit, 0, in.Search)
 	if err != nil {
 		return nil, ListAgentSessionsOutput{}, err
 	}
@@ -1559,6 +1540,7 @@ type TaskArtifactFilterInput struct {
 	AgentSessionID string `json:"agent_session_id,omitempty" jsonschema:"Filter by agent session ID"`
 	ArtifactType   string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
 	Repo           string `json:"repo,omitempty" jsonschema:"Filter by repository"`
+	Search         string `json:"search,omitempty" jsonschema:"Free-text search across task_id, repo, artifact_type, and ref"`
 	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
 	Offset         int    `json:"offset,omitempty" jsonschema:"Number of artifacts to skip (default 0)"`
 }

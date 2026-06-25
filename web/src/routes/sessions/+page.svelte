@@ -8,20 +8,27 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Button, Label, Modal, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Button, Input, Label, Modal, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   type SortColumn = "id" | "status" | "agent" | "model" | "runs" | "created";
   let sessions = $state<AgentSession[]>([]);
   let loading = $state(true);
   let activeRunners = $state<string[]>([]);
   let statusFilter = $state("");
+  let search = $state("");
   let page = $state(0);
   let pageSize = $state(25);
   let sortColumn = $state<SortColumn>("created");
   let sortDirection = $state<"asc" | "desc">("desc");
 
+  let filteredSessions = $derived.by(() => {
+    if (!search.trim()) return sessions;
+    const q = search.toLowerCase();
+    return sessions.filter(s => s.id?.toLowerCase().includes(q) || s.agent?.toLowerCase().includes(q));
+  });
+
   let sortedSessions = $derived.by(() => {
-    return [...sessions].sort((a, b) => {
+    return [...filteredSessions].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -113,6 +120,7 @@
           <option value="completed">Completed</option>
           <option value="error">Error</option>
         </Select>
+        <Input bind:value={search} placeholder="Search…" class="!w-44" />
         <Select bind:value={pageSize} onchange={() => { page = 0; }} class="!w-auto">
           <option value={10}>10 / page</option>
           <option value={25}>25 / page</option>

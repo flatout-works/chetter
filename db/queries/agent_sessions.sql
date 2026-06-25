@@ -14,6 +14,14 @@ WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filte
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?;
 
+-- name: SearchAgentSessions :many
+SELECT * FROM chetter_agent_sessions
+WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filter))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?) OR FTS_MATCH_WORD(git_url, ?))
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?;
+
 -- name: MarkAgentSessionTerminalByTask :execrows
 UPDATE chetter_agent_sessions
 SET status = ?,

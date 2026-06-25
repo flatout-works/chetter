@@ -138,3 +138,100 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 	}
 	return items, nil
 }
+
+const searchTaskArtifacts = `-- name: SearchTaskArtifacts :many
+SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+FROM chetter_task_artifacts
+WHERE (task_id = ? OR ? = '')
+  AND (agent_session_id = ? OR ? = '')
+  AND (artifact_type = ? OR ? = '')
+  AND (repo = ? OR ? = '')
+  AND (FTS_MATCH_WORD(task_id, ?) OR FTS_MATCH_WORD(repo, ?) OR FTS_MATCH_WORD(artifact_type, ?) OR FTS_MATCH_WORD(ref, ?))
+ORDER BY discovered_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchTaskArtifactsParams struct {
+	TaskID         string         `json:"task_id"`
+	Column2        interface{}    `json:"column_2"`
+	AgentSessionID sql.NullString `json:"agent_session_id"`
+	Column4        interface{}    `json:"column_4"`
+	ArtifactType   string         `json:"artifact_type"`
+	Column6        interface{}    `json:"column_6"`
+	Repo           string         `json:"repo"`
+	Column8        interface{}    `json:"column_8"`
+	FtsMatchWord   interface{}    `json:"fts_match_word"`
+	FtsMatchWord_2 interface{}    `json:"fts_match_word_2"`
+	FtsMatchWord_3 interface{}    `json:"fts_match_word_3"`
+	FtsMatchWord_4 interface{}    `json:"fts_match_word_4"`
+	Limit          int32          `json:"limit"`
+	Offset         int32          `json:"offset"`
+}
+
+type SearchTaskArtifactsRow struct {
+	ID              string         `json:"id"`
+	TaskID          string         `json:"task_id"`
+	AgentSessionID  sql.NullString `json:"agent_session_id"`
+	SessionRunID    sql.NullString `json:"session_run_id"`
+	ArtifactType    string         `json:"artifact_type"`
+	Repo            string         `json:"repo"`
+	Number          sql.NullInt32  `json:"number"`
+	Url             sql.NullString `json:"url"`
+	Ref             sql.NullString `json:"ref"`
+	Sha             sql.NullString `json:"sha"`
+	CreatedAt       time.Time      `json:"created_at"`
+	DiscoveredAt    time.Time      `json:"discovered_at"`
+	DiscoverySource string         `json:"discovery_source"`
+}
+
+func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifactsParams) ([]SearchTaskArtifactsRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchTaskArtifacts,
+		arg.TaskID,
+		arg.Column2,
+		arg.AgentSessionID,
+		arg.Column4,
+		arg.ArtifactType,
+		arg.Column6,
+		arg.Repo,
+		arg.Column8,
+		arg.FtsMatchWord,
+		arg.FtsMatchWord_2,
+		arg.FtsMatchWord_3,
+		arg.FtsMatchWord_4,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchTaskArtifactsRow{}
+	for rows.Next() {
+		var i SearchTaskArtifactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.AgentSessionID,
+			&i.SessionRunID,
+			&i.ArtifactType,
+			&i.Repo,
+			&i.Number,
+			&i.Url,
+			&i.Ref,
+			&i.Sha,
+			&i.CreatedAt,
+			&i.DiscoveredAt,
+			&i.DiscoverySource,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

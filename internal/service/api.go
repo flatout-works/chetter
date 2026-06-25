@@ -44,13 +44,29 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
-func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int) ([]TaskToolRecord, error) {
+func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search string) ([]TaskToolRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var tasks []repository.ChetterTask
 	var err error
-	if scoped && !scope.Admin && scope.TeamID != "" {
+	if search != "" {
+		var teamFilter sql.NullString
+		if scoped && !scope.Admin && scope.TeamID != "" {
+			teamFilter = sql.NullString{String: scope.TeamID, Valid: true}
+		}
+		tasks, err = s.repo.SearchTasks(ctx, repository.SearchTasksParams{
+			TeamFilter:        teamFilter,
+			StatusFilter:      status,
+			FtsMatchWord:      search,
+			FtsMatchWord_2:    search,
+			FtsMatchWord_3:    search,
+			FtsMatchWord_4:    search,
+			FtsMatchWord_5:    search,
+			Limit:             clamped,
+			Offset:            clampedOffset,
+		})
+	} else if scoped && !scope.Admin && scope.TeamID != "" {
 		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
 			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
 			StatusFilter: status,
@@ -434,18 +450,35 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 // --- Session Methods ---
 
 // ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
-func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int) ([]AgentSessionRecord, error) {
+func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int, search string) ([]AgentSessionRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	teamID := sql.NullString{String: "", Valid: true}
 	if scoped && !scope.Admin && scope.TeamID != "" {
 		teamID = sql.NullString{String: scope.TeamID, Valid: true}
 	}
-	rows, err := s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
-		TeamFilter:   teamID,
-		StatusFilter: status,
-		Limit:        clampListLimit(limit),
-		Offset:       int32(max(offset, 0)),
-	})
+	clamped := clampListLimit(limit)
+	clampedOffset := int32(max(offset, 0))
+	var rows []repository.ChetterAgentSession
+	var err error
+	if search != "" {
+		rows, err = s.repo.SearchAgentSessions(ctx, repository.SearchAgentSessionsParams{
+			TeamFilter:     teamID,
+			StatusFilter:   status,
+			FtsMatchWord:   search,
+			FtsMatchWord_2: search,
+			FtsMatchWord_3: search,
+			FtsMatchWord_4: search,
+			Limit:          clamped,
+			Offset:         clampedOffset,
+		})
+	} else {
+		rows, err = s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
+			TeamFilter:   teamID,
+			StatusFilter: status,
+			Limit:        clamped,
+			Offset:       clampedOffset,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list agent sessions: %w", err)
 	}
@@ -983,20 +1016,61 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 		limit = 100
 	}
 
-	rows, err := s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
-		TaskID:         filter.TaskID,
-		Column2:        filter.TaskID,
-		AgentSessionID: nullString(filter.AgentSessionID),
-		Column4:        filter.AgentSessionID,
-		ArtifactType:   filter.ArtifactType,
-		Column6:        filter.ArtifactType,
-		Repo:           filter.Repo,
-		Column8:        filter.Repo,
-		Limit:          int32(limit),
-		Offset:         int32(max(filter.Offset, 0)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("list task artifacts: %w", err)
+	var rows []repository.ListTaskArtifactsRow
+	var listErr error
+	if filter.Search != "" {
+		searchRows, err := s.repo.SearchTaskArtifacts(ctx, repository.SearchTaskArtifactsParams{
+			TaskID:         filter.TaskID,
+			Column2:        filter.TaskID,
+			AgentSessionID: nullString(filter.AgentSessionID),
+			Column4:        filter.AgentSessionID,
+			ArtifactType:   filter.ArtifactType,
+			Column6:        filter.ArtifactType,
+			Repo:           filter.Repo,
+			Column8:        filter.Repo,
+			FtsMatchWord:   filter.Search,
+			FtsMatchWord_2: filter.Search,
+			FtsMatchWord_3: filter.Search,
+			FtsMatchWord_4: filter.Search,
+			Limit:          int32(limit),
+			Offset:         int32(max(filter.Offset, 0)),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("search task artifacts: %w", err)
+		}
+		for _, r := range searchRows {
+			rows = append(rows, repository.ListTaskArtifactsRow{
+				ID:              r.ID,
+				TaskID:          r.TaskID,
+				AgentSessionID:  r.AgentSessionID,
+				SessionRunID:    r.SessionRunID,
+				ArtifactType:    r.ArtifactType,
+				Repo:            r.Repo,
+				Number:          r.Number,
+				Url:             r.Url,
+				Ref:             r.Ref,
+				Sha:             r.Sha,
+				CreatedAt:       r.CreatedAt,
+				DiscoveredAt:    r.DiscoveredAt,
+				DiscoverySource: r.DiscoverySource,
+			})
+		}
+	} else {
+		rows, listErr = s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
+			TaskID:         filter.TaskID,
+			Column2:        filter.TaskID,
+			AgentSessionID: nullString(filter.AgentSessionID),
+			Column4:        filter.AgentSessionID,
+			ArtifactType:   filter.ArtifactType,
+			Column6:        filter.ArtifactType,
+			Repo:           filter.Repo,
+			Column8:        filter.Repo,
+			Limit:          int32(limit),
+			Offset:         int32(max(filter.Offset, 0)),
+		})
+	}
+	if listErr != nil {
+		return nil, fmt.Errorf("list task artifacts: %w", listErr)
 	}
 	out := make([]TaskArtifactRecord, len(rows))
 	for i, r := range rows {

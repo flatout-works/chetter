@@ -825,3 +825,81 @@ func (q *Queries) RevertOrphanedRunningSessionRuns(ctx context.Context) (int64, 
 	}
 	return result.RowsAffected()
 }
+
+const searchAgentSessions = `-- name: SearchAgentSessions :many
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error FROM chetter_agent_sessions
+WHERE (? = '' OR COALESCE(team_id, '') = ?)
+  AND (? = '' OR status = ?)
+  AND (FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?) OR FTS_MATCH_WORD(git_url, ?))
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchAgentSessionsParams struct {
+	TeamFilter     sql.NullString `json:"team_filter"`
+	StatusFilter   string         `json:"status_filter"`
+	FtsMatchWord   interface{}    `json:"fts_match_word"`
+	FtsMatchWord_2 interface{}    `json:"fts_match_word_2"`
+	FtsMatchWord_3 interface{}    `json:"fts_match_word_3"`
+	FtsMatchWord_4 interface{}    `json:"fts_match_word_4"`
+	Limit          int32          `json:"limit"`
+	Offset         int32          `json:"offset"`
+}
+
+func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessionsParams) ([]ChetterAgentSession, error) {
+	rows, err := q.db.QueryContext(ctx, searchAgentSessions,
+		arg.TeamFilter,
+		arg.TeamFilter,
+		arg.StatusFilter,
+		arg.StatusFilter,
+		arg.FtsMatchWord,
+		arg.FtsMatchWord_2,
+		arg.FtsMatchWord_3,
+		arg.FtsMatchWord_4,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterAgentSession{}
+	for rows.Next() {
+		var i ChetterAgentSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Status,
+			&i.ResumeMode,
+			&i.PinnedRunnerID,
+			&i.PinnedRunnerName,
+			&i.CheckpointID,
+			&i.WorkspacePath,
+			&i.ContainerName,
+			&i.HarnessSessionID,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PausedAt,
+			&i.ExpiresAt,
+			&i.PauseReason,
+			&i.Error,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

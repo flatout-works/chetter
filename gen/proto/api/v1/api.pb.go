@@ -2375,6 +2375,7 @@ type ListTasksRequest struct {
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Search        string                 `protobuf:"bytes,4,opt,name=search,proto3" json:"search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2428,6 +2429,13 @@ func (x *ListTasksRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListTasksRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
 }
 
 type ListTasksResponse struct {
@@ -3211,6 +3219,7 @@ type ListSessionsRequest struct {
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	Search        string                 `protobuf:"bytes,4,opt,name=search,proto3" json:"search,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3264,6 +3273,13 @@ func (x *ListSessionsRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListSessionsRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
 }
 
 type ListSessionsResponse struct {
@@ -5398,6 +5414,7 @@ type ListTaskArtifactsRequest struct {
 	Repo           string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
 	Limit          int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset         int32                  `protobuf:"varint,6,opt,name=offset,proto3" json:"offset,omitempty"`
+	Search         string                 `protobuf:"bytes,7,opt,name=search,proto3" json:"search,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -5472,6 +5489,13 @@ func (x *ListTaskArtifactsRequest) GetOffset() int32 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *ListTaskArtifactsRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
 }
 
 type ListTaskArtifactsResponse struct {
@@ -6858,11 +6882,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eGetTaskRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"3\n" +
 	"\x0fGetTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"X\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"p\n" +
 	"\x10ListTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"7\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x16\n" +
+	"\x06search\x18\x04 \x01(\tR\x06search\"7\n" +
 	"\x11ListTasksResponse\x12\"\n" +
 	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\"M\n" +
 	"\x11CancelTaskRequest\x12 \n" +
@@ -6903,11 +6928,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x1aGetLatestTaskEventResponse\x12'\n" +
 	"\x05event\x18\x01 \x01(\v2\x11.api.v1.TaskEventR\x05event\x12\x17\n" +
 	"\aage_sec\x18\x02 \x01(\x05R\x06ageSec\x12\x19\n" +
-	"\bis_stale\x18\x03 \x01(\bR\aisStale\"[\n" +
+	"\bis_stale\x18\x03 \x01(\bR\aisStale\"s\n" +
 	"\x13ListSessionsRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"H\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x16\n" +
+	"\x06search\x18\x04 \x01(\tR\x06search\"H\n" +
 	"\x14ListSessionsResponse\x120\n" +
 	"\bsessions\x18\x01 \x03(\v2\x14.api.v1.AgentSessionR\bsessions\";\n" +
 	"\x11GetSessionRequest\x12&\n" +
@@ -7065,14 +7091,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x06search\x18\n" +
 	" \x01(\tR\x06search\"E\n" +
 	"\x17ListAuditEventsResponse\x12*\n" +
-	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xc4\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xdc\x01\n" +
 	"\x18ListTaskArtifactsRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12(\n" +
 	"\x10agent_session_id\x18\x02 \x01(\tR\x0eagentSessionId\x12#\n" +
 	"\rartifact_type\x18\x03 \x01(\tR\fartifactType\x12\x12\n" +
 	"\x04repo\x18\x04 \x01(\tR\x04repo\x12\x14\n" +
 	"\x05limit\x18\x05 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x06 \x01(\x05R\x06offset\"O\n" +
+	"\x06offset\x18\x06 \x01(\x05R\x06offset\x12\x16\n" +
+	"\x06search\x18\a \x01(\tR\x06search\"O\n" +
 	"\x19ListTaskArtifactsResponse\x122\n" +
 	"\tartifacts\x18\x01 \x03(\v2\x14.api.v1.TaskArtifactR\tartifacts\"C\n" +
 	"\x1aArcaneScannerStatusRequest\x12%\n" +

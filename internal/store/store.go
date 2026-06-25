@@ -252,6 +252,15 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureAuditFulltextIndex(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTaskFulltextIndex(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureSessionFulltextIndex(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureArtifactFulltextIndex(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTriggerColumns(ctx); err != nil {
 		return err
 	}
@@ -437,6 +446,48 @@ func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
 	if !exists {
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (detail, source_id, target_id, event_type, repo) WITH PARSER MULTILINGUAL"); err != nil {
 			slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_tasks", "idx_tasks_search")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (prompt, summary, agent, model_id) WITH PARSER MULTILINGUAL"); err != nil {
+			slog.Warn("failed to add tasks fulltext index", "err", err)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_agent_sessions", "idx_sessions_search")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (id, agent, model_id, git_url) WITH PARSER MULTILINGUAL"); err != nil {
+			slog.Warn("failed to add sessions fulltext index", "err", err)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureArtifactFulltextIndex(ctx context.Context) error {
+	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_artifacts_search")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (task_id, repo, artifact_type, ref) WITH PARSER MULTILINGUAL"); err != nil {
+			slog.Warn("failed to add artifacts fulltext index", "err", err)
 			return nil
 		}
 	}

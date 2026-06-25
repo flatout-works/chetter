@@ -672,6 +672,109 @@ func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) 
 	return result.RowsAffected()
 }
 
+const searchTasks = `-- name: SearchTasks :many
+SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category FROM chetter_tasks
+WHERE (? = '' OR team_id = ?)
+  AND (? = '' OR status = ?)
+  AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (FTS_MATCH_WORD(prompt, ?) OR FTS_MATCH_WORD(id, ?) OR FTS_MATCH_WORD(summary, ?) OR FTS_MATCH_WORD(agent, ?) OR FTS_MATCH_WORD(model_id, ?))
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchTasksParams struct {
+	TeamFilter        sql.NullString `json:"team_filter"`
+	StatusFilter      string         `json:"status_filter"`
+	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
+	FtsMatchWord      interface{}    `json:"fts_match_word"`
+	FtsMatchWord_2    interface{}    `json:"fts_match_word_2"`
+	FtsMatchWord_3    interface{}    `json:"fts_match_word_3"`
+	FtsMatchWord_4    interface{}    `json:"fts_match_word_4"`
+	FtsMatchWord_5    interface{}    `json:"fts_match_word_5"`
+	Limit             int32          `json:"limit"`
+	Offset            int32          `json:"offset"`
+}
+
+func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]ChetterTask, error) {
+	rows, err := q.db.QueryContext(ctx, searchTasks,
+		arg.TeamFilter,
+		arg.TeamFilter,
+		arg.StatusFilter,
+		arg.StatusFilter,
+		arg.TriggerNameFilter,
+		arg.TriggerNameFilter,
+		arg.FtsMatchWord,
+		arg.FtsMatchWord_2,
+		arg.FtsMatchWord_3,
+		arg.FtsMatchWord_4,
+		arg.FtsMatchWord_5,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTask{}
+	for rows.Next() {
+		var i ChetterTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.OpencodeSessionID,
+			&i.RunnerImageDigest,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.RunnerID,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.Attempt,
+			&i.Skills,
+			&i.Env,
+			&i.TimeoutSec,
+			&i.Summary,
+			&i.Error,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalReasoningTokens,
+			&i.CostCents,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastEventAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.TeamID,
+			&i.SessionExport,
+			&i.TriggerName,
+			&i.TriggerType,
+			&i.MaxAttempts,
+			&i.RequiredRunnerID,
+			&i.CheckpointAfterSuccess,
+			&i.ErrorCategory,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateTaskFromRunnerEvent = `-- name: UpdateTaskFromRunnerEvent :execrows
 UPDATE chetter_tasks
 SET status = ?,

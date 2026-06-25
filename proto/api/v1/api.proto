@@ -287,6 +287,7 @@ message ListTasksRequest {
   string status = 1;
   int32 limit = 2;
   int32 offset = 3;
+  string search = 4;
 }
 
 message ListTasksResponse {
@@ -382,6 +383,7 @@ message ListSessionsRequest {
   string status = 1;
   int32 limit = 2;
   int32 offset = 3;
+  string search = 4;
 }
 
 message ListSessionsResponse {
@@ -630,6 +632,7 @@ message ListTaskArtifactsRequest {
   string repo = 4;
   int32 limit = 5;
   int32 offset = 6;
+  string search = 7;
 }
 
 message ListTaskArtifactsResponse {

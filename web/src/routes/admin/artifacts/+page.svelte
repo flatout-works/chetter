@@ -23,6 +23,7 @@
   let repo = $state(u.searchParams.get("repo") || "");
   let pageNum = $state(Number(u.searchParams.get("page")) || 0);
   let pageSize = $state(Number(u.searchParams.get("size")) || 25);
+  let search = $state(u.searchParams.get("q") || "");
   let offset = $derived(pageNum * pageSize);
   let sortColumn = $state<SortColumn>("discovered");
   let sortDirection = $state<"asc" | "desc">("desc");
@@ -35,10 +36,11 @@
     s("repo", repo.trim());
     s("page", String(pageNum), "0");
     s("size", String(pageSize), "25");
+    s("q", search.trim());
     if (url.href !== u.href) goto(url, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  $effect(() => { taskId; artifactType; repo; pageNum; pageSize; syncURL(); });
+  $effect(() => { taskId; artifactType; repo; pageNum; pageSize; search; syncURL(); });
 
   let sortedArtifacts = $derived.by(() => {
     return [...artifacts].sort((a, b) => {
@@ -72,7 +74,7 @@
     try {
       const client = createClient(AdminService, getTransport());
       const resp = await client.listTaskArtifacts({
-        taskId: taskId.trim(), artifactType, repo: repo.trim(), limit: pageSize, offset,
+        taskId: taskId.trim(), artifactType, repo: repo.trim(), search: search.trim(), limit: pageSize, offset,
       });
       artifacts = resp.artifacts ?? [];
     } catch (e) {
@@ -107,6 +109,7 @@
         <option value={50}>50 / page</option>
         <option value={100}>100 / page</option>
       </Select>
+      <Input bind:value={search} placeholder="Search…" class="!w-44" onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }} />
       <Button color="blue" size="sm" onclick={() => { pageNum = 0; load(); }}>Search</Button>
     </div>
   </div>

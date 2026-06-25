@@ -14,7 +14,17 @@
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
   let selectedStatus = $state("");
+  let search = $state("");
   let taskList = $derived($tasks);
+  let filteredTasks = $derived.by(() => {
+    if (!search.trim()) return taskList;
+    const q = search.toLowerCase();
+    return taskList.filter(t => 
+      t.prompt?.toLowerCase().includes(q) ||
+      t.id?.toLowerCase().includes(q) ||
+      t.summary?.toLowerCase().includes(q)
+    );
+  });
   let showSubmitForm = $state(false);
   let submitting = $state(false);
   let formError = $state<string | null>(null);
@@ -49,7 +59,7 @@
   let sortDirection = $state<"asc" | "desc">("desc");
 
   let sortedTasks = $derived.by(() => {
-    const sorted = [...taskList].sort((a, b) => {
+    const sorted = [...filteredTasks].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -171,6 +181,7 @@
         <option value="error">Error</option>
         <option value="cancelled">Cancelled</option>
       </Select>
+      <Input bind:value={search} placeholder="Search…" class="!w-44" />
       <Select
         bind:value={pageSize}
         onchange={() => { page = 0; }}
