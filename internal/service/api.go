@@ -8,15 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
+ 	"strings"
+ 	"time"
 
-	"github.com/flatout-works/chetter/internal/auth"
-	"github.com/flatout-works/chetter/internal/repository"
-	"github.com/flatout-works/chetter/internal/store"
-)
+ 	"github.com/flatout-works/chetter/internal/auth"
+ 	"github.com/flatout-works/chetter/internal/repository"
+ 	"github.com/flatout-works/chetter/internal/store"
+ )
 
-// --- Task Methods ---
+ // --- Task Methods ---
 
 // GetTask returns a single task by ID, respecting team-scoped access.
 func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
@@ -55,13 +55,7 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 		if scoped && !scope.Admin && scope.TeamID != "" {
 			teamFilter = sql.NullString{String: scope.TeamID, Valid: true}
 		}
-		tasks, err = s.repo.SearchTasks(ctx, repository.SearchTasksParams{
-			TeamFilter:        teamFilter,
-			StatusFilter:      status,
-			CONCAT: search,
-			Limit:             clamped,
-			Offset:            clampedOffset,
-		})
+		tasks, err = s.searchTasksFTS(ctx, teamFilter, status, search, clamped, clampedOffset)
 	} else if scoped && !scope.Admin && scope.TeamID != "" {
 		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
 			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
@@ -457,13 +451,7 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 	var rows []repository.ChetterAgentSession
 	var err error
 	if search != "" {
-		rows, err = s.repo.SearchAgentSessions(ctx, repository.SearchAgentSessionsParams{
-			TeamFilter:     teamID,
-			StatusFilter:   status,
-			CONCAT: search,
-			Limit:          clamped,
-			Offset:         clampedOffset,
-		})
+		rows, err = s.searchAgentSessionsFTS(ctx, teamID, status, search, clamped, clampedOffset)
 	} else {
 		rows, err = s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
 			TeamFilter:   teamID,
@@ -946,28 +934,10 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 		Limit:      int32(limit),
 		Offset:     int32(max(filter.Offset, 0)),
 	}
-	var rows []repository.ChetterAuditLog
+	var rows []repository.ListAuditLogRow
 	var listErr error
 	if filter.Search != "" {
-		rows, listErr = s.repo.SearchAuditLog(ctx, repository.SearchAuditLogParams{
-			EventType:    baseParams.EventType,
-			Column2:      baseParams.Column2,
-			SourceType:   baseParams.SourceType,
-			Column4:      baseParams.Column4,
-			SourceID:     baseParams.SourceID,
-			Column6:      baseParams.Column6,
-			TargetType:   baseParams.TargetType,
-			Column8:      baseParams.Column8,
-			TargetID:     baseParams.TargetID,
-			Column10:     baseParams.Column10,
-			Repo:         baseParams.Repo,
-			Column12:     baseParams.Column12,
-			CreatedAt:    baseParams.CreatedAt,
-			Column14:     baseParams.Column14,
-			Search: filter.Search,
-			Limit:        baseParams.Limit,
-			Offset:       baseParams.Offset,
-		})
+		rows, listErr = s.searchAuditLogFTS(ctx, filter, int32(limit), int32(max(filter.Offset, 0)), sinceTime)
 	} else {
 		rows, listErr = s.repo.ListAuditLog(ctx, baseParams)
 	}
@@ -1008,25 +978,7 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 	var rows []repository.ListTaskArtifactsRow
 	var listErr error
 	if filter.Search != "" {
-		searchRows, err := s.repo.SearchTaskArtifacts(ctx, repository.SearchTaskArtifactsParams{
-			TaskID:         filter.TaskID,
-			Column2:        filter.TaskID,
-			AgentSessionID: nullString(filter.AgentSessionID),
-			Column4:        filter.AgentSessionID,
-			ArtifactType:   filter.ArtifactType,
-			Column6:        filter.ArtifactType,
-			Repo:           filter.Repo,
-			Column8:        filter.Repo,
-			CONCAT:       filter.Search,
-			Limit:          int32(limit),
-			Offset:         int32(max(filter.Offset, 0)),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("search task artifacts: %w", err)
-		}
-		for _, r := range searchRows {
-			rows = append(rows, repository.ListTaskArtifactsRow(r))
-		}
+		rows, listErr = s.searchTaskArtifactsFTS(ctx, filter, int32(limit), int32(max(filter.Offset, 0)))
 	} else {
 		rows, listErr = s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
 			TaskID:         filter.TaskID,
