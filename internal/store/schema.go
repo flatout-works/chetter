@@ -37,6 +37,7 @@ var schemaStatements = []string{
 		started_at DATETIME(6) NULL,
 		ended_at DATETIME(6) NULL,
 		session_export MEDIUMTEXT NULL,
+		search_text TEXT NULL,
 		total_input_tokens BIGINT NOT NULL DEFAULT 0,
 		total_output_tokens BIGINT NOT NULL DEFAULT 0,
 		total_cache_read_tokens BIGINT NOT NULL DEFAULT 0,
@@ -50,7 +51,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_runner (runner_id, status),
 		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
 		KEY idx_chetter_tasks_required_runner (required_runner_id, status, created_at),
-		FULLTEXT INDEX idx_tasks_search (prompt) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_tasks_search (search_text) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (
 		id VARCHAR(64) NOT NULL,
@@ -76,11 +77,12 @@ var schemaStatements = []string{
 		expires_at DATETIME(6) NULL,
 		pause_reason VARCHAR(64) NULL,
 		error TEXT NULL,
+		search_text TEXT NULL,
 		PRIMARY KEY (id),
 		KEY idx_agent_sessions_team_status (team_id, status, updated_at),
 		KEY idx_agent_sessions_runner_status (pinned_runner_id, status),
 		KEY idx_agent_sessions_expires (expires_at),
-		FULLTEXT INDEX idx_sessions_search (id) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_sessions_search (search_text) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_session_runs (
 		id VARCHAR(64) NOT NULL,
@@ -254,13 +256,14 @@ var schemaStatements = []string{
 		github_delivery_id VARCHAR(64) NULL,
 		parent_event_id VARCHAR(64) NULL,
 		detail TEXT NULL,
+		search_text TEXT NULL,
 		payload JSON NULL,
 		PRIMARY KEY (id),
 		KEY idx_audit_event_type (event_type, created_at),
 		KEY idx_audit_source (source_type, source_id),
 		KEY idx_audit_target (target_type, target_id),
 		KEY idx_audit_created (created_at),
-		FULLTEXT INDEX idx_audit_search (detail) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_audit_search (search_text) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_task_artifacts (
 		id VARCHAR(64) NOT NULL,
@@ -276,6 +279,7 @@ var schemaStatements = []string{
 		created_at DATETIME(6) NOT NULL,
 		discovered_at DATETIME(6) NOT NULL,
 		discovery_source VARCHAR(32) NOT NULL,
+		search_text TEXT NULL,
 		PRIMARY KEY (id),
 		UNIQUE KEY idx_task_artifacts_dedup (task_id, artifact_type, repo, number),
 		KEY idx_task_artifacts_task (task_id),
@@ -283,7 +287,7 @@ var schemaStatements = []string{
 		KEY idx_task_artifacts_session_run (session_run_id),
 		KEY idx_task_artifacts_type_repo (artifact_type, repo),
 		KEY idx_task_artifacts_number (repo, number),
-		FULLTEXT INDEX idx_artifacts_search (task_id) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_artifacts_search (search_text) WITH PARSER MULTILINGUAL
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_model_catalogs (
 		id VARCHAR(64) NOT NULL,

@@ -249,6 +249,12 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerRunDedupIndex(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureSearchTextColumns(ctx); err != nil {
+		return err
+	}
+	if err := s.backfillSearchText(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureAuditFulltextIndex(ctx); err != nil {
 		return err
 	}
@@ -443,11 +449,21 @@ func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (detail) WITH PARSER MULTILINGUAL"); err != nil {
-			slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+	if exists {
+		col, err := s.indexColumnName(ctx, "chetter_audit_log", "idx_audit_search")
+		if err != nil {
+			return err
+		}
+		if col == "search_text" {
 			return nil
 		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log DROP INDEX idx_audit_search"); err != nil {
+			return fmt.Errorf("drop old audit fulltext index: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
+		slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+		return nil
 	}
 	return nil
 }
@@ -457,11 +473,21 @@ func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (prompt) WITH PARSER MULTILINGUAL"); err != nil {
-			slog.Warn("failed to add tasks fulltext index", "err", err)
+	if exists {
+		col, err := s.indexColumnName(ctx, "chetter_tasks", "idx_tasks_search")
+		if err != nil {
+			return err
+		}
+		if col == "search_text" {
 			return nil
 		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP INDEX idx_tasks_search"); err != nil {
+			return fmt.Errorf("drop old tasks fulltext index: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
+		slog.Warn("failed to add tasks fulltext index", "err", err)
+		return nil
 	}
 	return nil
 }
@@ -471,11 +497,21 @@ func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (id) WITH PARSER MULTILINGUAL"); err != nil {
-			slog.Warn("failed to add sessions fulltext index", "err", err)
+	if exists {
+		col, err := s.indexColumnName(ctx, "chetter_agent_sessions", "idx_sessions_search")
+		if err != nil {
+			return err
+		}
+		if col == "search_text" {
 			return nil
 		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions DROP INDEX idx_sessions_search"); err != nil {
+			return fmt.Errorf("drop old sessions fulltext index: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
+		slog.Warn("failed to add sessions fulltext index", "err", err)
+		return nil
 	}
 	return nil
 }
@@ -485,11 +521,21 @@ func (s *Store) ensureArtifactFulltextIndex(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (task_id) WITH PARSER MULTILINGUAL"); err != nil {
-			slog.Warn("failed to add artifacts fulltext index", "err", err)
+	if exists {
+		col, err := s.indexColumnName(ctx, "chetter_task_artifacts", "idx_artifacts_search")
+		if err != nil {
+			return err
+		}
+		if col == "search_text" {
 			return nil
 		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts DROP INDEX idx_artifacts_search"); err != nil {
+			return fmt.Errorf("drop old artifacts fulltext index: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
+		slog.Warn("failed to add artifacts fulltext index", "err", err)
+		return nil
 	}
 	return nil
 }
@@ -644,6 +690,75 @@ func (s *Store) indexExists(ctx context.Context, table, index string) (bool, err
 		return false, fmt.Errorf("check index %s.%s: %w", table, index, err)
 	}
 	return count > 0, nil
+}
+
+func (s *Store) indexColumnName(ctx context.Context, table, index string) (string, error) {
+	var col string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT column_name
+		FROM information_schema.statistics
+		WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?
+		ORDER BY seq_in_index
+		LIMIT 1
+	`, table, index).Scan(&col)
+	if err != nil {
+		return "", fmt.Errorf("get index column %s.%s: %w", table, index, err)
+	}
+	return col, nil
+}
+
+func (s *Store) ensureSearchTextColumns(ctx context.Context) error {
+	columns := []struct {
+		table string
+		ddl   string
+	}{
+		{"chetter_tasks", "ALTER TABLE chetter_tasks ADD COLUMN search_text TEXT NULL AFTER session_export"},
+		{"chetter_agent_sessions", "ALTER TABLE chetter_agent_sessions ADD COLUMN search_text TEXT NULL AFTER error"},
+		{"chetter_audit_log", "ALTER TABLE chetter_audit_log ADD COLUMN search_text TEXT NULL AFTER detail"},
+		{"chetter_task_artifacts", "ALTER TABLE chetter_task_artifacts ADD COLUMN search_text TEXT NULL AFTER discovery_source"},
+	}
+	for _, c := range columns {
+		exists, err := s.columnExists(ctx, c.table, "search_text")
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, c.ddl); err != nil {
+			return fmt.Errorf("add %s.search_text: %w", c.table, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) backfillSearchText(ctx context.Context) error {
+	backfills := []string{
+		`UPDATE chetter_tasks SET search_text = CONCAT_WS(' ',
+			COALESCE(prompt,''), COALESCE(summary,''), COALESCE(error,''),
+			COALESCE(agent,''), COALESCE(model_id,''), COALESCE(trigger_name,''),
+			COALESCE(git_url,'')
+		) WHERE search_text IS NULL`,
+		`UPDATE chetter_agent_sessions SET search_text = CONCAT_WS(' ',
+			COALESCE(id,''), COALESCE(agent,''), COALESCE(model_id,''),
+			COALESCE(git_url,''), COALESCE(error,'')
+		) WHERE search_text IS NULL`,
+		`UPDATE chetter_audit_log SET search_text = CONCAT_WS(' ',
+			COALESCE(detail,''), COALESCE(source_type,''), COALESCE(source_id,''),
+			COALESCE(target_type,''), COALESCE(target_id,''), COALESCE(repo,''),
+			COALESCE(event_type,'')
+		) WHERE search_text IS NULL`,
+		`UPDATE chetter_task_artifacts SET search_text = CONCAT_WS(' ',
+			COALESCE(task_id,''), COALESCE(repo,''), COALESCE(artifact_type,''),
+			COALESCE(ref,'')
+		) WHERE search_text IS NULL`,
+	}
+	for _, q := range backfills {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			slog.Warn("backfill search_text failed", "err", err)
+		}
+	}
+	return nil
 }
 
 // ReapStaleTasks finds running tasks that have exceeded their timeout + grace
