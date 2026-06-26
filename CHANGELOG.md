@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-26
+
+### Added
+
+- Full-text search across all table pages (tasks, sessions, audit log, task artifacts) using TiDB FULLTEXT indexes with CONCAT/LIKE fallback. All four `chetter_list_*` MCP tools expose a `search` parameter for server-side text search.
+- RecoverTask endpoint, `chetter_recover_task` MCP tool, web API handler, and Recover button on task detail page for recovering terminal tasks using the previous session export as recovery context. `chetter-recover` opencode command added.
+- Extra files support (`extra_files` on TaskRequest/RPC): runners write specified files to the workspace before the agent starts, enabling recovery context and other workspace seeding.
+- URL state persistence: audit log filter state, task/session filter state, and sidebar navigation preserve and restore URL search params across navigation and browser refresh.
+- Audit UI filter improvements: added missing event type options (`trigger_run`, `trigger_updated`, `task_cancelled`, `github_artifact_created`) and source type options (`api`, `cron`, `rpc`).
+
+### Changed
+
+- All paginated table pages harmonized with page size select (10/25/50/100) replacing raw limit text inputs.
+- Audit UI toggles now default to ON (previously OFF) so no event types are hidden by default; total count display simplified to show page number, event count, and limit.
+- K8s runner deployment volume changed from emptyDir to hostPath, persisting runner identity (`.runner-id`) and workspace directory across pod restarts for pinned/resume task continuity.
+- Webhook issue opened/reopened author write-access gate removed: triage triggers (read-only analysis) now fire regardless of the author's repository permissions.
+
+### Fixed
+
+- Webhook issue opened/reopened events no longer block bot-authored issues and triage triggers no longer require write access.
+
+### Web UI
+
+- Search input with magnifier icon positioned leftmost in the filter bar on all table pages (tasks, sessions, artifacts, audit).
+- Page size selector (10/25/50/100) on all paginated tables instead of raw limit inputs.
+- Filter state persists in URL search params on audit log, tasks, sessions, and artifacts pages.
+- Sidebar remembers the last URL (with params) per page; clicking the currently active sidebar link preserves query params instead of navigating to the clean base path.
+- Recover button on task detail page for terminal tasks (error, done, cancelled).
+- Audit filter type dropdowns include all event types and source types; toggles default to ON.
+
 ## 2026-06-25
 
 ### Changed
