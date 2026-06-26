@@ -58,7 +58,7 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 		tasks, err = s.repo.SearchTasks(ctx, repository.SearchTasksParams{
 			TeamFilter:        teamFilter,
 			StatusFilter:      status,
-			FtsMatchWord:      search,
+			CONCAT: search,
 			Limit:             clamped,
 			Offset:            clampedOffset,
 		})
@@ -460,7 +460,7 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 		rows, err = s.repo.SearchAgentSessions(ctx, repository.SearchAgentSessionsParams{
 			TeamFilter:     teamID,
 			StatusFilter:   status,
-			FtsMatchWord:   search,
+			CONCAT: search,
 			Limit:          clamped,
 			Offset:         clampedOffset,
 		})
@@ -950,23 +950,23 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 	var listErr error
 	if filter.Search != "" {
 		rows, listErr = s.repo.SearchAuditLog(ctx, repository.SearchAuditLogParams{
-			EventType:      baseParams.EventType,
-			Column2:        baseParams.Column2,
-			SourceType:     baseParams.SourceType,
-			Column4:        baseParams.Column4,
-			SourceID:       baseParams.SourceID,
-			Column6:        baseParams.Column6,
-			TargetType:     baseParams.TargetType,
-			Column8:        baseParams.Column8,
-			TargetID:       baseParams.TargetID,
-			Column10:       baseParams.Column10,
-			Repo:           baseParams.Repo,
-			Column12:       baseParams.Column12,
-			CreatedAt:      baseParams.CreatedAt,
-			Column14:       baseParams.Column14,
-			FtsMatchWord:   filter.Search,
-			Limit:          baseParams.Limit,
-			Offset:         baseParams.Offset,
+			EventType:    baseParams.EventType,
+			Column2:      baseParams.Column2,
+			SourceType:   baseParams.SourceType,
+			Column4:      baseParams.Column4,
+			SourceID:     baseParams.SourceID,
+			Column6:      baseParams.Column6,
+			TargetType:   baseParams.TargetType,
+			Column8:      baseParams.Column8,
+			TargetID:     baseParams.TargetID,
+			Column10:     baseParams.Column10,
+			Repo:         baseParams.Repo,
+			Column12:     baseParams.Column12,
+			CreatedAt:    baseParams.CreatedAt,
+			Column14:     baseParams.Column14,
+			Search: filter.Search,
+			Limit:        baseParams.Limit,
+			Offset:       baseParams.Offset,
 		})
 	} else {
 		rows, listErr = s.repo.ListAuditLog(ctx, baseParams)
@@ -1017,7 +1017,7 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 			Column6:        filter.ArtifactType,
 			Repo:           filter.Repo,
 			Column8:        filter.Repo,
-			FtsMatchWord:   filter.Search,
+			CONCAT:       filter.Search,
 			Limit:          int32(limit),
 			Offset:         int32(max(filter.Offset, 0)),
 		})

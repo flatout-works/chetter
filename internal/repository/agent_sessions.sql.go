@@ -830,7 +830,7 @@ const searchAgentSessions = `-- name: SearchAgentSessions :many
 SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error FROM chetter_agent_sessions
 WHERE (? = '' OR COALESCE(team_id, '') = ?)
   AND (? = '' OR status = ?)
-  AND FTS_MATCH_WORD(id, ?)
+  AND (CONCAT(COALESCE(id, ''), '|', COALESCE(agent, ''), '|', COALESCE(model_id, ''), '|', COALESCE(git_url, '')) LIKE CONCAT('%', ?, '%'))
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?
 `
@@ -838,7 +838,7 @@ LIMIT ? OFFSET ?
 type SearchAgentSessionsParams struct {
 	TeamFilter   sql.NullString `json:"team_filter"`
 	StatusFilter string         `json:"status_filter"`
-	FtsMatchWord interface{}    `json:"fts_match_word"`
+	CONCAT       interface{}    `json:"CONCAT"`
 	Limit        int32          `json:"limit"`
 	Offset       int32          `json:"offset"`
 }
@@ -849,7 +849,7 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 		arg.TeamFilter,
 		arg.StatusFilter,
 		arg.StatusFilter,
-		arg.FtsMatchWord,
+		arg.CONCAT,
 		arg.Limit,
 		arg.Offset,
 	)

@@ -146,7 +146,7 @@ WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
-  AND FTS_MATCH_WORD(task_id, ?)
+  AND (CONCAT(COALESCE(task_id, ''), '|', COALESCE(repo, ''), '|', COALESCE(artifact_type, ''), '|', COALESCE(ref, '')) LIKE CONCAT('%', ?, '%'))
 ORDER BY discovered_at DESC
 LIMIT ? OFFSET ?
 `
@@ -160,7 +160,7 @@ type SearchTaskArtifactsParams struct {
 	Column6        interface{}    `json:"column_6"`
 	Repo           string         `json:"repo"`
 	Column8        interface{}    `json:"column_8"`
-	FtsMatchWord   interface{}    `json:"fts_match_word"`
+	CONCAT         interface{}    `json:"CONCAT"`
 	Limit          int32          `json:"limit"`
 	Offset         int32          `json:"offset"`
 }
@@ -191,7 +191,7 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 		arg.Column6,
 		arg.Repo,
 		arg.Column8,
-		arg.FtsMatchWord,
+		arg.CONCAT,
 		arg.Limit,
 		arg.Offset,
 	)

@@ -25,6 +25,6 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND FTS_MATCH_WORD(detail, ?)
+  AND (CONCAT(COALESCE(detail, ''), '|', COALESCE(source_id, ''), '|', COALESCE(target_id, ''), '|', COALESCE(event_type, ''), '|', COALESCE(repo, '')) LIKE CONCAT('%', sqlc.arg(search), '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;

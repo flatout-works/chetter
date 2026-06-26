@@ -217,7 +217,10 @@
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
-        <Input bind:value={search} placeholder="Search…" class="!w-44 !pl-10" onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }} />
+        <Input bind:value={search} placeholder="Search…" class="!w-36 !pl-10 !pr-8" onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }} />
+        <button class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick={() => { pageNum = 0; load(); }} title="Search">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </button>
       </div>
       <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-48">
         <option value="">All types</option>
@@ -251,7 +254,6 @@
         <option value={50}>50 / page</option>
         <option value={100}>100 / page</option>
       </Select>
-      <Button color="blue" size="sm" onclick={() => { pageNum = 0; load(); }}>Refresh</Button>
       <div class="flex items-center gap-3 ml-2 border-l border-gray-300 dark:border-gray-600 pl-3">
         <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
         <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Trigger</Toggle>

@@ -152,29 +152,29 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND FTS_MATCH_WORD(detail, ?)
+  AND (CONCAT(COALESCE(detail, ''), '|', COALESCE(source_id, ''), '|', COALESCE(target_id, ''), '|', COALESCE(event_type, ''), '|', COALESCE(repo, '')) LIKE CONCAT('%', ?, '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
 
 type SearchAuditLogParams struct {
-	EventType    string         `json:"event_type"`
-	Column2      interface{}    `json:"column_2"`
-	SourceType   sql.NullString `json:"source_type"`
-	Column4      interface{}    `json:"column_4"`
-	SourceID     sql.NullString `json:"source_id"`
-	Column6      interface{}    `json:"column_6"`
-	TargetType   sql.NullString `json:"target_type"`
-	Column8      interface{}    `json:"column_8"`
-	TargetID     sql.NullString `json:"target_id"`
-	Column10     interface{}    `json:"column_10"`
-	Repo         sql.NullString `json:"repo"`
-	Column12     interface{}    `json:"column_12"`
-	CreatedAt    time.Time      `json:"created_at"`
-	Column14     interface{}    `json:"column_14"`
-	FtsMatchWord interface{}    `json:"fts_match_word"`
-	Limit        int32          `json:"limit"`
-	Offset       int32          `json:"offset"`
+	EventType  string         `json:"event_type"`
+	Column2    interface{}    `json:"column_2"`
+	SourceType sql.NullString `json:"source_type"`
+	Column4    interface{}    `json:"column_4"`
+	SourceID   sql.NullString `json:"source_id"`
+	Column6    interface{}    `json:"column_6"`
+	TargetType sql.NullString `json:"target_type"`
+	Column8    interface{}    `json:"column_8"`
+	TargetID   sql.NullString `json:"target_id"`
+	Column10   interface{}    `json:"column_10"`
+	Repo       sql.NullString `json:"repo"`
+	Column12   interface{}    `json:"column_12"`
+	CreatedAt  time.Time      `json:"created_at"`
+	Column14   interface{}    `json:"column_14"`
+	Search     interface{}    `json:"search"`
+	Limit      int32          `json:"limit"`
+	Offset     int32          `json:"offset"`
 }
 
 func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) ([]ChetterAuditLog, error) {
@@ -193,7 +193,7 @@ func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) 
 		arg.Column12,
 		arg.CreatedAt,
 		arg.Column14,
-		arg.FtsMatchWord,
+		arg.Search,
 		arg.Limit,
 		arg.Offset,
 	)
