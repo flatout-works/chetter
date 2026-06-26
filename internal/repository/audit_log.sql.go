@@ -13,8 +13,8 @@ import (
 )
 
 const insertAuditLog = `-- name: InsertAuditLog :exec
-INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertAuditLogParams struct {
@@ -31,6 +31,7 @@ type InsertAuditLogParams struct {
 	GithubDeliveryID sql.NullString   `json:"github_delivery_id"`
 	ParentEventID    sql.NullString   `json:"parent_event_id"`
 	Detail           sql.NullString   `json:"detail"`
+	SearchText       sql.NullString   `json:"search_text"`
 	Payload          *json.RawMessage `json:"payload"`
 }
 
@@ -49,6 +50,7 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 		arg.GithubDeliveryID,
 		arg.ParentEventID,
 		arg.Detail,
+		arg.SearchText,
 		arg.Payload,
 	)
 	return err
@@ -87,7 +89,24 @@ type ListAuditLogParams struct {
 	Offset     int32          `json:"offset"`
 }
 
-func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ChetterAuditLog, error) {
+type ListAuditLogRow struct {
+	ID               string           `json:"id"`
+	EventType        string           `json:"event_type"`
+	CreatedAt        time.Time        `json:"created_at"`
+	SourceType       sql.NullString   `json:"source_type"`
+	SourceID         sql.NullString   `json:"source_id"`
+	TargetType       sql.NullString   `json:"target_type"`
+	TargetID         sql.NullString   `json:"target_id"`
+	Repo             sql.NullString   `json:"repo"`
+	GithubEvent      sql.NullString   `json:"github_event"`
+	GithubAction     sql.NullString   `json:"github_action"`
+	GithubDeliveryID sql.NullString   `json:"github_delivery_id"`
+	ParentEventID    sql.NullString   `json:"parent_event_id"`
+	Detail           sql.NullString   `json:"detail"`
+	Payload          *json.RawMessage `json:"payload"`
+}
+
+func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditLog,
 		arg.EventType,
 		arg.Column2,
@@ -110,9 +129,9 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]C
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterAuditLog{}
+	items := []ListAuditLogRow{}
 	for rows.Next() {
-		var i ChetterAuditLog
+		var i ListAuditLogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventType,
@@ -152,7 +171,7 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND (CONCAT(COALESCE(detail, ''), '|', COALESCE(source_id, ''), '|', COALESCE(target_id, ''), '|', COALESCE(event_type, ''), '|', COALESCE(repo, '')) LIKE CONCAT('%', ?, '%'))
+  AND (search_text LIKE CONCAT('%', ?, '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -177,7 +196,24 @@ type SearchAuditLogParams struct {
 	Offset     int32          `json:"offset"`
 }
 
-func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) ([]ChetterAuditLog, error) {
+type SearchAuditLogRow struct {
+	ID               string           `json:"id"`
+	EventType        string           `json:"event_type"`
+	CreatedAt        time.Time        `json:"created_at"`
+	SourceType       sql.NullString   `json:"source_type"`
+	SourceID         sql.NullString   `json:"source_id"`
+	TargetType       sql.NullString   `json:"target_type"`
+	TargetID         sql.NullString   `json:"target_id"`
+	Repo             sql.NullString   `json:"repo"`
+	GithubEvent      sql.NullString   `json:"github_event"`
+	GithubAction     sql.NullString   `json:"github_action"`
+	GithubDeliveryID sql.NullString   `json:"github_delivery_id"`
+	ParentEventID    sql.NullString   `json:"parent_event_id"`
+	Detail           sql.NullString   `json:"detail"`
+	Payload          *json.RawMessage `json:"payload"`
+}
+
+func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) ([]SearchAuditLogRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchAuditLog,
 		arg.EventType,
 		arg.Column2,
@@ -201,9 +237,9 @@ func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) 
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterAuditLog{}
+	items := []SearchAuditLogRow{}
 	for rows.Next() {
-		var i ChetterAuditLog
+		var i SearchAuditLogRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.EventType,

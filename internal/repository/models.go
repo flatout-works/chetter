@@ -43,6 +43,7 @@ type ChetterAgentSession struct {
 	ExpiresAt        sql.NullTime   `json:"expires_at"`
 	PauseReason      sql.NullString `json:"pause_reason"`
 	Error            sql.NullString `json:"error"`
+	SearchText       sql.NullString `json:"search_text"`
 }
 
 type ChetterAgentSessionCheckpoint struct {
@@ -78,6 +79,7 @@ type ChetterAuditLog struct {
 	ParentEventID    sql.NullString   `json:"parent_event_id"`
 	Detail           sql.NullString   `json:"detail"`
 	Payload          *json.RawMessage `json:"payload"`
+	SearchText       sql.NullString   `json:"search_text"`
 }
 
 type ChetterEventCallback struct {
@@ -181,6 +183,7 @@ type ChetterTask struct {
 	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
 	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
 	ErrorCategory          sql.NullString  `json:"error_category"`
+	SearchText             sql.NullString  `json:"search_text"`
 }
 
 type ChetterTaskArtifact struct {
@@ -197,6 +200,7 @@ type ChetterTaskArtifact struct {
 	DiscoverySource string         `json:"discovery_source"`
 	AgentSessionID  sql.NullString `json:"agent_session_id"`
 	SessionRunID    sql.NullString `json:"session_run_id"`
+	SearchText      sql.NullString `json:"search_text"`
 }
 
 type ChetterTaskEvent struct {

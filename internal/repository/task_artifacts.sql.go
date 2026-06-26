@@ -12,8 +12,8 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskArtifactParams struct {
@@ -30,6 +30,7 @@ type InsertTaskArtifactParams struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	DiscoveredAt    time.Time      `json:"discovered_at"`
 	DiscoverySource string         `json:"discovery_source"`
+	SearchText      sql.NullString `json:"search_text"`
 }
 
 func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifactParams) error {
@@ -47,6 +48,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 		arg.CreatedAt,
 		arg.DiscoveredAt,
 		arg.DiscoverySource,
+		arg.SearchText,
 	)
 	return err
 }
@@ -146,7 +148,7 @@ WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
-  AND (CONCAT(COALESCE(task_id, ''), '|', COALESCE(repo, ''), '|', COALESCE(artifact_type, ''), '|', COALESCE(ref, '')) LIKE CONCAT('%', ?, '%'))
+  AND (search_text LIKE CONCAT('%', ?, '%'))
 ORDER BY discovered_at DESC
 LIMIT ? OFFSET ?
 `
@@ -160,7 +162,7 @@ type SearchTaskArtifactsParams struct {
 	Column6        interface{}    `json:"column_6"`
 	Repo           string         `json:"repo"`
 	Column8        interface{}    `json:"column_8"`
-	CONCAT         interface{}    `json:"CONCAT"`
+	Search         interface{}    `json:"search"`
 	Limit          int32          `json:"limit"`
 	Offset         int32          `json:"offset"`
 }
@@ -191,7 +193,7 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 		arg.Column6,
 		arg.Repo,
 		arg.Column8,
-		arg.CONCAT,
+		arg.Search,
 		arg.Limit,
 		arg.Offset,
 	)

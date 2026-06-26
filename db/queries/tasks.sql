@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, checkpoint_after_success, required_runner_id, skills, env, timeout_sec, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, runner_id, trigger_name, trigger_type, checkpoint_after_success, required_runner_id, skills, env, timeout_sec, search_text, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks
@@ -19,7 +19,7 @@ SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(team_filter) = '' OR team_id = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-  AND (CONCAT(COALESCE(prompt, ''), '|', COALESCE(summary, ''), '|', COALESCE(agent, ''), '|', COALESCE(model_id, ''), '|', COALESCE(session_export, '')) LIKE CONCAT('%', ?, '%'))
+  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
@@ -154,3 +154,12 @@ WHERE team_id = sqlc.arg(team_id)
   AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
+
+-- name: UpdateTaskSearchText :exec
+UPDATE chetter_tasks
+SET search_text = CONCAT_WS(' ',
+    COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
+    COALESCE(agent, ''), COALESCE(model_id, ''), COALESCE(trigger_name, ''),
+    COALESCE(git_url, '')
+)
+WHERE id = sqlc.arg(id);

@@ -1,7 +1,7 @@
 -- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, search_text, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetAgentSessionByID :one
 SELECT * FROM chetter_agent_sessions
@@ -18,7 +18,7 @@ LIMIT ? OFFSET ?;
 SELECT * FROM chetter_agent_sessions
 WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (CONCAT(COALESCE(id, ''), '|', COALESCE(agent, ''), '|', COALESCE(model_id, ''), '|', COALESCE(git_url, '')) LIKE CONCAT('%', ?, '%'))
+  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?;
 

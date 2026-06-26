@@ -1,6 +1,6 @@
 -- name: InsertAuditLog :exec
-INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListAuditLog :many
 SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
@@ -25,6 +25,6 @@ WHERE (event_type = ? OR ? = '')
   AND (target_id = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (created_at >= ? OR ? IS NULL)
-  AND (CONCAT(COALESCE(detail, ''), '|', COALESCE(source_id, ''), '|', COALESCE(target_id, ''), '|', COALESCE(event_type, ''), '|', COALESCE(repo, '')) LIKE CONCAT('%', sqlc.arg(search), '%'))
+  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
