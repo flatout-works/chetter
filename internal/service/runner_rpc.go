@@ -755,6 +755,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		if rows == 0 {
 			return errTaskNotClaimed
 		}
+		if err := q.UpdateTaskSearchText(ctx, event.TaskId); err != nil {
+			slog.DebugContext(ctx, "update task search_text", "task_id", event.TaskId, "err", err)
+		}
 		if terminalRunStatus, terminalSessionStatus, ok := sessionTerminalStatuses(status); ok {
 			startedAt := parseOptionalTime(event.StartedAt)
 			endedAt := parseOptionalTime(event.EndedAt)

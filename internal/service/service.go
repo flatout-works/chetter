@@ -453,6 +453,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	}
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                     taskID,
 			TeamID:                 nullString(teamID),
@@ -472,11 +473,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Skills:                 skills,
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
+			SearchText:             nullString(taskSearchText),
 			CreatedAt:              now,
 			UpdatedAt:              now,
 		}); err != nil {
 			return fmt.Errorf("insert task: %w", err)
 		}
+		sessionSearchText := strings.Join(strings.Fields(sessionID+" "+in.Agent+" "+in.ModelID+" "+in.GitURL), " ")
 		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
 			ID:          sessionID,
 			TeamID:      nullString(teamID),
@@ -491,6 +494,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			ProviderID:  nullString(in.ProviderID),
 			ModelID:     nullString(in.ModelID),
 			VariantID:   nullString(in.VariantID),
+			SearchText:  nullString(sessionSearchText),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}); err != nil {
@@ -1404,6 +1408,7 @@ func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) er
 		return err
 	}
 	now := time.Now().UTC()
+	auditSearchText := strings.Join(strings.Fields(params.Detail+" "+params.SourceType+" "+params.SourceID+" "+params.TargetType+" "+params.TargetID+" "+params.Repo+" "+params.EventType), " ")
 	return s.repo.InsertAuditLog(ctx, repository.InsertAuditLogParams{
 		ID:               id,
 		EventType:        params.EventType,
@@ -1418,6 +1423,7 @@ func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) er
 		GithubDeliveryID: nullString(params.GitHubDeliveryID),
 		ParentEventID:    nullString(params.ParentEventID),
 		Detail:           nullString(params.Detail),
+		SearchText:       nullString(auditSearchText),
 		Payload:          (*json.RawMessage)(&params.Payload),
 	})
 }
@@ -1440,6 +1446,7 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 	if params.Number > 0 {
 		number = sql.NullInt32{Int32: int32(params.Number), Valid: true}
 	}
+	artifactSearchText := strings.Join(strings.Fields(params.TaskID+" "+params.Repo+" "+params.ArtifactType+" "+params.Ref), " ")
 	return s.repo.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
 		ID:              id,
 		TaskID:          params.TaskID,
@@ -1454,5 +1461,6 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 		CreatedAt:       now,
 		DiscoveredAt:    now,
 		DiscoverySource: params.DiscoverySource,
+		SearchText:      nullString(artifactSearchText),
 	})
 }
