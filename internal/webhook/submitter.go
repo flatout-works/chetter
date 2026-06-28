@@ -31,6 +31,7 @@ type SubmitTaskRequest struct {
 	ModelID     string
 	VariantID   string
 	Skills      []string
+	MCPProfiles []string
 	Env         map[string]string
 	TimeoutSec  int
 	TriggerName string
@@ -81,9 +82,20 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	}
 
 	env := map[string]string{
-		"PR_NUMBER":    fmt.Sprintf("%d", review.PRNumber),
-		"GITHUB_TOKEN": review.GitHubToken,
-		"GITHUB_REPO":  review.Repo,
+		"PR_NUMBER":         fmt.Sprintf("%d", review.PRNumber),
+		"GITHUB_TOKEN":      review.GitHubToken,
+		"GITHUB_REPO":       review.Repo,
+		"PR_BASE_REF":       review.BaseRef,
+		"PR_HEAD_REF":       review.HeadRef,
+		"PR_HEAD_CLONE_URL": review.HeadCloneURL,
+	}
+	if review.PRURL != "" {
+		env["PR_URL"] = review.PRURL
+	} else if review.Repo != "" && review.PRNumber > 0 {
+		env["PR_URL"] = fmt.Sprintf("https://github.com/%s/pull/%d", review.Repo, review.PRNumber)
+	}
+	if review.HeadSHA != "" {
+		env["PR_HEAD_SHA"] = review.HeadSHA
 	}
 	env["CHETTER_AGENT_NAME"] = review.Agent
 	env["CHETTER_MODEL_ID"] = review.ModelID
@@ -102,6 +114,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		ModelID:     review.ModelID,
 		VariantID:   review.VariantID,
 		Skills:      review.Skills,
+		MCPProfiles: review.MCPProfiles,
 		Env:         env,
 		TimeoutSec:  review.TimeoutSec,
 		TriggerName: review.TriggerName,
@@ -132,6 +145,11 @@ const reviewPromptTemplate = `You are performing a deep code review on a pull re
 
 Environment variables available to you:
 - PR_NUMBER — the PR to review
+- PR_URL — the browser URL for the PR
+- PR_HEAD_SHA — the immutable head SHA to verify before posting results
+- PR_BASE_REF — the base branch name
+- PR_HEAD_REF — the head branch name
+- PR_HEAD_CLONE_URL — the clone URL for the PR head repository
 - GITHUB_TOKEN — GitHub App installation token with PR read/write
 - GITHUB_REPO — repository (e.g., my-org/my-repo)
 - COMMENT_AUTHOR — set when the trigger was a comment (the user who requested review)

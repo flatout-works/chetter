@@ -124,6 +124,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		ProviderAPIKeyEnv:      t.ProviderApiKeyEnv,
 		VariantID:              t.VariantId,
 		Skills:                 t.Skills,
+		MCPProfiles:            protoMCPProfilesToTask(t.McpProfiles),
 		TimeoutSec:             timeoutSec,
 		MaxMemoryMB:            int(t.MaxMemoryMb),
 		MaxCPU:                 int(t.MaxCpu),
@@ -137,6 +138,27 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		SkillDefinitions:       t.SkillDefinitions,
 		ExtraFiles:             t.ExtraFiles,
 	}
+}
+
+func protoMCPProfilesToTask(profiles []*runnerv1.MCPProfile) []task.MCPProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	out := make([]task.MCPProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		if profile == nil {
+			continue
+		}
+		out = append(out, task.MCPProfile{
+			Name:          profile.Name,
+			Type:          profile.Type,
+			Transport:     profile.Transport,
+			URL:           profile.Url,
+			Headers:       profile.Headers,
+			ToolAllowlist: profile.ToolAllowlist,
+		})
+	}
+	return out
 }
 
 func (r *Runner) reportTaskResponse(resp task.TaskResponse) {
@@ -166,12 +188,12 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		WorkspacePath:     resp.WorkspacePath,
 		ErrorCategory:     resp.ErrorCategory,
 		TokenUsage: &runnerv1.TokenUsage{
-			InputTokens:     resp.TokenUsage.InputTokens,
-			OutputTokens:    resp.TokenUsage.OutputTokens,
-			CacheReadTokens: resp.TokenUsage.CacheReadTokens,
+			InputTokens:      resp.TokenUsage.InputTokens,
+			OutputTokens:     resp.TokenUsage.OutputTokens,
+			CacheReadTokens:  resp.TokenUsage.CacheReadTokens,
 			CacheWriteTokens: resp.TokenUsage.CacheWriteTokens,
-			ReasoningTokens: resp.TokenUsage.ReasoningTokens,
-			CostCents:       resp.TokenUsage.CostCents,
+			ReasoningTokens:  resp.TokenUsage.ReasoningTokens,
+			CostCents:        resp.TokenUsage.CostCents,
 		},
 	}
 	report := func(ctx context.Context) error {

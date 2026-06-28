@@ -572,11 +572,28 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 | `COMMENT_BODY` | `issue` | Comment body text (only for `comment` events) |
 | `COMMENT_USER` | `issue` | Comment author login (only for `comment` events) |
 | `PR_NUMBER` | `pr_review` | Pull request number |
+| `PR_URL` | `pr_review` | Pull request browser URL |
+| `PR_HEAD_SHA` | `pr_review` | Pull request head SHA captured when the review task was submitted |
+| `PR_BASE_REF` | `pr_review` | Base branch name |
+| `PR_HEAD_REF` | `pr_review` | Head branch name |
+| `PR_HEAD_CLONE_URL` | `pr_review` | Clone URL for the head repository, including fork PRs |
 | `COMMENT_AUTHOR` | `pr_review` | User who requested the review via `/chetter-review` |
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
 `gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+
+### Multi-Agent PR Review Workflow
+
+The example config repo includes a definitions-driven orchestration workflow:
+
+1. A `pr_review` trigger starts `review-orchestrator` with the `chetter-orchestration` MCP profile.
+2. The orchestrator verifies `PR_HEAD_SHA`, then submits `standard-pr-reviewer` and `adversarial-pr-reviewer` child tasks.
+3. Child reviewers produce structured task outputs and do not post to GitHub.
+4. The orchestrator exports both child task transcripts and starts `review-synthesizer`.
+5. The synthesizer verifies the PR head again and posts exactly one final review using `chetter_pr_review`.
+
+This is configured with normal definitions under `examples/config-repo/agents`, `examples/config-repo/skills`, `examples/config-repo/mcp-profiles`, and `examples/config-repo/triggers`. It is not hardcoded into the webhook handler. The included trigger is disabled by default and should be enabled only in trusted self-hosted deployments until scoped MCP tokens or proxy-side enforcement is available.
 
 ### Harness Interface Support Matrix
 
@@ -602,17 +619,41 @@ Use the `harness` field on tasks and triggers to select the agent runtime. The t
 | Session export | Reads OpenCode SQLite transcript | Not supported; returns empty export | Reads Pi messages into markdown |
 | Per-task Docker/gVisor isolation | Yes for Docker mode | No; batch subprocess runs in the runner process environment | RPC subprocess runs in the agent image container path for Docker RPC mode |
 
-### Planned Runtime Definition Injection
+### Runtime Definition Injection
 
 The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo configured by `DEFINITIONS_REPO`.
 
-Planned flow:
+Flow:
 
-1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
+1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, `task-templates/*.md`, and `mcp-profiles/*.yaml` from the config repo into the database.
 2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
-3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
+3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md`, `.opencode/skill/*/SKILL.md`, and harness-native MCP config files.
 4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
-5. Updating agents, skills, prompts, task templates, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+5. Updating agents, skills, prompts, task templates, MCP profiles, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+
+MCP profile example:
+
+```yaml
+name: chetter-orchestration
+transport: http
+url: http://chetter-mcp:8080/mcp
+auth:
+  type: bearer
+  token: ${env:CHETTER_MCP_AUTH_TOKEN}
+tool_allowlist:
+  - chetter_submit_task
+  - chetter_task_status
+  - chetter_task_export
+```
+
+Task or trigger attachment:
+
+```yaml
+mcp_profiles:
+  - chetter-orchestration
+```
+
+Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config. Treat the full Chetter admin MCP token as trusted self-hosted only until scoped MCP tokens or proxy enforcement exist.
 
 Trigger ownership should remain explicit:
 

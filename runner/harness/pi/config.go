@@ -5,9 +5,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, task.TaskRequest{}, isLocal)
+}
+
+func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	piDir := filepath.Join(wsDir, ".pi")
 	agentDir := filepath.Join(piDir, "agent")
 	if err := os.MkdirAll(agentDir, 0750); err != nil {
@@ -45,8 +52,8 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"url":       runnerMCPURL,
-			"lifecycle": "keep-alive",
+			"url":         runnerMCPURL,
+			"lifecycle":   "keep-alive",
 			"idleTimeout": 0,
 		}
 	}
@@ -61,6 +68,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			}
 		}
 		mcpServers["chetter"] = server
+	}
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddPiServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
+		}
 	}
 	if len(mcpServers) > 0 {
 		mcpConfig := map[string]any{

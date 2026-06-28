@@ -20,25 +20,26 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()
 	record := taskToolRecord(store.TaskRecord{
-		ID:                "task_1",
-		TeamID:            "team_123",
-		Status:            "done",
-		Prompt:            "prompt",
-		GitURL:            "https://example.com/repo.git",
-		GitRef:            "main",
-		AgentImage:        "image",
-		Agent:             "changelog-maintainer",
-		ProviderID:        "synthetic",
-		ModelID:           "model",
-		VariantID:         "variant",
-		TriggerName:       "nightly-docs",
-		TriggerType:       store.TriggerTypeCron,
-		Skills:            []string{"go"},
-		Env:               map[string]string{"SAFE": "value"},
-		TimeoutSec:        300,
-		Summary:           "summary",
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:          "task_1",
+		TeamID:      "team_123",
+		Status:      "done",
+		Prompt:      "prompt",
+		GitURL:      "https://example.com/repo.git",
+		GitRef:      "main",
+		AgentImage:  "image",
+		Agent:       "changelog-maintainer",
+		ProviderID:  "synthetic",
+		ModelID:     "model",
+		VariantID:   "variant",
+		TriggerName: "nightly-docs",
+		TriggerType: store.TriggerTypeCron,
+		Skills:      []string{"go"},
+		MCPProfiles: []string{"chetter-orchestration"},
+		Env:         map[string]string{"SAFE": "value"},
+		TimeoutSec:  300,
+		Summary:     "summary",
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	})
 
 	if record.ID != "task_1" || record.Status != "done" || record.TimeoutSec != 300 || record.TeamID != "team_123" {
@@ -46,6 +47,9 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.AgentImage != "image" || record.Agent != "changelog-maintainer" || len(record.Skills) != 1 || record.Env["SAFE"] != "value" {
 		t.Fatalf("expected core task fields to be preserved: %+v", record)
+	}
+	if len(record.MCPProfiles) != 1 || record.MCPProfiles[0] != "chetter-orchestration" {
+		t.Fatalf("expected mcp profiles to be preserved: %+v", record)
 	}
 	if record.ProviderID != "synthetic" || record.ModelID != "model" || record.VariantID != "variant" {
 		t.Fatalf("expected model fields to be preserved: %+v", record)
@@ -127,6 +131,7 @@ func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
 		VariantID:     "variant",
 		Harness:       "opencode",
 		Skills:        []string{"docs"},
+		MCPProfiles:   []string{"chetter-orchestration"},
 		TimeoutSec:    300,
 		Enabled:       true,
 		CreatedAt:     now,
@@ -142,6 +147,9 @@ func TestTriggerToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if len(record.Skills) != 1 || record.NextRunAt == nil || !record.NextRunAt.Equal(next) {
 		t.Fatalf("expected skills and trigger timestamps to be preserved: %+v", record)
+	}
+	if len(record.MCPProfiles) != 1 || record.MCPProfiles[0] != "chetter-orchestration" {
+		t.Fatalf("expected mcp profiles to be preserved: %+v", record)
 	}
 }
 

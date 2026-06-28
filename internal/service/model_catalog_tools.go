@@ -72,7 +72,7 @@ type SyncDefinitionSourceOutput struct {
 }
 
 type ListDefinitionsInput struct {
-	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template, mcp_profile"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Optional definition source ID filter"`
 }
 
@@ -81,7 +81,7 @@ type ListDefinitionsOutput struct {
 }
 
 type GetDefinitionInput struct {
-	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template, mcp_profile"`
 	Name           string `json:"name" jsonschema:"Definition name"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
 }
@@ -576,6 +576,11 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			slog.Warn("skipping trigger definition: marshal skills error", "path", def.Path, "err", err)
 			continue
 		}
+		mcpProfilesJSON, err := json.Marshal(nonEmptyStrings(td.MCPProfiles))
+		if err != nil {
+			slog.Warn("skipping trigger definition: marshal mcp_profiles error", "path", def.Path, "err", err)
+			continue
+		}
 		entries = append(entries, triggerSyncEntry{
 			def: td,
 			params: repository.UpsertTriggerParams{
@@ -595,6 +600,7 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 				VariantID:     nullString(td.VariantID),
 				Harness:       nullString(td.Harness),
 				Skills:        skillsJSON,
+				McpProfiles:   mcpProfilesJSON,
 				TimeoutSec:    int32(td.TimeoutSec),
 				Enabled:       td.Enabled,
 				SourceID:      nullString(defaultDefinitionSourceID),

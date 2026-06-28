@@ -80,6 +80,7 @@ type ReviewTrigger struct {
 	GitURL      string
 	GitRef      string
 	Skills      []string
+	MCPProfiles []string
 	Event       string   // which webhook action this trigger responds to (e.g. "opened", "labeled"), empty = all
 	MatchLabels []string // required issue labels; empty = all labels match
 	SessionMode string
@@ -109,7 +110,9 @@ type ReviewContext struct {
 	PRNumber      int
 	BaseRef       string
 	HeadRef       string
+	HeadSHA       string
 	HeadCloneURL  string
+	PRURL         string
 	CommentAuthor string // only set for comment triggers
 	GitHubToken   string // installation token for the review agent
 	Prompt        string // trigger-supplied prompt; empty falls back to the built-in template
@@ -119,6 +122,7 @@ type ReviewContext struct {
 	ModelID       string // reviewer model ID (from the trigger config)
 	VariantID     string // reviewer variant ID (from the trigger config)
 	Skills        []string
+	MCPProfiles   []string
 	TimeoutSec    int // reviewer task timeout (from the trigger config)
 	SessionMode   string
 	PauseReason   string
@@ -338,7 +342,9 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 		PRNumber:     ev.Number,
 		BaseRef:      ev.PullRequest.Base.Ref,
 		HeadRef:      ev.PullRequest.Head.Ref,
+		HeadSHA:      ev.PullRequest.Head.SHA,
 		HeadCloneURL: ev.PullRequest.Head.Repo.CloneURL,
+		PRURL:        ev.PullRequest.HTMLURL,
 	}, triggers, triggerAction)
 }
 
@@ -413,7 +419,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		}
 		prCtx, prCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer prCancel()
-		head, base, cloneURL, err := h.gh.GetPullRequest(prCtx, repo, ev.Issue.Number)
+		head, base, cloneURL, headSHA, prURL, err := h.gh.GetPullRequest(prCtx, repo, ev.Issue.Number)
 		if err != nil {
 			slog.Warn("webhook: fetch PR", "err", err)
 			return
@@ -430,7 +436,9 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			PRNumber:      ev.Issue.Number,
 			BaseRef:       base,
 			HeadRef:       head,
+			HeadSHA:       headSHA,
 			HeadCloneURL:  cloneURL,
+			PRURL:         prURL,
 			CommentAuthor: ev.Comment.User.Login,
 		}, nil, "comment")
 		return
@@ -511,6 +519,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			ModelID:     t.ModelID,
 			VariantID:   t.VariantID,
 			Skills:      t.Skills,
+			MCPProfiles: t.MCPProfiles,
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
 			TriggerType: t.TriggerType,
@@ -622,6 +631,9 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		}
 		if len(t.Skills) > 0 {
 			rc.Skills = t.Skills
+		}
+		if len(t.MCPProfiles) > 0 {
+			rc.MCPProfiles = t.MCPProfiles
 		}
 		rc.TeamID = t.TeamID
 		rc.TriggerName = t.Name
@@ -738,6 +750,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			ModelID:     t.ModelID,
 			VariantID:   t.VariantID,
 			Skills:      t.Skills,
+			MCPProfiles: t.MCPProfiles,
 			TimeoutSec:  t.TimeoutSec,
 			TriggerName: t.Name,
 			TriggerType: t.TriggerType,

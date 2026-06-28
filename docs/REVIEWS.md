@@ -149,6 +149,32 @@ Optional fields:
 
 Multiple PR review triggers for the same repo are allowed. Each trigger submits a separate review task when a matching PR event arrives. Useful for running different agents (e.g. "deep code review" + "security review") on the same PRs.
 
+## Multi-Agent Review Orchestration
+
+Chetter can also run a definitions-driven multi-agent review workflow. The example config repo includes:
+
+- `agents/review-orchestrator.md`
+- `agents/standard-pr-reviewer.md`
+- `agents/adversarial-pr-reviewer.md`
+- `agents/review-synthesizer.md`
+- `skills/pr-review-workflow/SKILL.md`
+- `mcp-profiles/chetter-orchestration.yaml`
+- `triggers/chetter-pr-review-orchestrator.yaml`
+
+The trigger starts one orchestrator task for a PR. The orchestrator uses the attached `chetter-orchestration` MCP profile to submit a standard review task and an adversarial review task, waits for both to finish, exports their transcripts, and starts a synthesizer task. The synthesizer verifies the PR head SHA and posts one final PR review with `chetter_pr_review`.
+
+The review task environment includes stable PR context:
+
+- `PR_URL`
+- `PR_HEAD_SHA`
+- `PR_BASE_REF`
+- `PR_HEAD_REF`
+- `PR_HEAD_CLONE_URL`
+
+Child review tasks should use `PR_HEAD_CLONE_URL` and `PR_HEAD_REF` so fork PRs are reviewed from the correct source branch. Review prompts should verify `PR_HEAD_SHA` before posting or synthesizing results.
+
+This workflow intentionally uses normal definitions plus configured MCP profiles. It does not add a Chetter-specific orchestration API. The trusted self-hosted MVP still relies on a powerful Chetter MCP token for orchestration; production multi-tenant deployments need scoped MCP tokens or proxy-side enforcement before treating the MCP profile allowlist as a security boundary.
+
 ## Webhook Configuration
 
 ### Environment Variables

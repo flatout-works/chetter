@@ -131,6 +131,7 @@ type Task struct {
 	ErrorCategory  string                 `protobuf:"bytes,21,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
 	AgentSessionId string                 `protobuf:"bytes,22,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	TokenUsage     *TokenUsage            `protobuf:"bytes,23,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"`
+	McpProfiles    []string               `protobuf:"bytes,24,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -322,6 +323,13 @@ func (x *Task) GetAgentSessionId() string {
 func (x *Task) GetTokenUsage() *TokenUsage {
 	if x != nil {
 		return x.TokenUsage
+	}
+	return nil
+}
+
+func (x *Task) GetMcpProfiles() []string {
+	if x != nil {
+		return x.McpProfiles
 	}
 	return nil
 }
@@ -687,6 +695,7 @@ type Trigger struct {
 	LastRunAt     *string                `protobuf:"bytes,21,opt,name=last_run_at,json=lastRunAt,proto3,oneof" json:"last_run_at,omitempty"`
 	NextRunAt     *string                `protobuf:"bytes,22,opt,name=next_run_at,json=nextRunAt,proto3,oneof" json:"next_run_at,omitempty"`
 	SourceId      *string                `protobuf:"bytes,23,opt,name=source_id,json=sourceId,proto3,oneof" json:"source_id,omitempty"`
+	McpProfiles   []string               `protobuf:"bytes,24,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -880,6 +889,13 @@ func (x *Trigger) GetSourceId() string {
 		return *x.SourceId
 	}
 	return ""
+}
+
+func (x *Trigger) GetMcpProfiles() []string {
+	if x != nil {
+		return x.McpProfiles
+	}
+	return nil
 }
 
 type TaskEvent struct {
@@ -2099,6 +2115,7 @@ type SubmitTaskRequest struct {
 	SessionMode   string                 `protobuf:"bytes,13,opt,name=session_mode,json=sessionMode,proto3" json:"session_mode,omitempty"`
 	PauseReason   string                 `protobuf:"bytes,14,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,15,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
+	McpProfiles   []string               `protobuf:"bytes,16,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2236,6 +2253,13 @@ func (x *SubmitTaskRequest) GetTtlHours() int32 {
 		return x.TtlHours
 	}
 	return 0
+}
+
+func (x *SubmitTaskRequest) GetMcpProfiles() []string {
+	if x != nil {
+		return x.McpProfiles
+	}
+	return nil
 }
 
 type SubmitTaskResponse struct {
@@ -3556,6 +3580,7 @@ type CreateTriggerRequest struct {
 	PauseReason   string                 `protobuf:"bytes,18,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,19,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
 	MatchLabels   []string               `protobuf:"bytes,20,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty"`
+	McpProfiles   []string               `protobuf:"bytes,21,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3730,6 +3755,13 @@ func (x *CreateTriggerRequest) GetMatchLabels() []string {
 	return nil
 }
 
+func (x *CreateTriggerRequest) GetMcpProfiles() []string {
+	if x != nil {
+		return x.McpProfiles
+	}
+	return nil
+}
+
 type CreateTriggerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Trigger       *Trigger               `protobuf:"bytes,1,opt,name=trigger,proto3" json:"trigger,omitempty"`
@@ -3797,6 +3829,7 @@ type UpdateTriggerRequest struct {
 	TtlHours      int32                  `protobuf:"varint,19,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
 	MatchLabels   []string               `protobuf:"bytes,20,rep,name=match_labels,json=matchLabels,proto3" json:"match_labels,omitempty"`
 	Event         string                 `protobuf:"bytes,21,opt,name=event,proto3" json:"event,omitempty"`
+	McpProfiles   []string               `protobuf:"bytes,22,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3976,6 +4009,13 @@ func (x *UpdateTriggerRequest) GetEvent() string {
 		return x.Event
 	}
 	return ""
+}
+
+func (x *UpdateTriggerRequest) GetMcpProfiles() []string {
+	if x != nil {
+		return x.McpProfiles
+	}
+	return nil
 }
 
 type UpdateTriggerResponse struct {
@@ -6591,7 +6631,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\x91\x06\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xb4\x06\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -6624,7 +6664,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eerror_category\x18\x15 \x01(\tR\rerrorCategory\x12(\n" +
 	"\x10agent_session_id\x18\x16 \x01(\tR\x0eagentSessionId\x123\n" +
 	"\vtoken_usage\x18\x17 \x01(\v2\x12.api.v1.TokenUsageR\n" +
-	"tokenUsage\x1a6\n" +
+	"tokenUsage\x12!\n" +
+	"\fmcp_profiles\x18\x18 \x03(\tR\vmcpProfiles\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
@@ -6682,7 +6723,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01\x12\x16\n" +
 	"\x06prompt\x18\f \x01(\tR\x06promptB\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\xce\x05\n" +
+	"\t_ended_at\"\xf1\x05\n" +
 	"\aTrigger\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x12\n" +
@@ -6713,7 +6754,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"updated_at\x18\x14 \x01(\tR\tupdatedAt\x12#\n" +
 	"\vlast_run_at\x18\x15 \x01(\tH\x00R\tlastRunAt\x88\x01\x01\x12#\n" +
 	"\vnext_run_at\x18\x16 \x01(\tH\x01R\tnextRunAt\x88\x01\x01\x12 \n" +
-	"\tsource_id\x18\x17 \x01(\tH\x02R\bsourceId\x88\x01\x01B\x0e\n" +
+	"\tsource_id\x18\x17 \x01(\tH\x02R\bsourceId\x88\x01\x01\x12!\n" +
+	"\fmcp_profiles\x18\x18 \x03(\tR\vmcpProfilesB\x0e\n" +
 	"\f_last_run_atB\x0e\n" +
 	"\f_next_run_atB\f\n" +
 	"\n" +
@@ -6852,7 +6894,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\x12#\n" +
 	"\rdiscovered_at\x18\f \x01(\tR\fdiscoveredAt\x12)\n" +
-	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\"\x9c\x04\n" +
+	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\"\xbf\x04\n" +
 	"\x11SubmitTaskRequest\x12\x1f\n" +
 	"\x06prompt\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06prompt\x12\x17\n" +
 	"\agit_url\x18\x02 \x01(\tR\x06gitUrl\x12\x17\n" +
@@ -6873,7 +6915,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\x12!\n" +
 	"\fsession_mode\x18\r \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x0e \x01(\tR\vpauseReason\x12\x1b\n" +
-	"\tttl_hours\x18\x0f \x01(\x05R\bttlHours\x1a6\n" +
+	"\tttl_hours\x18\x0f \x01(\x05R\bttlHours\x12!\n" +
+	"\fmcp_profiles\x18\x10 \x03(\tR\vmcpProfiles\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
@@ -6950,7 +6993,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\"_\n" +
 	"\x15ResumeSessionResponse\x12 \n" +
 	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\x12$\n" +
-	"\x03run\x18\x02 \x01(\v2\x12.api.v1.SessionRunR\x03run\"\xdb\x04\n" +
+	"\x03run\x18\x02 \x01(\v2\x12.api.v1.SessionRunR\x03run\"\xfe\x04\n" +
 	"\x14CreateTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12*\n" +
 	"\ftrigger_type\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vtriggerType\x12\x1b\n" +
@@ -6976,9 +7019,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\fsession_mode\x18\x11 \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x12 \x01(\tR\vpauseReason\x12\x1b\n" +
 	"\tttl_hours\x18\x13 \x01(\x05R\bttlHours\x12!\n" +
-	"\fmatch_labels\x18\x14 \x03(\tR\vmatchLabels\"B\n" +
+	"\fmatch_labels\x18\x14 \x03(\tR\vmatchLabels\x12!\n" +
+	"\fmcp_profiles\x18\x15 \x03(\tR\vmcpProfiles\"B\n" +
 	"\x15CreateTriggerResponse\x12)\n" +
-	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"\xfd\x04\n" +
+	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"\xa0\x05\n" +
 	"\x14UpdateTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12!\n" +
 	"\ftrigger_type\x18\x02 \x01(\tR\vtriggerType\x12\x1b\n" +
@@ -7005,7 +7049,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\fpause_reason\x18\x12 \x01(\tR\vpauseReason\x12\x1b\n" +
 	"\tttl_hours\x18\x13 \x01(\x05R\bttlHours\x12!\n" +
 	"\fmatch_labels\x18\x14 \x03(\tR\vmatchLabels\x12\x14\n" +
-	"\x05event\x18\x15 \x01(\tR\x05eventB\n" +
+	"\x05event\x18\x15 \x01(\tR\x05event\x12!\n" +
+	"\fmcp_profiles\x18\x16 \x03(\tR\vmcpProfilesB\n" +
 	"\n" +
 	"\b_enabled\"B\n" +
 	"\x15UpdateTriggerResponse\x12)\n" +

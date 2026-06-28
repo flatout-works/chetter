@@ -162,7 +162,9 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 		PRNumber:      42,
 		BaseRef:       "main",
 		HeadRef:       "feat/some-thing",
+		HeadSHA:       "abc123",
 		HeadCloneURL:  "https://github.com/someone/myapp.git",
+		PRURL:         "https://github.com/chetter/chetter/pull/42",
 		CommentAuthor: "",
 		GitHubToken:   "ghs_test_token",
 		Agent:         "pr-reviewer",
@@ -217,8 +219,39 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	if got := req.Env["GITHUB_REPO"]; got != "chetter/chetter" {
 		t.Errorf("Env[GITHUB_REPO] = %q, want my-org/my-repo", got)
 	}
+	if got := req.Env["PR_URL"]; got != "https://github.com/chetter/chetter/pull/42" {
+		t.Errorf("Env[PR_URL] = %q, want PR URL", got)
+	}
+	if got := req.Env["PR_HEAD_SHA"]; got != "abc123" {
+		t.Errorf("Env[PR_HEAD_SHA] = %q, want abc123", got)
+	}
+	if got := req.Env["PR_BASE_REF"]; got != "main" {
+		t.Errorf("Env[PR_BASE_REF] = %q, want main", got)
+	}
+	if got := req.Env["PR_HEAD_REF"]; got != "feat/some-thing" {
+		t.Errorf("Env[PR_HEAD_REF] = %q, want feat/some-thing", got)
+	}
+	if got := req.Env["PR_HEAD_CLONE_URL"]; got != "https://github.com/someone/myapp.git" {
+		t.Errorf("Env[PR_HEAD_CLONE_URL] = %q, want clone URL", got)
+	}
 	if _, ok := req.Env["COMMENT_AUTHOR"]; ok {
 		t.Error("COMMENT_AUTHOR should not be set when CommentAuthor is empty")
+	}
+}
+
+func TestBuildReviewTaskRequest_PRURLFallback(t *testing.T) {
+	req := buildReviewTaskRequest(ReviewContext{
+		Trigger:      "label",
+		Repo:         "flatout-works/chetter",
+		PRNumber:     123,
+		BaseRef:      "main",
+		HeadRef:      "feat/x",
+		HeadCloneURL: "https://github.com/fork/chetter.git",
+		GitHubToken:  "t",
+		Agent:        "review-orchestrator",
+	})
+	if got := req.Env["PR_URL"]; got != "https://github.com/flatout-works/chetter/pull/123" {
+		t.Fatalf("PR_URL fallback = %q", got)
 	}
 }
 

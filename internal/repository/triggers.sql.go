@@ -14,8 +14,8 @@ import (
 
 const createTrigger = `-- name: CreateTrigger :exec
 INSERT INTO chetter_triggers
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_profiles, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
 `
 
 type CreateTriggerParams struct {
@@ -35,6 +35,7 @@ type CreateTriggerParams struct {
 	VariantID     sql.NullString  `json:"variant_id"`
 	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
+	McpProfiles   json.RawMessage `json:"mcp_profiles"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	SourceID      sql.NullString  `json:"source_id"`
 	CreatedAt     time.Time       `json:"created_at"`
@@ -59,6 +60,7 @@ func (q *Queries) CreateTrigger(ctx context.Context, arg CreateTriggerParams) er
 		arg.VariantID,
 		arg.Harness,
 		arg.Skills,
+		arg.McpProfiles,
 		arg.TimeoutSec,
 		arg.SourceID,
 		arg.CreatedAt,
@@ -78,7 +80,7 @@ func (q *Queries) DeleteTrigger(ctx context.Context, name string) error {
 }
 
 const getTriggerByID = `-- name: GetTriggerByID :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE id = ?
 `
 
@@ -109,12 +111,13 @@ func (q *Queries) GetTriggerByID(ctx context.Context, id string) (ChetterTrigger
 		&i.NextRunAt,
 		&i.TeamID,
 		&i.SourceID,
+		&i.McpProfiles,
 	)
 	return i, err
 }
 
 const getTriggerByName = `-- name: GetTriggerByName :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE name = ?
 `
 
@@ -145,6 +148,7 @@ func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTri
 		&i.NextRunAt,
 		&i.TeamID,
 		&i.SourceID,
+		&i.McpProfiles,
 	)
 	return i, err
 }
@@ -178,7 +182,7 @@ func (q *Queries) InsertTriggerRun(ctx context.Context, arg InsertTriggerRunPara
 }
 
 const listEnabledIssueTriggersByRepo = `-- name: ListEnabledIssueTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'issue'
   AND trigger_config->>'$.repo' = ?
@@ -218,6 +222,7 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -233,7 +238,7 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 }
 
 const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = 'pr_review'
   AND trigger_config->>'$.repo' = ?
@@ -273,6 +278,7 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -288,7 +294,7 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 }
 
 const listEnabledTriggers = `-- name: ListEnabledTriggers :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
@@ -326,6 +332,7 @@ func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]ChetterTrigger, er
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -341,7 +348,7 @@ func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]ChetterTrigger, er
 }
 
 const listEnabledTriggersByTeam = `-- name: ListEnabledTriggersByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE team_id = ?
   AND enabled = TRUE
 ORDER BY created_at DESC
@@ -380,6 +387,7 @@ func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.Null
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -395,7 +403,7 @@ func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.Null
 }
 
 const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE enabled = TRUE
   AND trigger_type = ?
 ORDER BY created_at DESC
@@ -434,6 +442,7 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -561,7 +570,7 @@ func (q *Queries) ListTriggerRunsByTrigger(ctx context.Context, arg ListTriggerR
 }
 
 const listTriggers = `-- name: ListTriggers :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 ORDER BY created_at DESC
 `
 
@@ -598,6 +607,7 @@ func (q *Queries) ListTriggers(ctx context.Context) ([]ChetterTrigger, error) {
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -613,7 +623,7 @@ func (q *Queries) ListTriggers(ctx context.Context) ([]ChetterTrigger, error) {
 }
 
 const listTriggersByTeam = `-- name: ListTriggersByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id, mcp_profiles FROM chetter_triggers
 WHERE team_id = ?
 ORDER BY created_at DESC
 `
@@ -651,6 +661,7 @@ func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString)
 			&i.NextRunAt,
 			&i.TeamID,
 			&i.SourceID,
+			&i.McpProfiles,
 		); err != nil {
 			return nil, err
 		}
@@ -704,7 +715,7 @@ UPDATE chetter_triggers
 SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
-    harness = ?, skills = ?, timeout_sec = ?, enabled = ?,
+    harness = ?, skills = ?, mcp_profiles = ?, timeout_sec = ?, enabled = ?,
     updated_at = ?
 WHERE name = ?
 `
@@ -724,6 +735,7 @@ type UpdateTriggerParams struct {
 	VariantID     sql.NullString  `json:"variant_id"`
 	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
+	McpProfiles   json.RawMessage `json:"mcp_profiles"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	Enabled       bool            `json:"enabled"`
 	UpdatedAt     time.Time       `json:"updated_at"`
@@ -746,6 +758,7 @@ func (q *Queries) UpdateTrigger(ctx context.Context, arg UpdateTriggerParams) er
 		arg.VariantID,
 		arg.Harness,
 		arg.Skills,
+		arg.McpProfiles,
 		arg.TimeoutSec,
 		arg.Enabled,
 		arg.UpdatedAt,
@@ -756,8 +769,8 @@ func (q *Queries) UpdateTrigger(ctx context.Context, arg UpdateTriggerParams) er
 
 const upsertTrigger = `-- name: UpsertTrigger :exec
 INSERT INTO chetter_triggers
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_profiles, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     trigger_type = VALUES(trigger_type),
     trigger_config = VALUES(trigger_config),
@@ -772,6 +785,7 @@ ON DUPLICATE KEY UPDATE
     variant_id = VALUES(variant_id),
     harness = VALUES(harness),
     skills = VALUES(skills),
+    mcp_profiles = VALUES(mcp_profiles),
     timeout_sec = VALUES(timeout_sec),
     enabled = VALUES(enabled),
     source_id = VALUES(source_id),
@@ -795,6 +809,7 @@ type UpsertTriggerParams struct {
 	VariantID     sql.NullString  `json:"variant_id"`
 	Harness       sql.NullString  `json:"harness"`
 	Skills        json.RawMessage `json:"skills"`
+	McpProfiles   json.RawMessage `json:"mcp_profiles"`
 	TimeoutSec    int32           `json:"timeout_sec"`
 	Enabled       bool            `json:"enabled"`
 	SourceID      sql.NullString  `json:"source_id"`
@@ -820,6 +835,7 @@ func (q *Queries) UpsertTrigger(ctx context.Context, arg UpsertTriggerParams) er
 		arg.VariantID,
 		arg.Harness,
 		arg.Skills,
+		arg.McpProfiles,
 		arg.TimeoutSec,
 		arg.Enabled,
 		arg.SourceID,

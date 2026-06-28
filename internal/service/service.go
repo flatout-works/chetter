@@ -37,6 +37,7 @@ type SubmitTaskRequest struct {
 	VariantID   string
 	Harness     string
 	Skills      []string
+	MCPProfiles []string
 	Env         map[string]string
 	TimeoutSec  int
 	TriggerName string
@@ -423,6 +424,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	taskEnv := sanitizeTaskEnv(in.Env)
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
@@ -471,6 +476,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerType:            nullString(in.TriggerType),
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
@@ -586,6 +592,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	}
 
 	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
+	mcpProfiles := parseJSON[[]string](orig.McpProfiles, "task:"+taskID+" mcp_profiles")
 	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
 	if env == nil {
 		env = map[string]string{}
@@ -602,17 +609,18 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	)
 
 	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     recoveryPrompt,
-		GitURL:     orig.GitUrl.String,
-		GitRef:     orig.GitRef.String,
-		AgentImage: orig.AgentImage.String,
-		Agent:      orig.Agent.String,
-		ProviderID: orig.ProviderID.String,
-		ModelID:    orig.ModelID.String,
-		VariantID:  orig.VariantID.String,
-		Skills:     skills,
-		Env:        env,
-		TimeoutSec: int(orig.TimeoutSec),
+		Prompt:      recoveryPrompt,
+		GitURL:      orig.GitUrl.String,
+		GitRef:      orig.GitRef.String,
+		AgentImage:  orig.AgentImage.String,
+		Agent:       orig.Agent.String,
+		ProviderID:  orig.ProviderID.String,
+		ModelID:     orig.ModelID.String,
+		VariantID:   orig.VariantID.String,
+		Skills:      skills,
+		MCPProfiles: mcpProfiles,
+		Env:         env,
+		TimeoutSec:  int(orig.TimeoutSec),
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -817,6 +825,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpProfiles := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
@@ -826,33 +835,34 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		endedAt = &task.EndedAt.Time
 	}
 	return store.TaskRecord{
-		ID:                task.ID,
-		TeamID:            task.TeamID.String,
-		Status:            task.Status,
-		Prompt:            task.Prompt,
-		GitURL:            task.GitUrl.String,
-		GitRef:            task.GitRef.String,
-		AgentImage:        task.AgentImage.String,
-		Agent:             task.Agent.String,
-		ProviderID:        task.ProviderID.String,
-		ModelID:           task.ModelID.String,
-		VariantID:         task.VariantID.String,
-		OpenCodeSessionID: task.OpencodeSessionID.String,
-		RunnerImageDigest: task.RunnerImageDigest.String,
-		CommitAuthorName:  task.CommitAuthorName.String,
-		CommitAuthorEmail: task.CommitAuthorEmail.String,
-		TriggerName:       task.TriggerName.String,
-		TriggerType:       task.TriggerType.String,
-		Skills:            skills,
-		Env:               env,
-		TimeoutSec:        int(task.TimeoutSec),
-		Summary:           task.Summary.String,
-		Error:             task.Error.String,
-		ErrorCategory:     task.ErrorCategory.String,
-		CreatedAt:         task.CreatedAt,
-		UpdatedAt:         task.UpdatedAt,
-		StartedAt:         startedAt,
-		EndedAt:           endedAt,
+		ID:                    task.ID,
+		TeamID:                task.TeamID.String,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitUrl.String,
+		GitRef:                task.GitRef.String,
+		AgentImage:            task.AgentImage.String,
+		Agent:                 task.Agent.String,
+		ProviderID:            task.ProviderID.String,
+		ModelID:               task.ModelID.String,
+		VariantID:             task.VariantID.String,
+		OpenCodeSessionID:     task.OpencodeSessionID.String,
+		RunnerImageDigest:     task.RunnerImageDigest.String,
+		CommitAuthorName:      task.CommitAuthorName.String,
+		CommitAuthorEmail:     task.CommitAuthorEmail.String,
+		TriggerName:           task.TriggerName.String,
+		TriggerType:           task.TriggerType.String,
+		Skills:                skills,
+		MCPProfiles:           mcpProfiles,
+		Env:                   env,
+		TimeoutSec:            int(task.TimeoutSec),
+		Summary:               task.Summary.String,
+		Error:                 task.Error.String,
+		ErrorCategory:         task.ErrorCategory.String,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             startedAt,
+		EndedAt:               endedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -959,6 +969,10 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	if err != nil {
+		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	teamID := teamIDFromContext(ctx)
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
@@ -981,6 +995,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 		VariantID:     nullString(in.VariantID),
 		Harness:       nullString(in.Harness),
 		Skills:        skills,
+		McpProfiles:   mcpProfiles,
 		TimeoutSec:    int32(in.TimeoutSec),
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -1060,6 +1075,10 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	if err != nil {
+		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
@@ -1079,6 +1098,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		VariantID:     nullString(in.VariantID),
 		Harness:       nullString(in.Harness),
 		Skills:        skills,
+		McpProfiles:   mcpProfiles,
 		TimeoutSec:    int32(in.TimeoutSec),
 		Enabled:       enabled,
 		UpdatedAt:     now,
@@ -1145,6 +1165,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := parseJSON[[]string](sch.Skills, "trigger:"+sch.ID+" skills")
+	targetMCPProfiles := parseJSON[[]string](sch.McpProfiles, "trigger:"+sch.ID+" mcp_profiles")
 	task, err := s.submitTriggerTask(ctx,
 		sch.ID,
 		sch.Name,
@@ -1160,6 +1181,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		sch.VariantID.String,
 		sch.Harness.String,
 		targetSkills,
+		targetMCPProfiles,
 		int(sch.TimeoutSec),
 		runtime,
 		time.Now().UTC(),
@@ -1226,14 +1248,15 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 		return fmt.Errorf("get trigger %s: %w", triggerID, err)
 	}
 	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
+	mcpProfiles := parseJSON[[]string](trigger.McpProfiles, "trigger:"+trigger.ID+" mcp_profiles")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
 	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
-		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
+		trigger.Harness.String, skills, mcpProfiles, int(trigger.TimeoutSec), runtime, triggeredAt)
 	return err
 }
 
-func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
+func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills, mcpProfiles []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		TeamID:      teamID,
 		Prompt:      prompt,
@@ -1246,6 +1269,7 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 		VariantID:   variantID,
 		Harness:     harness,
 		Skills:      skills,
+		MCPProfiles: mcpProfiles,
 		TimeoutSec:  timeoutSec,
 		TriggerName: triggerName,
 		TriggerType: triggerType,
@@ -1283,6 +1307,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
 		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
+		mcpProfiles := parseJSON[[]string](t.McpProfiles, "trigger:"+t.ID+" mcp_profiles")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1298,6 +1323,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
+			MCPProfiles: mcpProfiles,
 			Event:       cfg.Event,
 			SessionMode: cfg.SessionMode,
 			PauseReason: cfg.PauseReason,
@@ -1316,6 +1342,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
 		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
+		mcpProfiles := parseJSON[[]string](t.McpProfiles, "trigger:"+t.ID+" mcp_profiles")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1331,6 +1358,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
+			MCPProfiles: mcpProfiles,
 			Event:       cfg.Event,
 			MatchLabels: cfg.MatchLabels,
 			SessionMode: cfg.SessionMode,

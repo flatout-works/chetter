@@ -399,16 +399,18 @@ func (c *Client) CreatePullRequestReview(ctx context.Context, repo string, prNum
 }
 
 // GetPullRequest fetches a pull request and returns the head ref, base ref,
-// and clone URL of the head repository.
-func (c *Client) GetPullRequest(ctx context.Context, repo string, prNumber int) (headRef, baseRef, cloneURL string, err error) {
+// clone URL, head SHA, and web URL.
+func (c *Client) GetPullRequest(ctx context.Context, repo string, prNumber int) (headRef, baseRef, cloneURL, headSHA, prURL string, err error) {
 	url := fmt.Sprintf("%s/repos/%s/pulls/%d", githubAPIBase, repo, prNumber)
 	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", "", err
 	}
 	var resp struct {
-		Head struct {
+		HTMLURL string `json:"html_url"`
+		Head    struct {
 			Ref  string `json:"ref"`
+			SHA  string `json:"sha"`
 			Repo struct {
 				CloneURL string `json:"clone_url"`
 			} `json:"repo"`
@@ -418,9 +420,9 @@ func (c *Client) GetPullRequest(ctx context.Context, repo string, prNumber int) 
 		} `json:"base"`
 	}
 	if err := c.do(req, &resp); err != nil {
-		return "", "", "", err
+		return "", "", "", "", "", err
 	}
-	return resp.Head.Ref, resp.Base.Ref, resp.Head.Repo.CloneURL, nil
+	return resp.Head.Ref, resp.Base.Ref, resp.Head.Repo.CloneURL, resp.Head.SHA, resp.HTMLURL, nil
 }
 
 // HasLabel reports whether the label is already on the PR.

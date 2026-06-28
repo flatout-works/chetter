@@ -1,0 +1,31 @@
+# Example trigger: multi-agent PR review orchestration for the Chetter repo.
+#
+# Set enabled: true in your own config repo after confirming that:
+# - the GitHub App is installed on the target repository
+# - CHETTER_MCP_AUTH_TOKEN is available to trusted runners
+# - the trusted self-hosted security limitation is acceptable
+# - the model/provider choices below exist in your model catalog
+
+name: chetter-pr-review-orchestrator
+enabled: false
+trigger_type: pr_review
+repo: flatout-works/chetter
+agent: review-orchestrator
+skills:
+  - pr-review-workflow
+mcp_profiles:
+  - chetter-orchestration
+provider_id: synthetic
+model_id: hf:zai-org/GLM-5.2
+harness: opencode
+timeout_sec: 7200
+prompt: |-
+  Coordinate a complete multi-agent review for this pull request.
+
+  Start a standard review task and an adversarial review task. Wait for both
+  to finish, export their outputs, then start a review-synthesizer task with
+  access to those task IDs. The synthesizer must post exactly one Chetter PR
+  review for the current PR head.
+
+  Do not review the code yourself. Do not post a final PR review yourself
+  unless the synthesizer cannot be started or cannot complete.

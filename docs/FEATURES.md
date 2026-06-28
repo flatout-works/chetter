@@ -159,14 +159,15 @@ Chetter can sync definitions from a Git repository configured by `DEFINITIONS_RE
 Implemented today:
 
 - Git-backed model catalog loading.
+- Git-backed agents, skills, triggers, task templates, and MCP profiles.
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
-- Read access via `chetter_get_model_catalog`.
+- Read access via `chetter_get_model_catalog`, `chetter_list_definitions`, and `chetter_get_definition`.
+- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup.
 
 Planned next:
 
-- Git-backed agents, skills, triggers, and task templates.
-- Definition read tools and proposal workflow.
+- Scoped MCP tokens or proxy enforcement for untrusted/multi-tenant MCP profile use.
 - Immutable definition hashes recorded on task/session runs.
 
 See [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) and [MODEL_CATALOG.md](MODEL_CATALOG.md).

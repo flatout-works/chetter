@@ -265,6 +265,7 @@ type PackageDB struct {
 	containerName string
 	ownsContainer bool
 	adminDSN      string
+	skipReason    string
 }
 
 // StartPackageDB starts a TiDB container once per package. Call from TestMain.
@@ -291,8 +292,9 @@ func StartPackageDB(m *testing.M) *PackageDB {
 	startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	if !startTiDBContainer(startCtx, containerName, image, port) {
-		fmt.Fprintf(os.Stderr, "testdb: TiDB container failed to start; skipping integration tests\n")
-		return nil
+		reason := "testdb: TiDB container failed to start; skipping integration tests"
+		fmt.Fprintf(os.Stderr, "%s\n", reason)
+		return &PackageDB{skipReason: reason}
 	}
 	dsn = fmt.Sprintf("root@tcp(127.0.0.1:%d)/?parseTime=true&multiStatements=true", port)
 	return &PackageDB{containerName: containerName, ownsContainer: true, adminDSN: dsn}
@@ -300,6 +302,9 @@ func StartPackageDB(m *testing.M) *PackageDB {
 
 // Close shuts down the shared TiDB container.
 func (p *PackageDB) Close() {
+	if p == nil {
+		return
+	}
 	if p.ownsContainer {
 		_ = exec.Command("docker", "stop", p.containerName).Run()
 	}
@@ -308,6 +313,14 @@ func (p *PackageDB) Close() {
 // AdminDB returns a connection to the TiDB server for creating test databases.
 func (p *PackageDB) AdminDB(t testing.TB) *sql.DB {
 	t.Helper()
+	if p == nil || p.adminDSN == "" {
+		reason := "testdb: TiDB is unavailable; skipping integration test"
+		if p != nil && p.skipReason != "" {
+			reason = p.skipReason
+		}
+		t.Skip(reason)
+		return nil
+	}
 	db, err := sql.Open("mysql", p.adminDSN)
 	if err != nil {
 		t.Fatalf("testdb: open admin db: %v", err)

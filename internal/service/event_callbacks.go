@@ -43,18 +43,19 @@ type EventCallbackRecord struct {
 }
 
 type callbackCreateTaskConfig struct {
-	Prompt     string            `json:"prompt"`
-	GitURL     string            `json:"git_url"`
-	GitRef     string            `json:"git_ref"`
-	AgentImage string            `json:"agent_image"`
-	Agent      string            `json:"agent"`
-	ProviderID string            `json:"provider_id"`
-	ModelID    string            `json:"model_id"`
-	VariantID  string            `json:"variant_id"`
-	Harness    string            `json:"harness"`
-	Skills     []string          `json:"skills"`
-	Env        map[string]string `json:"env"`
-	TimeoutSec int               `json:"timeout_sec"`
+	Prompt      string            `json:"prompt"`
+	GitURL      string            `json:"git_url"`
+	GitRef      string            `json:"git_ref"`
+	AgentImage  string            `json:"agent_image"`
+	Agent       string            `json:"agent"`
+	ProviderID  string            `json:"provider_id"`
+	ModelID     string            `json:"model_id"`
+	VariantID   string            `json:"variant_id"`
+	Harness     string            `json:"harness"`
+	Skills      []string          `json:"skills"`
+	MCPProfiles []string          `json:"mcp_profiles"`
+	Env         map[string]string `json:"env"`
+	TimeoutSec  int               `json:"timeout_sec"`
 }
 
 type callbackWebhookConfig struct {
@@ -263,6 +264,7 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 		VariantID:   cfg.VariantID,
 		Harness:     cfg.Harness,
 		Skills:      cfg.Skills,
+		MCPProfiles: cfg.MCPProfiles,
 		Env:         env,
 		TimeoutSec:  cfg.TimeoutSec,
 		TriggerName: callback.Name,

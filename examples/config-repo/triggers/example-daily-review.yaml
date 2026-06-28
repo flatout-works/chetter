@@ -5,6 +5,7 @@
 #   git_ref  - branch to work from (usually main)
 #   agent    - agent to use (defined in agents/*.md)
 #   skills   - skills to load (defined in skills/*/)
+#   mcp_profiles - optional MCP profiles to mount (defined in mcp-profiles/*)
 #   prompt   - adjust the task description
 
 name: example-daily-review
@@ -15,6 +16,8 @@ git_ref: main
 agent: example
 skills:
   - example
+# mcp_profiles:
+#   - chetter-orchestration
 timeout_sec: 1800
 prompt: |-
   Review recent changes and open issues in the repository.

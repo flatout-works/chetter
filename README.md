@@ -37,6 +37,31 @@ See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and oper
 - **Claude Code** — `claude mcp add --transport http chetter https://chetter.example.com/mcp --header "Authorization: Bearer $TOKEN"`
 - **Any MCP client** — standard remote MCP server format; see [docs/MANUAL.md](docs/MANUAL.md)
 
+## Configurable MCP Profiles
+
+Git-backed definitions can include reusable MCP profiles under `mcp-profiles/*.yaml`. Attach them to tasks or triggers with `mcp_profiles`; the runner renders the selected profiles into the harness-native MCP config before the agent starts.
+
+```yaml
+name: chetter-orchestration
+transport: http
+url: http://chetter-mcp:8080/mcp
+auth:
+  type: bearer
+  token: ${env:CHETTER_MCP_AUTH_TOKEN}
+tool_allowlist:
+  - chetter_submit_task
+  - chetter_task_status
+  - chetter_task_export
+```
+
+```yaml
+agent: review-orchestrator
+mcp_profiles:
+  - chetter-orchestration
+```
+
+Do not commit literal secrets in profile definitions. `${env:...}` values are resolved by the runner during config generation. Using the full Chetter admin MCP token is intended for trusted self-hosted deployments until scoped MCP tokens or proxy enforcement are added.
+
 ## Repository Layout
 
 | Path | Purpose |

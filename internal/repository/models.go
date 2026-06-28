@@ -184,6 +184,7 @@ type ChetterTask struct {
 	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
 	ErrorCategory          sql.NullString  `json:"error_category"`
 	SearchText             sql.NullString  `json:"search_text"`
+	McpProfiles            json.RawMessage `json:"mcp_profiles"`
 }
 
 type ChetterTaskArtifact struct {
@@ -237,6 +238,7 @@ type ChetterTrigger struct {
 	NextRunAt     sql.NullTime    `json:"next_run_at"`
 	TeamID        sql.NullString  `json:"team_id"`
 	SourceID      sql.NullString  `json:"source_id"`
+	McpProfiles   json.RawMessage `json:"mcp_profiles"`
 }
 
 type ChetterTriggerRun struct {
