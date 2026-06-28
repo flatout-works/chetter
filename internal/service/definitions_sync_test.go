@@ -194,7 +194,7 @@ func TestSyncDefinitionsRejectsDuplicateTriggerNames(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	repoDir := createDefinitionsRepo(t)
-	writeRepoFile(t, repoDir, "triggers/also-nightly.yaml", "name: nightly\ncron_expr: '@daily'\nprompt: duplicate trigger\n")
+	writeRepoFile(t, repoDir, "triggers/also-nightly.yaml", "name: Nightly\ncron_expr: '@daily'\nprompt: duplicate trigger\n")
 	runGit(t, repoDir, "add", ".")
 	runGit(t, repoDir, "commit", "-m", "add duplicate trigger name")
 	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
@@ -203,7 +203,7 @@ func TestSyncDefinitionsRejectsDuplicateTriggerNames(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected sync to reject duplicate trigger name")
 	}
-	if !strings.Contains(err.Error(), `duplicate trigger name "nightly"`) {
+	if !strings.Contains(err.Error(), `duplicate trigger name "Nightly"`) {
 		t.Fatalf("sync error = %q, want duplicate trigger name", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -99,6 +100,26 @@ func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
 	server := servers["docs-search"].(map[string]any)
 	if server["url"] != "https://mcp.example.test/mcp" || server["lifecycle"] != "keep-alive" {
 		t.Fatalf("unexpected MCP server config: %+v", server)
+	}
+}
+
+func TestGenerateConfigForTaskRejectsAllowlistedMCPProfiles(t *testing.T) {
+	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
+
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name:          "restricted",
+			URL:           "https://mcp.example.test/mcp",
+			ToolAllowlist: []string{"allowed_tool"},
+		}},
+	}
+	err := GenerateConfigForTask(wsDir, "", "", "", req, false)
+	if err == nil {
+		t.Fatal("expected allowlisted mcp profile to fail")
+	}
+	if !strings.Contains(err.Error(), "cannot enforce per-tool MCP restrictions") {
+		t.Fatalf("error = %q, want enforcement message", err)
 	}
 }
 

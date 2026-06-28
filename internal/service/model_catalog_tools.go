@@ -737,11 +737,12 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			problems = append(problems, err.Error())
 			continue
 		}
-		if previousPath, ok := seenNames[td.Name]; ok {
+		triggerNameKey := strings.ToLower(td.Name)
+		if previousPath, ok := seenNames[triggerNameKey]; ok {
 			problems = append(problems, fmt.Sprintf("%s: duplicate trigger name %q (already defined in %s)", def.Path, td.Name, previousPath))
 			continue
 		}
-		seenNames[td.Name] = def.Path
+		seenNames[triggerNameKey] = def.Path
 		id, err := randomID("trig")
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: generate id: %v", def.Path, err))

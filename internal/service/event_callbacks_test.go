@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,6 +161,92 @@ func TestEventCallbackRecord(t *testing.T) {
 	}
 	if !rec.Enabled {
 		t.Error("expected enabled = true")
+	}
+}
+
+func TestCreateTaskCallbackRejectsPrivilegedMCPProfileFromUntrustedSourceTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "source",
+		AgentImage: "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask source: %v", err)
+	}
+
+	err = svc.runCreateTaskCallback(ctx, TaskEventCallbackContext{
+		ID:        "evt_1",
+		TaskID:    source.ID,
+		EventType: "task.completed",
+	}, repository.ChetterEventCallback{
+		Name:         "follow-up",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up","mcp_profiles":["chetter-orchestration"]}`),
+	})
+	if err == nil {
+		t.Fatal("expected privileged callback profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"chetter-orchestration" requires admin access`) {
+		t.Fatalf("callback error = %q, want admin access error", err)
+	}
+
+	tasks, err := repository.New(tdb.DB).ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
+		TriggerNameFilter: sql.NullString{String: "follow-up", Valid: true},
+		Limit:             10,
+	})
+	if err != nil {
+		t.Fatalf("ListTasksByStatus: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("callback should not create child task, got %#v", tasks)
+	}
+}
+
+func TestCreateTaskCallbackAllowsPrivilegedMCPProfileFromTrustedSourceTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+	source, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
+		Prompt:      "source",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask trusted source: %v", err)
+	}
+
+	if err := svc.runCreateTaskCallback(ctx, TaskEventCallbackContext{
+		ID:        "evt_1",
+		TaskID:    source.ID,
+		EventType: "task.completed",
+	}, repository.ChetterEventCallback{
+		Name:         "follow-up",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up","mcp_profiles":["chetter-orchestration"]}`),
+	}); err != nil {
+		t.Fatalf("runCreateTaskCallback: %v", err)
+	}
+
+	tasks, err := repository.New(tdb.DB).ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
+		TriggerNameFilter: sql.NullString{String: "follow-up", Valid: true},
+		Limit:             10,
+	})
+	if err != nil {
+		t.Fatalf("ListTasksByStatus: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("created callback tasks = %d, want 1: %#v", len(tasks), tasks)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(tasks[0].Env, &env); err != nil {
+		t.Fatalf("unmarshal child env: %v", err)
+	}
+	if env[mcpProfilePrivilegedEnv] != "true" {
+		t.Fatalf("child privileged marker = %q, want true; env=%#v", env[mcpProfilePrivilegedEnv], env)
 	}
 }
 

@@ -252,6 +252,10 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	env["CHETTER_EVENT_TYPE"] = event.EventType
 	env["CHETTER_EVENT_TASK_ID"] = event.TaskID
 	env["CHETTER_EVENT_CALLBACK"] = callback.Name
+	allowPrivilegedMCPProfiles, err := s.eventCallbackAllowsPrivilegedMCPProfiles(ctx, event)
+	if err != nil {
+		return err
+	}
 	_, err = s.SubmitTask(ctx, SubmitTaskRequest{
 		TeamID:      event.TeamID,
 		Prompt:      prompt,
@@ -270,9 +274,21 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 		TriggerName: callback.Name,
 		TriggerType: "event_callback",
 
-		AllowPrivilegedMCPProfiles: event.TeamID == "",
+		AllowPrivilegedMCPProfiles: allowPrivilegedMCPProfiles,
 	})
 	return err
+}
+
+func (s *Service) eventCallbackAllowsPrivilegedMCPProfiles(ctx context.Context, event TaskEventCallbackContext) (bool, error) {
+	if event.TeamID != "" || strings.TrimSpace(event.TaskID) == "" {
+		return false, nil
+	}
+	task, err := s.repo.GetTaskByID(ctx, event.TaskID)
+	if err != nil {
+		return false, fmt.Errorf("get source task for event callback: %w", err)
+	}
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+	return env[mcpProfilePrivilegedEnv] == "true", nil
 }
 
 func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.ChetterEventCallback) error {

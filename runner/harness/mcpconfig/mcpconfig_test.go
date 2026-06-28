@@ -53,3 +53,31 @@ func TestAddHTTPServersRejectsReservedNamesCaseInsensitive(t *testing.T) {
 		})
 	}
 }
+
+func TestAddHTTPServersRejectsToolAllowlist(t *testing.T) {
+	err := AddHTTPServers(map[string]any{}, []task.MCPProfile{{
+		Name:          "restricted",
+		URL:           "https://mcp.example.test/mcp",
+		ToolAllowlist: []string{"allowed_tool"},
+	}})
+	if err == nil {
+		t.Fatal("expected tool_allowlist enforcement error")
+	}
+	if !strings.Contains(err.Error(), "cannot enforce per-tool MCP restrictions") {
+		t.Fatalf("error = %q, want enforcement message", err)
+	}
+}
+
+func TestAddPiServersRejectsToolAllowlist(t *testing.T) {
+	err := AddPiServers(map[string]any{}, []task.MCPProfile{{
+		Name:          "restricted",
+		URL:           "https://mcp.example.test/mcp",
+		ToolAllowlist: []string{"allowed_tool"},
+	}})
+	if err == nil {
+		t.Fatal("expected tool_allowlist enforcement error")
+	}
+	if !strings.Contains(err.Error(), "cannot enforce per-tool MCP restrictions") {
+		t.Fatalf("error = %q, want enforcement message", err)
+	}
+}

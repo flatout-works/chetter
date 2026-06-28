@@ -84,6 +84,36 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	}
 }
 
+func TestCloneURLForRequestUsesTaskScopedGitHubToken(t *testing.T) {
+	got := cloneURLForRequest(task.TaskRequest{
+		GitURL: "https://github.com/flatout-works/chetter.git",
+		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+	}, "")
+	if !strings.Contains(got, "x-access-token:ghs_claim_token@github.com") {
+		t.Fatalf("clone URL = %q, want scoped GitHub token", got)
+	}
+}
+
+func TestCloneURLForRequestDoesNotLeakTaskTokenToNonGitHubHost(t *testing.T) {
+	got := cloneURLForRequest(task.TaskRequest{
+		GitURL: "https://git.example.test/flatout-works/chetter.git",
+		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+	}, "")
+	if got != "https://git.example.test/flatout-works/chetter.git" {
+		t.Fatalf("clone URL = %q, want original URL", got)
+	}
+}
+
+func TestCloneURLForRequestKeepsRunnerPATPrecedence(t *testing.T) {
+	got := cloneURLForRequest(task.TaskRequest{
+		GitURL: "https://github.com/flatout-works/chetter.git",
+		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+	}, "ghp_runner_pat")
+	if !strings.Contains(got, "ghp_runner_pat@github.com") || strings.Contains(got, "ghs_claim_token") {
+		t.Fatalf("clone URL = %q, want runner PAT precedence", got)
+	}
+}
+
 func TestTruncateSummary(t *testing.T) {
 	if s := truncateSummary("short"); s != "short" {
 		t.Errorf("short text should not be truncated: %q", s)

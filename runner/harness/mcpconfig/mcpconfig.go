@@ -45,6 +45,9 @@ func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) e
 }
 
 func AddHTTPServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
+	if err := rejectToolAllowlists(profiles, "HTTP MCP config"); err != nil {
+		return err
+	}
 	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
 		return map[string]any{
 			"type":    httpType(p),
@@ -55,6 +58,9 @@ func AddHTTPServers(mcpServers map[string]any, profiles []task.MCPProfile) error
 }
 
 func AddPiServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
+	if err := rejectToolAllowlists(profiles, "Pi MCP config"); err != nil {
+		return err
+	}
 	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
 		return map[string]any{
 			"url":       p.URL,
@@ -77,6 +83,19 @@ func AddOpenCodePermissions(perms map[string]any, profiles []task.MCPProfile) {
 			perms["mcp__"+name+"__"+tool] = "allow"
 		}
 	}
+}
+
+func rejectToolAllowlists(profiles []task.MCPProfile, target string) error {
+	for _, profile := range profiles {
+		if len(nonEmptyStrings(profile.ToolAllowlist)) > 0 {
+			name := strings.TrimSpace(profile.Name)
+			if name == "" {
+				name = "<unnamed>"
+			}
+			return fmt.Errorf("mcp profile %q declares tool_allowlist, but %s cannot enforce per-tool MCP restrictions", name, target)
+		}
+	}
+	return nil
 }
 
 func ResolveHeaders(profile task.MCPProfile) (map[string]string, error) {
@@ -115,6 +134,17 @@ func normalize(profile task.MCPProfile) (task.MCPProfile, error) {
 		return profile, fmt.Errorf("mcp profile %q url is required", profile.Name)
 	}
 	return profile, nil
+}
+
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func resolveEnvRefs(profileName, headerName, value string) (string, error) {

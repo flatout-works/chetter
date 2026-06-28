@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -36,5 +37,23 @@ func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
 	server := servers["docs-search"].(map[string]any)
 	if server["type"] != "http" || server["url"] != "https://mcp.example.test/mcp" || server["enabled"] != true {
 		t.Fatalf("unexpected MCP server config: %+v", server)
+	}
+}
+
+func TestGenerateConfigForTaskRejectsAllowlistedMCPProfiles(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name:          "restricted",
+			URL:           "https://mcp.example.test/mcp",
+			ToolAllowlist: []string{"allowed_tool"},
+		}},
+	}
+	err := GenerateConfigForTask(wsDir, "", "", "", req, false)
+	if err == nil {
+		t.Fatal("expected allowlisted mcp profile to fail")
+	}
+	if !strings.Contains(err.Error(), "cannot enforce per-tool MCP restrictions") {
+		t.Fatalf("error = %q, want enforcement message", err)
 	}
 }

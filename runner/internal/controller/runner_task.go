@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,7 +93,6 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 	}()
 
-	gitURL := req.GitURL
 	if req.GitURL != "" {
 		slog.Info("cloning", "taskID", req.TaskID, "url", req.GitURL)
 		if err := os.RemoveAll(wsDir); err != nil {
@@ -102,9 +102,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", err.Error(), nil)
 			return
 		}
-		if r.cfg.Git.PAT != "" && strings.HasPrefix(req.GitURL, "https://") {
-			gitURL = injectPATIntoURL(req.GitURL, r.cfg.Git.PAT)
-		}
+		gitURL := cloneURLForRequest(req, r.cfg.Git.PAT)
 		cloneCmd := exec.CommandContext(ctx, "git", "clone")
 		if req.GitRef != "" {
 			cloneCmd.Args = append(cloneCmd.Args, "-b", req.GitRef)
@@ -309,6 +307,35 @@ func injectPATIntoURL(raw, pat string) string {
 		return raw
 	}
 	return "https://" + pat + "@" + raw[len("https://"):]
+}
+
+func cloneURLForRequest(req task.TaskRequest, runnerPAT string) string {
+	if req.GitURL == "" {
+		return ""
+	}
+	if runnerPAT != "" && strings.HasPrefix(req.GitURL, "https://") {
+		return injectPATIntoURL(req.GitURL, runnerPAT)
+	}
+	if token := trustedInjectedGitHubToken(req); token != "" {
+		return injectGitHubTokenIntoCloneURL(req.GitURL, token)
+	}
+	return req.GitURL
+}
+
+func injectGitHubTokenIntoCloneURL(raw, token string) string {
+	if token == "" {
+		return raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" {
+		return raw
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "github.com" && host != "www.github.com" {
+		return raw
+	}
+	parsed.User = url.UserPassword("x-access-token", token)
+	return parsed.String()
 }
 
 // runcNetwork returns the Docker network name for the runner container,
