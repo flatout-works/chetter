@@ -41,6 +41,7 @@ type PullRequestEvent struct {
 	PullRequest PullRequest `json:"pull_request"`
 	Label       *Label      `json:"label,omitempty"`
 	Repository  Repository  `json:"repository"`
+	Sender      Sender      `json:"sender"`
 }
 
 // PullRequestReviewEvent is the top-level payload for pull_request_review.
@@ -99,6 +100,11 @@ type Label struct {
 	Name string `json:"name"`
 }
 
+// Sender is the GitHub webhook actor.
+type Sender struct {
+	Login string `json:"login"`
+}
+
 // Repository is the relevant subset of the repository object.
 type Repository struct {
 	FullName string `json:"full_name"`
@@ -149,6 +155,7 @@ type IssueEvent struct {
 	Issue      IssueData  `json:"issue"`
 	Label      *Label     `json:"label,omitempty"`
 	Repository Repository `json:"repository"`
+	Sender     Sender     `json:"sender"`
 }
 
 // IssueData is the relevant subset of the issue object.

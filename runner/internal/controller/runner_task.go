@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	containerWorkspaceDir = "/workspace"
+	containerWorkspaceDir      = "/workspace"
+	injectedGitHubTokenTaskEnv = "__chetter_github_token"
 )
 
 func (r *Runner) runTask(req task.TaskRequest) {
@@ -204,21 +205,49 @@ func hostWorkspaceDir(containerPath string) string {
 	return containerPath
 }
 
-func appendRunnerOwnedEnv(env []string) []string {
+func appendRunnerOwnedEnv(env []string, req task.TaskRequest) []string {
 	for _, key := range runnerOwnedEnvKeys() {
-		if value := os.Getenv(key); value != "" {
+		if value := runnerOwnedEnvValue(key, req); value != "" {
 			env = append(env, key+"="+value)
 		}
 	}
 	return env
 }
 
-func addRunnerOwnedEnv(env map[string]string) {
+func addRunnerOwnedEnv(env map[string]string, req task.TaskRequest) {
 	for _, key := range runnerOwnedEnvKeys() {
-		if value := os.Getenv(key); value != "" {
+		if value := runnerOwnedEnvValue(key, req); value != "" {
 			env[key] = value
 		}
 	}
+}
+
+func appendRunnerOwnedDockerArgs(args []string, req task.TaskRequest) []string {
+	for _, key := range runnerOwnedEnvKeys() {
+		if val := runnerOwnedEnvValue(key, req); val != "" {
+			args = append(args, "-e", key+"="+val)
+		}
+	}
+	return args
+}
+
+func runnerOwnedEnvValue(key string, req task.TaskRequest) string {
+	if key == "GITHUB_TOKEN" {
+		return trustedInjectedGitHubToken(req)
+	}
+	return os.Getenv(key)
+}
+
+func trustedInjectedGitHubToken(req task.TaskRequest) string {
+	val := strings.TrimSpace(req.Env[injectedGitHubTokenTaskEnv])
+	if val == "" || val == "[redacted]" {
+		return ""
+	}
+	return val
+}
+
+func shouldForwardTaskEnv(key string) bool {
+	return key != injectedGitHubTokenTaskEnv && !isRunnerOwnedEnv(key)
 }
 
 func runnerOwnedEnvKeys() []string {
@@ -384,12 +413,12 @@ func gvisorHostAliases() []string {
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
+	env = appendRunnerOwnedEnv(env, req)
 	env = append(env,
 		"GIT_AUTHOR_NAME=Chetter Runner",
 		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
@@ -582,8 +611,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	}
 
@@ -592,16 +621,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
+	dockerArgs = appendRunnerOwnedDockerArgs(dockerArgs, req)
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, serveArgs...)
@@ -801,24 +826,20 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	}
 	for k, v := range h.Env("/workspace", secret, req) {
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
+	dockerArgs = appendRunnerOwnedDockerArgs(dockerArgs, req)
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, serveArgs...)
@@ -1059,8 +1080,8 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	} else {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
@@ -1070,16 +1091,12 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
+	dockerArgs = appendRunnerOwnedDockerArgs(dockerArgs, req)
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, command[1:]...)
@@ -1228,12 +1245,12 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
+	env = appendRunnerOwnedEnv(env, req)
 	env = append(env,
 		"GIT_AUTHOR_NAME=Chetter Runner",
 		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",

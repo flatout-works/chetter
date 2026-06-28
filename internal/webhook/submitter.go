@@ -39,6 +39,10 @@ type SubmitTaskRequest struct {
 	SessionMode string
 	PauseReason string
 	TTLHours    int
+
+	DefinitionRepo             string
+	AllowGitHubToken           bool
+	AllowPrivilegedMCPProfiles bool
 }
 
 // NewServiceSubmitter creates a TaskSubmitter that wraps the given service
@@ -122,6 +126,10 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		SessionMode: review.SessionMode,
 		PauseReason: review.PauseReason,
 		TTLHours:    review.TTLHours,
+
+		DefinitionRepo:             review.Repo,
+		AllowGitHubToken:           true,
+		AllowPrivilegedMCPProfiles: review.TeamID == "",
 	}
 }
 

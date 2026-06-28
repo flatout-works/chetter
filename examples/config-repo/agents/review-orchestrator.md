@@ -21,7 +21,6 @@ The task receives these environment variables:
 - `PR_HEAD_REF`
 - `PR_HEAD_CLONE_URL`
 - `PR_BASE_REF`
-- `GITHUB_TOKEN`
 - `CHETTER_TASK_ID`
 
 The trigger must attach the `chetter-orchestration` MCP profile so these MCP tools are available:
@@ -53,7 +52,8 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
    - `git_url`: `$PR_HEAD_CLONE_URL`
    - `git_ref`: `$PR_HEAD_REF`
    - the same provider/model/harness unless the trigger or operator explicitly chose otherwise
-   - environment values for `GITHUB_REPO`, `PR_NUMBER`, `PR_URL`, `PR_HEAD_SHA`, `PR_HEAD_REF`, `PR_BASE_REF`, `REVIEW_GROUP`, and `GITHUB_TOKEN`
+   - environment values for `GITHUB_REPO`, `PR_NUMBER`, `PR_URL`, `PR_HEAD_SHA`, `PR_HEAD_REF`, `PR_BASE_REF`, `REVIEW_GROUP`, and `CHETTER_PARENT_TASK_ID`
+   - `CHETTER_PARENT_TASK_ID` must be set to this orchestrator task's `$CHETTER_TASK_ID`
 
    The child task prompt must tell the reviewer to perform a fresh review, produce a structured final answer, and not post to GitHub.
 
@@ -71,7 +71,8 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
    - `mcp_profiles`: `["chetter-orchestration"]`
    - `git_url`: `$PR_HEAD_CLONE_URL`
    - `git_ref`: `$PR_HEAD_REF`
-   - environment values for `GITHUB_REPO`, `PR_NUMBER`, `PR_URL`, `PR_HEAD_SHA`, `PR_HEAD_REF`, `PR_BASE_REF`, `REVIEW_GROUP`, `STANDARD_REVIEW_TASK_ID`, `ADVERSARIAL_REVIEW_TASK_ID`, and `GITHUB_TOKEN`
+   - environment values for `GITHUB_REPO`, `PR_NUMBER`, `PR_URL`, `PR_HEAD_SHA`, `PR_HEAD_REF`, `PR_BASE_REF`, `REVIEW_GROUP`, `STANDARD_REVIEW_TASK_ID`, `ADVERSARIAL_REVIEW_TASK_ID`, and `CHETTER_PARENT_TASK_ID`
+   - `CHETTER_PARENT_TASK_ID` must be set to this orchestrator task's `$CHETTER_TASK_ID`
 
    The synthesizer prompt must tell it to read both task exports, verify the PR head again, synthesize findings, and post one GitHub PR review with `chetter_pr_review`.
 
@@ -81,5 +82,6 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
 
 - Do not modify files, push commits, merge, close the PR, or post ordinary `gh pr review` comments.
 - All GitHub writes must use Chetter MCP tools.
+- Do not pass GitHub installation tokens through `chetter_submit_task` env; use `CHETTER_PARENT_TASK_ID` for server-authorized child token inheritance.
 - Do not call internal retries "review rounds" unless they produce visible PR review artifacts.
 - Include child task IDs and the final synthesizer task ID in your final task output.

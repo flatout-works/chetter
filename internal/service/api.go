@@ -8,15 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
- 	"strings"
- 	"time"
+	"strings"
+	"time"
 
- 	"github.com/flatout-works/chetter/internal/auth"
- 	"github.com/flatout-works/chetter/internal/repository"
- 	"github.com/flatout-works/chetter/internal/store"
- )
+	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
+)
 
- // --- Task Methods ---
+// --- Task Methods ---
 
 // GetTask returns a single task by ID, respecting team-scoped access.
 func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
@@ -738,6 +738,7 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 		UserName: userName,
 	}, nil
 }
+
 // ListTokens returns all API tokens. Admin only.
 func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 	if !isAdmin(ctx) {
@@ -847,18 +848,14 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("team %q not found", name)
 	}
-	if err := s.repo.DeleteTokensByTeam(ctx, team.ID); err != nil {
-		return fmt.Errorf("delete tokens for team: %w", err)
+	triggerIDs, err := s.triggerIDsByTeam(ctx, team.ID)
+	if err != nil {
+		return fmt.Errorf("list team triggers: %w", err)
 	}
-	if err := s.repo.DeleteUsersByTeam(ctx, team.ID); err != nil {
-		return fmt.Errorf("delete users for team: %w", err)
+	if err := s.deleteTeamData(ctx, team.ID, name); err != nil {
+		return err
 	}
-	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
-		slog.Debug("delete team: trigger not deleted", "team", name, "err", err)
-	}
-	if err := s.repo.DeleteTeam(ctx, name); err != nil {
-		return fmt.Errorf("delete team: %w", err)
-	}
+	s.removeCronEntries(triggerIDs)
 	s.auditAsync(AuditEventParams{
 		EventType:  "team_deleted",
 		SourceType: "api",
@@ -867,6 +864,78 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 		Detail:     fmt.Sprintf("team %q deleted", name),
 	})
 	return nil
+}
+
+func (s *Service) triggerIDsByTeam(ctx context.Context, teamID string) ([]string, error) {
+	rows, err := s.rawDB.QueryContext(ctx, `SELECT id FROM chetter_triggers WHERE team_id = ?`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Service) deleteTeamData(ctx context.Context, teamID, teamName string) error {
+	return withTxRetryDB(ctx, s.rawDB, func(_ *repository.Queries, tx *sql.Tx) error {
+		statements := []struct {
+			query string
+			args  []any
+		}{
+			{`DELETE FROM definition_change_proposals
+			  WHERE task_id IN (SELECT id FROM chetter_tasks WHERE team_id = ?)
+			     OR source_id IN (SELECT id FROM definition_sources WHERE team_id = ?)`, []any{teamID, teamID}},
+			{`DELETE FROM definition_sync_runs
+			  WHERE source_id IN (SELECT id FROM definition_sources WHERE team_id = ?)`, []any{teamID}},
+			{`DELETE FROM definitions
+			  WHERE team_id = ? OR source_id IN (SELECT id FROM definition_sources WHERE team_id = ?)`, []any{teamID, teamID}},
+			{`DELETE FROM definition_sources WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM chetter_task_artifacts
+			  WHERE task_id IN (SELECT id FROM chetter_tasks WHERE team_id = ?)
+			     OR agent_session_id IN (SELECT id FROM chetter_agent_sessions WHERE team_id = ?)
+			     OR session_run_id IN (
+			        SELECT sr.id FROM chetter_session_runs sr
+			        JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
+			        WHERE s.team_id = ?
+			     )`, []any{teamID, teamID, teamID}},
+			{`DELETE FROM chetter_task_events
+			  WHERE task_id IN (SELECT id FROM chetter_tasks WHERE team_id = ?)`, []any{teamID}},
+			{`DELETE FROM chetter_trigger_runs
+			  WHERE team_id = ?
+			     OR trigger_id IN (SELECT id FROM chetter_triggers WHERE team_id = ?)
+			     OR task_id IN (SELECT id FROM chetter_tasks WHERE team_id = ?)`, []any{teamID, teamID, teamID}},
+			{`DELETE FROM chetter_agent_session_checkpoints
+			  WHERE agent_session_id IN (SELECT id FROM chetter_agent_sessions WHERE team_id = ?)
+			     OR session_run_id IN (
+			        SELECT sr.id FROM chetter_session_runs sr
+			        JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
+			        WHERE s.team_id = ?
+			     )`, []any{teamID, teamID}},
+			{`DELETE FROM chetter_session_runs
+			  WHERE agent_session_id IN (SELECT id FROM chetter_agent_sessions WHERE team_id = ?)
+			     OR task_id IN (SELECT id FROM chetter_tasks WHERE team_id = ?)`, []any{teamID, teamID}},
+			{`DELETE FROM chetter_agent_sessions WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM chetter_tasks WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM chetter_event_callbacks WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM chetter_triggers WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM api_tokens WHERE user_id IN (SELECT id FROM users WHERE team_id = ?)`, []any{teamID}},
+			{`DELETE FROM users WHERE team_id = ?`, []any{teamID}},
+			{`DELETE FROM teams WHERE name = ?`, []any{teamName}},
+		}
+		for _, stmt := range statements {
+			if _, err := tx.ExecContext(ctx, stmt.query, stmt.args...); err != nil {
+				return fmt.Errorf("delete team data: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // ListUsers returns all users, optionally filtered by team name. Admin only.

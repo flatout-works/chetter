@@ -12,6 +12,8 @@ import (
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/internal/webhook"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -40,6 +42,68 @@ func insertPendingTask(t *testing.T, q *repository.Queries, id, prompt, agentIma
 	}); err != nil {
 		t.Fatalf("insert task: %v", err)
 	}
+}
+
+func insertDefinition(t *testing.T, q *repository.Queries, sourceID, defType, name, scope, teamID, repo, path, content string, updatedAt time.Time) {
+	t.Helper()
+	if path == "" {
+		path = defType + "/" + name
+	}
+	id, err := randomID("def")
+	if err != nil {
+		t.Fatalf("random definition id: %v", err)
+	}
+	if err := q.UpsertDefinition(context.Background(), repository.UpsertDefinitionParams{
+		ID:             id,
+		SourceID:       sourceID,
+		DefinitionType: defType,
+		Name:           name,
+		Scope:          scope,
+		TeamID:         sql.NullString{String: teamID, Valid: teamID != ""},
+		Repo:           sql.NullString{String: repo, Valid: repo != ""},
+		Path:           path,
+		SourceCommit:   "test",
+		ContentHash:    "test",
+		Content:        content,
+		Metadata:       nil,
+		Active:         true,
+		CreatedAt:      updatedAt,
+		UpdatedAt:      updatedAt,
+	}); err != nil {
+		t.Fatalf("insert definition: %v", err)
+	}
+}
+
+type fakeGitHubActions struct {
+	token string
+	repos *[]string
+}
+
+func (f fakeGitHubActions) GitHubClient() *webhook.Client {
+	return nil
+}
+
+func (f fakeGitHubActions) GitHubInstallationToken() (string, error) {
+	return f.token, nil
+}
+
+func (f fakeGitHubActions) GitHubInstallationTokenForRepository(repo string) (string, error) {
+	if f.repos != nil {
+		*f.repos = append(*f.repos, repo)
+	}
+	return f.token, nil
+}
+
+func (f fakeGitHubActions) RecordArtifact(context.Context, RecordArtifactParams) error {
+	return nil
+}
+
+func (f fakeGitHubActions) LogAuditEvent(context.Context, AuditEventParams) error {
+	return nil
+}
+
+func (f fakeGitHubActions) GetTaskSignature(context.Context, string) (string, error) {
+	return "", nil
 }
 
 func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
@@ -85,6 +149,453 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	}
 	if !row.ClaimedAt.Valid {
 		t.Error("expected claimed_at set")
+	}
+}
+
+func TestRPCClaimTaskInjectsGitHubTokenWithoutPersistingIt(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	svc.WithGitHubActions(fakeGitHubActions{token: "ghs_claim_token"})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_pr_review",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		TriggerName:       sql.NullString{String: "review", Valid: true},
+		TriggerType:       sql.NullString{String: "pr_review", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{"GITHUB_TOKEN":"[redacted]","GITHUB_REPO":"flatout-works/chetter","PR_NUMBER":"123","__chetter_github_auth_allowed":"true"}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_claim_token" {
+		t.Fatalf("injected token = %q, want ghs_claim_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("github token marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
+	}
+	row, err := q.GetTaskByID(ctx, "task_pr_review")
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var persisted map[string]string
+	if err := json.Unmarshal(row.Env, &persisted); err != nil {
+		t.Fatalf("unmarshal persisted env: %v", err)
+	}
+	if _, ok := persisted[injectedGitHubTokenEnv]; ok {
+		t.Fatalf("injected token was persisted: %#v", persisted)
+	}
+	if persisted[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("persisted github token marker = %q, want true", persisted[gitHubTokenAllowedEnv])
+	}
+	if persisted["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("persisted GITHUB_TOKEN = %q, want redacted", persisted["GITHUB_TOKEN"])
+	}
+}
+
+func TestRPCClaimTaskCanonicalizesGitHubRepoBeforeTokenMint(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var repos []string
+	svc.WithGitHubActions(fakeGitHubActions{token: "ghs_claim_token", repos: &repos})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_pr_review_url_repo",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{"GITHUB_TOKEN":"[redacted]","GITHUB_REPO":"https://github.com/flatout-works/chetter.git","PR_NUMBER":"123","__chetter_github_auth_allowed":"true"}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_claim_token" {
+		t.Fatalf("injected token = %q, want ghs_claim_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env["GITHUB_REPO"]; got != "flatout-works/chetter" {
+		t.Fatalf("runner GITHUB_REPO = %q, want flatout-works/chetter", got)
+	}
+	if len(repos) != 1 || repos[0] != "flatout-works/chetter" {
+		t.Fatalf("token repos = %#v, want flatout-works/chetter", repos)
+	}
+}
+
+func TestRPCClaimTaskDoesNotInjectGitHubTokenWithoutServerMarker(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	svc.WithGitHubActions(fakeGitHubActions{token: "ghs_claim_token"})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_public_env",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{"GITHUB_TOKEN":"[redacted]","GITHUB_REPO":"flatout-works/chetter","PR_NUMBER":"123"}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "" {
+		t.Fatalf("unexpected injected token = %q; env=%#v", got, resp.Msg.Task.Env)
+	}
+}
+
+func TestValidateGitHubRPCRepoScope(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertTask := func(id string, env map[string]string) {
+		t.Helper()
+		if err := q.InsertTask(ctx, repository.InsertTaskParams{
+			ID:                id,
+			Prompt:            "review",
+			AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+			Skills:            json.RawMessage(`[]`),
+			McpProfiles:       json.RawMessage(`[]`),
+			Env:               mustMarshalJSON(env),
+			TimeoutSec:        600,
+			CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+			CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		}); err != nil {
+			t.Fatalf("insert task %s: %v", id, err)
+		}
+	}
+	insertTask("task_rpc_authorized", map[string]string{
+		"GITHUB_REPO":         "flatout-works/chetter",
+		gitHubTokenAllowedEnv: "true",
+	})
+	insertTask("task_rpc_untrusted_env", map[string]string{
+		"GITHUB_REPO": "flatout-works/chetter",
+	})
+
+	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_authorized", "https://github.com/flatout-works/chetter.git"); err != nil {
+		t.Fatalf("validateGitHubRPCRepoScope matching target: %v", err)
+	}
+	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_authorized", "flatout-works/other"); err == nil || !strings.Contains(err.Error(), "does not match task repo") {
+		t.Fatalf("repo mismatch error = %v, want task repo mismatch", err)
+	}
+	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_untrusted_env", "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("unauthorized scope error = %v, want not authorized", err)
+	}
+}
+
+func TestRPCClaimTaskResolvesDefinitionsByRepoThenTeamThenGlobal(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "global", definitions.DefinitionTypeAgent, "reviewer", definitionScopeGlobal, "", "", "agents/reviewer.md", "global-agent", now)
+	insertDefinition(t, q, "team", definitions.DefinitionTypeAgent, "reviewer", "team", "team_1", "", "agents/reviewer.md", "team-agent", now.Add(time.Second))
+	insertDefinition(t, q, "repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "", "github.com/acme/service", "agents/reviewer.md", "repo-agent", now.Add(2*time.Second))
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_scoped_defs",
+		TeamID:            sql.NullString{String: "team_1", Valid: true},
+		Prompt:            "review",
+		GitUrl:            sql.NullString{String: "https://github.com/acme/service.git", Valid: true},
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Agent:             sql.NullString{String: "reviewer", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if resp.Msg.Task.AgentDefinition != "repo-agent" {
+		t.Fatalf("agent definition = %q, want repo-agent", resp.Msg.Task.AgentDefinition)
+	}
+}
+
+func TestRPCClaimTaskDoesNotUseRepoDefinitionFromOtherTeam(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "global", definitions.DefinitionTypeAgent, "reviewer", definitionScopeGlobal, "", "", "agents/reviewer.md", "global-agent", now)
+	insertDefinition(t, q, "team", definitions.DefinitionTypeAgent, "reviewer", "team", "team_1", "", "agents/reviewer.md", "team-agent", now.Add(time.Second))
+	insertDefinition(t, q, "team2-repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "team_2", "github.com/acme/service", "agents/reviewer.md", "wrong-team-repo-agent", now.Add(2*time.Second))
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_cross_team_repo_defs",
+		TeamID:            sql.NullString{String: "team_1", Valid: true},
+		Prompt:            "review",
+		GitUrl:            sql.NullString{String: "https://github.com/acme/service.git", Valid: true},
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Agent:             sql.NullString{String: "reviewer", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if resp.Msg.Task.AgentDefinition != "team-agent" {
+		t.Fatalf("agent definition = %q, want team-agent", resp.Msg.Task.AgentDefinition)
+	}
+}
+
+func TestRPCClaimTaskUsesTrustedDefinitionRepoForDefinitionScope(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "base-repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "", "github.com/acme/service", "agents/reviewer.md", "base-repo-agent", now)
+	insertDefinition(t, q, "fork-repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "", "github.com/contributor/service", "agents/reviewer.md", "fork-repo-agent", now.Add(time.Second))
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_base_repo_defs",
+		Prompt:            "review",
+		GitUrl:            sql.NullString{String: "https://github.com/contributor/service.git", Valid: true},
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Agent:             sql.NullString{String: "reviewer", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               mustMarshalJSON(map[string]string{"GITHUB_REPO": "contributor/service", definitionRepoEnv: "acme/service"}),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if resp.Msg.Task.AgentDefinition != "base-repo-agent" {
+		t.Fatalf("agent definition = %q, want base-repo-agent", resp.Msg.Task.AgentDefinition)
+	}
+	if _, ok := resp.Msg.Task.Env[definitionRepoEnv]; ok {
+		t.Fatalf("definition repo marker leaked to runner env: %#v", resp.Msg.Task.Env)
+	}
+}
+
+func TestRPCClaimTaskDoesNotUseUntrustedGitHubRepoForDefinitionScope(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "base-repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "", "github.com/acme/service", "agents/reviewer.md", "base-repo-agent", now)
+	insertDefinition(t, q, "fork-repo", definitions.DefinitionTypeAgent, "reviewer", "repo", "", "github.com/contributor/service", "agents/reviewer.md", "fork-repo-agent", now.Add(time.Second))
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_untrusted_github_repo_defs",
+		Prompt:            "review",
+		GitUrl:            sql.NullString{String: "https://github.com/contributor/service.git", Valid: true},
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Agent:             sql.NullString{String: "reviewer", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{"GITHUB_REPO":"acme/service"}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if resp.Msg.Task.AgentDefinition != "fork-repo-agent" {
+		t.Fatalf("agent definition = %q, want fork-repo-agent", resp.Msg.Task.AgentDefinition)
+	}
+}
+
+func TestRPCClaimTaskRechecksMCPProfilePrivilegeAtClaimTime(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "global", definitions.DefinitionTypeMCPProfile, "profile", definitionScopeGlobal, "", "", "mcp-profiles/profile.yaml", "name: profile\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n", now)
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_profile_recheck",
+		TeamID:            sql.NullString{String: "team_1", Valid: true},
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`["profile"]`),
+		Env:               json.RawMessage(`{}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil || len(resp.Msg.Task.McpProfiles) != 1 {
+		t.Fatalf("expected one mcp profile placeholder, got %+v", resp.Msg.Task)
+	}
+	if profile := resp.Msg.Task.McpProfiles[0]; profile.Name != "profile" || profile.Url != "" || len(profile.Headers) != 0 {
+		t.Fatalf("expected privileged profile placeholder, got %+v", profile)
+	}
+}
+
+func TestRPCClaimTaskRequiresPrivilegedMCPProfileMarkerAtClaimTime(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "global", definitions.DefinitionTypeMCPProfile, "profile", definitionScopeGlobal, "", "", "mcp-profiles/profile.yaml", "name: profile\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n", now)
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_unmarked_profile",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`["profile"]`),
+		Env:               json.RawMessage(`{}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil || len(resp.Msg.Task.McpProfiles) != 1 {
+		t.Fatalf("expected one mcp profile placeholder, got %+v", resp.Msg.Task)
+	}
+	if profile := resp.Msg.Task.McpProfiles[0]; profile.Name != "profile" || profile.Url != "" || len(profile.Headers) != 0 {
+		t.Fatalf("expected privileged profile placeholder, got %+v", profile)
+	}
+	if _, ok := resp.Msg.Task.Env[mcpProfilePrivilegedEnv]; ok {
+		t.Fatalf("privileged marker leaked to runner env: %#v", resp.Msg.Task.Env)
+	}
+}
+
+func TestRPCClaimTaskResolvesPrivilegedMCPProfileWithServerMarker(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, q, "global", definitions.DefinitionTypeMCPProfile, "profile", definitionScopeGlobal, "", "", "mcp-profiles/profile.yaml", "name: profile\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n", now)
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_marked_profile",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`["profile"]`),
+		Env:               mustMarshalJSON(map[string]string{mcpProfilePrivilegedEnv: "true"}),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil || len(resp.Msg.Task.McpProfiles) != 1 {
+		t.Fatalf("expected one resolved mcp profile, got %+v", resp.Msg.Task)
+	}
+	profile := resp.Msg.Task.McpProfiles[0]
+	if profile.Name != "profile" || profile.Url == "" || profile.Headers["Authorization"] == "" {
+		t.Fatalf("expected privileged profile to resolve, got %+v", profile)
+	}
+	if _, ok := resp.Msg.Task.Env[mcpProfilePrivilegedEnv]; ok {
+		t.Fatalf("privileged marker leaked to runner env: %#v", resp.Msg.Task.Env)
 	}
 }
 

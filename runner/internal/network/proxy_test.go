@@ -23,6 +23,17 @@ func TestProxyPolicyMatching(t *testing.T) {
 	}
 }
 
+func TestProxyPolicyMatchingNormalizesAllowedDomainPorts(t *testing.T) {
+	p := NewProxy(":0", []string{"chetter-mcp:8080"}, nil)
+
+	if !p.isAllowed("chetter-mcp") {
+		t.Fatal("chetter-mcp should match allowlist entry with port")
+	}
+	if !p.isAllowed("chetter-mcp:8080") {
+		t.Fatal("chetter-mcp:8080 should match allowlist entry with port")
+	}
+}
+
 func TestProxyHandleRequestBlocksPolicyViolations(t *testing.T) {
 	p := NewProxy(":0", []string{"github.com"}, []string{"pastebin.com"})
 

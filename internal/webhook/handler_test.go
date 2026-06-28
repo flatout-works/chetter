@@ -3,6 +3,8 @@ package webhook
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +102,24 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			wantOK: true, wantTrigger: "labeled",
 		},
 		{
+			name: "labeled fork synchronize triggers fork gate",
+			pr: PullRequest{
+				Labels: []Label{{Name: "chetter-review"}},
+				Head: PRBranch{
+					Ref: "feat",
+					Repo: struct {
+						FullName string `json:"full_name"`
+						CloneURL string `json:"clone_url"`
+					}{
+						FullName: "fork/repo",
+						CloneURL: "https://github.com/fork/repo.git",
+					},
+				},
+			},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "fork",
+		},
+		{
 			name: "fork triggers review",
 			pr: PullRequest{
 				Head: PRBranch{
@@ -140,6 +160,9 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			}
 			if tc.name == "label triggers review" {
 				ev.Action = "labeled"
+			}
+			if tc.name == "labeled fork synchronize triggers fork gate" {
+				ev.Action = "synchronize"
 			}
 			trigger := triggerActionFromPR(ev, tc.repo)
 			ok := trigger != ""
@@ -182,6 +205,9 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	}
 	if req.GitURL != review.HeadCloneURL {
 		t.Errorf("GitURL = %q, want %q", req.GitURL, review.HeadCloneURL)
+	}
+	if req.DefinitionRepo != review.Repo {
+		t.Errorf("DefinitionRepo = %q, want %q", req.DefinitionRepo, review.Repo)
 	}
 	if req.GitRef != review.HeadRef {
 		t.Errorf("GitRef = %q, want %q", req.GitRef, review.HeadRef)
@@ -289,14 +315,88 @@ func (r *recordingSessionResumer) ResumeSessionForPR(_ context.Context, repo str
 	return nil
 }
 
+type recordingTriggerResolver struct {
+	prTriggers    []ReviewTrigger
+	issueTriggers []ReviewTrigger
+}
+
+func (r recordingTriggerResolver) ListEnabledPRReviewTriggersByRepo(context.Context, string) ([]ReviewTrigger, error) {
+	return r.prTriggers, nil
+}
+
+func (r recordingTriggerResolver) ListEnabledIssueTriggersByRepo(context.Context, string) ([]ReviewTrigger, error) {
+	return r.issueTriggers, nil
+}
+
+type recordingTaskSubmitter struct {
+	reviews []ReviewContext
+	tasks   []SubmitTaskRequest
+}
+
+func (r *recordingTaskSubmitter) SubmitReviewTask(_ context.Context, review ReviewContext) error {
+	r.reviews = append(r.reviews, review)
+	return nil
+}
+
+func (r *recordingTaskSubmitter) SubmitTask(_ context.Context, req SubmitTaskRequest) (any, error) {
+	r.tasks = append(r.tasks, req)
+	return nil, nil
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func fakePermissionGitHub(writeUsers ...string) *Client {
+	allowed := map[string]struct{}{}
+	for _, user := range writeUsers {
+		allowed[user] = struct{}{}
+	}
+	return &Client{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			status := http.StatusOK
+			body := `{}`
+			switch {
+			case req.URL.Path == "/app":
+				body = `{"slug":"chetter"}`
+			case strings.Contains(req.URL.Path, "/collaborators/") && strings.HasSuffix(req.URL.Path, "/permission"):
+				parts := strings.Split(req.URL.Path, "/")
+				user := ""
+				for i, part := range parts {
+					if part == "collaborators" && i+1 < len(parts) {
+						user = parts[i+1]
+						break
+					}
+				}
+				if _, ok := allowed[user]; ok {
+					body = `{"permission":"write","user":{"login":"` + user + `"}}`
+				} else {
+					body = `{"permission":"read","user":{"login":"` + user + `"}}`
+				}
+			default:
+				status = http.StatusNotFound
+				body = `{"message":"not found"}`
+			}
+			return &http.Response{
+				StatusCode: status,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+			}, nil
+		})},
+		tokenCache: &tokenCache{token: "ghs_test", expiry: time.Now().Add(time.Hour)},
+	}
+}
+
 func TestHandlePullRequestReviewResumesSession(t *testing.T) {
 	resumer := &recordingSessionResumer{}
-	h := &Handler{resumer: resumer}
+	h := &Handler{resumer: resumer, gh: fakePermissionGitHub("writer")}
 	body := []byte(`{
 		"action":"submitted",
 		"repository":{"full_name":"flatout-works/chetter"},
 		"pull_request":{"number":42},
-		"review":{}
+		"review":{"user":{"login":"writer"}}
 	}`)
 
 	h.handlePullRequestReview(body, "delivery-1")
@@ -311,12 +411,12 @@ func TestHandlePullRequestReviewResumesSession(t *testing.T) {
 
 func TestHandlePullRequestReviewCommentResumesSession(t *testing.T) {
 	resumer := &recordingSessionResumer{}
-	h := &Handler{resumer: resumer}
+	h := &Handler{resumer: resumer, gh: fakePermissionGitHub("writer")}
 	body := []byte(`{
 		"action":"created",
 		"repository":{"full_name":"flatout-works/chetter"},
 		"pull_request":{"number":7},
-		"comment":{}
+		"comment":{"user":{"login":"writer"}}
 	}`)
 
 	h.handlePullRequestReviewComment(body, "delivery-2")
@@ -326,6 +426,249 @@ func TestHandlePullRequestReviewCommentResumesSession(t *testing.T) {
 	}
 	if resumer.repo != "flatout-works/chetter" || resumer.prNumber != 7 {
 		t.Fatalf("resume target = %s#%d", resumer.repo, resumer.prNumber)
+	}
+}
+
+func TestHandlePullRequestReviewCommentDoesNotResumeForNonWriter(t *testing.T) {
+	resumer := &recordingSessionResumer{}
+	h := &Handler{resumer: resumer, gh: fakePermissionGitHub("writer")}
+	body := []byte(`{
+		"action":"created",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"pull_request":{"number":7},
+		"comment":{"user":{"login":"reader"}}
+	}`)
+
+	h.handlePullRequestReviewComment(body, "delivery-3")
+
+	if resumer.calls != 0 {
+		t.Fatalf("resume calls = %d, want 0", resumer.calls)
+	}
+}
+
+func TestHandleIssueCommentDoesNotResumePRForNonWriter(t *testing.T) {
+	resumer := &recordingSessionResumer{}
+	h := &Handler{resumer: resumer, gh: fakePermissionGitHub("writer")}
+	body := []byte(`{
+		"action":"created",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"issue":{"number":7,"html_url":"https://github.com/flatout-works/chetter/pull/7","pull_request":{"url":"https://api.github.com/repos/flatout-works/chetter/pulls/7"}},
+		"comment":{"body":"please take another look","user":{"login":"reader"}}
+	}`)
+
+	h.handleIssueComment(body, "delivery-4")
+
+	if resumer.calls != 0 {
+		t.Fatalf("resume calls = %d, want 0", resumer.calls)
+	}
+}
+
+func TestHandleIssueCommentDoesNotResumePRForAppBot(t *testing.T) {
+	resumer := &recordingSessionResumer{}
+	h := &Handler{resumer: resumer, gh: fakePermissionGitHub("chetter[bot]")}
+	body := []byte(`{
+		"action":"created",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"issue":{"number":7,"html_url":"https://github.com/flatout-works/chetter/pull/7","pull_request":{"url":"https://api.github.com/repos/flatout-works/chetter/pulls/7"}},
+		"comment":{"body":"Task: task_abc123","user":{"login":"chetter[bot]"}}
+	}`)
+
+	h.handleIssueComment(body, "delivery-5")
+
+	if resumer.calls != 0 {
+		t.Fatalf("resume calls = %d, want 0", resumer.calls)
+	}
+}
+
+func TestHandleIssuesOpenedSubmitsReadOnlyTask(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers: recordingTriggerResolver{issueTriggers: []ReviewTrigger{{
+			Name:        "issue-triage",
+			TriggerType: "issue",
+			AgentImage:  "runner:latest",
+			MCPProfiles: []string{"chetter-orchestration"},
+			Event:       "opened",
+		}}},
+	}
+	body := []byte(`{
+		"action":"opened",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"issue":{
+			"number":12,
+			"title":"please help",
+			"body":"untrusted issue text",
+			"html_url":"https://github.com/flatout-works/chetter/issues/12",
+			"labels":[]
+		}
+	}`)
+
+	h.handleIssues(body, "delivery-5")
+
+	if len(submitter.tasks) != 1 {
+		t.Fatalf("submitted tasks = %d, want 1", len(submitter.tasks))
+	}
+	req := submitter.tasks[0]
+	if req.AllowGitHubToken {
+		t.Fatal("opened issue task should not be GitHub write-authorized")
+	}
+	if req.AllowPrivilegedMCPProfiles {
+		t.Fatal("opened issue task should not allow privileged mcp profiles")
+	}
+	if _, ok := req.Env["GITHUB_TOKEN"]; ok {
+		t.Fatalf("opened issue task received GITHUB_TOKEN: %#v", req.Env)
+	}
+	if len(req.MCPProfiles) != 0 {
+		t.Fatalf("opened issue task kept mcp profiles: %#v", req.MCPProfiles)
+	}
+	if req.Env["GITHUB_REPO"] != "flatout-works/chetter" || req.Env["ISSUE_NUMBER"] != "12" {
+		t.Fatalf("issue context env not preserved: %#v", req.Env)
+	}
+}
+
+func TestHandleIssuesLabeledRequiresWriterActor(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers: recordingTriggerResolver{issueTriggers: []ReviewTrigger{{
+			Name:        "issue-label",
+			TriggerType: "issue",
+			Event:       "labeled",
+			MatchLabels: []string{"needs-triage"},
+		}}},
+	}
+	body := []byte(`{
+		"action":"labeled",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"sender":{"login":"reader"},
+		"label":{"name":"needs-triage"},
+		"issue":{
+			"number":12,
+			"title":"please help",
+			"body":"untrusted issue text",
+			"html_url":"https://github.com/flatout-works/chetter/issues/12",
+			"labels":[{"name":"needs-triage"}]
+		}
+	}`)
+
+	h.handleIssues(body, "delivery-6")
+
+	if len(submitter.tasks) != 0 {
+		t.Fatalf("submitted tasks = %d, want 0", len(submitter.tasks))
+	}
+}
+
+func TestHandleIssuesLabeledAllowsWriterActor(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers: recordingTriggerResolver{issueTriggers: []ReviewTrigger{{
+			Name:        "issue-label",
+			TriggerType: "issue",
+			AgentImage:  "runner:latest",
+			MCPProfiles: []string{"chetter-orchestration"},
+			Event:       "labeled",
+			MatchLabels: []string{"needs-triage"},
+		}}},
+	}
+	body := []byte(`{
+		"action":"labeled",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"sender":{"login":"writer"},
+		"label":{"name":"needs-triage"},
+		"issue":{
+			"number":12,
+			"title":"please help",
+			"body":"issue text",
+			"html_url":"https://github.com/flatout-works/chetter/issues/12",
+			"labels":[{"name":"needs-triage"}]
+		}
+	}`)
+
+	h.handleIssues(body, "delivery-7")
+
+	if len(submitter.tasks) != 1 {
+		t.Fatalf("submitted tasks = %d, want 1", len(submitter.tasks))
+	}
+	req := submitter.tasks[0]
+	if !req.AllowGitHubToken {
+		t.Fatal("labeled issue task should be GitHub write-authorized for writer actor")
+	}
+	if !req.AllowPrivilegedMCPProfiles {
+		t.Fatal("labeled issue task should allow privileged mcp profiles for global trigger")
+	}
+	if req.Env["GITHUB_TOKEN"] != "ghs_test" {
+		t.Fatalf("labeled issue task token = %q, want test token", req.Env["GITHUB_TOKEN"])
+	}
+	if len(req.MCPProfiles) != 1 || req.MCPProfiles[0] != "chetter-orchestration" {
+		t.Fatalf("labeled issue task mcp profiles = %#v", req.MCPProfiles)
+	}
+}
+
+func TestHandlePullRequestLabeledRequiresWriterActor(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled"}}},
+	}
+	body := []byte(`{
+		"action":"labeled",
+		"number":7,
+		"repository":{"full_name":"flatout-works/chetter"},
+		"label":{"name":"chetter-review"},
+		"sender":{"login":"reader"},
+		"pull_request":{
+			"number":7,
+			"html_url":"https://github.com/flatout-works/chetter/pull/7",
+			"user":{"login":"contributor"},
+			"head":{"ref":"feature","sha":"abc","repo":{"full_name":"flatout-works/chetter","clone_url":"https://github.com/flatout-works/chetter.git"}},
+			"base":{"ref":"main","repo":{"full_name":"flatout-works/chetter","clone_url":"https://github.com/flatout-works/chetter.git"}},
+			"labels":[{"name":"chetter-review"}]
+		}
+	}`)
+
+	h.handlePullRequest(body, "delivery-6")
+
+	if len(submitter.reviews) != 0 {
+		t.Fatalf("submitted reviews = %d, want 0", len(submitter.reviews))
+	}
+}
+
+func TestHandlePullRequestLabeledAllowsWriterActor(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled"}}},
+	}
+	body := []byte(`{
+		"action":"labeled",
+		"number":7,
+		"repository":{"full_name":"flatout-works/chetter"},
+		"label":{"name":"chetter-review"},
+		"sender":{"login":"writer"},
+		"pull_request":{
+			"number":7,
+			"html_url":"https://github.com/flatout-works/chetter/pull/7",
+			"user":{"login":"contributor"},
+			"head":{"ref":"feature","sha":"abc","repo":{"full_name":"flatout-works/chetter","clone_url":"https://github.com/flatout-works/chetter.git"}},
+			"base":{"ref":"main","repo":{"full_name":"flatout-works/chetter","clone_url":"https://github.com/flatout-works/chetter.git"}},
+			"labels":[{"name":"chetter-review"}]
+		}
+	}`)
+
+	h.handlePullRequest(body, "delivery-7")
+
+	if len(submitter.reviews) != 1 {
+		t.Fatalf("submitted reviews = %d, want 1", len(submitter.reviews))
+	}
+	if submitter.reviews[0].Trigger != "labeled" {
+		t.Fatalf("review trigger = %q, want labeled", submitter.reviews[0].Trigger)
 	}
 }
 

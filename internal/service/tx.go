@@ -14,6 +14,12 @@ import (
 const txMaxAttempts = 3
 
 func withTxRetry(ctx context.Context, db *sql.DB, fn func(*repository.Queries) error) error {
+	return withTxRetryDB(ctx, db, func(q *repository.Queries, _ *sql.Tx) error {
+		return fn(q)
+	})
+}
+
+func withTxRetryDB(ctx context.Context, db *sql.DB, fn func(*repository.Queries, *sql.Tx) error) error {
 	var lastErr error
 	for attempt := 0; attempt < txMaxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -25,7 +31,7 @@ func withTxRetry(ctx context.Context, db *sql.DB, fn func(*repository.Queries) e
 			return err
 		}
 
-		err = fn(repository.New(tx))
+		err = fn(repository.New(tx), tx)
 		if err != nil {
 			_ = tx.Rollback()
 			if isRetryableTxError(err) && attempt < txMaxAttempts-1 {

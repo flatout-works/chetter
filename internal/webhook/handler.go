@@ -248,12 +248,18 @@ func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, 
 	if h.resumer == nil || repo == "" || prNumber <= 0 {
 		return
 	}
-	if author != "" {
-		appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
-		if appLogin != "" && author == appLogin {
-			slog.Info("webhook: skipping Chetter app review feedback", "repo", repo, "pr", prNumber, "event", eventType)
-			return
-		}
+	if author == "" {
+		slog.Debug("webhook: skipping PR feedback resume with empty author", "repo", repo, "pr", prNumber, "event", eventType)
+		return
+	}
+	if h.isBotUser(author) {
+		slog.Info("webhook: skipping Chetter app review feedback", "repo", repo, "pr", prNumber, "event", eventType)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if !h.checkAuthorWriteAccess(ctx, repo, author, deliveryID) {
+		return
 	}
 	h.logAudit(AuditEventParams{
 		EventType:        "webhook_received",
@@ -311,6 +317,22 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 	}
 
 	repo := ev.Repository.FullName
+	if ev.Action == PullRequestActionLabeled {
+		actor := strings.TrimSpace(ev.Sender.Login)
+		if actor == "" {
+			slog.Debug("webhook: skipping labeled PR event with empty sender", "repo", repo, "pr", ev.Number)
+			return
+		}
+		if h.isBotUser(actor) {
+			slog.Debug("webhook: skipping Chetter app label event", "repo", repo, "pr", ev.Number)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, repo, actor, deliveryID) {
+			return
+		}
+	}
 	triggerAction := triggerActionFromPR(ev, repo)
 	if triggerAction == "" {
 		slog.Debug("webhook: PR not eligible for review", "repo", repo, "pr", ev.Number)
@@ -350,6 +372,10 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 
 // triggerActionFromPR returns the trigger action string for a PR event, or empty if not eligible.
 func triggerActionFromPR(ev PullRequestEvent, repo string) string {
+	isFork := ev.PullRequest.Head.Repo.FullName != "" && ev.PullRequest.Head.Repo.FullName != repo
+	if isFork && ev.Action != PullRequestActionLabeled {
+		return TriggerEventFork
+	}
 	// Label trigger.
 	for _, l := range ev.PullRequest.Labels {
 		if l.Name == ChetterReviewLabel {
@@ -357,7 +383,7 @@ func triggerActionFromPR(ev PullRequestEvent, repo string) string {
 		}
 	}
 	// Fork trigger.
-	if ev.PullRequest.Head.Repo.FullName != "" && ev.PullRequest.Head.Repo.FullName != repo {
+	if isFork {
 		return TriggerEventFork
 	}
 	// Opened trigger.
@@ -395,8 +421,16 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	h.discoverArtifacts(ev.Comment.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue_comment")
 
 	if ev.IsPullRequest() && h.resumer != nil {
-		if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
-			slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
+		if h.isBotUser(ev.Comment.User.Login) {
+			slog.Info("webhook: skipping Chetter app PR issue-comment feedback", "repo", repo, "pr", ev.Issue.Number)
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if h.checkAuthorWriteAccess(ctx, repo, ev.Comment.User.Login, deliveryID) {
+				if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
+					slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
+				}
+			}
 		}
 	}
 
@@ -509,23 +543,26 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 				ev.Comment.User.Login, ev.Comment.Body)
 		}
 		req := SubmitTaskRequest{
-			TeamID:      t.TeamID,
-			Prompt:      prompt,
-			GitURL:      t.GitURL,
-			GitRef:      t.GitRef,
-			AgentImage:  t.AgentImage,
-			Agent:       t.Agent,
-			ProviderID:  t.ProviderID,
-			ModelID:     t.ModelID,
-			VariantID:   t.VariantID,
-			Skills:      t.Skills,
-			MCPProfiles: t.MCPProfiles,
-			TimeoutSec:  t.TimeoutSec,
-			TriggerName: t.Name,
-			TriggerType: t.TriggerType,
-			SessionMode: t.SessionMode,
-			PauseReason: t.PauseReason,
-			TTLHours:    t.TTLHours,
+			TeamID:                     t.TeamID,
+			Prompt:                     prompt,
+			GitURL:                     t.GitURL,
+			GitRef:                     t.GitRef,
+			AgentImage:                 t.AgentImage,
+			Agent:                      t.Agent,
+			ProviderID:                 t.ProviderID,
+			ModelID:                    t.ModelID,
+			VariantID:                  t.VariantID,
+			Skills:                     t.Skills,
+			MCPProfiles:                t.MCPProfiles,
+			TimeoutSec:                 t.TimeoutSec,
+			TriggerName:                t.Name,
+			TriggerType:                t.TriggerType,
+			SessionMode:                t.SessionMode,
+			PauseReason:                t.PauseReason,
+			TTLHours:                   t.TTLHours,
+			DefinitionRepo:             repo,
+			AllowGitHubToken:           true,
+			AllowPrivilegedMCPProfiles: t.TeamID == "",
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
@@ -552,8 +589,6 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			})
 			continue
 		}
-		slog.Info("webhook: issue comment task submitted",
-			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
 		h.logAudit(AuditEventParams{
 			EventType:        "task_submitted",
 			SourceType:       "trigger",
@@ -562,7 +597,172 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
 			Repo:             repo,
 			GitHubDeliveryID: deliveryID,
-			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s (bot_comment=%v)", ev.Issue.Number, t.Name, isBotComment),
+			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s on comment", ev.Issue.Number, t.Name),
+		})
+	}
+}
+
+func (h *Handler) handleIssues(body []byte, deliveryID string) {
+	var ev IssueEvent
+	if err := json.Unmarshal(body, &ev); err != nil {
+		slog.Warn("webhook: parse issues", "err", err)
+		return
+	}
+
+	// Only act on the actions we care about.
+	switch ev.Action {
+	case "opened", "labeled", "reopened":
+		// continue
+	default:
+		slog.Debug("webhook: ignoring issues action", "action", ev.Action)
+		return
+	}
+
+	repo := ev.Repository.FullName
+
+	h.logAudit(AuditEventParams{
+		EventType:        "webhook_received",
+		SourceType:       "webhook",
+		SourceID:         deliveryID,
+		TargetType:       "issue",
+		TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+		Repo:             repo,
+		GitHubEvent:      EventTypeIssues,
+		GitHubAction:     ev.Action,
+		GitHubDeliveryID: deliveryID,
+		Detail:           fmt.Sprintf("issues/%s for %s#%d", ev.Action, repo, ev.Issue.Number),
+	})
+
+	if ev.Action == "opened" {
+		h.discoverArtifacts(ev.Issue.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue")
+	}
+
+	// Issue triggers for opened/reopened fire regardless of author.
+	// Triage is read-only analysis — no write access required.
+
+	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
+	if err != nil {
+		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
+		return
+	}
+
+	// Extract issue label names. For labeled events, compare against the label
+	// that was just added so bug-label triggers don't re-fire for unrelated labels.
+	issueLabels := make([]string, len(ev.Issue.Labels))
+	for i, lbl := range ev.Issue.Labels {
+		issueLabels[i] = lbl.Name
+	}
+	if ev.Action == "labeled" && ev.Label != nil {
+		issueLabels = []string{ev.Label.Name}
+	}
+
+	// Filter triggers by event and labels.
+	var matching []ReviewTrigger
+	for _, t := range triggers {
+		if t.Event != "" && t.Event != ev.Action {
+			continue
+		}
+		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
+			continue
+		}
+		matching = append(matching, t)
+	}
+	if len(matching) == 0 {
+		return
+	}
+
+	allowWriteContext := ev.Action == "labeled"
+	token := ""
+	if allowWriteContext {
+		actor := strings.TrimSpace(ev.Sender.Login)
+		if actor == "" {
+			slog.Debug("webhook: skipping labeled issue event with empty sender", "repo", repo, "issue", ev.Issue.Number)
+			return
+		}
+		if h.isBotUser(actor) {
+			slog.Debug("webhook: skipping Chetter app issue label event", "repo", repo, "issue", ev.Issue.Number)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, repo, actor, deliveryID) {
+			return
+		}
+		var err error
+		token, err = h.gh.tokenCache.get(h.gh)
+		if err != nil {
+			slog.Error("webhook: get GitHub token", "err", err)
+			return
+		}
+	}
+
+	for _, t := range matching {
+		prompt := t.Prompt
+		if prompt == "" {
+			prompt = fmt.Sprintf("A GitHub issue was %s in %s.\n\nTitle: %s\nURL: %s\n\nBody:\n%s",
+				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
+		}
+		mcpProfiles := t.MCPProfiles
+		if !allowWriteContext {
+			mcpProfiles = nil
+		}
+		req := SubmitTaskRequest{
+			TeamID:                     t.TeamID,
+			Prompt:                     prompt,
+			GitURL:                     t.GitURL,
+			GitRef:                     t.GitRef,
+			AgentImage:                 t.AgentImage,
+			Agent:                      t.Agent,
+			ProviderID:                 t.ProviderID,
+			ModelID:                    t.ModelID,
+			VariantID:                  t.VariantID,
+			Skills:                     t.Skills,
+			MCPProfiles:                mcpProfiles,
+			TimeoutSec:                 t.TimeoutSec,
+			TriggerName:                t.Name,
+			TriggerType:                t.TriggerType,
+			SessionMode:                t.SessionMode,
+			PauseReason:                t.PauseReason,
+			TTLHours:                   t.TTLHours,
+			DefinitionRepo:             repo,
+			AllowGitHubToken:           allowWriteContext,
+			AllowPrivilegedMCPProfiles: allowWriteContext && t.TeamID == "",
+			Env: map[string]string{
+				"GITHUB_REPO":  repo,
+				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
+				"ISSUE_TITLE":  ev.Issue.Title,
+				"ISSUE_URL":    ev.Issue.HTMLURL,
+				"ISSUE_BODY":   ev.Issue.Body,
+				"ISSUE_ACTION": ev.Action,
+			},
+		}
+		if allowWriteContext {
+			req.Env["GITHUB_TOKEN"] = token
+		}
+		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
+			slog.Error("webhook: submit issue task", "err", err,
+				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
+			h.logAudit(AuditEventParams{
+				EventType:        "task_submit_failed",
+				SourceType:       "trigger",
+				SourceID:         t.Name,
+				TargetType:       "issue",
+				TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+				Repo:             repo,
+				GitHubDeliveryID: deliveryID,
+				Detail:           fmt.Sprintf("failed to submit task for issue #%d via trigger %s: %v", ev.Issue.Number, t.Name, err),
+			})
+			continue
+		}
+		h.logAudit(AuditEventParams{
+			EventType:        "task_submitted",
+			SourceType:       "trigger",
+			SourceID:         t.Name,
+			TargetType:       "issue",
+			TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
+			Repo:             repo,
+			GitHubDeliveryID: deliveryID,
+			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s on action %s", ev.Issue.Number, t.Name, ev.Action),
 		})
 	}
 }
@@ -657,146 +857,6 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 	}
 }
 
-// handleIssues handles an issues webhook event.
-func (h *Handler) handleIssues(body []byte, deliveryID string) {
-	var ev IssueEvent
-	if err := json.Unmarshal(body, &ev); err != nil {
-		slog.Warn("webhook: parse issues", "err", err)
-		return
-	}
-
-	// Only act on the actions we care about.
-	switch ev.Action {
-	case "opened", "labeled", "reopened":
-		// continue
-	default:
-		slog.Debug("webhook: ignoring issues action", "action", ev.Action)
-		return
-	}
-
-	repo := ev.Repository.FullName
-
-	h.logAudit(AuditEventParams{
-		EventType:        "webhook_received",
-		SourceType:       "webhook",
-		SourceID:         deliveryID,
-		TargetType:       "issue",
-		TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
-		Repo:             repo,
-		GitHubEvent:      EventTypeIssues,
-		GitHubAction:     ev.Action,
-		GitHubDeliveryID: deliveryID,
-		Detail:           fmt.Sprintf("issues/%s for %s#%d", ev.Action, repo, ev.Issue.Number),
-	})
-
-	if ev.Action == "opened" {
-		h.discoverArtifacts(ev.Issue.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue")
-	}
-
-	// Issue triggers for opened/reopened fire regardless of author.
-	// Triage is read-only analysis — no write access required.
-
-	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
-	if err != nil {
-		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
-		return
-	}
-
-	// Extract issue label names. For labeled events, compare against the label
-	// that was just added so bug-label triggers don't re-fire for unrelated labels.
-	issueLabels := make([]string, len(ev.Issue.Labels))
-	for i, lbl := range ev.Issue.Labels {
-		issueLabels[i] = lbl.Name
-	}
-	if ev.Action == "labeled" && ev.Label != nil {
-		issueLabels = []string{ev.Label.Name}
-	}
-
-	// Filter triggers by event and labels.
-	var matching []ReviewTrigger
-	for _, t := range triggers {
-		if t.Event != "" && t.Event != ev.Action {
-			continue
-		}
-		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
-			continue
-		}
-		matching = append(matching, t)
-	}
-	if len(matching) == 0 {
-		return
-	}
-
-	token, err := h.gh.tokenCache.get(h.gh)
-	if err != nil {
-		slog.Error("webhook: get GitHub token", "err", err)
-		return
-	}
-
-	for _, t := range matching {
-		prompt := t.Prompt
-		if prompt == "" {
-			prompt = fmt.Sprintf("A GitHub issue was %s in %s.\n\nTitle: %s\nURL: %s\n\nBody:\n%s",
-				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
-		}
-		req := SubmitTaskRequest{
-			TeamID:      t.TeamID,
-			Prompt:      prompt,
-			GitURL:      t.GitURL,
-			GitRef:      t.GitRef,
-			AgentImage:  t.AgentImage,
-			Agent:       t.Agent,
-			ProviderID:  t.ProviderID,
-			ModelID:     t.ModelID,
-			VariantID:   t.VariantID,
-			Skills:      t.Skills,
-			MCPProfiles: t.MCPProfiles,
-			TimeoutSec:  t.TimeoutSec,
-			TriggerName: t.Name,
-			TriggerType: t.TriggerType,
-			SessionMode: t.SessionMode,
-			PauseReason: t.PauseReason,
-			TTLHours:    t.TTLHours,
-			Env: map[string]string{
-				"GITHUB_TOKEN": token,
-				"GITHUB_REPO":  repo,
-				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
-				"ISSUE_TITLE":  ev.Issue.Title,
-				"ISSUE_URL":    ev.Issue.HTMLURL,
-				"ISSUE_BODY":   ev.Issue.Body,
-				"ISSUE_ACTION": ev.Action,
-			},
-		}
-		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
-			slog.Error("webhook: submit issue task", "err", err,
-				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
-			h.logAudit(AuditEventParams{
-				EventType:        "task_submit_failed",
-				SourceType:       "trigger",
-				SourceID:         t.Name,
-				TargetType:       "issue",
-				TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
-				Repo:             repo,
-				GitHubDeliveryID: deliveryID,
-				Detail:           fmt.Sprintf("failed to submit task for issue #%d via trigger %s: %v", ev.Issue.Number, t.Name, err),
-			})
-			continue
-		}
-		slog.Info("webhook: issue task submitted",
-			"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number, "action", ev.Action)
-		h.logAudit(AuditEventParams{
-			EventType:        "task_submitted",
-			SourceType:       "trigger",
-			SourceID:         t.Name,
-			TargetType:       "issue",
-			TargetID:         fmt.Sprintf("%s#%d", repo, ev.Issue.Number),
-			Repo:             repo,
-			GitHubDeliveryID: deliveryID,
-			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s on action %s", ev.Issue.Number, t.Name, ev.Action),
-		})
-	}
-}
-
 func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {
 	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -822,6 +882,9 @@ func (h *Handler) logAudit(params AuditEventParams) {
 
 // isBotUser returns true if the given username is the Chetter GitHub App bot login.
 func (h *Handler) isBotUser(username string) bool {
+	if h.gh == nil {
+		return false
+	}
 	appLogin, err := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
 	return err == nil && appLogin != "" && username == appLogin
 }
@@ -830,6 +893,10 @@ func (h *Handler) isBotUser(username string) bool {
 // the repo. If the check fails or the user lacks access, it logs a message and
 // returns false so the caller can abort processing.
 func (h *Handler) checkAuthorWriteAccess(ctx context.Context, repo, username, deliveryID string) bool {
+	if h.gh == nil {
+		slog.Warn("webhook: cannot check write access without GitHub client", "user", username, "repo", repo)
+		return false
+	}
 	hasAccess, err := h.gh.CheckUserHasWriteAccess(ctx, repo, username)
 	if err != nil {
 		slog.Warn("webhook: check write access", "user", username, "err", err, "repo", repo)

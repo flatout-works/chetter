@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -203,6 +205,9 @@ func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListDefinitionsInput) (*mcp.CallToolResult, ListDefinitionsOutput, error) {
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !isAdmin(ctx) {
+		return nil, ListDefinitionsOutput{}, fmt.Errorf("admin access required")
+	}
 	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
 		Column1:        in.DefinitionType,
 		DefinitionType: in.DefinitionType,
@@ -214,6 +219,9 @@ func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 	}
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile && !isAdmin(ctx) {
+			continue
+		}
 		out = append(out, definitionToolRecord(def))
 	}
 	return nil, ListDefinitionsOutput{Definitions: out}, nil
@@ -225,6 +233,9 @@ func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	if in.Name == "" {
 		return nil, GetDefinitionOutput{}, fmt.Errorf("name is required")
+	}
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !isAdmin(ctx) {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("admin access required")
 	}
 	sourceID := in.SourceID
 	if sourceID == "" {
@@ -287,9 +298,20 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		return ModelCatalogRecord{}, err
 	}
 	now := time.Now().UTC()
+	mcpProfileNames, err := validateMCPProfileDefsForSync(defs)
+	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
 	triggerEntries, err := parseTriggerDefsForSync(defs, now)
 	if err != nil {
-		return ModelCatalogRecord{}, fmt.Errorf("parse trigger definitions: %w", err)
+		err = fmt.Errorf("parse trigger definitions: %w", err)
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
+	if err := validateTriggerMCPProfileRefs(triggerEntries, mcpProfileNames); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
 	}
 	var row repository.InsertModelCatalogParams
 	if yamlText != "" {
@@ -305,7 +327,8 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 			UpdatedAt: now,
 		}
 	}
-	if err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	var staleSyncedTriggerIDs []string
+	if err := withTxRetryDB(ctx, s.rawDB, func(q *repository.Queries, tx *sql.Tx) error {
 		if yamlText != "" {
 			if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
 				return err
@@ -341,24 +364,43 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 				return err
 			}
 		}
+		if err := validateTriggerSyncOwnership(ctx, q, triggerEntries); err != nil {
+			return err
+		}
 		for _, t := range triggerEntries {
 			if err := q.UpsertTrigger(ctx, t.params); err != nil {
 				return fmt.Errorf("upsert trigger %q: %w", t.def.Name, err)
 			}
 		}
-		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
-			LastSyncAt: sql.NullTime{Time: now, Valid: true},
-			UpdatedAt:  now,
-			ID:         defaultDefinitionSourceID,
-		}); err != nil {
+		ids, err := disableStaleSyncedTriggers(ctx, tx, triggerEntries, now)
+		if err != nil {
 			return err
 		}
-		return q.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(defaultDefinitionSourceID, definitionSyncStatusSuccess, sourceCommit, len(defs), nil, startedAt, now))
+		staleSyncedTriggerIDs = ids
+		return nil
 	}); err != nil {
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
 	}
-	activateTriggerEntries(ctx, s, triggerEntries)
+	s.removeCronEntries(staleSyncedTriggerIDs)
+	if err := activateTriggerEntries(ctx, s, triggerEntries); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
+	completedAt := time.Now().UTC()
+	if err := withTxRetryDB(ctx, s.rawDB, func(q *repository.Queries, _ *sql.Tx) error {
+		if err := q.MarkDefinitionSourceSynced(ctx, repository.MarkDefinitionSourceSyncedParams{
+			LastSyncAt: sql.NullTime{Time: completedAt, Valid: true},
+			UpdatedAt:  completedAt,
+			ID:         defaultDefinitionSourceID,
+		}); err != nil {
+			return err
+		}
+		return q.InsertDefinitionSyncRun(ctx, definitionSyncRunParams(defaultDefinitionSourceID, definitionSyncStatusSuccess, sourceCommit, len(defs), nil, startedAt, completedAt))
+	}); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, fmt.Errorf("record definitions sync success: %w", err)
+	}
 	s.auditAsync(AuditEventParams{
 		EventType:  "definitions_synced",
 		SourceType: "api",
@@ -393,6 +435,86 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		"triggers", len(triggerEntries),
 	)
 	return record, nil
+}
+
+func validateTriggerSyncOwnership(ctx context.Context, q *repository.Queries, entries []triggerSyncEntry) error {
+	for _, entry := range entries {
+		existing, err := q.GetTriggerByName(ctx, entry.def.Name)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return fmt.Errorf("check existing trigger %q: %w", entry.def.Name, err)
+		}
+		if existing.SourceID.Valid && existing.SourceID.String == defaultDefinitionSourceID {
+			continue
+		}
+		source := "dynamic"
+		if existing.SourceID.Valid && existing.SourceID.String != "" {
+			source = existing.SourceID.String
+		}
+		return fmt.Errorf("trigger %q already exists from %s source; rename it or remove the conflicting Git trigger", entry.def.Name, source)
+	}
+	return nil
+}
+
+func disableStaleSyncedTriggers(ctx context.Context, tx *sql.Tx, entries []triggerSyncEntry, now time.Time) ([]string, error) {
+	names := make([]string, 0, len(entries))
+	seen := map[string]struct{}{}
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.def.Name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+
+	where, args := staleSyncedTriggerWhere(names)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM chetter_triggers WHERE `+where, args...)
+	if err != nil {
+		return nil, fmt.Errorf("select stale synced triggers: %w", err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan stale synced trigger: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close stale synced trigger rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan stale synced triggers: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	updateArgs := append([]any{now}, args...)
+	if _, err := tx.ExecContext(ctx, `UPDATE chetter_triggers SET enabled=false, updated_at=? WHERE `+where, updateArgs...); err != nil {
+		return nil, fmt.Errorf("disable stale synced triggers: %w", err)
+	}
+	return ids, nil
+}
+
+func staleSyncedTriggerWhere(names []string) (string, []any) {
+	args := []any{defaultDefinitionSourceID}
+	where := `source_id=?`
+	if len(names) > 0 {
+		placeholders := strings.Repeat(",?", len(names))[1:]
+		where += ` AND name NOT IN (` + placeholders + `)`
+		for _, name := range names {
+			args = append(args, name)
+		}
+	}
+	return where, args
 }
 
 func (s *Service) upsertDefaultDefinitionSource(ctx context.Context, now time.Time, lastSyncAt sql.NullTime) error {
@@ -555,30 +677,78 @@ type triggerSyncEntry struct {
 	params repository.UpsertTriggerParams
 }
 
+func validateMCPProfileDefsForSync(defs []definitions.Definition) (map[string]struct{}, error) {
+	profiles := make(map[string]struct{})
+	var problems []string
+	for _, def := range defs {
+		if def.Type != definitions.DefinitionTypeMCPProfile {
+			continue
+		}
+		profile, err := definitions.ParseMCPProfileYAML(def.Content)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %v", def.Path, err))
+			continue
+		}
+		if profile.Name != def.Name {
+			problems = append(problems, fmt.Sprintf("%s: profile name %q does not match definition name %q", def.Path, profile.Name, def.Name))
+			continue
+		}
+		if _, exists := profiles[profile.Name]; exists {
+			problems = append(problems, fmt.Sprintf("%s: duplicate mcp profile name %q", def.Path, profile.Name))
+			continue
+		}
+		profiles[profile.Name] = struct{}{}
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("invalid mcp profile definitions: %s", strings.Join(problems, "; "))
+	}
+	return profiles, nil
+}
+
+func validateTriggerMCPProfileRefs(entries []triggerSyncEntry, profiles map[string]struct{}) error {
+	var problems []string
+	for _, entry := range entries {
+		for _, profileName := range nonEmptyStrings(entry.def.MCPProfiles) {
+			if _, ok := profiles[profileName]; !ok {
+				problems = append(problems, fmt.Sprintf("trigger %q references missing mcp profile %q", entry.def.Name, profileName))
+			}
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("invalid trigger mcp profile references: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
 func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]triggerSyncEntry, error) {
 	var entries []triggerSyncEntry
+	var problems []string
 	for _, def := range defs {
 		if def.Type != definitions.DefinitionTypeTrigger {
 			continue
 		}
 		td, err := definitions.ParseTriggerYAML(def.Content)
 		if err != nil {
-			slog.Warn("skipping trigger definition: parse error", "path", def.Path, "err", err)
+			problems = append(problems, fmt.Sprintf("%s: %v", def.Path, err))
+			continue
+		}
+		if err := validateTriggerDefForSync(def.Path, td); err != nil {
+			problems = append(problems, err.Error())
 			continue
 		}
 		id, err := randomID("trig")
 		if err != nil {
-			slog.Warn("skipping trigger definition: id generation error", "path", def.Path, "err", err)
+			problems = append(problems, fmt.Sprintf("%s: generate id: %v", def.Path, err))
 			continue
 		}
 		skillsJSON, err := json.Marshal(nonEmptyStrings(td.Skills))
 		if err != nil {
-			slog.Warn("skipping trigger definition: marshal skills error", "path", def.Path, "err", err)
+			problems = append(problems, fmt.Sprintf("%s: marshal skills: %v", def.Path, err))
 			continue
 		}
 		mcpProfilesJSON, err := json.Marshal(nonEmptyStrings(td.MCPProfiles))
 		if err != nil {
-			slog.Warn("skipping trigger definition: marshal mcp_profiles error", "path", def.Path, "err", err)
+			problems = append(problems, fmt.Sprintf("%s: marshal mcp_profiles: %v", def.Path, err))
 			continue
 		}
 		entries = append(entries, triggerSyncEntry{
@@ -609,31 +779,64 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			},
 		})
 	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("invalid trigger definitions: %s", strings.Join(problems, "; "))
+	}
 	return entries, nil
 }
 
-func activateTriggerEntries(ctx context.Context, s *Service, entries []triggerSyncEntry) {
+func validateTriggerDefForSync(path string, td definitions.TriggerDef) error {
+	switch td.TriggerType {
+	case store.TriggerTypeCron:
+		if strings.TrimSpace(td.Prompt) == "" {
+			return fmt.Errorf("%s: prompt is required for cron triggers", path)
+		}
+		if strings.TrimSpace(td.CronExpr) == "" {
+			return fmt.Errorf("%s: cron_expr is required for cron triggers", path)
+		}
+		if _, err := defaultCronParser.Parse(td.CronExpr); err != nil {
+			return fmt.Errorf("%s: parse cron: %w", path, err)
+		}
+	case store.TriggerTypePRReview:
+		var cfg store.PRReviewTriggerConfig
+		if err := json.Unmarshal([]byte(td.TriggerCfg), &cfg); err != nil || strings.TrimSpace(cfg.Repo) == "" {
+			return fmt.Errorf("%s: repo is required in trigger_config for pr_review triggers", path)
+		}
+	case store.TriggerTypeIssue:
+		var cfg struct {
+			Repo string `json:"repo"`
+		}
+		if err := json.Unmarshal([]byte(td.TriggerCfg), &cfg); err != nil || strings.TrimSpace(cfg.Repo) == "" {
+			return fmt.Errorf("%s: repo is required in trigger_config for issue triggers", path)
+		}
+	default:
+		return fmt.Errorf("%s: unknown trigger_type %q", path, td.TriggerType)
+	}
+	return nil
+}
+
+func activateTriggerEntries(ctx context.Context, s *Service, entries []triggerSyncEntry) error {
+	var problems []string
 	for _, t := range entries {
-		if t.def.TriggerType != "cron" {
+		if t.def.TriggerType != store.TriggerTypeCron {
 			continue
 		}
 		trigger, err := s.repo.GetTriggerByName(ctx, t.def.Name)
 		if err != nil {
-			slog.Warn("activate synced cron trigger: get trigger", "name", t.def.Name, "err", err)
+			problems = append(problems, fmt.Sprintf("%s: get trigger: %v", t.def.Name, err))
 			continue
 		}
 		if t.def.Enabled {
 			record := triggerToStoreRecord(trigger)
 			if err := s.activateTrigger(ctx, record); err != nil {
-				slog.Warn("activate synced cron trigger", "name", t.def.Name, "err", err)
+				problems = append(problems, fmt.Sprintf("%s: %v", t.def.Name, err))
 			}
 		} else {
-			s.cronMu.Lock()
-			if existing, ok := s.cronEntries[trigger.ID]; ok {
-				s.cron.Remove(existing)
-				delete(s.cronEntries, trigger.ID)
-			}
-			s.cronMu.Unlock()
+			s.removeCronEntries([]string{trigger.ID})
 		}
 	}
+	if len(problems) > 0 {
+		return fmt.Errorf("activate synced cron triggers: %s", strings.Join(problems, "; "))
+	}
+	return nil
 }

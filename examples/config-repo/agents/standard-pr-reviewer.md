@@ -19,7 +19,6 @@ You perform a comprehensive code review of one pull request. Your output is cons
 - `PR_HEAD_REF`
 - `PR_BASE_REF`
 - `REVIEW_GROUP`
-- `GITHUB_TOKEN`
 
 ## Review Procedure
 

@@ -28,6 +28,7 @@ const (
 	claimPollInterval         = time.Second
 	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
+	injectedGitHubTokenEnv    = "__chetter_github_token"
 )
 
 var errNoClaimableTask = errors.New("no claimable task")
@@ -166,7 +167,8 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			s.resolveTaskModel(ctx, protoTask)
-			s.resolveTaskDefinitions(ctx, protoTask, mcpProfileNames)
+			s.resolveTaskDefinitions(ctx, protoTask, task, mcpProfileNames)
+			s.injectGitHubToken(ctx, protoTask)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -181,6 +183,40 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		case <-time.After(claimPollInterval):
 		}
 	}
+}
+
+func (s *RunnerRPCService) injectGitHubToken(ctx context.Context, task *runnerv1.Task) {
+	if task == nil || task.Env == nil {
+		return
+	}
+	allowed := task.Env[gitHubTokenAllowedEnv] == "true"
+	delete(task.Env, gitHubTokenAllowedEnv)
+	if !allowed || !wantsGitHubToken(task.Env) {
+		return
+	}
+	if s.ghActions == nil {
+		slog.Warn("task requested GitHub token but GitHub App is not configured", "taskID", task.TaskId)
+		return
+	}
+	repoName, ok := canonicalRepoName(task.Env["GITHUB_REPO"])
+	if !ok {
+		slog.Warn("task requested GitHub token with invalid repo", "taskID", task.TaskId)
+		return
+	}
+	task.Env["GITHUB_REPO"] = repoName
+	token, err := s.ghActions.GitHubInstallationTokenForRepository(repoName)
+	if err != nil {
+		slog.Warn("mint GitHub installation token for task", "taskID", task.TaskId, "err", err)
+		return
+	}
+	task.Env[injectedGitHubTokenEnv] = token
+}
+
+func wantsGitHubToken(env map[string]string) bool {
+	if _, ok := env["GITHUB_TOKEN"]; !ok {
+		return false
+	}
+	return githubTokenContextComplete(env)
 }
 
 type resolvedModelConfig struct {
@@ -217,70 +253,63 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
 }
 
-func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task, mcpProfileNames []string) {
+func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task, dbTask repository.ChetterTask, mcpProfileNames []string) {
 	if task == nil {
 		return
 	}
+	teamID := dbTask.TeamID.String
+	gitURL := definitionLookupRef(dbTask.GitUrl.String, task.Env)
+	allowPrivilegedMCPProfiles := task.Env[mcpProfilePrivilegedEnv] == "true"
+	delete(task.Env, definitionRepoEnv)
+	delete(task.Env, mcpProfilePrivilegedEnv)
 	if task.Agent != "" {
-		var content string
-		err := s.rawDB.QueryRowContext(ctx,
-			`SELECT content FROM definitions WHERE definition_type='agent' AND name=? AND active=true ORDER BY updated_at DESC LIMIT 1`,
-			task.Agent,
-		).Scan(&content)
+		groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeAgent, []string{task.Agent}, teamID, gitURL)
 		if err == nil {
-			task.AgentDefinition = content
+			if rows := groups[task.Agent]; len(rows) > 0 {
+				task.AgentDefinition = rows[0].Content
+			}
+		} else {
+			slog.Warn("resolve agent definition query", "err", err)
 		}
 	}
 	if len(task.Skills) > 0 {
-		skillDefs := s.resolveSkillDefinitions(ctx, task.Skills)
+		skillDefs := s.resolveSkillDefinitions(ctx, task.Skills, teamID, gitURL)
 		if len(skillDefs) > 0 {
 			task.SkillDefinitions = skillDefs
 		}
 	}
 	if len(mcpProfileNames) > 0 {
-		task.McpProfiles = s.resolveMCPProfiles(ctx, mcpProfileNames)
+		task.McpProfiles = s.resolveMCPProfiles(ctx, mcpProfileNames, teamID, gitURL, allowPrivilegedMCPProfiles)
 	}
 }
 
-// queryActiveDefinitions selects columns for active definitions of defType
-// whose name is in names. names must be non-empty (callers guard this).
-func (s *RunnerRPCService) queryActiveDefinitions(ctx context.Context, defType, columns string, names []string) (*sql.Rows, error) {
-	placeholders := strings.Repeat(",?", len(names))[1:]
-	query := `SELECT ` + columns + ` FROM definitions WHERE definition_type=? AND name IN (` + placeholders + `) AND active=true`
-	args := make([]any, 0, len(names)+1)
-	args = append(args, defType)
-	for _, n := range names {
-		args = append(args, n)
-	}
-	return s.rawDB.QueryContext(ctx, query, args...)
-}
-
-func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames []string) []*runnerv1.MCPProfile {
+func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames []string, teamID, gitURL string, allowPrivileged bool) []*runnerv1.MCPProfile {
 	names := uniqueNonEmptyStrings(profileNames)
 	if len(names) == 0 {
 		return nil
 	}
-	rows, err := s.queryActiveDefinitions(ctx, "mcp_profile", "name, content", names)
+	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeMCPProfile, names, teamID, gitURL)
 	if err != nil {
 		slog.Warn("resolve mcp profile definitions query", "err", err)
 		return invalidMCPProfiles(names)
 	}
-	defer rows.Close()
 
 	resolved := make(map[string]*runnerv1.MCPProfile, len(names))
-	for rows.Next() {
-		var name, content string
-		if err := rows.Scan(&name, &content); err != nil {
-			slog.Warn("scan mcp profile definition row", "err", err)
+	for name, rows := range groups {
+		if len(rows) == 0 {
 			continue
 		}
-		profile, err := definitions.ParseMCPProfileYAML(content)
+		profile, err := definitions.ParseMCPProfileYAML(rows[0].Content)
 		if err != nil {
 			slog.Warn("parse mcp profile definition", "name", name, "err", err)
 			continue
 		}
 		if profile.Name != name {
 			slog.Warn("mcp profile definition name mismatch", "selected", name, "content_name", profile.Name)
+			continue
+		}
+		if !allowPrivileged && mcpProfileRequiresPrivilegedAccess(profile) {
+			slog.Warn("selected mcp profile requires admin access", "name", name)
 			continue
 		}
 		resolved[name] = &runnerv1.MCPProfile{
@@ -292,7 +321,6 @@ func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames 
 			ToolAllowlist: profile.ToolAllowlist,
 		}
 	}
-
 	out := make([]*runnerv1.MCPProfile, 0, len(names))
 	for _, name := range names {
 		if profile, ok := resolved[name]; ok {
@@ -330,29 +358,22 @@ func invalidMCPProfiles(names []string) []*runnerv1.MCPProfile {
 	return out
 }
 
-func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
-	rows, err := s.queryActiveDefinitions(ctx, "skill", "name, path, content", skillNames)
+func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string, teamID, gitURL string) map[string][]byte {
+	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeSkill, skillNames, teamID, gitURL)
 	if err != nil {
 		slog.Warn("resolve skill definitions query", "err", err)
 		return nil
 	}
-	defer rows.Close()
-
-	grouped := make(map[string][]skillFileEntry, len(skillNames))
-	for rows.Next() {
-		var name, path, content string
-		if err := rows.Scan(&name, &path, &content); err != nil {
-			slog.Warn("scan skill definition row", "err", err)
-			continue
-		}
-		grouped[name] = append(grouped[name], skillFileEntry{path: path, content: content})
-	}
-	if len(grouped) == 0 {
+	if len(groups) == 0 {
 		return nil
 	}
 
-	out := make(map[string][]byte, len(grouped))
-	for name, files := range grouped {
+	out := make(map[string][]byte, len(groups))
+	for name, rows := range groups {
+		files := make([]skillFileEntry, 0, len(rows))
+		for _, row := range rows {
+			files = append(files, skillFileEntry{path: row.Path, content: row.Content})
+		}
 		tarBytes, err := tarSkill(name, files)
 		if err != nil {
 			slog.Warn("tar skill", "skill", name, "err", err)

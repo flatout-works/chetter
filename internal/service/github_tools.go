@@ -66,6 +66,9 @@ func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequ
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
+	if err := validateGitHubToolRepoScope(task, in.Repo); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
 	created, err := s.githubClient().CreateIssue(ctx, in.Repo, in.Title, body, in.Labels)
 	if err != nil {
@@ -88,6 +91,9 @@ func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallT
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
+	if err := validateGitHubToolArtifactScope(task, in.Repo, in.IssueNumber, "issue_or_pr"); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
 	created, err := s.githubClient().CreateIssueCommentWithResponse(ctx, in.Repo, in.IssueNumber, body)
 	if err != nil {
@@ -107,6 +113,9 @@ func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest
 	}
 	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
 	if err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
+	if err := validateGitHubToolRepoScope(task, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
@@ -142,6 +151,9 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
+	if err := validateGitHubToolArtifactScope(task, in.Repo, in.PRNumber, "pr"); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
 	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
 	if err != nil {
@@ -161,6 +173,20 @@ func (s *Service) GitHubClient() *webhook.Client {
 	return s.githubClient()
 }
 
+func (s *Service) GitHubInstallationToken() (string, error) {
+	if s.githubClient() == nil {
+		return "", fmt.Errorf("GitHub App client is not configured")
+	}
+	return s.githubClient().InstallationToken()
+}
+
+func (s *Service) GitHubInstallationTokenForRepository(repo string) (string, error) {
+	if s.githubClient() == nil {
+		return "", fmt.Errorf("GitHub App client is not configured")
+	}
+	return s.githubClient().InstallationTokenForRepository(repo)
+}
+
 func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, error) {
 	task, sessionRun, err := s.githubToolTaskContext(ctx, taskID)
 	if err != nil {
@@ -175,6 +201,57 @@ func requireGitHubToolFields(taskID, repo string) error {
 	}
 	if strings.TrimSpace(repo) == "" {
 		return fmt.Errorf("repo is required")
+	}
+	return nil
+}
+
+func validateGitHubToolArtifactScope(task repository.ChetterTask, repo string, number int, artifactKind string) error {
+	if err := validateGitHubToolRepoScope(task, repo); err != nil {
+		return err
+	}
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+	taskNumber := ""
+	switch artifactKind {
+	case "pr":
+		taskNumber = strings.TrimSpace(env["PR_NUMBER"])
+		if taskNumber == "" {
+			return fmt.Errorf("task %s has no pull request scope", task.ID)
+		}
+	case "issue_or_pr":
+		taskNumber = strings.TrimSpace(env["PR_NUMBER"])
+		if taskNumber == "" {
+			taskNumber = strings.TrimSpace(env["ISSUE_NUMBER"])
+		}
+	default:
+		return fmt.Errorf("unknown GitHub artifact scope kind %q", artifactKind)
+	}
+	if taskNumber == "" {
+		return fmt.Errorf("task %s has no GitHub artifact number scope", task.ID)
+	}
+	if taskNumber != fmt.Sprintf("%d", number) {
+		return fmt.Errorf("GitHub tool target number %d does not match task number %s", number, taskNumber)
+	}
+	return nil
+}
+
+func validateGitHubToolRepoScope(task repository.ChetterTask, repo string) error {
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+	if env == nil {
+		return fmt.Errorf("task %s has no GitHub artifact scope", task.ID)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		return fmt.Errorf("task %s is not authorized for GitHub write tools", task.ID)
+	}
+	taskRepo, ok := canonicalRepoName(env["GITHUB_REPO"])
+	if !ok {
+		return fmt.Errorf("task %s has no GitHub repo scope", task.ID)
+	}
+	targetRepo, ok := canonicalRepoName(repo)
+	if !ok {
+		return fmt.Errorf("repo must resolve to owner/repo")
+	}
+	if taskRepo != targetRepo {
+		return fmt.Errorf("GitHub tool target repo %q does not match task repo %q", targetRepo, taskRepo)
 	}
 	return nil
 }

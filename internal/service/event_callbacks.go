@@ -269,6 +269,8 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 		TimeoutSec:  cfg.TimeoutSec,
 		TriggerName: callback.Name,
 		TriggerType: "event_callback",
+
+		AllowPrivilegedMCPProfiles: event.TeamID == "",
 	})
 	return err
 }

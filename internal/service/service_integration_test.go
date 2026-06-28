@@ -16,6 +16,7 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/pkg/definitions"
 )
 
 var svcTestDB *testdb.PackageDB
@@ -110,6 +111,422 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 	if session.ResumeMode != "none" {
 		t.Errorf("agent session resume_mode: %s", session.ResumeMode)
+	}
+}
+
+func TestSubmitTaskRejectsMissingMCPProfile(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	_, err := svc.SubmitTask(context.Background(), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"missing-profile"},
+	})
+	if err == nil {
+		t.Fatal("expected missing mcp profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"missing-profile" is not an active mcp profile`) {
+		t.Fatalf("SubmitTask error = %q, want missing profile", err)
+	}
+}
+
+func TestSubmitTaskStripsPrivateGitHubTokenMarkers(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "x",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN":         "caller-token",
+			"GITHUB_REPO":          "flatout-works/chetter",
+			"PR_NUMBER":            "123",
+			gitHubTokenAllowedEnv:  "true",
+			injectedGitHubTokenEnv: "ghs_fake",
+			definitionRepoEnv:      "flatout-works/private",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted", env["GITHUB_TOKEN"])
+	}
+	if _, ok := env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("public task env kept private marker: %#v", env)
+	}
+	if _, ok := env[injectedGitHubTokenEnv]; ok {
+		t.Fatalf("public task env kept injected token marker: %#v", env)
+	}
+	if _, ok := env[definitionRepoEnv]; ok {
+		t.Fatalf("public task env kept definition repo marker: %#v", env)
+	}
+}
+
+func TestSubmitTaskAllowsGitHubTokenForInternalRequest(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "x",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("github token marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted", env["GITHUB_TOKEN"])
+	}
+	if env[definitionRepoEnv] != "flatout-works/chetter" {
+		t.Fatalf("definition repo marker = %q, want flatout-works/chetter", env[definitionRepoEnv])
+	}
+}
+
+func TestSubmitTaskDoesNotUsePublicGitHubRepoForDefinitionScope(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, repository.New(tdb.DB), "repo-profile", definitions.DefinitionTypeMCPProfile, "repo-tools", "repo", "", "github.com/acme/service", "mcp-profiles/repo-tools.yaml", "name: repo-tools\nurl: http://repo-tools:8080/mcp\n", now)
+
+	_, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "x",
+		GitURL:      "https://github.com/contributor/service.git",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"repo-tools"},
+		Env:         map[string]string{"GITHUB_REPO": "acme/service"},
+	})
+	if err == nil {
+		t.Fatal("expected public GITHUB_REPO scope spoofing to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"repo-tools" is not an active mcp profile`) {
+		t.Fatalf("SubmitTask error = %q, want missing profile", err)
+	}
+}
+
+func TestSubmitTaskUsesTrustedDefinitionRepoForDefinitionScope(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, repository.New(tdb.DB), "repo-profile", definitions.DefinitionTypeMCPProfile, "repo-tools", "repo", "", "github.com/acme/service", "mcp-profiles/repo-tools.yaml", "name: repo-tools\nurl: http://repo-tools:8080/mcp\n", now)
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:         "x",
+		GitURL:         "https://github.com/contributor/service.git",
+		DefinitionRepo: "acme/service",
+		AgentImage:     "runner:latest",
+		MCPProfiles:    []string{"repo-tools"},
+		Env:            map[string]string{"GITHUB_REPO": "contributor/service"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[definitionRepoEnv] != "acme/service" {
+		t.Fatalf("definition repo marker = %q, want acme/service", env[definitionRepoEnv])
+	}
+}
+
+func TestSubmitTaskInheritsGitHubTokenFromAuthorizedParentTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "parent",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	child, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":            "https://github.com/flatout-works/chetter.git",
+			"PR_NUMBER":              "123",
+			gitHubTokenParentTaskEnv: parent.ID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask child: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("github token marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+	if env["GITHUB_REPO"] != "flatout-works/chetter" {
+		t.Fatalf("GITHUB_REPO = %q, want flatout-works/chetter", env["GITHUB_REPO"])
+	}
+	if env[definitionRepoEnv] != "flatout-works/chetter" {
+		t.Fatalf("definition repo marker = %q, want child GITHUB_REPO", env[definitionRepoEnv])
+	}
+}
+
+func TestSubmitTaskRejectsGitHubTokenInheritanceWithoutAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	parent, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
+		Prompt:           "parent",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	_, err = svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":            "flatout-works/chetter",
+			"PR_NUMBER":              "123",
+			gitHubTokenParentTaskEnv: parent.ID,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected non-admin inheritance to fail")
+	}
+	if !strings.Contains(err.Error(), "admin access") {
+		t.Fatalf("SubmitTask error = %q, want admin access", err)
+	}
+}
+
+func TestSubmitTaskRejectsGitHubTokenInheritanceForDifferentRepo(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "parent",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	_, err = svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":            "other/repo",
+			"PR_NUMBER":              "123",
+			gitHubTokenParentTaskEnv: parent.ID,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected mismatched repo inheritance to fail")
+	}
+	if !strings.Contains(err.Error(), "matching GITHUB_REPO") {
+		t.Fatalf("SubmitTask error = %q, want matching GITHUB_REPO", err)
+	}
+}
+
+func TestRecoverTaskPreservesGitHubTokenAuthorization(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	orig, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "review",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET status = 'error', session_export = ? WHERE id = ?", "previous transcript", orig.ID); err != nil {
+		t.Fatalf("mark task recoverable: %v", err)
+	}
+
+	recovered, err := svc.RecoverTask(ctx, orig.ID)
+	if err != nil {
+		t.Fatalf("RecoverTask: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, recovered.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("github token marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+}
+
+func TestTeamRecoverTaskStripsGitHubTokenAuthorization(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+	ctx := ctxWithTeam(context.Background(), teamID)
+	orig, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "review",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET status = 'error', session_export = ? WHERE id = ?", "previous transcript", orig.ID); err != nil {
+		t.Fatalf("mark task recoverable: %v", err)
+	}
+
+	recovered, err := svc.RecoverTask(ctx, orig.ID)
+	if err != nil {
+		t.Fatalf("RecoverTask: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, recovered.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if _, ok := env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("team recovery preserved github token marker: %#v", env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+}
+
+func TestTeamScopedSubmitTaskRejectsPrivilegedMCPProfile(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+
+	_, err := svc.SubmitTask(ctxWithTeam(context.Background(), teamID), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err == nil {
+		t.Fatal("expected team-scoped privileged profile use to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"chetter-orchestration" requires admin access`) {
+		t.Fatalf("SubmitTask error = %q, want admin access error", err)
+	}
+}
+
+func TestSubmitTaskRejectsPrivilegedMCPProfileWithoutAdminScope(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+
+	_, err := svc.SubmitTask(context.Background(), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err == nil {
+		t.Fatal("expected unscoped privileged profile use to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"chetter-orchestration" requires admin access`) {
+		t.Fatalf("SubmitTask error = %q, want admin access error", err)
+	}
+}
+
+func TestAdminSubmitTaskAllowsPrivilegedMCPProfile(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+
+	rec, err := svc.SubmitTask(ctxWithAdmin(context.Background()), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err != nil {
+		t.Fatalf("admin SubmitTask with privileged profile: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[mcpProfilePrivilegedEnv] != "true" {
+		t.Fatalf("privileged mcp marker = %q, want true; env=%#v", env[mcpProfilePrivilegedEnv], env)
+	}
+}
+
+func TestMCPProfileDefinitionsRequireAdminReadAccess(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	seedMCPProfile(t, tdb.DB, "secret-profile", "name: secret-profile\nurl: http://example.test/mcp\nauth:\n  type: bearer\n  token: literal-secret\n")
+
+	if _, _, err := svc.getDefinitionTool(ctx, nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "secret-profile", SourceID: "test"}); err == nil {
+		t.Fatal("expected non-admin get mcp profile definition to fail")
+	}
+	if _, _, err := svc.listDefinitionsTool(ctx, nil, ListDefinitionsInput{DefinitionType: definitions.DefinitionTypeMCPProfile}); err == nil {
+		t.Fatal("expected non-admin list mcp profile definitions to fail")
+	}
+	_, out, err := svc.listDefinitionsTool(ctx, nil, ListDefinitionsInput{})
+	if err != nil {
+		t.Fatalf("list definitions: %v", err)
+	}
+	for _, def := range out.Definitions {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile {
+			t.Fatalf("non-admin unfiltered list exposed mcp profile: %#v", def)
+		}
+	}
+	if _, _, err := svc.getDefinitionTool(ctxWithAdmin(ctx), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "secret-profile", SourceID: "test"}); err != nil {
+		t.Fatalf("admin get mcp profile definition: %v", err)
 	}
 }
 
@@ -560,6 +977,212 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	})
 }
 
+func TestResumeAgentSessionPreservesGitHubContextAndMCPProfiles(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	q := repository.New(tdb.DB)
+	seedMCPProfile(t, tdb.DB, "review-tools", "name: review-tools\nurl: http://review-tools:8080/mcp\n")
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "create a PR",
+		AgentImage:       "runner:latest",
+		Skills:           []string{"pr-review-workflow"},
+		MCPProfiles:      []string{"review-tools"},
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		SessionMode:      "resumable",
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID:            "runner_1",
+		Status:        "active",
+		MaxConcurrent: 1,
+		FirstSeenAt:   now,
+		LastSeenAt:    now,
+		UpdatedAt:     now,
+		Metadata:      json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("upsert runner: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, `
+		UPDATE chetter_agent_sessions
+		SET status='paused', pinned_runner_id=?, workspace_path=?, harness_session_id=?, paused_at=?, updated_at=?
+		WHERE id=?`,
+		"runner_1", "/var/lib/runner/"+rec.ID+"/workspace", "oc_sid_abc", now, now, run.AgentSessionID,
+	); err != nil {
+		t.Fatalf("pause session: %v", err)
+	}
+
+	resumeOut, err := svc.ResumeAgentSession(ctx, run.AgentSessionID, "address feedback", 600)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
+	if err != nil {
+		t.Fatalf("get resume task: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(resumeTask.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("github token marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+	var skills []string
+	if err := json.Unmarshal(resumeTask.Skills, &skills); err != nil {
+		t.Fatalf("unmarshal skills: %v", err)
+	}
+	if len(skills) != 1 || skills[0] != "pr-review-workflow" {
+		t.Fatalf("skills = %#v, want pr-review-workflow", skills)
+	}
+	var profiles []string
+	if err := json.Unmarshal(resumeTask.McpProfiles, &profiles); err != nil {
+		t.Fatalf("unmarshal mcp_profiles: %v", err)
+	}
+	if len(profiles) != 1 || profiles[0] != "review-tools" {
+		t.Fatalf("mcp_profiles = %#v, want review-tools", profiles)
+	}
+}
+
+func TestTeamResumeAgentSessionStripsGitHubTokenAuthorization(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+	ctx := ctxWithTeam(context.Background(), teamID)
+	q := repository.New(tdb.DB)
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "create a PR",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		SessionMode:      "resumable",
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID:            "runner_1",
+		Status:        "active",
+		MaxConcurrent: 1,
+		FirstSeenAt:   now,
+		LastSeenAt:    now,
+		UpdatedAt:     now,
+		Metadata:      json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("upsert runner: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, `
+		UPDATE chetter_agent_sessions
+		SET status='paused', pinned_runner_id=?, workspace_path=?, harness_session_id=?, paused_at=?, updated_at=?
+		WHERE id=?`,
+		"runner_1", "/var/lib/runner/"+rec.ID+"/workspace", "oc_sid_abc", now, now, run.AgentSessionID,
+	); err != nil {
+		t.Fatalf("pause session: %v", err)
+	}
+
+	resumeOut, err := svc.ResumeAgentSession(ctx, run.AgentSessionID, "address feedback", 600)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
+	if err != nil {
+		t.Fatalf("get resume task: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(resumeTask.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if _, ok := env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("team resume preserved github token marker: %#v", env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+}
+
+func TestResumeSessionForPRFindsPRReviewArtifact(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := repository.New(tdb.DB)
+
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "create a PR",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get session run: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID:            "runner_1",
+		Status:        "active",
+		MaxConcurrent: 1,
+		FirstSeenAt:   now,
+		LastSeenAt:    now,
+		UpdatedAt:     now,
+		Metadata:      json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("upsert runner: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, `
+		UPDATE chetter_agent_sessions
+		SET status='paused', pinned_runner_id=?, workspace_path=?, harness_session_id=?, paused_at=?, updated_at=?
+		WHERE id=?`,
+		"runner_1", "/var/lib/runner/"+rec.ID+"/workspace", "oc_sid_abc", now, now, run.AgentSessionID,
+	); err != nil {
+		t.Fatalf("pause session: %v", err)
+	}
+	if err := q.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
+		ID:              "art_pr_review_resume",
+		TaskID:          rec.ID,
+		AgentSessionID:  sql.NullString{String: run.AgentSessionID, Valid: true},
+		SessionRunID:    sql.NullString{String: run.ID, Valid: true},
+		ArtifactType:    "pr_review",
+		Repo:            "flatout-works/chetter",
+		Number:          sql.NullInt32{Int32: 123, Valid: true},
+		Url:             sql.NullString{String: "https://github.com/flatout-works/chetter/pull/123#pullrequestreview-1", Valid: true},
+		CreatedAt:       now,
+		DiscoveredAt:    now,
+		DiscoverySource: "test",
+	}); err != nil {
+		t.Fatalf("insert artifact: %v", err)
+	}
+
+	if err := svc.ResumeSessionForPR(ctx, "flatout-works/chetter", 123); err != nil {
+		t.Fatalf("ResumeSessionForPR: %v", err)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if session.Status != "resuming" {
+		t.Fatalf("session status = %s, want resuming", session.Status)
+	}
+}
+
 func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -833,6 +1456,169 @@ func TestServiceCreateTriggerRejectsInvalidCron(t *testing.T) {
 	}
 }
 
+func TestCreateTriggerRejectsMissingMCPProfile(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	_, err := svc.CreateTrigger(context.Background(), store.TriggerInput{
+		Name:        "missing-profile-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "check",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"missing-profile"},
+	})
+	if err == nil {
+		t.Fatal("expected missing mcp profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"missing-profile" is not an active mcp profile`) {
+		t.Fatalf("CreateTrigger error = %q, want missing profile", err)
+	}
+}
+
+func TestCreateWebhookTriggerValidatesMCPProfilesAgainstWatchedRepo(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, repository.New(tdb.DB), "repo-profile", definitions.DefinitionTypeMCPProfile, "repo-tools", "repo", "", "github.com/acme/service", "mcp-profiles/repo-tools.yaml", "name: repo-tools\nurl: http://repo-tools:8080/mcp\n", now)
+	triggerConfig := mustMarshalJSON(store.PRReviewTriggerConfig{Repo: "acme/service"})
+
+	for _, triggerType := range []string{store.TriggerTypePRReview, store.TriggerTypeIssue} {
+		t.Run(triggerType, func(t *testing.T) {
+			if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+				Name:          "repo-profile-" + triggerType,
+				TriggerType:   triggerType,
+				TriggerConfig: string(triggerConfig),
+				AgentImage:    "runner:latest",
+				MCPProfiles:   []string{"repo-tools"},
+			}); err != nil {
+				t.Fatalf("CreateTrigger with repo-scoped profile: %v", err)
+			}
+		})
+	}
+}
+
+func TestUpdateTriggerRejectsMissingMCPProfile(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:        "profile-update",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "original",
+		AgentImage:  "runner:latest",
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	_, err := svc.UpdateTrigger(ctx, "profile-update", store.TriggerInput{
+		Name:        "profile-update",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@daily",
+		Prompt:      "updated",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"missing-profile"},
+	}, true)
+	if err == nil {
+		t.Fatal("expected missing mcp profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"missing-profile" is not an active mcp profile`) {
+		t.Fatalf("UpdateTrigger error = %q, want missing profile", err)
+	}
+	row, getErr := repository.New(tdb.DB).GetTriggerByName(ctx, "profile-update")
+	if getErr != nil {
+		t.Fatalf("GetTriggerByName: %v", getErr)
+	}
+	if row.Prompt != "original" {
+		t.Fatalf("trigger was modified despite validation error: %#v", row)
+	}
+}
+
+func TestUpdateWebhookTriggerValidatesMCPProfilesAgainstWatchedRepo(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertDefinition(t, repository.New(tdb.DB), "repo-profile", definitions.DefinitionTypeMCPProfile, "repo-tools", "repo", "", "github.com/acme/service", "mcp-profiles/repo-tools.yaml", "name: repo-tools\nurl: http://repo-tools:8080/mcp\n", now)
+	originalConfig := mustMarshalJSON(store.PRReviewTriggerConfig{Repo: "acme/service"})
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:          "repo-profile-update",
+		TriggerType:   store.TriggerTypePRReview,
+		TriggerConfig: string(originalConfig),
+		AgentImage:    "runner:latest",
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+
+	if _, err := svc.UpdateTrigger(ctx, "repo-profile-update", store.TriggerInput{
+		Name:          "repo-profile-update",
+		TriggerType:   store.TriggerTypePRReview,
+		TriggerConfig: string(originalConfig),
+		AgentImage:    "runner:latest",
+		MCPProfiles:   []string{"repo-tools"},
+	}, true); err != nil {
+		t.Fatalf("UpdateTrigger with repo-scoped profile: %v", err)
+	}
+}
+
+func TestUpdateIssueTriggerAllowsEmptyPrompt(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	triggerConfig := string(mustMarshalJSON(map[string]any{"repo": "flatout-works/chetter", "event": "opened"}))
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:          "issue-no-prompt-update",
+		TriggerType:   store.TriggerTypeIssue,
+		TriggerConfig: triggerConfig,
+		AgentImage:    "runner:latest",
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+
+	rec, err := svc.UpdateTrigger(ctx, "issue-no-prompt-update", store.TriggerInput{
+		Name:          "issue-no-prompt-update",
+		TriggerType:   store.TriggerTypeIssue,
+		TriggerConfig: string(mustMarshalJSON(map[string]any{"repo": "flatout-works/chetter", "event": "comment"})),
+		AgentImage:    "runner:latest",
+	}, true)
+	if err != nil {
+		t.Fatalf("UpdateTrigger issue with empty prompt: %v", err)
+	}
+	if rec.Prompt != "" {
+		t.Fatalf("prompt = %q, want empty", rec.Prompt)
+	}
+	if got := triggerConfigRepo(rec.TriggerConfig); got != "flatout-works/chetter" {
+		t.Fatalf("repo = %q, want flatout-works/chetter", got)
+	}
+}
+
+func TestUpdateIssueTriggerRejectsMissingRepo(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:          "issue-missing-repo-update",
+		TriggerType:   store.TriggerTypeIssue,
+		TriggerConfig: string(mustMarshalJSON(map[string]any{"repo": "flatout-works/chetter"})),
+		AgentImage:    "runner:latest",
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+
+	_, err := svc.UpdateTrigger(ctx, "issue-missing-repo-update", store.TriggerInput{
+		Name:          "issue-missing-repo-update",
+		TriggerType:   store.TriggerTypeIssue,
+		TriggerConfig: "{}",
+		AgentImage:    "runner:latest",
+	}, true)
+	if err == nil {
+		t.Fatal("expected issue update without repo to be rejected")
+	}
+	if !strings.Contains(err.Error(), "repo is required in trigger_config for issue triggers") {
+		t.Fatalf("UpdateTrigger error = %q, want missing issue repo", err)
+	}
+}
+
 func TestServiceCreateTriggerAppliesDefaultAgentImage(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -1073,6 +1859,30 @@ func seedTeam(t *testing.T, db *sql.DB, teamName, userName string) (teamID, user
 		t.Fatalf("create user: %v", err)
 	}
 	return teamID, userID
+}
+
+func seedMCPProfile(t *testing.T, db *sql.DB, name, content string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := repository.New(db).UpsertDefinition(context.Background(), repository.UpsertDefinitionParams{
+		ID:             "def_test_" + strings.ReplaceAll(name, "-", "_"),
+		SourceID:       "test",
+		DefinitionType: definitions.DefinitionTypeMCPProfile,
+		Name:           name,
+		Scope:          definitionScopeGlobal,
+		TeamID:         sql.NullString{},
+		Repo:           sql.NullString{},
+		Path:           "mcp-profiles/" + name + ".yaml",
+		SourceCommit:   "test",
+		ContentHash:    "test",
+		Content:        content,
+		Metadata:       nil,
+		Active:         true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("seed mcp profile: %v", err)
+	}
 }
 
 func ctxWithTeam(ctx context.Context, teamID string) context.Context {
@@ -1440,6 +2250,71 @@ func TestCreateTokenRequiresAdmin(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for non-admin token creation")
+	}
+}
+
+func TestDeleteTeamCascadesTeamRowsOnly(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	adminCtx := ctxWithAdmin(ctx)
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+
+	if _, err := svc.CreateTrigger(adminCtx, store.TriggerInput{
+		Name:        "engineering",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "global",
+		AgentImage:  "runner:latest",
+	}); err != nil {
+		t.Fatalf("create global trigger: %v", err)
+	}
+	teamTrigger, err := svc.CreateTrigger(ctxWithTeam(ctx, teamID), store.TriggerInput{
+		Name:        "team-owned",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@daily",
+		Prompt:      "team",
+		AgentImage:  "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("create team trigger: %v", err)
+	}
+	teamTask, err := svc.SubmitTask(ctxWithTeam(ctx, teamID), SubmitTaskRequest{
+		Prompt:     "team task",
+		AgentImage: "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("submit team task: %v", err)
+	}
+
+	if _, ok := svc.cronEntries[teamTrigger.ID]; !ok {
+		t.Fatal("expected team trigger cron entry before delete")
+	}
+	if err := svc.DeleteTeam(adminCtx, "engineering"); err != nil {
+		t.Fatalf("DeleteTeam: %v", err)
+	}
+	q := repository.New(tdb.DB)
+	if _, err := q.GetTeamByName(ctx, "engineering"); err == nil {
+		t.Fatal("team row should be deleted")
+	}
+	if _, err := q.GetTriggerByName(ctx, "team-owned"); err == nil {
+		t.Fatal("team trigger should be deleted")
+	}
+	if _, ok := svc.cronEntries[teamTrigger.ID]; ok {
+		t.Fatal("team trigger cron entry should be removed")
+	}
+	globalTrigger, err := q.GetTriggerByName(ctx, "engineering")
+	if err != nil {
+		t.Fatalf("global trigger with same name as team should remain: %v", err)
+	}
+	if globalTrigger.TeamID.Valid {
+		t.Fatalf("global trigger was replaced or scoped unexpectedly: %#v", globalTrigger)
+	}
+	if _, err := q.GetTaskByID(ctx, teamTask.ID); err == nil {
+		t.Fatal("team task should be deleted")
+	}
+	if _, err := q.GetSessionRunByTaskID(ctx, teamTask.ID); err == nil {
+		t.Fatal("team session run should be deleted")
 	}
 }
 

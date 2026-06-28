@@ -45,6 +45,10 @@ type SubmitTaskRequest struct {
 	SessionMode string
 	PauseReason string
 	TTLHours    int
+
+	DefinitionRepo             string
+	AllowGitHubToken           bool
+	AllowPrivilegedMCPProfiles bool
 }
 
 type AuditEventParams struct {
@@ -76,16 +80,20 @@ type RecordArtifactParams struct {
 }
 
 const (
-	defaultMaxMemoryMB      = 4096
-	defaultMaxCPU           = 2
-	triggerRunTimeout       = 30 * time.Second
-	eventHandlerTimeout     = 10 * time.Second
-	reaperInterval          = 30 * time.Second
-	definitionsSyncInterval = 5 * time.Minute
-	definitionsSyncTimeout  = 2 * time.Minute
-	reaperGrace             = 120 * time.Second
-	reaperHealthMaxEventSec = 120
-	runnerPresenceMaxSec    = 60
+	defaultMaxMemoryMB       = 4096
+	defaultMaxCPU            = 2
+	triggerRunTimeout        = 30 * time.Second
+	eventHandlerTimeout      = 10 * time.Second
+	reaperInterval           = 30 * time.Second
+	definitionsSyncInterval  = 5 * time.Minute
+	definitionsSyncTimeout   = 2 * time.Minute
+	reaperGrace              = 120 * time.Second
+	reaperHealthMaxEventSec  = 120
+	runnerPresenceMaxSec     = 60
+	gitHubTokenAllowedEnv    = "__chetter_github_auth_allowed"
+	gitHubTokenParentTaskEnv = "CHETTER_PARENT_TASK_ID"
+	definitionRepoEnv        = "__chetter_definition_repo"
+	mcpProfilePrivilegedEnv  = "__chetter_mcp_profile_privileged_allowed"
 )
 
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -400,6 +408,41 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
+	teamID := in.TeamID
+	if teamID == "" {
+		teamID = teamIDFromContext(ctx)
+	}
+
+	taskEnv := sanitizeTaskEnv(in.Env)
+	delete(taskEnv, gitHubTokenAllowedEnv)
+	delete(taskEnv, injectedGitHubTokenEnv)
+	delete(taskEnv, definitionRepoEnv)
+	delete(taskEnv, mcpProfilePrivilegedEnv)
+	definitionRepo := strings.TrimSpace(in.DefinitionRepo)
+	allowGitHubToken := in.AllowGitHubToken
+	if !allowGitHubToken && strings.TrimSpace(taskEnv[gitHubTokenParentTaskEnv]) != "" {
+		if err := s.authorizeGitHubTokenInheritance(ctx, taskEnv); err != nil {
+			return store.TaskRecord{}, err
+		}
+		allowGitHubToken = true
+	}
+	if allowGitHubToken {
+		repoName, ok := canonicalRepoName(taskEnv["GITHUB_REPO"])
+		if !ok {
+			return store.TaskRecord{}, fmt.Errorf("GITHUB_REPO must resolve to owner/repo for GitHub token authorization")
+		}
+		taskEnv["GITHUB_REPO"] = repoName
+	}
+	if definitionRepo == "" && allowGitHubToken {
+		definitionRepo = strings.TrimSpace(taskEnv["GITHUB_REPO"])
+	}
+	if definitionRepo != "" {
+		taskEnv[definitionRepoEnv] = definitionRepo
+	}
+	requiresPrivilegedMCPProfiles, err := s.validateMCPProfileNames(ctx, in.MCPProfiles, teamID, definitionLookupRef(in.GitURL, taskEnv), in.AllowPrivilegedMCPProfiles)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
 	taskID, err := randomID("task")
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
@@ -428,17 +471,21 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
 	}
-	taskEnv := sanitizeTaskEnv(in.Env)
+	if allowGitHubToken {
+		taskEnv[gitHubTokenAllowedEnv] = "true"
+		if githubTokenContextComplete(taskEnv) && strings.TrimSpace(taskEnv["GITHUB_TOKEN"]) == "" {
+			taskEnv["GITHUB_TOKEN"] = "[redacted]"
+		}
+	}
+	if requiresPrivilegedMCPProfiles {
+		taskEnv[mcpProfilePrivilegedEnv] = "true"
+	}
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
 	}
 	env, err := json.Marshal(taskEnv)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
-	}
-	teamID := in.TeamID
-	if teamID == "" {
-		teamID = teamIDFromContext(ctx)
 	}
 	resumeMode := "none"
 	pauseReason := ""
@@ -597,6 +644,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	if env == nil {
 		env = map[string]string{}
 	}
+	allowGitHubToken := isAdmin(ctx) && env[gitHubTokenAllowedEnv] == "true" && githubTokenContextComplete(env)
 	env["__recover_from"] = taskID
 
 	recoveryFileName := fmt.Sprintf("chetter_recovery_%s.md", taskID)
@@ -621,6 +669,9 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		MCPProfiles: mcpProfiles,
 		Env:         env,
 		TimeoutSec:  int(orig.TimeoutSec),
+
+		DefinitionRepo:   strings.TrimSpace(env[definitionRepoEnv]),
+		AllowGitHubToken: allowGitHubToken,
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -640,6 +691,10 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 
 // ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
+	return s.resumeAgentSession(ctx, sessionID, prompt, timeoutSec, isAdmin(ctx))
+}
+
+func (s *Service) resumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int, preserveGitHubToken bool) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
 	if err != nil {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("get agent session: %w", err)
@@ -697,13 +752,18 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	now := time.Now().UTC()
-	teamID := teamIDFromContext(ctx)
+	teamID := session.TeamID.String
+	if teamID == "" {
+		teamID = teamIDFromContext(ctx)
+	}
 	if timeoutSec == 0 {
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
 
-	skills := mustMarshalJSON([]string{})
-	env := mustMarshalJSON(map[string]string{})
+	skills, mcpProfiles, env, err := s.resumeTaskContext(ctx, sessionID, preserveGitHubToken)
+	if err != nil {
+		return ResumeAgentSessionOutput{}, err
+	}
 
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
@@ -725,6 +785,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
@@ -782,14 +843,59 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}, nil
 }
 
+func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, preserveGitHubToken bool) (json.RawMessage, json.RawMessage, json.RawMessage, error) {
+	emptySkills := mustMarshalJSON([]string{})
+	emptyMCPProfiles := mustMarshalJSON([]string{})
+	emptyEnv := mustMarshalJSON(map[string]string{})
+
+	runs, err := s.repo.ListSessionRunsBySession(ctx, sessionID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("list session runs: %w", err)
+	}
+	if len(runs) == 0 {
+		return emptySkills, emptyMCPProfiles, emptyEnv, nil
+	}
+	sourceRun := runs[len(runs)-1]
+	sourceTask, err := s.repo.GetTaskByID(ctx, sourceRun.TaskID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("get source task for resume: %w", err)
+	}
+
+	envMap := parseJSON[map[string]string](sourceTask.Env, "task:"+sourceTask.ID+" env")
+	if envMap == nil {
+		envMap = map[string]string{}
+	}
+	delete(envMap, injectedGitHubTokenEnv)
+	if preserveGitHubToken {
+		if envMap[gitHubTokenAllowedEnv] == "true" && githubTokenContextComplete(envMap) {
+			if strings.TrimSpace(envMap["GITHUB_TOKEN"]) == "" {
+				envMap["GITHUB_TOKEN"] = "[redacted]"
+			}
+		} else {
+			delete(envMap, gitHubTokenAllowedEnv)
+		}
+	} else {
+		delete(envMap, gitHubTokenAllowedEnv)
+		delete(envMap, mcpProfilePrivilegedEnv)
+	}
+	env, err := json.Marshal(envMap)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("marshal resume env: %w", err)
+	}
+	return nonEmptyRawJSON(sourceTask.Skills, emptySkills), nonEmptyRawJSON(sourceTask.McpProfiles, emptyMCPProfiles), env, nil
+}
+
+func nonEmptyRawJSON(value json.RawMessage, fallback json.RawMessage) json.RawMessage {
+	if len(value) == 0 || strings.TrimSpace(string(value)) == "" || strings.TrimSpace(string(value)) == "null" {
+		return fallback
+	}
+	return value
+}
+
 // ResumeSessionForPR checks if a paused Chetter-authored session exists for a PR
 // and enqueues a follow-up run with feedback response.
 func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber int) error {
-	session, err := s.repo.GetPausedSessionByArtifact(ctx, repository.GetPausedSessionByArtifactParams{
-		Repo:         repo,
-		Number:       sql.NullInt32{Int32: int32(prNumber), Valid: true},
-		ArtifactType: "pull_request",
-	})
+	session, err := s.pausedSessionForPRArtifact(ctx, repo, prNumber)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -815,12 +921,33 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 		prNumber, repo,
 	)
 
-	_, err = s.ResumeAgentSession(ctx, session.ID, prompt, 0)
+	_, err = s.resumeAgentSession(ctx, session.ID, prompt, 0, true)
 	if err != nil {
 		return fmt.Errorf("resume session %s: %w", session.ID, err)
 	}
 	slog.Info("auto-resumed session for PR feedback", "session_id", session.ID, "repo", repo, "pr", prNumber)
 	return nil
+}
+
+func (s *Service) pausedSessionForPRArtifact(ctx context.Context, repo string, prNumber int) (repository.ChetterAgentSession, error) {
+	var lastErr error
+	for _, artifactType := range []string{"pull_request", "pr", "pr_review"} {
+		session, err := s.repo.GetPausedSessionByArtifact(ctx, repository.GetPausedSessionByArtifactParams{
+			Repo:         repo,
+			Number:       sql.NullInt32{Int32: int32(prNumber), Valid: true},
+			ArtifactType: artifactType,
+		})
+		if err == nil {
+			return session, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return repository.ChetterAgentSession{}, lastErr
+	}
+	return repository.ChetterAgentSession{}, sql.ErrNoRows
 }
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
@@ -910,6 +1037,117 @@ func sanitizeTaskEnv(env map[string]string) map[string]string {
 	return out
 }
 
+func (s *Service) authorizeGitHubTokenInheritance(ctx context.Context, childEnv map[string]string) error {
+	if !isAdmin(ctx) {
+		return fmt.Errorf("GitHub token inheritance requires admin access")
+	}
+	parentTaskID := strings.TrimSpace(childEnv[gitHubTokenParentTaskEnv])
+	if parentTaskID == "" {
+		return fmt.Errorf("%s is required for GitHub token inheritance", gitHubTokenParentTaskEnv)
+	}
+	if !githubTokenContextComplete(childEnv) {
+		return fmt.Errorf("GitHub token inheritance requires GITHUB_REPO and PR_NUMBER or ISSUE_NUMBER")
+	}
+	parent, err := s.taskForToolAccess(ctx, parentTaskID)
+	if err != nil {
+		return fmt.Errorf("authorize GitHub token inheritance from parent task: %w", err)
+	}
+	var parentEnv map[string]string
+	if err := json.Unmarshal(parent.Env, &parentEnv); err != nil {
+		return fmt.Errorf("decode parent task env: %w", err)
+	}
+	if parentEnv[gitHubTokenAllowedEnv] != "true" {
+		return fmt.Errorf("parent task is not authorized for GitHub token inheritance")
+	}
+	if !sameRepoIdentity(parentEnv["GITHUB_REPO"], childEnv["GITHUB_REPO"]) {
+		return fmt.Errorf("GitHub token inheritance requires matching GITHUB_REPO")
+	}
+	repoName, ok := canonicalRepoName(childEnv["GITHUB_REPO"])
+	if !ok {
+		return fmt.Errorf("GitHub token inheritance requires GITHUB_REPO to resolve to owner/repo")
+	}
+	childEnv["GITHUB_REPO"] = repoName
+	if !sameGitHubArtifact(parentEnv, childEnv) {
+		return fmt.Errorf("GitHub token inheritance requires matching PR_NUMBER or ISSUE_NUMBER")
+	}
+	return nil
+}
+
+func githubTokenContextComplete(env map[string]string) bool {
+	if env == nil || strings.TrimSpace(env["GITHUB_REPO"]) == "" {
+		return false
+	}
+	return strings.TrimSpace(env["PR_NUMBER"]) != "" || strings.TrimSpace(env["ISSUE_NUMBER"]) != ""
+}
+
+func sameRepoIdentity(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	return repoMatches(a, repoIdentitySet(b))
+}
+
+func sameGitHubArtifact(parentEnv, childEnv map[string]string) bool {
+	if parentPR := strings.TrimSpace(parentEnv["PR_NUMBER"]); parentPR != "" {
+		return parentPR == strings.TrimSpace(childEnv["PR_NUMBER"])
+	}
+	if parentIssue := strings.TrimSpace(parentEnv["ISSUE_NUMBER"]); parentIssue != "" {
+		return parentIssue == strings.TrimSpace(childEnv["ISSUE_NUMBER"])
+	}
+	return false
+}
+
+func (s *Service) validateMCPProfileNames(ctx context.Context, profileNames []string, teamID, gitURL string, allowPrivileged bool) (bool, error) {
+	names := uniqueNonEmptyStrings(profileNames)
+	if len(names) == 0 {
+		return false, nil
+	}
+	allowPrivileged = allowPrivileged || isAdmin(ctx)
+	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeMCPProfile, names, teamID, gitURL)
+	if err != nil {
+		return false, fmt.Errorf("validate mcp_profiles: %w", err)
+	}
+
+	resolved := make(map[string]struct{}, len(names))
+	requiresPrivileged := false
+	var problems []string
+	for name, rows := range groups {
+		if len(rows) == 0 {
+			continue
+		}
+		profile, err := definitions.ParseMCPProfileYAML(rows[0].Content)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%q: %v", name, err))
+			continue
+		}
+		if profile.Name != name {
+			problems = append(problems, fmt.Sprintf("%q: content name %q does not match definition name", name, profile.Name))
+			continue
+		}
+		if mcpProfileRequiresPrivilegedAccess(profile) {
+			requiresPrivileged = true
+		}
+		if !allowPrivileged && mcpProfileRequiresPrivilegedAccess(profile) {
+			problems = append(problems, fmt.Sprintf("%q requires admin access", name))
+			continue
+		}
+		resolved[name] = struct{}{}
+	}
+	for _, name := range names {
+		if _, ok := resolved[name]; !ok {
+			problems = append(problems, fmt.Sprintf("%q is not an active mcp profile", name))
+		}
+	}
+	if len(problems) > 0 {
+		return false, fmt.Errorf("invalid mcp_profiles: %s", strings.Join(problems, "; "))
+	}
+	return requiresPrivileged, nil
+}
+
+func mcpProfileRequiresPrivilegedAccess(profile definitions.MCPProfileDef) bool {
+	return len(profile.Headers) > 0
+}
+
 // emptyTriggerConfig returns an empty JSON object as the trigger_config value
 // for triggers that have no type-specific data.
 func emptyTriggerConfig() json.RawMessage {
@@ -964,6 +1202,10 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	default:
 		return store.TriggerRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
 	}
+	teamID := teamIDFromContext(ctx)
+	if _, err := s.validateMCPProfileNames(ctx, in.MCPProfiles, teamID, triggerDefinitionRepoRef(in), false); err != nil {
+		return store.TriggerRecord{}, err
+	}
 	now := time.Now().UTC()
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
@@ -973,7 +1215,6 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
 	}
-	teamID := teamIDFromContext(ctx)
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
@@ -1032,7 +1273,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	if in.Name == "" {
 		return store.TriggerRecord{}, fmt.Errorf("name is required")
 	}
-	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview {
+	if in.Prompt == "" && in.TriggerType != store.TriggerTypePRReview && in.TriggerType != store.TriggerTypeIssue {
 		return store.TriggerRecord{}, fmt.Errorf("prompt is required")
 	}
 	if in.TriggerType == "" {
@@ -1051,6 +1292,11 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
 			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for pr_review triggers")
 		}
+	case store.TriggerTypeIssue:
+		var cfg struct{ Repo string }
+		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
+			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for issue triggers")
+		}
 	}
 	if in.AgentImage == "" {
 		return store.TriggerRecord{}, fmt.Errorf("agent_image is required")
@@ -1061,6 +1307,10 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	existing, err := s.triggerForToolAccess(ctx, name)
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
+	}
+	teamID := existing.TeamID.String
+	if _, err := s.validateMCPProfileNames(ctx, in.MCPProfiles, teamID, triggerDefinitionRepoRef(in), false); err != nil {
+		return store.TriggerRecord{}, err
 	}
 
 	// Deactivate cron trigger if it's a cron type.
@@ -1135,12 +1385,7 @@ func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
 		return fmt.Errorf("get trigger: %w", err)
 	}
 	targetID := sch.ID
-	s.cronMu.Lock()
-	if entryID, ok := s.cronEntries[targetID]; ok {
-		s.cron.Remove(entryID)
-		delete(s.cronEntries, targetID)
-	}
-	s.cronMu.Unlock()
+	s.removeCronEntries([]string{targetID})
 	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
 		return fmt.Errorf("delete trigger: %w", err)
 	}
@@ -1152,6 +1397,40 @@ func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
 		Detail:     fmt.Sprintf("trigger %q deleted", name),
 	})
 	return nil
+}
+
+func (s *Service) removeCronEntries(triggerIDs []string) {
+	if len(triggerIDs) == 0 {
+		return
+	}
+	s.cronMu.Lock()
+	defer s.cronMu.Unlock()
+	for _, triggerID := range triggerIDs {
+		if entryID, ok := s.cronEntries[triggerID]; ok {
+			s.cron.Remove(entryID)
+			delete(s.cronEntries, triggerID)
+		}
+	}
+}
+
+func triggerDefinitionRepoRef(in store.TriggerInput) string {
+	switch in.TriggerType {
+	case store.TriggerTypePRReview, store.TriggerTypeIssue:
+		if repo := triggerConfigRepo(in.TriggerConfig); repo != "" {
+			return repo
+		}
+	}
+	return in.GitURL
+}
+
+func triggerConfigRepo(triggerConfig string) string {
+	var cfg struct {
+		Repo string `json:"repo"`
+	}
+	if err := json.Unmarshal([]byte(triggerConfig), &cfg); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Repo)
 }
 
 // RunTriggerNow submits a task from a named cron trigger immediately.
@@ -1276,6 +1555,8 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 		SessionMode: runtime.SessionMode,
 		PauseReason: runtime.PauseReason,
 		TTLHours:    runtime.TTLHours,
+
+		AllowPrivilegedMCPProfiles: teamID == "",
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)

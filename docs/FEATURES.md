@@ -163,7 +163,7 @@ Implemented today:
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
 - Read access via `chetter_get_model_catalog`, `chetter_list_definitions`, and `chetter_get_definition`.
-- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup.
+- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup; profiles with auth headers are limited to admin/global-trigger use.
 
 Planned next:
 
@@ -263,5 +263,5 @@ Runner and agent env:
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider and GitHub credentials forwarded to task containers when configured. |
+| `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider credentials forwarded to task containers when configured. GitHub credentials are injected only as server-authorized per-task GitHub App tokens. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 integration. |

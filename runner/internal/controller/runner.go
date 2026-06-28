@@ -29,11 +29,11 @@ import (
 )
 
 const (
-	defaultTaskTimeoutSec = 3600
-	maxSummaryBytes       = 8000
-	serveReadyTimeout     = 15 * time.Second
-	servePollInterval     = 500 * time.Millisecond
-	serveHTTPTimeout      = 2 * time.Second
+	defaultTaskTimeoutSec  = 3600
+	maxSummaryBytes        = 8000
+	serveReadyTimeout      = 15 * time.Second
+	servePollInterval      = 500 * time.Millisecond
+	serveHTTPTimeout       = 2 * time.Second
 	workspacePruneInterval = 10 * time.Minute
 )
 
@@ -155,9 +155,9 @@ func (r *Runner) Start(ctx context.Context) error {
 
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
-			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {
-				allowed = append(allowed, u.Host)
-				slog.Info("added chetter MCP domain to proxy allowlist", "host", u.Host)
+			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Hostname() != "" {
+				allowed = append(allowed, u.Hostname())
+				slog.Info("added chetter MCP domain to proxy allowlist", "host", u.Hostname())
 			}
 		}
 		// Allow dev containers to reach the runner's own MCP server via HTTP_PROXY.

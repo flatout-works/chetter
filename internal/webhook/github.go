@@ -66,7 +66,7 @@ func NewClient(appID int64, installationID int64, privateKeyPEMBase64 string) (*
 
 // newRequest builds an authenticated GitHub API request.
 func (c *Client) newRequest(ctx context.Context, method, url string, body any) (*http.Request, error) {
-	token, err := c.tokenCache.get(c)
+	token, err := c.InstallationToken()
 	if err != nil {
 		return nil, fmt.Errorf("get installation token: %w", err)
 	}
@@ -89,6 +89,52 @@ func (c *Client) newRequest(ctx context.Context, method, url string, body any) (
 		req.Header.Set("Content-Type", "application/json")
 	}
 	return req, nil
+}
+
+// InstallationToken returns a current GitHub App installation token.
+func (c *Client) InstallationToken() (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("GitHub client is not configured")
+	}
+	return c.tokenCache.get(c)
+}
+
+// InstallationTokenForRepository returns an uncached installation token scoped
+// to a single repository name within the configured installation.
+func (c *Client) InstallationTokenForRepository(repo string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("GitHub client is not configured")
+	}
+	repoName, err := githubRepositoryName(repo)
+	if err != nil {
+		return "", err
+	}
+	token, _, err := fetchInstallationToken(c, map[string]any{
+		"repositories": []string{repoName},
+	})
+	return token, err
+}
+
+func githubRepositoryName(repo string) (string, error) {
+	value := strings.TrimSpace(repo)
+	if value == "" {
+		return "", fmt.Errorf("repo is required")
+	}
+	value = strings.TrimSuffix(value, ".git")
+	if strings.HasPrefix(value, "git@") {
+		if _, path, ok := strings.Cut(value, ":"); ok {
+			return githubRepositoryName(path)
+		}
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+		return githubRepositoryName(parsed.Path)
+	}
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	if name == "" || strings.Contains(name, "/") {
+		return "", fmt.Errorf("repo must be owner/name or repository name")
+	}
+	return strings.TrimSuffix(name, ".git"), nil
 }
 
 func (c *Client) do(req *http.Request, out any) error {
@@ -523,7 +569,7 @@ func (c *tokenCache) get(client *Client) (string, error) {
 	if c.token != "" && time.Until(c.expiry) > 5*time.Minute {
 		return c.token, nil
 	}
-	token, expiry, err := fetchInstallationToken(client)
+	token, expiry, err := fetchInstallationToken(client, nil)
 	if err != nil {
 		return "", err
 	}
@@ -533,7 +579,7 @@ func (c *tokenCache) get(client *Client) (string, error) {
 }
 
 // fetchInstallationToken signs a JWT and exchanges it for an installation token.
-func fetchInstallationToken(client *Client) (string, time.Time, error) {
+func fetchInstallationToken(client *Client, requestBody any) (string, time.Time, error) {
 	now := time.Now()
 	claims := jwt.RegisteredClaims{
 		Issuer:    strconv.FormatInt(client.AppID, 10),
@@ -547,13 +593,24 @@ func fetchInstallationToken(client *Client) (string, time.Time, error) {
 	}
 
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", githubAPIBase, client.InstallationID)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	var bodyReader io.Reader
+	if requestBody != nil {
+		data, err := json.Marshal(requestBody)
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("marshal installation token request: %w", err)
+		}
+		bodyReader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bodyReader)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+signed)
 	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), gitHubRequestTimeout)
 	defer cancel()

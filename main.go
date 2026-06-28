@@ -316,5 +316,9 @@ func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.Su
 		SessionMode: req.SessionMode,
 		PauseReason: req.PauseReason,
 		TTLHours:    req.TTLHours,
+
+		DefinitionRepo:             req.DefinitionRepo,
+		AllowGitHubToken:           req.AllowGitHubToken,
+		AllowPrivilegedMCPProfiles: req.AllowPrivilegedMCPProfiles,
 	})
 }

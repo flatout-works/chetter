@@ -19,7 +19,6 @@ You perform an adversarial review of one pull request. Assume the obvious happy 
 - `PR_HEAD_REF`
 - `PR_BASE_REF`
 - `REVIEW_GROUP`
-- `GITHUB_TOKEN`
 
 ## Review Procedure
 

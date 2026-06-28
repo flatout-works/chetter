@@ -138,7 +138,7 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN` | GitHub token for cloning private repos and read operations inside tasks. |
+| `GITHUB_TOKEN` | Optional runner process token for host-side git operations only. It is not forwarded into task containers. |
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
 
@@ -158,6 +158,8 @@ Example input:
   "timeout_sec": 1800
 }
 ```
+
+Webhook-created review and issue tasks may submit child tasks from an admin-scoped Chetter MCP profile for the same GitHub artifact by including `CHETTER_PARENT_TASK_ID` in the child task env. The server verifies that the parent task was authorized for GitHub App access and that `GITHUB_REPO` plus `PR_NUMBER` or `ISSUE_NUMBER` match before the runner mints a fresh installation token. Do not copy GitHub installation tokens into child task env.
 
 For a resumable session:
 
@@ -553,7 +555,7 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 | Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
 | Git identity | `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` are set to the Chetter runner identity. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
-| Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
+| Runner-owned secrets and provider env | The runner forwards configured provider secrets such as `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. `GITHUB_TOKEN` is forwarded only when the server injects a per-task GitHub App token. |
 | Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
 
 ### Trigger-Type Environment Variables
@@ -563,7 +565,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 | Variable | Trigger type(s) | Description |
 |---|---|---|
 | `GITHUB_REPO` | `issue`, `pr_review` | Full repository name (e.g. `owner/repo`) |
-| `GITHUB_TOKEN` | `issue`, `pr_review` | GitHub App installation token with read/write access |
+| `GITHUB_TOKEN` | `issue`, `pr_review` | GitHub App installation token injected at runner claim time; persisted task env only stores a redacted placeholder |
 | `ISSUE_NUMBER` | `issue` | Issue number |
 | `ISSUE_TITLE` | `issue` | Issue title text |
 | `ISSUE_URL` | `issue` | Issue HTML URL |
@@ -653,7 +655,7 @@ mcp_profiles:
   - chetter-orchestration
 ```
 
-Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config. Treat the full Chetter admin MCP token as trusted self-hosted only until scoped MCP tokens or proxy enforcement exist.
+Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config. Profiles with auth headers are admin/global-trigger only until scoped MCP tokens or proxy enforcement exist.
 
 Trigger ownership should remain explicit:
 

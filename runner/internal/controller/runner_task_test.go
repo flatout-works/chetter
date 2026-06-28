@@ -51,11 +51,16 @@ func TestRunnerOwnedEnv(t *testing.T) {
 }
 
 func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "runner-github-token")
 	t.Setenv("MEM9_API_KEY", "runner-key")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv("DEEPSEEK_API_KEY", "runner-deepseek-key")
+	req := task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}
 	env := map[string]string{"MEM9_API_KEY": "task-key", "OPENAI_API_KEY": "task-openai-key", "DEEPSEEK_API_KEY": "task-deepseek-key"}
-	addRunnerOwnedEnv(env)
+	addRunnerOwnedEnv(env, req)
+	if env["GITHUB_TOKEN"] != "ghs_claim_token" {
+		t.Fatalf("expected injected github token to win, got %q", env["GITHUB_TOKEN"])
+	}
 	if env["MEM9_API_KEY"] != "runner-key" {
 		t.Fatalf("expected runner mem9 key to win, got %q", env["MEM9_API_KEY"])
 	}
@@ -64,6 +69,18 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	}
 	if env["DEEPSEEK_API_KEY"] != "runner-deepseek-key" {
 		t.Fatalf("expected runner deepseek key to win, got %q", env["DEEPSEEK_API_KEY"])
+	}
+}
+
+func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "runner-github-token")
+	env := map[string]string{}
+	addRunnerOwnedEnv(env, task.TaskRequest{Env: map[string]string{}})
+	if _, ok := env["GITHUB_TOKEN"]; ok {
+		t.Fatalf("host GITHUB_TOKEN should not be forwarded without injected task token: %#v", env)
+	}
+	if got := runnerOwnedEnvValue("GITHUB_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}); got != "ghs_claim_token" {
+		t.Fatalf("runnerOwnedEnvValue injected token = %q, want ghs_claim_token", got)
 	}
 }
 
@@ -689,8 +706,10 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 		ProviderID: "synthetic",
 		ModelID:    "pi-model",
 		Env: map[string]string{
-			"CUSTOM_ENV":     "custom-value",
-			"OPENAI_API_KEY": "task-key",
+			"CUSTOM_ENV":               "custom-value",
+			"OPENAI_API_KEY":           "task-key",
+			"GITHUB_TOKEN":             "[redacted]",
+			injectedGitHubTokenTaskEnv: "ghs_claim_token",
 		},
 	}
 	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
@@ -723,6 +742,35 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 	if hasAdjacentArgs(args, "-e", "OPENAI_API_KEY=task-key") {
 		t.Fatalf("runner-owned env must not use task-provided value, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "GITHUB_TOKEN=ghs_claim_token") {
+		t.Fatalf("expected injected GitHub token to be forwarded as GITHUB_TOKEN, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", injectedGitHubTokenTaskEnv+"=ghs_claim_token") {
+		t.Fatalf("private injected token env must not be forwarded directly, got %v", args)
+	}
+}
+
+func TestDockerRPCArgsRoutesChetterMCPThroughProxyForGVisor(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{
+		TaskID:     "task-123",
+		AgentImage: "ghcr.io/flatout-works/chetter-runner:main",
+		ProviderID: "synthetic",
+		ModelID:    "pi-model",
+		Env:        map[string]string{},
+	}
+	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1")
+	if !hasAdjacentArgs(args, "-e", "HTTP_PROXY=http://172.21.0.1:18080") {
+		t.Fatalf("expected HTTP proxy env, got %v", args)
+	}
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-e" && strings.HasPrefix(args[i+1], "NO_PROXY=") && strings.Contains(args[i+1], "chetter-mcp") {
+			t.Fatalf("NO_PROXY should not bypass chetter-mcp in gVisor args: %v", args)
+		}
+		if args[i] == "-e" && strings.HasPrefix(args[i+1], "no_proxy=") && strings.Contains(args[i+1], "chetter-mcp") {
+			t.Fatalf("no_proxy should not bypass chetter-mcp in gVisor args: %v", args)
+		}
 	}
 }
 

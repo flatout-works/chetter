@@ -21,7 +21,6 @@ You synthesize the standard and adversarial review outputs for one pull request 
 - `REVIEW_GROUP`
 - `STANDARD_REVIEW_TASK_ID`
 - `ADVERSARIAL_REVIEW_TASK_ID`
-- `GITHUB_TOKEN`
 
 The task must have the `chetter-orchestration` MCP profile attached.
 
