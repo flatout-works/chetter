@@ -109,8 +109,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
 		cloneCmd.Dir = wsDir
+		cloneCmd.Env = filteredHostEnv()
 		if r.cfg.Git.SSHKeyPath != "" {
-			cloneCmd.Env = append(os.Environ(), "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
+			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
 		if out, err := cloneCmd.CombinedOutput(); err != nil {
 			slog.Error("clone error", "taskID", req.TaskID, "err", err, "output", string(out))
@@ -220,6 +221,19 @@ func addRunnerOwnedEnv(env map[string]string, req task.TaskRequest) {
 	}
 }
 
+func filteredHostEnv() []string {
+	hostEnv := os.Environ()
+	env := make([]string, 0, len(hostEnv))
+	for _, entry := range hostEnv {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok && (isRunnerOwnedEnv(key) || key == injectedGitHubTokenTaskEnv) {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return env
+}
+
 func appendRunnerOwnedDockerArgs(args []string, req task.TaskRequest) []string {
 	for _, key := range runnerOwnedEnvKeys() {
 		if val := runnerOwnedEnvValue(key, req); val != "" {
@@ -230,7 +244,7 @@ func appendRunnerOwnedDockerArgs(args []string, req task.TaskRequest) []string {
 }
 
 func runnerOwnedEnvValue(key string, req task.TaskRequest) string {
-	if key == "GITHUB_TOKEN" {
+	if key == "GITHUB_TOKEN" || key == "GH_TOKEN" {
 		return trustedInjectedGitHubToken(req)
 	}
 	return os.Getenv(key)
@@ -257,6 +271,7 @@ func runnerOwnedEnvKeys() []string {
 		"ANTHROPIC_DEFAULT_OPUS_MODEL",
 		"ANTHROPIC_DEFAULT_SONNET_MODEL",
 		"CLAUDE_CODE_SUBAGENT_MODEL",
+		"GH_TOKEN",
 		"GITHUB_TOKEN",
 		"MEM9_API_KEY",
 		"MEM9_API_URL",
@@ -275,7 +290,7 @@ func runnerOwnedEnvKeys() []string {
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
+	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "GH_TOKEN", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
 		return true
 	default:
 		return false
@@ -438,35 +453,8 @@ func gvisorHostAliases() []string {
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
-	env := os.Environ()
-	for k, v := range req.Env {
-		if !shouldForwardTaskEnv(k) {
-			continue
-		}
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-	env = appendRunnerOwnedEnv(env, req)
-	env = append(env,
-		"GIT_AUTHOR_NAME=Chetter Runner",
-		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
-		"GIT_COMMITTER_NAME=Chetter Runner",
-		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
-		"CHETTER_AGENT_NAME="+req.Agent,
-		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
-		"CHETTER_TASK_ID="+req.TaskID,
-		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
-		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
-	)
-
 	secret := h.ServerPassword()
-	env = append(env,
-		"TASK_ID="+req.TaskID,
-		"WORKSPACE="+session.WorkspaceDir,
-	)
-	for k, v := range h.Env(session.WorkspaceDir, secret, req) {
-		env = append(env, k+"="+v)
-	}
-	env = append(env, "HOME="+session.WorkspaceDir)
+	env := r.agentEnv(req, session.WorkspaceDir, secret, h)
 
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
@@ -1270,7 +1258,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 }
 
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
-	env := os.Environ()
+	env := filteredHostEnv()
 	for k, v := range req.Env {
 		if !shouldForwardTaskEnv(k) {
 			continue

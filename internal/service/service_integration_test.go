@@ -1456,6 +1456,58 @@ func TestServiceCreateTriggerRejectsInvalidCron(t *testing.T) {
 	}
 }
 
+func TestUpdateTriggerRejectsUnknownTypeWithoutRemovingCronEntry(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rec, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:        "unknown-type-update",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "original",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  60,
+	})
+	if err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	svc.cronMu.Lock()
+	_, hadEntry := svc.cronEntries[rec.ID]
+	svc.cronMu.Unlock()
+	if !hadEntry {
+		t.Fatal("expected cron entry before update")
+	}
+
+	_, err = svc.UpdateTrigger(ctx, "unknown-type-update", store.TriggerInput{
+		Name:        "unknown-type-update",
+		TriggerType: "webhook",
+		CronExpr:    "@daily",
+		Prompt:      "updated",
+		AgentImage:  "runner:latest",
+		TimeoutSec:  60,
+	}, true)
+	if err == nil {
+		t.Fatal("expected unknown trigger_type to be rejected")
+	}
+	if !strings.Contains(err.Error(), `unknown trigger_type "webhook"`) {
+		t.Fatalf("UpdateTrigger error = %q, want unknown trigger_type", err)
+	}
+
+	row, getErr := repository.New(tdb.DB).GetTriggerByName(ctx, "unknown-type-update")
+	if getErr != nil {
+		t.Fatalf("GetTriggerByName: %v", getErr)
+	}
+	if row.TriggerType != store.TriggerTypeCron || row.CronExpr != "@hourly" || row.Prompt != "original" {
+		t.Fatalf("trigger was modified despite validation error: %#v", row)
+	}
+	svc.cronMu.Lock()
+	_, stillHasEntry := svc.cronEntries[rec.ID]
+	svc.cronMu.Unlock()
+	if !stillHasEntry {
+		t.Fatal("cron entry should remain after rejected update")
+	}
+}
+
 func TestCreateTriggerRejectsMissingMCPProfile(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

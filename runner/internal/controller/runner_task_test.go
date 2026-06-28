@@ -45,6 +45,9 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	if !isRunnerOwnedEnv("CLAUDE_CODE_SUBAGENT_MODEL") {
 		t.Fatal("CLAUDE_CODE_SUBAGENT_MODEL should be runner-owned")
 	}
+	if !isRunnerOwnedEnv("GH_TOKEN") {
+		t.Fatal("GH_TOKEN should be runner-owned")
+	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
 	}
@@ -52,6 +55,7 @@ func TestRunnerOwnedEnv(t *testing.T) {
 
 func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
+	t.Setenv("GH_TOKEN", "runner-gh-token")
 	t.Setenv("MEM9_API_KEY", "runner-key")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv("DEEPSEEK_API_KEY", "runner-deepseek-key")
@@ -60,6 +64,9 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	addRunnerOwnedEnv(env, req)
 	if env["GITHUB_TOKEN"] != "ghs_claim_token" {
 		t.Fatalf("expected injected github token to win, got %q", env["GITHUB_TOKEN"])
+	}
+	if env["GH_TOKEN"] != "ghs_claim_token" {
+		t.Fatalf("expected injected github token to win for GH_TOKEN, got %q", env["GH_TOKEN"])
 	}
 	if env["MEM9_API_KEY"] != "runner-key" {
 		t.Fatalf("expected runner mem9 key to win, got %q", env["MEM9_API_KEY"])
@@ -74,13 +81,72 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 
 func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
+	t.Setenv("GH_TOKEN", "runner-gh-token")
 	env := map[string]string{}
 	addRunnerOwnedEnv(env, task.TaskRequest{Env: map[string]string{}})
 	if _, ok := env["GITHUB_TOKEN"]; ok {
 		t.Fatalf("host GITHUB_TOKEN should not be forwarded without injected task token: %#v", env)
 	}
+	if _, ok := env["GH_TOKEN"]; ok {
+		t.Fatalf("host GH_TOKEN should not be forwarded without injected task token: %#v", env)
+	}
 	if got := runnerOwnedEnvValue("GITHUB_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}); got != "ghs_claim_token" {
 		t.Fatalf("runnerOwnedEnvValue injected token = %q, want ghs_claim_token", got)
+	}
+	if got := runnerOwnedEnvValue("GH_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}); got != "ghs_claim_token" {
+		t.Fatalf("runnerOwnedEnvValue GH_TOKEN injected token = %q, want ghs_claim_token", got)
+	}
+}
+
+func TestFilteredHostEnvRemovesRunnerOwnedCredentials(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "runner-github-token")
+	t.Setenv("GH_TOKEN", "runner-gh-token")
+	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
+	t.Setenv(injectedGitHubTokenTaskEnv, "ghs_claim_token")
+	t.Setenv("CUSTOM_ENV", "custom-value")
+
+	env := envListToMap(filteredHostEnv())
+	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "OPENAI_API_KEY", injectedGitHubTokenTaskEnv} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("%s should be removed from filtered host env: %#v", key, env)
+		}
+	}
+	if got := env["CUSTOM_ENV"]; got != "custom-value" {
+		t.Fatalf("CUSTOM_ENV = %q, want custom-value", got)
+	}
+}
+
+func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "runner-github-token")
+	t.Setenv("GH_TOKEN", "runner-gh-token")
+	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
+	req := task.TaskRequest{
+		TaskID: "task-123",
+		Agent:  "reviewer",
+		Env: map[string]string{
+			"CUSTOM_ENV":               "custom-value",
+			"GITHUB_TOKEN":             "[redacted]",
+			"GH_TOKEN":                 "task-gh-token",
+			"OPENAI_API_KEY":           "task-openai-key",
+			injectedGitHubTokenTaskEnv: "ghs_claim_token",
+		},
+	}
+
+	env := envListToMap((&Runner{}).agentEnv(req, "/tmp/ws", "", pi.New()))
+	if got := env["GITHUB_TOKEN"]; got != "ghs_claim_token" {
+		t.Fatalf("GITHUB_TOKEN = %q, want injected task token", got)
+	}
+	if got := env["GH_TOKEN"]; got != "ghs_claim_token" {
+		t.Fatalf("GH_TOKEN = %q, want injected task token", got)
+	}
+	if got := env["OPENAI_API_KEY"]; got != "runner-openai-key" {
+		t.Fatalf("OPENAI_API_KEY = %q, want runner-owned value", got)
+	}
+	if got := env["CUSTOM_ENV"]; got != "custom-value" {
+		t.Fatalf("CUSTOM_ENV = %q, want custom-value", got)
+	}
+	if _, ok := env[injectedGitHubTokenTaskEnv]; ok {
+		t.Fatalf("private injected token env should not be forwarded: %#v", env)
 	}
 }
 
@@ -837,6 +903,17 @@ func hasAdjacentArgs(values []string, key, value string) bool {
 		}
 	}
 	return false
+}
+
+func envListToMap(values []string) map[string]string {
+	env := make(map[string]string, len(values))
+	for _, value := range values {
+		key, val, ok := strings.Cut(value, "=")
+		if ok {
+			env[key] = val
+		}
+	}
+	return env
 }
 
 type recordingRunnerRPCClient struct {

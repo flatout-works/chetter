@@ -1297,6 +1297,8 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		if err := json.Unmarshal([]byte(in.TriggerConfig), &cfg); err != nil || cfg.Repo == "" {
 			return store.TriggerRecord{}, fmt.Errorf("repo is required in trigger_config for issue triggers")
 		}
+	default:
+		return store.TriggerRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
 	}
 	if in.AgentImage == "" {
 		return store.TriggerRecord{}, fmt.Errorf("agent_image is required")
