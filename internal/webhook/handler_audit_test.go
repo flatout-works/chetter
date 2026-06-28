@@ -45,6 +45,47 @@ func TestTriggerAllowsBotComments(t *testing.T) {
 	}
 }
 
+func TestTriggerMatchesEvent(t *testing.T) {
+	tests := []struct {
+		name    string
+		trigger ReviewTrigger
+		event   string
+		want    bool
+	}{
+		{
+			name:    "empty event matches",
+			trigger: ReviewTrigger{},
+			event:   "comment",
+			want:    true,
+		},
+		{
+			name:    "exact event matches",
+			trigger: ReviewTrigger{Event: "comment"},
+			event:   "comment",
+			want:    true,
+		},
+		{
+			name:    "event with bot comments option matches",
+			trigger: ReviewTrigger{Event: "comment bot_comments:true"},
+			event:   "comment",
+			want:    true,
+		},
+		{
+			name:    "different event does not match",
+			trigger: ReviewTrigger{Event: "opened bot_comments:true"},
+			event:   "comment",
+			want:    false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := triggerMatchesEvent(tc.trigger, tc.event); got != tc.want {
+				t.Errorf("triggerMatchesEvent = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTriggerMatchesLabels(t *testing.T) {
 	tests := []struct {
 		name          string

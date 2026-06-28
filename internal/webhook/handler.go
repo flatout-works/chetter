@@ -492,7 +492,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 
 	var matching []ReviewTrigger
 	for _, t := range triggers {
-		if t.Event != "" && t.Event != "comment" {
+		if !triggerMatchesEvent(t, "comment") {
 			continue
 		}
 		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
@@ -957,6 +957,18 @@ func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifact
 
 func triggerAllowsBotComments(t ReviewTrigger) bool {
 	return strings.Contains(t.Event, "bot_comments:true")
+}
+
+func triggerMatchesEvent(t ReviewTrigger, event string) bool {
+	configured := strings.TrimSpace(t.Event)
+	if configured == "" {
+		return true
+	}
+	fields := strings.Fields(configured)
+	if len(fields) == 0 {
+		return true
+	}
+	return fields[0] == event
 }
 
 // triggerMatchesLabels checks if any of the issue's labels match the trigger's

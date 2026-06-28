@@ -313,11 +313,11 @@ func cloneURLForRequest(req task.TaskRequest, runnerPAT string) string {
 	if req.GitURL == "" {
 		return ""
 	}
-	if runnerPAT != "" && strings.HasPrefix(req.GitURL, "https://") {
-		return injectPATIntoURL(req.GitURL, runnerPAT)
-	}
 	if token := trustedInjectedGitHubToken(req); token != "" {
 		return injectGitHubTokenIntoCloneURL(req.GitURL, token)
+	}
+	if runnerPAT != "" && strings.HasPrefix(req.GitURL, "https://") {
+		return injectPATIntoURL(req.GitURL, runnerPAT)
 	}
 	return req.GitURL
 }

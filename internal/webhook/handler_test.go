@@ -480,6 +480,39 @@ func TestHandleIssueCommentDoesNotResumePRForAppBot(t *testing.T) {
 	}
 }
 
+func TestHandleIssueCommentAllowsConfiguredBotComments(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("chetter[bot]"),
+		submitter: submitter,
+		triggers: recordingTriggerResolver{issueTriggers: []ReviewTrigger{
+			{Name: "ordinary-comment", TriggerType: "issue", Event: "comment"},
+			{Name: "bot-comment", TriggerType: "issue", Event: "comment bot_comments:true"},
+		}},
+	}
+	body := []byte(`{
+		"action":"created",
+		"repository":{"full_name":"flatout-works/chetter"},
+		"issue":{
+			"number":7,
+			"title":"please help",
+			"body":"issue body",
+			"html_url":"https://github.com/flatout-works/chetter/issues/7",
+			"labels":[]
+		},
+		"comment":{"body":"Task: task_abc123","user":{"login":"chetter[bot]"}}
+	}`)
+
+	h.handleIssueComment(body, "delivery-6")
+
+	if len(submitter.tasks) != 1 {
+		t.Fatalf("submitted tasks = %d, want 1", len(submitter.tasks))
+	}
+	if submitter.tasks[0].TriggerName != "bot-comment" {
+		t.Fatalf("trigger name = %q, want bot-comment", submitter.tasks[0].TriggerName)
+	}
+}
+
 func TestHandleIssuesOpenedSubmitsReadOnlyTask(t *testing.T) {
 	submitter := &recordingTaskSubmitter{}
 	h := &Handler{

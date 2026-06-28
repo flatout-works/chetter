@@ -104,13 +104,13 @@ func TestCloneURLForRequestDoesNotLeakTaskTokenToNonGitHubHost(t *testing.T) {
 	}
 }
 
-func TestCloneURLForRequestKeepsRunnerPATPrecedence(t *testing.T) {
+func TestCloneURLForRequestPrefersTaskScopedGitHubTokenOverRunnerPAT(t *testing.T) {
 	got := cloneURLForRequest(task.TaskRequest{
 		GitURL: "https://github.com/flatout-works/chetter.git",
 		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
 	}, "ghp_runner_pat")
-	if !strings.Contains(got, "ghp_runner_pat@github.com") || strings.Contains(got, "ghs_claim_token") {
-		t.Fatalf("clone URL = %q, want runner PAT precedence", got)
+	if !strings.Contains(got, "x-access-token:ghs_claim_token@github.com") || strings.Contains(got, "ghp_runner_pat") {
+		t.Fatalf("clone URL = %q, want task-scoped token precedence", got)
 	}
 }
 
