@@ -242,18 +242,25 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 	}
 }
 
+// queryActiveDefinitions selects columns for active definitions of defType
+// whose name is in names. names must be non-empty (callers guard this).
+func (s *RunnerRPCService) queryActiveDefinitions(ctx context.Context, defType, columns string, names []string) (*sql.Rows, error) {
+	placeholders := strings.Repeat(",?", len(names))[1:]
+	query := `SELECT ` + columns + ` FROM definitions WHERE definition_type=? AND name IN (` + placeholders + `) AND active=true`
+	args := make([]any, 0, len(names)+1)
+	args = append(args, defType)
+	for _, n := range names {
+		args = append(args, n)
+	}
+	return s.rawDB.QueryContext(ctx, query, args...)
+}
+
 func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames []string) []*runnerv1.MCPProfile {
 	names := uniqueNonEmptyStrings(profileNames)
 	if len(names) == 0 {
 		return nil
 	}
-	placeholders := strings.Repeat(",?", len(names))[1:]
-	query := `SELECT name, content FROM definitions WHERE definition_type='mcp_profile' AND name IN (` + placeholders + `) AND active=true`
-	args := make([]any, len(names))
-	for i, n := range names {
-		args[i] = n
-	}
-	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	rows, err := s.queryActiveDefinitions(ctx, "mcp_profile", "name, content", names)
 	if err != nil {
 		slog.Warn("resolve mcp profile definitions query", "err", err)
 		return invalidMCPProfiles(names)
@@ -324,13 +331,7 @@ func invalidMCPProfiles(names []string) []*runnerv1.MCPProfile {
 }
 
 func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
-	placeholders := strings.Repeat(",?", len(skillNames))[1:]
-	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + placeholders + `) AND active=true`
-	args := make([]any, len(skillNames))
-	for i, n := range skillNames {
-		args[i] = n
-	}
-	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	rows, err := s.queryActiveDefinitions(ctx, "skill", "name, path, content", skillNames)
 	if err != nil {
 		slog.Warn("resolve skill definitions query", "err", err)
 		return nil

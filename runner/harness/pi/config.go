@@ -69,10 +69,8 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		}
 		mcpServers["chetter"] = server
 	}
-	if len(req.MCPProfiles) > 0 {
-		if err := mcpconfig.AddPiServers(mcpServers, req.MCPProfiles); err != nil {
-			return err
-		}
+	if err := mcpconfig.AddPiServers(mcpServers, req.MCPProfiles); err != nil {
+		return err
 	}
 	if len(mcpServers) > 0 {
 		mcpConfig := map[string]any{

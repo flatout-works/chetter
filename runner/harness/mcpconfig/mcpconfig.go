@@ -11,7 +11,11 @@ import (
 
 var envRefPattern = regexp.MustCompile(`\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
+// addServers renders each profile into mcpServers, using build for the
+// harness-specific per-server entry. It owns the shared pipeline: validate the
+// profile, resolve its headers, attach them, and register under the normalized
+// name.
+func addServers(mcpServers map[string]any, profiles []task.MCPProfile, build func(task.MCPProfile) map[string]any) error {
 	for _, profile := range profiles {
 		normalized, err := normalize(profile)
 		if err != nil {
@@ -21,62 +25,42 @@ func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) e
 		if err != nil {
 			return err
 		}
-		server := map[string]any{
-			"type":    openCodeType(normalized),
-			"url":     normalized.URL,
-			"enabled": true,
-		}
+		server := build(normalized)
 		if len(headers) > 0 {
 			server["headers"] = headers
 		}
 		mcpServers[normalized.Name] = server
 	}
 	return nil
+}
+
+func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
+	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
+		return map[string]any{
+			"type":    openCodeType(p),
+			"url":     p.URL,
+			"enabled": true,
+		}
+	})
 }
 
 func AddHTTPServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
-	for _, profile := range profiles {
-		normalized, err := normalize(profile)
-		if err != nil {
-			return err
-		}
-		headers, err := ResolveHeaders(normalized)
-		if err != nil {
-			return err
-		}
-		server := map[string]any{
-			"type":    httpType(normalized),
-			"url":     normalized.URL,
+	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
+		return map[string]any{
+			"type":    httpType(p),
+			"url":     p.URL,
 			"enabled": true,
 		}
-		if len(headers) > 0 {
-			server["headers"] = headers
-		}
-		mcpServers[normalized.Name] = server
-	}
-	return nil
+	})
 }
 
 func AddPiServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
-	for _, profile := range profiles {
-		normalized, err := normalize(profile)
-		if err != nil {
-			return err
-		}
-		headers, err := ResolveHeaders(normalized)
-		if err != nil {
-			return err
-		}
-		server := map[string]any{
-			"url":       normalized.URL,
+	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
+		return map[string]any{
+			"url":       p.URL,
 			"lifecycle": "keep-alive",
 		}
-		if len(headers) > 0 {
-			server["headers"] = headers
-		}
-		mcpServers[normalized.Name] = server
-	}
-	return nil
+	})
 }
 
 func AddOpenCodePermissions(perms map[string]any, profiles []task.MCPProfile) {

@@ -39,10 +39,8 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		}
 		mcpServers["chetter"] = chetterMCP
 	}
-	if len(req.MCPProfiles) > 0 {
-		if err := mcpconfig.AddHTTPServers(mcpServers, req.MCPProfiles); err != nil {
-			return err
-		}
+	if err := mcpconfig.AddHTTPServers(mcpServers, req.MCPProfiles); err != nil {
+		return err
 	}
 
 	if len(mcpServers) > 0 {
