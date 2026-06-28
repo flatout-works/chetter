@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -200,6 +201,46 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 	if !containsString(trigger.MCPProfiles, "chetter-orchestration") {
 		t.Fatalf("trigger mcp_profiles = %#v, want chetter-orchestration", trigger.MCPProfiles)
 	}
+
+	orchestratorData, err := os.ReadFile(filepath.Join(root, "agents", "review-orchestrator.md"))
+	if err != nil {
+		t.Fatalf("read example orchestrator: %v", err)
+	}
+	orchestrator := string(orchestratorData)
+	childSection := sectionBetween(orchestrator, "3. Submit two child tasks", "4. Poll both child tasks")
+	childEnvLine := lineContaining(childSection, "environment values")
+	if strings.Contains(childEnvLine, "CHETTER_PARENT_TASK_ID") || strings.Contains(childEnvLine, "GITHUB_TOKEN") {
+		t.Fatalf("reviewer child env line must not inherit GitHub write auth:\n%s", childEnvLine)
+	}
+	if !strings.Contains(childSection, "no `GITHUB_TOKEN` and no `CHETTER_PARENT_TASK_ID`") {
+		t.Fatalf("reviewer child section should explicitly forbid GitHub write inheritance:\n%s", childSection)
+	}
+	synthSection := sectionBetween(orchestrator, "6. Submit the synthesizer task", "7. Poll the synthesizer")
+	if !strings.Contains(synthSection, "CHETTER_PARENT_TASK_ID") {
+		t.Fatalf("synthesizer section should keep parent task authorization:\n%s", synthSection)
+	}
+}
+
+func sectionBetween(content, start, end string) string {
+	startIdx := strings.Index(content, start)
+	if startIdx < 0 {
+		return ""
+	}
+	content = content[startIdx:]
+	endIdx := strings.Index(content, end)
+	if endIdx < 0 {
+		return content
+	}
+	return content[:endIdx]
+}
+
+func lineContaining(content, needle string) string {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	return ""
 }
 
 func writeFile(t *testing.T, root, rel, content string) {

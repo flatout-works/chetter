@@ -159,7 +159,7 @@ Example input:
 }
 ```
 
-Webhook-created review and issue tasks may submit child tasks from an admin-scoped Chetter MCP profile for the same GitHub artifact by including `CHETTER_PARENT_TASK_ID` in the child task env. The server verifies that the parent task was authorized for GitHub App access and that `GITHUB_REPO` plus `PR_NUMBER` or `ISSUE_NUMBER` match before the runner mints a fresh installation token. Do not copy GitHub installation tokens into child task env.
+Webhook-created review and issue tasks may submit child tasks from an admin-scoped Chetter MCP profile for the same GitHub artifact by including `CHETTER_PARENT_TASK_ID` in the child task env. The server verifies that the parent task was authorized for GitHub App access and that `GITHUB_REPO` plus `PR_NUMBER` or `ISSUE_NUMBER` match before the runner mints a fresh installation token. Treat this as GitHub write authorization: use it only for child tasks that are expected to post through Chetter MCP tools. Do not copy GitHub installation tokens into child task env.
 
 For a resumable session:
 
@@ -590,7 +590,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 The example config repo includes a definitions-driven orchestration workflow:
 
 1. A `pr_review` trigger starts `review-orchestrator` with the `chetter-orchestration` MCP profile.
-2. The orchestrator verifies `PR_HEAD_SHA`, then submits `standard-pr-reviewer` and `adversarial-pr-reviewer` child tasks.
+2. The orchestrator verifies `PR_HEAD_SHA`, then submits `standard-pr-reviewer` and `adversarial-pr-reviewer` child tasks without GitHub write inheritance.
 3. Child reviewers produce structured task outputs and do not post to GitHub.
 4. The orchestrator exports both child task transcripts and starts `review-synthesizer`.
 5. The synthesizer verifies the PR head again and posts exactly one final review using `chetter_pr_review`.

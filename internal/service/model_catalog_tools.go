@@ -723,6 +723,7 @@ func validateTriggerMCPProfileRefs(entries []triggerSyncEntry, profiles map[stri
 func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]triggerSyncEntry, error) {
 	var entries []triggerSyncEntry
 	var problems []string
+	seenNames := make(map[string]string)
 	for _, def := range defs {
 		if def.Type != definitions.DefinitionTypeTrigger {
 			continue
@@ -736,6 +737,11 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			problems = append(problems, err.Error())
 			continue
 		}
+		if previousPath, ok := seenNames[td.Name]; ok {
+			problems = append(problems, fmt.Sprintf("%s: duplicate trigger name %q (already defined in %s)", def.Path, td.Name, previousPath))
+			continue
+		}
+		seenNames[td.Name] = def.Path
 		id, err := randomID("trig")
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("%s: generate id: %v", def.Path, err))

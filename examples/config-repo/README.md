@@ -35,4 +35,4 @@ This example repository includes a trusted self-hosted multi-agent PR review wor
 - `mcp-profiles/chetter-orchestration.yaml`
 - `triggers/chetter-pr-review-orchestrator.yaml`
 
-The trigger is disabled by default. Enable it only after installing the GitHub App on the target repository and making `CHETTER_MCP_AUTH_TOKEN` available to trusted runners. Until scoped MCP tokens or proxy-side enforcement exists, this workflow is for trusted self-hosted deployments.
+The trigger is disabled by default. Enable it only after installing the GitHub App on the target repository and making `CHETTER_MCP_AUTH_TOKEN` available to trusted runners. Reviewer child tasks should not inherit GitHub write authorization; only the synthesizer should post through Chetter MCP tools. Until scoped MCP tokens or proxy-side enforcement exists, this workflow is for trusted self-hosted deployments.

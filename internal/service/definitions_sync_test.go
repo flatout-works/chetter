@@ -189,6 +189,40 @@ func TestSyncDefinitionsRejectsInvalidCronTrigger(t *testing.T) {
 	}
 }
 
+func TestSyncDefinitionsRejectsDuplicateTriggerNames(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	repoDir := createDefinitionsRepo(t)
+	writeRepoFile(t, repoDir, "triggers/also-nightly.yaml", "name: nightly\ncron_expr: '@daily'\nprompt: duplicate trigger\n")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "add duplicate trigger name")
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	_, err := svc.SyncDefinitions(ctx)
+	if err == nil {
+		t.Fatal("expected sync to reject duplicate trigger name")
+	}
+	if !strings.Contains(err.Error(), `duplicate trigger name "nightly"`) {
+		t.Fatalf("sync error = %q, want duplicate trigger name", err)
+	}
+
+	runs, runErr := svc.repo.ListDefinitionSyncRuns(ctx, repository.ListDefinitionSyncRunsParams{
+		Column1:  defaultDefinitionSourceID,
+		SourceID: defaultDefinitionSourceID,
+		Limit:    5,
+	})
+	if runErr != nil {
+		t.Fatalf("list sync runs: %v", runErr)
+	}
+	if len(runs) != 1 || runs[0].Status != definitionSyncStatusError || !runs[0].Error.Valid {
+		t.Fatalf("unexpected sync runs: %#v", runs)
+	}
+	if _, getErr := repository.New(tdb.DB).GetTriggerByName(ctx, "nightly"); getErr == nil {
+		t.Fatal("duplicate trigger sync should not persist either trigger")
+	}
+}
+
 func TestSyncDefinitionsRejectsDynamicTriggerNameCollision(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
