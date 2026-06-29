@@ -143,11 +143,11 @@ func renderMessageParts(role string, parts []string) string {
 		switch typ {
 		case "text":
 			if t, _ := p["text"].(string); t != "" {
-				lines = append(lines, t)
+				lines = append(lines, escapeExportRoleHeadings(t))
 			}
 		case "reasoning":
 			if t, _ := p["text"].(string); t != "" {
-				lines = append(lines, fmt.Sprintf("<details><summary>Reasoning</summary>\n\n%s\n\n</details>", t))
+				lines = append(lines, fmt.Sprintf("<details><summary>Reasoning</summary>\n\n%s\n\n</details>", escapeExportRoleHeadings(t)))
 			}
 		case "step-finish":
 			if tokens, ok := p["tokens"].(map[string]any); ok {
@@ -188,9 +188,9 @@ func renderMessageParts(role string, parts []string) string {
 				status = "Error"
 			}
 			if name != "" {
-				lines = append(lines, fmt.Sprintf("**Tool Result** (%s: %s)\n\n```\n%s\n```", name, status, content))
+				lines = append(lines, fmt.Sprintf("**Tool Result** (%s: %s)\n\n```\n%s\n```", name, status, escapeExportRoleHeadings(content)))
 			} else if content != "" {
-				lines = append(lines, fmt.Sprintf("**Tool Result**\n\n```\n%s\n```", content))
+				lines = append(lines, fmt.Sprintf("**Tool Result**\n\n```\n%s\n```", escapeExportRoleHeadings(content)))
 			}
 		case "step-start":
 		}
@@ -202,6 +202,17 @@ func renderMessageParts(role string, parts []string) string {
 
 	header := fmt.Sprintf("## %s", titleCase(role))
 	return header + "\n\n" + strings.Join(lines, "\n\n")
+}
+
+func escapeExportRoleHeadings(text string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		switch strings.TrimSpace(line) {
+		case "## User", "## Assistant", "## Tool", "## System", "## Developer":
+			lines[i] = `\` + line
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func titleCase(s string) string {

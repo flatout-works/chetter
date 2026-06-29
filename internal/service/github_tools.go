@@ -206,11 +206,25 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func reviewBodyFromSessionExport(export string) (string, error) {
-	section := export
-	if idx := strings.LastIndex(export, "\n## Assistant\n"); idx >= 0 {
-		section = export[idx+1:]
-	} else if strings.HasPrefix(export, "## Assistant\n") {
-		section = export
+	sections := assistantExportSections(export)
+	if len(sections) == 0 {
+		return "", fmt.Errorf("session export does not contain a final assistant message")
+	}
+	section := ""
+	for i, candidate := range sections {
+		starts := strings.Count(candidate, reviewBodyStartMarker)
+		ends := strings.Count(candidate, reviewBodyEndMarker)
+		if starts == 0 && ends == 0 {
+			continue
+		}
+		if i != len(sections)-1 {
+			return "", fmt.Errorf("session export review markers must appear in the final assistant message")
+		}
+		section = candidate
+		break
+	}
+	if section == "" {
+		section = sections[len(sections)-1]
 	}
 	if count := strings.Count(section, reviewBodyStartMarker); count != 1 {
 		return "", fmt.Errorf("session export must contain exactly one %s in the final assistant message, got %d", reviewBodyStartMarker, count)
@@ -232,6 +246,40 @@ func reviewBodyFromSessionExport(export string) (string, error) {
 		return "", fmt.Errorf("marked review body is empty")
 	}
 	return body, nil
+}
+
+func assistantExportSections(export string) []string {
+	lines := strings.Split(strings.ReplaceAll(export, "\r\n", "\n"), "\n")
+	var sections []string
+	var current strings.Builder
+	inAssistant := false
+	flush := func() {
+		if !inAssistant {
+			return
+		}
+		sections = append(sections, current.String())
+		current.Reset()
+		inAssistant = false
+	}
+	for _, line := range lines {
+		switch strings.TrimSpace(line) {
+		case "## Assistant":
+			flush()
+			inAssistant = true
+			current.WriteString(line)
+			current.WriteByte('\n')
+			continue
+		case "## User", "## Tool", "## System", "## Developer":
+			flush()
+			continue
+		}
+		if inAssistant {
+			current.WriteString(line)
+			current.WriteByte('\n')
+		}
+	}
+	flush()
+	return sections
 }
 
 func (s *Service) githubClient() *webhook.Client {
