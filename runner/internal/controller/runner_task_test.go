@@ -99,20 +99,37 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 }
 
 func TestFilteredHostEnvRemovesRunnerOwnedCredentials(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
 	t.Setenv("GH_TOKEN", "runner-gh-token")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv(injectedGitHubTokenTaskEnv, "ghs_claim_token")
+	t.Setenv("CHETTER_MCP_AUTH_TOKEN", "admin-mcp-token")
+	t.Setenv("MCP_AUTH_TOKEN", "server-admin-token")
+	t.Setenv("CHETTER_RUNNER_RPC_TOKEN", "runner-rpc-token")
+	t.Setenv("DATABASE_DSN", "root@tcp(localhost:4000)/")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY_B64", "private-key")
 	t.Setenv("CUSTOM_ENV", "custom-value")
 
 	env := envListToMap(filteredHostEnv())
-	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "OPENAI_API_KEY", injectedGitHubTokenTaskEnv} {
+	for _, key := range []string{
+		"GITHUB_TOKEN",
+		"GH_TOKEN",
+		"OPENAI_API_KEY",
+		injectedGitHubTokenTaskEnv,
+		"CHETTER_MCP_AUTH_TOKEN",
+		"MCP_AUTH_TOKEN",
+		"CHETTER_RUNNER_RPC_TOKEN",
+		"DATABASE_DSN",
+		"GITHUB_APP_PRIVATE_KEY_B64",
+		"CUSTOM_ENV",
+	} {
 		if _, ok := env[key]; ok {
 			t.Fatalf("%s should be removed from filtered host env: %#v", key, env)
 		}
 	}
-	if got := env["CUSTOM_ENV"]; got != "custom-value" {
-		t.Fatalf("CUSTOM_ENV = %q, want custom-value", got)
+	if got := env["PATH"]; got != "/usr/bin:/bin" {
+		t.Fatalf("PATH = %q, want /usr/bin:/bin", got)
 	}
 }
 
@@ -120,6 +137,9 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
 	t.Setenv("GH_TOKEN", "runner-gh-token")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
+	t.Setenv("CHETTER_MCP_AUTH_TOKEN", "admin-mcp-token")
+	t.Setenv("MCP_AUTH_TOKEN", "server-admin-token")
+	t.Setenv("DATABASE_DSN", "root@tcp(localhost:4000)/")
 	req := task.TaskRequest{
 		TaskID: "task-123",
 		Agent:  "reviewer",
@@ -147,6 +167,11 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 	}
 	if _, ok := env[injectedGitHubTokenTaskEnv]; ok {
 		t.Fatalf("private injected token env should not be forwarded: %#v", env)
+	}
+	for _, key := range []string{"CHETTER_MCP_AUTH_TOKEN", "MCP_AUTH_TOKEN", "DATABASE_DSN"} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("%s should not be forwarded from host env: %#v", key, env)
+		}
 	}
 }
 

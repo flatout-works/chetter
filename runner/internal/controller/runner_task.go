@@ -226,12 +226,24 @@ func filteredHostEnv() []string {
 	env := make([]string, 0, len(hostEnv))
 	for _, entry := range hostEnv {
 		key, _, ok := strings.Cut(entry, "=")
-		if ok && (isRunnerOwnedEnv(key) || key == injectedGitHubTokenTaskEnv) {
+		if !ok || !shouldForwardHostEnv(key) {
 			continue
 		}
 		env = append(env, entry)
 	}
 	return env
+}
+
+func shouldForwardHostEnv(key string) bool {
+	if key == "" || key == injectedGitHubTokenTaskEnv || isRunnerOwnedEnv(key) {
+		return false
+	}
+	switch key {
+	case "PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TERM", "COLORTERM", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "SSL_CERT_FILE", "SSL_CERT_DIR":
+		return true
+	default:
+		return strings.HasPrefix(key, "LC_")
+	}
 }
 
 func appendRunnerOwnedDockerArgs(args []string, req task.TaskRequest) []string {
