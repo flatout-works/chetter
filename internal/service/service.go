@@ -1222,6 +1222,9 @@ func secretLookingURLParam(key string) bool {
 		strings.Contains(normalized, "AUTH") ||
 		strings.Contains(normalized, "API_KEY") ||
 		strings.Contains(normalized, "APIKEY") ||
+		normalized == "JWT" ||
+		normalized == "SIG" ||
+		normalized == "SIGNATURE" ||
 		normalized == "KEY" ||
 		strings.HasSuffix(normalized, "_KEY")
 }
