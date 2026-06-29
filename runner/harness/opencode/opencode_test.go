@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -190,8 +191,26 @@ func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
 		t.Fatalf("unexpected headers for public MCP profile: %+v", server)
 	}
 	perms := cfg["permission"].(map[string]any)
+	if perms["review-tools_*"] != "deny" {
+		t.Fatalf("missing documented deny wildcard for review-tools: %+v", perms)
+	}
+	if perms["mcp__review-tools__*"] != "deny" {
+		t.Fatalf("missing legacy deny wildcard for review-tools: %+v", perms)
+	}
+	if perms["review-tools_chetter_submit_task"] != "allow" {
+		t.Fatalf("missing documented chetter_submit_task permission: %+v", perms)
+	}
 	if perms["mcp__review-tools__chetter_submit_task"] != "allow" {
 		t.Fatalf("missing chetter_submit_task permission: %+v", perms)
+	}
+	if effectivePermissionForTest(perms, "review-tools_dangerous_tool") != "deny" {
+		t.Fatalf("dangerous_tool should be denied by wildcard: %+v", perms)
+	}
+	if effectivePermissionForTest(perms, "mcp__review-tools__dangerous_tool") != "deny" {
+		t.Fatalf("legacy dangerous_tool should be denied by wildcard: %+v", perms)
+	}
+	if effectivePermissionForTest(perms, "review-tools_chetter_submit_task") != "allow" {
+		t.Fatalf("allowed tool should override wildcard deny: %+v", perms)
 	}
 	if perms["mcp__review-tools__chetter_task_status"] != "allow" {
 		t.Fatalf("missing chetter_task_status permission: %+v", perms)
@@ -279,6 +298,23 @@ func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	if !hasArg(args, "--port") {
 		t.Fatalf("expected --port in serve args, got %v", args)
 	}
+}
+
+func effectivePermissionForTest(perms map[string]any, tool string) string {
+	keys := make([]string, 0, len(perms))
+	for key := range perms {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var action string
+	for _, key := range keys {
+		if key == tool || (strings.HasSuffix(key, "*") && strings.HasPrefix(tool, strings.TrimSuffix(key, "*"))) {
+			if value, ok := perms[key].(string); ok {
+				action = value
+			}
+		}
+	}
+	return action
 }
 
 func TestOpenCodeServeArgs_NoPureWithMem9(t *testing.T) {

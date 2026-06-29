@@ -1297,14 +1297,17 @@ func TestResumeSessionForPRFindsPRReviewArtifact(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	q := repository.New(tdb.DB)
-	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
-	seedMCPProfile(t, tdb.DB, "public-tools", "name: public-tools\nurl: http://public-tools:8080/mcp\n")
+	now := time.Now().UTC()
+	insertDefinition(t, q, "repo-profile", definitions.DefinitionTypeMCPProfile, "chetter-orchestration", "repo", "", "github.com/flatout-works/chetter", "mcp-profiles/chetter-orchestration.yaml", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n", now)
+	insertDefinition(t, q, "repo-profile", definitions.DefinitionTypeMCPProfile, "public-tools", "repo", "", "github.com/flatout-works/chetter", "mcp-profiles/public-tools.yaml", "name: public-tools\nurl: http://public-tools:8080/mcp\n", now)
 
 	rec, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
-		Prompt:      "create a PR",
-		AgentImage:  "runner:latest",
-		SessionMode: "resumable",
-		MCPProfiles: []string{"chetter-orchestration", "public-tools"},
+		Prompt:         "create a PR",
+		GitURL:         "https://github.com/fork/chetter.git",
+		AgentImage:     "runner:latest",
+		SessionMode:    "resumable",
+		MCPProfiles:    []string{"chetter-orchestration", "public-tools"},
+		DefinitionRepo: "flatout-works/chetter",
 		Env: map[string]string{
 			"GITHUB_TOKEN": "caller-token",
 			"GITHUB_REPO":  "flatout-works/chetter",
@@ -1319,7 +1322,6 @@ func TestResumeSessionForPRFindsPRReviewArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get session run: %v", err)
 	}
-	now := time.Now().UTC()
 	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
 		ID:            "runner_1",
 		Status:        "active",

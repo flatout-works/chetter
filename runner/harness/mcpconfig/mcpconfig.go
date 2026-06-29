@@ -96,14 +96,26 @@ func AddOpenCodePermissions(perms map[string]any, profiles []task.MCPProfile) {
 		if name == "" {
 			continue
 		}
-		for _, tool := range profile.ToolAllowlist {
-			tool = strings.TrimSpace(tool)
-			if tool == "" {
-				continue
-			}
-			perms["mcp__"+name+"__"+tool] = "allow"
+		tools := nonEmptyStrings(profile.ToolAllowlist)
+		if len(tools) == 0 {
+			continue
+		}
+		AddOpenCodeToolPermission(perms, name, "*", "deny")
+		for _, tool := range tools {
+			AddOpenCodeToolPermission(perms, name, tool, "allow")
 		}
 	}
+}
+
+func AddOpenCodeToolPermission(perms map[string]any, serverName, tool, action string) {
+	serverName = strings.TrimSpace(serverName)
+	tool = strings.TrimSpace(tool)
+	action = strings.TrimSpace(action)
+	if serverName == "" || tool == "" || action == "" {
+		return
+	}
+	perms[serverName+"_"+tool] = action
+	perms["mcp__"+serverName+"__"+tool] = action
 }
 
 func rejectToolAllowlists(profiles []task.MCPProfile, target string) error {

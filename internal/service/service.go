@@ -927,7 +927,7 @@ func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, opts 
 	}
 	mcpProfiles := nonEmptyRawJSON(sourceTask.McpProfiles, emptyMCPProfiles)
 	if !opts.PreservePrivilegedMCPProfiles {
-		mcpProfiles, err = s.filterPrivilegedMCPProfilesForResume(ctx, sourceTask, mcpProfiles)
+		mcpProfiles, err = s.filterPrivilegedMCPProfilesForResume(ctx, sourceTask, envMap, mcpProfiles)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -942,12 +942,13 @@ func nonEmptyRawJSON(value json.RawMessage, fallback json.RawMessage) json.RawMe
 	return value
 }
 
-func (s *Service) filterPrivilegedMCPProfilesForResume(ctx context.Context, sourceTask repository.ChetterTask, mcpProfiles json.RawMessage) (json.RawMessage, error) {
+func (s *Service) filterPrivilegedMCPProfilesForResume(ctx context.Context, sourceTask repository.ChetterTask, envMap map[string]string, mcpProfiles json.RawMessage) (json.RawMessage, error) {
 	names := nonEmptyStrings(parseJSON[[]string](mcpProfiles, "task:"+sourceTask.ID+" mcp_profiles"))
 	if len(names) == 0 {
 		return mustMarshalJSON([]string{}), nil
 	}
-	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeMCPProfile, names, sourceTask.TeamID.String, sourceTask.GitUrl.String)
+	gitURL := definitionLookupRef(sourceTask.GitUrl.String, envMap)
+	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeMCPProfile, names, sourceTask.TeamID.String, gitURL)
 	if err != nil {
 		return nil, fmt.Errorf("filter resume mcp profiles: %w", err)
 	}

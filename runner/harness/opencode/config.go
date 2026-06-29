@@ -213,10 +213,10 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	}
 
 	if includeRunnerMCP {
-		perms["mcp__runner-bridge__chetter_create_issue"] = "allow"
-		perms["mcp__runner-bridge__chetter_issue_comment"] = "allow"
-		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
-		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
+		mcpconfig.AddOpenCodeToolPermission(perms, "runner-bridge", "chetter_create_issue", "allow")
+		mcpconfig.AddOpenCodeToolPermission(perms, "runner-bridge", "chetter_issue_comment", "allow")
+		mcpconfig.AddOpenCodeToolPermission(perms, "runner-bridge", "chetter_create_pr", "allow")
+		mcpconfig.AddOpenCodeToolPermission(perms, "runner-bridge", "chetter_pr_review", "allow")
 	}
 	mcpconfig.AddOpenCodePermissions(perms, req.MCPProfiles)
 
