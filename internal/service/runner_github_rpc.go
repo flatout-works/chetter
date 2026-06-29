@@ -16,6 +16,7 @@ import (
 // perform GitHub operations and record the resulting artifacts.
 type GitHubActionService interface {
 	GitHubClient() *webhook.Client
+	GitHubReadInstallationTokenForRepository(ctx context.Context, repo string) (string, error)
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 	LogAuditEvent(ctx context.Context, params AuditEventParams) error
 	GetTaskSignature(ctx context.Context, taskID string) (string, error)

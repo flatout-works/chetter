@@ -161,6 +161,36 @@ func TestSubmitTaskRejectsParentGitHubAuthWithoutMode(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskDoesNotPersistGitHubRuntimeTokens(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GH_TOKEN":     "caller-gh-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	_, env := storedTaskEnvForTest(t, tdb, rec.ID)
+	if _, ok := env["GITHUB_TOKEN"]; ok {
+		t.Fatalf("GITHUB_TOKEN should not be persisted: %#v", env)
+	}
+	if _, ok := env["GH_TOKEN"]; ok {
+		t.Fatalf("GH_TOKEN should not be persisted: %#v", env)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("write marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+}
+
 func TestSubmitTaskInheritsReadOnlyGitHubAuthFromParent(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

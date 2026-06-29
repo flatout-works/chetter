@@ -45,6 +45,12 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	if !isRunnerOwnedEnv("CLAUDE_CODE_SUBAGENT_MODEL") {
 		t.Fatal("CLAUDE_CODE_SUBAGENT_MODEL should be runner-owned")
 	}
+	if !isRunnerOwnedEnv("GITHUB_TOKEN") {
+		t.Fatal("GITHUB_TOKEN should be runner-owned")
+	}
+	if !isRunnerOwnedEnv("GH_TOKEN") {
+		t.Fatal("GH_TOKEN should be runner-owned")
+	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
 	}
@@ -55,7 +61,7 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv("DEEPSEEK_API_KEY", "runner-deepseek-key")
 	env := map[string]string{"MEM9_API_KEY": "task-key", "OPENAI_API_KEY": "task-openai-key", "DEEPSEEK_API_KEY": "task-deepseek-key"}
-	addRunnerOwnedEnv(env)
+	addRunnerOwnedEnv(env, task.TaskRequest{})
 	if env["MEM9_API_KEY"] != "runner-key" {
 		t.Fatalf("expected runner mem9 key to win, got %q", env["MEM9_API_KEY"])
 	}
@@ -64,6 +70,70 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	}
 	if env["DEEPSEEK_API_KEY"] != "runner-deepseek-key" {
 		t.Fatalf("expected runner deepseek key to win, got %q", env["DEEPSEEK_API_KEY"])
+	}
+}
+
+func TestGitHubRunnerOwnedEnvUsesInjectedTaskToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "host-write-token")
+	t.Setenv("GH_TOKEN", "host-gh-token")
+	req := task.TaskRequest{Env: map[string]string{
+		gitHubTokenEnv: "task-read-token",
+	}}
+	env := map[string]string{}
+	addRunnerOwnedEnv(env, req)
+	if env["GITHUB_TOKEN"] != "task-read-token" {
+		t.Fatalf("GITHUB_TOKEN = %q, want injected task token", env["GITHUB_TOKEN"])
+	}
+	if env["GH_TOKEN"] != "task-read-token" {
+		t.Fatalf("GH_TOKEN = %q, want injected task token", env["GH_TOKEN"])
+	}
+	for key, value := range env {
+		if value == "host-write-token" || value == "host-gh-token" {
+			t.Fatalf("%s forwarded host GitHub token %q", key, value)
+		}
+	}
+}
+
+func TestGitHubRunnerOwnedEnvDoesNotForwardHostTokenWithoutInjection(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "host-write-token")
+	t.Setenv("GH_TOKEN", "host-gh-token")
+	env := map[string]string{}
+	addRunnerOwnedEnv(env, task.TaskRequest{})
+	if _, ok := env["GITHUB_TOKEN"]; ok {
+		t.Fatalf("GITHUB_TOKEN should not be forwarded from host: %#v", env)
+	}
+	if _, ok := env["GH_TOKEN"]; ok {
+		t.Fatalf("GH_TOKEN should not be forwarded from host: %#v", env)
+	}
+}
+
+func TestBaseAgentEnvFiltersAmbientGitHubTokens(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "host-write-token")
+	t.Setenv("GH_TOKEN", "host-gh-token")
+	env := baseAgentEnv(task.TaskRequest{})
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "host-write-token") || strings.Contains(joined, "host-gh-token") {
+		t.Fatalf("base agent env forwarded host GitHub token:\n%s", joined)
+	}
+}
+
+func TestShouldForwardTaskEnvFiltersInternalChetterEnv(t *testing.T) {
+	blocked := []string{
+		gitHubWriteAllowedEnv,
+		gitHubReadAllowedEnv,
+		gitHubTokenEnv,
+		gitHubCloneTokenEnv,
+		"__chetter_custom_internal",
+		"GITHUB_TOKEN",
+		"GH_TOKEN",
+	}
+	for _, key := range blocked {
+		if shouldForwardTaskEnv(key) {
+			t.Fatalf("%s should not be forwarded to agent env", key)
+		}
+	}
+	if !shouldForwardTaskEnv("GITHUB_REPO") {
+		t.Fatal("GITHUB_REPO should remain task-forwardable")
 	}
 }
 

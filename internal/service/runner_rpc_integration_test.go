@@ -12,6 +12,7 @@ import (
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/internal/webhook"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -25,13 +26,19 @@ func newRPCTestService(t *testing.T) (*RunnerRPCService, *repository.Queries, *t
 
 func insertPendingTask(t *testing.T, q *repository.Queries, id, prompt, agentImage string) {
 	t.Helper()
+	insertPendingTaskWithEnv(t, q, id, prompt, agentImage, json.RawMessage(`{}`))
+}
+
+func insertPendingTaskWithEnv(t *testing.T, q *repository.Queries, id, prompt, agentImage string, env json.RawMessage) {
+	t.Helper()
 	now := time.Now().UTC()
 	if err := q.InsertTask(context.Background(), repository.InsertTaskParams{
 		ID:                id,
 		Prompt:            prompt,
 		AgentImage:        sql.NullString{String: agentImage, Valid: true},
 		Skills:            json.RawMessage(`[]`),
-		Env:               json.RawMessage(`{}`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               env,
 		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
 		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
@@ -40,6 +47,30 @@ func insertPendingTask(t *testing.T, q *repository.Queries, id, prompt, agentIma
 	}); err != nil {
 		t.Fatalf("insert task: %v", err)
 	}
+}
+
+type fakeGitHubActions struct {
+	readToken string
+	readRepo  string
+}
+
+func (f *fakeGitHubActions) GitHubClient() *webhook.Client { return nil }
+
+func (f *fakeGitHubActions) GitHubReadInstallationTokenForRepository(ctx context.Context, repo string) (string, error) {
+	f.readRepo = repo
+	return f.readToken, nil
+}
+
+func (f *fakeGitHubActions) RecordArtifact(ctx context.Context, params RecordArtifactParams) error {
+	return nil
+}
+
+func (f *fakeGitHubActions) LogAuditEvent(ctx context.Context, params AuditEventParams) error {
+	return nil
+}
+
+func (f *fakeGitHubActions) GetTaskSignature(ctx context.Context, taskID string) (string, error) {
+	return "signature", nil
 }
 
 func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
@@ -85,6 +116,53 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	}
 	if !row.ClaimedAt.Valid {
 		t.Error("expected claimed_at set")
+	}
+}
+
+func TestClaimTaskInjectsGitHubReadTokenWithoutForwardingMarkers(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	env, err := json.Marshal(map[string]string{
+		"GITHUB_REPO":               "flatout-works/chetter",
+		"PR_NUMBER":                 "126",
+		gitHubReadAllowedEnv:        "true",
+		gitHubTokenAllowedEnv:       "",
+		injectedGitHubTokenEnv:      "stale-token",
+		injectedGitHubCloneTokenEnv: "stale-clone-token",
+	})
+	if err != nil {
+		t.Fatalf("marshal env: %v", err)
+	}
+	insertPendingTaskWithEnv(t, q, "task_github_read", "review", "runner:latest", env)
+	gh := &fakeGitHubActions{readToken: "task-read-token"}
+	svc.WithGitHubActions(gh)
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:     "runner_1",
+		WaitSeconds:  0,
+		LeaseSeconds: 60,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if gh.readRepo != "flatout-works/chetter" {
+		t.Fatalf("read token repo = %q, want flatout-works/chetter", gh.readRepo)
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "task-read-token" {
+		t.Fatalf("injected token = %q, want task-read-token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubReadAllowedEnv]; ok {
+		t.Fatalf("read marker leaked to runner task env: %#v", resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("write marker leaked to runner task env: %#v", resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubCloneTokenEnv]; got != "" {
+		t.Fatalf("stale clone token leaked to runner task env: %#v", resp.Msg.Task.Env)
 	}
 }
 
@@ -159,6 +237,7 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 		Prompt:            "x",
 		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
 		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
 		Env:               json.RawMessage(`{}`),
 		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
@@ -461,6 +540,7 @@ func TestReapAndFailLeaveReclaimedTaskPending(t *testing.T) {
 		Prompt:            "x",
 		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
 		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
 		Env:               json.RawMessage(`{}`),
 		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},

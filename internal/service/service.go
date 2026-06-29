@@ -79,20 +79,22 @@ type RecordArtifactParams struct {
 }
 
 const (
-	defaultMaxMemoryMB      = 4096
-	defaultMaxCPU           = 2
-	triggerRunTimeout       = 30 * time.Second
-	eventHandlerTimeout     = 10 * time.Second
-	reaperInterval          = 30 * time.Second
-	definitionsSyncInterval = 5 * time.Minute
-	definitionsSyncTimeout  = 2 * time.Minute
-	reaperGrace             = 120 * time.Second
-	reaperHealthMaxEventSec = 120
-	runnerPresenceMaxSec    = 60
-	gitHubTokenAllowedEnv   = "__chetter_github_auth_allowed"
-	gitHubReadAllowedEnv    = "__chetter_github_read_auth_allowed"
-	gitHubParentTaskEnv     = "CHETTER_PARENT_TASK_ID"
-	gitHubAuthModeEnv       = "CHETTER_GITHUB_AUTH_MODE"
+	defaultMaxMemoryMB          = 4096
+	defaultMaxCPU               = 2
+	triggerRunTimeout           = 30 * time.Second
+	eventHandlerTimeout         = 10 * time.Second
+	reaperInterval              = 30 * time.Second
+	definitionsSyncInterval     = 5 * time.Minute
+	definitionsSyncTimeout      = 2 * time.Minute
+	reaperGrace                 = 120 * time.Second
+	reaperHealthMaxEventSec     = 120
+	runnerPresenceMaxSec        = 60
+	gitHubTokenAllowedEnv       = "__chetter_github_auth_allowed"
+	gitHubReadAllowedEnv        = "__chetter_github_read_auth_allowed"
+	injectedGitHubTokenEnv      = "__chetter_github_token"
+	injectedGitHubCloneTokenEnv = "__chetter_github_clone_token"
+	gitHubParentTaskEnv         = "CHETTER_PARENT_TASK_ID"
+	gitHubAuthModeEnv           = "CHETTER_GITHUB_AUTH_MODE"
 )
 
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -442,6 +444,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	taskEnv := sanitizeTaskEnv(in.Env)
 	delete(taskEnv, gitHubTokenAllowedEnv)
 	delete(taskEnv, gitHubReadAllowedEnv)
+	delete(taskEnv, injectedGitHubTokenEnv)
+	delete(taskEnv, injectedGitHubCloneTokenEnv)
+	delete(taskEnv, "GITHUB_TOKEN")
+	delete(taskEnv, "GH_TOKEN")
 	authMode := strings.TrimSpace(taskEnv[gitHubAuthModeEnv])
 	delete(taskEnv, gitHubAuthModeEnv)
 	allowGitHubToken := in.AllowGitHubToken
@@ -466,9 +472,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			return store.TaskRecord{}, fmt.Errorf("GITHUB_REPO must resolve to owner/repo for GitHub auth")
 		}
 		taskEnv["GITHUB_REPO"] = repoName
-		if githubAuthContextComplete(taskEnv) && strings.TrimSpace(taskEnv["GITHUB_TOKEN"]) == "" {
-			taskEnv["GITHUB_TOKEN"] = "[redacted]"
-		}
 	}
 	if allowGitHubToken {
 		taskEnv[gitHubTokenAllowedEnv] = "true"

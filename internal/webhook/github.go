@@ -107,6 +107,30 @@ func (c *Client) do(req *http.Request, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// ReadInstallationTokenForRepository returns a repository-scoped read token for
+// task runtimes. Write-capable GitHub actions should continue to go through the
+// server-side Chetter tools, which enforce task scope.
+func (c *Client) ReadInstallationTokenForRepository(ctx context.Context, repo string) (string, error) {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(repo), "/"), "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+		return "", fmt.Errorf("repo %q must be owner/repo", repo)
+	}
+	body := map[string]any{
+		"repositories": []string{parts[1]},
+		"permissions": map[string]string{
+			"contents":      "read",
+			"issues":        "read",
+			"metadata":      "read",
+			"pull_requests": "read",
+		},
+	}
+	token, _, err := fetchInstallationTokenWithBody(ctx, c, body)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
 // ListPRFiles returns the list of filenames changed in a pull request.
 func (c *Client) ListPRFiles(ctx context.Context, repo string, prNumber int) ([]string, error) {
 	var all []string
@@ -532,8 +556,14 @@ func (c *tokenCache) get(client *Client) (string, error) {
 	return token, nil
 }
 
-// fetchInstallationToken signs a JWT and exchanges it for an installation token.
 func fetchInstallationToken(client *Client) (string, time.Time, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), gitHubRequestTimeout)
+	defer cancel()
+	return fetchInstallationTokenWithBody(ctx, client, nil)
+}
+
+// fetchInstallationTokenWithBody signs a JWT and exchanges it for an installation token.
+func fetchInstallationTokenWithBody(ctx context.Context, client *Client, requestBody any) (string, time.Time, error) {
 	now := time.Now()
 	claims := jwt.RegisteredClaims{
 		Issuer:    strconv.FormatInt(client.AppID, 10),
@@ -547,17 +577,24 @@ func fetchInstallationToken(client *Client) (string, time.Time, error) {
 	}
 
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", githubAPIBase, client.InstallationID)
-	req, err := http.NewRequest(http.MethodPost, url, nil)
+	var reader io.Reader
+	if requestBody != nil {
+		data, err := json.Marshal(requestBody)
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("marshal installation token request: %w", err)
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reader)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+signed)
 	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
-
-	ctx, cancel := context.WithTimeout(context.Background(), gitHubRequestTimeout)
-	defer cancel()
-	req = req.WithContext(ctx)
+	if requestBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {

@@ -173,6 +173,14 @@ func (s *Service) GitHubClient() *webhook.Client {
 	return s.githubClient()
 }
 
+func (s *Service) GitHubReadInstallationTokenForRepository(ctx context.Context, repo string) (string, error) {
+	gh := s.githubClient()
+	if gh == nil {
+		return "", fmt.Errorf("GitHub App client is not configured")
+	}
+	return gh.ReadInstallationTokenForRepository(ctx, repo)
+}
+
 func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, error) {
 	task, sessionRun, err := s.githubToolTaskContext(ctx, taskID)
 	if err != nil {

@@ -21,6 +21,10 @@ import (
 
 const (
 	containerWorkspaceDir = "/workspace"
+	gitHubTokenEnv        = "__chetter_github_token"
+	gitHubCloneTokenEnv   = "__chetter_github_clone_token"
+	gitHubWriteAllowedEnv = "__chetter_github_auth_allowed"
+	gitHubReadAllowedEnv  = "__chetter_github_read_auth_allowed"
 )
 
 func (r *Runner) runTask(req task.TaskRequest) {
@@ -204,18 +208,18 @@ func hostWorkspaceDir(containerPath string) string {
 	return containerPath
 }
 
-func appendRunnerOwnedEnv(env []string) []string {
+func appendRunnerOwnedEnv(env []string, req task.TaskRequest) []string {
 	for _, key := range runnerOwnedEnvKeys() {
-		if value := os.Getenv(key); value != "" {
+		if value := runnerOwnedEnvValue(key, req); value != "" {
 			env = append(env, key+"="+value)
 		}
 	}
 	return env
 }
 
-func addRunnerOwnedEnv(env map[string]string) {
+func addRunnerOwnedEnv(env map[string]string, req task.TaskRequest) {
 	for _, key := range runnerOwnedEnvKeys() {
-		if value := os.Getenv(key); value != "" {
+		if value := runnerOwnedEnvValue(key, req); value != "" {
 			env[key] = value
 		}
 	}
@@ -230,6 +234,7 @@ func runnerOwnedEnvKeys() []string {
 		"ANTHROPIC_DEFAULT_OPUS_MODEL",
 		"ANTHROPIC_DEFAULT_SONNET_MODEL",
 		"CLAUDE_CODE_SUBAGENT_MODEL",
+		"GH_TOKEN",
 		"GITHUB_TOKEN",
 		"MEM9_API_KEY",
 		"MEM9_API_URL",
@@ -248,11 +253,55 @@ func runnerOwnedEnvKeys() []string {
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
+	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "GH_TOKEN", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
 		return true
 	default:
 		return false
 	}
+}
+
+func runnerOwnedEnvValue(key string, req task.TaskRequest) string {
+	switch key {
+	case "GITHUB_TOKEN", "GH_TOKEN":
+		return trustedInjectedGitHubToken(req)
+	default:
+		return os.Getenv(key)
+	}
+}
+
+func trustedInjectedGitHubToken(req task.TaskRequest) string {
+	value := strings.TrimSpace(req.Env[gitHubTokenEnv])
+	if value == "" || value == "[redacted]" {
+		return ""
+	}
+	return value
+}
+
+func shouldForwardTaskEnv(key string) bool {
+	switch key {
+	case gitHubTokenEnv, gitHubCloneTokenEnv, gitHubWriteAllowedEnv, gitHubReadAllowedEnv:
+		return false
+	}
+	if strings.HasPrefix(key, "__chetter_") {
+		return false
+	}
+	return !isRunnerOwnedEnv(key)
+}
+
+func baseAgentEnv(req task.TaskRequest) []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if key == "GITHUB_TOKEN" || key == "GH_TOKEN" || strings.HasPrefix(key, "__chetter_") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func shellQuoteArgs(args []string) string {
@@ -382,14 +431,14 @@ func gvisorHostAliases() []string {
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
-	env := os.Environ()
+	env := baseAgentEnv(req)
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
+	env = appendRunnerOwnedEnv(env, req)
 	env = append(env,
 		"GIT_AUTHOR_NAME=Chetter Runner",
 		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
@@ -592,13 +641,13 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
+		if val := runnerOwnedEnvValue(key, req); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
 	}
@@ -809,13 +858,13 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
+		if val := runnerOwnedEnvValue(key, req); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
 	}
@@ -1070,13 +1119,13 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
+		if val := runnerOwnedEnvValue(key, req); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
 	}
@@ -1226,14 +1275,14 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 }
 
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
-	env := os.Environ()
+	env := baseAgentEnv(req)
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if !shouldForwardTaskEnv(k) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
+	env = appendRunnerOwnedEnv(env, req)
 	env = append(env,
 		"GIT_AUTHOR_NAME=Chetter Runner",
 		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",

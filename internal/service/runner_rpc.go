@@ -167,6 +167,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			}
 			s.resolveTaskModel(ctx, protoTask)
 			s.resolveTaskDefinitions(ctx, protoTask, mcpProfileNames)
+			s.injectGitHubReadToken(ctx, protoTask, task)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -240,6 +241,34 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 	if len(mcpProfileNames) > 0 {
 		task.McpProfiles = s.resolveMCPProfiles(ctx, mcpProfileNames)
 	}
+}
+
+func (s *RunnerRPCService) injectGitHubReadToken(ctx context.Context, protoTask *runnerv1.Task, dbTask repository.ChetterTask) {
+	if protoTask == nil {
+		return
+	}
+	storedEnv := parseJSON[map[string]string](dbTask.Env, "task:"+dbTask.ID+" env")
+	if storedEnv[gitHubTokenAllowedEnv] != "true" && storedEnv[gitHubReadAllowedEnv] != "true" {
+		return
+	}
+	repoName, ok := canonicalRepoName(storedEnv["GITHUB_REPO"])
+	if !ok {
+		slog.Warn("task requested GitHub auth with invalid repo", "taskID", dbTask.ID)
+		return
+	}
+	if s.ghActions == nil {
+		slog.Warn("task requested GitHub auth but GitHub App is not configured", "taskID", dbTask.ID)
+		return
+	}
+	token, err := s.ghActions.GitHubReadInstallationTokenForRepository(ctx, repoName)
+	if err != nil {
+		slog.Warn("mint GitHub read token for task", "taskID", dbTask.ID, "repo", repoName, "err", err)
+		return
+	}
+	if protoTask.Env == nil {
+		protoTask.Env = map[string]string{}
+	}
+	protoTask.Env[injectedGitHubTokenEnv] = token
 }
 
 func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames []string) []*runnerv1.MCPProfile {
@@ -1084,6 +1113,8 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	delete(env, "__chetter_harness")
 	delete(env, gitHubTokenAllowedEnv)
 	delete(env, gitHubReadAllowedEnv)
+	delete(env, injectedGitHubTokenEnv)
+	delete(env, injectedGitHubCloneTokenEnv)
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		AgentImage:             task.AgentImage.String,
