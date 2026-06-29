@@ -159,14 +159,15 @@ Chetter can sync definitions from a Git repository configured by `DEFINITIONS_RE
 Implemented today:
 
 - Git-backed model catalog loading.
+- Git-backed agents, skills, triggers, task templates, and MCP profiles.
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
-- Read access via `chetter_get_model_catalog`.
+- Read access via `chetter_get_model_catalog`, `chetter_list_definitions`, and `chetter_get_definition`.
+- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup.
 
 Planned next:
 
-- Git-backed agents, skills, triggers, and task templates.
-- Definition read tools and proposal workflow.
+- Scoped MCP tokens or proxy enforcement for untrusted/multi-tenant MCP profile use.
 - Immutable definition hashes recorded on task/session runs.
 
 See [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) and [MODEL_CATALOG.md](MODEL_CATALOG.md).
@@ -256,11 +257,11 @@ Runner and agent env:
 |---|---|
 | `CHETTER_SERVER_URL` | Server URL used by the runner. |
 | `CHETTER_RUNNER_AUTH_TOKEN` | Runner config fallback for the RPC token; Compose fills it from `CHETTER_RUNNER_RPC_TOKEN`. |
-| `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
-| `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `CHETTER_MCP_AUTH_TOKEN` | Admin token that explicit trusted MCP profiles may reference with `${env:CHETTER_MCP_AUTH_TOKEN}`. It is not mounted into every task by default. |
+| `CHETTER_MCP_URL` | Optional deployment value for explicit trusted MCP profile definitions. It is not injected into agents by default. |
 | `USE_GVISOR` | Enables Docker `runsc` runtime and checkpoint support when `true`. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider and GitHub credentials forwarded to task containers when configured. |
+| `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider credentials forwarded to task containers when configured. Host `GITHUB_TOKEN` / `GH_TOKEN` values are not forwarded; GitHub task auth is injected per task when authorized. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 integration. |

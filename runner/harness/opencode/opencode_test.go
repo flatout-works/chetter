@@ -160,6 +160,49 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
+	t.Setenv("CHETTER_ORCHESTRATOR_TOKEN", "secret-token")
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name:      "chetter-orchestration",
+			Transport: "http",
+			URL:       "http://chetter-mcp:8080/mcp",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:CHETTER_ORCHESTRATOR_TOKEN}",
+			},
+			ToolAllowlist: []string{"chetter_submit_task", "chetter_task_status"},
+		}},
+	}
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, req, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	data, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	mcps := cfg["mcp"].(map[string]any)
+	server := mcps["chetter-orchestration"].(map[string]any)
+	if server["type"] != "remote" || server["url"] != "http://chetter-mcp:8080/mcp" || server["enabled"] != true {
+		t.Fatalf("unexpected MCP server config: %+v", server)
+	}
+	headers := server["headers"].(map[string]any)
+	if headers["Authorization"] != "Bearer secret-token" {
+		t.Fatalf("Authorization header = %v", headers["Authorization"])
+	}
+	perms := cfg["permission"].(map[string]any)
+	if perms["mcp__chetter-orchestration__chetter_submit_task"] != "allow" {
+		t.Fatalf("missing chetter_submit_task permission: %+v", perms)
+	}
+	if perms["mcp__chetter-orchestration__chetter_task_status"] != "allow" {
+		t.Fatalf("missing chetter_task_status permission: %+v", perms)
+	}
+}
+
 func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "")
 	args := opencodeServeArgs(1234)

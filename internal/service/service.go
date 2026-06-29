@@ -37,6 +37,7 @@ type SubmitTaskRequest struct {
 	VariantID   string
 	Harness     string
 	Skills      []string
+	MCPProfiles []string
 	Env         map[string]string
 	TimeoutSec  int
 	TriggerName string
@@ -44,6 +45,10 @@ type SubmitTaskRequest struct {
 	SessionMode string
 	PauseReason string
 	TTLHours    int
+
+	AllowGitHubToken     bool
+	AllowGitHubReadToken bool
+	AllowMCPProfiles     bool
 }
 
 type AuditEventParams struct {
@@ -75,16 +80,23 @@ type RecordArtifactParams struct {
 }
 
 const (
-	defaultMaxMemoryMB      = 4096
-	defaultMaxCPU           = 2
-	triggerRunTimeout       = 30 * time.Second
-	eventHandlerTimeout     = 10 * time.Second
-	reaperInterval          = 30 * time.Second
-	definitionsSyncInterval = 5 * time.Minute
-	definitionsSyncTimeout  = 2 * time.Minute
-	reaperGrace             = 120 * time.Second
-	reaperHealthMaxEventSec = 120
-	runnerPresenceMaxSec    = 60
+	defaultMaxMemoryMB          = 4096
+	defaultMaxCPU               = 2
+	triggerRunTimeout           = 30 * time.Second
+	eventHandlerTimeout         = 10 * time.Second
+	reaperInterval              = 30 * time.Second
+	definitionsSyncInterval     = 5 * time.Minute
+	definitionsSyncTimeout      = 2 * time.Minute
+	reaperGrace                 = 120 * time.Second
+	reaperHealthMaxEventSec     = 120
+	runnerPresenceMaxSec        = 60
+	gitHubTokenAllowedEnv       = "__chetter_github_auth_allowed"
+	gitHubReadAllowedEnv        = "__chetter_github_read_auth_allowed"
+	injectedGitHubTokenEnv      = "__chetter_github_token"
+	injectedGitHubCloneTokenEnv = "__chetter_github_clone_token"
+	mcpProfilesAllowedEnv       = "__chetter_mcp_profiles_allowed"
+	gitHubParentTaskEnv         = "CHETTER_PARENT_TASK_ID"
+	gitHubAuthModeEnv           = "CHETTER_GITHUB_AUTH_MODE"
 )
 
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -423,17 +435,66 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	mcpProfiles, err := json.Marshal(profileNames)
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
+	teamID := in.TeamID
+	if teamID == "" {
+		teamID = teamIDFromContext(ctx)
+	}
 	taskEnv := sanitizeTaskEnv(in.Env)
+	delete(taskEnv, gitHubTokenAllowedEnv)
+	delete(taskEnv, gitHubReadAllowedEnv)
+	delete(taskEnv, injectedGitHubTokenEnv)
+	delete(taskEnv, injectedGitHubCloneTokenEnv)
+	delete(taskEnv, mcpProfilesAllowedEnv)
+	delete(taskEnv, "GITHUB_TOKEN")
+	delete(taskEnv, "GH_TOKEN")
+	if len(profileNames) > 0 {
+		if !in.AllowMCPProfiles && !isAdmin(ctx) {
+			return store.TaskRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+		}
+		taskEnv[mcpProfilesAllowedEnv] = "true"
+	}
+	authMode := strings.TrimSpace(taskEnv[gitHubAuthModeEnv])
+	delete(taskEnv, gitHubAuthModeEnv)
+	allowGitHubToken := in.AllowGitHubToken
+	allowGitHubReadToken := in.AllowGitHubReadToken
+	if strings.TrimSpace(taskEnv[gitHubParentTaskEnv]) != "" {
+		mode, err := normalizeRequiredGitHubAuthMode(authMode)
+		if err != nil {
+			return store.TaskRecord{}, err
+		}
+		if err := s.authorizeGitHubAuthInheritance(ctx, taskEnv, mode); err != nil {
+			return store.TaskRecord{}, err
+		}
+		if mode == "write" {
+			allowGitHubToken = true
+		} else {
+			allowGitHubReadToken = true
+		}
+	}
+	if allowGitHubToken || allowGitHubReadToken {
+		repoName, ok := canonicalRepoName(taskEnv["GITHUB_REPO"])
+		if !ok {
+			return store.TaskRecord{}, fmt.Errorf("GITHUB_REPO must resolve to owner/repo for GitHub auth")
+		}
+		taskEnv["GITHUB_REPO"] = repoName
+	}
+	if allowGitHubToken {
+		taskEnv[gitHubTokenAllowedEnv] = "true"
+		delete(taskEnv, gitHubReadAllowedEnv)
+	} else if allowGitHubReadToken {
+		taskEnv[gitHubReadAllowedEnv] = "true"
+	}
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
 	}
 	env, err := json.Marshal(taskEnv)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
-	}
-	teamID := in.TeamID
-	if teamID == "" {
-		teamID = teamIDFromContext(ctx)
 	}
 	resumeMode := "none"
 	pauseReason := ""
@@ -471,6 +532,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerType:            nullString(in.TriggerType),
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
@@ -586,6 +648,11 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	}
 
 	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
+	mcpProfiles := parseJSON[[]string](orig.McpProfiles, "task:"+taskID+" mcp_profiles")
+	mcpProfiles = nonEmptyStrings(mcpProfiles)
+	if len(mcpProfiles) > 0 && !isAdmin(ctx) {
+		return TaskToolRecord{}, fmt.Errorf("recovering tasks with mcp_profiles requires admin access in this trusted self-hosted MVP")
+	}
 	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
 	if env == nil {
 		env = map[string]string{}
@@ -602,17 +669,19 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	)
 
 	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     recoveryPrompt,
-		GitURL:     orig.GitUrl.String,
-		GitRef:     orig.GitRef.String,
-		AgentImage: orig.AgentImage.String,
-		Agent:      orig.Agent.String,
-		ProviderID: orig.ProviderID.String,
-		ModelID:    orig.ModelID.String,
-		VariantID:  orig.VariantID.String,
-		Skills:     skills,
-		Env:        env,
-		TimeoutSec: int(orig.TimeoutSec),
+		Prompt:           recoveryPrompt,
+		GitURL:           orig.GitUrl.String,
+		GitRef:           orig.GitRef.String,
+		AgentImage:       orig.AgentImage.String,
+		Agent:            orig.Agent.String,
+		ProviderID:       orig.ProviderID.String,
+		ModelID:          orig.ModelID.String,
+		VariantID:        orig.VariantID.String,
+		Skills:           skills,
+		MCPProfiles:      mcpProfiles,
+		AllowMCPProfiles: len(mcpProfiles) > 0,
+		Env:              env,
+		TimeoutSec:       int(orig.TimeoutSec),
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -695,6 +764,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	skills := mustMarshalJSON([]string{})
+	mcpProfiles := mustMarshalJSON([]string{})
 	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
@@ -717,6 +787,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
@@ -817,6 +888,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpProfiles := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
@@ -826,33 +898,34 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		endedAt = &task.EndedAt.Time
 	}
 	return store.TaskRecord{
-		ID:                task.ID,
-		TeamID:            task.TeamID.String,
-		Status:            task.Status,
-		Prompt:            task.Prompt,
-		GitURL:            task.GitUrl.String,
-		GitRef:            task.GitRef.String,
-		AgentImage:        task.AgentImage.String,
-		Agent:             task.Agent.String,
-		ProviderID:        task.ProviderID.String,
-		ModelID:           task.ModelID.String,
-		VariantID:         task.VariantID.String,
-		OpenCodeSessionID: task.OpencodeSessionID.String,
-		RunnerImageDigest: task.RunnerImageDigest.String,
-		CommitAuthorName:  task.CommitAuthorName.String,
-		CommitAuthorEmail: task.CommitAuthorEmail.String,
-		TriggerName:       task.TriggerName.String,
-		TriggerType:       task.TriggerType.String,
-		Skills:            skills,
-		Env:               env,
-		TimeoutSec:        int(task.TimeoutSec),
-		Summary:           task.Summary.String,
-		Error:             task.Error.String,
-		ErrorCategory:     task.ErrorCategory.String,
-		CreatedAt:         task.CreatedAt,
-		UpdatedAt:         task.UpdatedAt,
-		StartedAt:         startedAt,
-		EndedAt:           endedAt,
+		ID:                    task.ID,
+		TeamID:                task.TeamID.String,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitUrl.String,
+		GitRef:                task.GitRef.String,
+		AgentImage:            task.AgentImage.String,
+		Agent:                 task.Agent.String,
+		ProviderID:            task.ProviderID.String,
+		ModelID:               task.ModelID.String,
+		VariantID:             task.VariantID.String,
+		OpenCodeSessionID:     task.OpencodeSessionID.String,
+		RunnerImageDigest:     task.RunnerImageDigest.String,
+		CommitAuthorName:      task.CommitAuthorName.String,
+		CommitAuthorEmail:     task.CommitAuthorEmail.String,
+		TriggerName:           task.TriggerName.String,
+		TriggerType:           task.TriggerType.String,
+		Skills:                skills,
+		MCPProfiles:           mcpProfiles,
+		Env:                   env,
+		TimeoutSec:            int(task.TimeoutSec),
+		Summary:               task.Summary.String,
+		Error:                 task.Error.String,
+		ErrorCategory:         task.ErrorCategory.String,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             startedAt,
+		EndedAt:               endedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -898,6 +971,122 @@ func sanitizeTaskEnv(env map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func normalizeRequiredGitHubAuthMode(value string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "":
+		return "", fmt.Errorf("%s is required when %s is set", gitHubAuthModeEnv, gitHubParentTaskEnv)
+	case "read", "write":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("%s must be read or write", gitHubAuthModeEnv)
+	}
+}
+
+func (s *Service) authorizeGitHubAuthInheritance(ctx context.Context, childEnv map[string]string, mode string) error {
+	if !isAdmin(ctx) {
+		return fmt.Errorf("GitHub auth inheritance requires admin access")
+	}
+	if !githubAuthContextComplete(childEnv) {
+		return fmt.Errorf("GitHub auth inheritance requires GITHUB_REPO and PR_NUMBER or ISSUE_NUMBER")
+	}
+	parentTaskID := strings.TrimSpace(childEnv[gitHubParentTaskEnv])
+	if parentTaskID == "" {
+		return fmt.Errorf("%s is required for GitHub auth inheritance", gitHubParentTaskEnv)
+	}
+	parent, err := s.taskForToolAccess(ctx, parentTaskID)
+	if err != nil {
+		return fmt.Errorf("authorize GitHub auth inheritance from parent task: %w", err)
+	}
+	parentEnv := parseJSON[map[string]string](parent.Env, "task:"+parentTaskID+" env")
+	if !parentAllowsGitHubMode(parentEnv, mode) {
+		if mode == "write" {
+			return fmt.Errorf("parent task is not authorized for GitHub write inheritance")
+		}
+		return fmt.Errorf("parent task is not authorized for GitHub auth inheritance")
+	}
+	if !sameRepoIdentity(parentEnv["GITHUB_REPO"], childEnv["GITHUB_REPO"]) {
+		return fmt.Errorf("GitHub auth inheritance requires matching GITHUB_REPO")
+	}
+	repoName, ok := canonicalRepoName(childEnv["GITHUB_REPO"])
+	if !ok {
+		return fmt.Errorf("GitHub auth inheritance requires GITHUB_REPO to resolve to owner/repo")
+	}
+	childEnv["GITHUB_REPO"] = repoName
+	if !sameGitHubArtifact(parentEnv, childEnv) {
+		return fmt.Errorf("GitHub auth inheritance requires matching PR_NUMBER or ISSUE_NUMBER")
+	}
+	return nil
+}
+
+func parentAllowsGitHubMode(parentEnv map[string]string, mode string) bool {
+	switch mode {
+	case "write":
+		return parentEnv[gitHubTokenAllowedEnv] == "true"
+	case "read":
+		return parentEnv[gitHubTokenAllowedEnv] == "true" || parentEnv[gitHubReadAllowedEnv] == "true"
+	default:
+		return false
+	}
+}
+
+func taskAllowsMCPProfiles(task repository.ChetterTask) bool {
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+	return env[mcpProfilesAllowedEnv] == "true"
+}
+
+func githubAuthContextComplete(env map[string]string) bool {
+	if env == nil || strings.TrimSpace(env["GITHUB_REPO"]) == "" {
+		return false
+	}
+	return strings.TrimSpace(env["PR_NUMBER"]) != "" || strings.TrimSpace(env["ISSUE_NUMBER"]) != ""
+}
+
+func sameRepoIdentity(a, b string) bool {
+	ca, okA := canonicalRepoName(a)
+	cb, okB := canonicalRepoName(b)
+	return okA && okB && ca == cb
+}
+
+func sameGitHubArtifact(parentEnv, childEnv map[string]string) bool {
+	if parentPR := strings.TrimSpace(parentEnv["PR_NUMBER"]); parentPR != "" {
+		return parentPR == strings.TrimSpace(childEnv["PR_NUMBER"])
+	}
+	if parentIssue := strings.TrimSpace(parentEnv["ISSUE_NUMBER"]); parentIssue != "" {
+		return parentIssue == strings.TrimSpace(childEnv["ISSUE_NUMBER"])
+	}
+	return false
+}
+
+func canonicalRepoName(value string) (string, bool) {
+	repo := strings.TrimSpace(value)
+	if repo == "" {
+		return "", false
+	}
+	lower := strings.ToLower(repo)
+	switch {
+	case strings.HasPrefix(lower, "https://github.com/"):
+		repo = repo[len("https://github.com/"):]
+	case strings.HasPrefix(lower, "http://github.com/"):
+		repo = repo[len("http://github.com/"):]
+	case strings.HasPrefix(lower, "git@github.com:"):
+		repo = repo[len("git@github.com:"):]
+	case strings.HasPrefix(lower, "github.com/"):
+		repo = repo[len("github.com/"):]
+	}
+	repo = strings.Trim(strings.TrimSuffix(repo, ".git"), "/")
+	parts := strings.Split(repo, "/")
+	if len(parts) < 2 {
+		return "", false
+	}
+	owner := strings.TrimSpace(parts[0])
+	name := strings.TrimSuffix(strings.TrimSpace(parts[1]), ".git")
+	if owner == "" || name == "" || strings.ContainsAny(owner+name, " \t\n\r") {
+		return "", false
+	}
+	return strings.ToLower(owner + "/" + name), true
 }
 
 // emptyTriggerConfig returns an empty JSON object as the trigger_config value
@@ -959,6 +1148,14 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	if len(profileNames) > 0 && !isAdmin(ctx) {
+		return store.TriggerRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+	}
+	mcpProfiles, err := json.Marshal(profileNames)
+	if err != nil {
+		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	teamID := teamIDFromContext(ctx)
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
@@ -981,6 +1178,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 		VariantID:     nullString(in.VariantID),
 		Harness:       nullString(in.Harness),
 		Skills:        skills,
+		McpProfiles:   mcpProfiles,
 		TimeoutSec:    int32(in.TimeoutSec),
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -1060,6 +1258,14 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	if len(profileNames) > 0 && !isAdmin(ctx) {
+		return store.TriggerRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+	}
+	mcpProfiles, err := json.Marshal(profileNames)
+	if err != nil {
+		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
@@ -1079,6 +1285,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		VariantID:     nullString(in.VariantID),
 		Harness:       nullString(in.Harness),
 		Skills:        skills,
+		McpProfiles:   mcpProfiles,
 		TimeoutSec:    int32(in.TimeoutSec),
 		Enabled:       enabled,
 		UpdatedAt:     now,
@@ -1145,6 +1352,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := parseJSON[[]string](sch.Skills, "trigger:"+sch.ID+" skills")
+	targetMCPProfiles := parseJSON[[]string](sch.McpProfiles, "trigger:"+sch.ID+" mcp_profiles")
 	task, err := s.submitTriggerTask(ctx,
 		sch.ID,
 		sch.Name,
@@ -1160,6 +1368,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		sch.VariantID.String,
 		sch.Harness.String,
 		targetSkills,
+		targetMCPProfiles,
 		int(sch.TimeoutSec),
 		runtime,
 		time.Now().UTC(),
@@ -1226,32 +1435,38 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 		return fmt.Errorf("get trigger %s: %w", triggerID, err)
 	}
 	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
+	mcpProfiles := parseJSON[[]string](trigger.McpProfiles, "trigger:"+trigger.ID+" mcp_profiles")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
 	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
-		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
+		trigger.Harness.String, skills, mcpProfiles, int(trigger.TimeoutSec), runtime, triggeredAt)
 	return err
 }
 
-func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
+func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills, mcpProfiles []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
+	if len(nonEmptyStrings(mcpProfiles)) > 0 && teamID != "" {
+		return store.TaskRecord{}, fmt.Errorf("team-scoped triggers cannot use mcp_profiles in this trusted self-hosted MVP")
+	}
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      teamID,
-		Prompt:      prompt,
-		GitURL:      gitURL,
-		GitRef:      gitRef,
-		AgentImage:  agentImage,
-		Agent:       agent,
-		ProviderID:  providerID,
-		ModelID:     modelID,
-		VariantID:   variantID,
-		Harness:     harness,
-		Skills:      skills,
-		TimeoutSec:  timeoutSec,
-		TriggerName: triggerName,
-		TriggerType: triggerType,
-		SessionMode: runtime.SessionMode,
-		PauseReason: runtime.PauseReason,
-		TTLHours:    runtime.TTLHours,
+		TeamID:           teamID,
+		Prompt:           prompt,
+		GitURL:           gitURL,
+		GitRef:           gitRef,
+		AgentImage:       agentImage,
+		Agent:            agent,
+		ProviderID:       providerID,
+		ModelID:          modelID,
+		VariantID:        variantID,
+		Harness:          harness,
+		Skills:           skills,
+		MCPProfiles:      mcpProfiles,
+		AllowMCPProfiles: len(nonEmptyStrings(mcpProfiles)) > 0,
+		TimeoutSec:       timeoutSec,
+		TriggerName:      triggerName,
+		TriggerType:      triggerType,
+		SessionMode:      runtime.SessionMode,
+		PauseReason:      runtime.PauseReason,
+		TTLHours:         runtime.TTLHours,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
@@ -1283,6 +1498,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
 		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
+		mcpProfiles := parseJSON[[]string](t.McpProfiles, "trigger:"+t.ID+" mcp_profiles")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1298,6 +1514,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
+			MCPProfiles: mcpProfiles,
 			Event:       cfg.Event,
 			SessionMode: cfg.SessionMode,
 			PauseReason: cfg.PauseReason,
@@ -1316,6 +1533,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 	out := make([]webhook.ReviewTrigger, len(triggers))
 	for i, t := range triggers {
 		skills := parseJSON[[]string](t.Skills, "trigger:"+t.ID+" skills")
+		mcpProfiles := parseJSON[[]string](t.McpProfiles, "trigger:"+t.ID+" mcp_profiles")
 		cfg := triggerRuntimeConfigFromJSON(t.TriggerConfig)
 		out[i] = webhook.ReviewTrigger{
 			TeamID:      t.TeamID.String,
@@ -1331,6 +1549,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
 			Skills:      skills,
+			MCPProfiles: mcpProfiles,
 			Event:       cfg.Event,
 			MatchLabels: cfg.MatchLabels,
 			SessionMode: cfg.SessionMode,

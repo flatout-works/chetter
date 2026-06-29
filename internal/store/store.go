@@ -35,39 +35,40 @@ type Store struct {
 
 // TaskRecord is the persisted task state exposed by MCP tools.
 type TaskRecord struct {
-	ID                string            `json:"id"`
-	TeamID            string            `json:"team_id,omitempty"`
-	Status            string            `json:"status"`
-	Prompt            string            `json:"prompt"`
-	GitURL            string            `json:"git_url,omitempty"`
-	GitRef            string            `json:"git_ref,omitempty"`
-	AgentImage        string            `json:"agent_image,omitempty"`
-	Agent             string            `json:"agent,omitempty"`
-	ProviderID        string            `json:"provider_id,omitempty"`
-	ModelID           string            `json:"model_id,omitempty"`
-	VariantID         string            `json:"variant_id,omitempty"`
-	OpenCodeSessionID string            `json:"opencode_session_id,omitempty"`
-	RunnerImageDigest string            `json:"runner_image_digest,omitempty"`
-	CommitAuthorName  string            `json:"commit_author_name,omitempty"`
-	CommitAuthorEmail string            `json:"commit_author_email,omitempty"`
-	TriggerName       string            `json:"trigger_name,omitempty"`
-	TriggerType       string            `json:"trigger_type,omitempty"`
-	Skills            []string          `json:"skills"`
-	Env               map[string]string `json:"env"`
-	TimeoutSec        int               `json:"timeout_sec"`
-	Summary           string            `json:"summary,omitempty"`
-	Error             string            `json:"error,omitempty"`
-	ErrorCategory     string            `json:"error_category,omitempty"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	StartedAt         *time.Time        `json:"started_at,omitempty"`
-	EndedAt           *time.Time        `json:"ended_at,omitempty"`
-	TotalInputTokens      int64         `json:"total_input_tokens"`
-	TotalOutputTokens     int64         `json:"total_output_tokens"`
-	TotalCacheReadTokens  int64         `json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens int64         `json:"total_cache_write_tokens"`
-	TotalReasoningTokens  int64         `json:"total_reasoning_tokens"`
-	CostCents             int64         `json:"cost_cents"`
+	ID                    string            `json:"id"`
+	TeamID                string            `json:"team_id,omitempty"`
+	Status                string            `json:"status"`
+	Prompt                string            `json:"prompt"`
+	GitURL                string            `json:"git_url,omitempty"`
+	GitRef                string            `json:"git_ref,omitempty"`
+	AgentImage            string            `json:"agent_image,omitempty"`
+	Agent                 string            `json:"agent,omitempty"`
+	ProviderID            string            `json:"provider_id,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
+	VariantID             string            `json:"variant_id,omitempty"`
+	OpenCodeSessionID     string            `json:"opencode_session_id,omitempty"`
+	RunnerImageDigest     string            `json:"runner_image_digest,omitempty"`
+	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
+	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
+	TriggerName           string            `json:"trigger_name,omitempty"`
+	TriggerType           string            `json:"trigger_type,omitempty"`
+	Skills                []string          `json:"skills"`
+	MCPProfiles           []string          `json:"mcp_profiles"`
+	Env                   map[string]string `json:"env"`
+	TimeoutSec            int               `json:"timeout_sec"`
+	Summary               string            `json:"summary,omitempty"`
+	Error                 string            `json:"error,omitempty"`
+	ErrorCategory         string            `json:"error_category,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	StartedAt             *time.Time        `json:"started_at,omitempty"`
+	EndedAt               *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64             `json:"total_input_tokens"`
+	TotalOutputTokens     int64             `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64             `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
+	CostCents             int64             `json:"cost_cents"`
 }
 
 // TaskResponse is the runner status event shape.
@@ -117,6 +118,7 @@ type TriggerRecord struct {
 	VariantID     string     `json:"variant_id,omitempty"`
 	Harness       string     `json:"harness,omitempty"`
 	Skills        []string   `json:"skills"`
+	MCPProfiles   []string   `json:"mcp_profiles"`
 	TimeoutSec    int        `json:"timeout_sec"`
 	Enabled       bool       `json:"enabled"`
 	SourceID      string     `json:"source_id,omitempty"`
@@ -144,6 +146,7 @@ type TriggerInput struct {
 	VariantID     string
 	Harness       string
 	Skills        []string
+	MCPProfiles   []string
 	TimeoutSec    int
 	SourceID      string
 }
@@ -240,6 +243,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureMCPProfileColumnsBackfilled(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
 		return err
 	}
@@ -308,6 +314,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"lease_expires_at", "ALTER TABLE chetter_tasks ADD COLUMN lease_expires_at DATETIME(6) NULL AFTER claimed_at"},
 		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
 		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
+		{"mcp_profiles", "ALTER TABLE chetter_tasks ADD COLUMN mcp_profiles JSON NULL AFTER skills"},
 		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
@@ -345,6 +352,7 @@ func (s *Store) ensureTriggerMetadataColumns(ctx context.Context) error {
 		{"model_id", "ALTER TABLE chetter_triggers ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
 		{"variant_id", "ALTER TABLE chetter_triggers ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
 		{"harness", "ALTER TABLE chetter_triggers ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
+		{"mcp_profiles", "ALTER TABLE chetter_triggers ADD COLUMN mcp_profiles JSON NULL AFTER skills"},
 		{"team_id", "ALTER TABLE chetter_triggers ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 		{"source_id", "ALTER TABLE chetter_triggers ADD COLUMN source_id VARCHAR(64) NULL AFTER enabled"},
 	}
@@ -358,6 +366,44 @@ func (s *Store) ensureTriggerMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_triggers.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureMCPProfileColumnsBackfilled(ctx context.Context) error {
+	statements := []struct {
+		table    string
+		column   string
+		backfill string
+		notNull  string
+	}{
+		{
+			table:    "chetter_tasks",
+			column:   "mcp_profiles",
+			backfill: "UPDATE chetter_tasks SET mcp_profiles = JSON_ARRAY() WHERE mcp_profiles IS NULL",
+			notNull:  "ALTER TABLE chetter_tasks MODIFY COLUMN mcp_profiles JSON NOT NULL",
+		},
+		{
+			table:    "chetter_triggers",
+			column:   "mcp_profiles",
+			backfill: "UPDATE chetter_triggers SET mcp_profiles = JSON_ARRAY() WHERE mcp_profiles IS NULL",
+			notNull:  "ALTER TABLE chetter_triggers MODIFY COLUMN mcp_profiles JSON NOT NULL",
+		},
+	}
+	for _, stmt := range statements {
+		nullable, err := s.columnNullable(ctx, stmt.table, stmt.column)
+		if err != nil {
+			return err
+		}
+		if !nullable {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, stmt.backfill); err != nil {
+			return fmt.Errorf("backfill %s.%s: %w", stmt.table, stmt.column, err)
+		}
+		if _, err := s.db.ExecContext(ctx, stmt.notNull); err != nil {
+			return fmt.Errorf("enforce %s.%s: %w", stmt.table, stmt.column, err)
 		}
 	}
 	return nil
@@ -678,6 +724,18 @@ func (s *Store) columnExists(ctx context.Context, table, column string) (bool, e
 		return false, fmt.Errorf("check column %s.%s: %w", table, column, err)
 	}
 	return count > 0, nil
+}
+
+func (s *Store) columnNullable(ctx context.Context, table, column string) (bool, error) {
+	var nullable string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
+	`, table, column).Scan(&nullable); err != nil {
+		return false, fmt.Errorf("check column nullability %s.%s: %w", table, column, err)
+	}
+	return strings.EqualFold(nullable, "YES"), nil
 }
 
 func (s *Store) indexExists(ctx context.Context, table, index string) (bool, error) {

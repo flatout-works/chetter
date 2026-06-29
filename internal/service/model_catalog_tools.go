@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
@@ -72,7 +73,7 @@ type SyncDefinitionSourceOutput struct {
 }
 
 type ListDefinitionsInput struct {
-	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template, mcp_profile"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Optional definition source ID filter"`
 }
 
@@ -81,7 +82,7 @@ type ListDefinitionsOutput struct {
 }
 
 type GetDefinitionInput struct {
-	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template, mcp_profile"`
 	Name           string `json:"name" jsonschema:"Definition name"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
 }
@@ -162,7 +163,7 @@ func (s *Service) listDefinitionSourcesTool(ctx context.Context, _ *mcp.CallTool
 	}
 	out := make([]DefinitionSourceToolRecord, 0, len(sources))
 	for _, source := range sources {
-		out = append(out, definitionSourceToolRecord(source))
+		out = append(out, definitionSourceToolRecordForContext(ctx, source))
 	}
 	return nil, ListDefinitionSourcesOutput{Sources: out}, nil
 }
@@ -172,7 +173,7 @@ func (s *Service) getDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, GetDefinitionSourceOutput{}, err
 	}
-	return nil, GetDefinitionSourceOutput{Source: definitionSourceToolRecord(source)}, nil
+	return nil, GetDefinitionSourceOutput{Source: definitionSourceToolRecordForContext(ctx, source)}, nil
 }
 
 func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRequest, in SyncDefinitionSourceInput) (*mcp.CallToolResult, SyncDefinitionSourceOutput, error) {
@@ -203,6 +204,10 @@ func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListDefinitionsInput) (*mcp.CallToolResult, ListDefinitionsOutput, error) {
+	admin := isAdmin(ctx)
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !admin {
+		return nil, ListDefinitionsOutput{}, fmt.Errorf("admin access required for mcp_profile definitions")
+	}
 	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
 		Column1:        in.DefinitionType,
 		DefinitionType: in.DefinitionType,
@@ -214,6 +219,9 @@ func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 	}
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile && !admin {
+			continue
+		}
 		out = append(out, definitionToolRecord(def))
 	}
 	return nil, ListDefinitionsOutput{Definitions: out}, nil
@@ -225,6 +233,9 @@ func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	if in.Name == "" {
 		return nil, GetDefinitionOutput{}, fmt.Errorf("name is required")
+	}
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !isAdmin(ctx) {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("admin access required for mcp_profile definitions")
 	}
 	sourceID := in.SourceID
 	if sourceID == "" {
@@ -462,6 +473,25 @@ func definitionSourceToolRecord(source repository.DefinitionSource) DefinitionSo
 	}
 }
 
+func definitionSourceToolRecordForContext(ctx context.Context, source repository.DefinitionSource) DefinitionSourceToolRecord {
+	record := definitionSourceToolRecord(source)
+	if !isAdmin(ctx) {
+		record.RepoURL = redactDefinitionSourceRepoURL(record.RepoURL)
+	}
+	return record
+}
+
+func redactDefinitionSourceRepoURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return "[redacted]"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
 func definitionToolRecord(def repository.Definition) DefinitionToolRecord {
 	return DefinitionToolRecord{
 		ID:             def.ID,
@@ -576,6 +606,11 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 			slog.Warn("skipping trigger definition: marshal skills error", "path", def.Path, "err", err)
 			continue
 		}
+		mcpProfilesJSON, err := json.Marshal(nonEmptyStrings(td.MCPProfiles))
+		if err != nil {
+			slog.Warn("skipping trigger definition: marshal mcp_profiles error", "path", def.Path, "err", err)
+			continue
+		}
 		entries = append(entries, triggerSyncEntry{
 			def: td,
 			params: repository.UpsertTriggerParams{
@@ -595,6 +630,7 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 				VariantID:     nullString(td.VariantID),
 				Harness:       nullString(td.Harness),
 				Skills:        skillsJSON,
+				McpProfiles:   mcpProfilesJSON,
 				TimeoutSec:    int32(td.TimeoutSec),
 				Enabled:       td.Enabled,
 				SourceID:      nullString(defaultDefinitionSourceID),

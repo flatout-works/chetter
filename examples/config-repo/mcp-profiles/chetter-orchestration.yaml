@@ -1,0 +1,17 @@
+# Example profile for trusted self-hosted Chetter orchestration.
+# Do not commit literal tokens. The runner resolves ${env:...} at task startup.
+# The resolved bearer token is written into task-readable harness config files.
+# tool_allowlist only generates OpenCode permission hints, not server-side security.
+# Use this only for trusted/admin tasks until scoped tokens or proxy enforcement exist.
+name: chetter-orchestration
+transport: http
+url: http://chetter-mcp:8080/mcp
+auth:
+  type: bearer
+  token: ${env:CHETTER_MCP_AUTH_TOKEN}
+tool_allowlist:
+  - chetter_submit_task
+  - chetter_task_status
+  - chetter_task_progress
+  - chetter_task_export
+  - chetter_pr_review

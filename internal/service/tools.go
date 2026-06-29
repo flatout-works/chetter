@@ -25,6 +25,7 @@ type SubmitTaskInput struct {
 	ModelID     string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	MCPProfiles []string          `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for this task"`
 	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
 	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
@@ -69,36 +70,37 @@ type ListTasksOutput struct {
 // MCP JSON Schema validation (jsonschema-go v0.3.0 maps time.Time but not
 // *time.Time to string schema).
 type TaskToolRecord struct {
-	ID             string            `json:"id"`
-	TeamID         string            `json:"team_id,omitempty"`
-	Status         string            `json:"status"`
-	Prompt         string            `json:"prompt"`
-	GitURL         string            `json:"git_url,omitempty"`
-	GitRef         string            `json:"git_ref,omitempty"`
-	AgentImage     string            `json:"agent_image,omitempty"`
-	Agent          string            `json:"agent,omitempty"`
-	ProviderID     string            `json:"provider_id,omitempty"`
-	ModelID        string            `json:"model_id,omitempty"`
-	VariantID      string            `json:"variant_id,omitempty"`
-	TriggerName    string            `json:"trigger_name,omitempty"`
-	TriggerType    string            `json:"trigger_type,omitempty"`
-	Skills         []string          `json:"skills,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	TimeoutSec     int               `json:"timeout_sec"`
-	Summary        string            `json:"summary,omitempty"`
-	Error          string            `json:"error,omitempty"`
-	ErrorCategory  string            `json:"error_category,omitempty"`
-	AgentSessionID string            `json:"agent_session_id,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	StartedAt      *time.Time        `json:"started_at,omitempty"`
-	EndedAt        *time.Time        `json:"ended_at,omitempty"`
-	TotalInputTokens      int64      `json:"total_input_tokens"`
-	TotalOutputTokens     int64      `json:"total_output_tokens"`
-	TotalCacheReadTokens  int64      `json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens int64      `json:"total_cache_write_tokens"`
-	TotalReasoningTokens  int64      `json:"total_reasoning_tokens"`
-	CostCents             int64      `json:"cost_cents"`
+	ID                    string            `json:"id"`
+	TeamID                string            `json:"team_id,omitempty"`
+	Status                string            `json:"status"`
+	Prompt                string            `json:"prompt"`
+	GitURL                string            `json:"git_url,omitempty"`
+	GitRef                string            `json:"git_ref,omitempty"`
+	AgentImage            string            `json:"agent_image,omitempty"`
+	Agent                 string            `json:"agent,omitempty"`
+	ProviderID            string            `json:"provider_id,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
+	VariantID             string            `json:"variant_id,omitempty"`
+	TriggerName           string            `json:"trigger_name,omitempty"`
+	TriggerType           string            `json:"trigger_type,omitempty"`
+	Skills                []string          `json:"skills,omitempty"`
+	MCPProfiles           []string          `json:"mcp_profiles,omitempty"`
+	Env                   map[string]string `json:"env,omitempty"`
+	TimeoutSec            int               `json:"timeout_sec"`
+	Summary               string            `json:"summary,omitempty"`
+	Error                 string            `json:"error,omitempty"`
+	ErrorCategory         string            `json:"error_category,omitempty"`
+	AgentSessionID        string            `json:"agent_session_id,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	StartedAt             *time.Time        `json:"started_at,omitempty"`
+	EndedAt               *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64             `json:"total_input_tokens"`
+	TotalOutputTokens     int64             `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64             `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
+	CostCents             int64             `json:"cost_cents"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -117,6 +119,7 @@ type CreateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	MCPProfiles []string `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for tasks created by this trigger"`
 	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
@@ -147,6 +150,7 @@ type UpdateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	MCPProfiles []string `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for tasks created by this trigger"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
 	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
@@ -232,6 +236,7 @@ type TriggerToolRecord struct {
 	VariantID     string     `json:"variant_id,omitempty"`
 	Harness       string     `json:"harness,omitempty"`
 	Skills        []string   `json:"skills,omitempty"`
+	MCPProfiles   []string   `json:"mcp_profiles,omitempty"`
 	TimeoutSec    int        `json:"timeout_sec"`
 	Enabled       bool       `json:"enabled"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -641,6 +646,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		ModelID:     in.ModelID,
 		VariantID:   in.VariantID,
 		Skills:      in.Skills,
+		MCPProfiles: in.MCPProfiles,
 		Env:         in.Env,
 		Harness:     in.Harness,
 		TimeoutSec:  in.TimeoutSec,
@@ -774,29 +780,30 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitURL,
-		GitRef:        task.GitRef,
-		AgentImage:    task.AgentImage,
-		Agent:         task.Agent,
-		ProviderID:    task.ProviderID,
-		ModelID:       task.ModelID,
-		VariantID:     task.VariantID,
-		TriggerName:   task.TriggerName,
-		TriggerType:   task.TriggerType,
-		Skills:        task.Skills,
-		Env:           task.Env,
-		TimeoutSec:    task.TimeoutSec,
-		Summary:       task.Summary,
-		Error:         task.Error,
-		ErrorCategory: task.ErrorCategory,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     task.StartedAt,
-		EndedAt:       task.EndedAt,
+		ID:                    task.ID,
+		TeamID:                task.TeamID,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitURL,
+		GitRef:                task.GitRef,
+		AgentImage:            task.AgentImage,
+		Agent:                 task.Agent,
+		ProviderID:            task.ProviderID,
+		ModelID:               task.ModelID,
+		VariantID:             task.VariantID,
+		TriggerName:           task.TriggerName,
+		TriggerType:           task.TriggerType,
+		Skills:                task.Skills,
+		MCPProfiles:           task.MCPProfiles,
+		Env:                   task.Env,
+		TimeoutSec:            task.TimeoutSec,
+		Summary:               task.Summary,
+		Error:                 task.Error,
+		ErrorCategory:         task.ErrorCategory,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             task.StartedAt,
+		EndedAt:               task.EndedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -808,31 +815,33 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 
 func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpProfiles := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID.String,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitUrl.String,
-		GitRef:        task.GitRef.String,
-		AgentImage:    task.AgentImage.String,
-		Agent:         task.Agent.String,
-		ProviderID:    task.ProviderID.String,
-		ModelID:       task.ModelID.String,
-		VariantID:     task.VariantID.String,
-		TriggerName:   task.TriggerName.String,
-		TriggerType:   task.TriggerType.String,
-		Skills:        skills,
-		Env:           env,
-		TimeoutSec:    int(task.TimeoutSec),
-		Summary:       task.Summary.String,
-		Error:         task.Error.String,
-		ErrorCategory: task.ErrorCategory.String,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     store.NullTimePtr(task.StartedAt),
-		EndedAt:       store.NullTimePtr(task.EndedAt),
+		ID:                    task.ID,
+		TeamID:                task.TeamID.String,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitUrl.String,
+		GitRef:                task.GitRef.String,
+		AgentImage:            task.AgentImage.String,
+		Agent:                 task.Agent.String,
+		ProviderID:            task.ProviderID.String,
+		ModelID:               task.ModelID.String,
+		VariantID:             task.VariantID.String,
+		TriggerName:           task.TriggerName.String,
+		TriggerType:           task.TriggerType.String,
+		Skills:                skills,
+		MCPProfiles:           mcpProfiles,
+		Env:                   env,
+		TimeoutSec:            int(task.TimeoutSec),
+		Summary:               task.Summary.String,
+		Error:                 task.Error.String,
+		ErrorCategory:         task.ErrorCategory.String,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             store.NullTimePtr(task.StartedAt),
+		EndedAt:               store.NullTimePtr(task.EndedAt),
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -908,6 +917,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		VariantID:     in.VariantID,
 		Harness:       in.Harness,
 		Skills:        in.Skills,
+		MCPProfiles:   in.MCPProfiles,
 		TimeoutSec:    in.TimeoutSec,
 	})
 	if err != nil {
@@ -954,6 +964,7 @@ func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 		VariantID:     s.VariantID,
 		Harness:       s.Harness,
 		Skills:        nonEmptyStrings(s.Skills),
+		MCPProfiles:   nonEmptyStrings(s.MCPProfiles),
 		TimeoutSec:    s.TimeoutSec,
 		Enabled:       s.Enabled,
 		CreatedAt:     s.CreatedAt,
@@ -965,6 +976,7 @@ func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 
 func triggerToStoreRecord(s repository.ChetterTrigger) store.TriggerRecord {
 	skills := parseJSON[[]string](s.Skills, "trigger:"+s.ID+" skills")
+	mcpProfiles := parseJSON[[]string](s.McpProfiles, "trigger:"+s.ID+" mcp_profiles")
 	return store.TriggerRecord{
 		ID:            s.ID,
 		TeamID:        s.TeamID.String,
@@ -982,6 +994,7 @@ func triggerToStoreRecord(s repository.ChetterTrigger) store.TriggerRecord {
 		VariantID:     s.VariantID.String,
 		Harness:       s.Harness.String,
 		Skills:        skills,
+		MCPProfiles:   mcpProfiles,
 		TimeoutSec:    int(s.TimeoutSec),
 		Enabled:       s.Enabled,
 		SourceID:      s.SourceID.String,
@@ -1081,6 +1094,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		VariantID:     store.NonZero(in.VariantID, existing.VariantID.String),
 		Harness:       store.NonZero(in.Harness, existing.Harness.String),
 		Skills:        store.NonNilSlice(in.Skills, triggerSkillsToStrings(existing.Skills)),
+		MCPProfiles:   store.NonNilSlice(in.MCPProfiles, triggerMCPProfilesToStrings(existing.McpProfiles)),
 		TimeoutSec:    store.NonZeroInt(in.TimeoutSec, int(existing.TimeoutSec)),
 	}
 	trigger, err := s.UpdateTrigger(ctx, in.Name, merged, enabled)
@@ -1156,6 +1170,10 @@ func mustMarshalJSON[T any](v T) []byte {
 
 func triggerSkillsToStrings(skills json.RawMessage) []string {
 	return parseJSON[[]string](skills, "trigger_skills")
+}
+
+func triggerMCPProfilesToStrings(profiles json.RawMessage) []string {
+	return parseJSON[[]string](profiles, "trigger_mcp_profiles")
 }
 
 func (s *Service) taskEventsTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskEventsInput) (*mcp.CallToolResult, TaskEventsOutput, error) {

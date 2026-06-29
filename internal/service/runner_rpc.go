@@ -18,6 +18,7 @@ import (
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -148,6 +149,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			mcpProfileNames := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {
 				delete(protoTask.Env, "__recover_from")
@@ -164,7 +166,14 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			s.resolveTaskModel(ctx, protoTask)
-			s.resolveTaskDefinitions(ctx, protoTask)
+			if len(mcpProfileNames) > 0 && !taskAllowsMCPProfiles(task) {
+				slog.Warn("task selected mcp_profiles without authorization", "taskID", task.ID, "profiles", mcpProfileNames)
+				protoTask.McpProfiles = invalidMCPProfiles(mcpProfileNames)
+				s.resolveTaskDefinitions(ctx, protoTask, nil)
+			} else {
+				s.resolveTaskDefinitions(ctx, protoTask, mcpProfileNames)
+			}
+			s.injectGitHubReadToken(ctx, protoTask, task)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -215,7 +224,7 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
 }
 
-func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) {
+func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task, mcpProfileNames []string) {
 	if task == nil {
 		return
 	}
@@ -235,6 +244,118 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 			task.SkillDefinitions = skillDefs
 		}
 	}
+	if len(mcpProfileNames) > 0 {
+		task.McpProfiles = s.resolveMCPProfiles(ctx, mcpProfileNames)
+	}
+}
+
+func (s *RunnerRPCService) injectGitHubReadToken(ctx context.Context, protoTask *runnerv1.Task, dbTask repository.ChetterTask) {
+	if protoTask == nil {
+		return
+	}
+	storedEnv := parseJSON[map[string]string](dbTask.Env, "task:"+dbTask.ID+" env")
+	if storedEnv[gitHubTokenAllowedEnv] != "true" && storedEnv[gitHubReadAllowedEnv] != "true" {
+		return
+	}
+	repoName, ok := canonicalRepoName(storedEnv["GITHUB_REPO"])
+	if !ok {
+		slog.Warn("task requested GitHub auth with invalid repo", "taskID", dbTask.ID)
+		return
+	}
+	if s.ghActions == nil {
+		slog.Warn("task requested GitHub auth but GitHub App is not configured", "taskID", dbTask.ID)
+		return
+	}
+	token, err := s.ghActions.GitHubReadInstallationTokenForRepository(ctx, repoName)
+	if err != nil {
+		slog.Warn("mint GitHub read token for task", "taskID", dbTask.ID, "repo", repoName, "err", err)
+		return
+	}
+	if protoTask.Env == nil {
+		protoTask.Env = map[string]string{}
+	}
+	protoTask.Env[injectedGitHubTokenEnv] = token
+}
+
+func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, profileNames []string) []*runnerv1.MCPProfile {
+	names := uniqueNonEmptyStrings(profileNames)
+	if len(names) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat(",?", len(names))[1:]
+	query := `SELECT name, content FROM definitions WHERE definition_type='mcp_profile' AND name IN (` + placeholders + `) AND active=true`
+	args := make([]any, len(names))
+	for i, n := range names {
+		args[i] = n
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		slog.Warn("resolve mcp profile definitions query", "err", err)
+		return invalidMCPProfiles(names)
+	}
+	defer rows.Close()
+
+	resolved := make(map[string]*runnerv1.MCPProfile, len(names))
+	for rows.Next() {
+		var name, content string
+		if err := rows.Scan(&name, &content); err != nil {
+			slog.Warn("scan mcp profile definition row", "err", err)
+			continue
+		}
+		profile, err := definitions.ParseMCPProfileYAML(content)
+		if err != nil {
+			slog.Warn("parse mcp profile definition", "name", name, "err", err)
+			continue
+		}
+		if profile.Name != name {
+			slog.Warn("mcp profile definition name mismatch", "selected", name, "content_name", profile.Name)
+			continue
+		}
+		resolved[name] = &runnerv1.MCPProfile{
+			Name:          profile.Name,
+			Type:          profile.Type,
+			Transport:     profile.Transport,
+			Url:           profile.URL,
+			Headers:       profile.Headers,
+			ToolAllowlist: profile.ToolAllowlist,
+		}
+	}
+
+	out := make([]*runnerv1.MCPProfile, 0, len(names))
+	for _, name := range names {
+		if profile, ok := resolved[name]; ok {
+			out = append(out, profile)
+			continue
+		}
+		slog.Warn("selected mcp profile is not active or valid", "name", name)
+		out = append(out, &runnerv1.MCPProfile{Name: name})
+	}
+	return out
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func invalidMCPProfiles(names []string) []*runnerv1.MCPProfile {
+	out := make([]*runnerv1.MCPProfile, 0, len(names))
+	for _, name := range names {
+		out = append(out, &runnerv1.MCPProfile{Name: name})
+	}
+	return out
 }
 
 func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
@@ -996,6 +1117,11 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	harness := env["__chetter_harness"]
 	delete(env, "__chetter_harness")
+	delete(env, gitHubTokenAllowedEnv)
+	delete(env, gitHubReadAllowedEnv)
+	delete(env, injectedGitHubTokenEnv)
+	delete(env, injectedGitHubCloneTokenEnv)
+	delete(env, mcpProfilesAllowedEnv)
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		AgentImage:             task.AgentImage.String,

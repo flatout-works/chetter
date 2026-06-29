@@ -41,6 +41,7 @@ message Task {
   string error_category = 21;
   string agent_session_id = 22;
   TokenUsage token_usage = 23;
+  repeated string mcp_profiles = 24;
 }
 
 message AgentSession {
@@ -106,6 +107,7 @@ message Trigger {
   optional string last_run_at = 21;
   optional string next_run_at = 22;
   optional string source_id = 23;
+  repeated string mcp_profiles = 24;
 }
 
 message TaskEvent {
@@ -269,6 +271,7 @@ message SubmitTaskRequest {
   string session_mode = 13;
   string pause_reason = 14;
   int32 ttl_hours = 15;
+  repeated string mcp_profiles = 16;
 }
 
 message SubmitTaskResponse {
@@ -442,6 +445,7 @@ message CreateTriggerRequest {
   string pause_reason = 18;
   int32 ttl_hours = 19;
   repeated string match_labels = 20;
+  repeated string mcp_profiles = 21;
 }
 
 message CreateTriggerResponse {
@@ -470,6 +474,7 @@ message UpdateTriggerRequest {
   int32 ttl_hours = 19;
   repeated string match_labels = 20;
   string event = 21;
+  repeated string mcp_profiles = 22;
 }
 
 message UpdateTriggerResponse {

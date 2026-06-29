@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -90,6 +92,89 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	_, _, err = svc.syncDefinitionSourceTool(context.Background(), nil, SyncDefinitionSourceInput{})
 	if err == nil {
 		t.Fatal("expected non-admin sync definition source to fail")
+	}
+}
+
+func TestMCPProfileDefinitionsRequireAdmin(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	q := repository.New(tdb.DB)
+	insertMCPProfileDefinition(t, q, "chetter-orchestration")
+
+	_, _, err := svc.listDefinitionsTool(context.Background(), nil, ListDefinitionsInput{DefinitionType: definitions.DefinitionTypeMCPProfile})
+	if err == nil {
+		t.Fatal("expected non-admin mcp_profile list to fail")
+	}
+	_, _, err = svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "chetter-orchestration"})
+	if err == nil {
+		t.Fatal("expected non-admin mcp_profile get to fail")
+	}
+	_, listOut, err := svc.listDefinitionsTool(context.Background(), nil, ListDefinitionsInput{})
+	if err != nil {
+		t.Fatalf("unfiltered non-admin list definitions: %v", err)
+	}
+	for _, def := range listOut.Definitions {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile {
+			t.Fatalf("non-admin unfiltered list exposed mcp_profile definition: %#v", def)
+		}
+	}
+	_, getOut, err := svc.getDefinitionTool(ctxWithAdmin(context.Background()), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "chetter-orchestration"})
+	if err != nil {
+		t.Fatalf("admin get mcp_profile definition: %v", err)
+	}
+	if getOut.Definition.Content == "" {
+		t.Fatalf("admin mcp_profile definition content is empty: %#v", getOut.Definition)
+	}
+}
+
+func TestNonAdminDefinitionSourceRepoURLIsRedacted(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := repository.New(tdb.DB)
+	now := time.Now().UTC()
+	sourceURL := "https://user:secret@example.com/org/private-definitions.git?token=abc#main"
+	if err := q.UpsertDefinitionSource(ctx, repository.UpsertDefinitionSourceParams{
+		ID:        "source_secret",
+		Name:      "secret-definitions",
+		Scope:     definitionScopeGlobal,
+		TeamID:    sql.NullString{},
+		Repo:      sql.NullString{String: "example/private-definitions", Valid: true},
+		RepoUrl:   sourceURL,
+		Branch:    "main",
+		Path:      ".",
+		Enabled:   true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert definition source: %v", err)
+	}
+
+	_, listOut, err := svc.listDefinitionSourcesTool(ctx, nil, ListDefinitionSourcesInput{})
+	if err != nil {
+		t.Fatalf("non-admin list definition sources: %v", err)
+	}
+	if len(listOut.Sources) != 1 {
+		t.Fatalf("definition sources = %#v, want one source", listOut.Sources)
+	}
+	if got, want := listOut.Sources[0].RepoURL, "https://example.com/org/private-definitions.git"; got != want {
+		t.Fatalf("non-admin list repo_url = %q, want %q", got, want)
+	}
+
+	_, getOut, err := svc.getDefinitionSourceTool(ctx, nil, GetDefinitionSourceInput{Name: "secret-definitions"})
+	if err != nil {
+		t.Fatalf("non-admin get definition source: %v", err)
+	}
+	if got, want := getOut.Source.RepoURL, "https://example.com/org/private-definitions.git"; got != want {
+		t.Fatalf("non-admin get repo_url = %q, want %q", got, want)
+	}
+
+	_, adminOut, err := svc.getDefinitionSourceTool(ctxWithAdmin(ctx), nil, GetDefinitionSourceInput{Name: "secret-definitions"})
+	if err != nil {
+		t.Fatalf("admin get definition source: %v", err)
+	}
+	if adminOut.Source.RepoURL != sourceURL {
+		t.Fatalf("admin repo_url = %q, want original %q", adminOut.Source.RepoURL, sourceURL)
 	}
 }
 

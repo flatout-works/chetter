@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 // perform GitHub operations and record the resulting artifacts.
 type GitHubActionService interface {
 	GitHubClient() *webhook.Client
+	GitHubReadInstallationTokenForRepository(ctx context.Context, repo string) (string, error)
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 	LogAuditEvent(ctx context.Context, params AuditEventParams) error
 	GetTaskSignature(ctx context.Context, taskID string) (string, error)
@@ -32,6 +34,9 @@ func (s *RunnerRPCService) GitHubCreateIssue(ctx context.Context, req *connect.R
 	gh, err := s.requireGitHub()
 	if err != nil {
 		return nil, err
+	}
+	if err := s.validateRunnerGitHubWrite(ctx, req.Msg.TaskId, req.Msg.Repo, 0, ""); err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
 	}
 	if strings.TrimSpace(req.Msg.Title) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title is required"))
@@ -59,6 +64,9 @@ func (s *RunnerRPCService) GitHubIssueComment(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateRunnerGitHubWrite(ctx, req.Msg.TaskId, req.Msg.Repo, int(req.Msg.IssueNumber), "issue_or_pr"); err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
+	}
 	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task signature: %w", err))
@@ -78,6 +86,9 @@ func (s *RunnerRPCService) GitHubCreatePR(ctx context.Context, req *connect.Requ
 	gh, err := s.requireGitHub()
 	if err != nil {
 		return nil, err
+	}
+	if err := s.validateRunnerGitHubWrite(ctx, req.Msg.TaskId, req.Msg.Repo, 0, ""); err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
 	}
 	if strings.TrimSpace(req.Msg.Title) == "" || strings.TrimSpace(req.Msg.Head) == "" || strings.TrimSpace(req.Msg.Base) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title, head, and base are required"))
@@ -104,6 +115,9 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 	gh, err := s.requireGitHub()
 	if err != nil {
 		return nil, err
+	}
+	if err := s.validateRunnerGitHubWrite(ctx, req.Msg.TaskId, req.Msg.Repo, int(req.Msg.PrNumber), "pr"); err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, err)
 	}
 	event := strings.ToUpper(strings.TrimSpace(req.Msg.Event))
 	if event == "" {
@@ -138,6 +152,24 @@ func (s *RunnerRPCService) requireGitHub() (*webhook.Client, error) {
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("GitHub App is not configured on this server"))
 	}
 	return gh, nil
+}
+
+func (s *RunnerRPCService) validateRunnerGitHubWrite(ctx context.Context, taskID, repo string, number int, artifactKind string) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return fmt.Errorf("task_id is required")
+	}
+	if s.db == nil {
+		return fmt.Errorf("task repository is unavailable")
+	}
+	task, err := s.db.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("task %q not found", taskID)
+		}
+		return fmt.Errorf("get task: %w", err)
+	}
+	return validateGitHubToolWriteScope(task, repo, number, artifactKind)
 }
 
 func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, artifactType, repo string, number int, url, ref string) error {

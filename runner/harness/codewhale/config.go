@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -37,6 +38,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			}
 		}
 		mcpServers["chetter"] = chetterMCP
+	}
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddHTTPServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
+		}
 	}
 
 	if len(mcpServers) > 0 {
