@@ -30,6 +30,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		ModelId:        t.ModelID,
 		VariantId:      t.VariantID,
 		Skills:         t.Skills,
+		McpProfiles:    t.MCPProfiles,
 		Env:            t.Env,
 		TimeoutSec:     int32(t.TimeoutSec),
 		Summary:        t.Summary,
@@ -41,12 +42,12 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		EndedAt:        optTimeStr(t.EndedAt),
 		AgentSessionId: t.AgentSessionID,
 		TokenUsage: &apiv1.TokenUsage{
-			InputTokens:     t.TotalInputTokens,
-			OutputTokens:    t.TotalOutputTokens,
-			CacheReadTokens: t.TotalCacheReadTokens,
+			InputTokens:      t.TotalInputTokens,
+			OutputTokens:     t.TotalOutputTokens,
+			CacheReadTokens:  t.TotalCacheReadTokens,
 			CacheWriteTokens: t.TotalCacheWriteTokens,
-			ReasoningTokens: t.TotalReasoningTokens,
-			CostCents:       t.CostCents,
+			ReasoningTokens:  t.TotalReasoningTokens,
+			CostCents:        t.CostCents,
 		},
 	}
 }
@@ -145,6 +146,7 @@ func protoTrigger(t store.TriggerRecord) *apiv1.Trigger {
 		VariantId:     t.VariantID,
 		Harness:       t.Harness,
 		Skills:        t.Skills,
+		McpProfiles:   t.MCPProfiles,
 		TimeoutSec:    int32(t.TimeoutSec),
 		Enabled:       t.Enabled,
 		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
@@ -241,6 +243,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		ModelID:     req.Msg.ModelId,
 		VariantID:   req.Msg.VariantId,
 		Skills:      req.Msg.Skills,
+		MCPProfiles: req.Msg.McpProfiles,
 		Env:         req.Msg.Env,
 		Harness:     req.Msg.Harness,
 		TimeoutSec:  int(req.Msg.TimeoutSec),
@@ -255,7 +258,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
 		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
-		VariantID: task.VariantID, Skills: task.Skills, Env: task.Env,
+		VariantID: task.VariantID, Skills: task.Skills, MCPProfiles: task.MCPProfiles, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
 		StartedAt: task.StartedAt, EndedAt: task.EndedAt,
 	})}), nil
@@ -436,6 +439,7 @@ func (h *triggerHandler) CreateTrigger(ctx context.Context, req *connect.Request
 		ModelID:       req.Msg.ModelId,
 		VariantID:     req.Msg.VariantId,
 		Skills:        req.Msg.Skills,
+		MCPProfiles:   req.Msg.McpProfiles,
 		Harness:       req.Msg.Harness,
 		TimeoutSec:    int(req.Msg.TimeoutSec),
 	})
@@ -471,6 +475,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 		VariantID:     store.NonZero(req.Msg.VariantId, existing.VariantID.String),
 		Harness:       store.NonZero(req.Msg.Harness, existing.Harness.String),
 		Skills:        store.NonNilSlice(req.Msg.Skills, triggerSkillsToStrings(existing.Skills)),
+		MCPProfiles:   store.NonNilSlice(req.Msg.McpProfiles, triggerMCPProfilesToStrings(existing.McpProfiles)),
 		TimeoutSec:    store.NonZeroInt(int(req.Msg.TimeoutSec), int(existing.TimeoutSec)),
 	}
 	trigger, err := h.svc.UpdateTrigger(ctx, req.Msg.Name, merged, enabled)
@@ -508,7 +513,7 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
 		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
-		VariantID: task.VariantID, Skills: task.Skills, Env: task.Env,
+		VariantID: task.VariantID, Skills: task.Skills, MCPProfiles: task.MCPProfiles, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
 	})}), nil
 }
@@ -857,6 +862,12 @@ func applyWebTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason s
 func triggerSkillsToStrings(skills json.RawMessage) []string {
 	var out []string
 	_ = json.Unmarshal(skills, &out)
+	return out
+}
+
+func triggerMCPProfilesToStrings(profiles json.RawMessage) []string {
+	var out []string
+	_ = json.Unmarshal(profiles, &out)
 	return out
 }
 

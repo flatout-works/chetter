@@ -50,6 +50,19 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	}
 }
 
+func storedTaskEnvForTest(t *testing.T, tdb *testdb.TestDB, taskID string) (repository.ChetterTask, map[string]string) {
+	t.Helper()
+	row, err := repository.New(tdb.DB).GetTaskByID(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	return row, env
+}
+
 func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -110,6 +123,252 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 	if session.ResumeMode != "none" {
 		t.Errorf("agent session resume_mode: %s", session.ResumeMode)
+	}
+}
+
+func TestSubmitTaskRejectsParentGitHubAuthWithoutMode(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	_, err = svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":       "flatout-works/chetter",
+			"PR_NUMBER":         "123",
+			gitHubParentTaskEnv: parent.ID,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected missing GitHub auth mode to fail")
+	}
+	if !strings.Contains(err.Error(), gitHubAuthModeEnv+" is required") {
+		t.Fatalf("SubmitTask error = %q, want required auth mode", err)
+	}
+}
+
+func TestSubmitTaskInheritsReadOnlyGitHubAuthFromParent(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	child, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":       "https://github.com/flatout-works/chetter.git",
+			"PR_NUMBER":         "123",
+			gitHubParentTaskEnv: parent.ID,
+			gitHubAuthModeEnv:   "read",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask child: %v", err)
+	}
+	row, env := storedTaskEnvForTest(t, tdb, child.ID)
+	if env[gitHubReadAllowedEnv] != "true" {
+		t.Fatalf("read marker = %q, want true; env=%#v", env[gitHubReadAllowedEnv], env)
+	}
+	if _, ok := env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("read-only child received write marker: %#v", env)
+	}
+	if _, ok := env[gitHubAuthModeEnv]; ok {
+		t.Fatalf("auth mode should not be persisted: %#v", env)
+	}
+	if env["GITHUB_REPO"] != "flatout-works/chetter" {
+		t.Fatalf("GITHUB_REPO = %q, want flatout-works/chetter", env["GITHUB_REPO"])
+	}
+	if err := validateGitHubToolWriteScope(row, "flatout-works/chetter", 123, "pr"); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("write scope error = %v, want not authorized", err)
+	}
+}
+
+func TestSubmitTaskInheritsWriteGitHubAuthFromWriteParent(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	child, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":       "flatout-works/chetter",
+			"PR_NUMBER":         "123",
+			gitHubParentTaskEnv: parent.ID,
+			gitHubAuthModeEnv:   "write",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask child: %v", err)
+	}
+	row, env := storedTaskEnvForTest(t, tdb, child.ID)
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("write marker = %q, want true; env=%#v", env[gitHubTokenAllowedEnv], env)
+	}
+	if _, ok := env[gitHubReadAllowedEnv]; ok {
+		t.Fatalf("write child should not also carry read marker: %#v", env)
+	}
+	if err := validateGitHubToolWriteScope(row, "https://github.com/flatout-works/chetter", 123, "pr"); err != nil {
+		t.Fatalf("write scope should validate: %v", err)
+	}
+}
+
+func TestGitHubWriteScopeDistinguishesIssueAndPR(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "issue task",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"ISSUE_NUMBER": "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	row, _ := storedTaskEnvForTest(t, tdb, task.ID)
+	if err := validateGitHubToolWriteScope(row, "flatout-works/chetter", 123, "issue_or_pr"); err != nil {
+		t.Fatalf("issue comment scope should validate: %v", err)
+	}
+	if err := validateGitHubToolWriteScope(row, "flatout-works/chetter", 123, "pr"); err == nil || !strings.Contains(err.Error(), "requires task PR_NUMBER") {
+		t.Fatalf("PR review scope error = %v, want PR_NUMBER requirement", err)
+	}
+}
+
+func TestSubmitTaskRejectsWriteGitHubAuthUpgradeFromReadOnlyParent(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO": "flatout-works/chetter",
+			"PR_NUMBER":   "123",
+		},
+		AllowGitHubReadToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	_, err = svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":       "flatout-works/chetter",
+			"PR_NUMBER":         "123",
+			gitHubParentTaskEnv: parent.ID,
+			gitHubAuthModeEnv:   "write",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected write upgrade from read-only parent to fail")
+	}
+	if !strings.Contains(err.Error(), "write inheritance") {
+		t.Fatalf("SubmitTask error = %q, want write inheritance failure", err)
+	}
+}
+
+func TestSubmitTaskRejectsGitHubAuthInheritanceMismatches(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "parent",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		env     map[string]string
+		wantErr string
+	}{
+		{
+			name: "repo",
+			env: map[string]string{
+				"GITHUB_REPO": "other/repo",
+				"PR_NUMBER":   "123",
+			},
+			wantErr: "matching GITHUB_REPO",
+		},
+		{
+			name: "pr",
+			env: map[string]string{
+				"GITHUB_REPO": "flatout-works/chetter",
+				"PR_NUMBER":   "124",
+			},
+			wantErr: "matching PR_NUMBER or ISSUE_NUMBER",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.env[gitHubParentTaskEnv] = parent.ID
+			tc.env[gitHubAuthModeEnv] = "read"
+			_, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+				Prompt:     "child",
+				AgentImage: "runner:latest",
+				Env:        tc.env,
+			})
+			if err == nil {
+				t.Fatal("expected mismatch to fail")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("SubmitTask error = %q, want %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

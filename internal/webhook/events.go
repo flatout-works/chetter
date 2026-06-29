@@ -68,10 +68,11 @@ type Review struct {
 
 // PullRequest is the relevant subset of the pull_request object.
 type PullRequest struct {
-	Number int    `json:"number"`
-	State  string `json:"state"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
+	Number  int    `json:"number"`
+	State   string `json:"state"`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
 
 	Head PRBranch `json:"head"`
 	Base PRBranch `json:"base"`

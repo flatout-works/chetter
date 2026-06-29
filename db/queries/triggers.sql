@@ -48,15 +48,15 @@ ORDER BY created_at DESC;
 
 -- name: CreateTrigger :exec
 INSERT INTO chetter_triggers
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?);
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_profiles, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?);
 
 -- name: UpdateTrigger :exec
 UPDATE chetter_triggers
 SET name = sqlc.arg(new_name), trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
-    harness = ?, skills = ?, timeout_sec = ?, enabled = ?,
+    harness = ?, skills = ?, mcp_profiles = ?, timeout_sec = ?, enabled = ?,
     updated_at = ?
 WHERE name = sqlc.arg(old_name);
 
@@ -67,8 +67,8 @@ WHERE id = ?;
 
 -- name: UpsertTrigger :exec
 INSERT INTO chetter_triggers
-    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_profiles, timeout_sec, enabled, source_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     trigger_type = VALUES(trigger_type),
     trigger_config = VALUES(trigger_config),
@@ -83,6 +83,7 @@ ON DUPLICATE KEY UPDATE
     variant_id = VALUES(variant_id),
     harness = VALUES(harness),
     skills = VALUES(skills),
+    mcp_profiles = VALUES(mcp_profiles),
     timeout_sec = VALUES(timeout_sec),
     enabled = VALUES(enabled),
     source_id = VALUES(source_id),
