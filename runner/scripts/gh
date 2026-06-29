@@ -3,8 +3,8 @@
 # MCP tools instead. This ensures every issue, comment, PR, and review gets a
 # canonical signature, audit log entry, and artifact record.
 #
-# Blocked: gh api <any>, gh issue/pr write commands, and other mutating gh commands.
-# Allowed: all read-only commands (issue view/list, pr view/checks, search, etc.)
+# Blocked: aliases, gh api <any>, GitHub writes, and unknown commands.
+# Allowed: known read-only commands (issue view/list, pr view/checks, search, etc.)
 # Bypass:  set CHETTER_ALLOW_GH_WRITES=1 for manual debugging only.
 #
 # Real binary: /usr/local/bin/gh-real
@@ -15,6 +15,9 @@ GH_REAL="${CHETTER_GH_REAL:-/usr/local/bin/gh-real}"
 if [ "${CHETTER_ALLOW_GH_WRITES:-}" = "1" ]; then
   exec "$GH_REAL" "$@"
 fi
+
+GH_SAFE_CONFIG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chetter-gh.XXXXXX")
+trap 'rm -rf "$GH_SAFE_CONFIG_DIR"' EXIT HUP INT TERM
 
 _blocked() {
   cat >&2 <<'EOF'
@@ -67,69 +70,110 @@ for arg in "$@"; do
 done
 
 case "$cmd1" in
-  api|auth|gpg-key|ssh-key|secret|variable)
+  alias|api|auth|gpg-key|ssh-key|secret|variable)
     _blocked
     ;;
   issue)
     case "$cmd2" in
       create|comment|close|delete|edit|lock|pin|reopen|transfer|unlock|unpin) _blocked ;;
+      develop|list|status|view) ;;
+      *) _blocked ;;
     esac
     ;;
   pr)
     case "$cmd2" in
       close|comment|create|edit|lock|merge|ready|reopen|review|unlock) _blocked ;;
+      checkout|checks|diff|list|status|view) ;;
+      *) _blocked ;;
     esac
     ;;
   release)
     case "$cmd2" in
       create|delete|delete-asset|edit|upload) _blocked ;;
+      download|list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   repo)
     case "$cmd2" in
       archive|create|delete|deploy-key|edit|fork|rename|sync|unarchive) _blocked ;;
+      clone|list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   gist)
     case "$cmd2" in
       create|delete|edit) _blocked ;;
+      clone|list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   label)
     case "$cmd2" in
       create|delete|edit) _blocked ;;
+      list) ;;
+      *) _blocked ;;
     esac
     ;;
   milestone)
     case "$cmd2" in
       close|create|delete|edit|reopen) _blocked ;;
+      list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   project)
     case "$cmd2" in
       archive|close|create|delete|edit|item-add|item-archive|item-create|item-delete|item-edit|link|unlink) _blocked ;;
+      field-list|item-list|list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   workflow)
     case "$cmd2" in
       disable|enable|run) _blocked ;;
+      list|view) ;;
+      *) _blocked ;;
     esac
     ;;
   run)
     case "$cmd2" in
       cancel|delete|rerun) _blocked ;;
+      download|list|view|watch) ;;
+      *) _blocked ;;
     esac
     ;;
   cache)
     case "$cmd2" in
       delete) _blocked ;;
+      list) ;;
+      *) _blocked ;;
     esac
     ;;
   codespace)
     case "$cmd2" in
       create|delete|edit|ports|rebuild|stop) _blocked ;;
+      code|cp|jupyter|list|logs|ssh|view) ;;
+      *) _blocked ;;
     esac
+    ;;
+  config)
+    case "$cmd2" in
+      get|list) ;;
+      *) _blocked ;;
+    esac
+    ;;
+  extension)
+    case "$cmd2" in
+      list) ;;
+      *) _blocked ;;
+    esac
+    ;;
+  browse|completion|help|ruleset|search|status)
+    ;;
+  *)
+    _blocked
     ;;
 esac
 
-exec "$GH_REAL" "$@"
+GH_CONFIG_DIR="$GH_SAFE_CONFIG_DIR" "$GH_REAL" "$@"

@@ -23,6 +23,10 @@ func TestGHWrapperBlocksWriteCommands(t *testing.T) {
 		{"release", "delete", "v1.0.0", "--yes"},
 		{"workflow", "run", "ci.yml"},
 		{"repo", "delete", "owner/repo", "--yes"},
+		{"alias", "set", "unsafe", "api repos/owner/repo/issues"},
+		{"unsafe", "123"},
+		{"config", "set", "editor", "vim"},
+		{"extension", "exec", "unsafe"},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
@@ -47,6 +51,8 @@ func TestGHWrapperAllowsReadCommandsWithGlobalFlags(t *testing.T) {
 		{"pr", "--repo", "owner/repo", "checks", "123"},
 		{"issue", "view", "123"},
 		{"release", "view", "v1.0.0"},
+		{"config", "get", "git_protocol"},
+		{"extension", "list"},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
@@ -62,16 +68,47 @@ func TestGHWrapperAllowsReadCommandsWithGlobalFlags(t *testing.T) {
 	}
 }
 
+func TestGHWrapperIgnoresWorkspaceConfigAliases(t *testing.T) {
+	maliciousConfig := t.TempDir()
+	out, err := runGHWrapperWithEnv(t, []string{"GH_CONFIG_DIR=" + maliciousConfig}, "--repo", "owner/repo", "pr", "view", "123")
+	if err != nil {
+		t.Fatalf("expected read command to pass through: %v\n%s", err, out)
+	}
+	configDir := valueFromOutput(out, "GH_CONFIG_DIR=")
+	if configDir == "" {
+		t.Fatalf("fake gh output missing GH_CONFIG_DIR:\n%s", out)
+	}
+	if configDir == maliciousConfig {
+		t.Fatalf("wrapper forwarded caller-controlled GH_CONFIG_DIR %q", maliciousConfig)
+	}
+	if _, err := os.Stat(configDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary GH_CONFIG_DIR still exists or stat failed unexpectedly: %v", err)
+	}
+}
+
 func runGHWrapper(t *testing.T, args ...string) (string, error) {
+	return runGHWrapperWithEnv(t, nil, args...)
+}
+
+func runGHWrapperWithEnv(t *testing.T, extraEnv []string, args ...string) (string, error) {
 	t.Helper()
 	tmp := t.TempDir()
 	fake := filepath.Join(tmp, "gh-real")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho REAL \"$@\"\n"), 0755); err != nil {
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho REAL \"$@\"\necho GH_CONFIG_DIR=\"$GH_CONFIG_DIR\"\n"), 0755); err != nil {
 		t.Fatalf("write fake gh-real: %v", err)
 	}
 	cmd := exec.Command("sh", append([]string{filepath.Join("..", "scripts", "gh")}, args...)...)
 	cmd.Dir = filepath.Join("..", "scripts")
-	cmd.Env = append(os.Environ(), "CHETTER_GH_REAL="+fake)
+	cmd.Env = append(os.Environ(), append(extraEnv, "CHETTER_GH_REAL="+fake)...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+func valueFromOutput(output, prefix string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix)
+		}
+	}
+	return ""
 }
