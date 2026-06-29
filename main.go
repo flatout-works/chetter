@@ -318,5 +318,6 @@ func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.Su
 		TTLHours:             req.TTLHours,
 		AllowGitHubToken:     req.AllowGitHubToken,
 		AllowGitHubReadToken: req.AllowGitHubReadToken,
+		AllowMCPProfiles:     req.AllowMCPProfiles,
 	})
 }

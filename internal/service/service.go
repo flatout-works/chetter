@@ -48,6 +48,7 @@ type SubmitTaskRequest struct {
 
 	AllowGitHubToken     bool
 	AllowGitHubReadToken bool
+	AllowMCPProfiles     bool
 }
 
 type AuditEventParams struct {
@@ -93,6 +94,7 @@ const (
 	gitHubReadAllowedEnv        = "__chetter_github_read_auth_allowed"
 	injectedGitHubTokenEnv      = "__chetter_github_token"
 	injectedGitHubCloneTokenEnv = "__chetter_github_clone_token"
+	mcpProfilesAllowedEnv       = "__chetter_mcp_profiles_allowed"
 	gitHubParentTaskEnv         = "CHETTER_PARENT_TASK_ID"
 	gitHubAuthModeEnv           = "CHETTER_GITHUB_AUTH_MODE"
 )
@@ -433,7 +435,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
-	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	mcpProfiles, err := json.Marshal(profileNames)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
 	}
@@ -446,8 +449,15 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	delete(taskEnv, gitHubReadAllowedEnv)
 	delete(taskEnv, injectedGitHubTokenEnv)
 	delete(taskEnv, injectedGitHubCloneTokenEnv)
+	delete(taskEnv, mcpProfilesAllowedEnv)
 	delete(taskEnv, "GITHUB_TOKEN")
 	delete(taskEnv, "GH_TOKEN")
+	if len(profileNames) > 0 {
+		if !in.AllowMCPProfiles && !isAdmin(ctx) {
+			return store.TaskRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+		}
+		taskEnv[mcpProfilesAllowedEnv] = "true"
+	}
 	authMode := strings.TrimSpace(taskEnv[gitHubAuthModeEnv])
 	delete(taskEnv, gitHubAuthModeEnv)
 	allowGitHubToken := in.AllowGitHubToken
@@ -655,18 +665,19 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	)
 
 	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:      recoveryPrompt,
-		GitURL:      orig.GitUrl.String,
-		GitRef:      orig.GitRef.String,
-		AgentImage:  orig.AgentImage.String,
-		Agent:       orig.Agent.String,
-		ProviderID:  orig.ProviderID.String,
-		ModelID:     orig.ModelID.String,
-		VariantID:   orig.VariantID.String,
-		Skills:      skills,
-		MCPProfiles: mcpProfiles,
-		Env:         env,
-		TimeoutSec:  int(orig.TimeoutSec),
+		Prompt:           recoveryPrompt,
+		GitURL:           orig.GitUrl.String,
+		GitRef:           orig.GitRef.String,
+		AgentImage:       orig.AgentImage.String,
+		Agent:            orig.Agent.String,
+		ProviderID:       orig.ProviderID.String,
+		ModelID:          orig.ModelID.String,
+		VariantID:        orig.VariantID.String,
+		Skills:           skills,
+		MCPProfiles:      mcpProfiles,
+		AllowMCPProfiles: taskAllowsMCPProfiles(orig),
+		Env:              env,
+		TimeoutSec:       int(orig.TimeoutSec),
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -1017,6 +1028,11 @@ func parentAllowsGitHubMode(parentEnv map[string]string, mode string) bool {
 	}
 }
 
+func taskAllowsMCPProfiles(task repository.ChetterTask) bool {
+	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+	return env[mcpProfilesAllowedEnv] == "true"
+}
+
 func githubAuthContextComplete(env map[string]string) bool {
 	if env == nil || strings.TrimSpace(env["GITHUB_REPO"]) == "" {
 		return false
@@ -1128,7 +1144,11 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
-	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	if len(profileNames) > 0 && !isAdmin(ctx) {
+		return store.TriggerRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+	}
+	mcpProfiles, err := json.Marshal(profileNames)
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
 	}
@@ -1234,7 +1254,11 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
-	mcpProfiles, err := json.Marshal(nonEmptyStrings(in.MCPProfiles))
+	profileNames := nonEmptyStrings(in.MCPProfiles)
+	if len(profileNames) > 0 && !isAdmin(ctx) {
+		return store.TriggerRecord{}, fmt.Errorf("mcp_profiles require admin access in this trusted self-hosted MVP")
+	}
+	mcpProfiles, err := json.Marshal(profileNames)
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
 	}
@@ -1416,25 +1440,29 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 }
 
 func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills, mcpProfiles []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
+	if len(nonEmptyStrings(mcpProfiles)) > 0 && teamID != "" {
+		return store.TaskRecord{}, fmt.Errorf("team-scoped triggers cannot use mcp_profiles in this trusted self-hosted MVP")
+	}
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      teamID,
-		Prompt:      prompt,
-		GitURL:      gitURL,
-		GitRef:      gitRef,
-		AgentImage:  agentImage,
-		Agent:       agent,
-		ProviderID:  providerID,
-		ModelID:     modelID,
-		VariantID:   variantID,
-		Harness:     harness,
-		Skills:      skills,
-		MCPProfiles: mcpProfiles,
-		TimeoutSec:  timeoutSec,
-		TriggerName: triggerName,
-		TriggerType: triggerType,
-		SessionMode: runtime.SessionMode,
-		PauseReason: runtime.PauseReason,
-		TTLHours:    runtime.TTLHours,
+		TeamID:           teamID,
+		Prompt:           prompt,
+		GitURL:           gitURL,
+		GitRef:           gitRef,
+		AgentImage:       agentImage,
+		Agent:            agent,
+		ProviderID:       providerID,
+		ModelID:          modelID,
+		VariantID:        variantID,
+		Harness:          harness,
+		Skills:           skills,
+		MCPProfiles:      mcpProfiles,
+		AllowMCPProfiles: len(nonEmptyStrings(mcpProfiles)) > 0,
+		TimeoutSec:       timeoutSec,
+		TriggerName:      triggerName,
+		TriggerType:      triggerType,
+		SessionMode:      runtime.SessionMode,
+		PauseReason:      runtime.PauseReason,
+		TTLHours:         runtime.TTLHours,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)

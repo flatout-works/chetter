@@ -527,6 +527,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			PauseReason:      t.PauseReason,
 			TTLHours:         t.TTLHours,
 			AllowGitHubToken: true,
+			AllowMCPProfiles: t.TeamID == "" && len(t.MCPProfiles) > 0,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,
@@ -759,6 +760,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			PauseReason:      t.PauseReason,
 			TTLHours:         t.TTLHours,
 			AllowGitHubToken: true,
+			AllowMCPProfiles: t.TeamID == "" && len(t.MCPProfiles) > 0,
 			Env: map[string]string{
 				"GITHUB_TOKEN": token,
 				"GITHUB_REPO":  repo,

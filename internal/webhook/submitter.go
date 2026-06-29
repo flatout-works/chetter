@@ -42,6 +42,7 @@ type SubmitTaskRequest struct {
 
 	AllowGitHubToken     bool
 	AllowGitHubReadToken bool
+	AllowMCPProfiles     bool
 }
 
 // NewServiceSubmitter creates a TaskSubmitter that wraps the given service
@@ -127,6 +128,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		TTLHours:    review.TTLHours,
 
 		AllowGitHubToken: true,
+		AllowMCPProfiles: review.TeamID == "" && len(review.MCPProfiles) > 0,
 	}
 }
 

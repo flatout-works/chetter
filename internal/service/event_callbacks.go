@@ -81,7 +81,7 @@ type eventCallbackTemplateData struct {
 }
 
 func (s *Service) CreateEventCallback(ctx context.Context, in EventCallbackInput) (EventCallbackRecord, error) {
-	if err := validateEventCallbackInput(in); err != nil {
+	if err := validateEventCallbackInputForContext(ctx, in); err != nil {
 		return EventCallbackRecord{}, err
 	}
 	teamID := callbackTeamID(ctx)
@@ -144,7 +144,7 @@ func (s *Service) UpdateEventCallback(ctx context.Context, name string, in Event
 	if enabled != nil {
 		updated.Enabled = *enabled
 	}
-	if err := validateEventCallbackInput(updated); err != nil {
+	if err := validateEventCallbackInputForContext(ctx, updated); err != nil {
 		return EventCallbackRecord{}, err
 	}
 	rows, err := s.repo.UpdateEventCallback(ctx, repository.UpdateEventCallbackParams{
@@ -240,6 +240,10 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	if cfg.Prompt == "" {
 		return fmt.Errorf("create_task action_config.prompt is required")
 	}
+	allowMCPProfiles := !callback.TeamID.Valid || callback.TeamID.String == ""
+	if len(nonEmptyStrings(cfg.MCPProfiles)) > 0 && !allowMCPProfiles {
+		return fmt.Errorf("team-scoped event callbacks cannot use mcp_profiles in this trusted self-hosted MVP")
+	}
 	prompt, err := renderEventTemplate(cfg.Prompt, event)
 	if err != nil {
 		return fmt.Errorf("render prompt: %w", err)
@@ -253,22 +257,23 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	env["CHETTER_EVENT_TASK_ID"] = event.TaskID
 	env["CHETTER_EVENT_CALLBACK"] = callback.Name
 	_, err = s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      event.TeamID,
-		Prompt:      prompt,
-		GitURL:      cfg.GitURL,
-		GitRef:      cfg.GitRef,
-		AgentImage:  cfg.AgentImage,
-		Agent:       cfg.Agent,
-		ProviderID:  cfg.ProviderID,
-		ModelID:     cfg.ModelID,
-		VariantID:   cfg.VariantID,
-		Harness:     cfg.Harness,
-		Skills:      cfg.Skills,
-		MCPProfiles: cfg.MCPProfiles,
-		Env:         env,
-		TimeoutSec:  cfg.TimeoutSec,
-		TriggerName: callback.Name,
-		TriggerType: "event_callback",
+		TeamID:           event.TeamID,
+		Prompt:           prompt,
+		GitURL:           cfg.GitURL,
+		GitRef:           cfg.GitRef,
+		AgentImage:       cfg.AgentImage,
+		Agent:            cfg.Agent,
+		ProviderID:       cfg.ProviderID,
+		ModelID:          cfg.ModelID,
+		VariantID:        cfg.VariantID,
+		Harness:          cfg.Harness,
+		Skills:           cfg.Skills,
+		MCPProfiles:      cfg.MCPProfiles,
+		AllowMCPProfiles: allowMCPProfiles && len(nonEmptyStrings(cfg.MCPProfiles)) > 0,
+		Env:              env,
+		TimeoutSec:       cfg.TimeoutSec,
+		TriggerName:      callback.Name,
+		TriggerType:      "event_callback",
 	})
 	return err
 }
@@ -372,6 +377,23 @@ func validateEventCallbackInput(in EventCallbackInput) error {
 	}
 	if len(in.ActionConfig) == 0 || !json.Valid(in.ActionConfig) {
 		return fmt.Errorf("action_config must be valid JSON")
+	}
+	return nil
+}
+
+func validateEventCallbackInputForContext(ctx context.Context, in EventCallbackInput) error {
+	if err := validateEventCallbackInput(in); err != nil {
+		return err
+	}
+	if in.ActionType != EventCallbackActionCreateTask {
+		return nil
+	}
+	var cfg callbackCreateTaskConfig
+	if err := json.Unmarshal(in.ActionConfig, &cfg); err != nil {
+		return fmt.Errorf("parse create_task action_config: %w", err)
+	}
+	if len(nonEmptyStrings(cfg.MCPProfiles)) > 0 && !isAdmin(ctx) {
+		return fmt.Errorf("mcp_profiles in create_task callbacks require admin access in this trusted self-hosted MVP")
 	}
 	return nil
 }
