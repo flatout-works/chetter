@@ -145,13 +145,10 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	slog.Info("opencode config source", "path", configSource, "bytes", len(data))
 	ensureMem9Plugin(cfg)
 	ensureRunnerProvider(cfg, req)
+	mcpServers := make(map[string]any)
+	cfg["mcp"] = mcpServers
 
 	if includeRunnerMCP && runnerMCPURL != "" {
-		mcpServers, _ := cfg["mcp"].(map[string]any)
-		if mcpServers == nil {
-			mcpServers = make(map[string]any)
-			cfg["mcp"] = mcpServers
-		}
 		bridge := map[string]any{
 			"type":    "remote",
 			"url":     runnerMCPURL,
@@ -170,11 +167,6 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 				return err
 			}
 		}
-		mcpServers, _ := cfg["mcp"].(map[string]any)
-		if mcpServers == nil {
-			mcpServers = make(map[string]any)
-			cfg["mcp"] = mcpServers
-		}
 		dfm := map[string]any{
 			"type":    "remote",
 			"url":     chetterMCPURL,
@@ -189,11 +181,6 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		slog.Info("injected chetter MCP into opencode config", "url", chetterMCPURL)
 	}
 	if len(req.MCPProfiles) > 0 {
-		mcpServers, _ := cfg["mcp"].(map[string]any)
-		if mcpServers == nil {
-			mcpServers = make(map[string]any)
-			cfg["mcp"] = mcpServers
-		}
 		if err := mcpconfig.AddOpenCodeServers(mcpServers, req.MCPProfiles); err != nil {
 			return err
 		}

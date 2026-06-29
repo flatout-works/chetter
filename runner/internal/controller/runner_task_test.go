@@ -114,6 +114,9 @@ func TestChetterMCPForRequestRequiresPrivilegedChetterProfile(t *testing.T) {
 		MCPProfiles: []task.MCPProfile{{
 			Name: "private-docs",
 			URL:  "https://docs.example.test/mcp",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:DOCS_TOKEN}",
+			},
 		}},
 	})
 	if url != "" || token != "" {
@@ -122,9 +125,32 @@ func TestChetterMCPForRequestRequiresPrivilegedChetterProfile(t *testing.T) {
 
 	url, token = r.chetterMCPForRequest(task.TaskRequest{
 		Env: map[string]string{privilegedMCPProfileEnv: "true"},
+		MCPProfiles: []task.MCPProfile{
+			{
+				Name: "private-docs",
+				URL:  "https://docs.example.test/mcp",
+				Headers: map[string]string{
+					"Authorization": "Bearer ${env:DOCS_TOKEN}",
+				},
+			},
+			{
+				Name: "public-chetter",
+				URL:  "https://chetter.example.test/mcp/",
+			},
+		},
+	})
+	if url != "" || token != "" {
+		t.Fatalf("uncredentialed chetter URL profile unlocked MCP = (%q, %q), want empty", url, token)
+	}
+
+	url, token = r.chetterMCPForRequest(task.TaskRequest{
+		Env: map[string]string{privilegedMCPProfileEnv: "true"},
 		MCPProfiles: []task.MCPProfile{{
 			Name: "chetter-orchestration",
 			URL:  "https://chetter.example.test/mcp/",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:CHETTER_MCP_AUTH_TOKEN}",
+			},
 		}},
 	})
 	if url != "https://chetter.example.test/mcp" || token != "admin-token" {
@@ -566,6 +592,9 @@ func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testi
 		MCPProfiles: []task.MCPProfile{{
 			Name: "chetter-orchestration",
 			URL:  "https://chetter.example.test/mcp",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:CHETTER_MCP_AUTH_TOKEN}",
+			},
 		}},
 		Env: map[string]string{
 			"GITHUB_REPO":           "flatout-works/chetter",

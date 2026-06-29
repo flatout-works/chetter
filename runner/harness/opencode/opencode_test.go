@@ -249,6 +249,74 @@ func TestGenerateConfigForTaskAddsCredentialedMCPProfileWithoutAllowlist(t *test
 	}
 }
 
+func TestGenerateConfigForTaskRebuildsMCPServersFromCurrentRequest(t *testing.T) {
+	wsDir := t.TempDir()
+	existing := map[string]any{
+		"plugin": []any{"existing-plugin"},
+		"mcp": map[string]any{
+			"chetter": map[string]any{
+				"type": "remote",
+				"url":  "http://chetter-mcp:8080/mcp",
+				"headers": map[string]string{
+					"Authorization": "Bearer stale-chetter-token",
+				},
+			},
+			"chetter-orchestration": map[string]any{
+				"type": "remote",
+				"url":  "http://chetter-mcp:8080/mcp",
+				"headers": map[string]string{
+					"Authorization": "Bearer stale-profile-token",
+				},
+			},
+			"stale-public": map[string]any{
+				"type": "remote",
+				"url":  "http://stale-public:8080/mcp",
+			},
+		},
+	}
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(wsDir+"/.opencode.json", data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name: "public-tools",
+			URL:  "http://public-tools:8080/mcp",
+		}},
+	}
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, req, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	out, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(out), "stale-chetter-token") || strings.Contains(string(out), "stale-profile-token") {
+		t.Fatalf("rewritten config kept stale MCP credentials:\n%s", string(out))
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	plugins := cfg["plugin"].([]any)
+	if len(plugins) != 1 || plugins[0] != "existing-plugin" {
+		t.Fatalf("non-MCP config was not preserved: %+v", cfg)
+	}
+	mcps := cfg["mcp"].(map[string]any)
+	if _, ok := mcps["public-tools"]; !ok {
+		t.Fatalf("current MCP profile missing: %+v", mcps)
+	}
+	for _, stale := range []string{"chetter", "chetter-orchestration", "stale-public"} {
+		if _, ok := mcps[stale]; ok {
+			t.Fatalf("stale MCP server %q survived: %+v", stale, mcps)
+		}
+	}
+}
+
 func TestGenerateConfigForTaskRejectsCredentialedAllowlistedMCPProfile(t *testing.T) {
 	t.Setenv("CHETTER_ORCHESTRATOR_TOKEN", "secret-token")
 	wsDir := t.TempDir()

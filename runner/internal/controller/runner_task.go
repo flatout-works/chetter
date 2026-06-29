@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -322,20 +323,20 @@ func (r *Runner) chetterMCPForRequest(req task.TaskRequest) (string, string) {
 	if r == nil || r.cfg == nil {
 		return "", ""
 	}
-	if !requestIncludesConfiguredChetterMCP(req, r.cfg.ChetterMCP.URL) {
+	if !requestIncludesPrivilegedConfiguredChetterMCP(req, r.cfg.ChetterMCP.URL) {
 		return "", ""
 	}
 	return r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken
 }
 
-func requestIncludesConfiguredChetterMCP(req task.TaskRequest, chetterMCPURL string) bool {
+func requestIncludesPrivilegedConfiguredChetterMCP(req task.TaskRequest, chetterMCPURL string) bool {
 	chetterMCPURL = strings.TrimRight(strings.TrimSpace(chetterMCPURL), "/")
 	if chetterMCPURL == "" {
 		return false
 	}
 	for _, profile := range req.MCPProfiles {
 		profileURL := strings.TrimRight(strings.TrimSpace(profile.URL), "/")
-		if profileURL != "" && profileURL == chetterMCPURL {
+		if profileURL != "" && profileURL == chetterMCPURL && mcpconfig.ProfileCarriesCredentials(profile) {
 			return true
 		}
 	}

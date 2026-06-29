@@ -136,7 +136,7 @@ func rejectCredentialedToolAllowlists(profiles []task.MCPProfile, target string)
 		if len(nonEmptyStrings(profile.ToolAllowlist)) == 0 {
 			continue
 		}
-		if !profileCarriesCredentials(profile) {
+		if !ProfileCarriesCredentials(profile) {
 			continue
 		}
 		return toolAllowlistCredentialExposureError(profile, target)
@@ -152,7 +152,7 @@ func toolAllowlistCredentialExposureError(profile task.MCPProfile, target string
 	return fmt.Errorf("mcp profile %q declares tool_allowlist, but %s would expose unrestricted credentials in task-readable config", name, target)
 }
 
-func profileCarriesCredentials(profile task.MCPProfile) bool {
+func ProfileCarriesCredentials(profile task.MCPProfile) bool {
 	if len(nonEmptyHeaders(profile.Headers)) > 0 {
 		return true
 	}
