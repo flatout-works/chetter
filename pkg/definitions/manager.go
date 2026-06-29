@@ -32,6 +32,7 @@ const (
 	DefinitionTypeSkill        = "skill"
 	DefinitionTypeTrigger      = "trigger"
 	DefinitionTypeTaskTemplate = "task_template"
+	DefinitionTypeMCPProfile   = "mcp_profile"
 )
 
 type Definition struct {
@@ -155,6 +156,8 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yaml"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yml"), stemName},
 		{DefinitionTypeTaskTemplate, filepath.Join("task-templates", "*.md"), stemName},
+		{DefinitionTypeMCPProfile, filepath.Join("mcp-profiles", "*.yaml"), stemName},
+		{DefinitionTypeMCPProfile, filepath.Join("mcp-profiles", "*.yml"), stemName},
 	}
 	seen := map[string]struct{}{}
 	for _, p := range patterns {
@@ -300,33 +303,59 @@ type TriggerDef struct {
 	VariantID   string
 	Harness     string
 	Skills      []string
+	MCPProfiles []string
 	TimeoutSec  int
 }
 
+type MCPProfileDef struct {
+	Name          string            `json:"name"`
+	Type          string            `json:"type,omitempty"`
+	Transport     string            `json:"transport,omitempty"`
+	URL           string            `json:"url"`
+	Headers       map[string]string `json:"headers,omitempty"`
+	ToolAllowlist []string          `json:"tool_allowlist,omitempty"`
+}
+
+type mcpProfileAuthYAML struct {
+	Type  string `yaml:"type"`
+	Token string `yaml:"token"`
+}
+
+type rawMCPProfileYAML struct {
+	Name          string             `yaml:"name"`
+	Type          string             `yaml:"type"`
+	Transport     string             `yaml:"transport"`
+	URL           string             `yaml:"url"`
+	Headers       map[string]string  `yaml:"headers"`
+	Auth          mcpProfileAuthYAML `yaml:"auth"`
+	ToolAllowlist any                `yaml:"tool_allowlist"`
+}
+
 type rawTriggerYAML struct {
-	Name          string            `yaml:"name"`
-	Enabled       bool              `yaml:"enabled"`
-	CronExpr      string            `yaml:"cron_expr"`
-	TriggerType   string            `yaml:"trigger_type"`
-	TriggerConfig string            `yaml:"trigger_config"`
-	Prompt        string            `yaml:"prompt"`
-	GitURL        string            `yaml:"git_url"`
-	GitRef        string            `yaml:"git_ref"`
-	AgentImage    string            `yaml:"agent_image"`
-	Agent         string            `yaml:"agent"`
-	ProviderID    string            `yaml:"provider_id"`
-	ModelID       string            `yaml:"model_id"`
-	VariantID     string            `yaml:"variant_id"`
-	Harness       string            `yaml:"harness"`
-	Skills        any               `yaml:"skills"`
-	TimeoutSec    int               `yaml:"timeout_sec"`
-	SessionMode   string            `yaml:"session_mode"`
-	PauseReason   string            `yaml:"pause_reason"`
-	TTLHours      int               `yaml:"ttl_hours"`
-	MatchLabels   []string          `yaml:"match_labels"`
-	Repo          string            `yaml:"repo"`
-	Event         string            `yaml:"event"`
-	Extra         map[string]any    `yaml:",inline"`
+	Name          string         `yaml:"name"`
+	Enabled       *bool          `yaml:"enabled"`
+	CronExpr      string         `yaml:"cron_expr"`
+	TriggerType   string         `yaml:"trigger_type"`
+	TriggerConfig string         `yaml:"trigger_config"`
+	Prompt        string         `yaml:"prompt"`
+	GitURL        string         `yaml:"git_url"`
+	GitRef        string         `yaml:"git_ref"`
+	AgentImage    string         `yaml:"agent_image"`
+	Agent         string         `yaml:"agent"`
+	ProviderID    string         `yaml:"provider_id"`
+	ModelID       string         `yaml:"model_id"`
+	VariantID     string         `yaml:"variant_id"`
+	Harness       string         `yaml:"harness"`
+	Skills        any            `yaml:"skills"`
+	MCPProfiles   any            `yaml:"mcp_profiles"`
+	TimeoutSec    int            `yaml:"timeout_sec"`
+	SessionMode   string         `yaml:"session_mode"`
+	PauseReason   string         `yaml:"pause_reason"`
+	TTLHours      int            `yaml:"ttl_hours"`
+	MatchLabels   []string       `yaml:"match_labels"`
+	Repo          string         `yaml:"repo"`
+	Event         string         `yaml:"event"`
+	Extra         map[string]any `yaml:",inline"`
 }
 
 func ParseTriggerYAML(content string) (TriggerDef, error) {
@@ -338,8 +367,9 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 	if raw.Name == "" {
 		return TriggerDef{}, fmt.Errorf("trigger name is required")
 	}
-	if !raw.Enabled {
-		raw.Enabled = true
+	enabled := true
+	if raw.Enabled != nil {
+		enabled = *raw.Enabled
 	}
 
 	triggerType := raw.TriggerType
@@ -357,6 +387,15 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		if err := json.Unmarshal([]byte(raw.TriggerConfig), &runCfg); err != nil {
 			return TriggerDef{}, fmt.Errorf("parse trigger_config JSON: %w", err)
 		}
+	}
+	if raw.Repo != "" {
+		runCfg["repo"] = raw.Repo
+	}
+	if raw.Event != "" {
+		runCfg["event"] = raw.Event
+	}
+	if len(raw.MatchLabels) > 0 {
+		runCfg["match_labels"] = raw.MatchLabels
 	}
 
 	if raw.SessionMode != "" {
@@ -377,23 +416,12 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		triggerCfg = string(b)
 	}
 
-	var skills []string
-	switch v := raw.Skills.(type) {
-	case []any:
-		for _, s := range v {
-			if str, ok := s.(string); ok {
-				skills = append(skills, str)
-			}
-		}
-	case []string:
-		skills = v
-	case string:
-		skills = []string{v}
-	}
+	skills := stringList(raw.Skills)
+	mcpProfiles := stringList(raw.MCPProfiles)
 
 	return TriggerDef{
 		Name:        raw.Name,
-		Enabled:     raw.Enabled,
+		Enabled:     enabled,
 		CronExpr:    raw.CronExpr,
 		TriggerType: triggerType,
 		TriggerCfg:  triggerCfg,
@@ -407,6 +435,106 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		VariantID:   raw.VariantID,
 		Harness:     raw.Harness,
 		Skills:      skills,
+		MCPProfiles: mcpProfiles,
 		TimeoutSec:  raw.TimeoutSec,
 	}, nil
+}
+
+func ParseMCPProfileYAML(content string) (MCPProfileDef, error) {
+	var raw rawMCPProfileYAML
+	if err := yaml.Unmarshal([]byte(content), &raw); err != nil {
+		return MCPProfileDef{}, fmt.Errorf("parse mcp profile yaml: %w", err)
+	}
+	raw.Name = strings.TrimSpace(raw.Name)
+	if raw.Name == "" {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile name is required")
+	}
+	if !validMCPProfileName(raw.Name) {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile name %q may only contain letters, numbers, dot, underscore, and dash", raw.Name)
+	}
+	if reservedMCPProfileName(raw.Name) {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile name %q is reserved", raw.Name)
+	}
+	raw.URL = strings.TrimSpace(raw.URL)
+	if raw.URL == "" {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile url is required")
+	}
+	headers := map[string]string{}
+	seenHeaders := map[string]string{}
+	for k, v := range raw.Headers {
+		key := strings.TrimSpace(k)
+		value := strings.TrimSpace(v)
+		if key == "" || value == "" {
+			continue
+		}
+		canonicalKey := key
+		if strings.EqualFold(key, "Authorization") {
+			canonicalKey = "Authorization"
+		}
+		lookupKey := strings.ToLower(key)
+		if previous, ok := seenHeaders[lookupKey]; ok {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q has duplicate header %q with previous casing %q", raw.Name, key, previous)
+		}
+		seenHeaders[lookupKey] = canonicalKey
+		headers[canonicalKey] = value
+	}
+	if strings.EqualFold(strings.TrimSpace(raw.Auth.Type), "bearer") && strings.TrimSpace(raw.Auth.Token) != "" {
+		if _, ok := headers["Authorization"]; !ok {
+			headers["Authorization"] = "Bearer " + strings.TrimSpace(raw.Auth.Token)
+		}
+	}
+	return MCPProfileDef{
+		Name:          raw.Name,
+		Type:          strings.TrimSpace(raw.Type),
+		Transport:     strings.TrimSpace(raw.Transport),
+		URL:           raw.URL,
+		Headers:       headers,
+		ToolAllowlist: stringList(raw.ToolAllowlist),
+	}, nil
+}
+
+func stringList(value any) []string {
+	switch v := value.(type) {
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			if str, ok := s.(string); ok {
+				if trimmed := strings.TrimSpace(str); trimmed != "" {
+					out = append(out, trimmed)
+				}
+			}
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			if trimmed := strings.TrimSpace(s); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case string:
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return []string{trimmed}
+		}
+	}
+	return nil
+}
+
+func validMCPProfileName(name string) bool {
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return name != ""
+}
+
+func reservedMCPProfileName(name string) bool {
+	return strings.EqualFold(name, "runner-bridge") || strings.EqualFold(name, "chetter")
 }
