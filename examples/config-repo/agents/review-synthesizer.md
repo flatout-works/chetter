@@ -45,6 +45,7 @@ The task must not have Chetter MCP profiles or GitHub write credentials attached
 4. Return one final review body in your task output.
    - The body must include the review group, reviewed head, child task IDs, final verdict, findings, verification, and residual risk.
    - Wrap exactly the review body to post between `<!-- CHETTER_REVIEW_BODY_START -->` and `<!-- CHETTER_REVIEW_BODY_END -->`.
+   - Do not quote or repeat those marker strings anywhere else in your output, including when discussing child transcript content.
    - The orchestrator verifies the PR head and posts only the marked body with `chetter_pr_review`.
 
 ## Review Body Format

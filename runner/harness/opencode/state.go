@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 )
 
 func candidateHomes() []string {
@@ -37,29 +39,25 @@ func readOpenCodeConfig() ([]byte, string) {
 	return []byte("{}"), "<empty>"
 }
 
-func copyFirstExisting(label, dst string, candidates func(string) []string) {
+func copyFirstExisting(label, wsDir, relDst string, candidates func(string) []string) {
 	for _, home := range candidateHomes() {
 		for _, src := range candidates(home) {
 			data, err := os.ReadFile(src)
 			if err != nil {
 				continue
 			}
-			if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
+			if err := safefs.WriteFile(wsDir, relDst, data, 0644); err != nil {
 				slog.Warn("copy warning", "label", label, "err", err)
 				return
 			}
-			if err := os.WriteFile(dst, data, 0644); err != nil {
-				slog.Warn("copy warning", "label", label, "err", err)
-				return
-			}
-			slog.Info("copied state", "label", label, "src", src, "dst", dst, "bytes", len(data))
+			slog.Info("copied state", "label", label, "src", src, "dst", filepath.Join(wsDir, relDst), "bytes", len(data))
 			return
 		}
 	}
 	slog.Warn("copy no source found", "label", label)
 }
 
-func copyDir(src, dst string) error {
+func copyDir(src, wsDir, relDst string) error {
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -68,14 +66,14 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(dst, rel)
+		targetRel := filepath.Join(relDst, rel)
 		if d.IsDir() {
-			return os.MkdirAll(target, 0750)
+			return safefs.EnsureDir(wsDir, targetRel, 0750)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0640)
+		return safefs.WriteFile(wsDir, targetRel, data, 0640)
 	})
 }

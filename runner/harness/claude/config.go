@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -15,8 +16,7 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 }
 
 func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	claudeDir := wsDir + "/.claude"
-	if err := os.MkdirAll(claudeDir, 0750); err != nil {
+	if err := safefs.EnsureDir(wsDir, ".claude", 0750); err != nil {
 		return err
 	}
 
@@ -68,15 +68,15 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		"skipPermissionsOnAllowed": true,
 	}
 
-	settingsPath := claudeDir + "/settings.json"
+	const settingsRelPath = ".claude/settings.json"
 	settingsData, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(settingsPath, settingsData, 0644); err != nil {
+	if err := safefs.WriteFile(wsDir, settingsRelPath, settingsData, 0644); err != nil {
 		return err
 	}
-	slog.Info("wrote claude settings", "path", settingsPath)
+	slog.Info("wrote claude settings", "path", filepath.Join(wsDir, settingsRelPath))
 
 	mcpServers := map[string]any{}
 
@@ -119,11 +119,11 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		if err != nil {
 			return err
 		}
-		agentMCPPath := claudeDir + "/mcp.json"
-		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
+		const agentMCPRelPath = ".claude/mcp.json"
+		if err := safefs.WriteFile(wsDir, agentMCPRelPath, agentMCPData, 0644); err != nil {
 			return err
 		}
-		slog.Info("wrote claude mcp config", "path", agentMCPPath)
+		slog.Info("wrote claude mcp config", "path", filepath.Join(wsDir, agentMCPRelPath))
 	}
 
 	if isLocal {
@@ -134,7 +134,7 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 }
 
 func copyClaudeState(wsDir string) {
-	copyFirstExisting("claude auth state", wsDir+"/.claude/auth.json", candidateClaudeAuthPaths())
+	copyFirstExisting("claude auth state", wsDir, ".claude/auth.json", candidateClaudeAuthPaths())
 }
 
 func candidateClaudeAuthPaths() []string {
@@ -145,23 +145,19 @@ func candidateClaudeAuthPaths() []string {
 	}
 }
 
-func copyFirstExisting(label, dst string, candidates []string) {
+func copyFirstExisting(label, wsDir, relDst string, candidates []string) {
 	for _, src := range candidates {
 		if _, err := os.Stat(src); err == nil {
-			if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
-				slog.Warn("copy state mkdir warning", "label", label, "err", err)
-				continue
-			}
 			data, err := os.ReadFile(src)
 			if err != nil {
 				slog.Warn("copy state read warning", "label", label, "src", src, "err", err)
 				continue
 			}
-			if err := os.WriteFile(dst, data, 0600); err != nil {
-				slog.Warn("copy state write warning", "label", label, "dst", dst, "err", err)
+			if err := safefs.WriteFile(wsDir, relDst, data, 0600); err != nil {
+				slog.Warn("copy state write warning", "label", label, "dst", filepath.Join(wsDir, relDst), "err", err)
 				continue
 			}
-			slog.Info("copied state", "label", label, "src", src, "dst", dst, "bytes", len(data))
+			slog.Info("copied state", "label", label, "src", src, "dst", filepath.Join(wsDir, relDst), "bytes", len(data))
 			return
 		}
 	}

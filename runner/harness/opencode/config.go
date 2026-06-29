@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -177,7 +179,7 @@ func prepareMCPServers(wsDir string, cfg map[string]any, currentManaged []string
 }
 
 func readManagedMCPState(wsDir string) ([]string, bool) {
-	data, err := os.ReadFile(filepath.Join(wsDir, managedMCPStatePath))
+	data, err := safefs.ReadFile(wsDir, managedMCPStatePath)
 	if err != nil {
 		return nil, false
 	}
@@ -189,15 +191,11 @@ func readManagedMCPState(wsDir string) ([]string, bool) {
 }
 
 func writeManagedMCPState(wsDir string, names []string) error {
-	path := filepath.Join(wsDir, managedMCPStatePath)
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return fmt.Errorf("create opencode state dir: %w", err)
-	}
 	data, err := json.MarshalIndent(nonEmptyUniqueStrings(names), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal opencode managed MCP state: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := safefs.WriteFile(wsDir, managedMCPStatePath, data, 0644); err != nil {
 		return fmt.Errorf("write opencode managed MCP state: %w", err)
 	}
 	return nil
@@ -273,10 +271,14 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 }
 
 func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
-	wsConfigPath := wsDir + "/.opencode.json"
-	data, err := os.ReadFile(wsConfigPath)
+	const wsConfigRelPath = ".opencode.json"
+	wsConfigPath := filepath.Join(wsDir, wsConfigRelPath)
+	data, err := safefs.ReadFile(wsDir, wsConfigRelPath)
 	configSource := wsConfigPath
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read opencode workspace config: %w", err)
+		}
 		data, configSource = readOpenCodeConfig()
 	}
 	var cfg map[string]any
@@ -354,66 +356,58 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	if err != nil {
 		return fmt.Errorf("marshal opencode config: %w", err)
 	}
-	if err := os.WriteFile(wsConfigPath, out, 0644); err != nil {
+	if err := safefs.WriteFile(wsDir, wsConfigRelPath, out, 0644); err != nil {
 		return fmt.Errorf("write opencode config: %w", err)
 	}
 	if err := writeManagedMCPState(wsDir, currentManagedMCP); err != nil {
 		return err
 	}
-	globalConfigDir := wsDir + "/.config/opencode"
-	if err := os.MkdirAll(globalConfigDir, 0750); err != nil {
-		return fmt.Errorf("create opencode config dir: %w", err)
-	}
-	globalConfigPath := globalConfigDir + "/config.json"
-	if err := os.WriteFile(globalConfigPath, out, 0644); err != nil {
+	globalConfigRelPath := ".config/opencode/config.json"
+	globalConfigPath := filepath.Join(wsDir, globalConfigRelPath)
+	if err := safefs.WriteFile(wsDir, globalConfigRelPath, out, 0644); err != nil {
 		return fmt.Errorf("write opencode global config: %w", err)
 	}
-	writeAgentAndSkillDefinitions(wsDir, req)
+	if err := writeAgentAndSkillDefinitions(wsDir, req); err != nil {
+		return err
+	}
 	copyOpenCodeState(wsDir, isLocal)
 	slog.Info("wrote opencode config", "path", wsConfigPath)
 	slog.Info("wrote opencode global config", "path", globalConfigPath)
 	return nil
 }
 
-func writeAgentAndSkillDefinitions(wsDir string, req task.TaskRequest) {
+func writeAgentAndSkillDefinitions(wsDir string, req task.TaskRequest) error {
 	if req.AgentDefinition != "" && req.Agent != "" {
-		agentDir := wsDir + "/.config/opencode/agent"
-		if err := os.MkdirAll(agentDir, 0750); err != nil {
-			slog.Warn("create agent dir", "err", err)
-		} else {
-			path := agentDir + "/" + req.Agent + ".md"
-			if err := os.WriteFile(path, []byte(req.AgentDefinition), 0644); err != nil {
-				slog.Warn("write agent definition", "agent", req.Agent, "err", err)
-			} else {
-				slog.Info("injected agent definition", "agent", req.Agent, "path", path)
-			}
+		agentRelPath := filepath.Join(".config", "opencode", "agent", req.Agent+".md")
+		if err := safefs.WriteFile(wsDir, agentRelPath, []byte(req.AgentDefinition), 0644); err != nil {
+			return fmt.Errorf("write agent definition %q: %w", req.Agent, err)
 		}
+		slog.Info("injected agent definition", "agent", req.Agent, "path", filepath.Join(wsDir, agentRelPath))
 	}
 	if len(req.SkillDefinitions) > 0 {
-		skillsBase := wsDir + "/.config/opencode/skill"
 		for name, tarBytes := range req.SkillDefinitions {
-			skillDir := skillsBase + "/" + name
-			if err := os.MkdirAll(skillDir, 0750); err != nil {
-				slog.Warn("create skill dir", "skill", name, "err", err)
-				continue
+			skillRelDir := filepath.Join(".config", "opencode", "skill", name)
+			if err := safefs.EnsureDir(wsDir, skillRelDir, 0750); err != nil {
+				return fmt.Errorf("create skill dir %q: %w", name, err)
 			}
-			if err := untarSkill(tarBytes, skillDir); err != nil {
-				slog.Warn("extract skill", "skill", name, "err", err)
-			} else {
-				slog.Info("injected skill", "skill", name, "dir", skillDir, "bytes", len(tarBytes))
+			if err := untarSkill(tarBytes, wsDir, skillRelDir); err != nil {
+				return fmt.Errorf("extract skill %q: %w", name, err)
 			}
+			slog.Info("injected skill", "skill", name, "dir", filepath.Join(wsDir, skillRelDir), "bytes", len(tarBytes))
 		}
 	}
+	return nil
 }
 
-func untarSkill(data []byte, destDir string) error {
+func untarSkill(data []byte, wsDir, destRelDir string) error {
 	gr, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}
 	defer gr.Close()
 	tr := tar.NewReader(gr)
-	destPrefix := filepath.Clean(destDir) + string(os.PathSeparator)
+	destRelDir = filepath.Clean(destRelDir)
+	destPrefix := destRelDir + string(os.PathSeparator)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -422,25 +416,28 @@ func untarSkill(data []byte, destDir string) error {
 		if err != nil {
 			return fmt.Errorf("tar next: %w", err)
 		}
-		path := filepath.Join(destDir, filepath.Clean(hdr.Name))
-		if !strings.HasPrefix(path, destPrefix) {
+		entryRelPath := filepath.Join(destRelDir, filepath.Clean(hdr.Name))
+		if entryRelPath != destRelDir && !strings.HasPrefix(entryRelPath, destPrefix) {
 			return fmt.Errorf("tar entry escapes dest dir: %s", hdr.Name)
 		}
-		if hdr.Size == 0 && hdr.Name == "" || strings.HasSuffix(hdr.Name, "/") {
-			if err := os.MkdirAll(path, 0750); err != nil {
-				return fmt.Errorf("mkdir %s: %w", path, err)
+		if hdr.Name == "" {
+			return fmt.Errorf("tar entry has empty name")
+		}
+		if hdr.Typeflag == tar.TypeDir || strings.HasSuffix(hdr.Name, "/") {
+			if err := safefs.EnsureDir(wsDir, entryRelPath, 0750); err != nil {
+				return fmt.Errorf("mkdir %s: %w", entryRelPath, err)
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-			return fmt.Errorf("mkdir parent %s: %w", path, err)
+		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA && hdr.Typeflag != 0 {
+			return fmt.Errorf("unsupported tar entry type %d: %s", hdr.Typeflag, hdr.Name)
 		}
 		content, err := io.ReadAll(io.LimitReader(tr, hdr.Size))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", hdr.Name, err)
 		}
-		if err := os.WriteFile(path, content, 0644); err != nil {
-			return fmt.Errorf("write %s: %w", path, err)
+		if err := safefs.WriteFile(wsDir, entryRelPath, content, 0644); err != nil {
+			return fmt.Errorf("write %s: %w", entryRelPath, err)
 		}
 	}
 	return nil
@@ -456,41 +453,39 @@ func firstNonEmpty(values ...string) string {
 }
 
 func copyOpenCodeState(wsDir string, isLocal bool) {
-	copyFirstExisting("opencode auth", wsDir+"/.local/share/opencode/auth.json", func(home string) []string {
+	copyFirstExisting("opencode auth", wsDir, ".local/share/opencode/auth.json", func(home string) []string {
 		return []string{home + "/.local/share/opencode/auth.json"}
 	})
-	copyFirstExisting("opencode model state", wsDir+"/.local/state/opencode/model.json", func(home string) []string {
+	copyFirstExisting("opencode model state", wsDir, ".local/state/opencode/model.json", func(home string) []string {
 		return []string{home + "/.local/state/opencode/model.json"}
 	})
-	copyFirstExisting("opencode models cache", wsDir+"/.cache/opencode/models.json", func(home string) []string {
+	copyFirstExisting("opencode models cache", wsDir, ".cache/opencode/models.json", func(home string) []string {
 		return []string{home + "/.cache/opencode/models.json"}
 	})
 
 	if isLocal {
 		copyOpenCodePluginState(wsDir)
 	} else {
-		for _, path := range []string{
-			wsDir + "/.opencode/node_modules",
-			wsDir + "/.opencode/package.json",
-			wsDir + "/.config/opencode/node_modules",
-			wsDir + "/.config/opencode/package.json",
+		for _, relPath := range []string{
+			".opencode/node_modules",
+			".opencode/package.json",
+			".config/opencode/node_modules",
+			".config/opencode/package.json",
 		} {
-			if err := os.RemoveAll(path); err != nil {
-				slog.Warn("remove opencode plugin state warning", "path", path, "err", err)
+			if err := safefs.RemoveAll(wsDir, relPath); err != nil {
+				slog.Warn("remove opencode plugin state warning", "path", filepath.Join(wsDir, relPath), "err", err)
 			}
 		}
 		slog.Info("skipped workspace opencode plugin package state; harness image owns plugin dependencies")
 	}
 
-	rgDst := wsDir + "/.local/share/opencode/bin/rg"
-	if _, err := os.Stat(rgDst); err != nil {
+	const rgRelDst = ".local/share/opencode/bin/rg"
+	if _, err := safefs.ReadFile(wsDir, rgRelDst); err != nil {
 		for _, rgSrc := range []string{"/usr/bin/rg", "/usr/local/bin/rg", "/bin/rg"} {
 			if data, err := os.ReadFile(rgSrc); err == nil {
-				if err := os.MkdirAll(filepath.Dir(rgDst), 0750); err == nil {
-					if err := os.WriteFile(rgDst, data, 0755); err == nil {
-						slog.Info("pre-seeded ripgrep", "src", rgSrc, "dst", rgDst, "bytes", len(data))
-						break
-					}
+				if err := safefs.WriteFile(wsDir, rgRelDst, data, 0755); err == nil {
+					slog.Info("pre-seeded ripgrep", "src", rgSrc, "dst", filepath.Join(wsDir, rgRelDst), "bytes", len(data))
+					break
 				}
 			}
 		}
@@ -500,10 +495,10 @@ func copyOpenCodeState(wsDir string, isLocal bool) {
 func copyOpenCodePluginState(wsDir string) {
 	for _, home := range candidateHomes() {
 		nodeSrc := home + "/.opencode/node_modules"
-		nodeDst := wsDir + "/.opencode/node_modules"
+		nodeRelDst := ".opencode/node_modules"
 		if info, err := os.Stat(nodeSrc); err == nil && info.IsDir() {
-			if err := copyDir(nodeSrc, nodeDst); err == nil {
-				slog.Info("copied opencode plugins", "src", nodeSrc, "dst", nodeDst)
+			if err := copyDir(nodeSrc, wsDir, nodeRelDst); err == nil {
+				slog.Info("copied opencode plugins", "src", nodeSrc, "dst", filepath.Join(wsDir, nodeRelDst))
 			} else {
 				slog.Warn("copy opencode plugins warning", "err", err)
 			}
@@ -537,11 +532,9 @@ func copyOpenCodePluginState(wsDir string) {
 	}
 	pinData, _ := json.MarshalIndent(pinPkg, "", "  ")
 	for _, dir := range []string{".opencode", ".config/opencode"} {
-		pkgPath := filepath.Join(wsDir, dir, "package.json")
-		if err := os.MkdirAll(filepath.Dir(pkgPath), 0750); err == nil {
-			if err := os.WriteFile(pkgPath, pinData, 0644); err == nil {
-				slog.Info("pinned package.json", "dir", dir, "version", actualVersion)
-			}
+		pkgRelPath := filepath.Join(dir, "package.json")
+		if err := safefs.WriteFile(wsDir, pkgRelPath, pinData, 0644); err == nil {
+			slog.Info("pinned package.json", "dir", dir, "version", actualVersion)
 		}
 	}
 }

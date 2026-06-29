@@ -4,10 +4,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 )
 
 func copyPiState(wsDir string) {
-	copyFirstExisting("pi auth state", filepath.Join(wsDir, ".pi", "agent", "auth.json"), candidatePiAuthPaths())
+	copyFirstExisting("pi auth state", wsDir, ".pi/agent/auth.json", candidatePiAuthPaths())
 }
 
 func candidatePiAuthPaths() []string {
@@ -17,23 +19,19 @@ func candidatePiAuthPaths() []string {
 	}
 }
 
-func copyFirstExisting(label, dst string, candidates []string) {
+func copyFirstExisting(label, wsDir, relDst string, candidates []string) {
 	for _, src := range candidates {
 		if _, err := os.Stat(src); err == nil {
-			if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
-				slog.Warn("copy state mkdir warning", "label", label, "err", err)
-				continue
-			}
 			data, err := os.ReadFile(src)
 			if err != nil {
 				slog.Warn("copy state read warning", "label", label, "src", src, "err", err)
 				continue
 			}
-			if err := os.WriteFile(dst, data, 0600); err != nil {
-				slog.Warn("copy state write warning", "label", label, "dst", dst, "err", err)
+			if err := safefs.WriteFile(wsDir, relDst, data, 0600); err != nil {
+				slog.Warn("copy state write warning", "label", label, "dst", filepath.Join(wsDir, relDst), "err", err)
 				continue
 			}
-			slog.Info("copied state", "label", label, "src", src, "dst", dst, "bytes", len(data))
+			slog.Info("copied state", "label", label, "src", src, "dst", filepath.Join(wsDir, relDst), "bytes", len(data))
 			return
 		}
 	}

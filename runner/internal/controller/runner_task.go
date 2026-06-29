@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,13 +11,12 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -1562,131 +1560,16 @@ func writeRPCSessionExport(wsDir, export string) error {
 	if export == "" {
 		return nil
 	}
-	path := filepath.Join(wsDir, ".pi", "session-export.md")
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(export), 0644)
+	return safefs.WriteFile(wsDir, ".pi/session-export.md", []byte(export), 0644)
 }
 
 func writeExtraFiles(wsDir string, files map[string][]byte) error {
 	for filename, content := range files {
-		if err := writeExtraFile(wsDir, filename, content); err != nil {
+		if err := safefs.WriteFile(wsDir, filename, content, 0644); err != nil {
 			return fmt.Errorf("extra file %q: %w", filename, err)
 		}
 	}
 	return nil
-}
-
-func writeExtraFile(wsDir, filename string, content []byte) error {
-	relPath, err := cleanExtraFilePath(filename)
-	if err != nil {
-		return err
-	}
-	if err := ensureNoSymlinkDir(wsDir, filepath.Dir(relPath)); err != nil {
-		return err
-	}
-	return writeFileNoSymlink(filepath.Join(wsDir, relPath), content, 0644)
-}
-
-func cleanExtraFilePath(filename string) (string, error) {
-	filename = strings.TrimSpace(filename)
-	if filename == "" {
-		return "", fmt.Errorf("path is empty")
-	}
-	if filepath.IsAbs(filename) {
-		return "", fmt.Errorf("path must be relative")
-	}
-	if strings.Contains(filename, "\\") {
-		return "", fmt.Errorf("path must use forward slashes")
-	}
-	for _, part := range strings.Split(filepath.ToSlash(filename), "/") {
-		if part == ".." {
-			return "", fmt.Errorf("path must stay inside workspace")
-		}
-	}
-	cleaned := filepath.Clean(filename)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path must stay inside workspace")
-	}
-	return cleaned, nil
-}
-
-func ensureNoSymlinkDir(root, relDir string) error {
-	if err := requireDirectoryNoSymlink(root); err != nil {
-		return err
-	}
-	if relDir == "." || relDir == "" {
-		return nil
-	}
-	current := root
-	for _, part := range strings.Split(filepath.ToSlash(relDir), "/") {
-		if part == "" || part == "." {
-			continue
-		}
-		if part == ".." {
-			return fmt.Errorf("path must stay inside workspace")
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-			if err := os.Mkdir(current, 0750); err != nil && !errors.Is(err, os.ErrExist) {
-				return err
-			}
-			info, err = os.Lstat(current)
-			if err != nil {
-				return err
-			}
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("path component %s is a symlink", current)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("path component %s is not a directory", current)
-		}
-	}
-	return nil
-}
-
-func requireDirectoryNoSymlink(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("path component %s is a symlink", path)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("path component %s is not a directory", path)
-	}
-	return nil
-}
-
-func writeFileNoSymlink(path string, content []byte, perm os.FileMode) error {
-	info, err := os.Lstat(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("target file %s is a symlink", path)
-		}
-		if info.IsDir() {
-			return fmt.Errorf("target file %s is a directory", path)
-		}
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, perm)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(content); err != nil {
-		_ = f.Close()
-		return err
-	}
-	return f.Close()
 }
 
 func (r *Runner) publishEvent(taskID, detail string) {

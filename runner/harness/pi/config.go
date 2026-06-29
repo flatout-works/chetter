@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -19,9 +20,7 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 }
 
 func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	piDir := filepath.Join(wsDir, ".pi")
-	agentDir := filepath.Join(piDir, "agent")
-	if err := os.MkdirAll(agentDir, 0750); err != nil {
+	if err := safefs.EnsureDir(wsDir, ".pi/agent", 0750); err != nil {
 		return err
 	}
 
@@ -39,7 +38,7 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 			"maxRetries": 3,
 		},
 	}
-	if err := writeJSON(filepath.Join(agentDir, "settings.json"), globalSettings, 0644); err != nil {
+	if err := writeJSON(wsDir, ".pi/agent/settings.json", globalSettings, 0644); err != nil {
 		return err
 	}
 
@@ -48,7 +47,7 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		projectSettings["extensions"] = []string{adapterPath}
 	}
 	if len(projectSettings) > 0 {
-		if err := writeJSON(filepath.Join(piDir, "settings.json"), projectSettings, 0644); err != nil {
+		if err := writeJSON(wsDir, ".pi/settings.json", projectSettings, 0644); err != nil {
 			return err
 		}
 	}
@@ -86,7 +85,7 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		mcpConfig := map[string]any{
 			"mcpServers": mcpServers,
 		}
-		if err := writeJSON(filepath.Join(wsDir, ".mcp.json"), mcpConfig, 0644); err != nil {
+		if err := writeJSON(wsDir, ".mcp.json", mcpConfig, 0644); err != nil {
 			return err
 		}
 		slog.Info("wrote pi mcp config", "path", filepath.Join(wsDir, ".mcp.json"))
@@ -109,17 +108,14 @@ func mcpAdapterPath() string {
 	return ""
 }
 
-func writeJSON(path string, v any, perm os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
-		return err
-	}
+func writeJSON(root, relPath string, v any, perm os.FileMode) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, perm); err != nil {
+	if err := safefs.WriteFile(root, relPath, data, perm); err != nil {
 		return err
 	}
-	slog.Info("wrote pi config", "path", path)
+	slog.Info("wrote pi config", "path", filepath.Join(root, relPath))
 	return nil
 }

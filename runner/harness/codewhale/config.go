@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/safefs"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -15,8 +17,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 }
 
 func GenerateConfigWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	codewhaleDir := wsDir + "/.codewhale"
-	if err := os.MkdirAll(codewhaleDir, 0750); err != nil {
+	if err := safefs.EnsureDir(wsDir, ".codewhale", 0750); err != nil {
 		return err
 	}
 
@@ -61,11 +62,11 @@ func GenerateConfigWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterM
 		if err != nil {
 			return err
 		}
-		agentMCPPath := codewhaleDir + "/mcp.json"
-		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
+		const agentMCPRelPath = ".codewhale/mcp.json"
+		if err := safefs.WriteFile(wsDir, agentMCPRelPath, agentMCPData, 0644); err != nil {
 			return err
 		}
-		slog.Info("wrote codewhale mcp config", "path", agentMCPPath)
+		slog.Info("wrote codewhale mcp config", "path", filepath.Join(wsDir, agentMCPRelPath))
 	}
 
 	return nil

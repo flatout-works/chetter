@@ -212,7 +212,13 @@ func reviewBodyFromSessionExport(export string) (string, error) {
 	} else if strings.HasPrefix(export, "## Assistant\n") {
 		section = export
 	}
-	start := strings.LastIndex(section, reviewBodyStartMarker)
+	if count := strings.Count(section, reviewBodyStartMarker); count != 1 {
+		return "", fmt.Errorf("session export must contain exactly one %s in the final assistant message, got %d", reviewBodyStartMarker, count)
+	}
+	if count := strings.Count(section, reviewBodyEndMarker); count != 1 {
+		return "", fmt.Errorf("session export must contain exactly one %s in the final assistant message, got %d", reviewBodyEndMarker, count)
+	}
+	start := strings.Index(section, reviewBodyStartMarker)
 	if start < 0 {
 		return "", fmt.Errorf("session export does not contain %s", reviewBodyStartMarker)
 	}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -422,6 +423,80 @@ func TestGenerateConfigForTaskRejectsAllowlistedConfiguredChetterMCP(t *testing.
 	}
 	if !strings.Contains(err.Error(), "OpenCode Chetter MCP config would expose unrestricted credentials") {
 		t.Fatalf("error = %q, want Chetter MCP credential exposure message", err)
+	}
+}
+
+func TestGenerateConfigForTaskRejectsSymlinkedWorkspaceConfig(t *testing.T) {
+	wsDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideConfig := filepath.Join(outsideDir, "opencode.json")
+	original := []byte(`{"plugin":["outside"]}`)
+	if err := os.WriteFile(outsideConfig, original, 0644); err != nil {
+		t.Fatalf("write outside config: %v", err)
+	}
+	if err := os.Symlink(outsideConfig, filepath.Join(wsDir, ".opencode.json")); err != nil {
+		t.Fatalf("symlink workspace config: %v", err)
+	}
+
+	err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false)
+	if err == nil {
+		t.Fatal("expected symlinked workspace config rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error = %q, want symlink rejection", err)
+	}
+	data, err := os.ReadFile(outsideConfig)
+	if err != nil {
+		t.Fatalf("read outside config: %v", err)
+	}
+	if string(data) != string(original) {
+		t.Fatalf("outside config was modified: %q", string(data))
+	}
+}
+
+func TestGenerateConfigForTaskRejectsSymlinkedGlobalConfigDirectory(t *testing.T) {
+	wsDir := t.TempDir()
+	outsideDir := t.TempDir()
+	if err := os.Symlink(outsideDir, filepath.Join(wsDir, ".config")); err != nil {
+		t.Fatalf("symlink .config: %v", err)
+	}
+
+	err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false)
+	if err == nil {
+		t.Fatal("expected symlinked global config directory rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error = %q, want symlink rejection", err)
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "opencode", "config.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("outside global config exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestGenerateConfigForTaskRejectsSymlinkedAgentDefinitionDirectory(t *testing.T) {
+	wsDir := t.TempDir()
+	outsideDir := t.TempDir()
+	agentDir := filepath.Join(wsDir, ".config", "opencode", "agent")
+	if err := os.MkdirAll(filepath.Dir(agentDir), 0750); err != nil {
+		t.Fatalf("create opencode config dir: %v", err)
+	}
+	if err := os.Symlink(outsideDir, agentDir); err != nil {
+		t.Fatalf("symlink agent dir: %v", err)
+	}
+	req := task.TaskRequest{
+		Agent:           "reviewer",
+		AgentDefinition: "description: reviewer\nmode: primary\n",
+	}
+
+	err := GenerateConfigForTask(wsDir, "", "", "", false, req, false)
+	if err == nil {
+		t.Fatal("expected symlinked agent definition directory rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error = %q, want symlink rejection", err)
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "reviewer.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("outside agent definition exists or stat failed unexpectedly: %v", err)
 	}
 }
 
