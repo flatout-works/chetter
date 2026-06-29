@@ -252,6 +252,65 @@ func TestCloneURLForRequestPrefersTaskScopedGitHubTokenOverRunnerPAT(t *testing.
 	}
 }
 
+func TestCloneArgsForPinnedReviewHeadAvoidsBranchCheckout(t *testing.T) {
+	args := cloneArgsForRequest(task.TaskRequest{
+		GitRef: "feature",
+		Env:    map[string]string{"PR_HEAD_SHA": "abc123"},
+	}, "https://github.com/fork/repo.git")
+	if !hasValue(args, "--no-checkout") {
+		t.Fatalf("clone args = %v, want --no-checkout", args)
+	}
+	if !hasAdjacentArgs(args, "-b", "feature") {
+		t.Fatalf("clone args = %v, want branch fetch", args)
+	}
+}
+
+func TestCloneRepositoryPinsReviewHeadSHA(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found")
+	}
+
+	origin := t.TempDir()
+	runGitForTest(t, origin, "init")
+	runGitForTest(t, origin, "config", "user.email", "test@example.com")
+	runGitForTest(t, origin, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(origin, "file.txt"), []byte("base\n"), 0644); err != nil {
+		t.Fatalf("write base file: %v", err)
+	}
+	runGitForTest(t, origin, "add", "file.txt")
+	runGitForTest(t, origin, "commit", "-m", "base")
+	runGitForTest(t, origin, "checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(origin, "file.txt"), []byte("authorized\n"), 0644); err != nil {
+		t.Fatalf("write authorized file: %v", err)
+	}
+	runGitForTest(t, origin, "commit", "-am", "authorized")
+	authorizedSHA := gitOutputForTest(t, origin, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(origin, "file.txt"), []byte("raced\n"), 0644); err != nil {
+		t.Fatalf("write raced file: %v", err)
+	}
+	runGitForTest(t, origin, "commit", "-am", "raced")
+
+	wsDir := t.TempDir()
+	err := cloneRepository(context.Background(), wsDir, task.TaskRequest{
+		GitURL: origin,
+		GitRef: "feature",
+		Env:    map[string]string{"PR_HEAD_SHA": authorizedSHA},
+	}, "", "")
+	if err != nil {
+		t.Fatalf("cloneRepository: %v", err)
+	}
+	if got := gitOutputForTest(t, wsDir, "rev-parse", "HEAD"); got != authorizedSHA {
+		t.Fatalf("HEAD = %q, want authorized SHA %q", got, authorizedSHA)
+	}
+	data, err := os.ReadFile(filepath.Join(wsDir, "file.txt"))
+	if err != nil {
+		t.Fatalf("read cloned file: %v", err)
+	}
+	if string(data) != "authorized\n" {
+		t.Fatalf("cloned file = %q, want authorized content", string(data))
+	}
+}
+
 func TestTruncateSummary(t *testing.T) {
 	if s := truncateSummary("short"); s != "short" {
 		t.Errorf("short text should not be truncated: %q", s)
@@ -1031,6 +1090,10 @@ func indexOf(values []string, want string) int {
 	return -1
 }
 
+func hasValue(values []string, want string) bool {
+	return indexOf(values, want) >= 0
+}
+
 func hasAdjacentArgs(values []string, key, value string) bool {
 	for i := 0; i < len(values)-1; i++ {
 		if values[i] == key && values[i+1] == value {
@@ -1038,6 +1101,29 @@ func hasAdjacentArgs(values []string, key, value string) bool {
 		}
 	}
 	return false
+}
+
+func runGitForTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+}
+
+func gitOutputForTest(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func envListToMap(values []string) map[string]string {

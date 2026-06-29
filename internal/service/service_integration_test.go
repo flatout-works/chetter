@@ -635,6 +635,24 @@ func TestAdminSubmitTaskAllowsPrivilegedMCPProfile(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskRejectsCredentialedAllowlistedMCPProfile(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\ntool_allowlist:\n  - chetter_submit_task\n")
+
+	_, err := svc.SubmitTask(ctxWithAdmin(context.Background()), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err == nil {
+		t.Fatal("expected credentialed allowlisted profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"chetter-orchestration" combines tool_allowlist with credentials`) {
+		t.Fatalf("SubmitTask error = %q, want credentialed allowlist error", err)
+	}
+}
+
 func TestAdminSubmitTaskAllowsCredentialURLMCPProfile(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

@@ -1168,11 +1168,16 @@ func (s *Service) validateMCPProfileNames(ctx context.Context, profileNames []st
 			problems = append(problems, fmt.Sprintf("%q: content name %q does not match definition name", name, profile.Name))
 			continue
 		}
-		if mcpProfileRequiresPrivilegedAccess(profile) {
+		requiresProfilePrivilege := mcpProfileRequiresPrivilegedAccess(profile)
+		if requiresProfilePrivilege {
 			requiresPrivileged = true
 		}
-		if !allowPrivileged && mcpProfileRequiresPrivilegedAccess(profile) {
+		if !allowPrivileged && requiresProfilePrivilege {
 			problems = append(problems, fmt.Sprintf("%q requires admin access", name))
+			continue
+		}
+		if requiresProfilePrivilege && len(nonEmptyStrings(profile.ToolAllowlist)) > 0 {
+			problems = append(problems, fmt.Sprintf("%q combines tool_allowlist with credentials, which cannot be enforced without exposing unrestricted MCP credentials", name))
 			continue
 		}
 		resolved[name] = struct{}{}

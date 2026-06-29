@@ -165,6 +165,11 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		mcpServers["runner-bridge"] = bridge
 	}
 	if chetterMCPURL != "" {
+		if chetterMCPToken != "" {
+			if err := mcpconfig.RejectToolAllowlistsForURL(req.MCPProfiles, chetterMCPURL, "OpenCode Chetter MCP config"); err != nil {
+				return err
+			}
+		}
 		mcpServers, _ := cfg["mcp"].(map[string]any)
 		if mcpServers == nil {
 			mcpServers = make(map[string]any)

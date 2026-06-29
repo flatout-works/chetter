@@ -161,16 +161,12 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 }
 
 func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
-	t.Setenv("CHETTER_ORCHESTRATOR_TOKEN", "secret-token")
 	wsDir := t.TempDir()
 	req := task.TaskRequest{
 		MCPProfiles: []task.MCPProfile{{
-			Name:      "chetter-orchestration",
-			Transport: "http",
-			URL:       "http://chetter-mcp:8080/mcp",
-			Headers: map[string]string{
-				"Authorization": "Bearer ${env:CHETTER_ORCHESTRATOR_TOKEN}",
-			},
+			Name:          "review-tools",
+			Transport:     "http",
+			URL:           "http://review-tools:8080/mcp",
 			ToolAllowlist: []string{"chetter_submit_task", "chetter_task_status"},
 		}},
 	}
@@ -186,20 +182,91 @@ func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
 		t.Fatalf("parse config: %v", err)
 	}
 	mcps := cfg["mcp"].(map[string]any)
-	server := mcps["chetter-orchestration"].(map[string]any)
-	if server["type"] != "remote" || server["url"] != "http://chetter-mcp:8080/mcp" || server["enabled"] != true {
+	server := mcps["review-tools"].(map[string]any)
+	if server["type"] != "remote" || server["url"] != "http://review-tools:8080/mcp" || server["enabled"] != true {
 		t.Fatalf("unexpected MCP server config: %+v", server)
 	}
+	if _, ok := server["headers"]; ok {
+		t.Fatalf("unexpected headers for public MCP profile: %+v", server)
+	}
+	perms := cfg["permission"].(map[string]any)
+	if perms["mcp__review-tools__chetter_submit_task"] != "allow" {
+		t.Fatalf("missing chetter_submit_task permission: %+v", perms)
+	}
+	if perms["mcp__review-tools__chetter_task_status"] != "allow" {
+		t.Fatalf("missing chetter_task_status permission: %+v", perms)
+	}
+}
+
+func TestGenerateConfigForTaskAddsCredentialedMCPProfileWithoutAllowlist(t *testing.T) {
+	t.Setenv("CHETTER_ORCHESTRATOR_TOKEN", "secret-token")
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name:      "private-tools",
+			Transport: "http",
+			URL:       "http://private-tools:8080/mcp",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:CHETTER_ORCHESTRATOR_TOKEN}",
+			},
+		}},
+	}
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, req, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	data, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	mcps := cfg["mcp"].(map[string]any)
+	server := mcps["private-tools"].(map[string]any)
 	headers := server["headers"].(map[string]any)
 	if headers["Authorization"] != "Bearer secret-token" {
 		t.Fatalf("Authorization header = %v", headers["Authorization"])
 	}
-	perms := cfg["permission"].(map[string]any)
-	if perms["mcp__chetter-orchestration__chetter_submit_task"] != "allow" {
-		t.Fatalf("missing chetter_submit_task permission: %+v", perms)
+}
+
+func TestGenerateConfigForTaskRejectsCredentialedAllowlistedMCPProfile(t *testing.T) {
+	t.Setenv("CHETTER_ORCHESTRATOR_TOKEN", "secret-token")
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name: "private-tools",
+			URL:  "http://private-tools:8080/mcp",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${env:CHETTER_ORCHESTRATOR_TOKEN}",
+			},
+			ToolAllowlist: []string{"safe_tool"},
+		}},
 	}
-	if perms["mcp__chetter-orchestration__chetter_task_status"] != "allow" {
-		t.Fatalf("missing chetter_task_status permission: %+v", perms)
+	err := GenerateConfigForTask(wsDir, "", "", "", false, req, false)
+	if err == nil {
+		t.Fatal("expected credentialed allowlist rejection")
+	}
+	if !strings.Contains(err.Error(), "would expose unrestricted credentials") {
+		t.Fatalf("error = %q, want credential exposure message", err)
+	}
+}
+
+func TestGenerateConfigForTaskRejectsAllowlistedConfiguredChetterMCP(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name:          "chetter-orchestration",
+			URL:           "http://chetter-mcp:8080/mcp/",
+			ToolAllowlist: []string{"chetter_submit_task"},
+		}},
+	}
+	err := GenerateConfigForTask(wsDir, "", "http://chetter-mcp:8080/mcp", "secret-token", false, req, false)
+	if err == nil {
+		t.Fatal("expected configured Chetter MCP allowlist rejection")
+	}
+	if !strings.Contains(err.Error(), "OpenCode Chetter MCP config would expose unrestricted credentials") {
+		t.Fatalf("error = %q, want Chetter MCP credential exposure message", err)
 	}
 }
 

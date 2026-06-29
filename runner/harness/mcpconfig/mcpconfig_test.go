@@ -54,6 +54,60 @@ func TestAddHTTPServersRejectsReservedNamesCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestAddOpenCodeServersRejectsCredentialedToolAllowlist(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile task.MCPProfile
+	}{
+		{
+			name: "header",
+			profile: task.MCPProfile{
+				Name: "restricted",
+				URL:  "https://mcp.example.test/mcp",
+				Headers: map[string]string{
+					"Authorization": "Bearer secret",
+				},
+				ToolAllowlist: []string{"allowed_tool"},
+			},
+		},
+		{
+			name: "userinfo",
+			profile: task.MCPProfile{
+				Name:          "restricted",
+				URL:           "https://user:pass@mcp.example.test/mcp",
+				ToolAllowlist: []string{"allowed_tool"},
+			},
+		},
+		{
+			name: "query",
+			profile: task.MCPProfile{
+				Name:          "restricted",
+				URL:           "https://mcp.example.test/mcp?access_token=secret",
+				ToolAllowlist: []string{"allowed_tool"},
+			},
+		},
+		{
+			name: "fragment",
+			profile: task.MCPProfile{
+				Name:          "restricted",
+				URL:           "https://mcp.example.test/mcp#/callback?signature=secret",
+				ToolAllowlist: []string{"allowed_tool"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := AddOpenCodeServers(map[string]any{}, []task.MCPProfile{tc.profile})
+			if err == nil {
+				t.Fatal("expected credential exposure error")
+			}
+			if !strings.Contains(err.Error(), "would expose unrestricted credentials") {
+				t.Fatalf("error = %q, want credential exposure message", err)
+			}
+		})
+	}
+}
+
 func TestAddHTTPServersRejectsToolAllowlist(t *testing.T) {
 	err := AddHTTPServers(map[string]any{}, []task.MCPProfile{{
 		Name:          "restricted",

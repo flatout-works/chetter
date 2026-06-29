@@ -2,6 +2,7 @@ package mcpconfig
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -35,6 +36,9 @@ func addServers(mcpServers map[string]any, profiles []task.MCPProfile, build fun
 }
 
 func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
+	if err := rejectCredentialedToolAllowlists(profiles, "OpenCode MCP config"); err != nil {
+		return err
+	}
 	return addServers(mcpServers, profiles, func(p task.MCPProfile) map[string]any {
 		return map[string]any{
 			"type":    openCodeType(p),
@@ -42,6 +46,23 @@ func AddOpenCodeServers(mcpServers map[string]any, profiles []task.MCPProfile) e
 			"enabled": true,
 		}
 	})
+}
+
+func RejectToolAllowlistsForURL(profiles []task.MCPProfile, rawURL, target string) error {
+	rawURL = normalizedProfileURL(rawURL)
+	if rawURL == "" {
+		return nil
+	}
+	for _, profile := range profiles {
+		if len(nonEmptyStrings(profile.ToolAllowlist)) == 0 {
+			continue
+		}
+		if normalizedProfileURL(profile.URL) != rawURL {
+			continue
+		}
+		return toolAllowlistCredentialExposureError(profile, target)
+	}
+	return nil
 }
 
 func AddHTTPServers(mcpServers map[string]any, profiles []task.MCPProfile) error {
@@ -98,6 +119,44 @@ func rejectToolAllowlists(profiles []task.MCPProfile, target string) error {
 	return nil
 }
 
+func rejectCredentialedToolAllowlists(profiles []task.MCPProfile, target string) error {
+	for _, profile := range profiles {
+		if len(nonEmptyStrings(profile.ToolAllowlist)) == 0 {
+			continue
+		}
+		if !profileCarriesCredentials(profile) {
+			continue
+		}
+		return toolAllowlistCredentialExposureError(profile, target)
+	}
+	return nil
+}
+
+func toolAllowlistCredentialExposureError(profile task.MCPProfile, target string) error {
+	name := strings.TrimSpace(profile.Name)
+	if name == "" {
+		name = "<unnamed>"
+	}
+	return fmt.Errorf("mcp profile %q declares tool_allowlist, but %s would expose unrestricted credentials in task-readable config", name, target)
+}
+
+func profileCarriesCredentials(profile task.MCPProfile) bool {
+	if len(nonEmptyHeaders(profile.Headers)) > 0 {
+		return true
+	}
+	return profileURLCarriesCredentials(profile.URL)
+}
+
+func nonEmptyHeaders(headers map[string]string) []string {
+	out := make([]string, 0, len(headers))
+	for key, value := range headers {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
 func ResolveHeaders(profile task.MCPProfile) (map[string]string, error) {
 	if len(profile.Headers) == 0 {
 		return nil, nil
@@ -145,6 +204,75 @@ func nonEmptyStrings(values []string) []string {
 		}
 	}
 	return out
+}
+
+func normalizedProfileURL(rawURL string) string {
+	return strings.TrimRight(strings.TrimSpace(rawURL), "/")
+}
+
+func profileURLCarriesCredentials(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	if parsed.User != nil {
+		return true
+	}
+	if urlValuesCarryCredentials(parsed.Query()) {
+		return true
+	}
+	fragment := parsed.RawFragment
+	if fragment == "" {
+		fragment = parsed.Fragment
+	}
+	return fragmentCarriesCredentials(fragment)
+}
+
+func urlValuesCarryCredentials(values url.Values) bool {
+	for key, vals := range values {
+		if !secretLookingURLParam(key) {
+			continue
+		}
+		for _, val := range vals {
+			if strings.TrimSpace(val) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func fragmentCarriesCredentials(fragment string) bool {
+	fragment = strings.TrimSpace(strings.TrimPrefix(fragment, "#"))
+	if fragment == "" {
+		return false
+	}
+	candidates := []string{fragment}
+	if idx := strings.LastIndex(fragment, "?"); idx >= 0 && idx+1 < len(fragment) {
+		candidates = append(candidates, fragment[idx+1:])
+	}
+	for _, candidate := range candidates {
+		values, err := url.ParseQuery(candidate)
+		if err == nil && urlValuesCarryCredentials(values) {
+			return true
+		}
+	}
+	return false
+}
+
+func secretLookingURLParam(key string) bool {
+	normalized := strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(strings.TrimSpace(key)))
+	return strings.Contains(normalized, "TOKEN") ||
+		strings.Contains(normalized, "SECRET") ||
+		strings.Contains(normalized, "PASSWORD") ||
+		strings.Contains(normalized, "AUTH") ||
+		strings.Contains(normalized, "API_KEY") ||
+		strings.Contains(normalized, "APIKEY") ||
+		normalized == "JWT" ||
+		normalized == "SIG" ||
+		normalized == "SIGNATURE" ||
+		normalized == "KEY" ||
+		strings.HasSuffix(normalized, "_KEY")
 }
 
 func resolveEnvRefs(profileName, headerName, value string) (string, error) {

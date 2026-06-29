@@ -96,21 +96,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", err.Error(), nil)
 			return
 		}
-		gitURL := cloneURLForRequest(req, r.cfg.Git.PAT)
-		cloneCmd := exec.CommandContext(ctx, "git", "clone")
-		if req.GitRef != "" {
-			cloneCmd.Args = append(cloneCmd.Args, "-b", req.GitRef)
-		}
-		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
-		cloneCmd.Dir = wsDir
-		cloneCmd.Env = filteredHostEnv()
-		if r.cfg.Git.SSHKeyPath != "" {
-			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
-		}
-		if out, err := cloneCmd.CombinedOutput(); err != nil {
-			slog.Error("clone error", "taskID", req.TaskID, "err", err, "output", string(out))
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("git clone: %v\n%s", err, string(out)), nil)
-			r.publishActivityEvent("repo", "Git Clone Failed", fmt.Sprintf("Failed to clone %s", req.GitURL), "failed", fmt.Sprintf("%v\n%s", err, string(out)), time.Since(session.StartedAt).Milliseconds())
+		if err := cloneRepository(ctx, wsDir, req, r.cfg.Git.PAT, r.cfg.Git.SSHKeyPath); err != nil {
+			slog.Error("clone error", "taskID", req.TaskID, "err", err)
+			r.publishStatusForRequest(req, "error", err.Error(), nil)
+			r.publishActivityEvent("repo", "Git Clone Failed", fmt.Sprintf("Failed to clone %s", req.GitURL), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 			return
 		}
 	}
@@ -239,6 +228,63 @@ func shouldForwardHostEnv(key string) bool {
 	default:
 		return strings.HasPrefix(key, "LC_")
 	}
+}
+
+func cloneRepository(ctx context.Context, wsDir string, req task.TaskRequest, runnerPAT, sshKeyPath string) error {
+	gitURL := cloneURLForRequest(req, runnerPAT)
+	cloneCmd := exec.CommandContext(ctx, "git", cloneArgsForRequest(req, gitURL)...)
+	cloneCmd.Dir = wsDir
+	cloneCmd.Env = filteredHostEnv()
+	if sshKeyPath != "" {
+		cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+sshKeyPath+" -o StrictHostKeyChecking=no")
+	}
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone: %v\n%s", err, string(out))
+	}
+	return checkoutPinnedHeadSHA(ctx, wsDir, req)
+}
+
+func cloneArgsForRequest(req task.TaskRequest, gitURL string) []string {
+	args := []string{"clone"}
+	if pinnedGitHeadSHA(req) != "" {
+		args = append(args, "--no-checkout")
+	}
+	if req.GitRef != "" {
+		args = append(args, "-b", req.GitRef)
+	}
+	return append(args, gitURL, ".")
+}
+
+func checkoutPinnedHeadSHA(ctx context.Context, wsDir string, req task.TaskRequest) error {
+	sha := pinnedGitHeadSHA(req)
+	if sha == "" {
+		return nil
+	}
+	checkoutCmd := exec.CommandContext(ctx, "git", "checkout", "--detach", sha)
+	checkoutCmd.Dir = wsDir
+	checkoutCmd.Env = filteredHostEnv()
+	if out, err := checkoutCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout pinned PR_HEAD_SHA %s: %v\n%s", sha, err, string(out))
+	}
+	revCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	revCmd.Dir = wsDir
+	revCmd.Env = filteredHostEnv()
+	out, err := revCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git verify pinned PR_HEAD_SHA %s: %v\n%s", sha, err, string(out))
+	}
+	got := strings.TrimSpace(string(out))
+	if got == "" || !strings.HasPrefix(strings.ToLower(got), strings.ToLower(sha)) {
+		return fmt.Errorf("git checkout pinned PR_HEAD_SHA %s verified HEAD %s", sha, got)
+	}
+	return nil
+}
+
+func pinnedGitHeadSHA(req task.TaskRequest) string {
+	if req.Env == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.Env["PR_HEAD_SHA"])
 }
 
 func appendRunnerOwnedDockerArgs(args []string, req task.TaskRequest) []string {
