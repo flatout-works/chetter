@@ -98,7 +98,7 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	}
 }
 
-func TestChetterMCPForRequestRequiresPrivilegedMarker(t *testing.T) {
+func TestChetterMCPForRequestRequiresPrivilegedChetterProfile(t *testing.T) {
 	r := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{
 		URL:       "https://chetter.example.test/mcp",
 		AuthToken: "admin-token",
@@ -109,9 +109,26 @@ func TestChetterMCPForRequestRequiresPrivilegedMarker(t *testing.T) {
 		t.Fatalf("unprivileged chetter MCP = (%q, %q), want empty", url, token)
 	}
 
-	url, token = r.chetterMCPForRequest(task.TaskRequest{Env: map[string]string{privilegedMCPProfileEnv: "true"}})
+	url, token = r.chetterMCPForRequest(task.TaskRequest{
+		Env: map[string]string{privilegedMCPProfileEnv: "true"},
+		MCPProfiles: []task.MCPProfile{{
+			Name: "private-docs",
+			URL:  "https://docs.example.test/mcp",
+		}},
+	})
+	if url != "" || token != "" {
+		t.Fatalf("unrelated privileged chetter MCP = (%q, %q), want empty", url, token)
+	}
+
+	url, token = r.chetterMCPForRequest(task.TaskRequest{
+		Env: map[string]string{privilegedMCPProfileEnv: "true"},
+		MCPProfiles: []task.MCPProfile{{
+			Name: "chetter-orchestration",
+			URL:  "https://chetter.example.test/mcp/",
+		}},
+	})
 	if url != "https://chetter.example.test/mcp" || token != "admin-token" {
-		t.Fatalf("privileged chetter MCP = (%q, %q), want configured values", url, token)
+		t.Fatalf("privileged chetter profile MCP = (%q, %q), want configured values", url, token)
 	}
 }
 
@@ -488,8 +505,8 @@ func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testi
 		ResumeWorkspacePath:    wsDir,
 		ResumeHarnessSessionID: "session-123",
 		MCPProfiles: []task.MCPProfile{{
-			Name: "review-tools",
-			URL:  "https://review-tools.example.test/mcp",
+			Name: "chetter-orchestration",
+			URL:  "https://chetter.example.test/mcp",
 		}},
 		Env: map[string]string{
 			"GITHUB_REPO":           "flatout-works/chetter",
@@ -517,8 +534,8 @@ func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testi
 	if fakeHarness.chetterMCPToken != "chetter-token" {
 		t.Fatalf("GenerateConfig chetter token = %q", fakeHarness.chetterMCPToken)
 	}
-	if len(fakeHarness.req.MCPProfiles) != 1 || fakeHarness.req.MCPProfiles[0].Name != "review-tools" {
-		t.Fatalf("GenerateConfig MCP profiles = %#v, want preserved review-tools profile", fakeHarness.req.MCPProfiles)
+	if len(fakeHarness.req.MCPProfiles) != 1 || fakeHarness.req.MCPProfiles[0].Name != "chetter-orchestration" {
+		t.Fatalf("GenerateConfig MCP profiles = %#v, want preserved chetter-orchestration profile", fakeHarness.req.MCPProfiles)
 	}
 }
 

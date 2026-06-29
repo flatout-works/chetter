@@ -138,6 +138,7 @@ func (s *Service) getModelCatalogTool(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, GetModelCatalogOutput{}, err
 	}
+	record = modelCatalogRecordForContext(ctx, record)
 	return nil, GetModelCatalogOutput{Catalog: record, YAML: yamlText}, nil
 }
 
@@ -620,6 +621,27 @@ func redactDefinitionSourceRepoURL(rawURL string) string {
 		return rawURL
 	}
 	return parsed.String()
+}
+
+func modelCatalogRecordForContext(ctx context.Context, record ModelCatalogRecord) ModelCatalogRecord {
+	if !isAdmin(ctx) {
+		record.Source = redactModelCatalogSource(record.Source)
+	}
+	return record
+}
+
+func redactModelCatalogSource(source string) string {
+	const prefix = "definitions: "
+	if !strings.HasPrefix(source, prefix) {
+		return source
+	}
+	remainder := strings.TrimPrefix(source, prefix)
+	suffix := ""
+	if idx := strings.LastIndex(remainder, " ("); idx >= 0 && strings.HasSuffix(remainder, ")") {
+		suffix = remainder[idx:]
+		remainder = remainder[:idx]
+	}
+	return prefix + redactDefinitionSourceRepoURL(remainder) + suffix
 }
 
 func definitionToolRecord(def repository.Definition) DefinitionToolRecord {

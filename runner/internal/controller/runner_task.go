@@ -276,7 +276,24 @@ func (r *Runner) chetterMCPForRequest(req task.TaskRequest) (string, string) {
 	if r == nil || r.cfg == nil {
 		return "", ""
 	}
+	if !requestIncludesConfiguredChetterMCP(req, r.cfg.ChetterMCP.URL) {
+		return "", ""
+	}
 	return r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken
+}
+
+func requestIncludesConfiguredChetterMCP(req task.TaskRequest, chetterMCPURL string) bool {
+	chetterMCPURL = strings.TrimRight(strings.TrimSpace(chetterMCPURL), "/")
+	if chetterMCPURL == "" {
+		return false
+	}
+	for _, profile := range req.MCPProfiles {
+		profileURL := strings.TrimRight(strings.TrimSpace(profile.URL), "/")
+		if profileURL != "" && profileURL == chetterMCPURL {
+			return true
+		}
+	}
+	return false
 }
 
 func runnerOwnedEnvKeys() []string {

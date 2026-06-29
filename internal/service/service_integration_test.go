@@ -17,6 +17,7 @@ import (
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
 	"github.com/flatout-works/chetter/pkg/definitions"
+	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
 var svcTestDB *testdb.PackageDB
@@ -2679,6 +2680,46 @@ func TestGetModelCatalogReturnsDefaults(t *testing.T) {
 	}
 	if out.Catalog.ProviderCount == 0 {
 		t.Errorf("expected non-zero providers")
+	}
+}
+
+func TestGetModelCatalogRedactsDefinitionSourceForNonAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	yamlText, err := modelcatalog.MarshalYAML(modelcatalog.Default())
+	if err != nil {
+		t.Fatalf("marshal model catalog: %v", err)
+	}
+	now := time.Now().UTC()
+	const rawRepoURL = "https://user:pass@github.com/acme/defs.git?access_token=secret#signature=secret"
+	if err := svc.repo.InsertModelCatalog(ctx, repository.InsertModelCatalogParams{
+		ID:        "mcat_secret_source",
+		Name:      "secret-source",
+		Active:    true,
+		Source:    nullString("definitions: " + rawRepoURL + " (main)"),
+		Checksum:  "test",
+		Yaml:      yamlText,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert model catalog: %v", err)
+	}
+
+	_, publicOut, err := svc.getModelCatalogTool(ctx, nil, GetModelCatalogInput{})
+	if err != nil {
+		t.Fatalf("get public model catalog: %v", err)
+	}
+	if publicOut.Catalog.Source != "definitions: https://github.com/acme/defs.git (main)" {
+		t.Fatalf("public catalog source = %q, want redacted source", publicOut.Catalog.Source)
+	}
+
+	_, adminOut, err := svc.getModelCatalogTool(ctxWithAdmin(ctx), nil, GetModelCatalogInput{})
+	if err != nil {
+		t.Fatalf("get admin model catalog: %v", err)
+	}
+	if adminOut.Catalog.Source != "definitions: "+rawRepoURL+" (main)" {
+		t.Fatalf("admin catalog source = %q, want raw source", adminOut.Catalog.Source)
 	}
 }
 
