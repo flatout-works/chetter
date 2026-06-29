@@ -359,6 +359,40 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func TestSubmitReviewForTriggerMatchesCommentEventWithOptions(t *testing.T) {
+	submitter := &recordingTaskSubmitter{}
+	h := &Handler{
+		gh:        fakePermissionGitHub("writer"),
+		submitter: submitter,
+		triggers: recordingTriggerResolver{prTriggers: []ReviewTrigger{{
+			Name:        "comment-review",
+			TriggerType: "pr_review",
+			Event:       "comment bot_comments:true",
+			Harness:     "pi",
+		}}},
+	}
+
+	h.submitReviewForTrigger(ReviewContext{
+		Trigger:      "comment",
+		Repo:         "flatout-works/chetter",
+		PRNumber:     7,
+		BaseRef:      "main",
+		HeadRef:      "feature",
+		HeadCloneURL: "https://github.com/flatout-works/chetter.git",
+		PRURL:        "https://github.com/flatout-works/chetter/pull/7",
+	}, nil, "comment")
+
+	if len(submitter.reviews) != 1 {
+		t.Fatalf("submitted reviews = %d, want 1", len(submitter.reviews))
+	}
+	if submitter.reviews[0].TriggerName != "comment-review" {
+		t.Fatalf("trigger name = %q, want comment-review", submitter.reviews[0].TriggerName)
+	}
+	if submitter.reviews[0].Harness != "pi" {
+		t.Fatalf("harness = %q, want pi", submitter.reviews[0].Harness)
+	}
+}
+
 func fakePermissionGitHub(writeUsers ...string) *Client {
 	allowed := map[string]struct{}{}
 	for _, user := range writeUsers {

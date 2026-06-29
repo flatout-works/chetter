@@ -795,7 +795,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 	// Filter triggers by event. A trigger with no Event set matches all events.
 	var matching []ReviewTrigger
 	for _, t := range triggers {
-		if t.Event == "" || t.Event == event {
+		if triggerMatchesEvent(t, event) {
 			matching = append(matching, t)
 		}
 	}
