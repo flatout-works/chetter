@@ -5,9 +5,16 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, task.TaskRequest{}, isLocal)
+}
+
+func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	claudeDir := wsDir + "/.claude"
 	if err := os.MkdirAll(claudeDir, 0750); err != nil {
 		return err
@@ -93,6 +100,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			}
 		}
 		mcpServers["chetter"] = chetterMCP
+	}
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddHTTPServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
+		}
 	}
 
 	if len(mcpServers) > 0 {

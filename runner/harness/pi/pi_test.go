@@ -73,6 +73,35 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigForTaskAddsMCPProfiles(t *testing.T) {
+	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
+
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		MCPProfiles: []task.MCPProfile{{
+			Name: "docs-search",
+			URL:  "https://mcp.example.test/mcp",
+		}},
+	}
+	if err := GenerateConfigForTask(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))
+	if err != nil {
+		t.Fatalf("read .mcp.json: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse .mcp.json: %v", err)
+	}
+	servers := cfg["mcpServers"].(map[string]any)
+	server := servers["docs-search"].(map[string]any)
+	if server["url"] != "https://mcp.example.test/mcp" || server["lifecycle"] != "keep-alive" {
+		t.Fatalf("unexpected MCP server config: %+v", server)
+	}
+}
+
 func assertJSONPath(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)

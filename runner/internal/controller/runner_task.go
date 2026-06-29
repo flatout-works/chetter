@@ -147,7 +147,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	mcpURL := runnerMCPURL(r, mcpServer)
 
 	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
-		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
+		return
 	}
 
 	if req.AgentImage == "" {
@@ -611,7 +612,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
-
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
 		slog.Error("docker run failed", "taskID", req.TaskID, "err", err, "output", string(out))
@@ -828,7 +828,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
-
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
