@@ -183,6 +183,7 @@ For a resumable session:
 |---|---|
 | `chetter_submit_task` | Submit a one-off development task. |
 | `chetter_task_status` | Get task status and result details. |
+| `chetter_task_state` | Text-free task state for orchestration. |
 | `chetter_list_tasks` | List recent tasks with optional status filter. |
 | `chetter_cancel_task` | Cancel a pending or running task. |
 | `chetter_clear_queue` | Admin-only cancellation of all pending tasks. |

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
@@ -27,6 +28,7 @@ type SubmitTaskInput struct {
 	Skills          []string                `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	MCPProfiles     []string                `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for this task"`
 	Env             map[string]string       `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	DefinitionRepo  string                  `json:"definition_repo,omitempty" jsonschema:"Base repository owner/name to use for repo-scoped definitions; admin only and must match GITHUB_REPO"`
 	ExtraFiles      map[string]string       `json:"extra_files,omitempty" jsonschema:"Workspace files to write before the task starts, keyed by relative path"`
 	TaskExportFiles []TaskExportFileRequest `json:"task_export_files,omitempty" jsonschema:"Task session exports to inject as workspace files without returning export text to the caller"`
 	Harness         string                  `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
@@ -49,6 +51,30 @@ type TaskStatusInput struct {
 // TaskStatusOutput is the output for chetter_task_status.
 type TaskStatusOutput struct {
 	Task TaskToolRecord `json:"task"`
+}
+
+// TaskStateInput is the input for chetter_task_state.
+type TaskStateInput struct {
+	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
+}
+
+// TaskStateOutput is the output for chetter_task_state.
+type TaskStateOutput struct {
+	Task TaskStateRecord `json:"task"`
+}
+
+// TaskStateRecord is a status-only task view for privileged orchestrators that
+// must avoid reading child-generated summaries, errors, events, or transcripts.
+type TaskStateRecord struct {
+	ID                     string     `json:"id"`
+	TeamID                 string     `json:"team_id,omitempty"`
+	Status                 string     `json:"status"`
+	Attempt                int        `json:"attempt"`
+	SessionExportAvailable bool       `json:"session_export_available"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
+	StartedAt              *time.Time `json:"started_at,omitempty"`
+	EndedAt                *time.Time `json:"ended_at,omitempty"`
 }
 
 // ListTasksInput is the input for chetter_list_tasks.
@@ -582,6 +608,7 @@ type ResumeAgentSessionOutput struct {
 func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_submit_task", Description: "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection."}, svc.submitTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_status", Description: "Get current status and result details for a chetter task."}, svc.taskStatusTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_state", Description: "Get text-free task state for orchestration without returning prompts, summaries, errors, events, or transcripts."}, svc.taskStateTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tasks", Description: "List recent chetter tasks, optionally filtered by status."}, svc.listTasksTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_agent_sessions", Description: "List recent chetter agent sessions, optionally filtered by status."}, svc.listAgentSessionsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its session runs."}, svc.agentSessionStatusTool)
@@ -638,6 +665,10 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
+	definitionRepo, err := definitionRepoForSubmitTaskTool(ctx, in.DefinitionRepo, in.Env)
+	if err != nil {
+		return nil, SubmitTaskOutput{}, err
+	}
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:          in.Prompt,
 		GitURL:          in.GitURL,
@@ -650,6 +681,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		Skills:          in.Skills,
 		MCPProfiles:     in.MCPProfiles,
 		Env:             in.Env,
+		DefinitionRepo:  definitionRepo,
 		ExtraFiles:      in.ExtraFiles,
 		TaskExportFiles: in.TaskExportFiles,
 		Harness:         in.Harness,
@@ -664,12 +696,42 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 	return nil, SubmitTaskOutput{Task: taskToolRecord(task)}, nil
 }
 
+func definitionRepoForSubmitTaskTool(ctx context.Context, definitionRepo string, env map[string]string) (string, error) {
+	definitionRepo = strings.TrimSpace(definitionRepo)
+	if definitionRepo == "" {
+		return "", nil
+	}
+	if !isAdmin(ctx) {
+		return "", fmt.Errorf("admin access required for definition_repo")
+	}
+	normalizedDefinitionRepo, ok := canonicalRepoName(definitionRepo)
+	if !ok {
+		return "", fmt.Errorf("definition_repo must resolve to owner/repo")
+	}
+	taskRepo, ok := canonicalRepoName(env["GITHUB_REPO"])
+	if !ok {
+		return "", fmt.Errorf("definition_repo requires matching GITHUB_REPO")
+	}
+	if normalizedDefinitionRepo != taskRepo {
+		return "", fmt.Errorf("definition_repo %q does not match GITHUB_REPO %q", normalizedDefinitionRepo, taskRepo)
+	}
+	return normalizedDefinitionRepo, nil
+}
+
 func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskStatusInput) (*mcp.CallToolResult, TaskStatusOutput, error) {
 	task, err := s.GetTask(ctx, in.TaskID)
 	if err != nil {
 		return nil, TaskStatusOutput{}, fmt.Errorf("get task status: %w", err)
 	}
 	return nil, TaskStatusOutput{Task: task}, nil
+}
+
+func (s *Service) taskStateTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskStateInput) (*mcp.CallToolResult, TaskStateOutput, error) {
+	task, err := s.taskForToolAccess(ctx, in.TaskID)
+	if err != nil {
+		return nil, TaskStateOutput{}, fmt.Errorf("get task state: %w", err)
+	}
+	return nil, TaskStateOutput{Task: taskStateRecord(task)}, nil
 }
 
 func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, TaskExportOutput, error) {
@@ -852,6 +914,20 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		TotalCacheWriteTokens: task.TotalCacheWriteTokens,
 		TotalReasoningTokens:  task.TotalReasoningTokens,
 		CostCents:             task.CostCents,
+	}
+}
+
+func taskStateRecord(task repository.ChetterTask) TaskStateRecord {
+	return TaskStateRecord{
+		ID:                     task.ID,
+		TeamID:                 task.TeamID.String,
+		Status:                 task.Status,
+		Attempt:                int(task.Attempt),
+		SessionExportAvailable: task.SessionExport.Valid && strings.TrimSpace(task.SessionExport.String) != "",
+		CreatedAt:              task.CreatedAt,
+		UpdatedAt:              task.UpdatedAt,
+		StartedAt:              store.NullTimePtr(task.StartedAt),
+		EndedAt:                store.NullTimePtr(task.EndedAt),
 	}
 }
 

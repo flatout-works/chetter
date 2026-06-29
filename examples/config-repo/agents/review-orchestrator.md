@@ -26,8 +26,7 @@ The task receives these environment variables:
 The trigger must attach the `chetter-orchestration` MCP profile so these MCP tools are available:
 
 - `chetter_submit_task`
-- `chetter_task_status`
-- `chetter_task_progress`
+- `chetter_task_state`
 - `chetter_pr_review`
 
 ## Workflow
@@ -57,14 +56,14 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
 
    The child task prompt must tell the reviewer to perform a fresh review, produce a structured final answer, and not post to GitHub.
 
-4. Poll both child tasks with `chetter_task_status`.
+4. Poll both child tasks with `chetter_task_state`.
    - Poll until both are terminal: `done`, `error`, or `cancelled`.
    - Use a bounded loop and include status in your own final output.
-   - If a task is running but unclear, inspect `chetter_task_progress`.
+   - Do not call `chetter_task_status`, `chetter_task_progress`, or `chetter_task_events` for child review tasks because those can return child-generated text.
 
 5. Prepare synthesizer inputs without reading child transcripts.
    - Do not call `chetter_task_export` for child review tasks.
-   - Build `reviews/status.json` from the child task IDs and terminal statuses returned by `chetter_task_status`.
+   - Build `reviews/status.json` from the child task IDs, terminal statuses, and `session_export_available` values returned by `chetter_task_state`.
    - Include export references only for child tasks that have completed and should be included in synthesis.
 
 6. Submit the synthesizer task with `chetter_submit_task`:
@@ -72,6 +71,7 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
    - `skills`: `["pr-review-workflow"]`
    - `git_url`: `$PR_HEAD_CLONE_URL`
    - `git_ref`: `$PR_HEAD_REF`
+   - `definition_repo`: `$GITHUB_REPO`
    - `task_export_files` references that the server will copy into the synthesizer workspace without returning transcript text:
      - `{"task_id": "$STANDARD_REVIEW_TASK_ID", "path": "reviews/standard.md"}`
      - `{"task_id": "$ADVERSARIAL_REVIEW_TASK_ID", "path": "reviews/adversarial.md"}`
@@ -97,6 +97,6 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
 - All GitHub writes must use Chetter MCP tools.
 - Do not pass GitHub installation tokens through `chetter_submit_task` env; use `CHETTER_PARENT_TASK_ID` with `CHETTER_GITHUB_AUTH_MODE=read` only for reviewer children.
 - Do not attach Chetter MCP profiles or GitHub write inheritance to the synthesizer.
-- Do not read child or synthesizer transcripts in the orchestrator context; pass task export IDs to server-side tools.
+- Do not read child or synthesizer transcripts, summaries, errors, progress, or events in the orchestrator context; use `chetter_task_state` and pass task export IDs to server-side tools.
 - Do not call internal retries "review rounds" unless they produce visible PR review artifacts.
 - Include child task IDs and the final synthesizer task ID in your final task output.

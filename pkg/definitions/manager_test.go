@@ -222,8 +222,14 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 		!strings.Contains(childSection, "must not inherit GitHub write authorization") {
 		t.Fatalf("reviewer child section should require read-only GitHub inheritance:\n%s", childSection)
 	}
+	pollSection := sectionBetween(orchestrator, "4. Poll both child tasks", "5. Prepare synthesizer inputs")
+	if !strings.Contains(pollSection, "`chetter_task_state`") ||
+		!strings.Contains(pollSection, "Do not call `chetter_task_status`, `chetter_task_progress`, or `chetter_task_events`") {
+		t.Fatalf("orchestrator should poll child tasks through text-free task state:\n%s", pollSection)
+	}
 	synthSection := sectionBetween(orchestrator, "6. Submit the synthesizer task", "7. Poll the synthesizer")
 	if !strings.Contains(synthSection, "`task_export_files`") ||
+		!strings.Contains(synthSection, "`definition_repo`: `$GITHUB_REPO`") ||
 		!strings.Contains(synthSection, "`extra_files`") ||
 		!strings.Contains(synthSection, "reviews/standard.md") ||
 		!strings.Contains(synthSection, "reviews/adversarial.md") {

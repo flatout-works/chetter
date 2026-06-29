@@ -23,7 +23,8 @@ prompt: |-
   Coordinate a complete multi-agent review for this pull request.
 
   Start a standard review task and an adversarial review task. Wait for both
-  to finish, then start an unprivileged review-synthesizer task using
+  to finish using chetter_task_state only, then start an unprivileged
+  review-synthesizer task with definition_repo set to the base repo and
   task_export_files so the server copies child exports into its workspace
   without returning transcript text to you. After the synthesizer finishes,
   verify the current PR head and post exactly one Chetter PR review using
@@ -31,4 +32,5 @@ prompt: |-
 
   Do not review the code yourself. Do not attach Chetter MCP profiles or
   GitHub write inheritance to the synthesizer. Do not read child or
-  synthesizer transcripts in the orchestrator context.
+  synthesizer transcripts, summaries, errors, progress, or events in the
+  orchestrator context.

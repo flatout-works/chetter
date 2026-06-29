@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +63,43 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		t.Fatalf("expected trigger attribution to be preserved: %+v", record)
 	}
 	validateGeneratedOutputSchema(t, TaskStatusOutput{Task: record})
+	validateGeneratedOutputSchema(t, TaskStateOutput{Task: TaskStateRecord{
+		ID:                     "task_1",
+		TeamID:                 "team_123",
+		Status:                 "done",
+		Attempt:                1,
+		SessionExportAvailable: true,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+		StartedAt:              &now,
+		EndedAt:                &now,
+	}})
+}
+
+func TestDefinitionRepoForSubmitTaskTool(t *testing.T) {
+	got, err := definitionRepoForSubmitTaskTool(ctxWithAdmin(context.Background()), "https://github.com/flatout-works/chetter.git", map[string]string{
+		"GITHUB_REPO": "flatout-works/chetter",
+	})
+	if err != nil {
+		t.Fatalf("definitionRepoForSubmitTaskTool failed: %v", err)
+	}
+	if got != "flatout-works/chetter" {
+		t.Fatalf("definition repo = %q, want flatout-works/chetter", got)
+	}
+
+	_, err = definitionRepoForSubmitTaskTool(context.Background(), "flatout-works/chetter", map[string]string{
+		"GITHUB_REPO": "flatout-works/chetter",
+	})
+	if err == nil || !strings.Contains(err.Error(), "admin access required") {
+		t.Fatalf("non-admin error = %v, want admin access required", err)
+	}
+
+	_, err = definitionRepoForSubmitTaskTool(ctxWithAdmin(context.Background()), "flatout-works/chetter", map[string]string{
+		"GITHUB_REPO": "flatout-works/other",
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("mismatch error = %v, want does not match", err)
+	}
 }
 
 func TestTaskEventOutputMatchesGeneratedSchema(t *testing.T) {

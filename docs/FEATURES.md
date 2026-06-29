@@ -213,7 +213,7 @@ Unconditional tools:
 
 | Group | Tools |
 |---|---|
-| Tasks | `chetter_submit_task`, `chetter_task_status`, `chetter_list_tasks`, `chetter_cancel_task`, `chetter_clear_queue`, `chetter_task_events`, `chetter_task_progress`, `chetter_task_latest_event`, `chetter_task_export` |
+| Tasks | `chetter_submit_task`, `chetter_task_status`, `chetter_task_state`, `chetter_list_tasks`, `chetter_cancel_task`, `chetter_clear_queue`, `chetter_task_events`, `chetter_task_progress`, `chetter_task_latest_event`, `chetter_task_export` |
 | Sessions | `chetter_list_agent_sessions`, `chetter_agent_session_status`, `chetter_resume_agent_session` |
 | Triggers | `chetter_create_trigger`, `chetter_update_trigger`, `chetter_list_triggers`, `chetter_delete_trigger`, `chetter_run_trigger`, `chetter_list_schedule_runs` |
 | Runner fleet | `chetter_runner_health`, `chetter_drain_runner` |
