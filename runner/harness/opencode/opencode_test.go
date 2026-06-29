@@ -249,7 +249,7 @@ func TestGenerateConfigForTaskAddsCredentialedMCPProfileWithoutAllowlist(t *test
 	}
 }
 
-func TestGenerateConfigForTaskRebuildsMCPServersFromCurrentRequest(t *testing.T) {
+func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t *testing.T) {
 	wsDir := t.TempDir()
 	existing := map[string]any{
 		"plugin": []any{"existing-plugin"},
@@ -271,6 +271,10 @@ func TestGenerateConfigForTaskRebuildsMCPServersFromCurrentRequest(t *testing.T)
 			"stale-public": map[string]any{
 				"type": "remote",
 				"url":  "http://stale-public:8080/mcp",
+			},
+			"repo-tools": map[string]any{
+				"type": "remote",
+				"url":  "http://repo-tools:8080/mcp",
 			},
 		},
 	}
@@ -310,10 +314,74 @@ func TestGenerateConfigForTaskRebuildsMCPServersFromCurrentRequest(t *testing.T)
 	if _, ok := mcps["public-tools"]; !ok {
 		t.Fatalf("current MCP profile missing: %+v", mcps)
 	}
-	for _, stale := range []string{"chetter", "chetter-orchestration", "stale-public"} {
+	for _, preserved := range []string{"stale-public", "repo-tools"} {
+		if _, ok := mcps[preserved]; !ok {
+			t.Fatalf("repo-provided MCP server %q was removed: %+v", preserved, mcps)
+		}
+	}
+	for _, stale := range []string{"chetter", "chetter-orchestration"} {
 		if _, ok := mcps[stale]; ok {
 			t.Fatalf("stale MCP server %q survived: %+v", stale, mcps)
 		}
+	}
+}
+
+func TestGenerateConfigForTaskUsesManagedStateForTargetedMCPPruning(t *testing.T) {
+	wsDir := t.TempDir()
+	if err := os.MkdirAll(wsDir+"/.opencode", 0750); err != nil {
+		t.Fatalf("create opencode dir: %v", err)
+	}
+	if err := os.WriteFile(wsDir+"/.opencode/.chetter-managed-mcp.json", []byte(`["old-private"]`), 0644); err != nil {
+		t.Fatalf("write managed MCP state: %v", err)
+	}
+	existing := map[string]any{
+		"mcp": map[string]any{
+			"old-private": map[string]any{
+				"type": "remote",
+				"url":  "http://old-private:8080/mcp",
+				"headers": map[string]string{
+					"Authorization": "Bearer stale-token",
+				},
+			},
+			"repo-private": map[string]any{
+				"type": "remote",
+				"url":  "http://repo-private:8080/mcp",
+				"headers": map[string]string{
+					"Authorization": "Bearer repo-token",
+				},
+			},
+		},
+	}
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(wsDir+"/.opencode.json", data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	out, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(out), "stale-token") {
+		t.Fatalf("rewritten config kept managed stale credentials:\n%s", string(out))
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	mcps := cfg["mcp"].(map[string]any)
+	if _, ok := mcps["old-private"]; ok {
+		t.Fatalf("previously managed MCP server survived: %+v", mcps)
+	}
+	server := mcps["repo-private"].(map[string]any)
+	headers := server["headers"].(map[string]any)
+	if headers["Authorization"] != "Bearer repo-token" {
+		t.Fatalf("repo private MCP header = %v", headers["Authorization"])
 	}
 }
 

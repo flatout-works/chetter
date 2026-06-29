@@ -223,11 +223,27 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 		t.Fatalf("reviewer child section should require read-only GitHub inheritance:\n%s", childSection)
 	}
 	synthSection := sectionBetween(orchestrator, "6. Submit the synthesizer task", "7. Poll the synthesizer")
-	if !strings.Contains(synthSection, "CHETTER_PARENT_TASK_ID") {
-		t.Fatalf("synthesizer section should keep parent task authorization:\n%s", synthSection)
+	if !strings.Contains(synthSection, "`extra_files`") ||
+		!strings.Contains(synthSection, "reviews/standard.md") ||
+		!strings.Contains(synthSection, "reviews/adversarial.md") {
+		t.Fatalf("synthesizer section should inject child exports as files:\n%s", synthSection)
 	}
-	if !strings.Contains(synthSection, "`CHETTER_GITHUB_AUTH_MODE` must be set to `write`") {
-		t.Fatalf("synthesizer section should request write-mode GitHub auth:\n%s", synthSection)
+	if strings.Contains(synthSection, "`mcp_profiles`: `[\"chetter-orchestration\"]`") ||
+		strings.Contains(synthSection, "`CHETTER_GITHUB_AUTH_MODE` must be set to `write`") {
+		t.Fatalf("synthesizer section must not grant Chetter MCP or write auth:\n%s", synthSection)
+	}
+	if !strings.Contains(synthSection, "do not set `mcp_profiles`, `CHETTER_PARENT_TASK_ID`, or `CHETTER_GITHUB_AUTH_MODE`") {
+		t.Fatalf("synthesizer section should explicitly forbid inherited credentials:\n%s", synthSection)
+	}
+
+	synthData, err := os.ReadFile(filepath.Join(root, "agents", "review-synthesizer.md"))
+	if err != nil {
+		t.Fatalf("read example synthesizer: %v", err)
+	}
+	synthesizer := string(synthData)
+	if !strings.Contains(synthesizer, "must not have Chetter MCP profiles or GitHub write credentials") ||
+		!strings.Contains(synthesizer, "Do not call Chetter MCP tools") {
+		t.Fatalf("synthesizer should run without privileged MCP credentials:\n%s", synthesizer)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,6 +41,7 @@ type SubmitTaskRequest struct {
 	Skills      []string
 	MCPProfiles []string
 	Env         map[string]string
+	ExtraFiles  map[string]string
 	TimeoutSec  int
 	TriggerName string
 	TriggerType string
@@ -98,6 +100,8 @@ const (
 	gitHubAuthModeEnv         = "CHETTER_GITHUB_AUTH_MODE"
 	definitionRepoEnv         = "__chetter_definition_repo"
 	mcpProfilePrivilegedEnv   = "__chetter_mcp_profile_privileged_allowed"
+	extraFilesEnv             = "__chetter_extra_files"
+	maxExtraFilesBytes        = 5 << 20
 )
 
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -423,6 +427,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	delete(taskEnv, injectedGitHubTokenEnv)
 	delete(taskEnv, definitionRepoEnv)
 	delete(taskEnv, mcpProfilePrivilegedEnv)
+	delete(taskEnv, extraFilesEnv)
 	definitionRepo := strings.TrimSpace(in.DefinitionRepo)
 	allowGitHubToken := in.AllowGitHubToken
 	allowGitHubReadToken := in.AllowGitHubReadToken
@@ -504,6 +509,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	}
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
+	}
+	extraFilesPayload, err := encodeExtraFilesPayload(in.ExtraFiles)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
+	if extraFilesPayload != "" {
+		taskEnv[extraFilesEnv] = extraFilesPayload
 	}
 	env, err := json.Marshal(taskEnv)
 	if err != nil {
@@ -1117,6 +1129,45 @@ func sanitizeTaskEnv(env map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func encodeExtraFilesPayload(files map[string]string) (string, error) {
+	if len(files) == 0 {
+		return "", nil
+	}
+	normalized := make(map[string]string, len(files))
+	totalBytes := 0
+	for name, content := range files {
+		cleanName, err := cleanExtraFileName(name)
+		if err != nil {
+			return "", err
+		}
+		totalBytes += len(content)
+		if totalBytes > maxExtraFilesBytes {
+			return "", fmt.Errorf("extra_files exceeds %d bytes", maxExtraFilesBytes)
+		}
+		normalized[cleanName] = content
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("marshal extra_files: %w", err)
+	}
+	return string(data), nil
+}
+
+func cleanExtraFileName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("extra_files contains an empty path")
+	}
+	if strings.Contains(name, "\\") {
+		return "", fmt.Errorf("extra_files path %q must use forward slashes", name)
+	}
+	cleanName := path.Clean(name)
+	if cleanName == "." || path.IsAbs(cleanName) || cleanName == ".." || strings.HasPrefix(cleanName, "../") {
+		return "", fmt.Errorf("extra_files path %q must be relative and stay inside the workspace", name)
+	}
+	return cleanName, nil
 }
 
 func normalizeGitHubAuthMode(value string) (string, error) {

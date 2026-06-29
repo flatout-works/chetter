@@ -35,7 +35,7 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		TriggerType: store.TriggerTypeCron,
 		Skills:      []string{"go"},
 		MCPProfiles: []string{"chetter-orchestration"},
-		Env:         map[string]string{"SAFE": "value"},
+		Env:         map[string]string{"SAFE": "value", extraFilesEnv: `{"reviews/standard.md":"body"}`},
 		TimeoutSec:  300,
 		Summary:     "summary",
 		CreatedAt:   now,
@@ -47,6 +47,9 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.AgentImage != "image" || record.Agent != "changelog-maintainer" || len(record.Skills) != 1 || record.Env["SAFE"] != "value" {
 		t.Fatalf("expected core task fields to be preserved: %+v", record)
+	}
+	if _, ok := record.Env[extraFilesEnv]; ok {
+		t.Fatalf("internal extra files payload should not be exposed: %+v", record.Env)
 	}
 	if len(record.MCPProfiles) != 1 || record.MCPProfiles[0] != "chetter-orchestration" {
 		t.Fatalf("expected mcp profiles to be preserved: %+v", record)

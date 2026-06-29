@@ -88,6 +88,31 @@ func TestSanitizeTaskEnv(t *testing.T) {
 	})
 }
 
+func TestEncodeExtraFilesPayload(t *testing.T) {
+	payload, err := encodeExtraFilesPayload(map[string]string{
+		"reviews/standard.md": "standard",
+		"./reviews/adv.md":    "adversarial",
+	})
+	if err != nil {
+		t.Fatalf("encodeExtraFilesPayload failed: %v", err)
+	}
+	if !strings.Contains(payload, `"reviews/standard.md":"standard"`) ||
+		!strings.Contains(payload, `"reviews/adv.md":"adversarial"`) {
+		t.Fatalf("unexpected payload: %s", payload)
+	}
+}
+
+func TestEncodeExtraFilesPayloadRejectsTraversal(t *testing.T) {
+	for _, name := range []string{"../secret", "/abs/path", `nested\windows`} {
+		t.Run(name, func(t *testing.T) {
+			_, err := encodeExtraFilesPayload(map[string]string{name: "content"})
+			if err == nil {
+				t.Fatal("expected path validation error")
+			}
+		})
+	}
+}
+
 func TestRandomID(t *testing.T) {
 	t.Run("task prefix", func(t *testing.T) {
 		id, err := randomID("task")

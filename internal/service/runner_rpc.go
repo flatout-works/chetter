@@ -158,9 +158,10 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				if origErr == nil && origTask.SessionExport.Valid {
 					exportContent := strings.ReplaceAll(origTask.SessionExport.String, "\\n", "\n")
 					if exportContent != "" {
-						protoTask.ExtraFiles = map[string][]byte{
-							fmt.Sprintf("chetter_recovery_%s.md", recoverFrom): []byte(exportContent),
+						if protoTask.ExtraFiles == nil {
+							protoTask.ExtraFiles = make(map[string][]byte)
 						}
+						protoTask.ExtraFiles[fmt.Sprintf("chetter_recovery_%s.md", recoverFrom)] = []byte(exportContent)
 					}
 				} else if origErr != nil {
 					slog.Warn("recover task: lookup original session export", "taskID", task.ID, "recoverFrom", recoverFrom, "err", origErr)
@@ -1104,6 +1105,8 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	harness := env["__chetter_harness"]
 	delete(env, "__chetter_harness")
+	extraFiles := parseExtraFilesFromEnv(task.ID, env)
+	delete(env, extraFilesEnv)
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		AgentImage:             task.AgentImage.String,
@@ -1124,7 +1127,30 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
 		Harness:                harness,
+		ExtraFiles:             extraFiles,
 	}
+}
+
+func parseExtraFilesFromEnv(taskID string, env map[string]string) map[string][]byte {
+	payload := strings.TrimSpace(env[extraFilesEnv])
+	if payload == "" {
+		return nil
+	}
+	var files map[string]string
+	if err := json.Unmarshal([]byte(payload), &files); err != nil {
+		slog.Warn("parse task extra_files", "taskID", taskID, "err", err)
+		return nil
+	}
+	out := make(map[string][]byte, len(files))
+	for name, content := range files {
+		cleanName, err := cleanExtraFileName(name)
+		if err != nil {
+			slog.Warn("skip invalid task extra_file", "taskID", taskID, "path", name, "err", err)
+			continue
+		}
+		out[cleanName] = []byte(content)
+	}
+	return out
 }
 
 func nullString(value string) sql.NullString {

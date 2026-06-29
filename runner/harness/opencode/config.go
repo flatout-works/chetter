@@ -17,6 +17,7 @@ import (
 )
 
 const defaultMem9PluginSpec = "@mem9/opencode"
+const managedMCPStatePath = ".opencode/.chetter-managed-mcp.json"
 
 func mem9Enabled() bool {
 	return strings.TrimSpace(os.Getenv("MEM9_API_KEY")) != ""
@@ -119,6 +120,146 @@ func ensureProvider(cfg map[string]any, providerID string) {
 	}
 }
 
+func currentManagedMCPServers(includeRunnerMCP, includeChetterMCP bool, profiles []task.MCPProfile) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 2+len(profiles))
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	if includeRunnerMCP {
+		add("runner-bridge")
+	}
+	if includeChetterMCP {
+		add("chetter")
+	}
+	for _, profile := range profiles {
+		add(profile.Name)
+	}
+	return out
+}
+
+func prepareMCPServers(wsDir string, cfg map[string]any, currentManaged []string) map[string]any {
+	existing, _ := cfg["mcp"].(map[string]any)
+	if existing == nil {
+		existing = make(map[string]any)
+	}
+	previousManaged, hasManagedState := readManagedMCPState(wsDir)
+	remove := make(map[string]struct{}, len(previousManaged)+len(currentManaged)+2)
+	for _, name := range append(previousManaged, currentManaged...) {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			remove[name] = struct{}{}
+		}
+	}
+	remove["runner-bridge"] = struct{}{}
+	remove["chetter"] = struct{}{}
+
+	mcpServers := make(map[string]any, len(existing)+len(currentManaged))
+	for name, server := range existing {
+		if _, ok := remove[name]; ok {
+			continue
+		}
+		if !hasManagedState && openCodeMCPServerCarriesCredentials(server) {
+			continue
+		}
+		mcpServers[name] = server
+	}
+	cfg["mcp"] = mcpServers
+	return mcpServers
+}
+
+func readManagedMCPState(wsDir string) ([]string, bool) {
+	data, err := os.ReadFile(filepath.Join(wsDir, managedMCPStatePath))
+	if err != nil {
+		return nil, false
+	}
+	var names []string
+	if err := json.Unmarshal(data, &names); err != nil {
+		return nil, false
+	}
+	return nonEmptyUniqueStrings(names), true
+}
+
+func writeManagedMCPState(wsDir string, names []string) error {
+	path := filepath.Join(wsDir, managedMCPStatePath)
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		return fmt.Errorf("create opencode state dir: %w", err)
+	}
+	data, err := json.MarshalIndent(nonEmptyUniqueStrings(names), "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal opencode managed MCP state: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write opencode managed MCP state: %w", err)
+	}
+	return nil
+}
+
+func nonEmptyUniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func openCodeMCPServerCarriesCredentials(server any) bool {
+	serverMap, ok := server.(map[string]any)
+	if !ok {
+		return false
+	}
+	profile := task.MCPProfile{
+		URL:     stringValue(serverMap["url"]),
+		Headers: headerStringMap(serverMap["headers"]),
+	}
+	return mcpconfig.ProfileCarriesCredentials(profile)
+}
+
+func stringValue(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func headerStringMap(value any) map[string]string {
+	switch headers := value.(type) {
+	case map[string]string:
+		out := make(map[string]string, len(headers))
+		for key, value := range headers {
+			out[key] = value
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]string, len(headers))
+		for key, value := range headers {
+			if s, ok := value.(string); ok {
+				out[key] = s
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
 	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
 }
@@ -145,8 +286,8 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	slog.Info("opencode config source", "path", configSource, "bytes", len(data))
 	ensureMem9Plugin(cfg)
 	ensureRunnerProvider(cfg, req)
-	mcpServers := make(map[string]any)
-	cfg["mcp"] = mcpServers
+	currentManagedMCP := currentManagedMCPServers(includeRunnerMCP && runnerMCPURL != "", chetterMCPURL != "", req.MCPProfiles)
+	mcpServers := prepareMCPServers(wsDir, cfg, currentManagedMCP)
 
 	if includeRunnerMCP && runnerMCPURL != "" {
 		bridge := map[string]any{
@@ -215,6 +356,9 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	}
 	if err := os.WriteFile(wsConfigPath, out, 0644); err != nil {
 		return fmt.Errorf("write opencode config: %w", err)
+	}
+	if err := writeManagedMCPState(wsDir, currentManagedMCP); err != nil {
+		return err
 	}
 	globalConfigDir := wsDir + "/.config/opencode"
 	if err := os.MkdirAll(globalConfigDir, 0750); err != nil {

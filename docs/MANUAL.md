@@ -592,8 +592,9 @@ The example config repo includes a definitions-driven orchestration workflow:
 1. A `pr_review` trigger starts `review-orchestrator` with the `chetter-orchestration` MCP profile.
 2. The orchestrator verifies `PR_HEAD_SHA`, then submits `standard-pr-reviewer` and `adversarial-pr-reviewer` child tasks without GitHub write inheritance.
 3. Child reviewers produce structured task outputs and do not post to GitHub.
-4. The orchestrator exports both child task transcripts and starts `review-synthesizer`.
-5. The synthesizer verifies the PR head again and posts exactly one final review using `chetter_pr_review`.
+4. The orchestrator exports both child task transcripts and starts `review-synthesizer` without Chetter MCP credentials, injecting the exports as workspace files.
+5. The synthesizer returns one final review body.
+6. The orchestrator verifies the PR head again and posts exactly one final review using `chetter_pr_review`.
 
 This is configured with normal definitions under `examples/config-repo/agents`, `examples/config-repo/skills`, `examples/config-repo/mcp-profiles`, and `examples/config-repo/triggers`. It is not hardcoded into the webhook handler. The included trigger is disabled by default and should be enabled only in trusted self-hosted deployments until scoped MCP tokens or proxy-side enforcement is available.
 

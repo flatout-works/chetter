@@ -27,6 +27,7 @@ type SubmitTaskInput struct {
 	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	MCPProfiles []string          `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for this task"`
 	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	ExtraFiles  map[string]string `json:"extra_files,omitempty" jsonschema:"Workspace files to write before the task starts, keyed by relative path"`
 	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
@@ -648,6 +649,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		Skills:      in.Skills,
 		MCPProfiles: in.MCPProfiles,
 		Env:         in.Env,
+		ExtraFiles:  in.ExtraFiles,
 		Harness:     in.Harness,
 		TimeoutSec:  in.TimeoutSec,
 		SessionMode: in.SessionMode,
@@ -795,7 +797,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		TriggerType:           task.TriggerType,
 		Skills:                task.Skills,
 		MCPProfiles:           task.MCPProfiles,
-		Env:                   task.Env,
+		Env:                   taskToolEnv(task.Env),
 		TimeoutSec:            task.TimeoutSec,
 		Summary:               task.Summary,
 		Error:                 task.Error,
@@ -833,7 +835,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		TriggerType:           task.TriggerType.String,
 		Skills:                skills,
 		MCPProfiles:           mcpProfiles,
-		Env:                   env,
+		Env:                   taskToolEnv(env),
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,
 		Error:                 task.Error.String,
@@ -849,6 +851,20 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		TotalReasoningTokens:  task.TotalReasoningTokens,
 		CostCents:             task.CostCents,
 	}
+}
+
+func taskToolEnv(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return env
+	}
+	out := make(map[string]string, len(env))
+	for key, value := range env {
+		if key == extraFilesEnv {
+			continue
+		}
+		out[key] = value
+	}
+	return out
 }
 
 func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTriggerInput) (*mcp.CallToolResult, CreateTriggerOutput, error) {

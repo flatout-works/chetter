@@ -1244,6 +1244,44 @@ func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
 	}
 }
 
+func TestTaskToProto_ExtractsExtraFilesFromEnv(t *testing.T) {
+	payload, _ := encodeExtraFilesPayload(map[string]string{
+		"reviews/standard.md": "standard export",
+		"reviews/adv.md":      "adversarial export",
+	})
+	envJSON, _ := json.Marshal(map[string]string{
+		extraFilesEnv: payload,
+		"CUSTOM_VAR":  "val",
+	})
+	task := repository.ChetterTask{
+		ID:                "task-extra-files",
+		Prompt:            "test prompt",
+		AgentImage:        sql.NullString{String: "img", Valid: true},
+		TimeoutSec:        300,
+		Env:               envJSON,
+		Skills:            []byte(`[]`),
+		ProviderID:        sql.NullString{},
+		ModelID:           sql.NullString{},
+		VariantID:         sql.NullString{},
+		Agent:             sql.NullString{},
+		GitUrl:            sql.NullString{},
+		GitRef:            sql.NullString{},
+		CommitAuthorName:  sql.NullString{},
+		CommitAuthorEmail: sql.NullString{},
+	}
+	proto := taskToProto(task, "", "")
+	if proto.Env[extraFilesEnv] != "" {
+		t.Fatal("extra files payload should not remain in task env")
+	}
+	if proto.Env["CUSTOM_VAR"] != "val" {
+		t.Fatalf("CUSTOM_VAR should be preserved, got %q", proto.Env["CUSTOM_VAR"])
+	}
+	if string(proto.ExtraFiles["reviews/standard.md"]) != "standard export" ||
+		string(proto.ExtraFiles["reviews/adv.md"]) != "adversarial export" {
+		t.Fatalf("extra files not extracted: %#v", proto.ExtraFiles)
+	}
+}
+
 func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	envJSON, _ := json.Marshal(map[string]string{"FOO": "bar"})
 	task := repository.ChetterTask{
