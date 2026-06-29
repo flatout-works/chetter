@@ -715,10 +715,19 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 
 // ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
-	return s.resumeAgentSession(ctx, sessionID, prompt, timeoutSec, isAdmin(ctx))
+	admin := isAdmin(ctx)
+	return s.resumeAgentSession(ctx, sessionID, prompt, timeoutSec, resumeTaskContextOptions{
+		PreserveGitHubToken:           admin,
+		PreservePrivilegedMCPProfiles: admin,
+	})
 }
 
-func (s *Service) resumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int, preserveGitHubToken bool) (ResumeAgentSessionOutput, error) {
+type resumeTaskContextOptions struct {
+	PreserveGitHubToken           bool
+	PreservePrivilegedMCPProfiles bool
+}
+
+func (s *Service) resumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int, opts resumeTaskContextOptions) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
 	if err != nil {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("get agent session: %w", err)
@@ -784,7 +793,7 @@ func (s *Service) resumeAgentSession(ctx context.Context, sessionID, prompt stri
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
 
-	skills, mcpProfiles, env, err := s.resumeTaskContext(ctx, sessionID, preserveGitHubToken)
+	skills, mcpProfiles, env, err := s.resumeTaskContext(ctx, sessionID, opts)
 	if err != nil {
 		return ResumeAgentSessionOutput{}, err
 	}
@@ -867,7 +876,7 @@ func (s *Service) resumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}, nil
 }
 
-func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, preserveGitHubToken bool) (json.RawMessage, json.RawMessage, json.RawMessage, error) {
+func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, opts resumeTaskContextOptions) (json.RawMessage, json.RawMessage, json.RawMessage, error) {
 	emptySkills := mustMarshalJSON([]string{})
 	emptyMCPProfiles := mustMarshalJSON([]string{})
 	emptyEnv := mustMarshalJSON(map[string]string{})
@@ -890,7 +899,7 @@ func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, prese
 		envMap = map[string]string{}
 	}
 	delete(envMap, injectedGitHubTokenEnv)
-	if preserveGitHubToken {
+	if opts.PreserveGitHubToken {
 		if envMap[gitHubTokenAllowedEnv] == "true" && githubTokenContextComplete(envMap) {
 			if strings.TrimSpace(envMap["GITHUB_TOKEN"]) == "" {
 				envMap["GITHUB_TOKEN"] = "[redacted]"
@@ -908,13 +917,22 @@ func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, prese
 	} else {
 		delete(envMap, gitHubTokenAllowedEnv)
 		delete(envMap, gitHubReadTokenAllowedEnv)
+	}
+	if !opts.PreservePrivilegedMCPProfiles {
 		delete(envMap, mcpProfilePrivilegedEnv)
 	}
 	env, err := json.Marshal(envMap)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("marshal resume env: %w", err)
 	}
-	return nonEmptyRawJSON(sourceTask.Skills, emptySkills), nonEmptyRawJSON(sourceTask.McpProfiles, emptyMCPProfiles), env, nil
+	mcpProfiles := nonEmptyRawJSON(sourceTask.McpProfiles, emptyMCPProfiles)
+	if !opts.PreservePrivilegedMCPProfiles {
+		mcpProfiles, err = s.filterPrivilegedMCPProfilesForResume(ctx, sourceTask, mcpProfiles)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	return nonEmptyRawJSON(sourceTask.Skills, emptySkills), mcpProfiles, env, nil
 }
 
 func nonEmptyRawJSON(value json.RawMessage, fallback json.RawMessage) json.RawMessage {
@@ -922,6 +940,35 @@ func nonEmptyRawJSON(value json.RawMessage, fallback json.RawMessage) json.RawMe
 		return fallback
 	}
 	return value
+}
+
+func (s *Service) filterPrivilegedMCPProfilesForResume(ctx context.Context, sourceTask repository.ChetterTask, mcpProfiles json.RawMessage) (json.RawMessage, error) {
+	names := nonEmptyStrings(parseJSON[[]string](mcpProfiles, "task:"+sourceTask.ID+" mcp_profiles"))
+	if len(names) == 0 {
+		return mustMarshalJSON([]string{}), nil
+	}
+	groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeMCPProfile, names, sourceTask.TeamID.String, sourceTask.GitUrl.String)
+	if err != nil {
+		return nil, fmt.Errorf("filter resume mcp profiles: %w", err)
+	}
+	filtered := make([]string, 0, len(names))
+	for _, name := range names {
+		rows := groups[name]
+		if len(rows) == 0 {
+			filtered = append(filtered, name)
+			continue
+		}
+		profile, err := definitions.ParseMCPProfileYAML(rows[0].Content)
+		if err != nil || mcpProfileRequiresPrivilegedAccess(profile) {
+			continue
+		}
+		filtered = append(filtered, name)
+	}
+	data, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, fmt.Errorf("marshal resume mcp_profiles: %w", err)
+	}
+	return data, nil
 }
 
 // ResumeSessionForPR checks if a paused Chetter-authored session exists for a PR
@@ -953,7 +1000,9 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 		prNumber, repo,
 	)
 
-	_, err = s.resumeAgentSession(ctx, session.ID, prompt, 0, true)
+	_, err = s.resumeAgentSession(ctx, session.ID, prompt, 0, resumeTaskContextOptions{
+		PreserveGitHubToken: true,
+	})
 	if err != nil {
 		return fmt.Errorf("resume session %s: %w", session.ID, err)
 	}

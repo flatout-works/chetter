@@ -163,7 +163,7 @@ Implemented today:
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
 - Read access via `chetter_get_model_catalog`, `chetter_list_definitions`, and `chetter_get_definition`.
-- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup; profiles with auth headers are limited to admin/global-trigger use.
+- Task and trigger `mcp_profiles` attachment. Selected profiles are rendered into harness-native MCP config before agent startup; profiles with auth headers are limited to admin/global-trigger use and cannot declare `tool_allowlist` because the bearer credential grants full remote MCP authority.
 
 Planned next:
 

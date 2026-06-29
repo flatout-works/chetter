@@ -177,8 +177,11 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 	if profile.Name != "chetter-orchestration" {
 		t.Fatalf("profile name = %q", profile.Name)
 	}
-	if !containsString(profile.ToolAllowlist, "chetter_submit_task") || !containsString(profile.ToolAllowlist, "chetter_pr_review") {
-		t.Fatalf("example profile is missing orchestration tools: %#v", profile.ToolAllowlist)
+	if profile.Headers["Authorization"] == "" {
+		t.Fatalf("example profile is missing Authorization header: %#v", profile.Headers)
+	}
+	if len(profile.ToolAllowlist) != 0 {
+		t.Fatalf("credentialed example profile must not declare tool_allowlist: %#v", profile.ToolAllowlist)
 	}
 
 	triggerData, err := os.ReadFile(filepath.Join(root, "triggers", "chetter-pr-review-orchestrator.yaml"))

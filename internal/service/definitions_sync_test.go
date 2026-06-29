@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -182,6 +183,57 @@ func TestSyncDefinitionsRejectsInvalidMCPProfile(t *testing.T) {
 	}
 	if !strings.Contains(runs[0].Error.String, "mcp-profiles/chetter.yaml") {
 		t.Fatalf("sync run error = %q, want profile path", runs[0].Error.String)
+	}
+}
+
+func TestSyncDefinitionsRejectsCredentialedAllowlistedMCPProfile(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	repoDir := createDefinitionsRepo(t)
+	writeRepoFile(t, repoDir, "mcp-profiles/chetter-orchestration.yaml", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\ntool_allowlist:\n  - chetter_submit_task\n")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "add unsafe profile allowlist")
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	_, err := svc.SyncDefinitions(context.Background())
+	if err == nil {
+		t.Fatal("expected sync to reject credentialed allowlisted mcp profile")
+	}
+	if !strings.Contains(err.Error(), "combines tool_allowlist with credentials") {
+		t.Fatalf("sync error = %q, want credentialed allowlist error", err)
+	}
+}
+
+func TestSyncDefinitionsAcceptsExampleConfigRepo(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	exampleDir := filepath.Join(repoRootForTest(t), "examples", "config-repo")
+	repoDir := t.TempDir()
+	copyTree(t, exampleDir, repoDir)
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "checkout", "-b", "main")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+	runGit(t, repoDir, "config", "user.name", "Test User")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "example config")
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	if _, err := svc.SyncDefinitions(context.Background()); err != nil {
+		t.Fatalf("sync example config repo: %v", err)
+	}
+	_, out, err := svc.getDefinitionTool(ctxWithAdmin(context.Background()), nil, GetDefinitionInput{
+		DefinitionType: definitions.DefinitionTypeMCPProfile,
+		Name:           "chetter-orchestration",
+	})
+	if err != nil {
+		t.Fatalf("get example mcp profile: %v", err)
+	}
+	profile, err := definitions.ParseMCPProfileYAML(out.Definition.Content)
+	if err != nil {
+		t.Fatalf("parse example mcp profile: %v", err)
+	}
+	if len(profile.ToolAllowlist) != 0 {
+		t.Fatalf("example credentialed profile tool_allowlist = %#v, want none", profile.ToolAllowlist)
 	}
 }
 
@@ -426,5 +478,41 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, string(out))
+	}
+}
+
+func repoRootForTest(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	return filepath.Clean(filepath.Join(wd, "..", ".."))
+}
+
+func copyTree(t *testing.T, srcRoot, dstRoot string) {
+	t.Helper()
+	if err := filepath.WalkDir(srcRoot, func(src string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(srcRoot, src)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		dst := filepath.Join(dstRoot, rel)
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0755)
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dst, data, 0644)
+	}); err != nil {
+		t.Fatalf("copy %s to %s: %v", srcRoot, dstRoot, err)
 	}
 }

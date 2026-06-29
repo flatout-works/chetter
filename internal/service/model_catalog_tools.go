@@ -753,6 +753,10 @@ func validateMCPProfileDefsForSync(defs []definitions.Definition) (map[string]st
 			problems = append(problems, fmt.Sprintf("%s: profile name %q does not match definition name %q", def.Path, profile.Name, def.Name))
 			continue
 		}
+		if mcpProfileRequiresPrivilegedAccess(profile) && len(nonEmptyStrings(profile.ToolAllowlist)) > 0 {
+			problems = append(problems, fmt.Sprintf("%s: profile %q combines tool_allowlist with credentials, which cannot be enforced without exposing unrestricted MCP credentials", def.Path, profile.Name))
+			continue
+		}
 		if _, exists := profiles[profile.Name]; exists {
 			problems = append(problems, fmt.Sprintf("%s: duplicate mcp profile name %q", def.Path, profile.Name))
 			continue

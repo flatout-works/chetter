@@ -161,7 +161,7 @@ Chetter can also run a definitions-driven multi-agent review workflow. The examp
 - `mcp-profiles/chetter-orchestration.yaml`
 - `triggers/chetter-pr-review-orchestrator.yaml`
 
-The trigger starts one orchestrator task for a PR. The orchestrator uses the attached `chetter-orchestration` MCP profile to submit a standard review task and an adversarial review task without GitHub write inheritance, waits for both to finish, exports their transcripts, and starts a synthesizer task. The synthesizer verifies the PR head SHA and posts one final PR review with `chetter_pr_review`.
+The trigger starts one orchestrator task for a PR. The orchestrator uses the attached `chetter-orchestration` MCP profile to submit a standard review task and an adversarial review task without GitHub write inheritance, waits for both to finish, exports their transcripts, and starts a synthesizer task. That profile carries the full Chetter MCP bearer authority for the orchestration task, so use it only in trusted self-hosted deployments until scoped MCP tokens or proxy enforcement exist. The synthesizer verifies the PR head SHA and posts one final PR review with `chetter_pr_review`.
 
 The review task environment includes stable PR context:
 

@@ -48,10 +48,6 @@ url: http://chetter-mcp:8080/mcp
 auth:
   type: bearer
   token: ${env:CHETTER_MCP_AUTH_TOKEN}
-tool_allowlist:
-  - chetter_submit_task
-  - chetter_task_status
-  - chetter_task_export
 ```
 
 ```yaml
@@ -60,7 +56,7 @@ mcp_profiles:
   - chetter-orchestration
 ```
 
-Do not commit literal secrets in profile definitions. `${env:...}` values are resolved by the runner during config generation. Using the full Chetter admin MCP token is intended for trusted self-hosted deployments until scoped MCP tokens or proxy enforcement are added.
+Do not commit literal secrets in profile definitions. `${env:...}` values are resolved by the runner during config generation. Using the full Chetter admin MCP token grants the full MCP tool surface and is intended only for trusted self-hosted deployments until scoped MCP tokens or proxy enforcement are added. `tool_allowlist` is only valid for profiles without credentials.
 
 ## Repository Layout
 

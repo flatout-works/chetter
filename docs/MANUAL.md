@@ -642,10 +642,6 @@ url: http://chetter-mcp:8080/mcp
 auth:
   type: bearer
   token: ${env:CHETTER_MCP_AUTH_TOKEN}
-tool_allowlist:
-  - chetter_submit_task
-  - chetter_task_status
-  - chetter_task_export
 ```
 
 Task or trigger attachment:
@@ -655,7 +651,7 @@ mcp_profiles:
   - chetter-orchestration
 ```
 
-Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config. Profiles with auth headers are admin/global-trigger only until scoped MCP tokens or proxy enforcement exist.
+Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config. Profiles with auth headers are admin/global-trigger only and grant the full remote MCP authority until scoped MCP tokens or proxy enforcement exist. `tool_allowlist` is only valid for profiles without credentials.
 
 Trigger ownership should remain explicit:
 

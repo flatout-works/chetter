@@ -1297,11 +1297,20 @@ func TestResumeSessionForPRFindsPRReviewArtifact(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	q := repository.New(tdb.DB)
+	seedMCPProfile(t, tdb.DB, "chetter-orchestration", "name: chetter-orchestration\nurl: http://chetter-mcp:8080/mcp\nauth:\n  type: bearer\n  token: ${env:CHETTER_MCP_AUTH_TOKEN}\n")
+	seedMCPProfile(t, tdb.DB, "public-tools", "name: public-tools\nurl: http://public-tools:8080/mcp\n")
 
-	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+	rec, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
 		Prompt:      "create a PR",
 		AgentImage:  "runner:latest",
 		SessionMode: "resumable",
+		MCPProfiles: []string{"chetter-orchestration", "public-tools"},
+		Env: map[string]string{
+			"GITHUB_TOKEN": "caller-token",
+			"GITHUB_REPO":  "flatout-works/chetter",
+			"PR_NUMBER":    "123",
+		},
+		AllowGitHubToken: true,
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
@@ -1355,6 +1364,37 @@ func TestResumeSessionForPRFindsPRReviewArtifact(t *testing.T) {
 	}
 	if session.Status != "resuming" {
 		t.Fatalf("session status = %s, want resuming", session.Status)
+	}
+	runs, err := q.ListSessionRunsBySession(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("list session runs: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("session runs = %d, want original and resume: %#v", len(runs), runs)
+	}
+	resumeTask, err := q.GetTaskByID(ctx, runs[1].TaskID)
+	if err != nil {
+		t.Fatalf("get resume task: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(resumeTask.Env, &env); err != nil {
+		t.Fatalf("unmarshal resume env: %v", err)
+	}
+	if env[gitHubTokenAllowedEnv] != "true" {
+		t.Fatalf("resume should preserve github token authorization: %#v", env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("resume GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+	if _, ok := env[mcpProfilePrivilegedEnv]; ok {
+		t.Fatalf("PR feedback resume preserved privileged mcp marker: %#v", env)
+	}
+	var profiles []string
+	if err := json.Unmarshal(resumeTask.McpProfiles, &profiles); err != nil {
+		t.Fatalf("unmarshal resume mcp_profiles: %v", err)
+	}
+	if len(profiles) != 1 || profiles[0] != "public-tools" {
+		t.Fatalf("resume mcp_profiles = %#v, want only public-tools", profiles)
 	}
 }
 
