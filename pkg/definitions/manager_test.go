@@ -209,15 +209,22 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 	orchestrator := string(orchestratorData)
 	childSection := sectionBetween(orchestrator, "3. Submit two child tasks", "4. Poll both child tasks")
 	childEnvLine := lineContaining(childSection, "environment values")
-	if strings.Contains(childEnvLine, "CHETTER_PARENT_TASK_ID") || strings.Contains(childEnvLine, "GITHUB_TOKEN") {
-		t.Fatalf("reviewer child env line must not inherit GitHub write auth:\n%s", childEnvLine)
+	if !strings.Contains(childEnvLine, "CHETTER_PARENT_TASK_ID") || !strings.Contains(childEnvLine, "CHETTER_GITHUB_AUTH_MODE") {
+		t.Fatalf("reviewer child env line must include parent read auth fields:\n%s", childEnvLine)
 	}
-	if !strings.Contains(childSection, "no `GITHUB_TOKEN` and no `CHETTER_PARENT_TASK_ID`") {
-		t.Fatalf("reviewer child section should explicitly forbid GitHub write inheritance:\n%s", childSection)
+	if strings.Contains(childEnvLine, "GITHUB_TOKEN") {
+		t.Fatalf("reviewer child env line must not pass literal GitHub tokens:\n%s", childEnvLine)
+	}
+	if !strings.Contains(childSection, "`CHETTER_GITHUB_AUTH_MODE` must be set to `read`") ||
+		!strings.Contains(childSection, "must not inherit GitHub write authorization") {
+		t.Fatalf("reviewer child section should require read-only GitHub inheritance:\n%s", childSection)
 	}
 	synthSection := sectionBetween(orchestrator, "6. Submit the synthesizer task", "7. Poll the synthesizer")
 	if !strings.Contains(synthSection, "CHETTER_PARENT_TASK_ID") {
 		t.Fatalf("synthesizer section should keep parent task authorization:\n%s", synthSection)
+	}
+	if !strings.Contains(synthSection, "`CHETTER_GITHUB_AUTH_MODE` must be set to `write`") {
+		t.Fatalf("synthesizer section should request write-mode GitHub auth:\n%s", synthSection)
 	}
 }
 

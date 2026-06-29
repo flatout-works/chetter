@@ -48,6 +48,7 @@ type SubmitTaskRequest struct {
 
 	DefinitionRepo             string
 	AllowGitHubToken           bool
+	AllowGitHubReadToken       bool
 	AllowPrivilegedMCPProfiles bool
 }
 
@@ -80,20 +81,22 @@ type RecordArtifactParams struct {
 }
 
 const (
-	defaultMaxMemoryMB       = 4096
-	defaultMaxCPU            = 2
-	triggerRunTimeout        = 30 * time.Second
-	eventHandlerTimeout      = 10 * time.Second
-	reaperInterval           = 30 * time.Second
-	definitionsSyncInterval  = 5 * time.Minute
-	definitionsSyncTimeout   = 2 * time.Minute
-	reaperGrace              = 120 * time.Second
-	reaperHealthMaxEventSec  = 120
-	runnerPresenceMaxSec     = 60
-	gitHubTokenAllowedEnv    = "__chetter_github_auth_allowed"
-	gitHubTokenParentTaskEnv = "CHETTER_PARENT_TASK_ID"
-	definitionRepoEnv        = "__chetter_definition_repo"
-	mcpProfilePrivilegedEnv  = "__chetter_mcp_profile_privileged_allowed"
+	defaultMaxMemoryMB        = 4096
+	defaultMaxCPU             = 2
+	triggerRunTimeout         = 30 * time.Second
+	eventHandlerTimeout       = 10 * time.Second
+	reaperInterval            = 30 * time.Second
+	definitionsSyncInterval   = 5 * time.Minute
+	definitionsSyncTimeout    = 2 * time.Minute
+	reaperGrace               = 120 * time.Second
+	reaperHealthMaxEventSec   = 120
+	runnerPresenceMaxSec      = 60
+	gitHubTokenAllowedEnv     = "__chetter_github_auth_allowed"
+	gitHubReadTokenAllowedEnv = "__chetter_github_read_auth_allowed"
+	gitHubTokenParentTaskEnv  = "CHETTER_PARENT_TASK_ID"
+	gitHubAuthModeEnv         = "CHETTER_GITHUB_AUTH_MODE"
+	definitionRepoEnv         = "__chetter_definition_repo"
+	mcpProfilePrivilegedEnv   = "__chetter_mcp_profile_privileged_allowed"
 )
 
 var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
@@ -415,25 +418,38 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 
 	taskEnv := sanitizeTaskEnv(in.Env)
 	delete(taskEnv, gitHubTokenAllowedEnv)
+	delete(taskEnv, gitHubReadTokenAllowedEnv)
 	delete(taskEnv, injectedGitHubTokenEnv)
 	delete(taskEnv, definitionRepoEnv)
 	delete(taskEnv, mcpProfilePrivilegedEnv)
 	definitionRepo := strings.TrimSpace(in.DefinitionRepo)
 	allowGitHubToken := in.AllowGitHubToken
-	if !allowGitHubToken && strings.TrimSpace(taskEnv[gitHubTokenParentTaskEnv]) != "" {
+	allowGitHubReadToken := in.AllowGitHubReadToken
+	gitHubAuthMode := strings.TrimSpace(taskEnv[gitHubAuthModeEnv])
+	delete(taskEnv, gitHubAuthModeEnv)
+	if !allowGitHubToken && !allowGitHubReadToken && strings.TrimSpace(taskEnv[gitHubTokenParentTaskEnv]) != "" {
 		if err := s.authorizeGitHubTokenInheritance(ctx, taskEnv); err != nil {
 			return store.TaskRecord{}, err
 		}
-		allowGitHubToken = true
+		mode, err := normalizeGitHubAuthMode(gitHubAuthMode)
+		if err != nil {
+			return store.TaskRecord{}, err
+		}
+		switch mode {
+		case "read":
+			allowGitHubReadToken = true
+		default:
+			allowGitHubToken = true
+		}
 	}
-	if allowGitHubToken {
+	if allowGitHubToken || allowGitHubReadToken {
 		repoName, ok := canonicalRepoName(taskEnv["GITHUB_REPO"])
 		if !ok {
 			return store.TaskRecord{}, fmt.Errorf("GITHUB_REPO must resolve to owner/repo for GitHub token authorization")
 		}
 		taskEnv["GITHUB_REPO"] = repoName
 	}
-	if definitionRepo == "" && allowGitHubToken {
+	if definitionRepo == "" && (allowGitHubToken || allowGitHubReadToken) {
 		definitionRepo = strings.TrimSpace(taskEnv["GITHUB_REPO"])
 	}
 	if definitionRepo != "" {
@@ -473,6 +489,11 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	}
 	if allowGitHubToken {
 		taskEnv[gitHubTokenAllowedEnv] = "true"
+		if githubTokenContextComplete(taskEnv) && strings.TrimSpace(taskEnv["GITHUB_TOKEN"]) == "" {
+			taskEnv["GITHUB_TOKEN"] = "[redacted]"
+		}
+	} else if allowGitHubReadToken {
+		taskEnv[gitHubReadTokenAllowedEnv] = "true"
 		if githubTokenContextComplete(taskEnv) && strings.TrimSpace(taskEnv["GITHUB_TOKEN"]) == "" {
 			taskEnv["GITHUB_TOKEN"] = "[redacted]"
 		}
@@ -645,6 +666,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		env = map[string]string{}
 	}
 	allowGitHubToken := isAdmin(ctx) && env[gitHubTokenAllowedEnv] == "true" && githubTokenContextComplete(env)
+	allowGitHubReadToken := isAdmin(ctx) && !allowGitHubToken && env[gitHubReadTokenAllowedEnv] == "true" && githubTokenContextComplete(env)
 	env["__recover_from"] = taskID
 
 	recoveryFileName := fmt.Sprintf("chetter_recovery_%s.md", taskID)
@@ -670,8 +692,9 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		Env:         env,
 		TimeoutSec:  int(orig.TimeoutSec),
 
-		DefinitionRepo:   strings.TrimSpace(env[definitionRepoEnv]),
-		AllowGitHubToken: allowGitHubToken,
+		DefinitionRepo:       strings.TrimSpace(env[definitionRepoEnv]),
+		AllowGitHubToken:     allowGitHubToken,
+		AllowGitHubReadToken: allowGitHubReadToken,
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -874,8 +897,16 @@ func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, prese
 		} else {
 			delete(envMap, gitHubTokenAllowedEnv)
 		}
+		if envMap[gitHubReadTokenAllowedEnv] == "true" && githubTokenContextComplete(envMap) {
+			if strings.TrimSpace(envMap["GITHUB_TOKEN"]) == "" {
+				envMap["GITHUB_TOKEN"] = "[redacted]"
+			}
+		} else {
+			delete(envMap, gitHubReadTokenAllowedEnv)
+		}
 	} else {
 		delete(envMap, gitHubTokenAllowedEnv)
+		delete(envMap, gitHubReadTokenAllowedEnv)
 		delete(envMap, mcpProfilePrivilegedEnv)
 	}
 	env, err := json.Marshal(envMap)
@@ -1035,6 +1066,18 @@ func sanitizeTaskEnv(env map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func normalizeGitHubAuthMode(value string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "", "write":
+		return "write", nil
+	case "read":
+		return "read", nil
+	default:
+		return "", fmt.Errorf("%s must be read or write", gitHubAuthModeEnv)
+	}
 }
 
 func (s *Service) authorizeGitHubTokenInheritance(ctx context.Context, childEnv map[string]string) error {

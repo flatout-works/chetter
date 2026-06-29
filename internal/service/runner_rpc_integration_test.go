@@ -75,8 +75,10 @@ func insertDefinition(t *testing.T, q *repository.Queries, sourceID, defType, na
 }
 
 type fakeGitHubActions struct {
-	token string
-	repos *[]string
+	token     string
+	readToken string
+	repos     *[]string
+	readRepos *[]string
 }
 
 func (f fakeGitHubActions) GitHubClient() *webhook.Client {
@@ -90,6 +92,16 @@ func (f fakeGitHubActions) GitHubInstallationToken() (string, error) {
 func (f fakeGitHubActions) GitHubInstallationTokenForRepository(repo string) (string, error) {
 	if f.repos != nil {
 		*f.repos = append(*f.repos, repo)
+	}
+	return f.token, nil
+}
+
+func (f fakeGitHubActions) GitHubReadInstallationTokenForRepository(repo string) (string, error) {
+	if f.readRepos != nil {
+		*f.readRepos = append(*f.readRepos, repo)
+	}
+	if f.readToken != "" {
+		return f.readToken, nil
 	}
 	return f.token, nil
 }
@@ -255,6 +267,64 @@ func TestRPCClaimTaskCanonicalizesGitHubRepoBeforeTokenMint(t *testing.T) {
 	}
 }
 
+func TestRPCClaimTaskInjectsReadOnlyGitHubToken(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var writeRepos, readRepos []string
+	svc.WithGitHubActions(fakeGitHubActions{
+		token:     "ghs_write_token",
+		readToken: "ghs_read_token",
+		repos:     &writeRepos,
+		readRepos: &readRepos,
+	})
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID:                "task_pr_review_readonly",
+		Prompt:            "review",
+		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
+		Skills:            json.RawMessage(`[]`),
+		McpProfiles:       json.RawMessage(`[]`),
+		Env:               json.RawMessage(`{"GITHUB_TOKEN":"[redacted]","GITHUB_REPO":"https://github.com/flatout-works/chetter.git","PR_NUMBER":"123","__chetter_github_read_auth_allowed":"true"}`),
+		TimeoutSec:        600,
+		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
+		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("insert task: %v", err)
+	}
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_read_token" {
+		t.Fatalf("injected token = %q, want ghs_read_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubReadTokenAllowedEnv]; ok {
+		t.Fatalf("github read marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("github write marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env["GITHUB_REPO"]; got != "flatout-works/chetter" {
+		t.Fatalf("runner GITHUB_REPO = %q, want flatout-works/chetter", got)
+	}
+	if len(writeRepos) != 0 {
+		t.Fatalf("write token repos = %#v, want none", writeRepos)
+	}
+	if len(readRepos) != 1 || readRepos[0] != "flatout-works/chetter" {
+		t.Fatalf("read token repos = %#v, want flatout-works/chetter", readRepos)
+	}
+}
+
 func TestRPCClaimTaskDoesNotInjectGitHubTokenWithoutServerMarker(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
@@ -319,6 +389,10 @@ func TestValidateGitHubRPCRepoScope(t *testing.T) {
 		"GITHUB_REPO":         "flatout-works/chetter",
 		gitHubTokenAllowedEnv: "true",
 	})
+	insertTask("task_rpc_readonly", map[string]string{
+		"GITHUB_REPO":             "flatout-works/chetter",
+		gitHubReadTokenAllowedEnv: "true",
+	})
 	insertTask("task_rpc_untrusted_env", map[string]string{
 		"GITHUB_REPO": "flatout-works/chetter",
 	})
@@ -328,6 +402,9 @@ func TestValidateGitHubRPCRepoScope(t *testing.T) {
 	}
 	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_authorized", "flatout-works/other"); err == nil || !strings.Contains(err.Error(), "does not match task repo") {
 		t.Fatalf("repo mismatch error = %v, want task repo mismatch", err)
+	}
+	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_readonly", "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("readonly scope error = %v, want not authorized", err)
 	}
 	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_untrusted_env", "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "not authorized") {
 		t.Fatalf("unauthorized scope error = %v, want not authorized", err)

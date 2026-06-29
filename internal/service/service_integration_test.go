@@ -138,12 +138,13 @@ func TestSubmitTaskStripsPrivateGitHubTokenMarkers(t *testing.T) {
 		Prompt:     "x",
 		AgentImage: "runner:latest",
 		Env: map[string]string{
-			"GITHUB_TOKEN":         "caller-token",
-			"GITHUB_REPO":          "flatout-works/chetter",
-			"PR_NUMBER":            "123",
-			gitHubTokenAllowedEnv:  "true",
-			injectedGitHubTokenEnv: "ghs_fake",
-			definitionRepoEnv:      "flatout-works/private",
+			"GITHUB_TOKEN":            "caller-token",
+			"GITHUB_REPO":             "flatout-works/chetter",
+			"PR_NUMBER":               "123",
+			gitHubTokenAllowedEnv:     "true",
+			gitHubReadTokenAllowedEnv: "true",
+			injectedGitHubTokenEnv:    "ghs_fake",
+			definitionRepoEnv:         "flatout-works/private",
 		},
 	})
 	if err != nil {
@@ -162,6 +163,9 @@ func TestSubmitTaskStripsPrivateGitHubTokenMarkers(t *testing.T) {
 	}
 	if _, ok := env[gitHubTokenAllowedEnv]; ok {
 		t.Fatalf("public task env kept private marker: %#v", env)
+	}
+	if _, ok := env[gitHubReadTokenAllowedEnv]; ok {
+		t.Fatalf("public task env kept private read marker: %#v", env)
 	}
 	if _, ok := env[injectedGitHubTokenEnv]; ok {
 		t.Fatalf("public task env kept injected token marker: %#v", env)
@@ -301,6 +305,96 @@ func TestSubmitTaskInheritsGitHubTokenFromAuthorizedParentTask(t *testing.T) {
 	}
 	if env[definitionRepoEnv] != "flatout-works/chetter" {
 		t.Fatalf("definition repo marker = %q, want child GITHUB_REPO", env[definitionRepoEnv])
+	}
+}
+
+func TestSubmitTaskInheritsReadOnlyGitHubTokenFromAuthorizedParentTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "parent",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	child, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":            "https://github.com/flatout-works/chetter.git",
+			"PR_NUMBER":              "123",
+			gitHubTokenParentTaskEnv: parent.ID,
+			gitHubAuthModeEnv:        "read",
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask child: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if _, ok := env[gitHubTokenAllowedEnv]; ok {
+		t.Fatalf("read-only child received write marker: %#v", env)
+	}
+	if env[gitHubReadTokenAllowedEnv] != "true" {
+		t.Fatalf("github read token marker = %q, want true; env=%#v", env[gitHubReadTokenAllowedEnv], env)
+	}
+	if env["GITHUB_TOKEN"] != "[redacted]" {
+		t.Fatalf("GITHUB_TOKEN = %q, want redacted placeholder", env["GITHUB_TOKEN"])
+	}
+	if env["GITHUB_REPO"] != "flatout-works/chetter" {
+		t.Fatalf("GITHUB_REPO = %q, want flatout-works/chetter", env["GITHUB_REPO"])
+	}
+	if _, ok := env[gitHubAuthModeEnv]; ok {
+		t.Fatalf("public auth mode should not be persisted: %#v", env)
+	}
+	if env[definitionRepoEnv] != "flatout-works/chetter" {
+		t.Fatalf("definition repo marker = %q, want child GITHUB_REPO", env[definitionRepoEnv])
+	}
+	if err := validateGitHubToolRepoScope(row, "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("read-only child write scope error = %v, want not authorized", err)
+	}
+}
+
+func TestSubmitTaskRejectsUnknownGitHubAuthMode(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	parent, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:           "parent",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask parent: %v", err)
+	}
+
+	_, err = svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "child",
+		AgentImage: "runner:latest",
+		Env: map[string]string{
+			"GITHUB_REPO":            "flatout-works/chetter",
+			"PR_NUMBER":              "123",
+			gitHubTokenParentTaskEnv: parent.ID,
+			gitHubAuthModeEnv:        "admin",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid GitHub auth mode to fail")
+	}
+	if !strings.Contains(err.Error(), gitHubAuthModeEnv+" must be read or write") {
+		t.Fatalf("SubmitTask error = %q, want auth mode validation", err)
 	}
 }
 

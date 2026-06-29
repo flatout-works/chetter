@@ -18,6 +18,7 @@ type GitHubActionService interface {
 	GitHubClient() *webhook.Client
 	GitHubInstallationToken() (string, error)
 	GitHubInstallationTokenForRepository(repo string) (string, error)
+	GitHubReadInstallationTokenForRepository(repo string) (string, error)
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 	LogAuditEvent(ctx context.Context, params AuditEventParams) error
 	GetTaskSignature(ctx context.Context, taskID string) (string, error)

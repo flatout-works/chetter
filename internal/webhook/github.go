@@ -115,6 +115,31 @@ func (c *Client) InstallationTokenForRepository(repo string) (string, error) {
 	return token, err
 }
 
+// InstallationReadTokenForRepository returns an uncached installation token
+// scoped to one repository and narrowed to read-only repository inspection.
+func (c *Client) InstallationReadTokenForRepository(repo string) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("GitHub client is not configured")
+	}
+	repoName, err := githubRepositoryName(repo)
+	if err != nil {
+		return "", err
+	}
+	token, _, err := fetchInstallationToken(c, repositoryReadTokenRequest(repoName))
+	return token, err
+}
+
+func repositoryReadTokenRequest(repoName string) map[string]any {
+	return map[string]any{
+		"repositories": []string{repoName},
+		"permissions": map[string]string{
+			"contents":      "read",
+			"issues":        "read",
+			"pull_requests": "read",
+		},
+	}
+}
+
 func githubRepositoryName(repo string) (string, error) {
 	value := strings.TrimSpace(repo)
 	if value == "" {
