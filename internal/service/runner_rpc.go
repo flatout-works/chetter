@@ -166,7 +166,13 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			s.resolveTaskModel(ctx, protoTask)
-			s.resolveTaskDefinitions(ctx, protoTask, mcpProfileNames)
+			if len(mcpProfileNames) > 0 && !taskAllowsMCPProfiles(task) {
+				slog.Warn("task selected mcp_profiles without authorization", "taskID", task.ID, "profiles", mcpProfileNames)
+				protoTask.McpProfiles = invalidMCPProfiles(mcpProfileNames)
+				s.resolveTaskDefinitions(ctx, protoTask, nil)
+			} else {
+				s.resolveTaskDefinitions(ctx, protoTask, mcpProfileNames)
+			}
 			s.injectGitHubReadToken(ctx, protoTask, task)
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
@@ -1115,6 +1121,7 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	delete(env, gitHubReadAllowedEnv)
 	delete(env, injectedGitHubTokenEnv)
 	delete(env, injectedGitHubCloneTokenEnv)
+	delete(env, mcpProfilesAllowedEnv)
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		AgentImage:             task.AgentImage.String,
