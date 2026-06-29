@@ -166,6 +166,52 @@ func TestClaimTaskInjectsGitHubReadTokenWithoutForwardingMarkers(t *testing.T) {
 	}
 }
 
+func TestValidateRunnerGitHubWriteScope(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	mustEnv := func(values map[string]string) json.RawMessage {
+		t.Helper()
+		data, err := json.Marshal(values)
+		if err != nil {
+			t.Fatalf("marshal env: %v", err)
+		}
+		return data
+	}
+	insertPendingTaskWithEnv(t, q, "task_read", "read", "runner:latest", mustEnv(map[string]string{
+		"GITHUB_REPO":        "flatout-works/chetter",
+		"PR_NUMBER":          "126",
+		gitHubReadAllowedEnv: "true",
+	}))
+	insertPendingTaskWithEnv(t, q, "task_write_pr", "write", "runner:latest", mustEnv(map[string]string{
+		"GITHUB_REPO":         "flatout-works/chetter",
+		"PR_NUMBER":           "126",
+		gitHubTokenAllowedEnv: "true",
+	}))
+	insertPendingTaskWithEnv(t, q, "task_write_issue", "issue", "runner:latest", mustEnv(map[string]string{
+		"GITHUB_REPO":         "flatout-works/chetter",
+		"ISSUE_NUMBER":        "126",
+		gitHubTokenAllowedEnv: "true",
+	}))
+
+	if err := svc.validateRunnerGitHubWrite(ctx, "task_read", "flatout-works/chetter", 126, "pr"); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("read-only validation error = %v, want not authorized", err)
+	}
+	if err := svc.validateRunnerGitHubWrite(ctx, "task_write_pr", "flatout-works/other", 126, "pr"); err == nil || !strings.Contains(err.Error(), "does not match task repo") {
+		t.Fatalf("repo mismatch validation error = %v, want repo mismatch", err)
+	}
+	if err := svc.validateRunnerGitHubWrite(ctx, "task_write_issue", "flatout-works/chetter", 125, "issue_or_pr"); err == nil || !strings.Contains(err.Error(), "does not match task ISSUE_NUMBER") {
+		t.Fatalf("issue mismatch validation error = %v, want issue mismatch", err)
+	}
+	if err := svc.validateRunnerGitHubWrite(ctx, "task_write_issue", "flatout-works/chetter", 126, "pr"); err == nil || !strings.Contains(err.Error(), "requires task PR_NUMBER") {
+		t.Fatalf("issue-scoped PR validation error = %v, want PR_NUMBER requirement", err)
+	}
+	if err := svc.validateRunnerGitHubWrite(ctx, "task_write_pr", "flatout-works/chetter", 126, "pr"); err != nil {
+		t.Fatalf("write-scoped PR should validate: %v", err)
+	}
+}
+
 func TestRPCClaimTaskNoPendingReturnsEmpty(t *testing.T) {
 	svc, _, _, cleanup := newRPCTestService(t)
 	defer cleanup()
