@@ -671,6 +671,10 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if !resumeTask.CheckpointAfterSuccess {
 		t.Fatal("resume task should have checkpoint_after_success=true")
 	}
+	resumeMCPProfiles := parseJSON[[]string](resumeTask.McpProfiles, "resume task mcp_profiles")
+	if len(resumeMCPProfiles) != 0 {
+		t.Fatalf("resume task mcp_profiles = %#v, want empty", resumeMCPProfiles)
+	}
 
 	session, err = q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {

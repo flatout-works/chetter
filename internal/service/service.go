@@ -749,6 +749,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	skills := mustMarshalJSON([]string{})
+	mcpProfiles := mustMarshalJSON([]string{})
 	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
@@ -771,6 +772,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
