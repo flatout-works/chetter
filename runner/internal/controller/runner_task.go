@@ -150,7 +150,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := generateTaskHarnessConfig(h, wsDir, mcpURL, req, isLocal); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
 		return
 	}
@@ -206,6 +206,14 @@ func hostWorkspaceDir(containerPath string) string {
 		}
 	}
 	return containerPath
+}
+
+type taskHarnessConfigGenerator interface {
+	GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error
+}
+
+func generateTaskHarnessConfig(h taskHarnessConfigGenerator, wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error {
+	return h.GenerateConfig(wsDir, runnerMCPURL, "", "", req, isLocal)
 }
 
 func appendRunnerOwnedEnv(env []string, req task.TaskRequest) []string {

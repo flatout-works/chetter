@@ -96,6 +96,23 @@ func TestLoadDefaultsAreApplied(t *testing.T) {
 	}
 }
 
+func TestChetterMCPAuthTokenEnvDoesNotConfigureGlobalMCP(t *testing.T) {
+	t.Setenv("CHETTER_MCP_AUTH_TOKEN", "admin-token")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "minimal.yaml")
+	if err := os.WriteFile(path, []byte(`{}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ChetterMCP.AuthToken != "" {
+		t.Fatalf("ChetterMCP.AuthToken = %q, want empty", cfg.ChetterMCP.AuthToken)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, err := Load("/nonexistent/path/runner.yaml")
 	if err == nil {

@@ -137,6 +137,39 @@ func TestShouldForwardTaskEnvFiltersInternalChetterEnv(t *testing.T) {
 	}
 }
 
+type captureHarnessConfig struct {
+	chetterURL   string
+	chetterToken string
+	req          task.TaskRequest
+}
+
+func (h *captureHarnessConfig) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	h.chetterURL = chetterMCPURL
+	h.chetterToken = chetterMCPToken
+	h.req = req
+	return nil
+}
+
+func TestGenerateTaskHarnessConfigDoesNotPassGlobalChetterMCP(t *testing.T) {
+	h := &captureHarnessConfig{}
+	req := task.TaskRequest{
+		TaskID: "task_1",
+		MCPProfiles: []task.MCPProfile{{
+			Name: "chetter-orchestration",
+			URL:  "https://chetter.example.com/mcp",
+		}},
+	}
+	if err := generateTaskHarnessConfig(h, t.TempDir(), "http://runner.example/mcp", req, false); err != nil {
+		t.Fatalf("generateTaskHarnessConfig: %v", err)
+	}
+	if h.chetterURL != "" || h.chetterToken != "" {
+		t.Fatalf("legacy Chetter MCP was passed to harness: url=%q token=%q", h.chetterURL, h.chetterToken)
+	}
+	if len(h.req.MCPProfiles) != 1 || h.req.MCPProfiles[0].Name != "chetter-orchestration" {
+		t.Fatalf("explicit MCP profiles were not preserved: %#v", h.req.MCPProfiles)
+	}
+}
+
 func TestTruncateSummary(t *testing.T) {
 	if s := truncateSummary("short"); s != "short" {
 		t.Errorf("short text should not be truncated: %q", s)
