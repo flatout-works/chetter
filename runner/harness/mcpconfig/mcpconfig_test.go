@@ -110,6 +110,14 @@ func TestAddOpenCodeServersRejectsCredentialedToolAllowlist(t *testing.T) {
 				ToolAllowlist: []string{"allowed_tool"},
 			},
 		},
+		{
+			name: "opaque-path",
+			profile: task.MCPProfile{
+				Name:          "restricted",
+				URL:           "https://mcp.example.test/mcp/6f2d1c0a9b8e7d6c",
+				ToolAllowlist: []string{"allowed_tool"},
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

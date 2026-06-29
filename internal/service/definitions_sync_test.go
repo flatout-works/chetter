@@ -222,6 +222,24 @@ func TestSyncDefinitionsRejectsPathTokenAllowlistedMCPProfile(t *testing.T) {
 	}
 }
 
+func TestSyncDefinitionsRejectsOpaquePathAllowlistedMCPProfile(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	repoDir := createDefinitionsRepo(t)
+	writeRepoFile(t, repoDir, "mcp-profiles/hosted-tools.yaml", "name: hosted-tools\nurl: https://mcp.vendor.example/mcp/6f2d1c0a9b8e7d6c\ntool_allowlist:\n  - safe_tool\n")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "add opaque path profile")
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	_, err := svc.SyncDefinitions(context.Background())
+	if err == nil {
+		t.Fatal("expected sync to reject opaque-path allowlisted mcp profile")
+	}
+	if !strings.Contains(err.Error(), "combines tool_allowlist with credentials") {
+		t.Fatalf("sync error = %q, want credentialed allowlist error", err)
+	}
+}
+
 func TestSyncDefinitionsAcceptsExampleConfigRepo(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

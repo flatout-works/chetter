@@ -10,8 +10,10 @@
 # Real binary: /usr/local/bin/gh-real
 set -eu
 
+GH_REAL="${CHETTER_GH_REAL:-/usr/local/bin/gh-real}"
+
 if [ "${CHETTER_ALLOW_GH_WRITES:-}" = "1" ]; then
-  exec /usr/local/bin/gh-real "$@"
+  exec "$GH_REAL" "$@"
 fi
 
 _blocked() {
@@ -31,10 +33,43 @@ EOF
   exit 64
 }
 
-cmd="${1:-} ${2:-}"
+cmd1=""
+cmd2=""
+skip_next=0
+for arg in "$@"; do
+  if [ "$skip_next" = "1" ]; then
+    skip_next=0
+    continue
+  fi
+  case "$arg" in
+    --)
+      break
+      ;;
+    --repo|--hostname|--config-dir|--git-protocol|--editor|-R)
+      skip_next=1
+      continue
+      ;;
+    --repo=*|--hostname=*|--config-dir=*|--git-protocol=*|--editor=*|-R*)
+      continue
+      ;;
+    -*)
+      continue
+      ;;
+  esac
+  if [ -z "$cmd1" ]; then
+    cmd1="$arg"
+    continue
+  fi
+  if [ -z "$cmd2" ]; then
+    cmd2="$arg"
+    break
+  fi
+done
+
+cmd="$cmd1 $cmd2"
 case "$cmd" in
   "api"*) _blocked ;;
   "issue create"|"issue comment"|"pr create"|"pr review"|"pr comment") _blocked ;;
 esac
 
-exec /usr/local/bin/gh-real "$@"
+exec "$GH_REAL" "$@"

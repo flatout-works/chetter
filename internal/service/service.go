@@ -1351,138 +1351,59 @@ func mcpProfileRequiresPrivilegedAccess(profile definitions.MCPProfileDef) bool 
 }
 
 func mcpProfileURLCarriesCredentials(rawURL string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return true
+	}
+	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return false
+		return true
 	}
 	if parsed.User != nil {
 		return true
 	}
-	if pathCarriesCredentials(parsed.EscapedPath()) || pathCarriesCredentials(parsed.Path) {
+	if parsed.Scheme == "" || parsed.Host == "" {
 		return true
 	}
-	if urlValuesCarryCredentials(parsed.Query()) {
+	if parsed.RawQuery != "" || parsed.ForceQuery {
 		return true
 	}
 	fragment := parsed.RawFragment
 	if fragment == "" {
 		fragment = parsed.Fragment
 	}
-	return fragmentCarriesCredentials(fragment)
+	if strings.TrimSpace(fragment) != "" {
+		return true
+	}
+	return !publicMCPURLPath(parsed.Path)
 }
 
-func pathCarriesCredentials(pathValue string) bool {
+func publicMCPURLPath(pathValue string) bool {
 	pathValue = strings.TrimSpace(pathValue)
-	if pathValue == "" {
-		return false
+	if pathValue == "" || pathValue == "/" {
+		return true
 	}
 	if decoded, err := url.PathUnescape(pathValue); err == nil {
 		pathValue = decoded
 	}
-	segments := strings.FieldsFunc(pathValue, func(r rune) bool {
+	parts := strings.FieldsFunc(strings.ToLower(strings.Trim(pathValue, "/")), func(r rune) bool {
 		return r == '/' || r == '\\'
 	})
-	for i, segment := range segments {
-		segment = strings.TrimSpace(segment)
-		if segment == "" {
-			continue
-		}
-		if secretLookingPathToken(segment) {
-			return true
-		}
-		if secretLookingURLParam(segment) && followingPathSegmentLooksCredentialed(segments, i) {
-			return true
-		}
+	if len(parts) == 0 {
+		return true
 	}
-	return false
-}
-
-func followingPathSegmentLooksCredentialed(segments []string, idx int) bool {
-	for j := idx + 1; j < len(segments); j++ {
-		segment := strings.TrimSpace(segments[j])
-		if segment == "" {
-			continue
-		}
-		if secretLookingPathToken(segment) {
-			return true
-		}
-		if alphaNumericCount(segment) >= 6 {
-			return true
-		}
+	last := parts[len(parts)-1]
+	if last != "mcp" && last != "sse" {
 		return false
 	}
-	return false
-}
-
-func secretLookingPathToken(value string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	normalized = strings.NewReplacer("-", "_", ".", "_", ":", "_").Replace(normalized)
-	for _, prefix := range []string{
-		"tok_", "token_", "secret_", "bearer_", "api_key_", "apikey_", "key_",
-		"sk_", "jwt_", "sig_", "signature_", "auth_",
-	} {
-		if strings.HasPrefix(normalized, prefix) && alphaNumericCount(normalized) >= len(prefix)+6 {
-			return true
+	for _, part := range parts[:len(parts)-1] {
+		switch part {
+		case "api", "v1", "v2", "v3", "mcp":
+		default:
+			return false
 		}
 	}
-	return strings.HasPrefix(normalized, "eyj") && strings.Count(value, ".") >= 2
-}
-
-func alphaNumericCount(value string) int {
-	count := 0
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			count++
-		}
-	}
-	return count
-}
-
-func urlValuesCarryCredentials(values url.Values) bool {
-	for key, vals := range values {
-		if !secretLookingURLParam(key) {
-			continue
-		}
-		for _, val := range vals {
-			if strings.TrimSpace(val) != "" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func fragmentCarriesCredentials(fragment string) bool {
-	fragment = strings.TrimSpace(strings.TrimPrefix(fragment, "#"))
-	if fragment == "" {
-		return false
-	}
-	candidates := []string{fragment}
-	if idx := strings.LastIndex(fragment, "?"); idx >= 0 && idx+1 < len(fragment) {
-		candidates = append(candidates, fragment[idx+1:])
-	}
-	for _, candidate := range candidates {
-		values, err := url.ParseQuery(candidate)
-		if err == nil && urlValuesCarryCredentials(values) {
-			return true
-		}
-	}
-	return false
-}
-
-func secretLookingURLParam(key string) bool {
-	normalized := strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(strings.TrimSpace(key)))
-	return strings.Contains(normalized, "TOKEN") ||
-		strings.Contains(normalized, "SECRET") ||
-		strings.Contains(normalized, "PASSWORD") ||
-		strings.Contains(normalized, "AUTH") ||
-		strings.Contains(normalized, "API_KEY") ||
-		strings.Contains(normalized, "APIKEY") ||
-		normalized == "JWT" ||
-		normalized == "SIG" ||
-		normalized == "SIGNATURE" ||
-		normalized == "KEY" ||
-		strings.HasSuffix(normalized, "_KEY")
+	return true
 }
 
 // emptyTriggerConfig returns an empty JSON object as the trigger_config value
