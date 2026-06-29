@@ -203,6 +203,10 @@ func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListDefinitionsInput) (*mcp.CallToolResult, ListDefinitionsOutput, error) {
+	admin := isAdmin(ctx)
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !admin {
+		return nil, ListDefinitionsOutput{}, fmt.Errorf("admin access required for mcp_profile definitions")
+	}
 	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
 		Column1:        in.DefinitionType,
 		DefinitionType: in.DefinitionType,
@@ -214,6 +218,9 @@ func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 	}
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile && !admin {
+			continue
+		}
 		out = append(out, definitionToolRecord(def))
 	}
 	return nil, ListDefinitionsOutput{Definitions: out}, nil
@@ -225,6 +232,9 @@ func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest,
 	}
 	if in.Name == "" {
 		return nil, GetDefinitionOutput{}, fmt.Errorf("name is required")
+	}
+	if in.DefinitionType == definitions.DefinitionTypeMCPProfile && !isAdmin(ctx) {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("admin access required for mcp_profile definitions")
 	}
 	sourceID := in.SourceID
 	if sourceID == "" {
