@@ -449,6 +449,55 @@ func TestGenerateOpenCodeConfig_NoMCPBridgeWhenNotRequested(t *testing.T) {
 	}
 }
 
+func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testing.T) {
+	wsDir := t.TempDir()
+	events := make(chan *runnerv1.TaskEvent, 8)
+	fakeHarness := &recordingResumeHarness{}
+	r := &Runner{
+		cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{
+			URL:       "https://chetter.example.test/mcp",
+			AuthToken: "chetter-token",
+		}},
+		rpcClient: recordingRunnerRPCClient{events: events},
+	}
+	req := task.TaskRequest{
+		TaskID:                 "task-resume",
+		Prompt:                 "continue",
+		AgentImage:             "runner:latest",
+		ResumeWorkspacePath:    wsDir,
+		ResumeHarnessSessionID: "session-123",
+		MCPProfiles: []task.MCPProfile{{
+			Name: "review-tools",
+			URL:  "https://review-tools.example.test/mcp",
+		}},
+		Env: map[string]string{"GITHUB_REPO": "flatout-works/chetter"},
+	}
+
+	r.runDockerAgentResume(context.Background(), &task.TaskSession{TaskID: req.TaskID}, req, fakeHarness)
+
+	if fakeHarness.calls != 1 {
+		t.Fatalf("GenerateConfig calls = %d, want 1", fakeHarness.calls)
+	}
+	if fakeHarness.wsDir != wsDir {
+		t.Fatalf("GenerateConfig workspace = %q, want %q", fakeHarness.wsDir, wsDir)
+	}
+	if fakeHarness.runnerMCPURL == "" {
+		t.Fatal("GenerateConfig runner MCP URL is empty")
+	}
+	if fakeHarness.runnerMCPToken == "" {
+		t.Fatal("GenerateConfig runner MCP token is empty")
+	}
+	if fakeHarness.chetterMCPURL != "https://chetter.example.test/mcp" {
+		t.Fatalf("GenerateConfig chetter URL = %q", fakeHarness.chetterMCPURL)
+	}
+	if fakeHarness.chetterMCPToken != "chetter-token" {
+		t.Fatalf("GenerateConfig chetter token = %q", fakeHarness.chetterMCPToken)
+	}
+	if len(fakeHarness.req.MCPProfiles) != 1 || fakeHarness.req.MCPProfiles[0].Name != "review-tools" {
+		t.Fatalf("GenerateConfig MCP profiles = %#v, want preserved review-tools profile", fakeHarness.req.MCPProfiles)
+	}
+}
+
 func TestGenerateOpenCodeConfig_ValidatedByOpenCode(t *testing.T) {
 	if _, err := os.Stat("/home/gokr/.opencode/bin/opencode"); os.IsNotExist(err) {
 		t.Skip("opencode binary not found, skipping integration test")
@@ -1013,4 +1062,73 @@ func waitForTaskEvent(t *testing.T, events <-chan *runnerv1.TaskEvent, status st
 			t.Fatalf("timed out waiting for %s event", status)
 		}
 	}
+}
+
+type recordingResumeHarness struct {
+	calls           int
+	wsDir           string
+	runnerMCPURL    string
+	runnerMCPToken  string
+	chetterMCPURL   string
+	chetterMCPToken string
+	req             task.TaskRequest
+}
+
+func (h *recordingResumeHarness) Name() string { return "recording-resume" }
+
+func (h *recordingResumeHarness) GenerateConfig(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	h.calls++
+	h.wsDir = wsDir
+	h.runnerMCPURL = runnerMCPURL
+	h.runnerMCPToken = runnerMCPToken
+	h.chetterMCPURL = chetterMCPURL
+	h.chetterMCPToken = chetterMCPToken
+	h.req = req
+	return nil
+}
+
+func (h *recordingResumeHarness) ConfigFilePath(wsDir string) string {
+	return filepath.Join(wsDir, "config.json")
+}
+func (h *recordingResumeHarness) ConfigFilePathGlobal(wsDir string) string {
+	return filepath.Join(wsDir, "global.json")
+}
+func (h *recordingResumeHarness) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
+	return nil
+}
+func (h *recordingResumeHarness) ServeCommand(port int) []string { return nil }
+func (h *recordingResumeHarness) ServeArgsResume(port int) []string {
+	return nil
+}
+func (h *recordingResumeHarness) ServerPassword() string { return "secret" }
+func (h *recordingResumeHarness) WaitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
+	return nil
+}
+func (h *recordingResumeHarness) CreateSession(ctx context.Context, baseURL, secret string) (string, error) {
+	return "", nil
+}
+func (h *recordingResumeHarness) SendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
+	return "", nil
+}
+func (h *recordingResumeHarness) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	return nil
+}
+func (h *recordingResumeHarness) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	return "", nil
+}
+func (h *recordingResumeHarness) ReadSessionExport(wsDir, sessionID string) (string, error) {
+	return "", nil
+}
+func (h *recordingResumeHarness) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+}
+func (h *recordingResumeHarness) PipeOutput(taskID, stream string, reader io.Reader) {}
+func (h *recordingResumeHarness) ResolvedModelID(req task.TaskRequest) string {
+	return "test/model"
+}
+func (h *recordingResumeHarness) SupportsRpc() bool { return false }
+func (h *recordingResumeHarness) RpcCommand(req task.TaskRequest) []string {
+	return nil
+}
+func (h *recordingResumeHarness) DockerConfigPath(wsDir string) string {
+	return filepath.Join(wsDir, "docker.json")
 }

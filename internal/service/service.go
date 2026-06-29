@@ -1200,7 +1200,17 @@ func mcpProfileURLCarriesCredentials(rawURL string) bool {
 	if parsed.User != nil {
 		return true
 	}
-	values := parsed.Query()
+	if urlValuesCarryCredentials(parsed.Query()) {
+		return true
+	}
+	fragment := parsed.RawFragment
+	if fragment == "" {
+		fragment = parsed.Fragment
+	}
+	return fragmentCarriesCredentials(fragment)
+}
+
+func urlValuesCarryCredentials(values url.Values) bool {
 	for key, vals := range values {
 		if !secretLookingURLParam(key) {
 			continue
@@ -1209,6 +1219,24 @@ func mcpProfileURLCarriesCredentials(rawURL string) bool {
 			if strings.TrimSpace(val) != "" {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func fragmentCarriesCredentials(fragment string) bool {
+	fragment = strings.TrimSpace(strings.TrimPrefix(fragment, "#"))
+	if fragment == "" {
+		return false
+	}
+	candidates := []string{fragment}
+	if idx := strings.LastIndex(fragment, "?"); idx >= 0 && idx+1 < len(fragment) {
+		candidates = append(candidates, fragment[idx+1:])
+	}
+	for _, candidate := range candidates {
+		values, err := url.ParseQuery(candidate)
+		if err == nil && urlValuesCarryCredentials(values) {
+			return true
 		}
 	}
 	return false

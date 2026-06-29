@@ -64,14 +64,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	h := r.harnessFor(req.Harness)
 
 	if req.ResumeWorkspacePath != "" {
-		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
-		if err != nil {
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
-			return
-		}
-		defer mcpServer.Close()
-		mcpURL := runnerMCPURL(r, mcpServer)
-		r.runDockerAgentResume(ctx, session, req, mcpURL, h)
+		r.runDockerAgentResume(ctx, session, req, h)
 		return
 	}
 
@@ -762,7 +755,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.Harness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -789,6 +782,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	defer mcpServer.Close()
+	mcpURL := runnerMCPURL(r, mcpServer)
+
+	if err := h.GenerateConfig(workspaceDir, mcpURL, mcpServer.AuthToken(), r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, false); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
+		return
+	}
 
 	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
 	if bindAddr == "" {
