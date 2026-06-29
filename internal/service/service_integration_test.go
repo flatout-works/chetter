@@ -63,6 +63,13 @@ func storedTaskEnvForTest(t *testing.T, tdb *testdb.TestDB, taskID string) (repo
 	return row, env
 }
 
+func markTaskRecoverableForTest(t *testing.T, tdb *testdb.TestDB, taskID string) {
+	t.Helper()
+	if _, err := tdb.DB.ExecContext(context.Background(), "UPDATE chetter_tasks SET status = 'done', session_export = ? WHERE id = ?", "previous transcript", taskID); err != nil {
+		t.Fatalf("mark task recoverable: %v", err)
+	}
+}
+
 func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -227,6 +234,61 @@ func TestAdminCanSubmitTaskWithMCPProfilesSetsInternalMarker(t *testing.T) {
 	protoTask := taskToProto(row, "", "")
 	if _, ok := protoTask.Env[mcpProfilesAllowedEnv]; ok {
 		t.Fatalf("mcp profile marker leaked to runner env: %#v", protoTask.Env)
+	}
+}
+
+func TestNonAdminRecoverTaskWithMCPProfilesFails(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+	rec, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		TeamID:      teamID,
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	markTaskRecoverableForTest(t, tdb, rec.ID)
+
+	_, err = svc.RecoverTask(ctxWithTeam(ctx, teamID), rec.ID)
+	if err == nil {
+		t.Fatal("expected team-scoped recover with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "recovering tasks with mcp_profiles requires admin access") {
+		t.Fatalf("RecoverTask error = %q, want admin access", err)
+	}
+}
+
+func TestAdminRecoverTaskWithMCPProfilesSetsInternalMarker(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamID, _ := seedTeam(t, tdb.DB, "engineering", "alice")
+	rec, err := svc.SubmitTask(ctxWithAdmin(ctx), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		TeamID:      teamID,
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	markTaskRecoverableForTest(t, tdb, rec.ID)
+
+	recovered, err := svc.RecoverTask(ctxWithAdmin(ctx), rec.ID)
+	if err != nil {
+		t.Fatalf("RecoverTask: %v", err)
+	}
+	row, env := storedTaskEnvForTest(t, tdb, recovered.ID)
+	if env[mcpProfilesAllowedEnv] != "true" {
+		t.Fatalf("recovered mcp profile marker = %q, want true; env=%#v", env[mcpProfilesAllowedEnv], env)
+	}
+	profiles := parseJSON[[]string](row.McpProfiles, "recovered task mcp_profiles")
+	if len(profiles) != 1 || profiles[0] != "chetter-orchestration" {
+		t.Fatalf("recovered mcp_profiles = %#v, want chetter-orchestration", profiles)
 	}
 }
 

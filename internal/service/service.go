@@ -649,6 +649,10 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 
 	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
 	mcpProfiles := parseJSON[[]string](orig.McpProfiles, "task:"+taskID+" mcp_profiles")
+	mcpProfiles = nonEmptyStrings(mcpProfiles)
+	if len(mcpProfiles) > 0 && !isAdmin(ctx) {
+		return TaskToolRecord{}, fmt.Errorf("recovering tasks with mcp_profiles requires admin access in this trusted self-hosted MVP")
+	}
 	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
 	if env == nil {
 		env = map[string]string{}
@@ -675,7 +679,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		VariantID:        orig.VariantID.String,
 		Skills:           skills,
 		MCPProfiles:      mcpProfiles,
-		AllowMCPProfiles: taskAllowsMCPProfiles(orig),
+		AllowMCPProfiles: len(mcpProfiles) > 0,
 		Env:              env,
 		TimeoutSec:       int(orig.TimeoutSec),
 	})
