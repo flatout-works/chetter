@@ -230,6 +230,9 @@ func profileURLCarriesCredentials(rawURL string) bool {
 	if parsed.User != nil {
 		return true
 	}
+	if pathCarriesCredentials(parsed.EscapedPath()) || pathCarriesCredentials(parsed.Path) {
+		return true
+	}
 	if urlValuesCarryCredentials(parsed.Query()) {
 		return true
 	}
@@ -238,6 +241,73 @@ func profileURLCarriesCredentials(rawURL string) bool {
 		fragment = parsed.Fragment
 	}
 	return fragmentCarriesCredentials(fragment)
+}
+
+func pathCarriesCredentials(pathValue string) bool {
+	pathValue = strings.TrimSpace(pathValue)
+	if pathValue == "" {
+		return false
+	}
+	if decoded, err := url.PathUnescape(pathValue); err == nil {
+		pathValue = decoded
+	}
+	segments := strings.FieldsFunc(pathValue, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	for i, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		if secretLookingPathToken(segment) {
+			return true
+		}
+		if secretLookingURLParam(segment) && followingPathSegmentLooksCredentialed(segments, i) {
+			return true
+		}
+	}
+	return false
+}
+
+func followingPathSegmentLooksCredentialed(segments []string, idx int) bool {
+	for j := idx + 1; j < len(segments); j++ {
+		segment := strings.TrimSpace(segments[j])
+		if segment == "" {
+			continue
+		}
+		if secretLookingPathToken(segment) {
+			return true
+		}
+		if alphaNumericCount(segment) >= 6 {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func secretLookingPathToken(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("-", "_", ".", "_", ":", "_").Replace(normalized)
+	for _, prefix := range []string{
+		"tok_", "token_", "secret_", "bearer_", "api_key_", "apikey_", "key_",
+		"sk_", "jwt_", "sig_", "signature_", "auth_",
+	} {
+		if strings.HasPrefix(normalized, prefix) && alphaNumericCount(normalized) >= len(prefix)+6 {
+			return true
+		}
+	}
+	return strings.HasPrefix(normalized, "eyj") && strings.Count(value, ".") >= 2
+}
+
+func alphaNumericCount(value string) int {
+	count := 0
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			count++
+		}
+	}
+	return count
 }
 
 func urlValuesCarryCredentials(values url.Values) bool {

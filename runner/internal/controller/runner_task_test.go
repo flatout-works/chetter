@@ -98,7 +98,7 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	}
 }
 
-func TestChetterMCPForRequestRequiresPrivilegedChetterProfile(t *testing.T) {
+func TestChetterMCPForRequestDoesNotInjectAdminChetterToken(t *testing.T) {
 	r := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{
 		URL:       "https://chetter.example.test/mcp",
 		AuthToken: "admin-token",
@@ -153,8 +153,8 @@ func TestChetterMCPForRequestRequiresPrivilegedChetterProfile(t *testing.T) {
 			},
 		}},
 	})
-	if url != "https://chetter.example.test/mcp" || token != "admin-token" {
-		t.Fatalf("privileged chetter profile MCP = (%q, %q), want configured values", url, token)
+	if url != "" || token != "" {
+		t.Fatalf("credentialed chetter profile injected admin MCP = (%q, %q), want empty", url, token)
 	}
 }
 
@@ -616,11 +616,11 @@ func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testi
 	if fakeHarness.runnerMCPToken == "" {
 		t.Fatal("GenerateConfig runner MCP token is empty")
 	}
-	if fakeHarness.chetterMCPURL != "https://chetter.example.test/mcp" {
-		t.Fatalf("GenerateConfig chetter URL = %q", fakeHarness.chetterMCPURL)
+	if fakeHarness.chetterMCPURL != "" {
+		t.Fatalf("GenerateConfig chetter URL = %q, want empty", fakeHarness.chetterMCPURL)
 	}
-	if fakeHarness.chetterMCPToken != "chetter-token" {
-		t.Fatalf("GenerateConfig chetter token = %q", fakeHarness.chetterMCPToken)
+	if fakeHarness.chetterMCPToken != "" {
+		t.Fatalf("GenerateConfig chetter token = %q, want empty", fakeHarness.chetterMCPToken)
 	}
 	if len(fakeHarness.req.MCPProfiles) != 1 || fakeHarness.req.MCPProfiles[0].Name != "chetter-orchestration" {
 		t.Fatalf("GenerateConfig MCP profiles = %#v, want preserved chetter-orchestration profile", fakeHarness.req.MCPProfiles)

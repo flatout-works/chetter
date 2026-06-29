@@ -204,6 +204,24 @@ func TestSyncDefinitionsRejectsCredentialedAllowlistedMCPProfile(t *testing.T) {
 	}
 }
 
+func TestSyncDefinitionsRejectsPathTokenAllowlistedMCPProfile(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	repoDir := createDefinitionsRepo(t)
+	writeRepoFile(t, repoDir, "mcp-profiles/hosted-tools.yaml", "name: hosted-tools\nurl: https://mcp.vendor.example/mcp/tok_live_abc123secret\ntool_allowlist:\n  - safe_tool\n")
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "add path token profile")
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	_, err := svc.SyncDefinitions(context.Background())
+	if err == nil {
+		t.Fatal("expected sync to reject path-token allowlisted mcp profile")
+	}
+	if !strings.Contains(err.Error(), "combines tool_allowlist with credentials") {
+		t.Fatalf("sync error = %q, want credentialed allowlist error", err)
+	}
+}
+
 func TestSyncDefinitionsAcceptsExampleConfigRepo(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

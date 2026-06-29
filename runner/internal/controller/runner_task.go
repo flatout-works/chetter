@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
-	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -317,30 +316,9 @@ func shouldForwardTaskEnv(key string) bool {
 }
 
 func (r *Runner) chetterMCPForRequest(req task.TaskRequest) (string, string) {
-	if strings.TrimSpace(req.Env[privilegedMCPProfileEnv]) != "true" {
-		return "", ""
-	}
-	if r == nil || r.cfg == nil {
-		return "", ""
-	}
-	if !requestIncludesPrivilegedConfiguredChetterMCP(req, r.cfg.ChetterMCP.URL) {
-		return "", ""
-	}
-	return r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken
-}
-
-func requestIncludesPrivilegedConfiguredChetterMCP(req task.TaskRequest, chetterMCPURL string) bool {
-	chetterMCPURL = strings.TrimRight(strings.TrimSpace(chetterMCPURL), "/")
-	if chetterMCPURL == "" {
-		return false
-	}
-	for _, profile := range req.MCPProfiles {
-		profileURL := strings.TrimRight(strings.TrimSpace(profile.URL), "/")
-		if profileURL != "" && profileURL == chetterMCPURL && mcpconfig.ProfileCarriesCredentials(profile) {
-			return true
-		}
-	}
-	return false
+	// Selected MCP profiles carry their own resolved credentials. Do not create
+	// a reserved Chetter server with the runner's admin token from task context.
+	return "", ""
 }
 
 func runnerOwnedEnvKeys() []string {

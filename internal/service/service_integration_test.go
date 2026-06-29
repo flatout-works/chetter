@@ -583,6 +583,8 @@ func TestSubmitTaskRejectsCredentialURLMCPProfileWithoutAdminScope(t *testing.T)
 	seedMCPProfile(t, tdb.DB, "query-signature-profile", "name: query-signature-profile\nurl: https://mcp.example.test/mcp?signature=secret\n")
 	seedMCPProfile(t, tdb.DB, "fragment-token-profile", "name: fragment-token-profile\nurl: https://mcp.example.test/mcp#access_token=secret\n")
 	seedMCPProfile(t, tdb.DB, "fragment-route-token-profile", "name: fragment-route-token-profile\nurl: https://mcp.example.test/mcp#/callback?signature=secret\n")
+	seedMCPProfile(t, tdb.DB, "path-token-profile", "name: path-token-profile\nurl: https://mcp.example.test/mcp/tok_live_abc123secret\n")
+	seedMCPProfile(t, tdb.DB, "path-key-profile", "name: path-key-profile\nurl: https://mcp.example.test/mcp/access_token/abc123secret\n")
 
 	for _, profileName := range []string{
 		"userinfo-profile",
@@ -592,6 +594,8 @@ func TestSubmitTaskRejectsCredentialURLMCPProfileWithoutAdminScope(t *testing.T)
 		"query-signature-profile",
 		"fragment-token-profile",
 		"fragment-route-token-profile",
+		"path-token-profile",
+		"path-key-profile",
 	} {
 		t.Run(profileName, func(t *testing.T) {
 			_, err := svc.SubmitTask(context.Background(), SubmitTaskRequest{
