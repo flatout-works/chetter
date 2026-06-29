@@ -253,7 +253,8 @@ func TestGenerateConfigForTaskAddsCredentialedMCPProfileWithoutAllowlist(t *test
 func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t *testing.T) {
 	wsDir := t.TempDir()
 	existing := map[string]any{
-		"plugin": []any{"existing-plugin"},
+		"plugin":  []any{"existing-plugin"},
+		"plugins": []any{"existing-plugins-entry"},
 		"mcp": map[string]any{
 			"chetter": map[string]any{
 				"type": "remote",
@@ -323,9 +324,11 @@ func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t
 	if err := json.Unmarshal(out, &cfg); err != nil {
 		t.Fatalf("parse config: %v", err)
 	}
-	plugins := cfg["plugin"].([]any)
-	if len(plugins) != 1 || plugins[0] != "existing-plugin" {
-		t.Fatalf("non-MCP config was not preserved: %+v", cfg)
+	if _, ok := cfg["plugin"]; ok {
+		t.Fatalf("repo-provided plugin config was preserved: %+v", cfg)
+	}
+	if _, ok := cfg["plugins"]; ok {
+		t.Fatalf("repo-provided plugins config was preserved: %+v", cfg)
 	}
 	mcps := cfg["mcp"].(map[string]any)
 	if _, ok := mcps["public-tools"]; !ok {
@@ -541,6 +544,31 @@ func TestGenerateConfigForTaskRejectsSymlinkedAgentDefinitionDirectory(t *testin
 	}
 }
 
+func TestGenerateConfigForTaskRejectsSymlinkedPluginDirectory(t *testing.T) {
+	wsDir := t.TempDir()
+	outsideDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outsideDir, "plugins"), 0750); err != nil {
+		t.Fatalf("create outside plugins: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(wsDir, ".opencode"), 0750); err != nil {
+		t.Fatalf("create .opencode: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outsideDir, "plugins"), filepath.Join(wsDir, ".opencode", "plugins")); err != nil {
+		t.Fatalf("symlink plugins: %v", err)
+	}
+
+	err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false)
+	if err == nil {
+		t.Fatal("expected symlinked plugin directory rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error = %q, want symlink rejection", err)
+	}
+	if _, err := os.Stat(filepath.Join(outsideDir, "plugins")); err != nil {
+		t.Fatalf("outside plugins dir was removed or inaccessible: %v", err)
+	}
+}
+
 func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "")
 	args := opencodeServeArgs(1234)
@@ -588,6 +616,42 @@ func TestEnsureMem9Plugin(t *testing.T) {
 	plugins := cfg["plugin"].([]any)
 	if !hasAny(plugins, "existing-plugin") || !hasAny(plugins, defaultMem9PluginSpec) {
 		t.Fatalf("expected existing plugin and mem9 plugin, got %#v", plugins)
+	}
+}
+
+func TestGenerateConfigForTaskStripsRepoPluginsAndAddsManagedMem9(t *testing.T) {
+	t.Setenv("MEM9_API_KEY", "mem9-test-key")
+	t.Setenv("MEM9_PLUGIN_SPEC", "@mem9/opencode@0.1.3")
+	wsDir := t.TempDir()
+	existing := map[string]any{
+		"plugin":  []any{"repo-plugin"},
+		"plugins": []any{"repo-plugins-entry"},
+	}
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, ".opencode.json"), data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(wsDir, ".opencode.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(out, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	plugins := cfg["plugin"].([]any)
+	if len(plugins) != 1 || plugins[0] != "@mem9/opencode@0.1.3" {
+		t.Fatalf("plugin config = %#v, want only managed Mem9 plugin", plugins)
+	}
+	if _, ok := cfg["plugins"]; ok {
+		t.Fatalf("repo-provided plugins config was preserved: %+v", cfg)
 	}
 }
 

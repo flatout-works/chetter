@@ -47,6 +47,11 @@ func ensureMem9Plugin(cfg map[string]any) {
 	cfg["plugin"] = append(plugins, spec)
 }
 
+func clearRepoPlugins(cfg map[string]any) {
+	delete(cfg, "plugin")
+	delete(cfg, "plugins")
+}
+
 func configStringList(value any) []any {
 	switch v := value.(type) {
 	case []any:
@@ -325,6 +330,7 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 		cfg = make(map[string]any)
 	}
 	slog.Info("opencode config source", "path", configSource, "bytes", len(data))
+	clearRepoPlugins(cfg)
 	ensureMem9Plugin(cfg)
 	ensureRunnerProvider(cfg, req)
 	currentManagedMCP := currentManagedMCPServers(includeRunnerMCP && runnerMCPURL != "", chetterMCPURL != "", req.MCPProfiles)
@@ -409,7 +415,9 @@ func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, c
 	if err := writeAgentAndSkillDefinitions(wsDir, req); err != nil {
 		return err
 	}
-	copyOpenCodeState(wsDir, isLocal)
+	if err := copyOpenCodeState(wsDir, isLocal); err != nil {
+		return err
+	}
 	slog.Info("wrote opencode config", "path", wsConfigPath)
 	slog.Info("wrote opencode global config", "path", globalConfigPath)
 	return nil
@@ -491,7 +499,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func copyOpenCodeState(wsDir string, isLocal bool) {
+func copyOpenCodeState(wsDir string, isLocal bool) error {
 	copyFirstExisting("opencode auth", wsDir, ".local/share/opencode/auth.json", func(home string) []string {
 		return []string{home + "/.local/share/opencode/auth.json"}
 	})
@@ -502,19 +510,13 @@ func copyOpenCodeState(wsDir string, isLocal bool) {
 		return []string{home + "/.cache/opencode/models.json"}
 	})
 
+	if err := removeOpenCodePluginState(wsDir); err != nil {
+		return err
+	}
+
 	if isLocal {
 		copyOpenCodePluginState(wsDir)
 	} else {
-		for _, relPath := range []string{
-			".opencode/node_modules",
-			".opencode/package.json",
-			".config/opencode/node_modules",
-			".config/opencode/package.json",
-		} {
-			if err := safefs.RemoveAll(wsDir, relPath); err != nil {
-				slog.Warn("remove opencode plugin state warning", "path", filepath.Join(wsDir, relPath), "err", err)
-			}
-		}
 		slog.Info("skipped workspace opencode plugin package state; harness image owns plugin dependencies")
 	}
 
@@ -529,6 +531,25 @@ func copyOpenCodeState(wsDir string, isLocal bool) {
 			}
 		}
 	}
+	return nil
+}
+
+func removeOpenCodePluginState(wsDir string) error {
+	for _, relPath := range []string{
+		".opencode/node_modules",
+		".opencode/package.json",
+		".opencode/plugin",
+		".opencode/plugins",
+		".config/opencode/node_modules",
+		".config/opencode/package.json",
+		".config/opencode/plugin",
+		".config/opencode/plugins",
+	} {
+		if err := safefs.RemoveAll(wsDir, relPath); err != nil {
+			return fmt.Errorf("remove opencode plugin state %s: %w", relPath, err)
+		}
+	}
+	return nil
 }
 
 func copyOpenCodePluginState(wsDir string) {

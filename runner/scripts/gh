@@ -3,7 +3,7 @@
 # MCP tools instead. This ensures every issue, comment, PR, and review gets a
 # canonical signature, audit log entry, and artifact record.
 #
-# Blocked: gh api <any>, gh issue create/comment, gh pr create/review/comment
+# Blocked: gh api <any>, gh issue/pr write commands, and other mutating gh commands.
 # Allowed: all read-only commands (issue view/list, pr view/checks, search, etc.)
 # Bypass:  set CHETTER_ALLOW_GH_WRITES=1 for manual debugging only.
 #
@@ -66,10 +66,70 @@ for arg in "$@"; do
   fi
 done
 
-cmd="$cmd1 $cmd2"
-case "$cmd" in
-  "api"*) _blocked ;;
-  "issue create"|"issue comment"|"pr create"|"pr review"|"pr comment") _blocked ;;
+case "$cmd1" in
+  api|auth|gpg-key|ssh-key|secret|variable)
+    _blocked
+    ;;
+  issue)
+    case "$cmd2" in
+      create|comment|close|delete|edit|lock|pin|reopen|transfer|unlock|unpin) _blocked ;;
+    esac
+    ;;
+  pr)
+    case "$cmd2" in
+      close|comment|create|edit|lock|merge|ready|reopen|review|unlock) _blocked ;;
+    esac
+    ;;
+  release)
+    case "$cmd2" in
+      create|delete|delete-asset|edit|upload) _blocked ;;
+    esac
+    ;;
+  repo)
+    case "$cmd2" in
+      archive|create|delete|deploy-key|edit|fork|rename|sync|unarchive) _blocked ;;
+    esac
+    ;;
+  gist)
+    case "$cmd2" in
+      create|delete|edit) _blocked ;;
+    esac
+    ;;
+  label)
+    case "$cmd2" in
+      create|delete|edit) _blocked ;;
+    esac
+    ;;
+  milestone)
+    case "$cmd2" in
+      close|create|delete|edit|reopen) _blocked ;;
+    esac
+    ;;
+  project)
+    case "$cmd2" in
+      archive|close|create|delete|edit|item-add|item-archive|item-create|item-delete|item-edit|link|unlink) _blocked ;;
+    esac
+    ;;
+  workflow)
+    case "$cmd2" in
+      disable|enable|run) _blocked ;;
+    esac
+    ;;
+  run)
+    case "$cmd2" in
+      cancel|delete|rerun) _blocked ;;
+    esac
+    ;;
+  cache)
+    case "$cmd2" in
+      delete) _blocked ;;
+    esac
+    ;;
+  codespace)
+    case "$cmd2" in
+      create|delete|edit|ports|rebuild|stop) _blocked ;;
+    esac
+    ;;
 esac
 
 exec "$GH_REAL" "$@"
