@@ -98,6 +98,23 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	}
 }
 
+func TestChetterMCPForRequestRequiresPrivilegedMarker(t *testing.T) {
+	r := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{
+		URL:       "https://chetter.example.test/mcp",
+		AuthToken: "admin-token",
+	}}}
+
+	url, token := r.chetterMCPForRequest(task.TaskRequest{Env: map[string]string{}})
+	if url != "" || token != "" {
+		t.Fatalf("unprivileged chetter MCP = (%q, %q), want empty", url, token)
+	}
+
+	url, token = r.chetterMCPForRequest(task.TaskRequest{Env: map[string]string{privilegedMCPProfileEnv: "true"}})
+	if url != "https://chetter.example.test/mcp" || token != "admin-token" {
+		t.Fatalf("privileged chetter MCP = (%q, %q), want configured values", url, token)
+	}
+}
+
 func TestFilteredHostEnvRemovesRunnerOwnedCredentials(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
@@ -149,6 +166,7 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 			"GH_TOKEN":                 "task-gh-token",
 			"OPENAI_API_KEY":           "task-openai-key",
 			injectedGitHubTokenTaskEnv: "ghs_claim_token",
+			privilegedMCPProfileEnv:    "true",
 		},
 	}
 
@@ -167,6 +185,9 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 	}
 	if _, ok := env[injectedGitHubTokenTaskEnv]; ok {
 		t.Fatalf("private injected token env should not be forwarded: %#v", env)
+	}
+	if _, ok := env[privilegedMCPProfileEnv]; ok {
+		t.Fatalf("privileged mcp marker should not be forwarded: %#v", env)
 	}
 	for _, key := range []string{"CHETTER_MCP_AUTH_TOKEN", "MCP_AUTH_TOKEN", "DATABASE_DSN"} {
 		if _, ok := env[key]; ok {
@@ -470,7 +491,10 @@ func TestDockerAgentResumeRegeneratesHarnessConfigWithFreshRunnerBridge(t *testi
 			Name: "review-tools",
 			URL:  "https://review-tools.example.test/mcp",
 		}},
-		Env: map[string]string{"GITHUB_REPO": "flatout-works/chetter"},
+		Env: map[string]string{
+			"GITHUB_REPO":           "flatout-works/chetter",
+			privilegedMCPProfileEnv: "true",
+		},
 	}
 
 	r.runDockerAgentResume(context.Background(), &task.TaskSession{TaskID: req.TaskID}, req, fakeHarness)
@@ -896,6 +920,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"OPENAI_API_KEY":           "task-key",
 			"GITHUB_TOKEN":             "[redacted]",
 			injectedGitHubTokenTaskEnv: "ghs_claim_token",
+			privilegedMCPProfileEnv:    "true",
 		},
 	}
 	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
@@ -934,6 +959,9 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 	if hasAdjacentArgs(args, "-e", injectedGitHubTokenTaskEnv+"=ghs_claim_token") {
 		t.Fatalf("private injected token env must not be forwarded directly, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", privilegedMCPProfileEnv+"=true") {
+		t.Fatalf("privileged mcp marker must not be forwarded directly, got %v", args)
 	}
 }
 

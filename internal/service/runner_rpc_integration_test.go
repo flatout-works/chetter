@@ -634,7 +634,7 @@ func TestRPCClaimTaskRequiresPrivilegedMCPProfileMarkerAtClaimTime(t *testing.T)
 		t.Fatalf("expected privileged profile placeholder, got %+v", profile)
 	}
 	if _, ok := resp.Msg.Task.Env[mcpProfilePrivilegedEnv]; ok {
-		t.Fatalf("privileged marker leaked to runner env: %#v", resp.Msg.Task.Env)
+		t.Fatalf("privileged marker leaked to unmarked runner env: %#v", resp.Msg.Task.Env)
 	}
 }
 
@@ -671,8 +671,8 @@ func TestRPCClaimTaskResolvesPrivilegedMCPProfileWithServerMarker(t *testing.T) 
 	if profile.Name != "profile" || profile.Url == "" || profile.Headers["Authorization"] == "" {
 		t.Fatalf("expected privileged profile to resolve, got %+v", profile)
 	}
-	if _, ok := resp.Msg.Task.Env[mcpProfilePrivilegedEnv]; ok {
-		t.Fatalf("privileged marker leaked to runner env: %#v", resp.Msg.Task.Env)
+	if resp.Msg.Task.Env[mcpProfilePrivilegedEnv] != "true" {
+		t.Fatalf("privileged marker = %q, want true; env=%#v", resp.Msg.Task.Env[mcpProfilePrivilegedEnv], resp.Msg.Task.Env)
 	}
 }
 

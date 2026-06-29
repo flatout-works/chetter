@@ -23,6 +23,7 @@ import (
 const (
 	containerWorkspaceDir      = "/workspace"
 	injectedGitHubTokenTaskEnv = "__chetter_github_token"
+	privilegedMCPProfileEnv    = "__chetter_mcp_profile_privileged_allowed"
 )
 
 func (r *Runner) runTask(req task.TaskRequest) {
@@ -139,7 +140,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, mcpServer.AuthToken(), r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	chetterMCPURL, chetterMCPToken := r.chetterMCPForRequest(req)
+	if err := h.GenerateConfig(wsDir, mcpURL, mcpServer.AuthToken(), chetterMCPURL, chetterMCPToken, req, isLocal); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
 		return
 	}
@@ -264,7 +266,17 @@ func trustedInjectedGitHubToken(req task.TaskRequest) string {
 }
 
 func shouldForwardTaskEnv(key string) bool {
-	return key != injectedGitHubTokenTaskEnv && !isRunnerOwnedEnv(key)
+	return key != injectedGitHubTokenTaskEnv && key != privilegedMCPProfileEnv && !isRunnerOwnedEnv(key)
+}
+
+func (r *Runner) chetterMCPForRequest(req task.TaskRequest) (string, string) {
+	if strings.TrimSpace(req.Env[privilegedMCPProfileEnv]) != "true" {
+		return "", ""
+	}
+	if r == nil || r.cfg == nil {
+		return "", ""
+	}
+	return r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken
 }
 
 func runnerOwnedEnvKeys() []string {
@@ -784,7 +796,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(workspaceDir, mcpURL, mcpServer.AuthToken(), r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, false); err != nil {
+	chetterMCPURL, chetterMCPToken := r.chetterMCPForRequest(req)
+	if err := h.GenerateConfig(workspaceDir, mcpURL, mcpServer.AuthToken(), chetterMCPURL, chetterMCPToken, req, false); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
 		return
 	}

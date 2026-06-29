@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
@@ -100,6 +101,53 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	_, _, err = svc.syncDefinitionSourceTool(context.Background(), nil, SyncDefinitionSourceInput{})
 	if err == nil {
 		t.Fatal("expected non-admin sync definition source to fail")
+	}
+}
+
+func TestDefinitionSourceToolsRedactCredentialRepoURLForNonAdmin(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	const rawRepoURL = "https://user:pass@github.com/acme/defs.git?access_token=secret#signature=secret"
+	if err := svc.repo.UpsertDefinitionSource(ctx, repository.UpsertDefinitionSourceParams{
+		ID:        "defs_secret",
+		Name:      "secret-source",
+		Scope:     definitionScopeGlobal,
+		RepoUrl:   rawRepoURL,
+		Branch:    "main",
+		Enabled:   true,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert source: %v", err)
+	}
+
+	_, listOut, err := svc.listDefinitionSourcesTool(ctx, nil, ListDefinitionSourcesInput{})
+	if err != nil {
+		t.Fatalf("list definition sources: %v", err)
+	}
+	if len(listOut.Sources) != 1 {
+		t.Fatalf("sources = %#v, want one source", listOut.Sources)
+	}
+	if listOut.Sources[0].RepoURL != "https://github.com/acme/defs.git" {
+		t.Fatalf("non-admin list repo_url = %q, want redacted URL", listOut.Sources[0].RepoURL)
+	}
+
+	_, getOut, err := svc.getDefinitionSourceTool(ctx, nil, GetDefinitionSourceInput{SourceID: "defs_secret"})
+	if err != nil {
+		t.Fatalf("get definition source: %v", err)
+	}
+	if getOut.Source.RepoURL != "https://github.com/acme/defs.git" {
+		t.Fatalf("non-admin get repo_url = %q, want redacted URL", getOut.Source.RepoURL)
+	}
+
+	_, adminOut, err := svc.getDefinitionSourceTool(ctxWithAdmin(ctx), nil, GetDefinitionSourceInput{SourceID: "defs_secret"})
+	if err != nil {
+		t.Fatalf("admin get definition source: %v", err)
+	}
+	if adminOut.Source.RepoURL != rawRepoURL {
+		t.Fatalf("admin repo_url = %q, want raw URL", adminOut.Source.RepoURL)
 	}
 }
 

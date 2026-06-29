@@ -262,7 +262,6 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 	gitURL := definitionLookupRef(dbTask.GitUrl.String, task.Env)
 	allowPrivilegedMCPProfiles := task.Env[mcpProfilePrivilegedEnv] == "true"
 	delete(task.Env, definitionRepoEnv)
-	delete(task.Env, mcpProfilePrivilegedEnv)
 	if task.Agent != "" {
 		groups, err := selectScopedDefinitionGroups(ctx, s.rawDB, definitions.DefinitionTypeAgent, []string{task.Agent}, teamID, gitURL)
 		if err == nil {
