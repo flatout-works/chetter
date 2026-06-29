@@ -172,6 +172,23 @@ func TestReviewBodyFromSessionExportRequiresMarker(t *testing.T) {
 	}
 }
 
+func TestReviewBodyFromSessionExportAllowsPlainMarkedExport(t *testing.T) {
+	export := `# Session Export
+
+Final answer:
+` + reviewBodyStartMarker + `
+# Plain Harness Review
+` + reviewBodyEndMarker + `
+`
+	body, err := reviewBodyFromSessionExport(export)
+	if err != nil {
+		t.Fatalf("reviewBodyFromSessionExport failed: %v", err)
+	}
+	if !strings.Contains(body, "Plain Harness Review") {
+		t.Fatalf("extracted body = %q, want plain harness review", body)
+	}
+}
+
 func TestReviewBodyFromSessionExportRejectsAmbiguousMarkers(t *testing.T) {
 	export := `## Assistant
 

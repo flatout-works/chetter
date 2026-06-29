@@ -208,7 +208,7 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 func reviewBodyFromSessionExport(export string) (string, error) {
 	sections := assistantExportSections(export)
 	if len(sections) == 0 {
-		return "", fmt.Errorf("session export does not contain a final assistant message")
+		sections = []string{export}
 	}
 	section := ""
 	for i, candidate := range sections {
