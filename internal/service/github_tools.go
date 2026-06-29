@@ -185,7 +185,7 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 		if !exportTask.SessionExport.Valid {
 			return nil, GitHubArtifactOutput{}, fmt.Errorf("no session export available for task %s", in.BodyTaskExportID)
 		}
-		bodyText, err = reviewBodyFromSessionExport(strings.ReplaceAll(exportTask.SessionExport.String, "\\n", "\n"))
+		bodyText, err = reviewBodyFromSessionExport(exportTask.SessionExport.String)
 		if err != nil {
 			return nil, GitHubArtifactOutput{}, err
 		}
@@ -206,8 +206,11 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func reviewBodyFromSessionExport(export string) (string, error) {
-	sections := assistantExportSections(export)
+	sections, hasRoleHeading := assistantExportSections(export)
 	if len(sections) == 0 {
+		if hasRoleHeading {
+			return "", fmt.Errorf("session export does not contain a final assistant message")
+		}
 		sections = []string{export}
 	}
 	section := ""
@@ -248,11 +251,12 @@ func reviewBodyFromSessionExport(export string) (string, error) {
 	return body, nil
 }
 
-func assistantExportSections(export string) []string {
+func assistantExportSections(export string) ([]string, bool) {
 	lines := strings.Split(strings.ReplaceAll(export, "\r\n", "\n"), "\n")
 	var sections []string
 	var current strings.Builder
 	inAssistant := false
+	hasRoleHeading := false
 	flush := func() {
 		if !inAssistant {
 			return
@@ -264,12 +268,14 @@ func assistantExportSections(export string) []string {
 	for _, line := range lines {
 		switch strings.TrimSpace(line) {
 		case "## Assistant":
+			hasRoleHeading = true
 			flush()
 			inAssistant = true
 			current.WriteString(line)
 			current.WriteByte('\n')
 			continue
 		case "## User", "## Tool", "## System", "## Developer":
+			hasRoleHeading = true
 			flush()
 			continue
 		}
@@ -279,7 +285,7 @@ func assistantExportSections(export string) []string {
 		}
 	}
 	flush()
-	return sections
+	return sections, hasRoleHeading
 }
 
 func (s *Service) githubClient() *webhook.Client {
