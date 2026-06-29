@@ -56,6 +56,9 @@ type GitHubArtifactOutput struct {
 }
 
 func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubCreateIssueInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+	if err := requireAdminGitHubWriteTool(ctx); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
@@ -81,6 +84,9 @@ func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequ
 }
 
 func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubIssueCommentInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+	if err := requireAdminGitHubWriteTool(ctx); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
@@ -105,6 +111,9 @@ func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallT
 }
 
 func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubCreatePRInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+	if err := requireAdminGitHubWriteTool(ctx); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
@@ -132,6 +141,9 @@ func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest
 }
 
 func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubPRReviewInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+	if err := requireAdminGitHubWriteTool(ctx); err != nil {
+		return nil, GitHubArtifactOutput{}, err
+	}
 	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
@@ -208,6 +220,13 @@ func requireGitHubToolFields(taskID, repo string) error {
 	}
 	if strings.TrimSpace(repo) == "" {
 		return fmt.Errorf("repo is required")
+	}
+	return nil
+}
+
+func requireAdminGitHubWriteTool(ctx context.Context) error {
+	if !isAdmin(ctx) {
+		return fmt.Errorf("admin access required for GitHub write tools")
 	}
 	return nil
 }

@@ -2328,6 +2328,38 @@ func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
 	}
 }
 
+func TestTeamScopedGitHubWriteToolRejectsTaskIDReplay(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamID, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	task, err := svc.SubmitTask(ctxWithTeam(ctx, teamID), SubmitTaskRequest{
+		Prompt:           "review",
+		AgentImage:       "runner:latest",
+		Env:              map[string]string{"GITHUB_TOKEN": "caller-token", "GITHUB_REPO": "flatout-works/chetter", "PR_NUMBER": "123"},
+		AllowGitHubToken: true,
+	})
+	if err != nil {
+		t.Fatalf("submit authorized task: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET status='done', ended_at=?, updated_at=? WHERE id=?", time.Now().UTC(), time.Now().UTC(), task.ID); err != nil {
+		t.Fatalf("mark task done: %v", err)
+	}
+
+	_, _, err = svc.createGitHubPRReviewTool(ctxWithTeam(ctx, teamID), nil, GitHubPRReviewInput{
+		TaskID:   task.ID,
+		Repo:     "flatout-works/chetter",
+		PRNumber: 123,
+		Body:     "replayed review",
+	})
+	if err == nil {
+		t.Fatal("expected team-scoped GitHub write tool replay to be rejected")
+	}
+	if !strings.Contains(err.Error(), "admin access required for GitHub write tools") {
+		t.Fatalf("GitHub write tool error = %q, want admin access", err)
+	}
+}
+
 func TestUnscopedToolsRequireAdmin(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
