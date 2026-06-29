@@ -75,7 +75,7 @@ func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequ
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	if err := validateGitHubToolRepoScope(task, in.Repo); err != nil {
+	if err := validateGitHubToolCreationScope(task, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
@@ -130,7 +130,7 @@ func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	if err := validateGitHubToolRepoScope(task, in.Repo); err != nil {
+	if err := validateGitHubToolCreationScope(task, in.Repo); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
 	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
@@ -289,10 +289,10 @@ func requireAdminGitHubWriteTool(ctx context.Context) error {
 }
 
 func validateGitHubToolArtifactScope(task repository.ChetterTask, repo string, number int, artifactKind string) error {
-	if err := validateGitHubToolRepoScope(task, repo); err != nil {
+	env, err := validateGitHubToolRepoScopeEnv(task, repo)
+	if err != nil {
 		return err
 	}
-	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	taskNumber := ""
 	switch artifactKind {
 	case "pr":
@@ -317,26 +317,42 @@ func validateGitHubToolArtifactScope(task repository.ChetterTask, repo string, n
 	return nil
 }
 
+func validateGitHubToolCreationScope(task repository.ChetterTask, repo string) error {
+	env, err := validateGitHubToolRepoScopeEnv(task, repo)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(env["PR_NUMBER"]) != "" || strings.TrimSpace(env["ISSUE_NUMBER"]) != "" {
+		return fmt.Errorf("task %s is scoped to an existing GitHub artifact and cannot create new issues or pull requests", task.ID)
+	}
+	return nil
+}
+
 func validateGitHubToolRepoScope(task repository.ChetterTask, repo string) error {
+	_, err := validateGitHubToolRepoScopeEnv(task, repo)
+	return err
+}
+
+func validateGitHubToolRepoScopeEnv(task repository.ChetterTask, repo string) (map[string]string, error) {
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	if env == nil {
-		return fmt.Errorf("task %s has no GitHub artifact scope", task.ID)
+		return nil, fmt.Errorf("task %s has no GitHub artifact scope", task.ID)
 	}
 	if env[gitHubTokenAllowedEnv] != "true" {
-		return fmt.Errorf("task %s is not authorized for GitHub write tools", task.ID)
+		return nil, fmt.Errorf("task %s is not authorized for GitHub write tools", task.ID)
 	}
 	taskRepo, ok := canonicalRepoName(env["GITHUB_REPO"])
 	if !ok {
-		return fmt.Errorf("task %s has no GitHub repo scope", task.ID)
+		return nil, fmt.Errorf("task %s has no GitHub repo scope", task.ID)
 	}
 	targetRepo, ok := canonicalRepoName(repo)
 	if !ok {
-		return fmt.Errorf("repo must resolve to owner/repo")
+		return nil, fmt.Errorf("repo must resolve to owner/repo")
 	}
 	if taskRepo != targetRepo {
-		return fmt.Errorf("GitHub tool target repo %q does not match task repo %q", targetRepo, taskRepo)
+		return nil, fmt.Errorf("GitHub tool target repo %q does not match task repo %q", targetRepo, taskRepo)
 	}
-	return nil
+	return env, nil
 }
 
 func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (repository.ChetterTask, repository.ChetterSessionRun, error) {

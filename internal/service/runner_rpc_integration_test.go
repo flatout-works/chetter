@@ -396,9 +396,17 @@ func TestValidateGitHubRPCRepoScope(t *testing.T) {
 	insertTask("task_rpc_untrusted_env", map[string]string{
 		"GITHUB_REPO": "flatout-works/chetter",
 	})
+	insertTask("task_rpc_pr_scoped", map[string]string{
+		"GITHUB_REPO":         "flatout-works/chetter",
+		"PR_NUMBER":           "123",
+		gitHubTokenAllowedEnv: "true",
+	})
 
 	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_authorized", "https://github.com/flatout-works/chetter.git"); err != nil {
 		t.Fatalf("validateGitHubRPCRepoScope matching target: %v", err)
+	}
+	if err := svc.validateGitHubRPCCreationScope(ctx, "task_rpc_authorized", "https://github.com/flatout-works/chetter.git"); err != nil {
+		t.Fatalf("validateGitHubRPCCreationScope repo-only target: %v", err)
 	}
 	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_authorized", "flatout-works/other"); err == nil || !strings.Contains(err.Error(), "does not match task repo") {
 		t.Fatalf("repo mismatch error = %v, want task repo mismatch", err)
@@ -408,6 +416,9 @@ func TestValidateGitHubRPCRepoScope(t *testing.T) {
 	}
 	if err := svc.validateGitHubRPCRepoScope(ctx, "task_rpc_untrusted_env", "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "not authorized") {
 		t.Fatalf("unauthorized scope error = %v, want not authorized", err)
+	}
+	if err := svc.validateGitHubRPCCreationScope(ctx, "task_rpc_pr_scoped", "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "cannot create new issues or pull requests") {
+		t.Fatalf("PR-scoped creation error = %v, want existing artifact rejection", err)
 	}
 }
 

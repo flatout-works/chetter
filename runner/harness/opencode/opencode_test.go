@@ -277,6 +277,19 @@ func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t
 				"type": "remote",
 				"url":  "http://repo-tools:8080/mcp",
 			},
+			"repo-command": map[string]any{
+				"type":    "local",
+				"command": "node",
+				"args":    []any{"./mcp.js"},
+			},
+			"repo-transport-stdio": map[string]any{
+				"type":      "remote",
+				"transport": "stdio",
+				"url":       "http://repo-transport-stdio:8080/mcp",
+			},
+			"repo-invalid": map[string]any{
+				"type": "remote",
+			},
 		},
 	}
 	data, err := json.MarshalIndent(existing, "", "  ")
@@ -300,7 +313,10 @@ func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if strings.Contains(string(out), "stale-chetter-token") || strings.Contains(string(out), "stale-profile-token") {
+	if strings.Contains(string(out), "stale-chetter-token") ||
+		strings.Contains(string(out), "stale-profile-token") ||
+		strings.Contains(string(out), "mcp.js") ||
+		strings.Contains(string(out), "repo-transport-stdio") {
 		t.Fatalf("rewritten config kept stale MCP credentials:\n%s", string(out))
 	}
 	var cfg map[string]any
@@ -325,9 +341,18 @@ func TestGenerateConfigForTaskPreservesRepoMCPServersAndPrunesStaleCredentials(t
 			t.Fatalf("stale MCP server %q survived: %+v", stale, mcps)
 		}
 	}
+	if _, ok := mcps["repo-command"]; ok {
+		t.Fatalf("repo-provided command MCP server survived: %+v", mcps)
+	}
+	if _, ok := mcps["repo-transport-stdio"]; ok {
+		t.Fatalf("repo-provided stdio transport MCP server survived: %+v", mcps)
+	}
+	if _, ok := mcps["repo-invalid"]; ok {
+		t.Fatalf("repo-provided MCP server without URL survived: %+v", mcps)
+	}
 }
 
-func TestGenerateConfigForTaskUsesManagedStateForTargetedMCPPruning(t *testing.T) {
+func TestGenerateConfigForTaskPrunesUnsafeMCPServersEvenWithManagedState(t *testing.T) {
 	wsDir := t.TempDir()
 	if err := os.MkdirAll(wsDir+"/.opencode", 0750); err != nil {
 		t.Fatalf("create opencode dir: %v", err)
@@ -351,6 +376,18 @@ func TestGenerateConfigForTaskUsesManagedStateForTargetedMCPPruning(t *testing.T
 					"Authorization": "Bearer repo-token",
 				},
 			},
+			"repo-command": map[string]any{
+				"type":    "stdio",
+				"command": "node",
+				"args":    []any{"./mcp.js"},
+				"env": map[string]any{
+					"GITHUB_TOKEN": "${env:GITHUB_TOKEN}",
+				},
+			},
+			"repo-public": map[string]any{
+				"type": "remote",
+				"url":  "http://repo-public:8080/mcp",
+			},
 		},
 	}
 	data, err := json.MarshalIndent(existing, "", "  ")
@@ -368,7 +405,7 @@ func TestGenerateConfigForTaskUsesManagedStateForTargetedMCPPruning(t *testing.T
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if strings.Contains(string(out), "stale-token") {
+	if strings.Contains(string(out), "stale-token") || strings.Contains(string(out), "repo-token") || strings.Contains(string(out), "mcp.js") {
 		t.Fatalf("rewritten config kept managed stale credentials:\n%s", string(out))
 	}
 	var cfg map[string]any
@@ -379,10 +416,14 @@ func TestGenerateConfigForTaskUsesManagedStateForTargetedMCPPruning(t *testing.T
 	if _, ok := mcps["old-private"]; ok {
 		t.Fatalf("previously managed MCP server survived: %+v", mcps)
 	}
-	server := mcps["repo-private"].(map[string]any)
-	headers := server["headers"].(map[string]any)
-	if headers["Authorization"] != "Bearer repo-token" {
-		t.Fatalf("repo private MCP header = %v", headers["Authorization"])
+	if _, ok := mcps["repo-private"]; ok {
+		t.Fatalf("credentialed repo MCP server survived: %+v", mcps)
+	}
+	if _, ok := mcps["repo-command"]; ok {
+		t.Fatalf("repo-provided command MCP server survived: %+v", mcps)
+	}
+	if _, ok := mcps["repo-public"]; !ok {
+		t.Fatalf("uncredentialed remote repo MCP server was removed: %+v", mcps)
 	}
 }
 

@@ -85,6 +85,47 @@ func TestValidateGitHubToolRepoScope(t *testing.T) {
 	}
 }
 
+func TestValidateGitHubToolCreationScopeAllowsRepoOnlyTask(t *testing.T) {
+	task := repository.ChetterTask{
+		ID: "task_123",
+		Env: mustMarshalJSON(map[string]string{
+			"GITHUB_REPO":         "flatout-works/chetter",
+			gitHubTokenAllowedEnv: "true",
+		}),
+	}
+	if err := validateGitHubToolCreationScope(task, "https://github.com/flatout-works/chetter.git"); err != nil {
+		t.Fatalf("validateGitHubToolCreationScope repo-only task: %v", err)
+	}
+}
+
+func TestValidateGitHubToolCreationScopeRejectsPRScopedTask(t *testing.T) {
+	task := repository.ChetterTask{
+		ID: "task_123",
+		Env: mustMarshalJSON(map[string]string{
+			"GITHUB_REPO":         "flatout-works/chetter",
+			"PR_NUMBER":           "123",
+			gitHubTokenAllowedEnv: "true",
+		}),
+	}
+	if err := validateGitHubToolCreationScope(task, "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "cannot create new issues or pull requests") {
+		t.Fatalf("creation scope error = %v, want existing artifact rejection", err)
+	}
+}
+
+func TestValidateGitHubToolCreationScopeRejectsIssueScopedTask(t *testing.T) {
+	task := repository.ChetterTask{
+		ID: "task_123",
+		Env: mustMarshalJSON(map[string]string{
+			"GITHUB_REPO":         "flatout-works/chetter",
+			"ISSUE_NUMBER":        "77",
+			gitHubTokenAllowedEnv: "true",
+		}),
+	}
+	if err := validateGitHubToolCreationScope(task, "flatout-works/chetter"); err == nil || !strings.Contains(err.Error(), "cannot create new issues or pull requests") {
+		t.Fatalf("creation scope error = %v, want existing artifact rejection", err)
+	}
+}
+
 func TestReviewBodyFromSessionExportUsesFinalAssistantMarker(t *testing.T) {
 	export := `# session
 

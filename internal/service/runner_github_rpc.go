@@ -39,7 +39,7 @@ func (s *RunnerRPCService) GitHubCreateIssue(ctx context.Context, req *connect.R
 	if strings.TrimSpace(req.Msg.Title) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title is required"))
 	}
-	if err := s.validateGitHubRPCRepoScope(ctx, req.Msg.TaskId, req.Msg.Repo); err != nil {
+	if err := s.validateGitHubRPCCreationScope(ctx, req.Msg.TaskId, req.Msg.Repo); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
@@ -91,7 +91,7 @@ func (s *RunnerRPCService) GitHubCreatePR(ctx context.Context, req *connect.Requ
 	if strings.TrimSpace(req.Msg.Title) == "" || strings.TrimSpace(req.Msg.Head) == "" || strings.TrimSpace(req.Msg.Base) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title, head, and base are required"))
 	}
-	if err := s.validateGitHubRPCRepoScope(ctx, req.Msg.TaskId, req.Msg.Repo); err != nil {
+	if err := s.validateGitHubRPCCreationScope(ctx, req.Msg.TaskId, req.Msg.Repo); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
@@ -175,6 +175,17 @@ func (s *RunnerRPCService) validateGitHubRPCRepoScope(ctx context.Context, taskI
 		return fmt.Errorf("get task: %w", err)
 	}
 	return validateGitHubToolRepoScope(task, repo)
+}
+
+func (s *RunnerRPCService) validateGitHubRPCCreationScope(ctx context.Context, taskID, repo string) error {
+	task, err := s.db.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task %q not found", taskID)
+		}
+		return fmt.Errorf("get task: %w", err)
+	}
+	return validateGitHubToolCreationScope(task, repo)
 }
 
 func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, artifactType, repo string, number int, url, ref string) error {

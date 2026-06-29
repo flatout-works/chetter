@@ -153,7 +153,7 @@ func prepareMCPServers(wsDir string, cfg map[string]any, currentManaged []string
 	if existing == nil {
 		existing = make(map[string]any)
 	}
-	previousManaged, hasManagedState := readManagedMCPState(wsDir)
+	previousManaged, _ := readManagedMCPState(wsDir)
 	remove := make(map[string]struct{}, len(previousManaged)+len(currentManaged)+2)
 	for _, name := range append(previousManaged, currentManaged...) {
 		name = strings.TrimSpace(name)
@@ -169,7 +169,7 @@ func prepareMCPServers(wsDir string, cfg map[string]any, currentManaged []string
 		if _, ok := remove[name]; ok {
 			continue
 		}
-		if !hasManagedState && openCodeMCPServerCarriesCredentials(server) {
+		if openCodeRepoMCPServerIsUnsafe(server) {
 			continue
 		}
 		mcpServers[name] = server
@@ -218,16 +218,55 @@ func nonEmptyUniqueStrings(values []string) []string {
 	return out
 }
 
-func openCodeMCPServerCarriesCredentials(server any) bool {
+func openCodeRepoMCPServerIsUnsafe(server any) bool {
 	serverMap, ok := server.(map[string]any)
 	if !ok {
-		return false
+		return true
+	}
+	for _, key := range []string{"command", "args", "env", "cwd"} {
+		if openCodeMCPFieldPresent(serverMap[key]) {
+			return true
+		}
+	}
+	if openCodeMCPStringIsLocalProcess(serverMap["type"]) || openCodeMCPStringIsLocalProcess(serverMap["transport"]) {
+		return true
+	}
+	if strings.TrimSpace(stringValue(serverMap["url"])) == "" {
+		return true
 	}
 	profile := task.MCPProfile{
 		URL:     stringValue(serverMap["url"]),
 		Headers: headerStringMap(serverMap["headers"]),
 	}
 	return mcpconfig.ProfileCarriesCredentials(profile)
+}
+
+func openCodeMCPStringIsLocalProcess(value any) bool {
+	switch strings.ToLower(strings.TrimSpace(stringValue(value))) {
+	case "local", "stdio", "command":
+		return true
+	default:
+		return false
+	}
+}
+
+func openCodeMCPFieldPresent(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return false
+	case string:
+		return strings.TrimSpace(v) != ""
+	case []any:
+		return len(v) > 0
+	case []string:
+		return len(v) > 0
+	case map[string]any:
+		return len(v) > 0
+	case map[string]string:
+		return len(v) > 0
+	default:
+		return true
+	}
 }
 
 func stringValue(value any) string {

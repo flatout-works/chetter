@@ -7,7 +7,7 @@ func ToolDefinitions() []ToolDef {
 	return []ToolDef{
 		{
 			Name:        "chetter_create_issue",
-			Description: "Create a GitHub issue with a canonical Chetter signature and artifact tracking.",
+			Description: "Create a GitHub issue with a canonical Chetter signature and artifact tracking. Requires a repo-only task scope, not an existing PR or issue scope.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -34,7 +34,7 @@ func ToolDefinitions() []ToolDef {
 		},
 		{
 			Name:        "chetter_create_pr",
-			Description: "Create a GitHub pull request with a canonical Chetter signature and artifact tracking.",
+			Description: "Create a GitHub pull request with a canonical Chetter signature and artifact tracking. Requires a repo-only task scope, not an existing PR or issue scope.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
