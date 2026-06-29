@@ -163,7 +163,7 @@ Webhook-created review tasks include stable PR context:
 
 Child review tasks should use `PR_HEAD_CLONE_URL` and `PR_HEAD_REF` so fork PRs are reviewed from the correct source branch. Review prompts should verify `PR_HEAD_SHA` before posting or synthesizing results.
 
-The included `chetter-orchestration` profile is a disabled trusted-only example for validating MCP plumbing. It may carry the full Chetter MCP bearer authority, and its `tool_allowlist` is not server-side security enforcement. Production multi-tenant review orchestration needs follow-up scoped MCP credentials or proxy enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
+The included `chetter-orchestration` profile is a disabled trusted-only example for validating MCP plumbing. Chetter MCP is not mounted into all tasks by default; the profile must be attached explicitly with `mcp_profiles`. It may carry the full Chetter MCP bearer authority, and its `tool_allowlist` only generates OpenCode permission hints, not server-side security enforcement. Production multi-tenant review orchestration needs follow-up scoped MCP credentials or proxy enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
 
 ## Webhook Configuration
 

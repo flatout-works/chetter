@@ -41,7 +41,7 @@ See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and oper
 
 Git-backed definitions can include reusable MCP profiles under `mcp-profiles/*.yaml`. Attach them to tasks or triggers with `mcp_profiles`; the runner renders the selected profiles into the harness-native MCP config before the agent starts.
 
-This is a trusted self-hosted plumbing MVP. Credentialed profiles, especially profiles using the Chetter admin MCP token, are for trusted/admin-controlled tasks only. `tool_allowlist` limits what compatible harnesses expose to the agent; it is not server-side security enforcement for a bearer token.
+This is a trusted self-hosted plumbing MVP. Credentialed profiles, especially profiles using the Chetter admin MCP token, are for trusted/admin-controlled tasks only. `tool_allowlist` generates OpenCode permission hints for listed tools; it is not server-side security enforcement for a bearer token.
 
 ```yaml
 name: chetter-orchestration
@@ -62,7 +62,7 @@ mcp_profiles:
   - chetter-orchestration
 ```
 
-Do not commit literal secrets in profile definitions. `${env:...}` values are resolved by the runner during config generation and written into task-readable harness config files. Do not use privileged Chetter MCP profiles for untrusted or multi-tenant tasks until scoped MCP tokens or proxy enforcement are added.
+Do not commit literal secrets in profile definitions. `${env:...}` values are resolved by the runner during config generation and written into task-readable harness config files. There is no default Chetter MCP mount for all tasks; define a profile and attach it explicitly with `mcp_profiles`. Do not use privileged Chetter MCP profiles for untrusted or multi-tenant tasks until scoped MCP tokens or proxy enforcement are added.
 
 ## Repository Layout
 

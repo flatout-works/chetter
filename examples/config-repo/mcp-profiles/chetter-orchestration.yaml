@@ -1,7 +1,7 @@
 # Example profile for trusted self-hosted Chetter orchestration.
 # Do not commit literal tokens. The runner resolves ${env:...} at task startup.
 # The resolved bearer token is written into task-readable harness config files.
-# tool_allowlist is harness/client exposure only, not server-side security.
+# tool_allowlist only generates OpenCode permission hints, not server-side security.
 # Use this only for trusted/admin tasks until scoped tokens or proxy enforcement exist.
 name: chetter-orchestration
 transport: http

@@ -92,7 +92,7 @@ There are three token contexts to keep distinct:
 | Token | Where used | Notes |
 |---|---|---|
 | `MCP_AUTH_TOKEN` | Server binary admin token. | Required by the server process. Compose/K8s examples set this from external `CHETTER_MCP_AUTH_TOKEN`. |
-| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token and agent MCP token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. |
+| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. Explicit trusted MCP profiles may reference it with `${env:CHETTER_MCP_AUTH_TOKEN}`; the runner does not mount it into every task by default. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Runner-to-server ConnectRPC token. | Required by the server. Compose falls back to `CHETTER_MCP_AUTH_TOKEN` if this is empty. |
 
 Team tokens are stored hashed in TiDB and belong to a user in a team. Team-scoped tokens can only see their team's tasks, triggers, schedule runs, and sessions.
@@ -132,13 +132,13 @@ chetterctl token create --team engineering --user alice --name alice-cli
 |---|---|
 | `CHETTER_SERVER_URL` | Server URL used by the runner. |
 | `CHETTER_RUNNER_AUTH_TOKEN` | Runner config token env. Compose fills this from `CHETTER_RUNNER_RPC_TOKEN` for current runner fallback compatibility. |
-| `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
-| `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `CHETTER_MCP_AUTH_TOKEN` | Admin token that explicit trusted MCP profiles may reference with `${env:CHETTER_MCP_AUTH_TOKEN}`. It is not mounted into every task by default. |
+| `CHETTER_MCP_URL` | Optional deployment value for explicit trusted MCP profile definitions. It is not injected into agents by default. |
 | `USE_GVISOR` | Enables Docker `runsc` execution and checkpoint support when `true`. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN` | GitHub token for cloning private repos and read operations inside tasks. |
+| `GITHUB_TOKEN` / `GH_TOKEN` | Host values are not forwarded. When a task has server-side GitHub auth, the runner maps a claim-time repo-scoped read token to these names for inspection commands. |
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
 
@@ -549,11 +549,11 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 |---|---|
 | Task content | Prompt, repo URL/ref, timeout, harness name, selected agent name, skill hints, and optional non-secret task env. |
 | Workspace mounts | The cloned workspace is mounted at `/workspace`; the runner MCP bridge socket is mounted at `/workspace/.chetter.sock`. |
-| Harness config | OpenCode config is generated into the workspace (`/workspace/.opencode.json` and `/workspace/.config/opencode/config.json`) with Chetter MCP and runner bridge MCP entries. |
+| Harness config | OpenCode config is generated into the workspace (`/workspace/.opencode.json` and `/workspace/.config/opencode/config.json`) with the runner bridge MCP entry and any explicitly attached `mcp_profiles`. |
 | Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
 | Git identity | `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` are set to the Chetter runner identity. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
-| Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
+| Runner-owned secrets and provider env | The runner forwards configured provider secrets such as `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. `GITHUB_TOKEN` / `GH_TOKEN` are special: host values are not forwarded; a task receives only a claim-time repo-scoped read token when server-side GitHub auth is authorized. User-supplied task env cannot override runner-owned keys. |
 | Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
 
 ### Trigger-Type Environment Variables
@@ -563,7 +563,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 | Variable | Trigger type(s) | Description |
 |---|---|---|
 | `GITHUB_REPO` | `issue`, `pr_review` | Full repository name (e.g. `owner/repo`) |
-| `GITHUB_TOKEN` | `issue`, `pr_review` | GitHub App installation token with read/write access |
+| `GITHUB_TOKEN` | `issue`, `pr_review` | Repo-scoped read token for `gh` inspection commands. GitHub writes must go through Chetter tools. |
 | `ISSUE_NUMBER` | `issue` | Issue number |
 | `ISSUE_TITLE` | `issue` | Issue title text |
 | `ISSUE_URL` | `issue` | Issue HTML URL |
@@ -581,7 +581,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
-`gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+`gh` read commands remain available for inspection through the repo-scoped read token injected at claim time. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, task artifact records, and server-side repo/PR/issue scope checks are applied consistently.
 
 GitHub authorization inheritance is explicit. If a child task sets `CHETTER_PARENT_TASK_ID`, it must also set `CHETTER_GITHUB_AUTH_MODE=read` or `CHETTER_GITHUB_AUTH_MODE=write`. `read` allows read-only GitHub context inheritance and cannot call Chetter GitHub write tools. `write` is accepted only when the parent task had write authorization and the child keeps the same `GITHUB_REPO` plus matching `PR_NUMBER` or `ISSUE_NUMBER`. Missing modes, read-to-write upgrades, repo mismatches, and PR/issue mismatches are rejected at submission time.
 
@@ -589,7 +589,7 @@ GitHub authorization inheritance is explicit. If a child task sets `CHETTER_PARE
 
 This MVP does not implement secure production multi-agent PR review orchestration. It provides the plumbing needed by trusted self-hosted experiments: Git-backed MCP profile definitions, `mcp_profiles` on tasks/triggers, claim-time resolution, harness-native config rendering, and explicit GitHub auth inheritance for parent/child tasks.
 
-The example config repo includes a disabled trusted-only `chetter-orchestration` MCP profile. It is useful for validating profile plumbing, but it is not a final secure orchestration architecture. Production multi-tenant orchestration still needs scoped Chetter MCP credentials or proxy-side enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
+The example config repo includes a disabled trusted-only `chetter-orchestration` MCP profile. It is useful for validating profile plumbing, but it is not a final secure orchestration architecture. Chetter MCP is not mounted into all tasks by default; to mount it, define a profile such as `mcp-profiles/chetter-orchestration.yaml` and attach it explicitly with `mcp_profiles`. Production multi-tenant orchestration still needs scoped Chetter MCP credentials or proxy-side enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
 
 ### Harness Interface Support Matrix
 
@@ -604,7 +604,7 @@ Use the `harness` field on tasks and triggers to select the agent runtime. The t
 | Batch command | Fallback only | Yes: `claude --bare -p ... --output-format stream-json` | No |
 | Config generation | `.opencode.json` and global OpenCode config | `.claude/settings.json` and `.claude/mcp.json` | `.pi/settings.json` |
 | Runner bridge MCP | Yes | Yes | Yes, through `pi-mcp-adapter` |
-| Chetter MCP over HTTP | Yes | Yes | Yes, through `pi-mcp-adapter` |
+| Explicit Chetter MCP profile over HTTP | Yes | Yes | Yes, through `pi-mcp-adapter` |
 | Provider/model selection | OpenCode config and `CHETTER_MODEL_ID` | `--model`; optional Anthropic-compatible env (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`) for providers such as Synthetic | `--provider`, `--model`, and `CHETTER_MODEL_ID` |
 | Synthetic with Claude Code | Not applicable | Yes when `provider_id=synthetic`: runner sets `ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic` and `ANTHROPIC_AUTH_TOKEN` from `SYNTHETIC_API_KEY` | Not applicable |
 | Agent prompt support | OpenCode agent config | `--system-prompt` from `.claude/agents/<name>.md` or `.opencode/agent/<name>.md` | CLI model/provider only today |
@@ -651,7 +651,7 @@ mcp_profiles:
 
 Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config, so resolved credentials enter task-readable files such as `.opencode.json`, `.claude/mcp.json`, `.mcp.json`, or `.codewhale/mcp.json`.
 
-Credentialed MCP profiles are trusted/admin-only in this MVP. `tool_allowlist` is a harness/client exposure control, not a server-side security boundary for a bearer credential. Do not use privileged Chetter MCP profiles for untrusted or multi-tenant tasks until scoped MCP tokens or proxy-side enforcement exist.
+Credentialed MCP profiles are trusted/admin-only in this MVP. `tool_allowlist` generates OpenCode permission hints for listed tools; it is not a server-side security boundary for a bearer credential and does not prove unlisted tools are denied by every harness. There is no default Chetter MCP mount for all tasks. Do not use privileged Chetter MCP profiles for untrusted or multi-tenant tasks until scoped MCP tokens or proxy-side enforcement exist.
 
 Trigger ownership should remain explicit:
 
