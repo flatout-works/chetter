@@ -206,12 +206,9 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 }
 
 func reviewBodyFromSessionExport(export string) (string, error) {
-	sections, hasRoleHeading := assistantExportSections(export)
+	sections := assistantExportSections(export)
 	if len(sections) == 0 {
-		if hasRoleHeading {
-			return "", fmt.Errorf("session export does not contain a final assistant message")
-		}
-		sections = []string{export}
+		return "", fmt.Errorf("session export does not contain a final assistant message")
 	}
 	section := ""
 	for i, candidate := range sections {
@@ -251,12 +248,11 @@ func reviewBodyFromSessionExport(export string) (string, error) {
 	return body, nil
 }
 
-func assistantExportSections(export string) ([]string, bool) {
+func assistantExportSections(export string) []string {
 	lines := strings.Split(strings.ReplaceAll(export, "\r\n", "\n"), "\n")
 	var sections []string
 	var current strings.Builder
 	inAssistant := false
-	hasRoleHeading := false
 	flush := func() {
 		if !inAssistant {
 			return
@@ -266,17 +262,13 @@ func assistantExportSections(export string) ([]string, bool) {
 		inAssistant = false
 	}
 	for _, line := range lines {
-		switch strings.TrimSpace(line) {
-		case "## Assistant":
-			hasRoleHeading = true
+		if role, ok := exportRoleHeading(line); ok {
 			flush()
-			inAssistant = true
-			current.WriteString(line)
-			current.WriteByte('\n')
-			continue
-		case "## User", "## Tool", "## System", "## Developer":
-			hasRoleHeading = true
-			flush()
+			if role == "assistant" {
+				inAssistant = true
+				current.WriteString(line)
+				current.WriteByte('\n')
+			}
 			continue
 		}
 		if inAssistant {
@@ -285,7 +277,43 @@ func assistantExportSections(export string) ([]string, bool) {
 		}
 	}
 	flush()
-	return sections, hasRoleHeading
+	return sections
+}
+
+func exportRoleHeading(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "## ") {
+		return "", false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+	if rest == "" {
+		return "", false
+	}
+	lower := strings.ToLower(rest)
+	if isSessionExportRole(lower) {
+		return lower, true
+	}
+	i := 0
+	for i < len(lower) && lower[i] >= '0' && lower[i] <= '9' {
+		i++
+	}
+	if i == 0 || i >= len(lower) || lower[i] != '.' {
+		return "", false
+	}
+	role := strings.ToLower(strings.TrimSpace(lower[i+1:]))
+	if isSessionExportRole(role) {
+		return role, true
+	}
+	return "", false
+}
+
+func isSessionExportRole(role string) bool {
+	switch role {
+	case "assistant", "user", "tool", "system", "developer", "message":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) githubClient() *webhook.Client {

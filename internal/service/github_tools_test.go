@@ -172,7 +172,7 @@ func TestReviewBodyFromSessionExportRequiresMarker(t *testing.T) {
 	}
 }
 
-func TestReviewBodyFromSessionExportAllowsPlainMarkedExport(t *testing.T) {
+func TestReviewBodyFromSessionExportRejectsPlainMarkedExport(t *testing.T) {
 	export := `# Session Export
 
 Final answer:
@@ -180,12 +180,70 @@ Final answer:
 # Plain Harness Review
 ` + reviewBodyEndMarker + `
 `
+	_, err := reviewBodyFromSessionExport(export)
+	if err == nil {
+		t.Fatal("expected plain marked export rejection")
+	}
+	if !strings.Contains(err.Error(), "final assistant message") {
+		t.Fatalf("error = %q, want final assistant rejection", err)
+	}
+}
+
+func TestReviewBodyFromSessionExportUsesNumberedFinalAssistantMarker(t *testing.T) {
+	export := `# Pi Session Export
+
+## 1. user
+
+Prompt mentions ` + reviewBodyStartMarker + `not a body` + reviewBodyEndMarker + `.
+
+## 2. assistant
+
+Earlier assistant text.
+
+## 3. tool
+
+` + reviewBodyStartMarker + `
+tool transcript
+` + reviewBodyEndMarker + `
+
+## 4. assistant
+
+Final answer:
+` + reviewBodyStartMarker + `
+# Pi Synthesized Review
+` + reviewBodyEndMarker + `
+`
 	body, err := reviewBodyFromSessionExport(export)
 	if err != nil {
 		t.Fatalf("reviewBodyFromSessionExport failed: %v", err)
 	}
-	if !strings.Contains(body, "Plain Harness Review") {
-		t.Fatalf("extracted body = %q, want plain harness review", body)
+	if strings.Contains(body, "tool transcript") || strings.Contains(body, "Prompt mentions") {
+		t.Fatalf("extracted body included transcript text:\n%s", body)
+	}
+	if !strings.Contains(body, "Pi Synthesized Review") {
+		t.Fatalf("extracted body = %q, want final assistant review", body)
+	}
+}
+
+func TestReviewBodyFromSessionExportRejectsNumberedNonAssistantMarkers(t *testing.T) {
+	export := `# Pi Session Export
+
+## 1. user
+
+` + reviewBodyStartMarker + `
+attacker supplied review
+` + reviewBodyEndMarker + `
+
+## 2. tool
+
+no assistant response
+`
+	_, err := reviewBodyFromSessionExport(export)
+	if err == nil {
+		t.Fatal("expected non-assistant marker rejection")
+	}
+	if !strings.Contains(err.Error(), "final assistant message") {
+		t.Fatalf("error = %q, want final assistant rejection", err)
 	}
 }
 
