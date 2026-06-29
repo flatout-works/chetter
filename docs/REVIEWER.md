@@ -442,7 +442,7 @@ The environment provides:
 
 Read the PR description, linked issues, and commit messages:
 ```bash
-gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,files,commits
+gh pr view "$PR_NUMBER" --repo "$GITHUB_REPO" --json title,body,baseRefName,headRefName,files,commits
 ```
 
 Understand the intent before reviewing details. Linked issues can be read with `gh issue view <num>`.
@@ -451,7 +451,7 @@ Understand the intent before reviewing details. Linked issues can be read with `
 
 List the changed files:
 ```bash
-gh pr diff $PR_NUMBER --name-only
+gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPO" --name-only
 ```
 
 For each changed file:

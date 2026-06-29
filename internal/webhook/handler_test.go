@@ -204,6 +204,12 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	if req.Prompt == "" {
 		t.Fatal("Prompt should be non-empty")
 	}
+	if !strings.Contains(req.Prompt, `gh pr view "$PR_NUMBER" --repo "$GITHUB_REPO"`) {
+		t.Fatalf("fallback prompt should view PRs through the base repo for fork safety:\n%s", req.Prompt)
+	}
+	if !strings.Contains(req.Prompt, `gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPO"`) {
+		t.Fatalf("fallback prompt should diff PRs through the base repo for fork safety:\n%s", req.Prompt)
+	}
 	if req.GitURL != review.HeadCloneURL {
 		t.Errorf("GitURL = %q, want %q", req.GitURL, review.HeadCloneURL)
 	}

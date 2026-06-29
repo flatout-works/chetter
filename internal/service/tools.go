@@ -16,23 +16,24 @@ import (
 
 // SubmitTaskInput is the input for chetter_submit_task.
 type SubmitTaskInput struct {
-	Prompt      string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
-	GitURL      string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
-	GitRef      string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
-	AgentImage  string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
-	Agent       string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
-	ProviderID  string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
-	ModelID     string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
-	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
-	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	MCPProfiles []string          `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for this task"`
-	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
-	ExtraFiles  map[string]string `json:"extra_files,omitempty" jsonschema:"Workspace files to write before the task starts, keyed by relative path"`
-	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
-	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
-	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
-	PauseReason string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
-	TTLHours    int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	Prompt          string                  `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
+	GitURL          string                  `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
+	GitRef          string                  `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	AgentImage      string                  `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
+	Agent           string                  `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
+	ProviderID      string                  `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
+	ModelID         string                  `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
+	VariantID       string                  `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
+	Skills          []string                `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	MCPProfiles     []string                `json:"mcp_profiles,omitempty" jsonschema:"MCP profile names to mount for this task"`
+	Env             map[string]string       `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	ExtraFiles      map[string]string       `json:"extra_files,omitempty" jsonschema:"Workspace files to write before the task starts, keyed by relative path"`
+	TaskExportFiles []TaskExportFileRequest `json:"task_export_files,omitempty" jsonschema:"Task session exports to inject as workspace files without returning export text to the caller"`
+	Harness         string                  `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
+	TimeoutSec      int                     `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	SessionMode     string                  `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
+	PauseReason     string                  `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
+	TTLHours        int                     `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 }
 
 // SubmitTaskOutput is the output for chetter_submit_task.
@@ -638,23 +639,24 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:      in.Prompt,
-		GitURL:      in.GitURL,
-		GitRef:      in.GitRef,
-		AgentImage:  in.AgentImage,
-		Agent:       in.Agent,
-		ProviderID:  in.ProviderID,
-		ModelID:     in.ModelID,
-		VariantID:   in.VariantID,
-		Skills:      in.Skills,
-		MCPProfiles: in.MCPProfiles,
-		Env:         in.Env,
-		ExtraFiles:  in.ExtraFiles,
-		Harness:     in.Harness,
-		TimeoutSec:  in.TimeoutSec,
-		SessionMode: in.SessionMode,
-		PauseReason: in.PauseReason,
-		TTLHours:    in.TTLHours,
+		Prompt:          in.Prompt,
+		GitURL:          in.GitURL,
+		GitRef:          in.GitRef,
+		AgentImage:      in.AgentImage,
+		Agent:           in.Agent,
+		ProviderID:      in.ProviderID,
+		ModelID:         in.ModelID,
+		VariantID:       in.VariantID,
+		Skills:          in.Skills,
+		MCPProfiles:     in.MCPProfiles,
+		Env:             in.Env,
+		ExtraFiles:      in.ExtraFiles,
+		TaskExportFiles: in.TaskExportFiles,
+		Harness:         in.Harness,
+		TimeoutSec:      in.TimeoutSec,
+		SessionMode:     in.SessionMode,
+		PauseReason:     in.PauseReason,
+		TTLHours:        in.TTLHours,
 	})
 	if err != nil {
 		return nil, SubmitTaskOutput{}, fmt.Errorf("submit task: %w", err)

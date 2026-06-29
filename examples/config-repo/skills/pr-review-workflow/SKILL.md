@@ -20,7 +20,7 @@ Use this skill for Chetter pull request review orchestration, standard review, a
 - Use `gh` for read-only GitHub inspection.
 - Use Chetter MCP tools for Chetter task operations and GitHub write operations.
 - Review child tasks must not post to GitHub directly.
-- The synthesizer must not receive Chetter MCP credentials; it produces one final review body for the orchestrator to post with `chetter_pr_review`.
+- The synthesizer must not receive Chetter MCP credentials; it produces one final review body that the orchestrator posts through server-side task-export references.
 
 ## Quality Bar
 

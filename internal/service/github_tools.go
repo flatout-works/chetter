@@ -39,11 +39,12 @@ type GitHubCreatePRInput struct {
 }
 
 type GitHubPRReviewInput struct {
-	TaskID   string `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
-	Repo     string `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
-	PRNumber int    `json:"pr_number" jsonschema:"Pull request number to review"`
-	Event    string `json:"event,omitempty" jsonschema:"Review event: COMMENT, APPROVE, or REQUEST_CHANGES (default COMMENT)"`
-	Body     string `json:"body" jsonschema:"Review body without the Chetter footer"`
+	TaskID           string `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
+	Repo             string `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
+	PRNumber         int    `json:"pr_number" jsonschema:"Pull request number to review"`
+	Event            string `json:"event,omitempty" jsonschema:"Review event: COMMENT, APPROVE, or REQUEST_CHANGES (default COMMENT)"`
+	Body             string `json:"body,omitempty" jsonschema:"Review body without the Chetter footer"`
+	BodyTaskExportID string `json:"body_task_export_id,omitempty" jsonschema:"Use this task's session export as the review body without returning the export text to the caller"`
 }
 
 type GitHubArtifactOutput struct {
@@ -166,15 +167,34 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 	if err := validateGitHubToolArtifactScope(task, in.Repo, in.PRNumber, "pr"); err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+	bodySourceIsExport := strings.TrimSpace(in.BodyTaskExportID) != ""
+	bodyText := in.Body
+	if bodySourceIsExport {
+		if strings.TrimSpace(in.Body) != "" {
+			return nil, GitHubArtifactOutput{}, fmt.Errorf("body and body_task_export_id are mutually exclusive")
+		}
+		exportTask, err := s.taskForToolAccess(ctx, in.BodyTaskExportID)
+		if err != nil {
+			return nil, GitHubArtifactOutput{}, err
+		}
+		if !exportTask.SessionExport.Valid {
+			return nil, GitHubArtifactOutput{}, fmt.Errorf("no session export available for task %s", in.BodyTaskExportID)
+		}
+		bodyText = strings.ReplaceAll(exportTask.SessionExport.String, "\\n", "\n")
+	}
+	body := appendChetterSignature(bodyText, githubToolSignature(task, sessionRun, s.cfg.WebURL))
 	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request review: %w", err)
 	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr_review", in.Repo, in.PRNumber, created.URL, "", body, map[string]any{
+	result, out, err := s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr_review", in.Repo, in.PRNumber, created.URL, "", body, map[string]any{
 		"pr_number": in.PRNumber,
 		"event":     event,
 	})
+	if bodySourceIsExport {
+		out.Body = ""
+	}
+	return result, out, err
 }
 
 func (s *Service) githubClient() *webhook.Client {

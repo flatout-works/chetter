@@ -172,13 +172,13 @@ Environment variables available to you:
 ### 1. Understand the PR
 
 Read the PR description, linked issues, and commit messages:
-` + "```bash\n" + `gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,files,commits
+` + "```bash\n" + `gh pr view "$PR_NUMBER" --repo "$GITHUB_REPO" --json title,body,baseRefName,headRefName,files,commits
 ` + "```\n\n" + `Understand the intent before reviewing details.
 
 ### 2. Review Changed Files
 
 List the changed files:
-` + "```bash\n" + `gh pr diff $PR_NUMBER --name-only
+` + "```bash\n" + `gh pr diff "$PR_NUMBER" --repo "$GITHUB_REPO" --name-only
 ` + "```\n\n" + `For each changed file:
 - Read the full file (not just the diff) to understand surrounding context
 - Check for:

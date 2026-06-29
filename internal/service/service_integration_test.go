@@ -115,6 +115,59 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskInjectsTaskExportFilesWithoutExposingEnvPayload(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "source", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit source task: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET session_export = ? WHERE id = ?", "source export", source.ID); err != nil {
+		t.Fatalf("set session export: %v", err)
+	}
+	target, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "synthesize",
+		AgentImage: "runner:latest",
+		ExtraFiles: map[string]string{
+			"reviews/status.json": `{"standard":"done"}`,
+		},
+		TaskExportFiles: []TaskExportFileRequest{{
+			TaskID: source.ID,
+			Path:   "reviews/standard.md",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("submit target task: %v", err)
+	}
+	if _, ok := target.Env[extraFilesEnv]; ok {
+		t.Fatalf("internal extra files payload leaked from SubmitTask: %#v", target.Env)
+	}
+
+	row, err := repository.New(tdb.DB).GetTaskByID(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("get target task: %v", err)
+	}
+	proto := taskToProto(row, "", "")
+	if _, ok := proto.Env[extraFilesEnv]; ok {
+		t.Fatalf("internal extra files payload leaked into runner env: %#v", proto.Env)
+	}
+	if string(proto.ExtraFiles["reviews/standard.md"]) != "source export" {
+		t.Fatalf("task export file = %q", string(proto.ExtraFiles["reviews/standard.md"]))
+	}
+	if string(proto.ExtraFiles["reviews/status.json"]) != `{"standard":"done"}` {
+		t.Fatalf("inline extra file = %q", string(proto.ExtraFiles["reviews/status.json"]))
+	}
+	rec, err := svc.GetTask(ctx, target.ID)
+	if err != nil {
+		t.Fatalf("get task record: %v", err)
+	}
+	if _, ok := rec.Env[extraFilesEnv]; ok {
+		t.Fatalf("internal extra files payload leaked into task record: %#v", rec.Env)
+	}
+}
+
 func TestSubmitTaskRejectsMissingMCPProfile(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -2360,6 +2413,17 @@ func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
 		}},
 		{"export", func() error {
 			_, _, err := svc.taskExportTool(teamBCtx, nil, TaskExportInput{TaskID: taskA.ID})
+			return err
+		}},
+		{"task export files", func() error {
+			_, err := svc.SubmitTask(teamBCtx, SubmitTaskRequest{
+				Prompt:     "synthesize",
+				AgentImage: "runner:latest",
+				TaskExportFiles: []TaskExportFileRequest{{
+					TaskID: taskA.ID,
+					Path:   "reviews/standard.md",
+				}},
+			})
 			return err
 		}},
 		{"events", func() error {

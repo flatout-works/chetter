@@ -223,10 +223,14 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 		t.Fatalf("reviewer child section should require read-only GitHub inheritance:\n%s", childSection)
 	}
 	synthSection := sectionBetween(orchestrator, "6. Submit the synthesizer task", "7. Poll the synthesizer")
-	if !strings.Contains(synthSection, "`extra_files`") ||
+	if !strings.Contains(synthSection, "`task_export_files`") ||
+		!strings.Contains(synthSection, "`extra_files`") ||
 		!strings.Contains(synthSection, "reviews/standard.md") ||
 		!strings.Contains(synthSection, "reviews/adversarial.md") {
-		t.Fatalf("synthesizer section should inject child exports as files:\n%s", synthSection)
+		t.Fatalf("synthesizer section should inject child exports via server-side files:\n%s", synthSection)
+	}
+	if strings.Contains(synthSection, "containing the exported child transcripts") {
+		t.Fatalf("synthesizer section should not ask orchestrator to read transcript contents:\n%s", synthSection)
 	}
 	if strings.Contains(synthSection, "`mcp_profiles`: `[\"chetter-orchestration\"]`") ||
 		strings.Contains(synthSection, "`CHETTER_GITHUB_AUTH_MODE` must be set to `write`") {
@@ -234,6 +238,15 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 	}
 	if !strings.Contains(synthSection, "do not set `mcp_profiles`, `CHETTER_PARENT_TASK_ID`, or `CHETTER_GITHUB_AUTH_MODE`") {
 		t.Fatalf("synthesizer section should explicitly forbid inherited credentials:\n%s", synthSection)
+	}
+	exportSection := sectionBetween(orchestrator, "5. Prepare synthesizer inputs", "6. Submit the synthesizer task")
+	if !strings.Contains(exportSection, "Do not call `chetter_task_export`") {
+		t.Fatalf("orchestrator should not read child task exports:\n%s", exportSection)
+	}
+	postSection := sectionBetween(orchestrator, "8. Verify the PR head again", "## Rules")
+	if !strings.Contains(postSection, "`body_task_export_id`") ||
+		!strings.Contains(postSection, "without returning it to you") {
+		t.Fatalf("orchestrator should post synthesizer export without reading it:\n%s", postSection)
 	}
 
 	synthData, err := os.ReadFile(filepath.Join(root, "agents", "review-synthesizer.md"))

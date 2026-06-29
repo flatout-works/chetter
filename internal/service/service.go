@@ -28,31 +28,37 @@ import (
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
-	TeamID      string
-	Prompt      string
-	GitURL      string
-	GitRef      string
-	AgentImage  string
-	Agent       string
-	ProviderID  string
-	ModelID     string
-	VariantID   string
-	Harness     string
-	Skills      []string
-	MCPProfiles []string
-	Env         map[string]string
-	ExtraFiles  map[string]string
-	TimeoutSec  int
-	TriggerName string
-	TriggerType string
-	SessionMode string
-	PauseReason string
-	TTLHours    int
+	TeamID          string
+	Prompt          string
+	GitURL          string
+	GitRef          string
+	AgentImage      string
+	Agent           string
+	ProviderID      string
+	ModelID         string
+	VariantID       string
+	Harness         string
+	Skills          []string
+	MCPProfiles     []string
+	Env             map[string]string
+	ExtraFiles      map[string]string
+	TaskExportFiles []TaskExportFileRequest
+	TimeoutSec      int
+	TriggerName     string
+	TriggerType     string
+	SessionMode     string
+	PauseReason     string
+	TTLHours        int
 
 	DefinitionRepo             string
 	AllowGitHubToken           bool
 	AllowGitHubReadToken       bool
 	AllowPrivilegedMCPProfiles bool
+}
+
+type TaskExportFileRequest struct {
+	TaskID string `json:"task_id" jsonschema:"Task ID whose session export should be injected"`
+	Path   string `json:"path" jsonschema:"Relative workspace path to write the task export to"`
 }
 
 type AuditEventParams struct {
@@ -510,7 +516,11 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
 	}
-	extraFilesPayload, err := encodeExtraFilesPayload(in.ExtraFiles)
+	extraFiles, err := s.resolveExtraFiles(ctx, in.ExtraFiles, in.TaskExportFiles)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
+	extraFilesPayload, err := encodeExtraFilesPayload(extraFiles)
 	if err != nil {
 		return store.TaskRecord{}, err
 	}
@@ -1075,7 +1085,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		TriggerType:           task.TriggerType.String,
 		Skills:                skills,
 		MCPProfiles:           mcpProfiles,
-		Env:                   env,
+		Env:                   taskToolEnv(env),
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,
 		Error:                 task.Error.String,
@@ -1129,6 +1139,48 @@ func sanitizeTaskEnv(env map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func (s *Service) resolveExtraFiles(ctx context.Context, inline map[string]string, taskExports []TaskExportFileRequest) (map[string]string, error) {
+	if len(inline) == 0 && len(taskExports) == 0 {
+		return nil, nil
+	}
+	files := make(map[string]string, len(inline)+len(taskExports))
+	for name, content := range inline {
+		if err := addResolvedExtraFile(files, name, content); err != nil {
+			return nil, err
+		}
+	}
+	for _, ref := range taskExports {
+		taskID := strings.TrimSpace(ref.TaskID)
+		if taskID == "" {
+			return nil, fmt.Errorf("task_export_files contains an empty task_id")
+		}
+		task, err := s.taskForToolAccess(ctx, taskID)
+		if err != nil {
+			return nil, fmt.Errorf("task_export_files %s: %w", taskID, err)
+		}
+		if !task.SessionExport.Valid {
+			return nil, fmt.Errorf("no session export available for task %s", taskID)
+		}
+		content := strings.ReplaceAll(task.SessionExport.String, "\\n", "\n")
+		if err := addResolvedExtraFile(files, ref.Path, content); err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
+}
+
+func addResolvedExtraFile(files map[string]string, name, content string) error {
+	cleanName, err := cleanExtraFileName(name)
+	if err != nil {
+		return err
+	}
+	if _, exists := files[cleanName]; exists {
+		return fmt.Errorf("extra_files path %q is duplicated", cleanName)
+	}
+	files[cleanName] = content
+	return nil
 }
 
 func encodeExtraFilesPayload(files map[string]string) (string, error) {
