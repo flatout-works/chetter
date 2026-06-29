@@ -79,6 +79,68 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	}
 }
 
+func TestWriteExtraFilesWritesSafePath(t *testing.T) {
+	wsDir := t.TempDir()
+	err := writeExtraFiles(wsDir, map[string][]byte{
+		"reviews/status.json": []byte(`{"ok":true}`),
+	})
+	if err != nil {
+		t.Fatalf("writeExtraFiles failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(wsDir, "reviews", "status.json"))
+	if err != nil {
+		t.Fatalf("read extra file: %v", err)
+	}
+	if string(data) != `{"ok":true}` {
+		t.Fatalf("extra file content = %q", string(data))
+	}
+}
+
+func TestWriteExtraFilesRejectsSymlinkDirectory(t *testing.T) {
+	wsDir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(wsDir, "reviews")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	err := writeExtraFiles(wsDir, map[string][]byte{
+		"reviews/status.json": []byte("leak"),
+	})
+	if err == nil {
+		t.Fatal("expected symlink directory rejection")
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "status.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("extra file escaped through symlink, stat err=%v", statErr)
+	}
+}
+
+func TestWriteExtraFilesRejectsSymlinkTarget(t *testing.T) {
+	wsDir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(wsDir, "reviews"), 0750); err != nil {
+		t.Fatalf("mkdir reviews: %v", err)
+	}
+	outsideFile := filepath.Join(outside, "status.json")
+	if err := os.WriteFile(outsideFile, []byte("original"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(wsDir, "reviews", "status.json")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	err := writeExtraFiles(wsDir, map[string][]byte{
+		"reviews/status.json": []byte("leak"),
+	})
+	if err == nil {
+		t.Fatal("expected symlink target rejection")
+	}
+	data, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatalf("read outside file: %v", err)
+	}
+	if string(data) != "original" {
+		t.Fatalf("outside file was modified: %q", string(data))
+	}
+}
+
 func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
 	t.Setenv("GH_TOKEN", "runner-gh-token")

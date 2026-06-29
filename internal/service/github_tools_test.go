@@ -84,3 +84,49 @@ func TestValidateGitHubToolRepoScope(t *testing.T) {
 		t.Fatalf("unauthorized scope error = %v, want not authorized", err)
 	}
 }
+
+func TestReviewBodyFromSessionExportUsesFinalAssistantMarker(t *testing.T) {
+	export := `# session
+
+## User
+
+Prompt mentions ` + reviewBodyStartMarker + `not a body` + reviewBodyEndMarker + `.
+
+## Assistant
+
+Earlier assistant text.
+
+## Tool
+
+` + reviewBodyStartMarker + `
+tool transcript
+` + reviewBodyEndMarker + `
+
+## Assistant
+
+Final answer:
+` + reviewBodyStartMarker + `
+# Chetter Synthesized PR Review
+
+## Verdict
+PASS
+` + reviewBodyEndMarker + `
+`
+	body, err := reviewBodyFromSessionExport(export)
+	if err != nil {
+		t.Fatalf("reviewBodyFromSessionExport failed: %v", err)
+	}
+	if strings.Contains(body, "tool transcript") || strings.Contains(body, "Prompt mentions") {
+		t.Fatalf("extracted body included transcript text:\n%s", body)
+	}
+	if !strings.Contains(body, "PASS") {
+		t.Fatalf("extracted body = %q, want final review", body)
+	}
+}
+
+func TestReviewBodyFromSessionExportRequiresMarker(t *testing.T) {
+	_, err := reviewBodyFromSessionExport("## Assistant\n\n# Review\nNo marker\n")
+	if err == nil {
+		t.Fatal("expected missing marker error")
+	}
+}

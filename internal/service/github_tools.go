@@ -56,6 +56,11 @@ type GitHubArtifactOutput struct {
 	Body         string `json:"body,omitempty"`
 }
 
+const (
+	reviewBodyStartMarker = "<!-- CHETTER_REVIEW_BODY_START -->"
+	reviewBodyEndMarker   = "<!-- CHETTER_REVIEW_BODY_END -->"
+)
+
 func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubCreateIssueInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
 	if err := requireAdminGitHubWriteTool(ctx); err != nil {
 		return nil, GitHubArtifactOutput{}, err
@@ -180,7 +185,10 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 		if !exportTask.SessionExport.Valid {
 			return nil, GitHubArtifactOutput{}, fmt.Errorf("no session export available for task %s", in.BodyTaskExportID)
 		}
-		bodyText = strings.ReplaceAll(exportTask.SessionExport.String, "\\n", "\n")
+		bodyText, err = reviewBodyFromSessionExport(strings.ReplaceAll(exportTask.SessionExport.String, "\\n", "\n"))
+		if err != nil {
+			return nil, GitHubArtifactOutput{}, err
+		}
 	}
 	body := appendChetterSignature(bodyText, githubToolSignature(task, sessionRun, s.cfg.WebURL))
 	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
@@ -195,6 +203,29 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 		out.Body = ""
 	}
 	return result, out, err
+}
+
+func reviewBodyFromSessionExport(export string) (string, error) {
+	section := export
+	if idx := strings.LastIndex(export, "\n## Assistant\n"); idx >= 0 {
+		section = export[idx+1:]
+	} else if strings.HasPrefix(export, "## Assistant\n") {
+		section = export
+	}
+	start := strings.LastIndex(section, reviewBodyStartMarker)
+	if start < 0 {
+		return "", fmt.Errorf("session export does not contain %s", reviewBodyStartMarker)
+	}
+	afterStart := section[start+len(reviewBodyStartMarker):]
+	end := strings.Index(afterStart, reviewBodyEndMarker)
+	if end < 0 {
+		return "", fmt.Errorf("session export does not contain %s after %s", reviewBodyEndMarker, reviewBodyStartMarker)
+	}
+	body := strings.TrimSpace(afterStart[:end])
+	if body == "" {
+		return "", fmt.Errorf("marked review body is empty")
+	}
+	return body, nil
 }
 
 func (s *Service) githubClient() *webhook.Client {

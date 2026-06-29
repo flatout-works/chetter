@@ -264,6 +264,10 @@ func TestExampleReviewOrchestrationDefinitionsParse(t *testing.T) {
 		!strings.Contains(synthesizer, "Do not call Chetter MCP tools") {
 		t.Fatalf("synthesizer should run without privileged MCP credentials:\n%s", synthesizer)
 	}
+	if !strings.Contains(synthesizer, "<!-- CHETTER_REVIEW_BODY_START -->") ||
+		!strings.Contains(synthesizer, "<!-- CHETTER_REVIEW_BODY_END -->") {
+		t.Fatalf("synthesizer should mark the exact final review body:\n%s", synthesizer)
+	}
 }
 
 func sectionBetween(content, start, end string) string {

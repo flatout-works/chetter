@@ -28,7 +28,7 @@ prompt: |-
   task_export_files so the server copies child exports into its workspace
   without returning transcript text to you. After the synthesizer finishes,
   verify the current PR head and post exactly one Chetter PR review using
-  body_task_export_id.
+  body_task_export_id to extract the synthesizer's marked final review body.
 
   Do not review the code yourself. Do not attach Chetter MCP profiles or
   GitHub write inheritance to the synthesizer. Do not read child or

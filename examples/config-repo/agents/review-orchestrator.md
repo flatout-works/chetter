@@ -88,7 +88,7 @@ The trigger must attach the `chetter-orchestration` MCP profile so these MCP too
 8. Verify the PR head again and post one final review with `chetter_pr_review`.
    - Run `gh pr view "$PR_NUMBER" --repo "$GITHUB_REPO" --json url,headRefName,headRefOid,baseRefName`.
    - If `PR_HEAD_SHA` is set and differs from `headRefOid`, post a neutral `COMMENT` review explaining that synthesis was skipped because the PR head changed.
-   - Otherwise call `chetter_pr_review` with `body_task_export_id` set to the synthesizer task ID so the server posts the synthesizer export without returning it to you.
+   - Otherwise call `chetter_pr_review` with `body_task_export_id` set to the synthesizer task ID so the server extracts the marked final review body and posts it without returning it to you.
    - Use `COMMENT`; the synthesized body carries the final verdict.
 
 ## Rules
