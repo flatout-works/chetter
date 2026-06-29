@@ -93,6 +93,38 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	}
 }
 
+func TestMCPProfileDefinitionsRequireAdmin(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	q := repository.New(tdb.DB)
+	insertMCPProfileDefinition(t, q, "chetter-orchestration")
+
+	_, _, err := svc.listDefinitionsTool(context.Background(), nil, ListDefinitionsInput{DefinitionType: definitions.DefinitionTypeMCPProfile})
+	if err == nil {
+		t.Fatal("expected non-admin mcp_profile list to fail")
+	}
+	_, _, err = svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "chetter-orchestration"})
+	if err == nil {
+		t.Fatal("expected non-admin mcp_profile get to fail")
+	}
+	_, listOut, err := svc.listDefinitionsTool(context.Background(), nil, ListDefinitionsInput{})
+	if err != nil {
+		t.Fatalf("unfiltered non-admin list definitions: %v", err)
+	}
+	for _, def := range listOut.Definitions {
+		if def.DefinitionType == definitions.DefinitionTypeMCPProfile {
+			t.Fatalf("non-admin unfiltered list exposed mcp_profile definition: %#v", def)
+		}
+	}
+	_, getOut, err := svc.getDefinitionTool(ctxWithAdmin(context.Background()), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeMCPProfile, Name: "chetter-orchestration"})
+	if err != nil {
+		t.Fatalf("admin get mcp_profile definition: %v", err)
+	}
+	if getOut.Definition.Content == "" {
+		t.Fatalf("admin mcp_profile definition content is empty: %#v", getOut.Definition)
+	}
+}
+
 func createDefinitionsRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

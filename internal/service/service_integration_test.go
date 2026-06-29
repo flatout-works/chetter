@@ -191,6 +191,45 @@ func TestSubmitTaskDoesNotPersistGitHubRuntimeTokens(t *testing.T) {
 	}
 }
 
+func TestTeamTokenCannotSubmitTaskWithMCPProfiles(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithTeam(context.Background(), "team_1")
+	_, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err == nil {
+		t.Fatal("expected team-scoped submit with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "mcp_profiles require admin access") {
+		t.Fatalf("SubmitTask error = %q, want admin access", err)
+	}
+}
+
+func TestAdminCanSubmitTaskWithMCPProfilesSetsInternalMarker(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	row, env := storedTaskEnvForTest(t, tdb, rec.ID)
+	if env[mcpProfilesAllowedEnv] != "true" {
+		t.Fatalf("mcp profile marker = %q, want true; env=%#v", env[mcpProfilesAllowedEnv], env)
+	}
+	protoTask := taskToProto(row, "", "")
+	if _, ok := protoTask.Env[mcpProfilesAllowedEnv]; ok {
+		t.Fatalf("mcp profile marker leaked to runner env: %#v", protoTask.Env)
+	}
+}
+
 func TestSubmitTaskInheritsReadOnlyGitHubAuthFromParent(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -1073,6 +1112,205 @@ func TestServiceCreateTriggerPersistsAndActivates(t *testing.T) {
 	}
 	if row.Prompt != "check the logs" {
 		t.Errorf("prompt: %s", row.Prompt)
+	}
+}
+
+func TestTeamTokenCannotCreateTriggerWithMCPProfiles(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithTeam(context.Background(), "team_1")
+	_, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:        "team-profile-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	})
+	if err == nil {
+		t.Fatal("expected team-scoped trigger with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "mcp_profiles require admin access") {
+		t.Fatalf("CreateTrigger error = %q, want admin access", err)
+	}
+}
+
+func TestTeamTokenCannotUpdateTriggerWithMCPProfiles(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithTeam(context.Background(), "team_1")
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:        "team-update-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	_, err := svc.UpdateTrigger(ctx, "team-update-trigger", store.TriggerInput{
+		Name:        "team-update-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	}, true)
+	if err == nil {
+		t.Fatal("expected team-scoped trigger update with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "mcp_profiles require admin access") {
+		t.Fatalf("UpdateTrigger error = %q, want admin access", err)
+	}
+}
+
+func TestTeamScopedLegacyTriggerWithMCPProfilesDoesNotRun(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamCtx := ctxWithTeam(ctx, "team_1")
+	rec, err := svc.CreateTrigger(teamCtx, store.TriggerInput{
+		Name:        "legacy-team-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_triggers SET mcp_profiles = JSON_ARRAY(?) WHERE id = ?", "chetter-orchestration", rec.ID); err != nil {
+		t.Fatalf("seed legacy mcp profiles: %v", err)
+	}
+	_, err = svc.RunTriggerNow(teamCtx, "legacy-team-trigger")
+	if err == nil {
+		t.Fatal("expected team-scoped legacy trigger with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "team-scoped triggers cannot use mcp_profiles") {
+		t.Fatalf("RunTriggerNow error = %q, want team-scoped rejection", err)
+	}
+}
+
+func TestAdminGlobalTriggerWithMCPProfilesCanRun(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:        "admin-profile-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"chetter-orchestration"},
+	}); err != nil {
+		t.Fatalf("CreateTrigger: %v", err)
+	}
+	task, err := svc.RunTriggerNow(ctx, "admin-profile-trigger")
+	if err != nil {
+		t.Fatalf("RunTriggerNow: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	env := parseJSON[map[string]string](row.Env, "task env")
+	if env[mcpProfilesAllowedEnv] != "true" {
+		t.Fatalf("mcp profile marker = %q, want true; env=%#v", env[mcpProfilesAllowedEnv], env)
+	}
+}
+
+func TestTeamTokenCannotCreateCreateTaskCallbackWithMCPProfiles(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithTeam(context.Background(), "team_1")
+	_, err := svc.CreateEventCallback(ctx, EventCallbackInput{
+		Name:         "team-callback",
+		EventType:    "task.completed",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up","agent_image":"runner:latest","mcp_profiles":["chetter-orchestration"]}`),
+		Enabled:      true,
+	})
+	if err == nil {
+		t.Fatal("expected team-scoped create_task callback with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "mcp_profiles in create_task callbacks require admin access") {
+		t.Fatalf("CreateEventCallback error = %q, want admin access", err)
+	}
+}
+
+func TestTeamScopedCallbackWithMCPProfilesDoesNotSubmitTaskAtRuntime(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := repository.New(tdb.DB)
+	now := time.Now().UTC()
+	if err := q.InsertEventCallback(ctx, repository.InsertEventCallbackParams{
+		ID:           "ecb_legacy_team",
+		TeamID:       sql.NullString{String: "team_1", Valid: true},
+		Name:         "legacy-team-callback",
+		EventType:    "task.completed",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up","agent_image":"runner:latest","mcp_profiles":["chetter-orchestration"]}`),
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("insert callback: %v", err)
+	}
+	callback, err := q.GetEventCallbackByID(ctx, "ecb_legacy_team")
+	if err != nil {
+		t.Fatalf("get callback: %v", err)
+	}
+	err = svc.runCreateTaskCallback(ctx, TaskEventCallbackContext{
+		ID:        "evt_1",
+		TaskID:    "task_parent",
+		TeamID:    "team_1",
+		EventType: "task.completed",
+		Status:    "done",
+		CreatedAt: now,
+	}, callback)
+	if err == nil {
+		t.Fatal("expected team-scoped callback runtime with mcp_profiles to fail")
+	}
+	if !strings.Contains(err.Error(), "team-scoped event callbacks cannot use mcp_profiles") {
+		t.Fatalf("runCreateTaskCallback error = %q, want team-scoped rejection", err)
+	}
+}
+
+func TestAdminGlobalCallbackWithMCPProfilesCanSubmitTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := svc.CreateEventCallback(ctxWithAdmin(ctx), EventCallbackInput{
+		Name:         "admin-callback",
+		EventType:    "task.completed",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up","agent_image":"runner:latest","mcp_profiles":["chetter-orchestration"]}`),
+		Enabled:      true,
+	}); err != nil {
+		t.Fatalf("CreateEventCallback: %v", err)
+	}
+	callback, err := repository.New(tdb.DB).GetEventCallbackByName(ctx, repository.GetEventCallbackByNameParams{Name: "admin-callback", TeamID: sql.NullString{}})
+	if err != nil {
+		t.Fatalf("get callback: %v", err)
+	}
+	if err := svc.runCreateTaskCallback(ctx, TaskEventCallbackContext{
+		ID:        "evt_1",
+		TaskID:    "task_parent",
+		TeamID:    "team_1",
+		EventType: "task.completed",
+		Status:    "done",
+		CreatedAt: time.Now().UTC(),
+	}, callback); err != nil {
+		t.Fatalf("runCreateTaskCallback: %v", err)
+	}
+	var envJSON json.RawMessage
+	if err := tdb.DB.QueryRowContext(ctx, "SELECT env FROM chetter_tasks WHERE trigger_name = ?", "admin-callback").Scan(&envJSON); err != nil {
+		t.Fatalf("get submitted callback task env: %v", err)
+	}
+	env := parseJSON[map[string]string](envJSON, "callback task env")
+	if env[mcpProfilesAllowedEnv] != "true" {
+		t.Fatalf("mcp profile marker = %q, want true; env=%#v", env[mcpProfilesAllowedEnv], env)
 	}
 }
 

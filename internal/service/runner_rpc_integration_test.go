@@ -31,13 +31,18 @@ func insertPendingTask(t *testing.T, q *repository.Queries, id, prompt, agentIma
 
 func insertPendingTaskWithEnv(t *testing.T, q *repository.Queries, id, prompt, agentImage string, env json.RawMessage) {
 	t.Helper()
+	insertPendingTaskWithEnvAndProfiles(t, q, id, prompt, agentImage, env, json.RawMessage(`[]`))
+}
+
+func insertPendingTaskWithEnvAndProfiles(t *testing.T, q *repository.Queries, id, prompt, agentImage string, env, mcpProfiles json.RawMessage) {
+	t.Helper()
 	now := time.Now().UTC()
 	if err := q.InsertTask(context.Background(), repository.InsertTaskParams{
 		ID:                id,
 		Prompt:            prompt,
 		AgentImage:        sql.NullString{String: agentImage, Valid: true},
 		Skills:            json.RawMessage(`[]`),
-		McpProfiles:       json.RawMessage(`[]`),
+		McpProfiles:       mcpProfiles,
 		Env:               env,
 		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
@@ -46,6 +51,30 @@ func insertPendingTaskWithEnv(t *testing.T, q *repository.Queries, id, prompt, a
 		UpdatedAt:         now,
 	}); err != nil {
 		t.Fatalf("insert task: %v", err)
+	}
+}
+
+func insertMCPProfileDefinition(t *testing.T, q *repository.Queries, name string) {
+	t.Helper()
+	now := time.Now().UTC()
+	content := "name: " + name + "\ntransport: http\nurl: https://chetter.example.com/mcp\nheaders:\n  Authorization: Bearer ${env:CHETTER_MCP_AUTH_TOKEN}\n"
+	metadata := json.RawMessage(`{}`)
+	if err := q.UpsertDefinition(context.Background(), repository.UpsertDefinitionParams{
+		ID:             "def_" + name,
+		SourceID:       defaultDefinitionSourceID,
+		DefinitionType: "mcp_profile",
+		Name:           name,
+		Scope:          definitionScopeGlobal,
+		Path:           "mcp-profiles/" + name + ".yaml",
+		SourceCommit:   "test",
+		ContentHash:    "hash-" + name,
+		Content:        content,
+		Metadata:       &metadata,
+		Active:         true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("upsert mcp profile definition: %v", err)
 	}
 }
 
@@ -163,6 +192,68 @@ func TestClaimTaskInjectsGitHubReadTokenWithoutForwardingMarkers(t *testing.T) {
 	}
 	if got := resp.Msg.Task.Env[injectedGitHubCloneTokenEnv]; got != "" {
 		t.Fatalf("stale clone token leaked to runner task env: %#v", resp.Msg.Task.Env)
+	}
+}
+
+func TestClaimTaskRejectsUnauthorizedMCPProfilesAtResolution(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertMCPProfileDefinition(t, q, "chetter-orchestration")
+	insertPendingTaskWithEnvAndProfiles(t, q, "task_untrusted_profile", "x", "runner:latest", json.RawMessage(`{}`), json.RawMessage(`["chetter-orchestration"]`))
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if len(resp.Msg.Task.McpProfiles) != 1 {
+		t.Fatalf("McpProfiles = %#v, want one invalid stub", resp.Msg.Task.McpProfiles)
+	}
+	profile := resp.Msg.Task.McpProfiles[0]
+	if profile.Name != "chetter-orchestration" {
+		t.Fatalf("profile name = %q, want chetter-orchestration", profile.Name)
+	}
+	if profile.Url != "" || len(profile.Headers) != 0 {
+		t.Fatalf("unauthorized profile resolved credentialed config: %#v", profile)
+	}
+}
+
+func TestClaimTaskResolvesAuthorizedMCPProfiles(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertMCPProfileDefinition(t, q, "chetter-orchestration")
+	env := json.RawMessage(`{"__chetter_mcp_profiles_allowed":"true"}`)
+	insertPendingTaskWithEnvAndProfiles(t, q, "task_trusted_profile", "x", "runner:latest", env, json.RawMessage(`["chetter-orchestration"]`))
+
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task == nil {
+		t.Fatal("expected claimed task")
+	}
+	if len(resp.Msg.Task.McpProfiles) != 1 {
+		t.Fatalf("McpProfiles = %#v, want one resolved profile", resp.Msg.Task.McpProfiles)
+	}
+	profile := resp.Msg.Task.McpProfiles[0]
+	if profile.Url != "https://chetter.example.com/mcp" {
+		t.Fatalf("profile URL = %q, want resolved URL", profile.Url)
+	}
+	if got := profile.Headers["Authorization"]; got != "Bearer ${env:CHETTER_MCP_AUTH_TOKEN}" {
+		t.Fatalf("Authorization header = %q, want profile header", got)
+	}
+	if _, ok := resp.Msg.Task.Env[mcpProfilesAllowedEnv]; ok {
+		t.Fatalf("mcp profile marker leaked to runner env: %#v", resp.Msg.Task.Env)
 	}
 }
 
