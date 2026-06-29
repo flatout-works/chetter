@@ -28,6 +28,7 @@ vendor/
 
 # Session exports (agent dumps)
 session-exports/
+performance_learned.md
 
 # JS dependencies
 web/node_modules/

@@ -149,6 +149,22 @@ Optional fields:
 
 Multiple PR review triggers for the same repo are allowed. Each trigger submits a separate review task when a matching PR event arrives. Useful for running different agents (e.g. "deep code review" + "security review") on the same PRs.
 
+## Multi-Agent Review Boundary
+
+This MVP does not ship a secure production multi-agent review workflow. It ships the lower-level plumbing needed for trusted self-hosted experiments: Git-backed MCP profiles, `mcp_profiles` on tasks and triggers, claim-time profile resolution, harness config rendering, and explicit parent/child GitHub auth inheritance.
+
+Webhook-created review tasks include stable PR context:
+
+- `PR_URL`
+- `PR_HEAD_SHA`
+- `PR_BASE_REF`
+- `PR_HEAD_REF`
+- `PR_HEAD_CLONE_URL`
+
+Child review tasks should use `PR_HEAD_CLONE_URL` and `PR_HEAD_REF` so fork PRs are reviewed from the correct source branch. Review prompts should verify `PR_HEAD_SHA` before posting or synthesizing results.
+
+The included `chetter-orchestration` profile is a disabled trusted-only example for validating MCP plumbing. It may carry the full Chetter MCP bearer authority, and its `tool_allowlist` is not server-side security enforcement. Production multi-tenant review orchestration needs follow-up scoped MCP credentials or proxy enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
+
 ## Webhook Configuration
 
 ### Environment Variables

@@ -572,11 +572,24 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 | `COMMENT_BODY` | `issue` | Comment body text (only for `comment` events) |
 | `COMMENT_USER` | `issue` | Comment author login (only for `comment` events) |
 | `PR_NUMBER` | `pr_review` | Pull request number |
+| `PR_URL` | `pr_review` | Pull request browser URL |
+| `PR_HEAD_SHA` | `pr_review` | Pull request head SHA captured when the review task was submitted |
+| `PR_BASE_REF` | `pr_review` | Base branch name |
+| `PR_HEAD_REF` | `pr_review` | Head branch name |
+| `PR_HEAD_CLONE_URL` | `pr_review` | Clone URL for the head repository, including fork PRs |
 | `COMMENT_AUTHOR` | `pr_review` | User who requested the review via `/chetter-review` |
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
 `gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+
+GitHub authorization inheritance is explicit. If a child task sets `CHETTER_PARENT_TASK_ID`, it must also set `CHETTER_GITHUB_AUTH_MODE=read` or `CHETTER_GITHUB_AUTH_MODE=write`. `read` allows read-only GitHub context inheritance and cannot call Chetter GitHub write tools. `write` is accepted only when the parent task had write authorization and the child keeps the same `GITHUB_REPO` plus matching `PR_NUMBER` or `ISSUE_NUMBER`. Missing modes, read-to-write upgrades, repo mismatches, and PR/issue mismatches are rejected at submission time.
+
+### Multi-Agent PR Review Boundary
+
+This MVP does not implement secure production multi-agent PR review orchestration. It provides the plumbing needed by trusted self-hosted experiments: Git-backed MCP profile definitions, `mcp_profiles` on tasks/triggers, claim-time resolution, harness-native config rendering, and explicit GitHub auth inheritance for parent/child tasks.
+
+The example config repo includes a disabled trusted-only `chetter-orchestration` MCP profile. It is useful for validating profile plumbing, but it is not a final secure orchestration architecture. Production multi-tenant orchestration still needs scoped Chetter MCP credentials or proxy-side enforcement, task-bound grants, team-scoped privileged profile semantics, and structured review artifacts.
 
 ### Harness Interface Support Matrix
 
@@ -602,17 +615,43 @@ Use the `harness` field on tasks and triggers to select the agent runtime. The t
 | Session export | Reads OpenCode SQLite transcript | Not supported; returns empty export | Reads Pi messages into markdown |
 | Per-task Docker/gVisor isolation | Yes for Docker mode | No; batch subprocess runs in the runner process environment | RPC subprocess runs in the agent image container path for Docker RPC mode |
 
-### Planned Runtime Definition Injection
+### Runtime Definition Injection
 
 The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo configured by `DEFINITIONS_REPO`.
 
-Planned flow:
+Flow:
 
-1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
+1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, `task-templates/*.md`, and `mcp-profiles/*.yaml` from the config repo into the database.
 2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
-3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
+3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md`, `.opencode/skill/*/SKILL.md`, and harness-native MCP config files.
 4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
-5. Updating agents, skills, prompts, task templates, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+5. Updating agents, skills, prompts, task templates, MCP profiles, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+
+MCP profile example:
+
+```yaml
+name: chetter-orchestration
+transport: http
+url: http://chetter-mcp:8080/mcp
+auth:
+  type: bearer
+  token: ${env:CHETTER_MCP_AUTH_TOKEN}
+tool_allowlist:
+  - chetter_submit_task
+  - chetter_task_status
+  - chetter_task_export
+```
+
+Task or trigger attachment:
+
+```yaml
+mcp_profiles:
+  - chetter-orchestration
+```
+
+Profile definitions must not contain literal secrets. Use deployment-backed references such as `${env:CHETTER_MCP_AUTH_TOKEN}`. The runner resolves them while writing harness config, so resolved credentials enter task-readable files such as `.opencode.json`, `.claude/mcp.json`, `.mcp.json`, or `.codewhale/mcp.json`.
+
+Credentialed MCP profiles are trusted/admin-only in this MVP. `tool_allowlist` is a harness/client exposure control, not a server-side security boundary for a bearer credential. Do not use privileged Chetter MCP profiles for untrusted or multi-tenant tasks until scoped MCP tokens or proxy-side enforcement exist.
 
 Trigger ownership should remain explicit:
 
