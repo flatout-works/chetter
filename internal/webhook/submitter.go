@@ -157,12 +157,14 @@ Environment variables available to you:
 - PR_BASE_REF — the base branch name
 - PR_HEAD_REF — the head branch name
 - PR_HEAD_CLONE_URL — the clone URL for the PR head repository
-- GITHUB_TOKEN — GitHub App installation token with PR read/write
+- GITHUB_TOKEN — repo-scoped GitHub App token for read-only gh operations
 - GITHUB_REPO — repository (e.g., my-org/my-repo)
 - COMMENT_AUTHOR — set when the trigger was a comment (the user who requested review)
 - CHETTER_AGENT_NAME — agent definition name (e.g., "pr-reviewer")
 - CHETTER_MODEL_ID — model identifier (e.g., "opencode/minimax-m3")
 - CHETTER_TASK_ID — Chetter task identifier
+
+GitHub writes must use Chetter tools such as chetter_pr_review.
 
 ## Procedure
 
