@@ -431,6 +431,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	delete(taskEnv, gitHubTokenAllowedEnv)
 	delete(taskEnv, gitHubReadTokenAllowedEnv)
 	delete(taskEnv, injectedGitHubTokenEnv)
+	delete(taskEnv, injectedGitHubCloneEnv)
 	delete(taskEnv, definitionRepoEnv)
 	delete(taskEnv, mcpProfilePrivilegedEnv)
 	delete(taskEnv, extraFilesEnv)
@@ -921,6 +922,7 @@ func (s *Service) resumeTaskContext(ctx context.Context, sessionID string, opts 
 		envMap = map[string]string{}
 	}
 	delete(envMap, injectedGitHubTokenEnv)
+	delete(envMap, injectedGitHubCloneEnv)
 	if opts.PreserveGitHubToken {
 		if envMap[gitHubTokenAllowedEnv] == "true" && githubTokenContextComplete(envMap) {
 			if strings.TrimSpace(envMap["GITHUB_TOKEN"]) == "" {

@@ -5,16 +5,11 @@
 #
 # Blocked: aliases, gh api <any>, GitHub writes, and unknown commands.
 # Allowed: known read-only commands (issue view/list, pr view/checks, search, etc.)
-# Bypass:  set CHETTER_ALLOW_GH_WRITES=1 for manual debugging only.
 #
 # Real binary: /usr/local/bin/gh-real
 set -eu
 
 GH_REAL="${CHETTER_GH_REAL:-/usr/local/bin/gh-real}"
-
-if [ "${CHETTER_ALLOW_GH_WRITES:-}" = "1" ]; then
-  exec "$GH_REAL" "$@"
-fi
 
 GH_SAFE_CONFIG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/chetter-gh.XXXXXX")
 trap 'rm -rf "$GH_SAFE_CONFIG_DIR"' EXIT HUP INT TERM

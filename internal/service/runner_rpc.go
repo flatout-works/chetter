@@ -29,6 +29,7 @@ const (
 	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
 	injectedGitHubTokenEnv    = "__chetter_github_token"
+	injectedGitHubCloneEnv    = "__chetter_github_clone_token"
 )
 
 var errNoClaimableTask = errors.New("no claimable task")
@@ -207,13 +208,15 @@ func (s *RunnerRPCService) injectGitHubToken(ctx context.Context, task *runnerv1
 		return
 	}
 	task.Env["GITHUB_REPO"] = repoName
-	var token string
-	var err error
 	if writeAllowed {
-		token, err = s.ghActions.GitHubInstallationTokenForRepository(repoName)
-	} else {
-		token, err = s.ghActions.GitHubReadInstallationTokenForRepository(repoName)
+		token, err := s.ghActions.GitHubInstallationTokenForRepository(repoName)
+		if err != nil {
+			slog.Warn("mint GitHub installation token for task clone", "taskID", task.TaskId, "err", err)
+			return
+		}
+		task.Env[injectedGitHubCloneEnv] = token
 	}
+	token, err := s.ghActions.GitHubReadInstallationTokenForRepository(repoName)
 	if err != nil {
 		slog.Warn("mint GitHub installation token for task", "taskID", task.TaskId, "err", err)
 		return

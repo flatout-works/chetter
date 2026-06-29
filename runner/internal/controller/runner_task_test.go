@@ -59,13 +59,13 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "runner-key")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv("DEEPSEEK_API_KEY", "runner-deepseek-key")
-	req := task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}
+	req := task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_read_token"}}
 	env := map[string]string{"MEM9_API_KEY": "task-key", "OPENAI_API_KEY": "task-openai-key", "DEEPSEEK_API_KEY": "task-deepseek-key"}
 	addRunnerOwnedEnv(env, req)
-	if env["GITHUB_TOKEN"] != "ghs_claim_token" {
+	if env["GITHUB_TOKEN"] != "ghs_read_token" {
 		t.Fatalf("expected injected github token to win, got %q", env["GITHUB_TOKEN"])
 	}
-	if env["GH_TOKEN"] != "ghs_claim_token" {
+	if env["GH_TOKEN"] != "ghs_read_token" {
 		t.Fatalf("expected injected github token to win for GH_TOKEN, got %q", env["GH_TOKEN"])
 	}
 	if env["MEM9_API_KEY"] != "runner-key" {
@@ -152,11 +152,11 @@ func TestRunnerOwnedEnvDoesNotForwardHostGitHubToken(t *testing.T) {
 	if _, ok := env["GH_TOKEN"]; ok {
 		t.Fatalf("host GH_TOKEN should not be forwarded without injected task token: %#v", env)
 	}
-	if got := runnerOwnedEnvValue("GITHUB_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}); got != "ghs_claim_token" {
-		t.Fatalf("runnerOwnedEnvValue injected token = %q, want ghs_claim_token", got)
+	if got := runnerOwnedEnvValue("GITHUB_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_read_token"}}); got != "ghs_read_token" {
+		t.Fatalf("runnerOwnedEnvValue injected token = %q, want ghs_read_token", got)
 	}
-	if got := runnerOwnedEnvValue("GH_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"}}); got != "ghs_claim_token" {
-		t.Fatalf("runnerOwnedEnvValue GH_TOKEN injected token = %q, want ghs_claim_token", got)
+	if got := runnerOwnedEnvValue("GH_TOKEN", task.TaskRequest{Env: map[string]string{injectedGitHubTokenTaskEnv: "ghs_read_token"}}); got != "ghs_read_token" {
+		t.Fatalf("runnerOwnedEnvValue GH_TOKEN injected token = %q, want ghs_read_token", got)
 	}
 }
 
@@ -225,7 +225,8 @@ func TestFilteredHostEnvRemovesRunnerOwnedCredentials(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "runner-github-token")
 	t.Setenv("GH_TOKEN", "runner-gh-token")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
-	t.Setenv(injectedGitHubTokenTaskEnv, "ghs_claim_token")
+	t.Setenv(injectedGitHubTokenTaskEnv, "ghs_read_token")
+	t.Setenv(injectedGitHubCloneTaskEnv, "ghs_clone_token")
 	t.Setenv("CHETTER_MCP_AUTH_TOKEN", "admin-mcp-token")
 	t.Setenv("MCP_AUTH_TOKEN", "server-admin-token")
 	t.Setenv("CHETTER_RUNNER_RPC_TOKEN", "runner-rpc-token")
@@ -239,6 +240,7 @@ func TestFilteredHostEnvRemovesRunnerOwnedCredentials(t *testing.T) {
 		"GH_TOKEN",
 		"OPENAI_API_KEY",
 		injectedGitHubTokenTaskEnv,
+		injectedGitHubCloneTaskEnv,
 		"CHETTER_MCP_AUTH_TOKEN",
 		"MCP_AUTH_TOKEN",
 		"CHETTER_RUNNER_RPC_TOKEN",
@@ -270,16 +272,17 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 			"GITHUB_TOKEN":             "[redacted]",
 			"GH_TOKEN":                 "task-gh-token",
 			"OPENAI_API_KEY":           "task-openai-key",
-			injectedGitHubTokenTaskEnv: "ghs_claim_token",
+			injectedGitHubTokenTaskEnv: "ghs_read_token",
+			injectedGitHubCloneTaskEnv: "ghs_clone_token",
 			privilegedMCPProfileEnv:    "true",
 		},
 	}
 
 	env := envListToMap((&Runner{}).agentEnv(req, "/tmp/ws", "", pi.New()))
-	if got := env["GITHUB_TOKEN"]; got != "ghs_claim_token" {
+	if got := env["GITHUB_TOKEN"]; got != "ghs_read_token" {
 		t.Fatalf("GITHUB_TOKEN = %q, want injected task token", got)
 	}
-	if got := env["GH_TOKEN"]; got != "ghs_claim_token" {
+	if got := env["GH_TOKEN"]; got != "ghs_read_token" {
 		t.Fatalf("GH_TOKEN = %q, want injected task token", got)
 	}
 	if got := env["OPENAI_API_KEY"]; got != "runner-openai-key" {
@@ -290,6 +293,9 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 	}
 	if _, ok := env[injectedGitHubTokenTaskEnv]; ok {
 		t.Fatalf("private injected token env should not be forwarded: %#v", env)
+	}
+	if _, ok := env[injectedGitHubCloneTaskEnv]; ok {
+		t.Fatalf("private injected clone token env should not be forwarded: %#v", env)
 	}
 	if _, ok := env[privilegedMCPProfileEnv]; ok {
 		t.Fatalf("privileged mcp marker should not be forwarded: %#v", env)
@@ -304,9 +310,9 @@ func TestAgentEnvUsesInjectedGitHubTokenWithoutLeakingHostTokens(t *testing.T) {
 func TestCloneURLForRequestUsesTaskScopedGitHubToken(t *testing.T) {
 	got := cloneURLForRequest(task.TaskRequest{
 		GitURL: "https://github.com/flatout-works/chetter.git",
-		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+		Env:    map[string]string{injectedGitHubCloneTaskEnv: "ghs_clone_token"},
 	}, "")
-	if !strings.Contains(got, "x-access-token:ghs_claim_token@github.com") {
+	if !strings.Contains(got, "x-access-token:ghs_clone_token@github.com") {
 		t.Fatalf("clone URL = %q, want scoped GitHub token", got)
 	}
 }
@@ -314,7 +320,7 @@ func TestCloneURLForRequestUsesTaskScopedGitHubToken(t *testing.T) {
 func TestCloneURLForRequestDoesNotLeakTaskTokenToNonGitHubHost(t *testing.T) {
 	got := cloneURLForRequest(task.TaskRequest{
 		GitURL: "https://git.example.test/flatout-works/chetter.git",
-		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+		Env:    map[string]string{injectedGitHubCloneTaskEnv: "ghs_clone_token"},
 	}, "")
 	if got != "https://git.example.test/flatout-works/chetter.git" {
 		t.Fatalf("clone URL = %q, want original URL", got)
@@ -333,10 +339,58 @@ func TestCloneURLForRequestDoesNotLeakRunnerPATToNonGitHubHost(t *testing.T) {
 func TestCloneURLForRequestPrefersTaskScopedGitHubTokenOverRunnerPAT(t *testing.T) {
 	got := cloneURLForRequest(task.TaskRequest{
 		GitURL: "https://github.com/flatout-works/chetter.git",
-		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_claim_token"},
+		Env:    map[string]string{injectedGitHubCloneTaskEnv: "ghs_clone_token"},
 	}, "ghp_runner_pat")
-	if !strings.Contains(got, "x-access-token:ghs_claim_token@github.com") || strings.Contains(got, "ghp_runner_pat") {
+	if !strings.Contains(got, "x-access-token:ghs_clone_token@github.com") || strings.Contains(got, "ghp_runner_pat") {
 		t.Fatalf("clone URL = %q, want task-scoped token precedence", got)
+	}
+}
+
+func TestCloneURLForRequestDoesNotUseRuntimeGitHubToken(t *testing.T) {
+	got := cloneURLForRequest(task.TaskRequest{
+		GitURL: "https://github.com/flatout-works/chetter.git",
+		Env:    map[string]string{injectedGitHubTokenTaskEnv: "ghs_read_token"},
+	}, "")
+	if got != "https://github.com/flatout-works/chetter.git" {
+		t.Fatalf("clone URL = %q, want runtime token excluded from clone URL", got)
+	}
+}
+
+func TestScrubCloneRemoteCredentialsRemovesInjectedCloneToken(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found")
+	}
+	wsDir := t.TempDir()
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = wsDir
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	cleanURL := "https://github.com/flatout-works/chetter.git"
+	credentialedURL := "https://x-access-token:ghs_clone_token@github.com/flatout-works/chetter.git"
+	addCmd := exec.Command("git", "remote", "add", "origin", credentialedURL)
+	addCmd.Dir = wsDir
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v\n%s", err, out)
+	}
+
+	err := scrubCloneRemoteCredentials(context.Background(), wsDir, credentialedURL, task.TaskRequest{GitURL: cleanURL})
+	if err != nil {
+		t.Fatalf("scrubCloneRemoteCredentials: %v", err)
+	}
+
+	getCmd := exec.Command("git", "remote", "get-url", "origin")
+	getCmd.Dir = wsDir
+	out, err := getCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git remote get-url: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if got != cleanURL {
+		t.Fatalf("origin URL = %q, want %q", got, cleanURL)
+	}
+	if strings.Contains(got, "ghs_clone_token") {
+		t.Fatalf("origin URL leaked clone token: %q", got)
 	}
 }
 
@@ -1086,7 +1140,8 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"CUSTOM_ENV":               "custom-value",
 			"OPENAI_API_KEY":           "task-key",
 			"GITHUB_TOKEN":             "[redacted]",
-			injectedGitHubTokenTaskEnv: "ghs_claim_token",
+			injectedGitHubTokenTaskEnv: "ghs_read_token",
+			injectedGitHubCloneTaskEnv: "ghs_clone_token",
 			privilegedMCPProfileEnv:    "true",
 		},
 	}
@@ -1121,11 +1176,14 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	if hasAdjacentArgs(args, "-e", "OPENAI_API_KEY=task-key") {
 		t.Fatalf("runner-owned env must not use task-provided value, got %v", args)
 	}
-	if !hasAdjacentArgs(args, "-e", "GITHUB_TOKEN=ghs_claim_token") {
+	if !hasAdjacentArgs(args, "-e", "GITHUB_TOKEN=ghs_read_token") {
 		t.Fatalf("expected injected GitHub token to be forwarded as GITHUB_TOKEN, got %v", args)
 	}
-	if hasAdjacentArgs(args, "-e", injectedGitHubTokenTaskEnv+"=ghs_claim_token") {
+	if hasAdjacentArgs(args, "-e", injectedGitHubTokenTaskEnv+"=ghs_read_token") {
 		t.Fatalf("private injected token env must not be forwarded directly, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", injectedGitHubCloneTaskEnv+"=ghs_clone_token") {
+		t.Fatalf("private injected clone token env must not be forwarded directly, got %v", args)
 	}
 	if hasAdjacentArgs(args, "-e", privilegedMCPProfileEnv+"=true") {
 		t.Fatalf("privileged mcp marker must not be forwarded directly, got %v", args)

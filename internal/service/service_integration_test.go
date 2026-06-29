@@ -198,6 +198,7 @@ func TestSubmitTaskStripsPrivateGitHubTokenMarkers(t *testing.T) {
 			gitHubTokenAllowedEnv:     "true",
 			gitHubReadTokenAllowedEnv: "true",
 			injectedGitHubTokenEnv:    "ghs_fake",
+			injectedGitHubCloneEnv:    "ghs_clone_fake",
 			definitionRepoEnv:         "flatout-works/private",
 		},
 	})
@@ -223,6 +224,9 @@ func TestSubmitTaskStripsPrivateGitHubTokenMarkers(t *testing.T) {
 	}
 	if _, ok := env[injectedGitHubTokenEnv]; ok {
 		t.Fatalf("public task env kept injected token marker: %#v", env)
+	}
+	if _, ok := env[injectedGitHubCloneEnv]; ok {
+		t.Fatalf("public task env kept injected clone token marker: %#v", env)
 	}
 	if _, ok := env[definitionRepoEnv]; ok {
 		t.Fatalf("public task env kept definition repo marker: %#v", env)
@@ -373,6 +377,9 @@ func TestSubmitTaskToolUsesDefinitionRepoWithoutGitHubTokenInheritance(t *testin
 	}
 	if _, ok := claim.Msg.Task.Env[injectedGitHubTokenEnv]; ok {
 		t.Fatalf("definition-only task received GitHub token: %#v", claim.Msg.Task.Env)
+	}
+	if _, ok := claim.Msg.Task.Env[injectedGitHubCloneEnv]; ok {
+		t.Fatalf("definition-only task received GitHub clone token: %#v", claim.Msg.Task.Env)
 	}
 }
 

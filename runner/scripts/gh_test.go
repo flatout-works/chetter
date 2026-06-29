@@ -86,6 +86,20 @@ func TestGHWrapperIgnoresWorkspaceConfigAliases(t *testing.T) {
 	}
 }
 
+func TestGHWrapperIgnoresWriteBypassEnv(t *testing.T) {
+	out, err := runGHWrapperWithEnv(t, []string{"CHETTER_ALLOW_GH_WRITES=1"}, "api", "repos/owner/repo/issues")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected wrapper to block with exit error, got err=%v out=%s", err, out)
+	}
+	if exitErr.ExitCode() != 64 {
+		t.Fatalf("exit code = %d, want 64; out=%s", exitErr.ExitCode(), out)
+	}
+	if strings.Contains(out, "REAL ") {
+		t.Fatalf("wrapper delegated despite bypass env:\n%s", out)
+	}
+}
+
 func runGHWrapper(t *testing.T, args ...string) (string, error) {
 	return runGHWrapperWithEnv(t, nil, args...)
 }

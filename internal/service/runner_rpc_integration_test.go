@@ -167,7 +167,13 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 func TestRPCClaimTaskInjectsGitHubTokenWithoutPersistingIt(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
-	svc.WithGitHubActions(fakeGitHubActions{token: "ghs_claim_token"})
+	var writeRepos, readRepos []string
+	svc.WithGitHubActions(fakeGitHubActions{
+		token:     "ghs_write_token",
+		readToken: "ghs_read_token",
+		repos:     &writeRepos,
+		readRepos: &readRepos,
+	})
 	ctx := context.Background()
 	now := time.Now().UTC()
 	if err := q.InsertTask(ctx, repository.InsertTaskParams{
@@ -198,11 +204,17 @@ func TestRPCClaimTaskInjectsGitHubTokenWithoutPersistingIt(t *testing.T) {
 	if resp.Msg.Task == nil {
 		t.Fatal("expected claimed task")
 	}
-	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_claim_token" {
-		t.Fatalf("injected token = %q, want ghs_claim_token; env=%#v", got, resp.Msg.Task.Env)
+	if got := resp.Msg.Task.Env[injectedGitHubCloneEnv]; got != "ghs_write_token" {
+		t.Fatalf("injected clone token = %q, want ghs_write_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_read_token" {
+		t.Fatalf("injected runtime token = %q, want ghs_read_token; env=%#v", got, resp.Msg.Task.Env)
 	}
 	if _, ok := resp.Msg.Task.Env[gitHubTokenAllowedEnv]; ok {
 		t.Fatalf("github token marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[gitHubReadTokenAllowedEnv]; ok {
+		t.Fatalf("github read marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
 	}
 	row, err := q.GetTaskByID(ctx, "task_pr_review")
 	if err != nil {
@@ -215,19 +227,33 @@ func TestRPCClaimTaskInjectsGitHubTokenWithoutPersistingIt(t *testing.T) {
 	if _, ok := persisted[injectedGitHubTokenEnv]; ok {
 		t.Fatalf("injected token was persisted: %#v", persisted)
 	}
+	if _, ok := persisted[injectedGitHubCloneEnv]; ok {
+		t.Fatalf("injected clone token was persisted: %#v", persisted)
+	}
 	if persisted[gitHubTokenAllowedEnv] != "true" {
 		t.Fatalf("persisted github token marker = %q, want true", persisted[gitHubTokenAllowedEnv])
 	}
 	if persisted["GITHUB_TOKEN"] != "[redacted]" {
 		t.Fatalf("persisted GITHUB_TOKEN = %q, want redacted", persisted["GITHUB_TOKEN"])
 	}
+	if len(writeRepos) != 1 || writeRepos[0] != "flatout-works/chetter" {
+		t.Fatalf("write token repos = %#v, want flatout-works/chetter", writeRepos)
+	}
+	if len(readRepos) != 1 || readRepos[0] != "flatout-works/chetter" {
+		t.Fatalf("read token repos = %#v, want flatout-works/chetter", readRepos)
+	}
 }
 
 func TestRPCClaimTaskCanonicalizesGitHubRepoBeforeTokenMint(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
-	var repos []string
-	svc.WithGitHubActions(fakeGitHubActions{token: "ghs_claim_token", repos: &repos})
+	var writeRepos, readRepos []string
+	svc.WithGitHubActions(fakeGitHubActions{
+		token:     "ghs_write_token",
+		readToken: "ghs_read_token",
+		repos:     &writeRepos,
+		readRepos: &readRepos,
+	})
 	ctx := context.Background()
 	now := time.Now().UTC()
 	if err := q.InsertTask(ctx, repository.InsertTaskParams{
@@ -256,14 +282,20 @@ func TestRPCClaimTaskCanonicalizesGitHubRepoBeforeTokenMint(t *testing.T) {
 	if resp.Msg.Task == nil {
 		t.Fatal("expected claimed task")
 	}
-	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_claim_token" {
-		t.Fatalf("injected token = %q, want ghs_claim_token; env=%#v", got, resp.Msg.Task.Env)
+	if got := resp.Msg.Task.Env[injectedGitHubCloneEnv]; got != "ghs_write_token" {
+		t.Fatalf("injected clone token = %q, want ghs_write_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_read_token" {
+		t.Fatalf("injected runtime token = %q, want ghs_read_token; env=%#v", got, resp.Msg.Task.Env)
 	}
 	if got := resp.Msg.Task.Env["GITHUB_REPO"]; got != "flatout-works/chetter" {
 		t.Fatalf("runner GITHUB_REPO = %q, want flatout-works/chetter", got)
 	}
-	if len(repos) != 1 || repos[0] != "flatout-works/chetter" {
-		t.Fatalf("token repos = %#v, want flatout-works/chetter", repos)
+	if len(writeRepos) != 1 || writeRepos[0] != "flatout-works/chetter" {
+		t.Fatalf("write token repos = %#v, want flatout-works/chetter", writeRepos)
+	}
+	if len(readRepos) != 1 || readRepos[0] != "flatout-works/chetter" {
+		t.Fatalf("read token repos = %#v, want flatout-works/chetter", readRepos)
 	}
 }
 
@@ -307,6 +339,9 @@ func TestRPCClaimTaskInjectsReadOnlyGitHubToken(t *testing.T) {
 	}
 	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "ghs_read_token" {
 		t.Fatalf("injected token = %q, want ghs_read_token; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if _, ok := resp.Msg.Task.Env[injectedGitHubCloneEnv]; ok {
+		t.Fatalf("read-only task received clone token: %#v", resp.Msg.Task.Env)
 	}
 	if _, ok := resp.Msg.Task.Env[gitHubReadTokenAllowedEnv]; ok {
 		t.Fatalf("github read marker should not be forwarded to runner: %#v", resp.Msg.Task.Env)
@@ -359,6 +394,9 @@ func TestRPCClaimTaskDoesNotInjectGitHubTokenWithoutServerMarker(t *testing.T) {
 	}
 	if got := resp.Msg.Task.Env[injectedGitHubTokenEnv]; got != "" {
 		t.Fatalf("unexpected injected token = %q; env=%#v", got, resp.Msg.Task.Env)
+	}
+	if got := resp.Msg.Task.Env[injectedGitHubCloneEnv]; got != "" {
+		t.Fatalf("unexpected injected clone token = %q; env=%#v", got, resp.Msg.Task.Env)
 	}
 }
 

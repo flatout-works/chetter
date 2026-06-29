@@ -23,6 +23,7 @@ import (
 const (
 	containerWorkspaceDir      = "/workspace"
 	injectedGitHubTokenTaskEnv = "__chetter_github_token"
+	injectedGitHubCloneTaskEnv = "__chetter_github_clone_token"
 	privilegedMCPProfileEnv    = "__chetter_mcp_profile_privileged_allowed"
 )
 
@@ -213,7 +214,7 @@ func filteredHostEnv() []string {
 }
 
 func shouldForwardHostEnv(key string) bool {
-	if key == "" || key == injectedGitHubTokenTaskEnv || isRunnerOwnedEnv(key) {
+	if key == "" || key == injectedGitHubTokenTaskEnv || key == injectedGitHubCloneTaskEnv || isRunnerOwnedEnv(key) {
 		return false
 	}
 	switch key {
@@ -234,6 +235,9 @@ func cloneRepository(ctx context.Context, wsDir string, req task.TaskRequest, ru
 	}
 	if out, err := cloneCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone: %v\n%s", err, string(out))
+	}
+	if err := scrubCloneRemoteCredentials(ctx, wsDir, gitURL, req); err != nil {
+		return err
 	}
 	return checkoutPinnedHeadSHA(ctx, wsDir, req)
 }
@@ -274,6 +278,19 @@ func checkoutPinnedHeadSHA(ctx context.Context, wsDir string, req task.TaskReque
 	return nil
 }
 
+func scrubCloneRemoteCredentials(ctx context.Context, wsDir, cloneURL string, req task.TaskRequest) error {
+	if req.GitURL == "" || cloneURL == "" || cloneURL == req.GitURL {
+		return nil
+	}
+	remoteCmd := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", req.GitURL)
+	remoteCmd.Dir = wsDir
+	remoteCmd.Env = filteredHostEnv()
+	if out, err := remoteCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git remote scrub origin credentials: %v\n%s", err, string(out))
+	}
+	return nil
+}
+
 func pinnedGitHeadSHA(req task.TaskRequest) string {
 	if req.Env == nil {
 		return ""
@@ -306,7 +323,7 @@ func trustedInjectedGitHubToken(req task.TaskRequest) string {
 }
 
 func shouldForwardTaskEnv(key string) bool {
-	return key != injectedGitHubTokenTaskEnv && key != privilegedMCPProfileEnv && !isRunnerOwnedEnv(key)
+	return key != injectedGitHubTokenTaskEnv && key != injectedGitHubCloneTaskEnv && key != privilegedMCPProfileEnv && !isRunnerOwnedEnv(key)
 }
 
 func (r *Runner) chetterMCPForRequest(req task.TaskRequest) (string, string) {
@@ -390,13 +407,21 @@ func cloneURLForRequest(req task.TaskRequest, runnerPAT string) string {
 	if req.GitURL == "" {
 		return ""
 	}
-	if token := trustedInjectedGitHubToken(req); token != "" {
+	if token := trustedInjectedGitHubCloneToken(req); token != "" {
 		return injectGitHubTokenIntoCloneURL(req.GitURL, token)
 	}
 	if runnerPAT != "" && strings.HasPrefix(req.GitURL, "https://") {
 		return injectPATIntoURL(req.GitURL, runnerPAT)
 	}
 	return req.GitURL
+}
+
+func trustedInjectedGitHubCloneToken(req task.TaskRequest) string {
+	val := strings.TrimSpace(req.Env[injectedGitHubCloneTaskEnv])
+	if val == "" || val == "[redacted]" {
+		return ""
+	}
+	return val
 }
 
 func injectGitHubTokenIntoCloneURL(raw, token string) string {
