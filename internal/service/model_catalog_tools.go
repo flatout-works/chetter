@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
@@ -162,7 +163,7 @@ func (s *Service) listDefinitionSourcesTool(ctx context.Context, _ *mcp.CallTool
 	}
 	out := make([]DefinitionSourceToolRecord, 0, len(sources))
 	for _, source := range sources {
-		out = append(out, definitionSourceToolRecord(source))
+		out = append(out, definitionSourceToolRecordForContext(ctx, source))
 	}
 	return nil, ListDefinitionSourcesOutput{Sources: out}, nil
 }
@@ -172,7 +173,7 @@ func (s *Service) getDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, GetDefinitionSourceOutput{}, err
 	}
-	return nil, GetDefinitionSourceOutput{Source: definitionSourceToolRecord(source)}, nil
+	return nil, GetDefinitionSourceOutput{Source: definitionSourceToolRecordForContext(ctx, source)}, nil
 }
 
 func (s *Service) syncDefinitionSourceTool(ctx context.Context, _ *mcp.CallToolRequest, in SyncDefinitionSourceInput) (*mcp.CallToolResult, SyncDefinitionSourceOutput, error) {
@@ -470,6 +471,25 @@ func definitionSourceToolRecord(source repository.DefinitionSource) DefinitionSo
 		UpdatedAt:  source.UpdatedAt,
 		LastSyncAt: nullTimePtr(source.LastSyncAt),
 	}
+}
+
+func definitionSourceToolRecordForContext(ctx context.Context, source repository.DefinitionSource) DefinitionSourceToolRecord {
+	record := definitionSourceToolRecord(source)
+	if !isAdmin(ctx) {
+		record.RepoURL = redactDefinitionSourceRepoURL(record.RepoURL)
+	}
+	return record
+}
+
+func redactDefinitionSourceRepoURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return "[redacted]"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 func definitionToolRecord(def repository.Definition) DefinitionToolRecord {
