@@ -30,6 +30,7 @@ type SubmitTaskRequest struct {
 	ProviderID  string
 	ModelID     string
 	VariantID   string
+	Harness     string
 	Skills      []string
 	MCPProfiles []string
 	Env         map[string]string
@@ -117,6 +118,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		ProviderID:  review.ProviderID,
 		ModelID:     review.ModelID,
 		VariantID:   review.VariantID,
+		Harness:     review.Harness,
 		Skills:      review.Skills,
 		MCPProfiles: review.MCPProfiles,
 		Env:         env,

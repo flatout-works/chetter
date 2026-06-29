@@ -572,6 +572,29 @@ func TestSubmitTaskRejectsPrivilegedMCPProfileWithoutAdminScope(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskRejectsCredentialURLMCPProfileWithoutAdminScope(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "userinfo-profile", "name: userinfo-profile\nurl: https://user:pass@mcp.example.test/mcp\n")
+	seedMCPProfile(t, tdb.DB, "query-token-profile", "name: query-token-profile\nurl: https://mcp.example.test/mcp?api_key=secret\n")
+
+	for _, profileName := range []string{"userinfo-profile", "query-token-profile"} {
+		t.Run(profileName, func(t *testing.T) {
+			_, err := svc.SubmitTask(context.Background(), SubmitTaskRequest{
+				Prompt:      "x",
+				AgentImage:  "runner:latest",
+				MCPProfiles: []string{profileName},
+			})
+			if err == nil {
+				t.Fatal("expected credential-bearing profile use to be rejected")
+			}
+			if !strings.Contains(err.Error(), `"`+profileName+`" requires admin access`) {
+				t.Fatalf("SubmitTask error = %q, want admin access error", err)
+			}
+		})
+	}
+}
+
 func TestAdminSubmitTaskAllowsPrivilegedMCPProfile(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -584,6 +607,32 @@ func TestAdminSubmitTaskAllowsPrivilegedMCPProfile(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("admin SubmitTask with privileged profile: %v", err)
+	}
+	row, err := repository.New(tdb.DB).GetTaskByID(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	var env map[string]string
+	if err := json.Unmarshal(row.Env, &env); err != nil {
+		t.Fatalf("unmarshal env: %v", err)
+	}
+	if env[mcpProfilePrivilegedEnv] != "true" {
+		t.Fatalf("privileged mcp marker = %q, want true; env=%#v", env[mcpProfilePrivilegedEnv], env)
+	}
+}
+
+func TestAdminSubmitTaskAllowsCredentialURLMCPProfile(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "query-token-profile", "name: query-token-profile\nurl: https://mcp.example.test/mcp?token=secret\n")
+
+	rec, err := svc.SubmitTask(ctxWithAdmin(context.Background()), SubmitTaskRequest{
+		Prompt:      "x",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"query-token-profile"},
+	})
+	if err != nil {
+		t.Fatalf("admin SubmitTask with credential URL profile: %v", err)
 	}
 	row, err := repository.New(tdb.DB).GetTaskByID(context.Background(), rec.ID)
 	if err != nil {
@@ -1621,6 +1670,26 @@ func TestCreateTriggerRejectsMissingMCPProfile(t *testing.T) {
 	}
 }
 
+func TestCreateTriggerRejectsCredentialURLMCPProfileWithoutAdminScope(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	seedMCPProfile(t, tdb.DB, "query-token-profile", "name: query-token-profile\nurl: https://mcp.example.test/mcp?access_token=secret\n")
+	_, err := svc.CreateTrigger(context.Background(), store.TriggerInput{
+		Name:        "credential-profile-trigger",
+		TriggerType: store.TriggerTypeCron,
+		CronExpr:    "@hourly",
+		Prompt:      "check",
+		AgentImage:  "runner:latest",
+		MCPProfiles: []string{"query-token-profile"},
+	})
+	if err == nil {
+		t.Fatal("expected credential-bearing mcp profile to be rejected")
+	}
+	if !strings.Contains(err.Error(), `"query-token-profile" requires admin access`) {
+		t.Fatalf("CreateTrigger error = %q, want admin access", err)
+	}
+}
+
 func TestCreateWebhookTriggerValidatesMCPProfilesAgainstWatchedRepo(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -1858,6 +1927,7 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 		Agent:         "pr-reviewer",
 		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
+		Harness:       "pi",
 		TimeoutSec:    3600,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -1891,6 +1961,40 @@ func TestListEnabledPRReviewTriggersByRepoMatchesRepo(t *testing.T) {
 	}
 	if matches[0].Agent != "pr-reviewer" {
 		t.Errorf("match agent = %q, want pr-reviewer", matches[0].Agent)
+	}
+	if matches[0].Harness != "pi" {
+		t.Errorf("match harness = %q, want pi", matches[0].Harness)
+	}
+}
+
+func TestListEnabledIssueTriggersByRepoPreservesHarness(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	triggerConfig := mustMarshalJSON(map[string]any{"repo": "flatout-works/chetter", "event": "opened"})
+	if _, err := svc.CreateTrigger(ctx, store.TriggerInput{
+		Name:          "issue-triage",
+		TriggerType:   store.TriggerTypeIssue,
+		TriggerConfig: string(triggerConfig),
+		Prompt:        "triage please",
+		AgentImage:    "runner:latest",
+		Agent:         "issue-triager",
+		Harness:       "codewhale",
+		TimeoutSec:    3600,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	matches, err := svc.ListEnabledIssueTriggersByRepo(ctx, "flatout-works/chetter")
+	if err != nil {
+		t.Fatalf("list issue triggers: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 issue trigger, got %d", len(matches))
+	}
+	if matches[0].Harness != "codewhale" {
+		t.Fatalf("match harness = %q, want codewhale", matches[0].Harness)
 	}
 }
 

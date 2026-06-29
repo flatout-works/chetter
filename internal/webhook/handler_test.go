@@ -193,6 +193,7 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 		Agent:         "pr-reviewer",
 		ProviderID:    "opencode",
 		ModelID:       "minimax-m3",
+		Harness:       "pi",
 		TimeoutSec:    3600,
 		SessionMode:   "resumable",
 		PauseReason:   "waiting_for_pr_feedback",
@@ -220,6 +221,9 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	}
 	if req.ModelID != "minimax-m3" {
 		t.Errorf("ModelID = %q, want minimax-m3", req.ModelID)
+	}
+	if req.Harness != "pi" {
+		t.Errorf("Harness = %q, want pi", req.Harness)
 	}
 	if req.TimeoutSec != 3600 {
 		t.Errorf("TimeoutSec = %d, want 3600", req.TimeoutSec)
@@ -522,6 +526,7 @@ func TestHandleIssuesOpenedSubmitsReadOnlyTask(t *testing.T) {
 			Name:        "issue-triage",
 			TriggerType: "issue",
 			AgentImage:  "runner:latest",
+			Harness:     "pi",
 			MCPProfiles: []string{"chetter-orchestration"},
 			Event:       "opened",
 		}}},
@@ -546,6 +551,9 @@ func TestHandleIssuesOpenedSubmitsReadOnlyTask(t *testing.T) {
 	req := submitter.tasks[0]
 	if req.AllowGitHubToken {
 		t.Fatal("opened issue task should not be GitHub write-authorized")
+	}
+	if req.Harness != "pi" {
+		t.Fatalf("opened issue task harness = %q, want pi", req.Harness)
 	}
 	if req.AllowPrivilegedMCPProfiles {
 		t.Fatal("opened issue task should not allow privileged mcp profiles")
@@ -603,6 +611,7 @@ func TestHandleIssuesLabeledAllowsWriterActor(t *testing.T) {
 			Name:        "issue-label",
 			TriggerType: "issue",
 			AgentImage:  "runner:latest",
+			Harness:     "codewhale",
 			MCPProfiles: []string{"chetter-orchestration"},
 			Event:       "labeled",
 			MatchLabels: []string{"needs-triage"},
@@ -631,6 +640,9 @@ func TestHandleIssuesLabeledAllowsWriterActor(t *testing.T) {
 	if !req.AllowGitHubToken {
 		t.Fatal("labeled issue task should be GitHub write-authorized for writer actor")
 	}
+	if req.Harness != "codewhale" {
+		t.Fatalf("labeled issue task harness = %q, want codewhale", req.Harness)
+	}
 	if !req.AllowPrivilegedMCPProfiles {
 		t.Fatal("labeled issue task should allow privileged mcp profiles for global trigger")
 	}
@@ -647,7 +659,7 @@ func TestHandlePullRequestLabeledRequiresWriterActor(t *testing.T) {
 	h := &Handler{
 		gh:        fakePermissionGitHub("writer"),
 		submitter: submitter,
-		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled"}}},
+		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled", Harness: "claude-code"}}},
 	}
 	body := []byte(`{
 		"action":"labeled",
@@ -677,7 +689,7 @@ func TestHandlePullRequestLabeledAllowsWriterActor(t *testing.T) {
 	h := &Handler{
 		gh:        fakePermissionGitHub("writer"),
 		submitter: submitter,
-		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled"}}},
+		triggers:  recordingTriggerResolver{prTriggers: []ReviewTrigger{{Name: "review", TriggerType: "pr_review", Event: "labeled", Harness: "claude-code"}}},
 	}
 	body := []byte(`{
 		"action":"labeled",
@@ -702,6 +714,9 @@ func TestHandlePullRequestLabeledAllowsWriterActor(t *testing.T) {
 	}
 	if submitter.reviews[0].Trigger != "labeled" {
 		t.Fatalf("review trigger = %q, want labeled", submitter.reviews[0].Trigger)
+	}
+	if submitter.reviews[0].Harness != "claude-code" {
+		t.Fatalf("review harness = %q, want claude-code", submitter.reviews[0].Harness)
 	}
 }
 

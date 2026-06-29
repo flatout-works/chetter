@@ -307,6 +307,7 @@ func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.Su
 		ProviderID:  req.ProviderID,
 		ModelID:     req.ModelID,
 		VariantID:   req.VariantID,
+		Harness:     req.Harness,
 		Skills:      req.Skills,
 		MCPProfiles: req.MCPProfiles,
 		Env:         req.Env,

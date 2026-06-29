@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1188,7 +1189,41 @@ func (s *Service) validateMCPProfileNames(ctx context.Context, profileNames []st
 }
 
 func mcpProfileRequiresPrivilegedAccess(profile definitions.MCPProfileDef) bool {
-	return len(profile.Headers) > 0
+	return len(profile.Headers) > 0 || mcpProfileURLCarriesCredentials(profile.URL)
+}
+
+func mcpProfileURLCarriesCredentials(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	if parsed.User != nil {
+		return true
+	}
+	values := parsed.Query()
+	for key, vals := range values {
+		if !secretLookingURLParam(key) {
+			continue
+		}
+		for _, val := range vals {
+			if strings.TrimSpace(val) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func secretLookingURLParam(key string) bool {
+	normalized := strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(strings.TrimSpace(key)))
+	return strings.Contains(normalized, "TOKEN") ||
+		strings.Contains(normalized, "SECRET") ||
+		strings.Contains(normalized, "PASSWORD") ||
+		strings.Contains(normalized, "AUTH") ||
+		strings.Contains(normalized, "API_KEY") ||
+		strings.Contains(normalized, "APIKEY") ||
+		normalized == "KEY" ||
+		strings.HasSuffix(normalized, "_KEY")
 }
 
 // emptyTriggerConfig returns an empty JSON object as the trigger_config value
@@ -1645,6 +1680,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			ProviderID:  t.ProviderID.String,
 			ModelID:     t.ModelID.String,
 			VariantID:   t.VariantID.String,
+			Harness:     t.Harness.String,
 			TimeoutSec:  int(t.TimeoutSec),
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,
@@ -1680,6 +1716,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			ProviderID:  t.ProviderID.String,
 			ModelID:     t.ModelID.String,
 			VariantID:   t.VariantID.String,
+			Harness:     t.Harness.String,
 			TimeoutSec:  int(t.TimeoutSec),
 			GitURL:      t.GitUrl.String,
 			GitRef:      t.GitRef.String,

@@ -76,6 +76,7 @@ type ReviewTrigger struct {
 	ProviderID  string
 	ModelID     string
 	VariantID   string
+	Harness     string
 	TimeoutSec  int
 	GitURL      string
 	GitRef      string
@@ -121,6 +122,7 @@ type ReviewContext struct {
 	ProviderID    string // reviewer provider ID (from the trigger config)
 	ModelID       string // reviewer model ID (from the trigger config)
 	VariantID     string // reviewer variant ID (from the trigger config)
+	Harness       string // reviewer harness (from the trigger config)
 	Skills        []string
 	MCPProfiles   []string
 	TimeoutSec    int // reviewer task timeout (from the trigger config)
@@ -552,6 +554,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			ProviderID:                 t.ProviderID,
 			ModelID:                    t.ModelID,
 			VariantID:                  t.VariantID,
+			Harness:                    t.Harness,
 			Skills:                     t.Skills,
 			MCPProfiles:                t.MCPProfiles,
 			TimeoutSec:                 t.TimeoutSec,
@@ -716,6 +719,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			ProviderID:                 t.ProviderID,
 			ModelID:                    t.ModelID,
 			VariantID:                  t.VariantID,
+			Harness:                    t.Harness,
 			Skills:                     t.Skills,
 			MCPProfiles:                mcpProfiles,
 			TimeoutSec:                 t.TimeoutSec,
@@ -842,6 +846,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		rc.ProviderID = t.ProviderID
 		rc.ModelID = t.ModelID
 		rc.VariantID = t.VariantID
+		rc.Harness = t.Harness
 		rc.TimeoutSec = t.TimeoutSec
 		rc.SessionMode = t.SessionMode
 		rc.PauseReason = t.PauseReason
