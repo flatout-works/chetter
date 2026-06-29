@@ -146,7 +146,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, mcpServer.AuthToken(), r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness config: %v", err), nil)
 		return
 	}
@@ -330,10 +330,19 @@ func shellQuoteArg(arg string) string {
 }
 
 func injectPATIntoURL(raw, pat string) string {
-	if !strings.HasPrefix(raw, "https://") || pat == "" {
+	if pat == "" {
 		return raw
 	}
-	return "https://" + pat + "@" + raw[len("https://"):]
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" {
+		return raw
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "github.com" && host != "www.github.com" {
+		return raw
+	}
+	parsed.User = url.User(pat)
+	return parsed.String()
 }
 
 func cloneURLForRequest(req task.TaskRequest, runnerPAT string) string {

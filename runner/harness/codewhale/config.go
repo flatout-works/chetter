@@ -11,6 +11,10 @@ import (
 )
 
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, req, isLocal)
+}
+
+func GenerateConfigWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	codewhaleDir := wsDir + "/.codewhale"
 	if err := os.MkdirAll(codewhaleDir, 0750); err != nil {
 		return err
@@ -19,11 +23,17 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
+		bridge := map[string]any{
 			"type":    "remote",
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
+		if runnerMCPToken != "" {
+			bridge["headers"] = map[string]string{
+				"Authorization": "Bearer " + runnerMCPToken,
+			}
+		}
+		mcpServers["runner-bridge"] = bridge
 	}
 
 	if chetterMCPURL != "" {

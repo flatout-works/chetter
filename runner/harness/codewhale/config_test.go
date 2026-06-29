@@ -37,6 +37,27 @@ func TestGenerateConfigAddsMCPProfiles(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigAddsRunnerBridgeAuth(t *testing.T) {
+	wsDir := t.TempDir()
+	if err := GenerateConfigWithRunnerToken(wsDir, "http://localhost:9999/mcp", "runner-token", "", "", task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfigWithRunnerToken failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(wsDir, ".codewhale", "mcp.json"))
+	if err != nil {
+		t.Fatalf("read mcp.json: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse mcp.json: %v", err)
+	}
+	servers := cfg["mcpServers"].(map[string]any)
+	bridge := servers["runner-bridge"].(map[string]any)
+	headers := bridge["headers"].(map[string]any)
+	if headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge auth header = %v, want bearer token", headers["Authorization"])
+	}
+}
+
 func TestGenerateConfigRejectsAllowlistedMCPProfiles(t *testing.T) {
 	wsDir := t.TempDir()
 	req := task.TaskRequest{

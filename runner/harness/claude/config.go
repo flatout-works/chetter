@@ -11,6 +11,10 @@ import (
 )
 
 func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, req, isLocal)
+}
+
+func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	claudeDir := wsDir + "/.claude"
 	if err := os.MkdirAll(claudeDir, 0750); err != nil {
 		return err
@@ -77,11 +81,17 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 	mcpServers := map[string]any{}
 
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
+		bridge := map[string]any{
 			"type":    "remote",
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
+		if runnerMCPToken != "" {
+			bridge["headers"] = map[string]string{
+				"Authorization": "Bearer " + runnerMCPToken,
+			}
+		}
+		mcpServers["runner-bridge"] = bridge
 	}
 
 	if chetterMCPURL != "" {

@@ -8,6 +8,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -22,6 +25,7 @@ type Server struct {
 	sdkServer *mcplib.Server
 	httpSrv   *http.Server
 	addr      string
+	authToken string
 	wg        sync.WaitGroup
 }
 
@@ -37,6 +41,11 @@ type ToolDef struct {
 
 // NewServer creates a new MCP server listening on a random TCP port.
 func NewServer() (*Server, error) {
+	authToken, err := randomAuthToken()
+	if err != nil {
+		return nil, err
+	}
+
 	ln, err := net.Listen("tcp4", "0.0.0.0:0") // tcp4 to avoid IPv6 which gVisor can't reach
 	if err != nil {
 		return nil, fmt.Errorf("listen: %w", err)
@@ -49,10 +58,10 @@ func NewServer() (*Server, error) {
 	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", bearerAuth(authToken, handler))
 
 	httpSrv := &http.Server{Handler: mux}
-	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr}
+	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr, authToken: authToken}
 	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return context.WithoutCancel(context.Background()) }
 
 	s.wg.Add(1)
@@ -67,6 +76,9 @@ func NewServer() (*Server, error) {
 
 // Addr returns the listen address for the MCP server (e.g. "127.0.0.1:12345").
 func (s *Server) Addr() string { return s.addr }
+
+// AuthToken returns the per-server bearer token required for MCP requests.
+func (s *Server) AuthToken() string { return s.authToken }
 
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
@@ -114,4 +126,32 @@ func adaptHandler(h ToolHandler) mcplib.ToolHandler {
 			Content: []mcplib.Content{&mcplib.TextContent{Text: text}},
 		}, nil
 	}
+}
+
+func randomAuthToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generate mcp auth token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
+}
+
+func bearerAuth(token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !validBearer(r.Header.Get("Authorization"), token) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func validBearer(header, token string) bool {
+	const prefix = "Bearer "
+	if token == "" || len(header) <= len(prefix) || header[:len(prefix)] != prefix {
+		return false
+	}
+	got := header[len(prefix):]
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }

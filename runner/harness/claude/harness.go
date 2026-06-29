@@ -16,8 +16,8 @@ func New() *ClaudeCode {
 
 func (cc *ClaudeCode) Name() string { return "claude" }
 
-func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req, isLocal)
+func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken, req, isLocal)
 }
 
 func (cc *ClaudeCode) ConfigFilePath(wsDir string) string {

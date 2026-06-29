@@ -120,14 +120,18 @@ func ensureProvider(cfg map[string]any, providerID string) {
 }
 
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
 }
 
 func GenerateConfigWithEnv(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
 }
 
 func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, includeRunnerMCP, req, isLocal)
+}
+
+func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
 	configSource := wsConfigPath
@@ -148,11 +152,17 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 			mcpServers = make(map[string]any)
 			cfg["mcp"] = mcpServers
 		}
-		mcpServers["runner-bridge"] = map[string]any{
+		bridge := map[string]any{
 			"type":    "remote",
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
+		if runnerMCPToken != "" {
+			bridge["headers"] = map[string]string{
+				"Authorization": "Bearer " + runnerMCPToken,
+			}
+		}
+		mcpServers["runner-bridge"] = bridge
 	}
 	if chetterMCPURL != "" {
 		mcpServers, _ := cfg["mcp"].(map[string]any)

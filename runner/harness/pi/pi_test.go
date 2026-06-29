@@ -44,7 +44,7 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
 
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", false); err != nil {
+	if err := GenerateConfigForTaskWithRunnerToken(wsDir, "http://localhost:9999/mcp", "runner-token", "https://chetter.example.com/mcp", "token", task.TaskRequest{}, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -66,8 +66,13 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if !ok {
 		t.Fatal("expected mcpServers map")
 	}
-	if _, ok := servers["runner-bridge"]; !ok {
+	bridge, ok := servers["runner-bridge"].(map[string]any)
+	if !ok {
 		t.Fatal("expected runner-bridge MCP server")
+	}
+	headers := bridge["headers"].(map[string]any)
+	if headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge auth header = %v, want bearer token", headers["Authorization"])
 	}
 	if _, ok := servers["chetter"]; !ok {
 		t.Fatal("expected chetter MCP server")

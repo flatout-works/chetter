@@ -48,10 +48,10 @@ func TestInjectPATIntoURL(t *testing.T) {
 			"https://abc123@github.com/owner/repo.git",
 		},
 		{
-			"gitlab with pat",
+			"non-github host",
 			"https://gitlab.com/owner/repo.git",
 			"tok",
-			"https://tok@gitlab.com/owner/repo.git",
+			"https://gitlab.com/owner/repo.git",
 		},
 		{
 			"empty pat",

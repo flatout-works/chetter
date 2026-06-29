@@ -11,10 +11,14 @@ import (
 )
 
 func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, task.TaskRequest{}, isLocal)
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, task.TaskRequest{}, isLocal)
 }
 
 func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, "", chetterMCPURL, chetterMCPToken, req, isLocal)
+}
+
+func GenerateConfigForTaskWithRunnerToken(wsDir, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	piDir := filepath.Join(wsDir, ".pi")
 	agentDir := filepath.Join(piDir, "agent")
 	if err := os.MkdirAll(agentDir, 0750); err != nil {
@@ -51,11 +55,17 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
+		bridge := map[string]any{
 			"url":         runnerMCPURL,
 			"lifecycle":   "keep-alive",
 			"idleTimeout": 0,
 		}
+		if runnerMCPToken != "" {
+			bridge["headers"] = map[string]string{
+				"Authorization": "Bearer " + runnerMCPToken,
+			}
+		}
+		mcpServers["runner-bridge"] = bridge
 	}
 	if chetterMCPURL != "" {
 		server := map[string]any{

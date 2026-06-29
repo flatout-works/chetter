@@ -195,6 +195,15 @@ func TestCloneURLForRequestDoesNotLeakTaskTokenToNonGitHubHost(t *testing.T) {
 	}
 }
 
+func TestCloneURLForRequestDoesNotLeakRunnerPATToNonGitHubHost(t *testing.T) {
+	got := cloneURLForRequest(task.TaskRequest{
+		GitURL: "https://git.example.test/flatout-works/chetter.git",
+	}, "ghp_runner_pat")
+	if got != "https://git.example.test/flatout-works/chetter.git" {
+		t.Fatalf("clone URL = %q, want original URL", got)
+	}
+}
+
 func TestCloneURLForRequestPrefersTaskScopedGitHubTokenOverRunnerPAT(t *testing.T) {
 	got := cloneURLForRequest(task.TaskRequest{
 		GitURL: "https://github.com/flatout-works/chetter.git",
@@ -368,7 +377,7 @@ func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 
 	wsDir := t.TempDir()
 
-	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", true, true); err != nil {
+	if err := opencode.GenerateConfigForTaskWithRunnerToken(wsDir, "http://localhost:9999/mcp", "runner-token", "", "", true, task.TaskRequest{}, true); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -403,6 +412,13 @@ func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 	}
 	if _, ok := bridge["url"]; !ok {
 		t.Error("expected runner-bridge MCP to have a url")
+	}
+	headers, ok := bridge["headers"].(map[string]any)
+	if !ok {
+		t.Fatal("expected runner-bridge MCP to include auth headers")
+	}
+	if headers["Authorization"] != "Bearer runner-token" {
+		t.Errorf("unexpected runner-bridge auth header: %v", headers["Authorization"])
 	}
 }
 

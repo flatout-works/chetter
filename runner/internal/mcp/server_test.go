@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -36,6 +37,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+srv.AuthToken())
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -51,6 +53,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 			req, _ := http.NewRequest("GET", url, nil)
 			req.Header.Set("Mcp-Session-Id", sessionID)
 			req.Header.Set("Accept", "application/json, text/event-stream")
+			req.Header.Set("Authorization", "Bearer "+srv.AuthToken())
 			r, err := client.Do(req)
 			if err != nil {
 				continue
@@ -70,6 +73,24 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 	return result
 }
 
+func rawMCPStatus(t *testing.T, srv *Server, authHeader string) int {
+	t.Helper()
+	_, port, _ := net.SplitHostPort(srv.Addr())
+	url := "http://127.0.0.1:" + port + "/mcp"
+	req, _ := http.NewRequest("POST", url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("POST /mcp: %v", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
 func mcpInit(t *testing.T, srv *Server) {
 	mcpCall(t, srv, "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
@@ -87,6 +108,21 @@ func TestServerToolsList(t *testing.T) {
 	result := mcpCall(t, srv, "tools/list", map[string]any{})
 	if err, ok := result["error"]; ok {
 		t.Fatalf("tools/list error: %v", err)
+	}
+}
+
+func TestServerRequiresBearerToken(t *testing.T) {
+	srv, cleanup := makeServer(t)
+	defer cleanup()
+
+	if got := rawMCPStatus(t, srv, ""); got != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", got, http.StatusUnauthorized)
+	}
+	if got := rawMCPStatus(t, srv, "Bearer wrong-token"); got != http.StatusUnauthorized {
+		t.Fatalf("bad token status = %d, want %d", got, http.StatusUnauthorized)
+	}
+	if got := rawMCPStatus(t, srv, "Bearer "+srv.AuthToken()); got == http.StatusUnauthorized {
+		t.Fatalf("valid token status = %d, want authorized", got)
 	}
 }
 
