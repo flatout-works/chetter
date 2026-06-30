@@ -29,11 +29,11 @@ import (
 )
 
 const (
-	defaultTaskTimeoutSec = 3600
-	maxSummaryBytes       = 8000
-	serveReadyTimeout     = 15 * time.Second
-	servePollInterval     = 500 * time.Millisecond
-	serveHTTPTimeout      = 2 * time.Second
+	defaultTaskTimeoutSec  = 3600
+	maxSummaryBytes        = 8000
+	serveReadyTimeout      = 15 * time.Second
+	servePollInterval      = 500 * time.Millisecond
+	serveHTTPTimeout       = 2 * time.Second
 	workspacePruneInterval = 10 * time.Minute
 )
 
@@ -232,6 +232,8 @@ func classifyErrorCategory(status, message string) string {
 		return "budget_exceeded"
 	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"):
 		return "timeout"
+	case isPromptTransportFailureMessage(lower):
+		return "transport_error"
 	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
 		return "stuck"
 	case strings.Contains(lower, "model"), strings.Contains(lower, "llm"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "provider"), strings.Contains(lower, "api error"):
@@ -241,6 +243,17 @@ func classifyErrorCategory(status, message string) string {
 	default:
 		return "runtime_error"
 	}
+}
+
+func isPromptTransportFailureMessage(lower string) bool {
+	if !strings.Contains(lower, "post /message") {
+		return false
+	}
+	return strings.Contains(lower, "eof") ||
+		strings.Contains(lower, "connection reset") ||
+		strings.Contains(lower, "broken pipe") ||
+		strings.Contains(lower, "server closed") ||
+		strings.Contains(lower, "connection refused")
 }
 
 func (r *Runner) publishTaskResponse(resp task.TaskResponse) {
