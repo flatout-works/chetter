@@ -18,6 +18,8 @@ func TestClassifyErrorCategory(t *testing.T) {
 		{"max budget", "error", "max budget of $10", "budget_exceeded"},
 		{"timeout", "error", "context deadline exceeded", "timeout"},
 		{"deadline exceeded", "error", "deadline exceeded", "timeout"},
+		{"opencode eof", "error", `prompt failed: POST /message: Post "http://127.0.0.1/session/ses/message": EOF`, "transport_error"},
+		{"opencode reset", "error", `prompt failed: POST /message: read: connection reset by peer`, "transport_error"},
 		{"stuck", "error", "stuck in a loop", "stuck"},
 		{"model error", "error", "model returned invalid", "model_error"},
 		{"llm error", "error", "LLM provider error", "model_error"},

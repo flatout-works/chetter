@@ -782,7 +782,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 				var session repository.ChetterAgentSession
 				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil {
 					switch {
-					case terminalSessionStatus == "error" && errorCategory == "timeout" && session.ResumeMode == "harness_session" && event.OpencodeSessionId != "":
+					case terminalSessionStatus == "error" && isRecoverablePromptError(errorCategory) && session.ResumeMode == "harness_session" && event.OpencodeSessionId != "":
 						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
 							Status:           "recoverable",
 							PinnedRunnerID:   nullString(runnerID),
@@ -796,7 +796,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						}); err != nil {
 							return err
 						}
-						slog.Info("agent session marked recoverable after timeout", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID)
+						slog.Info("agent session marked recoverable after prompt failure", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID, "error_category", errorCategory)
 						sessionStatus = ""
 					case terminalSessionStatus == "completed" && session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "":
 						chkID, _ := randomID("chk")
@@ -921,11 +921,15 @@ func statusIsErrorCategoryCandidate(status string) bool {
 
 func normalizeErrorCategory(category string) string {
 	switch category {
-	case "budget_exceeded", "model_error", "runtime_error", "timeout", "stuck", "cancelled", "unknown":
+	case "budget_exceeded", "model_error", "runtime_error", "timeout", "transport_error", "stuck", "cancelled", "unknown":
 		return category
 	default:
 		return ""
 	}
+}
+
+func isRecoverablePromptError(errorCategory string) bool {
+	return errorCategory == "timeout" || errorCategory == "transport_error"
 }
 
 func classifyTaskErrorCategory(status, message string) string {
@@ -938,6 +942,8 @@ func classifyTaskErrorCategory(status, message string) string {
 		return "budget_exceeded"
 	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"), strings.Contains(lower, "lease expired"):
 		return "timeout"
+	case isPromptTransportFailureMessage(lower):
+		return "transport_error"
 	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
 		return "stuck"
 	case strings.Contains(lower, "model"), strings.Contains(lower, "llm"), strings.Contains(lower, "rate limit"), strings.Contains(lower, "provider"), strings.Contains(lower, "api error"):
@@ -947,6 +953,17 @@ func classifyTaskErrorCategory(status, message string) string {
 	default:
 		return "runtime_error"
 	}
+}
+
+func isPromptTransportFailureMessage(lower string) bool {
+	if !strings.Contains(lower, "post /message") {
+		return false
+	}
+	return strings.Contains(lower, "eof") ||
+		strings.Contains(lower, "connection reset") ||
+		strings.Contains(lower, "broken pipe") ||
+		strings.Contains(lower, "server closed") ||
+		strings.Contains(lower, "connection refused")
 }
 
 func taskEventType(status, errorCategory string, heartbeat bool) string {

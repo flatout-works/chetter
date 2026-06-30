@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -611,7 +612,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
-
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
 		slog.Error("docker run failed", "taskID", req.TaskID, "err", err, "output", string(out))
@@ -669,10 +669,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
-		if req.CheckpointAfterSuccess && classifyErrorCategory("error", fmt.Sprintf("prompt failed: %v", err)) == "timeout" {
+		errorMessage := fmt.Sprintf("prompt failed: %v", err)
+		errorCategory := classifyErrorCategory("error", errorMessage)
+		if errorCategory == "transport_error" {
+			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+		}
+		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
 			workspacePath = session.WorkspaceDir
 			session.PreserveWorkspace = true
-			slog.Info("preserving workspace for recoverable timed-out session", "taskID", req.TaskID, "workspace", workspacePath)
+			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
 		}
 		if sid != "" {
 			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
@@ -682,7 +687,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			exec.Command("docker", "stop", containerName).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -829,7 +834,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
 
-
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
 		slog.Error("docker run failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
@@ -865,10 +869,15 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
-		if req.CheckpointAfterSuccess && classifyErrorCategory("error", fmt.Sprintf("prompt failed: %v", err)) == "timeout" {
+		errorMessage := fmt.Sprintf("prompt failed: %v", err)
+		errorCategory := classifyErrorCategory("error", errorMessage)
+		if errorCategory == "transport_error" {
+			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+		}
+		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
 			workspacePath = session.WorkspaceDir
 			session.PreserveWorkspace = true
-			slog.Info("preserving workspace for recoverable timed-out session", "taskID", req.TaskID, "workspace", workspacePath)
+			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
 		}
 		if sid != "" {
 			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
@@ -878,7 +887,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			exec.Command("docker", "stop", containerName).Run()
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -930,6 +939,59 @@ func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness)
 		r.publishEvent(taskID, fmt.Sprintf("session export: %v", err))
 	}
 	return ""
+}
+
+func shouldPreserveWorkspaceOnPromptError(errorCategory string) bool {
+	return errorCategory == "timeout" || errorCategory == "transport_error"
+}
+
+func (r *Runner) publishDockerPromptFailureDiagnostics(taskID, containerName, baseURL string, promptErr error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	state := runDiagnosticCommand(ctx, "docker", "inspect", "-f", "status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}", containerName)
+	health := probeHTTP(ctx, baseURL+"/config")
+	logs := runDiagnosticCommand(ctx, "docker", "logs", "--tail", "200", containerName)
+
+	slog.Warn("opencode prompt transport failure", "taskID", taskID, "err", promptErr, "container", containerName, "container_state", state, "http_probe", health, "logs_tail", logs)
+	r.publishEvent(taskID, fmt.Sprintf("opencode prompt transport failure: %v", promptErr))
+	r.publishEvent(taskID, fmt.Sprintf("opencode container state: %s", truncateSummary(state)))
+	r.publishEvent(taskID, fmt.Sprintf("opencode /config probe: %s", truncateSummary(health)))
+	r.publishEvent(taskID, fmt.Sprintf("opencode container logs tail: %s", truncateSummary(logs)))
+}
+
+func runDiagnosticCommand(ctx context.Context, name string, args ...string) string {
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		if text == "" {
+			return err.Error()
+		}
+		return fmt.Sprintf("%s: %s", err, text)
+	}
+	if text == "" {
+		return "ok"
+	}
+	return text
+}
+
+func probeHTTP(ctx context.Context, url string) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err.Error()
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 500))
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return fmt.Sprintf("status=%d", resp.StatusCode)
+	}
+	return fmt.Sprintf("status=%d body=%s", resp.StatusCode, text)
 }
 
 func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string, tokenUsage task.TokenUsage) {
