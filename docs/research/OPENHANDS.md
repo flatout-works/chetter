@@ -76,7 +76,7 @@ OpenHands uses injectors to resolve service implementations from request state a
 
 OpenHands categorizes failures as budget exceeded, model error, runtime error, timeout, or user cancelled. These categories are used for analytics and user-facing messages.
 
-**Chetter angle:** Chetter currently stores status and raw error text. Adding an `error_category` field would improve operations: dashboards can distinguish model provider issues from runtime errors, timeouts, cancellations, budget limits, or stuck agents.
+**Chetter angle:** Chetter now classifies errors by category: `budget_exceeded`, `model_error`, `runtime_error`, `timeout`, `transport_error`, `stuck`, `cancelled`, and `unknown`. Dashboards can distinguish model provider issues from runtime errors, timeouts, transport failures, cancellations, budget limits, or stuck agents.
 
 ### 10. Conversation State Machine
 
@@ -166,9 +166,8 @@ OpenHands callbacks are not limited to starting new work. They can update metada
 
 ### Phase 1: Quick Wins
 
-1. Add task error classification (`error_category`).
-2. Validate task environment variables and block dangerous prefixes.
-3. Record more granular event types alongside existing task events.
+1. Validate task environment variables and block dangerous prefixes.
+2. Record more granular event types alongside existing task events.
 
 ### Phase 2: Event-Driven Automation
 
@@ -214,7 +213,7 @@ Some OpenHands patterns should not be copied directly:
 | Event callbacks | Generic SQL-backed processors | Event log + streaming bus | Event callbacks with actions |
 | Secrets | Validation and merge | Task env JSON | Env validation and blocked prefixes |
 | DI | Injector pattern | Direct service wiring | Small interfaces where useful |
-| Error classification | Categorized failures | Raw error text | Add `error_category` |
+| Error classification | Categorized failures | Classified per task | Expanded categories + transport |
 | Conversation states | Pause, confirmation, stuck | Task/session statuses | Add selected concepts only |
 | Budget limits | Cost + iteration limits | Timeout only | Track and enforce later |
 | Hooks | Project hook config | None | Harness-integrated hooks later |
