@@ -3,613 +3,1069 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chetter — How It Works</title>
+  <title>Chetter: How It Works</title>
   <style>
     :root {
-      --bg: #0b0f17;
-      --fg: #e6edf3;
-      --accent: #58a6ff;
-      --muted: #8b949e;
-      --code-bg: #161b22;
-      --border: #30363d;
-      --slide-width: 1100px;
-      --slide-height: 700px;
+      --bg: #080b12;
+      --panel: #101723;
+      --panel-2: #151f2e;
+      --ink: #f3f7fb;
+      --muted: #92a4b8;
+      --line: #26384c;
+      --blue: #59a7ff;
+      --cyan: #4ddfd1;
+      --green: #95e06c;
+      --yellow: #ffd166;
+      --orange: #ff9b54;
+      --pink: #ff6fb1;
+      --purple: #a78bfa;
+      --red: #ff6b6b;
+      --slide-width: 1180px;
+      --slide-height: 720px;
+      --radius: 20px;
     }
+
     * { box-sizing: border-box; }
     html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      background: #000;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(77, 223, 209, 0.16), transparent 28%),
+        radial-gradient(circle at 78% 88%, rgba(167, 139, 250, 0.18), transparent 32%),
+        #020409;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       overflow: hidden;
     }
+
     .deck {
       position: relative;
-      width: 100vw; height: 100vh;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 24px;
     }
+
     .slide {
       position: absolute;
       width: var(--slide-width);
       height: var(--slide-height);
-      max-width: 95vw; max-height: 95vh;
-      background: var(--bg);
-      color: var(--fg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 48px 64px;
+      max-width: calc(100vw - 48px);
+      max-height: calc(100vh - 72px);
+      padding: 42px 54px;
+      color: var(--ink);
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.045), transparent 32%),
+        linear-gradient(180deg, rgba(16,23,35,0.98), rgba(8,11,18,0.98));
+      border: 1px solid rgba(146, 164, 184, 0.22);
+      border-radius: var(--radius);
+      box-shadow: 0 32px 90px rgba(0,0,0,0.48), inset 0 1px rgba(255,255,255,0.06);
       opacity: 0;
+      visibility: hidden;
       pointer-events: none;
-      transform: translateX(40px);
-      transition: opacity 0.35s ease, transform 0.35s ease;
+      transform: translateX(40px) scale(0.985);
+      transition: opacity 220ms ease, transform 260ms ease;
       overflow: hidden;
       display: flex;
       flex-direction: column;
     }
+
+    .slide::after {
+      content: "";
+      position: absolute;
+      inset: auto 32px 22px 32px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(89,167,255,0.45), transparent);
+      pointer-events: none;
+    }
+
     .slide.active {
       opacity: 1;
+      visibility: visible;
       pointer-events: auto;
-      transform: translateX(0);
+      transform: translateX(0) scale(1);
     }
-    .slide h1 {
-      margin: 0 0 24px 0;
-      font-size: 2.2rem;
-      font-weight: 700;
-      color: var(--accent);
-      line-height: 1.2;
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 14px;
+      font-size: clamp(2.05rem, 4.2vw, 3.6rem);
+      line-height: 1.03;
+      letter-spacing: -0.045em;
     }
-    .slide h2 {
-      margin: 0 0 16px 0;
-      font-size: 1.4rem;
-      font-weight: 600;
-      color: var(--fg);
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 8px;
+
+    h2 {
+      margin-bottom: 14px;
+      font-size: 1.45rem;
+      color: var(--muted);
+      font-weight: 650;
+      letter-spacing: -0.02em;
     }
-    .slide h3 {
-      margin: 16px 0 8px 0;
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: var(--accent);
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 1rem;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
-    .slide p, .slide li {
-      font-size: 1.05rem;
-      line-height: 1.55;
-      color: var(--fg);
+
+    p, li {
+      color: #dce7f3;
+      font-size: 1.02rem;
+      line-height: 1.45;
     }
-    .slide ul {
-      margin: 8px 0;
-      padding-left: 24px;
-    }
-    .slide li { margin: 6px 0; }
-    .slide code {
-      background: var(--code-bg);
-      padding: 2px 6px;
-      border-radius: 4px;
+
+    ul, ol { margin: 0; padding-left: 21px; }
+    li { margin: 6px 0; }
+
+    code {
+      padding: 0.12rem 0.36rem;
+      border: 1px solid rgba(146, 164, 184, 0.2);
+      border-radius: 7px;
+      color: #d8f6ff;
+      background: rgba(2, 6, 23, 0.52);
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.9em;
-      color: #d1d5db;
     }
-    .slide pre {
-      background: var(--code-bg);
-      padding: 16px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      overflow-x: auto;
-      font-size: 0.92rem;
-      line-height: 1.45;
-      margin: 12px 0;
+
+    pre {
+      margin: 0;
+      padding: 18px;
+      border: 1px solid rgba(146, 164, 184, 0.18);
+      border-radius: 16px;
+      color: #d8f6ff;
+      background: rgba(2, 6, 23, 0.62);
+      line-height: 1.38;
+      overflow: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.88rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
     }
-    .slide .muted { color: var(--muted); }
-    .slide .columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 32px;
+
+    strong { color: #fff; }
+    .muted { color: var(--muted); }
+    .accent { color: var(--cyan); }
+    .blue { color: var(--blue); }
+    .green { color: var(--green); }
+    .yellow { color: var(--yellow); }
+    .pink { color: var(--pink); }
+    .purple { color: var(--purple); }
+    .small { font-size: 0.9rem; }
+    .tiny { font-size: 0.78rem; }
+    .mt { margin-top: 18px; }
+    .grow { flex: 1; }
+
+    .kicker {
+      display: inline-flex;
+      width: fit-content;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      border: 1px solid rgba(77, 223, 209, 0.28);
+      border-radius: 999px;
+      color: #b7fff8;
+      background: rgba(77, 223, 209, 0.08);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .split { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 28px; align-items: stretch; flex: 1; }
+    .split.reverse { grid-template-columns: 1.15fr 0.85fr; }
+
+    .card, .node, .lane, .step, .entity, .callout {
+      border: 1px solid rgba(146, 164, 184, 0.2);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(21,31,46,0.92), rgba(12,18,28,0.92));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.045);
+    }
+
+    .card { padding: 18px; }
+    .card h3, .entity h3 { margin-bottom: 8px; }
+    .card p, .entity p { margin-bottom: 0; }
+
+    .pill-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 10px;
+      border: 1px solid rgba(146,164,184,0.22);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: #dce7f3;
+      font-size: 0.83rem;
+      font-weight: 750;
+    }
+
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 18px currentColor; }
+    .dot.cyan { background: var(--cyan); color: var(--cyan); }
+    .dot.green { background: var(--green); color: var(--green); }
+    .dot.yellow { background: var(--yellow); color: var(--yellow); }
+    .dot.pink { background: var(--pink); color: var(--pink); }
+    .dot.purple { background: var(--purple); color: var(--purple); }
+    .dot.orange { background: var(--orange); color: var(--orange); }
+
+    .hero-visual {
+      position: relative;
       flex: 1;
+      min-height: 310px;
+      margin-top: 20px;
+      border: 1px solid rgba(146,164,184,0.18);
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at center, rgba(89,167,255,0.18), transparent 36%),
+        linear-gradient(135deg, rgba(255,255,255,0.04), transparent);
     }
-    .slide .columns.single { grid-template-columns: 1fr; }
-    .slide .box {
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-    }
-    .slide .seq {
+
+    .hub {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 210px;
+      height: 130px;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(77,223,209,0.55);
+      border-radius: 28px;
+      background: rgba(77, 223, 209, 0.12);
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin: 10px 0;
+      justify-content: center;
+      text-align: center;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #dffffc;
+      box-shadow: 0 0 60px rgba(77, 223, 209, 0.2);
     }
-    .slide .seq .num {
-      width: 32px; height: 32px;
+
+    .orb {
+      position: absolute;
+      width: 176px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(146,164,184,0.22);
+      background: rgba(10,16,26,0.86);
+      font-size: 0.92rem;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .orb small { display: block; margin-top: 4px; color: var(--muted); font-weight: 650; }
+    .o1 { left: 70px; top: 46px; border-color: rgba(89,167,255,0.38); }
+    .o2 { right: 80px; top: 42px; border-color: rgba(149,224,108,0.42); }
+    .o3 { left: 100px; bottom: 44px; border-color: rgba(255,209,102,0.44); }
+    .o4 { right: 102px; bottom: 44px; border-color: rgba(255,111,177,0.38); }
+    .connector {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 44%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(146,164,184,0.55), transparent);
+      transform-origin: left center;
+    }
+    .c1 { transform: rotate(205deg); }
+    .c2 { transform: rotate(330deg); }
+    .c3 { transform: rotate(145deg); }
+    .c4 { transform: rotate(28deg); }
+
+    .map {
+      display: grid;
+      grid-template-columns: 1fr 92px 1.05fr 92px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .node {
+      min-height: 126px;
+      padding: 18px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .node.big {
+      min-height: 170px;
+      border-color: rgba(77,223,209,0.38);
+      background: linear-gradient(180deg, rgba(77,223,209,0.14), rgba(12,18,28,0.92));
+    }
+
+    .node-title { font-size: 1.15rem; font-weight: 900; }
+    .node-text { margin-top: 7px; color: var(--muted); font-size: 0.86rem; line-height: 1.35; }
+    .arrow {
+      height: 3px;
+      background: linear-gradient(90deg, rgba(146,164,184,0.25), var(--blue));
+      border-radius: 99px;
+      position: relative;
+    }
+    .arrow::after {
+      content: "";
+      position: absolute;
+      right: -2px;
+      top: 50%;
+      width: 11px;
+      height: 11px;
+      border-top: 3px solid var(--blue);
+      border-right: 3px solid var(--blue);
+      transform: translateY(-50%) rotate(45deg);
+    }
+
+    .domain-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .entity { padding: 14px; min-height: 126px; }
+    .entity h3 { font-size: 0.82rem; }
+    .entity p { font-size: 0.86rem; color: #cad6e3; line-height: 1.34; }
+
+    .repo-browser {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 18px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .tree {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(146,164,184,0.2);
+      background: rgba(2,6,23,0.44);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      color: #d8f6ff;
+      font-size: 0.84rem;
+      line-height: 1.7;
+    }
+
+    .yaml-window { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+    .window-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border: 1px solid rgba(146,164,184,0.18);
+      border-bottom: 0;
+      border-radius: 16px 16px 0 0;
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+    .traffic { width: 10px; height: 10px; border-radius: 50%; background: var(--red); }
+    .traffic:nth-child(2) { background: var(--yellow); }
+    .traffic:nth-child(3) { background: var(--green); }
+    .yaml-window pre { border-radius: 0 0 16px 16px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 24px;
+    }
+    .flow .step { padding: 15px; min-height: 160px; position: relative; }
+    .step-no {
+      display: inline-flex;
+      width: 30px;
+      height: 30px;
+      align-items: center;
+      justify-content: center;
       border-radius: 50%;
-      background: var(--accent);
-      color: #000;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700;
-      font-size: 0.9rem;
-      flex-shrink: 0;
+      background: rgba(89,167,255,0.16);
+      color: #cfe9ff;
+      border: 1px solid rgba(89,167,255,0.42);
+      font-weight: 900;
+      margin-bottom: 10px;
     }
-    .slide .seq .txt { flex: 1; }
-    .slide .small { font-size: 0.92rem; }
+    .step-title { font-weight: 900; margin-bottom: 7px; }
+    .step p { margin: 0; color: var(--muted); font-size: 0.84rem; }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 12px;
+      flex: 1;
+      margin-top: 18px;
+      min-height: 0;
+    }
+    .lane-label {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 10px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .lane {
+      min-height: 58px;
+      padding: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .token {
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(146,164,184,0.18);
+      color: #e9f3fd;
+      font-weight: 800;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+    .token.blue { border-color: rgba(89,167,255,0.4); background: rgba(89,167,255,0.12); }
+    .token.green { border-color: rgba(149,224,108,0.4); background: rgba(149,224,108,0.11); }
+    .token.yellow { border-color: rgba(255,209,102,0.4); background: rgba(255,209,102,0.11); }
+    .token.pink { border-color: rgba(255,111,177,0.4); background: rgba(255,111,177,0.11); }
+    .token.purple { border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.12); }
+
+    .queue-visual {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      flex: 1;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+    .task-stack { display: grid; gap: 10px; align-content: center; }
+    .task-row {
+      display: grid;
+      grid-template-columns: 46px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(146,164,184,0.18);
+      background: rgba(255,255,255,0.045);
+    }
+    .status { color: var(--muted); font-size: 0.76rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; }
+    .lock { font-size: 1.4rem; }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .moment {
+      position: relative;
+      min-height: 145px;
+      padding: 15px;
+      border-radius: 18px;
+      border: 1px solid rgba(146,164,184,0.2);
+      background: rgba(255,255,255,0.045);
+    }
+    .moment::before {
+      content: "";
+      position: absolute;
+      left: 16px;
+      right: -13px;
+      top: 42px;
+      height: 2px;
+      background: rgba(89,167,255,0.34);
+      z-index: 0;
+    }
+    .moment:last-child::before { display: none; }
+    .moment .step-no { position: relative; z-index: 1; background: #102137; }
+    .moment p { margin: 0; color: var(--muted); font-size: 0.8rem; }
+
+    .callout {
+      padding: 18px;
+      border-color: rgba(77,223,209,0.28);
+      background: linear-gradient(180deg, rgba(77,223,209,0.10), rgba(12,18,28,0.9));
+    }
+    .callout p:last-child { margin-bottom: 0; }
+
     .nav {
       position: fixed;
-      bottom: 24px; right: 32px;
-      display: flex; gap: 12px;
+      right: 28px;
+      bottom: 24px;
+      display: flex;
+      gap: 10px;
       z-index: 100;
     }
     .nav button {
-      background: var(--code-bg);
-      color: var(--fg);
-      border: 1px solid var(--border);
-      padding: 8px 16px;
-      border-radius: 6px;
+      padding: 9px 14px;
+      border: 1px solid rgba(146,164,184,0.25);
+      border-radius: 999px;
+      background: rgba(16,23,35,0.86);
+      color: var(--ink);
       cursor: pointer;
-      font-size: 0.9rem;
+      font-weight: 800;
     }
-    .nav button:hover { border-color: var(--accent); }
+    .nav button:hover { border-color: rgba(77,223,209,0.6); color: #cffffb; }
     .progress {
       position: fixed;
-      bottom: 0; left: 0;
+      left: 0;
+      bottom: 0;
       height: 4px;
-      background: var(--accent);
-      transition: width 0.3s ease;
+      background: linear-gradient(90deg, var(--cyan), var(--blue), var(--purple));
       z-index: 100;
+      transition: width 180ms ease;
     }
     .slide-number {
       position: fixed;
-      bottom: 24px; left: 32px;
-      color: var(--muted);
-      font-size: 0.85rem;
+      left: 30px;
+      bottom: 25px;
+      color: rgba(220,231,243,0.65);
+      font-size: 0.84rem;
+      font-weight: 800;
       z-index: 100;
     }
-    @media (max-width: 900px) {
-      .slide { padding: 28px 32px; }
-      .slide .columns { grid-template-columns: 1fr; }
+
+    @media (max-width: 980px) {
+      html, body { overflow: auto; }
+      .deck { min-height: 100vh; align-items: flex-start; padding: 12px; }
+      .slide { position: relative; display: none; width: 100%; height: auto; min-height: calc(100vh - 80px); max-height: none; padding: 28px; overflow: visible; }
+      .slide.active { display: flex; }
+      .grid-2, .grid-3, .grid-4, .split, .split.reverse, .domain-grid, .repo-browser, .queue-visual { grid-template-columns: 1fr; }
+      .map, .flow, .timeline { grid-template-columns: 1fr; }
+      .arrow { height: 34px; width: 3px; justify-self: center; background: linear-gradient(180deg, rgba(146,164,184,0.25), var(--blue)); }
+      .arrow::after { right: auto; top: auto; bottom: -2px; left: 50%; transform: translateX(-50%) rotate(135deg); }
+      .hero-visual { min-height: 560px; }
+      .orb { left: 50% !important; right: auto !important; transform: translateX(-50%); }
+      .o1 { top: 26px; } .o2 { top: 150px; } .o3 { bottom: 150px; } .o4 { bottom: 26px; }
+      .connector { display: none; }
+      .swimlane { grid-template-columns: 1fr; }
+      .lane-label { justify-content: flex-start; }
+      .lane { flex-wrap: wrap; }
     }
   </style>
 </head>
 <body>
   <div class="deck" id="deck">
 
-    <!-- Slide 1 -->
-    <div class="slide active">
-      <h1>Chetter</h1>
-      <p class="muted" style="font-size:1.25rem; margin-bottom:24px;">
-        Self-hosted MCP server for running autonomous AI development agents on a fleet of containerized runners.
-      </p>
-      <div class="columns single" style="margin-top:auto;">
-        <div>
+    <section class="slide active">
+      <span class="kicker">Developer architecture deck</span>
+      <h1>Chetter turns agent work into a visible, resumable system.</h1>
+      <h2>It is not a custom agent brain. It is a control plane for standard coding harnesses running inside isolated dev containers.</h2>
+      <div class="hero-visual">
+        <div class="connector c1"></div><div class="connector c2"></div><div class="connector c3"></div><div class="connector c4"></div>
+        <div class="hub">Chetter<br>Control Plane</div>
+        <div class="orb o1">MCP + Web UI<small>submit, inspect, resume</small></div>
+        <div class="orb o2">Git Config<small>agents, skills, triggers</small></div>
+        <div class="orb o3">Runner Fleet<small>claim, heartbeat, execute</small></div>
+        <div class="orb o4">GitHub<small>issues, PRs, reviews</small></div>
+      </div>
+      <p class="muted small mt">Use arrow keys, space, or the navigation buttons.</p>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Start with the map</span>
+      <h1>The four big parts</h1>
+      <div class="grid-4 grow mt">
+        <div class="card">
+          <h3>Control</h3>
+          <p><strong>Server + TiDB</strong> hold the queue, leases, sessions, events, triggers, definitions, teams, and audit trail.</p>
+        </div>
+        <div class="card">
+          <h3>Configuration</h3>
+          <p><strong>Git definitions</strong> describe the behavior: agents, skills, triggers, task templates, and model catalog entries.</p>
+        </div>
+        <div class="card">
+          <h3>Execution</h3>
+          <p><strong>Runners</strong> pull tasks, create workspaces, start Docker/gVisor containers, and drive OpenCode, Claude Code, or Pi.</p>
+        </div>
+        <div class="card">
+          <h3>Evidence</h3>
+          <p><strong>Events, exports, artifacts, and audit rows</strong> make agent behavior inspectable after the run.</p>
+        </div>
+      </div>
+      <div class="callout mt">
+        <p><strong>Mental model:</strong> Chetter separates policy, queueing, and evidence from the harness that actually talks to the LLM.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">One picture</span>
+      <h1>Work flows left to right</h1>
+      <div class="map grow">
+        <div class="node">
+          <div class="node-title">Input</div>
+          <div class="node-text">MCP call, cron trigger, GitHub webhook, manual resume</div>
+        </div>
+        <div class="arrow"></div>
+        <div class="node big">
+          <div class="node-title">Chetter</div>
+          <div class="node-text">stores task, resolves config, coordinates lease, records events</div>
+        </div>
+        <div class="arrow"></div>
+        <div class="node">
+          <div class="node-title">Runner + Harness</div>
+          <div class="node-text">clone repo, start sandbox, run agent, report transcript and artifacts</div>
+        </div>
+      </div>
+      <div class="pill-row mt">
+        <span class="pill"><span class="dot cyan"></span>Pull-based runners</span>
+        <span class="pill"><span class="dot green"></span>Lease-backed claims</span>
+        <span class="pill"><span class="dot yellow"></span>Git-managed definitions</span>
+        <span class="pill"><span class="dot pink"></span>Session lineage</span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Domain model</span>
+      <h1>The vocabulary</h1>
+      <h2>These are the core nouns you see in the database, MCP tools, web UI, and logs.</h2>
+      <div class="domain-grid grow">
+        <div class="entity"><h3>Task</h3><p>A queued unit of work: prompt, repo/ref, image, harness, model, status, attempts, lease, result.</p></div>
+        <div class="entity"><h3>Session</h3><p>Long-lived identity and workspace lineage for an agent. Can be completed, paused, recoverable, or expired.</p></div>
+        <div class="entity"><h3>Session Run</h3><p>One prompt execution inside a session. Every submitted task creates one run.</p></div>
+        <div class="entity"><h3>Runner</h3><p>A worker process with slots. It registers health, claims tasks, renews leases, and owns checkpoints.</p></div>
+        <div class="entity"><h3>Trigger</h3><p>Automation rule that creates tasks: cron, PR review, issue/comment, or manually invoked schedule.</p></div>
+        <div class="entity"><h3>Definition</h3><p>Git-backed behavior file: agent, skill, trigger, or task template, stored with commit and content hash.</p></div>
+        <div class="entity"><h3>Event</h3><p>Task timeline record: progress, heartbeat, completion, or classified failure payload.</p></div>
+        <div class="entity"><h3>Artifact</h3><p>GitHub issue, PR, comment, review, or definition proposal created by a task and linked back to it.</p></div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Configuration as code</span>
+      <h1>The chetter-config approach</h1>
+      <div class="repo-browser">
+        <div class="tree">
+          chetter-config/<br>
+          |-- model-catalog.yaml<br>
+          |-- agents/<br>
+          |&nbsp;&nbsp; `-- pr-reviewer.md<br>
+          |-- skills/<br>
+          |&nbsp;&nbsp; `-- triage/SKILL.md<br>
+          |-- triggers/<br>
+          |&nbsp;&nbsp; `-- nightly-docs.yaml<br>
+          `-- task-templates/<br>
+          &nbsp;&nbsp;&nbsp; `-- code-improvements.md
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Git is authoritative</h3>
+            <p>Agent behavior changes through normal pull requests, review, diffs, rollback, blame, and branch experimentation.</p>
+          </div>
+          <div class="card">
+            <h3>TiDB is the runtime index</h3>
+            <p>Chetter syncs, validates, hashes, and materializes active definitions for fast lookup and historical traceability.</p>
+          </div>
+          <div class="card">
+            <h3>Images stay stable</h3>
+            <p>Toolchains and harnesses live in runner images. Prompts, skills, agents, triggers, and model choices live in Git.</p>
+          </div>
+          <div class="card">
+            <h3>Agents can improve config</h3>
+            <p>Meta-agents inspect prior exports, propose definition changes, and open PRs instead of mutating production behavior silently.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Definitions repo</span>
+      <h1>A trigger is just reviewed YAML</h1>
+      <div class="split">
+        <div class="yaml-window">
+          <div class="window-bar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span> triggers/example-daily-review.yaml</div>
+          <pre>name: example-daily-review
+        </div>
+        <div class="card">
+          <h3>What this becomes</h3>
           <ul>
-            <li>Submit tasks against Git repos with LLM agents in isolated containers</li>
-            <li>Track progress — streaming events, logs, session transcripts</li>
-            <li>Automate — cron triggers, PR review webhooks, issue/comment responders</li>
-            <li>Resume — pause sessions and continue on the same runner</li>
-            <li>Powered by <strong>TiDB</strong></li>
+            <li>A row in <code>definitions</code> with type <code>trigger</code>, source commit, path, and content hash.</li>
+            <li>A runtime trigger in <code>chetter_triggers</code>, owned by the default definition source.</li>
+            <li>A future task template: prompt, repo, agent, skills, timeout, model, harness, and session settings.</li>
           </ul>
+          <div class="callout mt">
+            <p class="small"><strong>Important:</strong> trigger YAML can reference agent and skill names from the same config repo, keeping automation behavior reviewable as a unit.</p>
+          </div>
         </div>
       </div>
-      <p class="muted" style="margin-top:auto; font-size:0.9rem;">
-        Press <code>→</code> or click <strong>Next</strong> to begin.
-      </p>
-    </div>
+    </section>
 
-    <!-- Slide 2: Design Principles -->
-    <div class="slide">
-      <h1>Design Principles</h1>
-      <div class="columns single">
-        <div>
-          <div class="seq"><div class="num">1</div><div class="txt"><strong>Standard harnesses.</strong> Delegate execution to existing CLI tools — OpenCode, Claude Code, Pi. No custom agent runtime.</div></div>
-          <div class="seq"><div class="num">2</div><div class="txt"><strong>Deploy anywhere.</strong> Server and runners run on plain Docker or Kubernetes. Only need a TiDB database.</div></div>
-          <div class="seq"><div class="num">3</div><div class="txt"><strong>GitHub-native orchestration.</strong> PRs, issues, reviews, and comments drive agent workflows.</div></div>
-          <div class="seq"><div class="num">4</div><div class="txt"><strong>Plain containers as environments.</strong> You define the image with the stack your project needs.</div></div>
-          <div class="seq"><div class="num">5</div><div class="txt"><strong>MCP-first, API+UI for observation.</strong> All interaction flows through MCP tools. The API and web UI are for monitoring.</div></div>
-        </div>
+    <section class="slide">
+      <span class="kicker">Sync path</span>
+      <h1>Git definitions become runtime state</h1>
+      <div class="flow grow">
+        <div class="step"><span class="step-no">1</span><div class="step-title">PR merged</div><p>Humans or agents update config files in Git.</p></div>
+        <div class="step"><span class="step-no">2</span><div class="step-title">Sync runs</div><p><code>DEFINITIONS_REPO</code> is cloned or pulled by periodic or manual sync.</p></div>
+        <div class="step"><span class="step-no">3</span><div class="step-title">Scan + hash</div><p>Chetter indexes supported paths and records content hashes plus source commit.</p></div>
+        <div class="step"><span class="step-no">4</span><div class="step-title">Materialize</div><p>Definitions, model catalog, and Git-managed triggers are stored in TiDB.</p></div>
+        <div class="step"><span class="step-no">5</span><div class="step-title">Run tasks</div><p>New tasks use the active runtime view and keep attribution metadata.</p></div>
       </div>
-    </div>
+      <div class="pill-row mt">
+        <span class="pill"><span class="dot blue"></span><code>definition_sources</code></span>
+        <span class="pill"><span class="dot cyan"></span><code>definitions</code></span>
+        <span class="pill"><span class="dot purple"></span><code>definition_sync_runs</code></span>
+        <span class="pill"><span class="dot green"></span><code>definition_change_proposals</code></span>
+      </div>
+    </section>
 
-    <!-- Slide 3: Architecture Overview -->
-    <div class="slide">
-      <h1>Architecture Overview</h1>
-      <div class="columns">
-        <div>
-          <h3>Control Plane</h3>
-          <ul class="small">
-            <li><code>main.go</code> — MCP server entry point</li>
-            <li><code>internal/service</code> — business logic, tools, triggers</li>
-            <li><code>internal/store</code> — TiDB schema & migrations</li>
-            <li><code>internal/webhook</code> — GitHub webhook handler</li>
-            <li><code>internal/webapi</code> — ConnectRPC + streaming</li>
-          </ul>
-          <h3>Database</h3>
-          <ul class="small">
-            <li>TiDB — MySQL wire protocol</li>
-            <li>Tasks, events, sessions, artifacts, audit log</li>
-            <li>Goose migrations + sqlc generated queries</li>
-          </ul>
+    <section class="slide">
+      <span class="kicker">Trigger mechanisms</span>
+      <h1>How tasks enter the queue</h1>
+      <div class="grid-3 grow mt">
+        <div class="card">
+          <h3>Cron</h3>
+          <p>Runs on a cron expression or descriptor like <code>@hourly</code>. Good for nightly docs, scans, maintenance, reports.</p>
         </div>
-        <div>
-          <h3>Runner Fleet</h3>
-          <ul class="small">
-            <li><code>runner/</code> — separate Go module</li>
-            <li>Polls <code>ClaimTask</code> via ConnectRPC</li>
-            <li>Spawns Docker containers per task</li>
-            <li>Supports gVisor sandboxing (<code>runsc</code>)</li>
-          </ul>
-          <h3>Agent Harness</h3>
-          <ul class="small">
-            <li>OpenCode, Claude Code, Pi</li>
-            <li>Runs as HTTP server inside container</li>
-            <li>Runner sends prompt, streams events back</li>
-          </ul>
+        <div class="card">
+          <h3>PR review</h3>
+          <p>GitHub webhook matches a repository and asks an agent to review a PR or respond to <code>/chetter-review</code>.</p>
+        </div>
+        <div class="card">
+          <h3>Issue/comment</h3>
+          <p>Issue events and comments can create implementation, triage, or response tasks, optionally gated by labels.</p>
+        </div>
+        <div class="card">
+          <h3>Manual MCP</h3>
+          <p><code>chetter_submit_task</code> creates one-off tasks from any MCP client, including OpenCode and Claude Code.</p>
+        </div>
+        <div class="card">
+          <h3>Session resume</h3>
+          <p><code>chetter_resume_agent_session</code> creates a follow-up task pinned to the runner that owns the workspace/checkpoint.</p>
+        </div>
+        <div class="card">
+          <h3>Event callback</h3>
+          <p>Task events can trigger follow-up tasks, webhooks, or Slack notifications for simple workflow chaining.</p>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Slide 4: The Database (TiDB) -->
-    <div class="slide">
-      <h1>The Database</h1>
-      <p class="muted">Two sources of truth for schema evolution</p>
-      <div class="columns">
-        <div class="box">
-          <h3>Runtime Schema (<code>internal/store/schema.go</code>)</h3>
-          <p class="small">
-            <code>ApplySchema()</code> runs on every server startup. Provides zero-downtime auto-migration for new columns via <code>ensure*Columns</code> helpers.
-          </p>
-        </div>
-        <div class="box">
-          <h3>Versioned Migrations (<code>db/migrations/*.sql</code>)</h3>
-          <p class="small">
-            Goose runs explicit migrations. sqlc reads all migrations to infer the schema for Go code generation.
-          </p>
-        </div>
+    <section class="slide">
+      <span class="kicker">Control plane</span>
+      <h1>The server is the coordinator</h1>
+      <div class="swimlane grow">
+        <div class="lane-label">Clients</div>
+        <div class="lane"><span class="token blue">MCP tools</span><span class="token blue">Web UI</span><span class="token blue">GitHub webhooks</span></div>
+        <div class="lane-label">Server</div>
+        <div class="lane"><span class="token green">Auth + teams</span><span class="token green">Scheduler</span><span class="token green">Webhook matcher</span><span class="token green">ConnectRPC API</span></div>
+        <div class="lane-label">TiDB</div>
+        <div class="lane"><span class="token yellow">tasks</span><span class="token yellow">sessions</span><span class="token yellow">triggers</span><span class="token yellow">events</span><span class="token yellow">definitions</span><span class="token yellow">audit</span></div>
+        <div class="lane-label">Runners</div>
+        <div class="lane"><span class="token pink">RegisterRunner</span><span class="token pink">ClaimTask</span><span class="token pink">Heartbeat</span><span class="token pink">ReportEvent</span><span class="token pink">CompleteTask</span></div>
       </div>
-      <div style="margin-top:24px;">
-        <h3>Core Tables</h3>
-        <ul class="small">
-          <li><code>chetter_tasks</code> — task state, config, exports, error category</li>
-          <li><code>chetter_task_events</code> — streaming progress + heartbeats</li>
-          <li><code>chetter_agent_sessions</code> — session lifecycle, pause/resume</li>
-          <li><code>chetter_session_runs</code> — individual run attempts</li>
-          <li><code>chetter_task_artifacts</code> — GitHub issues/PRs/comments created</li>
-          <li><code>chetter_audit_log</code> — server-side event log</li>
-        </ul>
+      <div class="callout mt">
+        <p><strong>No broker is required.</strong> TiDB is the durable queue and coordination point; ConnectRPC is the runner protocol.</p>
       </div>
-    </div>
+    </section>
 
-    <!-- Slide 5: Task Lifecycle Overview -->
-    <div class="slide">
-      <h1>Task Lifecycle — Overview</h1>
-      <div class="columns single">
-        <div>
-          <pre style="font-size:0.9rem;">
-Create ──► Queue ──► Claim ──► Lease ──► Execute ──► Complete
-  │          │          │          │            │
-  ▼          ▼          ▼          ▼            ▼
-MCP/      TiDB      Runner    Heartbeat      Events
-Webhook             Poll       Renew         + Export
-          </pre>
+    <section class="slide">
+      <span class="kicker">Execution plane</span>
+      <h1>Runners pull work; the server never pushes it</h1>
+      <div class="queue-visual">
+        <div class="card task-stack">
+          <div class="task-row"><span class="lock">1</span><strong>task_a</strong><span class="status">pending</span></div>
+          <div class="task-row"><span class="lock">2</span><strong>task_b</strong><span class="status">pending</span></div>
+          <div class="task-row"><span class="lock">3</span><strong>task_c</strong><span class="status">pending</span></div>
+          <pre>SELECT ... FROM chetter_tasks
         </div>
-      </div>
-      <p style="margin-top:16px;">
-        A task moves from creation to completion through a small number of well-defined states.
-        The runner fleet is demand-driven: runners claim work, not the other way around.
-      </p>
-    </div>
-
-    <!-- Slide 6: Step 1 — Task Creation -->
-    <div class="slide">
-      <h1>Step 1 — Task Creation</h1>
-      <div class="columns">
-        <div>
-          <h3>Entry Points</h3>
-          <ul class="small">
-            <li><strong>MCP tool</strong> — <code>chetter_submit_task</code></li>
-            <li><strong>Cron trigger</strong> — periodic schedules</li>
-            <li><strong>PR review webhook</strong> — new pull request opened</li>
-            <li><strong>Issue/comment webhook</strong> — labeled or commented</li>
-            <li><strong>Session resume</strong> — follow-up prompt on paused session</li>
+        <div class="card">
+          <h3>Why the pull model matters</h3>
+          <ul>
+            <li>Scale runners horizontally without assigning work by hand.</li>
+            <li>Use leases so crashed runners do not strand tasks forever.</li>
+            <li>Support runner affinity for resumable sessions via <code>required_runner_id</code>.</li>
+            <li>Drain a runner during rollout without killing in-flight tasks.</li>
           </ul>
-        </div>
-        <div>
-          <h3>What Gets Stored</h3>
-          <ul class="small">
-            <li><code>prompt</code>, <code>git_url</code>, <code>git_ref</code></li>
-            <li><code>agent_image</code>, <code>harness</code>, <code>timeout_sec</code></li>
-            <li><code>skills</code>, <code>env</code> (issue number, GitHub token, etc.)</li>
-            <li><code>team_id</code> — auto-stamped from auth context</li>
-            <li><code>trigger_name</code> / <code>trigger_type</code> — when fired by a trigger</li>
-          </ul>
+          <div class="pill-row mt">
+            <span class="pill"><span class="dot cyan"></span>60s renewable lease</span>
+            <span class="pill"><span class="dot orange"></span>30s reaper loop</span>
+            <span class="pill"><span class="dot green"></span>concurrency slots</span>
+          </div>
         </div>
       </div>
-      <p class="small muted" style="margin-top:auto;">
-        Tasks start in <code>pending</code> status. The reaper and claim logic both operate on this queue.
-      </p>
-    </div>
+    </section>
 
-    <!-- Slide 7: Step 2 — Queuing & Claiming -->
-    <div class="slide">
-      <h1>Step 2 — Queuing & Claiming</h1>
-      <div class="columns">
-        <div>
-          <h3>Atomic Claim</h3>
-          <p class="small">
-            Runners poll <code>ClaimTask</code> over ConnectRPC. The server runs:
-          </p>
-          <pre style="font-size:0.85rem;">SELECT ... FROM chetter_tasks
-WHERE status = 'pending'
-ORDER BY created_at
-FOR UPDATE SKIP LOCKED
-LIMIT 1</pre>
-          <p class="small">
-            This guarantees exactly one runner claims a task, even under contention.
-          </p>
+    <section class="slide">
+      <span class="kicker">Walkthrough</span>
+      <h1>The life of a task/session</h1>
+      <div class="timeline grow">
+        <div class="moment"><span class="step-no">1</span><strong>Create</strong><p>MCP, trigger, webhook, or resume creates a task.</p></div>
+        <div class="moment"><span class="step-no">2</span><strong>Materialize</strong><p>Task, agent session, and first session run are stored.</p></div>
+        <div class="moment"><span class="step-no">3</span><strong>Claim</strong><p>A runner atomically claims with SKIP LOCKED.</p></div>
+        <div class="moment"><span class="step-no">4</span><strong>Execute</strong><p>Runner starts sandbox and harness in a workspace.</p></div>
+        <div class="moment"><span class="step-no">5</span><strong>Observe</strong><p>Events, heartbeat, logs, and transcript stream back.</p></div>
+        <div class="moment"><span class="step-no">6</span><strong>Finish</strong><p>Task completes, fails, pauses, or becomes recoverable.</p></div>
+      </div>
+      <p class="muted small mt">The next slides zoom into these phases.</p>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Step 1</span>
+      <h1>Creation creates three linked records</h1>
+      <div class="split reverse">
+        <div class="map" style="grid-template-columns:1fr 70px 1fr 70px 1fr; margin-top:0;">
+          <div class="node"><div class="node-title">Task</div><div class="node-text"><code>task_*</code><br>queue item and status</div></div>
+          <div class="arrow"></div>
+          <div class="node big"><div class="node-title">Agent Session</div><div class="node-text"><code>sess_*</code><br>lineage and resume identity</div></div>
+          <div class="arrow"></div>
+          <div class="node"><div class="node-title">Session Run</div><div class="node-text"><code>run_*</code><br>one prompt execution</div></div>
         </div>
-        <div>
-          <h3>Lease Model</h3>
-          <ul class="small">
-            <li>Claim sets <code>claimed_at</code> and <code>lease_expires_at</code></li>
-            <li>Default lease: <strong>60 seconds</strong></li>
-            <li>Runner renews lease via periodic <code>Heartbeat</code></li>
-            <li>If a runner dies, the lease expires and the task becomes claimable again</li>
+        <div class="card">
+          <h3>Stored on submit</h3>
+          <ul>
+            <li>Prompt, repo URL/ref, timeout, skills, non-secret env.</li>
+            <li>Agent image, harness, provider/model/variant overrides.</li>
+            <li>Trigger name/type and team id when created by automation.</li>
+            <li>Session mode, pause reason, TTL, and runner affinity fields.</li>
           </ul>
+          <p class="muted small mt">Default one-shot tasks still get session records, so history and UI lineage are consistent.</p>
         </div>
       </div>
-      <p class="small muted" style="margin-top:auto;">
-        Failed tasks retry up to <code>max_attempts</code> (default 5). Each retry increments <code>attempt</code>.
-      </p>
-    </div>
+    </section>
 
-    <!-- Slide 8: Step 3 — Runner Lease & Heartbeat -->
-    <div class="slide">
-      <h1>Step 3 — Runner Lease & Heartbeat</h1>
-      <div class="columns">
-        <div>
-          <h3>Heartbeat Flow</h3>
-          <div class="seq"><div class="num">1</div><div class="txt">Runner sends <code>Heartbeat(taskID)</code> every ~30s</div></div>
-          <div class="seq"><div class="num">2</div><div class="txt">Server extends <code>lease_expires_at</code></div></div>
-          <div class="seq"><div class="num">3</div><div class="txt">Server updates <code>last_event_at</code></div></div>
-          <div class="seq"><div class="num">4</div><div class="txt">If heartbeat stops, the <strong>Reaper</strong> (30s loop) reclaims the task</div></div>
+    <section class="slide">
+      <span class="kicker">Step 2</span>
+      <h1>Claiming is atomic and lease-backed</h1>
+      <div class="grid-3 grow mt">
+        <div class="card">
+          <h3>Claim</h3>
+          <p>Runner asks for work. The server locks the oldest eligible pending task with <code>FOR UPDATE SKIP LOCKED</code>.</p>
         </div>
-        <div>
-          <h3>Reaper Rules</h3>
-          <ul class="small">
-            <li>Lease expired + no heartbeat → mark <code>error</code>, "lease expired"</li>
-            <li>Task exceeded <code>timeout_sec</code> → mark <code>error</code>, "timeout"</li>
-            <li>Session paused but TTL expired → mark <code>expired</code></li>
-            <li><code>reaperHealthMaxEventSec = 120</code> — tasks silent longer than this are stale</li>
-          </ul>
+        <div class="card">
+          <h3>Lease</h3>
+          <p>Claim sets <code>runner_id</code>, <code>claimed_at</code>, <code>lease_expires_at</code>, and increments attempts.</p>
+        </div>
+        <div class="card">
+          <h3>Affinity</h3>
+          <p>Resumed work can require a specific runner, so only the owner of the workspace/checkpoint can claim it.</p>
         </div>
       </div>
-    </div>
+      <div class="callout mt">
+        <p><strong>Design effect:</strong> many runners can poll at once, but only one gets a given task. If that runner disappears, the lease expires and the reaper can recover the task.</p>
+      </div>
+    </section>
 
-    <!-- Slide 9: Step 4 — Agent Session & Prompt -->
-    <div class="slide">
-      <h1>Step 4 — Agent Session & Prompt</h1>
-      <div class="columns">
-        <div>
-          <h3>Inside the Container</h3>
-          <ol class="small">
-            <li>Runner starts harness in serve mode:<br><code>opencode serve --port 9999</code></li>
-            <li>Runner waits for <code>/config</code> to respond (up to 120s)</li>
-            <li>Runner <code>POST /session</code> to create a session</li>
-            <li>Runner <code>POST /session/{id}/message</code> with the task prompt</li>
-            <li>Harness (OpenCode) runs the agent against the cloned repo</li>
+    <section class="slide">
+      <span class="kicker">Step 3</span>
+      <h1>The runner builds the workspace bubble</h1>
+      <div class="split">
+        <div class="card">
+          <h3>Before the harness runs</h3>
+          <ol>
+            <li>Clone <code>git_url</code> at <code>git_ref</code>.</li>
+            <li>Create or reuse a workspace under the runner workspace root.</li>
+            <li>Resolve model/provider details from the active model catalog.</li>
+            <li>Generate harness config and MCP bridge config.</li>
+            <li>Start Docker/gVisor task container when using isolated mode.</li>
           </ol>
         </div>
-        <div>
-          <h3>Environment Injected</h3>
-          <ul class="small">
-            <li><code>ISSUE_NUMBER</code>, <code>ISSUE_TITLE</code>, <code>ISSUE_BODY</code></li>
-            <li><code>GITHUB_TOKEN</code> — App installation token</li>
-            <li><code>GITHUB_REPO</code>, <code>CHETTER_TASK_ID</code></li>
-            <li><code>WORKSPACE=/workspace</code></li>
-            <li>Any env vars from the trigger/task config</li>
+        <div class="card">
+          <h3>Injected into the task</h3>
+          <div class="pill-row">
+            <span class="pill"><span class="dot cyan"></span><code>CHETTER_TASK_ID</code></span>
+            <span class="pill"><span class="dot green"></span><code>WORKSPACE</code></span>
+            <span class="pill"><span class="dot yellow"></span><code>MCP_SOCKET_PATH</code></span>
+            <span class="pill"><span class="dot pink"></span><code>GITHUB_TOKEN</code></span>
+            <span class="pill"><span class="dot purple"></span><code>CHETTER_MODEL_ID</code></span>
+          </div>
+          <p class="mt">The agent can run commands inside its sandbox and gets controlled MCP tools for workspace access and audited GitHub writes.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Step 4</span>
+      <h1>The harness does the agent work</h1>
+      <div class="grid-3 grow mt">
+        <div class="card">
+          <h3>OpenCode</h3>
+          <p>Richest integration. Runs in HTTP serve mode, supports streaming events, session export, and task-container isolation.</p>
+        </div>
+        <div class="card">
+          <h3>Claude Code</h3>
+          <p>Batch subprocess mode. Useful when a simpler one-shot CLI execution path is enough.</p>
+        </div>
+        <div class="card">
+          <h3>Pi</h3>
+          <p>JSONL RPC subprocess. Provider-rich harness with streaming control and session messages.</p>
+        </div>
+      </div>
+      <div class="callout mt">
+        <p><strong>Key boundary:</strong> Chetter coordinates execution and records evidence. The harness decides how to interact with the LLM and tools inside the workspace.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Step 5</span>
+      <h1>Events make the run observable</h1>
+      <div class="split reverse">
+        <div class="card">
+          <h3>Two channels of liveness</h3>
+          <div class="grid-2">
+            <div class="callout"><p><strong>Heartbeat</strong><br><span class="muted">Renews the task lease. Stored at most once per minute to avoid event spam.</span></p></div>
+            <div class="callout"><p><strong>Progress</strong><br><span class="muted">Harness events, tool calls, summaries, errors, and completion payloads.</span></p></div>
+          </div>
+          <p class="mt">Both feed the web UI, MCP status tools, distilled progress timelines, and post-run debugging.</p>
+        </div>
+        <div class="yaml-window">
+          <div class="window-bar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span> task timeline</div>
+          <pre>task.progress      agent started
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Step 6</span>
+      <h1>Completion records results and artifacts</h1>
+      <div class="grid-2 grow mt">
+        <div class="card">
+          <h3>Task result</h3>
+          <ul>
+            <li><code>done</code>, <code>error</code>, or <code>cancelled</code> status.</li>
+            <li>Summary, classified error category, timing, tokens, and cost fields.</li>
+            <li>Markdown session export for later inspection or recovery context.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>GitHub artifacts</h3>
+          <ul>
+            <li>Agents use Chetter MCP tools for PRs, issues, comments, and reviews.</li>
+            <li>Chetter adds a canonical footer and records <code>chetter_task_artifacts</code>.</li>
+            <li>Artifacts link task, session, run, repository, number, URL, branch, and SHA.</li>
           </ul>
         </div>
       </div>
-      <p class="small muted" style="margin-top:auto;">
-        The prompt includes skill hints and the agent definition loaded from the configured definitions repo.
-      </p>
-    </div>
+      <div class="callout mt">
+        <p><strong>Why it matters:</strong> weeks later, you can answer which task created a PR, which trigger created the task, which agent config was active, and what the agent saw.</p>
+      </div>
+    </section>
 
-    <!-- Slide 10: Step 5 — Event Streaming -->
-    <div class="slide">
-      <h1>Step 5 — Event Streaming</h1>
-      <div class="columns">
-        <div>
-          <h3>Event Types</h3>
-          <ul class="small">
-            <li><code>task.progress</code> — agent thinking, tool calls, file edits</li>
-            <li><code>task.heartbeat</code> — throttled to 1 stored event/min per task</li>
-            <li><code>task.failed.{category}</code> — error with classification</li>
-            <li><code>task.completed</code> — success</li>
-          </ul>
-          <p class="small">
-            Events are stored in <code>chetter_task_events</code> as JSON payloads.
-          </p>
+    <section class="slide">
+      <span class="kicker">Sessions</span>
+      <h1>A session can outlive one task</h1>
+      <div class="map grow">
+        <div class="node">
+          <div class="node-title">Run 1</div>
+          <div class="node-text">create PR, checkpoint workspace, pause for feedback</div>
         </div>
-        <div>
-          <h3>What You See</h3>
-          <ul class="small">
-            <li>Web UI live stream</li>
-            <li><code>chetter_task_events</code> MCP tool</li>
-            <li><code>chetter_task_progress</code> — distilled timeline</li>
-            <li>Runner stdout/stderr piped to container logs</li>
-          </ul>
-          <p class="small muted">
-            Heartbeat events update the lease but are rate-limited in storage to avoid table bloat.
-          </p>
+        <div class="arrow"></div>
+        <div class="node big">
+          <div class="node-title">Paused Session</div>
+          <div class="node-text">pinned runner + workspace/checkpoint + TTL</div>
+        </div>
+        <div class="arrow"></div>
+        <div class="node">
+          <div class="node-title">Run 2</div>
+          <div class="node-text">resume with review feedback and continue in context</div>
         </div>
       </div>
-    </div>
+      <div class="grid-3 mt">
+        <div class="card"><h3>One-shot</h3><p>Session completes when the first run completes.</p></div>
+        <div class="card"><h3>Paused</h3><p>Successful resumable run preserves workspace and waits for follow-up.</p></div>
+        <div class="card"><h3>Recoverable</h3><p>Timeout/transport failures can keep enough state to resume manually.</p></div>
+      </div>
+    </section>
 
-    <!-- Slide 11: Step 6 — Completion, Failure & Recovery -->
-    <div class="slide">
-      <h1>Step 6 — Completion, Failure & Recovery</h1>
-      <div class="columns">
-        <div>
-          <h3>Terminal States</h3>
-          <ul class="small">
-            <li><code>done</code> — agent finished normally</li>
-            <li><code>error</code> — failure with <code>error_category</code></li>
-            <li><code>cancelled</code> — user or system cancellation</li>
-          </ul>
-          <h3>Error Categories</h3>
-          <ul class="small">
-            <li><code>timeout</code>, <code>transport_error</code>, <code>runtime_error</code></li>
-            <li><code>model_error</code>, <code>budget_exceeded</code>, <code>stuck</code></li>
+    <section class="slide">
+      <span class="kicker">Reliability</span>
+      <h1>The reaper closes the loop</h1>
+      <div class="split">
+        <div class="card">
+          <h3>What it watches</h3>
+          <ul>
+            <li>Expired leases when runner heartbeats stop.</li>
+            <li>Tasks that exceed <code>timeout_sec</code>.</li>
+            <li>Tasks silent long enough to be considered stale.</li>
+            <li>Paused sessions whose TTL has expired.</li>
           </ul>
         </div>
-        <div>
-          <h3>Recoverable Sessions</h3>
-          <p class="small">
-            If a task fails with <code>timeout</code> or <code>transport_error</code> and the session mode is <code>resumable</code>:
-          </p>
-          <ol class="small">
-            <li>Runner preserves the workspace</li>
-            <li>Server marks the session <code>recoverable</code></li>
-            <li>A follow-up prompt can resume on the same runner</li>
-            <li>Session export is saved as a transcript for context</li>
+        <div class="card">
+          <h3>What it does</h3>
+          <ul>
+            <li>Retries eligible tasks up to <code>max_attempts</code>.</li>
+            <li>Marks exhausted tasks terminal with a clear error category.</li>
+            <li>Expires stale paused sessions and checkpoints.</li>
+            <li>Keeps the queue moving without operator intervention.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout mt">
+        <p><strong>Failure is data.</strong> Chetter records the error, category, run, runner, and transcript/export when available so recovery and improvement are possible.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <span class="kicker">Putting it together</span>
+      <h1>The pedagogical shortcut</h1>
+      <div class="grid-2 grow mt">
+        <div class="card">
+          <h3>Remember this</h3>
+          <p><strong>Config in Git decides what should happen.</strong></p>
+          <p><strong>TiDB remembers what is happening and what happened.</strong></p>
+          <p><strong>Runners do the risky work in isolated workspaces.</strong></p>
+          <p><strong>Artifacts make outcomes traceable in GitHub.</strong></p>
+        </div>
+        <div class="card">
+          <h3>Task/session lifecycle</h3>
+          <ol>
+            <li>Create task, session, and run.</li>
+            <li>Runner claims task with a renewable lease.</li>
+            <li>Runner creates workspace and starts harness.</li>
+            <li>Events and heartbeats stream back.</li>
+            <li>Results, exports, artifacts, and audit rows are stored.</li>
+            <li>Session completes, pauses, or becomes recoverable.</li>
           </ol>
         </div>
       </div>
-    </div>
-
-    <!-- Slide 12: Triggers & Automation -->
-    <div class="slide">
-      <h1>Triggers & Automation</h1>
-      <div class="columns">
-        <div>
-          <h3>Cron Triggers</h3>
-          <ul class="small">
-            <li>Defined as YAML in the definitions repo</li>
-            <li>Synced via <code>chetter_sync_definitions</code></li>
-            <li>Examples: nightly docs update, vulnerability scan, changelog</li>
-          </ul>
-          <h3>PR Review Trigger</h3>
-          <ul class="small">
-            <li>Watches a repo for new pull requests</li>
-            <li>Fires an agent to review code</li>
-            <li>Can pause for follow-up feedback</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Issue Triggers</h3>
-          <ul class="small">
-            <li><code>issue</code> type with <code>event</code> and <code>match_labels</code></li>
-            <li>Example: implementer runs when <code>approved</code> label is added</li>
-            <li>Bot-comment filtering skips the app’s own comments by default</li>
-          </ul>
-          <h3>Webhooks</h3>
-          <ul class="small">
-            <li>GitHub App webhook → handler → trigger match → task submit</li>
-            <li>Optional: configure <code>GITHUB_APP_*</code> env vars</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Slide 13: Auth & Multi-Tenancy -->
-    <div class="slide">
-      <h1>Auth & Multi-Tenancy</h1>
-      <div class="columns">
-        <div>
-          <h3>Admin Token</h3>
-          <p class="small">
-            <code>CHETTER_MCP_AUTH_TOKEN</code> env var. Single static bearer token. Bypasses all scoping.
-          </p>
-          <h3>Team Tokens</h3>
-          <ul class="small">
-            <li>Stored in <code>api_tokens</code> table (SHA-256 hashed)</li>
-            <li>Each token belongs to a user in a team</li>
-            <li>Managed via <code>chetterctl</code> CLI</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Scoping</h3>
-          <ul class="small">
-            <li>Tasks/schedules get <code>team_id</code> auto-stamped</li>
-            <li>Team-scoped tokens see only their team's work</li>
-            <li>List queries filter by <code>team_id</code></li>
-            <li>Audit log tracks who did what</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Slide 14: Web UI & Observability -->
-    <div class="slide">
-      <h1>Web UI & Observability</h1>
-      <div class="columns">
-        <div>
-          <h3>Web UI (<code>web/</code>)</h3>
-          <ul class="small">
-            <li>SvelteKit + Flowbite-Svelte</li>
-            <li>Task list, detail, events, progress timeline</li>
-            <li>Session list, runs, checkpoints</li>
-            <li>Trigger management</li>
-            <li>Audit log viewer</li>
-          </ul>
-        </div>
-        <div>
-          <h3>MCP Tools for Inspection</h3>
-          <ul class="small">
-            <li><code>chetter_task_status</code></li>
-            <li><code>chetter_task_events</code> / <code>chetter_task_progress</code></li>
-            <li><code>chetter_task_export</code> — full session transcript</li>
-            <li><code>chetter_list_audit_events</code></li>
-            <li><code>chetter_list_task_artifacts</code> — GitHub artifacts</li>
-            <li><code>chetter_runner_health</code> — fleet status</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Slide 15: Summary -->
-    <div class="slide">
-      <h1>Summary</h1>
-      <div class="columns single">
-        <div>
-          <div class="seq"><div class="num">1</div><div class="txt">Tasks are created via MCP, triggers, or webhooks and stored in TiDB.</div></div>
-          <div class="seq"><div class="num">2</div><div class="txt">Runners claim tasks atomically with a 60-second lease.</div></div>
-          <div class="seq"><div class="num">3</div><div class="txt">The runner spawns a container, starts the harness, and sends the prompt.</div></div>
-          <div class="seq"><div class="num">4</div><div class="txt">Events stream back in real time while the runner renews the lease.</div></div>
-          <div class="seq"><div class="num">5</div><div class="txt">On completion or failure, the runner publishes results and the server stores the transcript.</div></div>
-          <div class="seq"><div class="num">6</div><div class="txt">Resumable sessions can be paused and continued with follow-up prompts.</div></div>
-        </div>
-      </div>
-      <p class="muted" style="margin-top:auto; font-size:0.95rem;">
-        Read more in <code>docs/MANUAL.md</code>, <code>docs/FEATURES.md</code>, and <code>docs/PLAN.md</code>.
-      </p>
-    </div>
+      <p class="muted small mt">Read more in <code>docs/MANUAL.md</code>, <code>docs/CONFIG_IN_GIT.md</code>, <code>docs/FEATURES.md</code>, and <code>docs/PAUSED_SESSIONS.md</code>.</p>
+    </section>
 
   </div>
 
   <div class="progress" id="progress"></div>
-  <div class="slide-number" id="slide-number">1 / 15</div>
+  <div class="slide-number" id="slide-number">1 / 20</div>
   <div class="nav">
-    <button onclick="prevSlide()">← Prev</button>
-    <button onclick="nextSlide()">Next →</button>
+    <button type="button" onclick="prevSlide()">Prev</button>
+    <button type="button" onclick="nextSlide()">Next</button>
   </div>
 
   <script>
-    const slides = document.querySelectorAll('.slide');
+    const slides = Array.from(document.querySelectorAll('.slide'));
     let current = 0;
-    function showSlide(i) {
-      slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
-      current = i;
-      document.getElementById('progress').style.width = ((i + 1) / slides.length * 100) + '%';
-      document.getElementById('slide-number').textContent = (i + 1) + ' / ' + slides.length;
+
+    function showSlide(index) {
+      const next = Math.max(0, Math.min(index, slides.length - 1));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === next));
+      current = next;
+      document.getElementById('progress').style.width = (((next + 1) / slides.length) * 100) + '%';
+      document.getElementById('slide-number').textContent = (next + 1) + ' / ' + slides.length;
     }
-    function nextSlide() { if (current < slides.length - 1) showSlide(current + 1); }
-    function prevSlide() { if (current > 0) showSlide(current - 1); }
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
-      if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+
+    function nextSlide() {
+      showSlide(current + 1);
+    }
+
+    function prevSlide() {
+      showSlide(current - 1);
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight' || event.key === ' ') {
+        event.preventDefault();
+        nextSlide();
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        prevSlide();
+      }
+      if (event.key === 'Home') {
+        event.preventDefault();
+        showSlide(0);
+      }
+      if (event.key === 'End') {
+        event.preventDefault();
+        showSlide(slides.length - 1);
+      }
     });
+
     showSlide(0);
   </script>
 </body>
