@@ -194,23 +194,180 @@ Definition of done:
 
 Users can wire Chetter automations to lifecycle events without adding hardcoded server paths for each new workflow.
 
-### P5: Execution Backend Interface
+### P5: Separate Docker Mode From Kubernetes Mode
 
 Why next:
 
-Both OpenHands and `docs/research/DAYTONA.md` point to the same architectural need: runner execution should be abstracted behind a backend interface. This should start as a refactor around current Docker/gVisor/local behavior, not as a Daytona-first feature.
+The runner currently creates agent containers by shelling out to `docker run` via the
+host's Docker socket. This works for Docker Compose and single-host deployments, but is
+not Kubernetes-native:
 
-Next deliverables:
+- Agent containers are invisible to Kubernetes (no scheduling, no resource accounting, no eviction).
+- Mounting `/var/run/docker.sock` into the runner pod grants full host-level container control.
+- gVisor isolation depends on the host Docker daemon's runtime configuration, not Kubernetes.
+- Workspace persistence uses host filesystem paths, not Kubernetes volumes.
 
-- Extract an `ExecutionBackend` around sandbox/container create, start, stop, checkpoint, restore, and metadata operations.
-- Keep Docker plus gVisor as the first implementation.
-- Keep local execution as a development implementation.
-- Add enough interface shape to support future Kubernetes or remote sandbox implementations.
-- Revisit Daytona only after the interface exists and after cost/latency testing.
+The goal is to separate Docker mode (current behavior, good for Docker Compose) from
+Kubernetes mode (runner creates agent Pods via the Kubernetes API, with
+`runtimeClassName: gvisor`, no Docker socket).
+
+See `docs/testing/k3s-chetter.md` for local k3s + gVisor validation, and `docs/EKS.md`
+for production EKS installation.
+
+Related docs:
+- `docs/K3S.md` — k3s + gVisor setup guide
+- `docs/testing/k3s-chetter.md` — full Chetter stack on k3s
+- `docs/EKS.md` — production EKS installation guide
+
+#### Architecture Target
+
+```text
+Docker mode (unchanged):
+  Runner pod
+    └─ docker run agent container via host Docker socket
+
+Kubernetes mode (new):
+  Runner pod (no Docker socket)
+    └─ Kubernetes API creates agent Pod
+         spec:
+           runtimeClassName: gvisor
+           initContainers:
+             - clone (git clone into shared volume)
+           containers:
+             - workspace-mcp (sidecar, serves MCP tools)
+             - agent (opencode serve --port 9999)
+```
+
+#### Phases
+
+**Phase 1: Execution Backend Abstraction**
+
+Extract current execution logic behind an interface.
+
+- Define `ExecutionBackend` interface in `runner/internal/controller/executor.go`.
+- Move `runDockerAgent` / `runDockerAgentResume` into `DockerExecutor`.
+- Move `runLocalAgent` into `LocalExecutor`.
+- Config: `EXECUTION_BACKEND=docker|local|kubernetes` (default: `docker`).
+  Keep backward compat: `RUNNER_LOCAL=true` maps to `local`, `false` maps to `docker`.
+- `KubernetesExecutor` stub: returns "not implemented".
+- No behavior change for existing paths. `make check` passes.
+
+**Phase 2: Shared Harness Driver**
+
+Extract harness HTTP interaction logic so both backends share it.
+
+- Extract into `runner/internal/controller/harness_driver.go`:
+  wait ready, create session, watch events, send prompt, abort session,
+  read export, classify errors, publish terminal result.
+- Docker and Kubernetes executors differ only in workspace creation, agent
+  process start/networking, and cleanup.
+- `make check` passes. No behavior change.
+
+**Phase 3: Kubernetes Executor — Non-Resumable MVP**
+
+Create one Pod per task with `emptyDir` workspace, connect by Pod IP.
+
+- Implement `KubernetesExecutor` in `runner/internal/controller/kubernetes_executor.go`.
+- Add Kubernetes client-go dependency to `runner/go.mod`.
+- Config: `KUBERNETES_NAMESPACE`, `KUBERNETES_RUNTIME_CLASS`,
+  `KUBERNETES_CLEANUP_AFTER_TASK`, `KUBERNETES_AGENT_IMAGE_PULL_POLICY`.
+- Pod creation: init container clones repo, agent container runs harness,
+  optional workspace-mcp sidecar, shared `emptyDir` at `/workspace`.
+- Runner flow: create Pod, wait for Running, read Pod IP, connect to
+  `http://<podIP>:9999`, drive harness via shared driver, collect export,
+  delete Pod.
+- Error handling: Pod stuck/Failed → fetch events, logs, container status;
+  classify and publish. Transport errors use same diagnostics as Docker mode.
+- Works on k3s without gVisor (empty `KUBERNETES_RUNTIME_CLASS`).
+
+**Phase 4: Runner Manifests And RBAC**
+
+Production-ready manifests for Kubernetes backend.
+
+- `deploy/k8s/runner-kubernetes-deployment.yaml` — no Docker socket.
+- `deploy/k8s/runner-rbac.yaml` — ServiceAccount, Role (pods, pods/log,
+  configmaps, secrets, PVCs), RoleBinding.
+- `deploy/k3s/kubernetes-runner.yaml` — k3s local testing variant.
+- Existing Docker-mode manifests remain unchanged.
+
+**Phase 5: gVisor Validation On k3s**
+
+Prove Kubernetes executor works with `runtimeClassName: gvisor`.
+
+- Follow `docs/K3S.md` for k3s + gVisor setup.
+- Deploy full Chetter stack on k3s per `docs/testing/k3s-chetter.md`.
+- Submit trivial task, verify:
+  - Runner creates `chetter-task-*` Pod with `runtimeClassName: gvisor`.
+  - Agent harness starts and responds.
+  - Task reaches `done`.
+  - Pod is cleaned up.
+- Verify non-gVisor path too (empty `KUBERNETES_RUNTIME_CLASS`).
+
+**Phase 6: Resumable Sessions With PVC**
+
+Support resumable agent sessions using PVC-backed workspaces.
+
+- Resumable task → create PVC instead of `emptyDir`.
+- PVC lifecycle: created on first run, kept after Pod deletion on
+  timeout/transport failure, reused on resume, deleted on session TTL expiry.
+- Schema changes (additive): `workspace_backend`, `workspace_ref` columns
+  on `chetter_agent_sessions`. Update `schema.go`, `store.go`, migration, sqlc.
+- On recoverable failure: delete Pod, keep PVC, report workspace ref.
+- On resume: new Pod mounts same PVC, harness resumes from saved state.
+
+**Phase 7: Reaper And Cleanup**
+
+Extend cleanup for Kubernetes resources.
+
+- All resources labeled `chetter.io/task-id` and `chetter.io/session-id`.
+- Normal completion: delete Pod, ConfigMap, Secret.
+- Recoverable: delete Pod, keep PVC.
+- Expired session: delete PVC and orphaned Pods.
+- `chetter_runner_health` exposes Kubernetes executor health and orphan counts.
+
+**Phase 8: End-to-End Tests**
+
+- Unit tests: executor selection, Pod spec generation, PVC naming, error mapping.
+- Integration tests with fake Kubernetes client: Pod lifecycle, PVC retention.
+- k3s validation scripts: `scripts/k3s/create-cluster.sh`,
+  `scripts/k3s/load-images.sh`, `scripts/k3s/smoke-task.sh`,
+  `scripts/k3s/smoke-gvisor.sh`.
+
+#### Environment Variables
+
+Docker mode (unchanged):
+
+```
+EXECUTION_BACKEND=docker    # or omit (default)
+RUNNER_LOCAL=false
+USE_GVISOR=true|false
+```
+
+Kubernetes mode (new):
+
+```
+EXECUTION_BACKEND=kubernetes
+KUBERNETES_NAMESPACE=chetter
+KUBERNETES_RUNTIME_CLASS=gvisor
+KUBERNETES_CLEANUP_AFTER_TASK=true
+KUBERNETES_AGENT_IMAGE_PULL_POLICY=IfNotPresent
+KUBERNETES_SERVICE_ACCOUNT=chetter-runner
+```
+
+#### Risks
+
+- `k8s.io/client-go` is a large dependency. Consider `kubectl` subprocess for MVP.
+- ConfigMap size limits (1 MB). Use init containers for large files.
+- Pod IP reachability: verify runner-to-agent-pod traffic in multi-node clusters.
+- gVisor availability: requires `runsc` on nodes. Not all managed Kubernetes supports it.
+- Workspace resume semantics change from Docker/container preservation to PVC + harness-level resume.
 
 Definition of done:
 
-Runner task execution can switch backends without changing server task claiming, heartbeats, auth, triggers, or MCP tool contracts.
+Runner task execution can switch between Docker and Kubernetes backends without
+changing server task claiming, heartbeats, auth, triggers, or MCP tool contracts.
+Kubernetes-mode runner has no Docker socket mount. Agent pods use
+`runtimeClassName: gvisor` validated on k3s. Production EKS deployment is documented.
 
 ### P6: Observability, Safety, And Failure Classification
 
@@ -249,7 +406,8 @@ PR review, artifact creation, and artifact tracking can run against GitHub and a
 
 ## Not Now
 
-- Do not build Daytona integration before extracting the execution backend interface.
+- Do not build Daytona integration before extracting the execution backend interface (P5).
+- Do not mount `/var/run/docker.sock` into the runner pod when `EXECUTION_BACKEND=kubernetes`. The Kubernetes executor must use the Kubernetes API to create agent pods.
 - Do not prioritize GPU sandboxes until there is a real GPU workload.
 - Do not build multi-provider Git support before the GitHub session feedback loop is complete.
 - Do not make TiDB the authoritative source for durable automation definitions; use Git as source of truth and TiDB as parsed runtime state.
@@ -296,14 +454,18 @@ Target: configuration as code for automation.
 - Store definition hashes on tasks and session runs.
 - Add agent-authored definition change PR workflow.
 
-### Milestone 5: Execution And Event Architecture
+### Milestone 5: Execution Backend Separation
 
-Target: prepare for scale and new backends.
+Target: Docker mode and Kubernetes mode coexist cleanly.
 
-- Add lifecycle event callbacks.
-- Extract execution backend interface.
-- Add failure classification and gVisor metrics.
-- Reassess Daytona, Kubernetes-native execution, and remote sandbox options.
+- Extract execution backend interface (Phase 1-2).
+- Implement Kubernetes executor with `emptyDir` workspace (Phase 3).
+- Add RBAC and Kubernetes-mode manifests (Phase 4).
+- Validate on k3s with gVisor (Phase 5).
+- Add PVC-backed resumable sessions (Phase 6-7).
+- Add end-to-end tests (Phase 8).
+
+See P5 above for the detailed phase breakdown.
 
 ## Open Questions
 

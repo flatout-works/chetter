@@ -16,7 +16,10 @@ Use this page to pick the right document. `MANUAL.md` and `FEATURES.md` are the 
 | [MODEL_CATALOG.md](MODEL_CATALOG.md) | Git-backed model catalog format and sync flow. |
 | [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) | Configuration-as-code design and rollout status. |
 | [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) | Current resumable session model and remaining work. |
-| [testing/k3d-gvisor.md](testing/k3d-gvisor.md) | Local Kubernetes and gVisor testing guide. |
+| [K3S.md](K3S.md) | k3s + gVisor (`runsc`) setup and troubleshooting guide. |
+| [EKS.md](EKS.md) | Production EKS (or similar managed Kubernetes) installation guide. |
+| [testing/k3s-chetter.md](testing/k3s-chetter.md) | Full Chetter stack on k3s with gVisor — local validation guide. |
+| [testing/k3d-gvisor.md](testing/k3d-gvisor.md) | Local Kubernetes and gVisor testing guide (k3d). |
 
 ## Planning
 
