@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-06-30
+
+### Added
+
+- New `transport_error` error category for opencode prompt transport failures (EOF, connection reset, broken pipe, server closed, connection refused). Both server-side (`runner_rpc.go`) and runner-side (`classifyErrorCategory`) recognize it alongside `timeout` as a recoverable prompt error, preserving workspace and marking agent sessions as recoverable for retry.
+
+### Changed
+
+- Runner publishes diagnostic events on transport failure: Docker container inspect (status, exit code, OOM), HTTP `/config` probe, and the last 200 lines of container logs, aiding operators in debugging network-level failures during prompt execution.
+
+### Documentation
+
+- Website architecture pages (`website/index.html`, `website/technical.html`) updated to reflect current feature set: 48 core MCP tools (was 40), Pi harness coverage, issue triggers, event callbacks, full-text search, token tracking, definitions/proposal tools, GitOps CI deployment, and session management entities.
+
 ## 2026-06-26
 
 ### Added
