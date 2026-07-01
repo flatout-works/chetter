@@ -30,5 +30,8 @@
     "flowbite": "^4.0.2",
     "flowbite-svelte": "^1.33.1",
     "marked": "^18.0.5"
+  },
+  "overrides": {
+    "cookie": "0.7.2"
   }
 }
