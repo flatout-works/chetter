@@ -106,7 +106,7 @@
       </article>
       <article>
         <h3>Durable by default</h3>
-        <p>Tasks survive runner restarts. Events are written before ack. Terminal states are updated idempotently, failed work can be recovered with previous session export context, and session runs stay pinned when checkpoint resume requires the same runner.</p>
+        <p>Tasks survive runner restarts. Events are written before ack. Terminal states are updated idempotently. Timeouts and transport errors are classified as recoverable — failed sessions are automatically paused with workspace preservation, captured container diagnostics, and previous session export context, so you can resume from checkpoints on the same runner.</p>
       </article>
         <article>
           <h3>Triggers &amp; schedules</h3>
@@ -114,7 +114,7 @@
         </article>
       <article>
         <h3>Readable codebase</h3>
-          <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, full-text search helpers, and optional Arcane vulnerability scanning.</p>
+          <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, error classification and diagnostics, full-text search helpers, and optional Arcane vulnerability scanning.</p>
       </article>
       <article>
         <h3>Standard protocols</h3>
@@ -122,7 +122,7 @@
       </article>
       <article>
         <h3>Built for operators</h3>
-          <p>Inspect status, logs, latest events, progress summaries, fleet health, runner image digests, model IDs, session exports, token totals, audit log events, trigger runs, and task-created artifacts from MCP and the web UI.</p>
+          <p>Inspect status, logs, latest events, container diagnostics for transport failures, progress summaries, fleet health, runner image digests, model IDs, session exports, token totals, audit log events, trigger runs, and task-created artifacts from MCP and the web UI.</p>
       </article>
     </section>
 
