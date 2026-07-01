@@ -4,11 +4,32 @@ This directory contains the Chetter web UI. It is a SvelteKit app built as a sta
 
 ## Stack
 
-- Svelte 5 + SvelteKit
-- Vite
-- Tailwind CSS v4
-- Flowbite / Flowbite Svelte
-- ConnectRPC web client generated from `proto/api/v1/api.proto`
+### Framework & Build
+
+- **SvelteKit 2** (Svelte 5 with runes) — single-page app using `@sveltejs/adapter-static` (SPA mode with `index.html` fallback, no SSR)
+- **Vite 8** — dev server and bundler
+- **TypeScript 6** — type checking via `svelte-check`
+
+### Styling
+
+- **Tailwind CSS v4** — via `@tailwindcss/vite` plugin (not PostCSS), with a custom `@theme` primary color palette in `src/app.css`
+- **Flowbite-Svelte** — the only UI component library (Button, Card, Input, Select, Table, Modal, Toast, etc.)
+- **Tailwind Typography** plugin — for rendered markdown content
+- Dark mode via a custom `@custom-variant dark` class strategy
+
+### Data Layer
+
+- **ConnectRPC** (`@connectrpc/connect` + `@connectrpc/connect-web`) — talks directly to the Go server's ConnectRPC API, the same protobuf service the runner uses
+- **protobuf-es** (`@bufbuild/protoc-gen-es`) + **protovalidate** — generated TS types and validation from the root `.proto` definitions
+- Auth via bearer token stored in `localStorage`, injected as an interceptor on the Connect transport (see `src/lib/api/client.ts`)
+- Dev-time proxy: `/api` requests proxied to the Go server (`localhost:8090` by default); in production the static build is served by the Go server itself
+
+### App Structure
+
+- **Routes**: tasks, sessions, runners, triggers, admin, settings
+- **Stores** (Svelte 5 runes): auth, theme, toast, server info, tasks, task detail, settings, confirm dialog — in `src/lib/stores/`
+- **Shared components**: `StatusBadge`, `TableCard`, `ConfirmDialog`, `Toast` — in `src/lib/components/`
+- **Markdown rendering** via `marked` — for task transcripts and session exports
 
 ## Local Development
 
