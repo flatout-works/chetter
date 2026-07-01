@@ -103,7 +103,7 @@ MCP tools:
 - `harness_session` has preserved workspace plus harness session metadata, or `gvisor_checkpoint` has a ready checkpoint.
 - The pinned runner is alive.
 
-If a resumable harness session times out after the runner has captured workspace and harness session metadata, the server marks it `recoverable` instead of `error`, so it can be resumed manually from the UI or API.
+If a resumable harness session times out or encounters an opencode transport failure (EOF, connection reset, broken pipe) after the runner has captured workspace and harness session metadata, the server marks it `recoverable` instead of `error`, so it can be resumed manually from the UI or API.
 
 It then creates a follow-up task and `session_run` with `required_runner_id` set to the pinned runner.
 
