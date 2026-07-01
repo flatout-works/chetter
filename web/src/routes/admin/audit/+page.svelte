@@ -11,10 +11,19 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Button, Input, PaginationNav, Search, Select, Spinner, Toggle, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
+  const initialUrl = new URL($page.url);
   let p = $derived($page.url);
 
-  function boolParam(name: string, def = true): boolean {
-    const v = p.searchParams.get(name);
+  function initialParam(name: string): string {
+    return initialUrl.searchParams.get(name) || "";
+  }
+
+  function initialNumberParam(name: string, fallback: number): number {
+    return Number(initialUrl.searchParams.get(name)) || fallback;
+  }
+
+  function initialBoolParam(name: string, def = true): boolean {
+    const v = initialUrl.searchParams.get(name);
     if (v === null) return def;
     return v === "1";
   }
@@ -23,20 +32,20 @@
   let events = $state<AuditEvent[]>([]);
   let loading = $state(true);
   let firstLoad = $state(true);
-  let eventTypeFilter = $state(p.searchParams.get("event") || "");
-  let sourceTypeFilter = $state(p.searchParams.get("source") || "");
-  let sinceHours = $state(Number(p.searchParams.get("hours")) || 24);
-  let pageNum = $state(Number(p.searchParams.get("page")) || 0);
-  let pageSize = $state(Number(p.searchParams.get("size")) || 25);
-  let search = $state(p.searchParams.get("q") || "");
+  let eventTypeFilter = $state(initialParam("event"));
+  let sourceTypeFilter = $state(initialParam("source"));
+  let sinceHours = $state(initialNumberParam("hours", 24));
+  let pageNum = $state(initialNumberParam("page", 0));
+  let pageSize = $state(initialNumberParam("size", 25));
+  let search = $state(initialParam("q"));
   let offset = $derived(pageNum * pageSize);
   let sortColumn = $state<SortColumn>("time");
   let sortDirection = $state<"asc" | "desc">("desc");
 
-  let showSync = $state(boolParam("sync", true));
-  let showTriggers = $state(boolParam("trigger", true));
-  let showResumes = $state(boolParam("resume", true));
-  let showGate = $state(boolParam("gate", true));
+  let showSync = $state(initialBoolParam("sync", true));
+  let showTriggers = $state(initialBoolParam("trigger", true));
+  let showResumes = $state(initialBoolParam("resume", true));
+  let showGate = $state(initialBoolParam("gate", true));
 
   function syncURL() {
     const u = new URL(p);
@@ -333,7 +342,7 @@
               {#if expandedDetailId === event.id}
                 {@const detailSegments = linkifyDetail(event.detail)}
                 <span class="text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words block mb-1">
-                  {#each detailSegments as seg}
+                  {#each detailSegments as seg, i (`${seg.type}:${seg.text}:${i}`)}
                     {#if seg.type === "link"}
                       <a href={seg.href} target={seg.external ? "_blank" : undefined} rel={seg.external ? "noopener" : undefined} class="text-blue-600 dark:text-blue-400 hover:underline">{seg.text}</a>
                     {:else}
@@ -345,7 +354,7 @@
               {:else}
                 {@const detailSegments = linkifyDetail(event.detail)}
                 <span class="text-gray-500 dark:text-gray-400 truncate block" title={event.detail}>
-                  {#each detailSegments as seg}
+                  {#each detailSegments as seg, i (`${seg.type}:${seg.text}:${i}`)}
                     {#if seg.type === "link"}
                       <a href={seg.href} target={seg.external ? "_blank" : undefined} rel={seg.external ? "noopener" : undefined} class="text-blue-600 dark:text-blue-400 hover:underline">{seg.text}</a>
                     {:else}

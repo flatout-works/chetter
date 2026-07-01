@@ -12,18 +12,27 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Button, Input, PaginationNav, Search, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
+  const initialUrl = new URL($page.url);
   const u = $derived($page.url);
+
+  function initialParam(name: string): string {
+    return initialUrl.searchParams.get(name) || "";
+  }
+
+  function initialNumberParam(name: string, fallback: number): number {
+    return Number(initialUrl.searchParams.get(name)) || fallback;
+  }
 
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let taskId = $state(u.searchParams.get("task") || "");
-  let artifactType = $state(u.searchParams.get("type") || "");
-  let repo = $state(u.searchParams.get("repo") || "");
-  let pageNum = $state(Number(u.searchParams.get("page")) || 0);
-  let pageSize = $state(Number(u.searchParams.get("size")) || 25);
-  let search = $state(u.searchParams.get("q") || "");
+  let taskId = $state(initialParam("task"));
+  let artifactType = $state(initialParam("type"));
+  let repo = $state(initialParam("repo"));
+  let pageNum = $state(initialNumberParam("page", 0));
+  let pageSize = $state(initialNumberParam("size", 25));
+  let search = $state(initialParam("q"));
   let offset = $derived(pageNum * pageSize);
   let sortColumn = $state<SortColumn>("discovered");
   let sortDirection = $state<"asc" | "desc">("desc");
