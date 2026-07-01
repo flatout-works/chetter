@@ -29,7 +29,7 @@
     <section class="tech-hero section-shell">
       <p class="eyebrow">Technical Architecture</p>
       <h1>How Chetter is built.</h1>
-      <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron/PR/issue triggers, task-event callbacks, GitHub MCP tools, model catalogs, definitions sync, searchable observability, recovery flows, fleet health, web UI, and optional vulnerability scanning.</p>
+      <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron/PR/issue triggers, task-event callbacks, GitHub MCP tools, model catalogs, definitions sync, searchable observability, error diagnostics, session recovery, fleet health, web UI, and optional vulnerability scanning.</p>
       <div class="pills">
         <span class="pill">Go + SvelteKit</span>
         <span class="pill">Streamable HTTP MCP</span>
@@ -40,6 +40,7 @@
         <span class="pill">Event callbacks</span>
         <span class="pill">Model Catalog</span>
         <span class="pill">Full-text search</span>
+        <span class="pill">Error diagnostics</span>
         <span class="pill">Arcane Trivy</span>
       </div>
     </section>
@@ -63,7 +64,7 @@
         <div class="system-box chetter">
           <h3>chetter/</h3>
           <p>MCP server, scheduler, trigger dispatcher, event callbacks, web UI, and ConnectRPC endpoint</p>
-          <span>streamable HTTP</span><span>48 core MCP tools</span><span>+5 Arcane tools</span><span>triggers (cron + PR + issue)</span><span>event callbacks</span><span>GitHub MCP tools</span><span>model catalog</span><span>definitions sync</span><span>audit log</span><span>artifact tracking</span><span>event reaper</span><span>Arcane client</span>
+          <span>streamable HTTP</span><span>48 core MCP tools</span><span>+5 Arcane tools</span><span>triggers (cron + PR + issue)</span><span>event callbacks</span><span>GitHub MCP tools</span><span>model catalog</span><span>definitions sync</span><span>audit log</span><span>artifact tracking</span><span>error classification</span><span>event reaper</span><span>Arcane client</span>
         </div>
         <div class="system-box server">
           <h3>store/</h3>
@@ -229,9 +230,9 @@
       <div class="lifecycle-flow">
         <div class="lifecycle-step"><b>1. Submit</b><span>InsertTask with random task_id; status = pending; lease columns null. Or resume an existing agent session.</span></div>
         <div class="lifecycle-step"><b>2. Claim</b><span>Runner polls ClaimTask via ConnectRPC; SELECT ... FOR UPDATE picks one pending task, sets lease + status = running</span></div>
-        <div class="lifecycle-step"><b>3. Run</b><span>Runner spawns the selected harness (OpenCode, Claude Code, or Pi), sends status via ReportTaskEvents RPC, tracks token usage, and redirects GitHub writes to Chetter MCP tools.</span></div>
+        <div class="lifecycle-step"><b>3. Run</b><span>Runner spawns the selected harness (OpenCode, Claude Code, or Pi), sends status via ReportTaskEvents RPC, tracks token usage, redirects GitHub writes, and captures container state + HTTP probes on transport failures for diagnostics.</span></div>
         <div class="lifecycle-step"><b>4. Renew / Reap / Drain</b><span>Heartbeat RPC renews lease; reaper reclaims expired leases and fails orphaned tasks; drain requests stop new claims and exit after in-flight work completes.</span></div>
-        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state (done, error, cancelled) written once; replay-safe. Cancel and drain commands delivered via heartbeat response.</span></div>
+        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state written once; replay-safe. Errors classified into budget_exceeded, model_error, runtime_error, timeout, transport_error, stuck, cancelled, or unknown. Transport errors and timeouts are recoverable — sessions auto-pause with preserved workspaces for checkpoint resume.</span></div>
       </div>
     </section>
 
@@ -426,6 +427,7 @@
       <div class="choice-grid">
         <article><b>Cancel via heartbeat</b><p>Cancel sets DB row to cancelled; runner receives cancel command in next HeartbeatResponse. No separate signal path needed.</p></article>
         <article><b>Drain via heartbeat</b><p>DrainRunner sets a flag; runner receives drain command in next HeartbeatResponse, stops claiming new work, finishes in-flight tasks, then exits.</p></article>
+        <article><b>Error classification &amp; diagnostics</b><p>Prompt failures are classified into 8 categories (budget_exceeded, model_error, runtime_error, timeout, transport_error, stuck, cancelled, unknown). Transport errors capture container state, HTTP health probe, and log tail for root-cause visibility. Recoverable sessions are auto-paused for timeout and transport_error categories.</p></article>
         <article><b>Event write then ack</b><p>ReportTaskEvents writes to DB inside a transaction; error responses trigger runner retries. Idempotent updates keep replays safe.</p></article>
         <article><b>Defensive env redaction</b><p>Keys matching SECRET|TOKEN|KEY|PASSWORD (case-insensitive) are scrubbed before both DB and wire paths.</p></article>
         <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, trigger run 30s, Arcane 30s, HTTP read header 10s, shutdown 15s.</p></article>
