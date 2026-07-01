@@ -302,101 +302,11 @@ make migrate-status
 
 ## Deploying On Kubernetes
 
-The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. No special protocols, no broker, no runner pre-registration.
+The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. No special protocols, no broker, no runner pre-registration. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment. Scaling is `kubectl scale deployment chetter-runner --replicas=N`.
 
-### MCP Server
+For production Kubernetes deployment (EKS or similar), see [docs/EKS.md](EKS.md) for complete manifests, node group setup, RBAC, ingress, and gVisor node configuration. For local k3s validation, see [docs/testing/k3s-chetter.md](testing/k3s-chetter.md). For k3d, see [docs/testing/k3d-gvisor.md](testing/k3d-gvisor.md).
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: chetter-mcp
-spec:
-  selector:
-    app: chetter-mcp
-  ports:
-  - name: mcp
-    port: 8080
-    targetPort: 8080
-  - name: web
-    port: 8090
-    targetPort: 8090
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chetter-mcp
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: chetter-mcp
-  template:
-    metadata:
-      labels:
-        app: chetter-mcp
-    spec:
-      containers:
-      - name: mcp
-        image: ghcr.io/flatout-works/chetter-mcp:main
-        ports:
-        - containerPort: 8080
-        - containerPort: 8090
-        envFrom:
-        - secretRef:
-            name: chetter-secrets
-        env:
-        - name: HTTP_ADDR
-          value: ":8080"
-        - name: WEB_ADDR
-          value: ":8090"
-        - name: DEFAULT_AGENT_IMAGE
-          value: ghcr.io/flatout-works/chetter-runner:main
-```
-
-### Runners
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chetter-runner
-spec:
-  replicas: 4
-  selector:
-    matchLabels:
-      app: chetter-runner
-  template:
-    metadata:
-      labels:
-        app: chetter-runner
-    spec:
-      containers:
-      - name: runner
-        image: ghcr.io/flatout-works/chetter-runner:main
-        envFrom:
-        - secretRef:
-            name: chetter-secrets
-        env:
-        - name: CHETTER_SERVER_URL
-          value: "http://chetter-mcp:8080"
-        - name: RUNNER_LOCAL
-          value: "true"
-        - name: RUNNER_MAX_CONCURRENT
-          value: "2"
-```
-
-Scaling is `kubectl scale deployment chetter-runner --replicas=8`. Each runner pod independently polls for tasks. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment.
-
-### gVisor On Kubernetes
-
-See the [Sandbox Isolation](#sandbox-isolation) section for the DaemonSet that installs gVisor on cluster nodes and the RuntimeClass registration. On GKE, use [GKE Sandbox](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) instead.
-
-When `runtimeClassName: gvisor` is set on the runner pod, the runner container itself runs under gVisor. When `USE_GVISOR=true` is also set, agent containers spawned by the runner (via Docker) also use the `runsc` runtime.
-
-### Local Kubernetes Testing With k3d
-
-See [docs/testing/k3d-gvisor.md](testing/k3d-gvisor.md) for a complete walkthrough of deploying Chetter on a local k3d cluster with optional gVisor.
+See [Sandbox Isolation](#sandbox-isolation) below for the gVisor DaemonSet and RuntimeClass registration. On GKE, use [GKE Sandbox](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) instead.
 
 ## Deploying With Docker + gVisor
 
@@ -580,47 +490,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 ### Harness Interface Support Matrix
 
-Use the `harness` field on tasks and triggers to select the agent runtime. The trigger value for Claude Code is `claude-code`.
-
-| Harness capability | OpenCode (`opencode`) | Claude Code (`claude-code`) | Pi (`pi`) |
-|---|---|---|---|
-| Binary | `opencode` | `claude` from `@anthropic-ai/claude-code` | `pi` from `@earendil-works/pi-coding-agent` |
-| Execution model | HTTP serve mode | Batch one-shot subprocess | JSONL RPC subprocess |
-| `SupportsServe()` | Yes | No | No |
-| `SupportsRpc()` | No | No | Yes |
-| Batch command | Fallback only | Yes: `claude --bare -p ... --output-format stream-json` | No |
-| Config generation | `.opencode.json` and global OpenCode config | `.claude/settings.json` and `.claude/mcp.json` | `.pi/settings.json` |
-| Runner bridge MCP | Yes | Yes | Yes, through `pi-mcp-adapter` |
-| Chetter MCP over HTTP | Yes | Yes | Yes, through `pi-mcp-adapter` |
-| Provider/model selection | OpenCode config and `CHETTER_MODEL_ID` | `--model`; optional Anthropic-compatible env (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`) for providers such as Synthetic | `--provider`, `--model`, and `CHETTER_MODEL_ID` |
-| Synthetic with Claude Code | Not applicable | Yes when `provider_id=synthetic`: runner sets `ANTHROPIC_BASE_URL=https://api.synthetic.new/anthropic` and `ANTHROPIC_AUTH_TOKEN` from `SYNTHETIC_API_KEY` | Not applicable |
-| Agent prompt support | OpenCode agent config | `--system-prompt` from `.claude/agents/<name>.md` or `.opencode/agent/<name>.md` | CLI model/provider only today |
-| Skill hints | OpenCode skills/config | Skill names are prepended to prompt text | No direct skill injection today |
-| Streaming/progress | SSE events from serve mode | stdout/stderr plus stream-json summary parsing | JSONL RPC events |
-| Abort/cancel | Runner stops session/container | Runner kills subprocess | RPC `abort` support in harness model |
-| Resume/follow-up | Supported through serve resume paths | Not supported | RPC follow-up/steering support exists in Pi, but Chetter exposes only the implemented runner flow today |
-| Session export | Reads OpenCode SQLite transcript | Not supported; returns empty export | Reads Pi messages into markdown |
-| Per-task Docker/gVisor isolation | Yes for Docker mode | No; batch subprocess runs in the runner process environment | RPC subprocess runs in the agent image container path for Docker RPC mode |
-
-### Planned Runtime Definition Injection
-
-The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo configured by `DEFINITIONS_REPO`.
-
-Planned flow:
-
-1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
-2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
-3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
-4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
-5. Updating agents, skills, prompts, task templates, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
-
-Trigger ownership should remain explicit:
-
-| Trigger source | Behavior |
-|---|---|
-| Git-managed triggers | Created or updated from `triggers/*.yaml` in the definitions repo. Manual DB edits are overwritten on the next sync. If removed from Git, they should be disabled rather than deleted. |
-| Dynamic MCP-created triggers | Created through `chetter_create_trigger` or the web/API. They are not modified by Git sync unless explicitly adopted. |
-| Conflicts | If Git sync would create a trigger with the same name as a dynamic trigger, sync should fail with a clear conflict rather than silently taking ownership. |
+Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, or `pi`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
 
 ## Arcane Deployment
 
@@ -750,4 +620,4 @@ Regardless of the container runtime, Chetter runners provide outbound network fi
 - [REVIEWS.md](REVIEWS.md) — GitHub PR review automation.
 - [HARNESSES.md](HARNESSES.md) — harness architecture.
 - [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) — resumable sessions.
-- [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) — configuration-as-code design.
+- [CONFIGURATION.md](CONFIGURATION.md) — configuration-as-code, definitions repo, model catalog.

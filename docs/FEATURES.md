@@ -97,15 +97,9 @@ Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side
 
 ## Agent Harnesses
 
-The runner drives agent CLIs through harness implementations.
+The runner drives agent CLIs through harness implementations. Three harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), and Pi (RPC subprocess). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
 
-| Harness | Execution model | Notes |
-|---|---|---|
-| `opencode` | HTTP serve mode | Default and richest integration. Supports event streaming, session export, and per-task Docker/gVisor containers. |
-| `claude-code` | Batch subprocess | Anthropic Claude Code CLI. Simpler integration, no persistent harness session export. |
-| `pi` | JSONL RPC subprocess | Provider-rich harness with streaming control, steering, abort, and session messages. |
-
-See [HARNESSES.md](HARNESSES.md) for details and guidance on adding new harnesses.
+See [HARNESSES.md](HARNESSES.md) for the full capability matrix and guidance on adding new harnesses.
 
 ## Execution Environments
 
@@ -169,7 +163,7 @@ Planned next:
 - Definition read tools and proposal workflow.
 - Immutable definition hashes recorded on task/session runs.
 
-See [CONFIG_IN_GIT.md](CONFIG_IN_GIT.md) and [MODEL_CATALOG.md](MODEL_CATALOG.md).
+See [CONFIGURATION.md](CONFIGURATION.md) for the definitions repo, model catalog, and configuration-as-code architecture.
 
 ## Web UI And API
 
@@ -208,59 +202,8 @@ Task events are kept separately in `chetter_task_events` and are exposed through
 
 ## MCP Tool Reference
 
-Unconditional tools:
-
-| Group | Tools |
-|---|---|
-| Tasks | `chetter_submit_task`, `chetter_task_status`, `chetter_list_tasks`, `chetter_cancel_task`, `chetter_clear_queue`, `chetter_task_events`, `chetter_task_progress`, `chetter_task_latest_event`, `chetter_task_export` |
-| Sessions | `chetter_list_agent_sessions`, `chetter_agent_session_status`, `chetter_resume_agent_session` |
-| Triggers | `chetter_create_trigger`, `chetter_update_trigger`, `chetter_list_triggers`, `chetter_delete_trigger`, `chetter_run_trigger`, `chetter_list_schedule_runs` |
-| Runner fleet | `chetter_runner_health`, `chetter_drain_runner` |
-| GitHub artifacts | `chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`, `chetter_list_task_artifacts` |
-| Teams and tokens | `chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token`, `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team`, `chetter_list_users` |
-| Definitions and catalog | `chetter_get_model_catalog`, `chetter_sync_definitions` |
-| Audit | `chetter_list_audit_events` |
-
-Conditional tools:
-
-| Condition | Tools |
-|---|---|
-| Arcane configured | `chetter_arcane_scanner_status`, `chetter_arcane_environment_summary`, `chetter_arcane_list_images`, `chetter_arcane_image_summary`, `chetter_arcane_list_vulnerabilities` |
+For the complete MCP tool reference — tasks, sessions, triggers, runner fleet, GitHub artifacts, teams, definitions, audit, and conditional Arcane tools — see [MANUAL.md](MANUAL.md#mcp-tool-reference).
 
 ## Environment Reference
 
-Server:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `HTTP_ADDR` | `:8080` | MCP listen address. |
-| `WEB_ADDR` | `:8090` | Web UI and ConnectRPC API listen address. |
-| `MCP_AUTH_TOKEN` | required | Server admin bearer token. Compose maps external `CHETTER_MCP_AUTH_TOKEN` to this. |
-| `CHETTER_RUNNER_RPC_TOKEN` | required | Dedicated runner ConnectRPC token. |
-| `DATABASE_DSN` | required by binary | TiDB DSN. Compose local override can provide bundled TiDB. |
-| `DEFAULT_AGENT_IMAGE` | `ghcr.io/flatout-works/chetter-runner:latest` | Default runner image for submitted tasks. |
-| `DEFAULT_TASK_TIMEOUT_SEC` | `600` | Default task timeout. |
-| `DEFINITIONS_REPO` | empty | Optional Git definitions repository. |
-| `DEFINITIONS_BRANCH` | `main` | Definitions repo branch. |
-| `ARCANE_SERVER_URL` | empty | Optional Arcane server URL. |
-| `ARCANE_API_KEY` | empty | Optional Arcane API key. |
-| `GITHUB_APP_ID` | `0` | GitHub App ID. |
-| `GITHUB_APP_PRIVATE_KEY_B64` | empty | GitHub App private key, base64 PEM. |
-| `GITHUB_INSTALLATION_ID` | `0` | GitHub App installation ID. |
-| `GITHUB_WEBHOOK_SECRET` | empty | GitHub webhook HMAC secret. |
-| `GITHUB_WEBHOOK_DISABLED` | `false` | Webhook kill switch. |
-
-Runner and agent env:
-
-| Variable | Purpose |
-|---|---|
-| `CHETTER_SERVER_URL` | Server URL used by the runner. |
-| `CHETTER_RUNNER_AUTH_TOKEN` | Runner config fallback for the RPC token; Compose fills it from `CHETTER_RUNNER_RPC_TOKEN`. |
-| `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
-| `CHETTER_MCP_URL` | MCP URL injected into agents. |
-| `USE_GVISOR` | Enables Docker `runsc` runtime and checkpoint support when `true`. |
-| `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
-| `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
-| `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider and GitHub credentials forwarded to task containers when configured. |
-| `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 integration. |
+For the complete server and runner/agent environment variable reference, see [MANUAL.md](MANUAL.md#environment-variables).

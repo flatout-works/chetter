@@ -27,49 +27,49 @@ The docs need consolidation before or alongside this work. Several files describ
 
 ### Current State
 
-| File | Current role | Recommended action |
+| File | Current role | Action taken |
 |---|---|---|
-| `README.md` | Documentation index | Added in Milestone 1. Keep as the entry point for docs navigation. |
-| `MANUAL.md` | Operator setup and env reference | Updated in Milestone 1. Keep as canonical setup and operations guide. |
-| `FEATURES.md` | Current capability reference | Updated in Milestone 1 from current MCP registration and runner behavior. |
-| `SCHEDULES.md` | Cron trigger guide | Keep as a focused how-to, or merge into a broader `AUTOMATION.md`. Update to explain Git-synced trigger definitions if that is now the intended source of truth. |
-| `REVIEWS.md` | Current PR review architecture | Keep as canonical PR review docs. |
-| `REVIEWER.md` | Old PR reviewer implementation plan | Marked archived in Milestone 1. Use `REVIEWS.md` for current behavior. |
-| `TRIGGERS_PROPOSAL.md` | Remaining trigger future work | Removed; ideas migrated to `docs/PLAN.md` line items. |
-| `CONFIG_IN_GIT.md` | Configuration-as-code design | Keep, but update shipped status. Model catalog sync is implemented; broader definitions are still planned. |
-| `MODEL_CATALOG.md` | Model catalog reference | Keep, or merge with `CONFIG_IN_GIT.md` into `CONFIGURATION.md`. |
-| `HARNESSES.md` | Runner harness reference | Keep. Use it as canonical harness architecture docs. |
-| `PAUSED_SESSIONS.md` | Resumable session reference | Updated in Milestone 1 from plan to current behavior plus remaining work. |
-| `SNAPSHOTS.md` | Snapshot/checkpoint design | Marked as design reference in Milestone 1. Keep linked from `PAUSED_SESSIONS.md`. |
-| `GVISOR.md` | gVisor research | Moved to `docs/research/GVISOR.md` as research doc. |
-| `DAYTONA.md` | Optional remote backend proposal | Moved to `docs/research/DAYTONA.md` as proposal reference. |
-| `OPENHANDS.md` | External architecture inspiration | Moved to `docs/research/OPENHANDS.md` as reference. |
-| `testing/k3d-gvisor.md` | Local Kubernetes/gVisor test guide | Keep under `docs/testing/`. Update env vars if needed. |
+| `README.md` | Documentation index | Kept as entry point for docs navigation. |
+| `MANUAL.md` | Canonical operator guide | Trimmed: K8s deployment moved to EKS.md link, harness matrix moved to HARNESSES.md link, planned injection moved to PLAN.md. |
+| `FEATURES.md` | Capability inventory | Trimmed: env vars and MCP tool tables replaced with links to MANUAL.md; harness table replaced with link to HARNESSES.md. |
+| `SCHEDULES.md` | Cron trigger guide | Kept as focused how-to. |
+| `REVIEWS.md` | Current PR review architecture | Kept as canonical PR review docs. |
+| `CONFIGURATION.md` | Configuration-as-code + model catalog | **New**: merged from `CONFIG_IN_GIT.md` + `MODEL_CATALOG.md` (both deleted). |
+| `HARNESSES.md` | Runner harness reference | Kept as canonical harness architecture docs. |
+| `PAUSED_SESSIONS.md` | Resumable session reference | Kept. |
+| `K3S.md` | k3s + gVisor setup guide | Fixed stale env var (`RUNNER_EXECUTION_BACKEND` → `EXECUTION_BACKEND`). |
+| `EKS.md` | EKS production guide | Kept. |
+| `PLAN.md` | This roadmap | Updated. |
 
-### Proposed Structure
+### Completed Restructure
 
 ```text
 docs/
-  README.md                 # documentation index (current state)
-  MANUAL.md                 # operator guide
-  FEATURES.md               # current shipped capability reference
-  PLAN.md                   # this roadmap
-  AUTOMATION.md             # triggers, schedules, reviews, event callbacks (future)
-  CONFIGURATION.md          # env vars, definitions repo, model catalog (future)
-  HARNESSES.md              # agent harnesses
-  SESSIONS.md               # agent sessions, pause/resume, snapshots (future)
-  EXECUTION.md              # Docker, gVisor, runner execution backends (future)
+  README.md                 # documentation index
+  MANUAL.md                 # canonical operator guide (backbone)
+  FEATURES.md               # slim capability inventory
+  PLAN.md                   # roadmap
+  HARNESSES.md              # harness architecture
+  SCHEDULES.md             # cron trigger how-to
+  REVIEWS.md               # PR review automation
+  PAUSED_SESSIONS.md        # resumable sessions
+  CONFIGURATION.md          # definitions repo + model catalog (merged)
+  K3S.md                    # k3s + gVisor setup
+  EKS.md                    # EKS production guide
+  presentation/
   testing/
+    k3s-chetter.md
     k3d-gvisor.md
   research/
-    OPENHANDS.md            # moved from root
-    DAYTONA.md              # moved from root
-    GVISOR.md               # moved from root
+    OPENHANDS.md
+    DAYTONA.md
+    GVISOR.md
+    SNAPSHOTS.md            # moved from docs/; updated to reflect partial implementation
+    REVIEWER.md             # moved from docs/; archived implementation plan
+    UNIVERSAL_HARNESS.md    # moved from docs/; implemented design doc
 ```
 
-**Status:** Research docs moved as of 2026-06-22. Remaining restructuring (AUTOMATION.md, CONFIGURATION.md, SESSIONS.md, EXECUTION.md) deferred until those topics need dedicated docs.
-
-This does not need to happen in one large PR. The first useful change is to make `MANUAL.md`, `FEATURES.md`, `REVIEWS.md`, `HARNESSES.md`, and `PAUSED_SESSIONS.md` truthful against the current implementation.
+**Status:** Completed 2026-07-02. `MANUAL.md` is now the backbone document with links to specialized docs. `FEATURES.md` is a slim capability scan. `CONFIG_IN_GIT.md` and `MODEL_CATALOG.md` merged into `CONFIGURATION.md`. `REVIEWER.md`, `UNIVERSAL_HARNESS.md`, and `SNAPSHOTS.md` moved to `research/`. Overlapping env var tables, MCP tool tables, and harness matrices de-duplicated — `MANUAL.md` is the single source of truth for those.
 
 ### Milestone 1 Documentation Fixes
 
@@ -152,6 +152,24 @@ Next deliverables:
 - Sync trigger definitions from Git, with DB changes treated as operational overrides.
 - Add read tools for definitions and definition sources.
 - Add proposal tooling so agents can open PRs against the definitions repo instead of mutating production config directly.
+
+#### Runtime Definition Injection
+
+The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo at task time:
+
+1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
+2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
+3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
+4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
+5. Updating agents, skills, prompts, task templates, model catalog entries, or Git-managed triggers becomes a config repo PR plus sync, not a dev image rebuild.
+
+Trigger ownership should remain explicit:
+
+| Trigger source | Behavior |
+|---|---|
+| Git-managed triggers | Created or updated from `triggers/*.yaml` in the definitions repo. Manual DB edits are overwritten on the next sync. If removed from Git, they should be disabled rather than deleted. |
+| Dynamic MCP-created triggers | Created through `chetter_create_trigger` or the web/API. They are not modified by Git sync unless explicitly adopted. |
+| Conflicts | If Git sync would create a trigger with the same name as a dynamic trigger, sync should fail with a clear conflict rather than silently taking ownership. |
 
 Definition of done:
 

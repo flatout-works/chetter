@@ -176,7 +176,9 @@ Use `docker commit` when:
 
 ## Current State in Chetter
 
-Chetter does **not** yet have snapshot support. The runner creates fresh containers per task and discards them on completion. The runner already passes `--runtime runsc` when `USE_GVISOR=true`, so the gVisor checkpoint/restore path is available without any infrastructure changes.
+Checkpoint/restore is partially implemented through resumable sessions. The runner passes `--runtime runsc` when `USE_GVISOR=true`, and creates Docker checkpoints for resumable session tasks after successful runs. See [PAUSED_SESSIONS.md](../PAUSED_SESSIONS.md) for the current implementation and remaining work.
+
+The broader snapshot features below (periodic crash-recovery checkpoints, pre-warming pools, filesystem-only fallback via `docker commit`) are not yet implemented.
 
 ### Proposed Implementation
 

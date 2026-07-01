@@ -1,6 +1,7 @@
 # Chetter
 
-Chetter is an Open Source system written in Go for running autonomous AI development agents using standard harnesses (Opencode, Claude Code, Pi etc) in standard Docker or Kubernetes environments. If you are looking for a simple(r) solution to self host standard autonomous coding agents, then Chetter should be interesting. Hop into [our Discord](https://discord.gg/KkZxKwSTvF) if you want to know more.
+Chetter is an Open Source system written in Go for running autonomous AI development agents using standard harnesses (Opencode, Claude Code, Pi etc) in standard Docker or Kubernetes environments.
+If you are looking for a simple(r) solution to self host standard autonomous coding agents, then Chetter should be interesting. Hop into [our Discord](https://discord.gg/KkZxKwSTvF) if you want to know more.
 
 - **Submit tasks to standard harnesses** against Git repos with LLM agents in isolated containers
 - **Track live progress** — streaming events, logs, session transcripts
@@ -17,9 +18,9 @@ Chetter instead ...
 - **Is true Open Source.** Chetter was built for organisations that feel that the future of software development should be under their own control.
 - **Uses Standard harnesses.** Chetter delegates agent execution to existing CLI tools — primarily OpenCode, with growing support for Claude Code and Pi. No custom agent runtime. We believe that the popular harnesses have the momentum and we also feel that constructing an autonomous agent should be done with the same tools that you use as an individual developer.
 - **Deploys in Docker or Kubernetes.** Both the server and runners run on standard Docker or Kubernetes. No special infrastructure needed. The optional sandboxing is implemented via **gVisor** which is flexible and simple enough to use in Docker or Kubernetes.
-- **GitHub-native orchestration.** Chetter integrates deeply with GitHub and uses PRs, issues, reviews, and comments to drive agent workflows — the same primitives developers already use.
-- **Plain containers as environments.** The agent runs in a normal Docker container. You define the image with the tools and stack your project needs.
-- **MCP and API first, web UI for observation.** The server has a full ConnectRPC API exposed also as MCP tools. There is also a web UI primarily for monitoring, inspection, and admin tasks.
+- **Relies on GitHub-native orchestration.** Chetter integrates deeply with GitHub and uses PRs, issues, reviews, and comments to drive agent workflows — the same primitives developers already use.
+- **Uses plain containers as environments.** The agent runs in a normal Docker container. You define the image with the tools and stack your project needs.
+- **Is MCP and API first, web UI for observation.** The server has a full ConnectRPC API exposed also as MCP tools. There is also a web UI primarily for monitoring, inspection, and admin tasks.
 
 ## Quick Start
 

@@ -20,4 +20,4 @@ Example git repository for Chetter runtime configuration. The MCP server reads f
 4. Triggers are activated in the scheduler
 5. Changes go through PRs — the git repo is the source of truth
 
-See `docs/CONFIG_IN_GIT.md` in the Chetter repo for full architecture details.
+See `docs/CONFIGURATION.md` in the Chetter repo for full architecture details.

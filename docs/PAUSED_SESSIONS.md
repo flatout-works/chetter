@@ -229,4 +229,4 @@ Likely backends:
 
 ## Relationship To Snapshots
 
-[SNAPSHOTS.md](SNAPSHOTS.md) is the broader design reference for gVisor checkpoint/restore and filesystem-only snapshots. Paused sessions are the first product workflow built on top of that mechanism.
+[research/SNAPSHOTS.md](research/SNAPSHOTS.md) is the broader design reference for gVisor checkpoint/restore and filesystem-only snapshots. Paused sessions are the first product workflow built on top of that mechanism.

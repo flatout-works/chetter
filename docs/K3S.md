@@ -233,7 +233,7 @@ mode. See `docs/PLAN.md` for the implementation plan.
 Key environment variables for the runner in Kubernetes mode:
 
 ```
-RUNNER_EXECUTION_BACKEND=kubernetes
+EXECUTION_BACKEND=kubernetes
 KUBERNETES_NAMESPACE=chetter
 KUBERNETES_RUNTIME_CLASS=gvisor
 ```
