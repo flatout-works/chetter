@@ -11,7 +11,7 @@
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Card, Dropdown, DropdownItem, Input, Label, PaginationNav, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
+  import { Alert, Button, Card, Dropdown, DropdownItem, Input, Label, PaginationNav, Search, Select, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
 
   const sp = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   function param(k: string, d = ""): string { return sp.get(k) || d; }
@@ -174,18 +174,33 @@
 </svelte:head>
 
 <div class="p-6">
-  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
+  <div class="flex flex-wrap items-center justify-between mb-4 gap-3">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Tasks</h1>
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative">
-        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-          <svg class="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-        </div>
-        <Input bind:value={search} placeholder="Search…" class="!w-36 !pl-10 !pr-8" onkeydown={(e) => { if (e.key === "Enter") applyFilter(); }} />
-        <button class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick={applyFilter} title="Search">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" /></svg>
-        </button>
-      </div>
+      <Button
+        color="blue"
+        onclick={() => { showSubmitForm = !showSubmitForm; formError = null; }}
+      >
+        {showSubmitForm ? "Cancel" : "Submit Task"}
+      </Button>
+      <Button id="task-template-menu" color="alternative">Templates</Button>
+      <Dropdown triggeredBy="#task-template-menu">
+        <DropdownItem onclick={() => applyTemplate("review")}>Code review</DropdownItem>
+        <DropdownItem onclick={() => applyTemplate("fix")}>Bug fix</DropdownItem>
+        <DropdownItem onclick={() => applyTemplate("docs")}>Docs update</DropdownItem>
+      </Dropdown>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap items-center justify-between mb-6 gap-3">
+    <Search
+      bind:value={search}
+      placeholder="Search tasks…"
+      class="!w-72"
+      size="md"
+      onkeydown={(e) => { if (e.key === "Enter") applyFilter(); }}
+    />
+    <div class="flex flex-wrap items-center gap-2">
       <Select
         bind:value={selectedStatus}
         onchange={applyFilter}
@@ -208,18 +223,6 @@
         <option value={50}>50 / page</option>
         <option value={100}>100 / page</option>
       </Select>
-      <Button
-        color="blue"
-        onclick={() => { showSubmitForm = !showSubmitForm; formError = null; }}
-      >
-        {showSubmitForm ? "Cancel" : "Submit Task"}
-      </Button>
-      <Button id="task-template-menu" color="alternative">Templates</Button>
-      <Dropdown triggeredBy="#task-template-menu">
-        <DropdownItem onclick={() => applyTemplate("review")}>Code review</DropdownItem>
-        <DropdownItem onclick={() => applyTemplate("fix")}>Bug fix</DropdownItem>
-        <DropdownItem onclick={() => applyTemplate("docs")}>Docs update</DropdownItem>
-      </Dropdown>
     </div>
   </div>
 
