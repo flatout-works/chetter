@@ -102,6 +102,7 @@ func Default() *Catalog {
 			"opencode":    {Provider: "synthetic", Model: "hf:zai-org/GLM-5.2"},
 			"pi":          {Provider: "zai", Model: "glm-5.2"},
 			"claude-code": {Provider: "anthropic", Model: "claude-sonnet-4-5"},
+			"codewhale":   {Provider: "deepseek", Model: "deepseek-chat"},
 		},
 		Providers: map[string]Provider{
 			"synthetic": {

@@ -253,6 +253,9 @@ defaults:
   claude-code:
     provider: anthropic
     model: claude-sonnet-4-5
+  codewhale:
+    provider: deepseek
+    model: deepseek-chat
 
 providers:
   synthetic:
@@ -271,7 +274,8 @@ providers:
 ```
 
 `kind: openai_compatible` is enough for OpenCode provider rendering. Native
-providers can still be listed for harnesses such as Claude Code or Pi without
+providers can still be listed for harnesses such as Claude Code, Pi, or
+CodeWhale without
 OpenCode trying to render them as OpenAI-compatible endpoints.
 
 Use provider or model `harnesses` overrides only when a harness needs a

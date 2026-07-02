@@ -1,6 +1,16 @@
 version: 1
 default_provider: anthropic
 default_model: claude-sonnet-4
+defaults:
+  opencode:
+    provider: anthropic
+    model: claude-sonnet-4
+  claude-code:
+    provider: anthropic
+    model: claude-sonnet-4
+  codewhale:
+    provider: anthropic
+    model: claude-sonnet-4
 providers:
   - id: anthropic
     name: Anthropic

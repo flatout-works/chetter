@@ -41,4 +41,8 @@ func TestHarnessDefaults(t *testing.T) {
 	if provider != "synthetic" || model != "hf:zai-org/GLM-5.2" {
 		t.Fatalf("global default = %s/%s", provider, model)
 	}
+	provider, model = catalog.DefaultForHarness("codewhale", "fallback", "fallback-model")
+	if provider != "deepseek" || model != "deepseek-chat" {
+		t.Fatalf("codewhale default = %s/%s", provider, model)
+	}
 }
