@@ -96,7 +96,6 @@ p code {
 }
 
 .section-shell,
-.metrics,
 .site-footer {
   margin-left: auto;
   margin-right: auto;
@@ -215,7 +214,6 @@ p {
 .value-grid article,
 .tool-groups article,
 .deploy-row,
-.metrics,
 .site-footer {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--line);
@@ -320,36 +318,6 @@ p {
 
 .terminal-card.compact code {
   font-size: 0.86rem;
-}
-
-.metrics {
-  border-radius: var(--radius);
-  display: grid;
-  gap: 1px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: -2.25rem;
-  overflow: hidden;
-}
-
-.metrics div {
-  background: #ffffff;
-  padding: 1.25rem;
-}
-
-.metrics strong {
-  color: var(--blue-dark);
-  display: block;
-  font-size: clamp(1.7rem, 3vw, 2.5rem);
-  letter-spacing: -0.05em;
-  line-height: 1;
-}
-
-.metrics span {
-  color: var(--muted);
-  display: block;
-  font-size: 0.9rem;
-  font-weight: 750;
-  margin-top: 0.45rem;
 }
 
 .split {
@@ -557,10 +525,6 @@ p {
   .deploy-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .metrics {
-    margin-top: 0;
-  }
 }
 
 @media (max-width: 700px) {
@@ -577,7 +541,6 @@ p {
     padding-left: 0;
   }
 
-  .metrics,
   .architecture-grid,
   .value-grid,
   .tool-groups,

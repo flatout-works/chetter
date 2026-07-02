@@ -28,7 +28,7 @@
       <div class="hero-copy">
         <p class="eyebrow">Self-hosted MCP control plane</p>
         <h1>Run AI coding agents like a small, observable fleet.</h1>
-        <p class="lead">Chetter exposes an MCP tool surface so your AI agent — whether you use OpenCode, Claude Code, Pi, or another MCP client — can submit development work to remote runner containers. An embedded SvelteKit web UI and ConnectRPC API give humans and tools searchable dashboards for tasks, triggers, runners, sessions, audit events, and artifacts. One server. Docker Compose or Kubernetes. No message broker.</p>
+        <p class="lead">Chetter exposes an MCP tool surface so your AI agent — whether you use OpenCode, Claude Code, Pi, or another MCP client — can submit development work to remote runner containers. An embedded SvelteKit web UI and ConnectRPC API give humans and tools searchable dashboards for tasks, triggers, runners, sessions, audit events, and artifacts. Deploy it on Docker infrastructure or Kubernetes.</p>
         <div class="hero-actions" aria-label="Primary actions">
           <a class="button primary" href="https://github.com/flatout-works/chetter">View on GitHub</a>
           <a class="button discord" href="https://discord.gg/KkZxKwSTvF">Join Discord</a>
@@ -41,18 +41,11 @@
       </aside>
     </section>
 
-    <section class="metrics" aria-label="Chetter summary">
-      <div><strong>48+</strong><span>core MCP tools</span></div>
-      <div><strong>no</strong><span>message broker</span></div>
-      <div><strong>1</strong><span>database</span></div>
-      <div><strong>N</strong><span>runners (poll for work)</span></div>
-    </section>
-
     <section class="section-shell split" id="how-it-works">
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB, serves it to runners via ConnectRPC, manages cron, PR review, issue, and event-callback automation, runs a data-driven model catalog with Git-backed definitions, hosts GitHub MCP tools with audit and artifact tracking, and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode, Claude Code, or Pi through harnesses, stream progress, record token usage, and report results. An embedded SvelteKit web UI at port 18090 provides ConnectRPC-driven dashboards for tasks, triggers, sessions, artifacts, audit logs, and admin actions. Kubernetes-friendly with included manifests.</p>
+        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB, serves it to runners via ConnectRPC, manages cron, PR review, issue, and event-callback automation, runs a data-driven model catalog with Git-backed definitions, hosts GitHub MCP tools with audit and artifact tracking, and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode, Claude Code, or Pi through harnesses, stream progress, record token usage, and report results. The same control plane can run with Docker Compose or in Kubernetes with the included manifests.</p>
       </div>
       <div class="flow-card">
         <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
@@ -74,17 +67,17 @@
         <article>
           <span>control plane</span>
           <h3>Go MCP server + web UI</h3>
-          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers 48 core schema-driven tools plus optional Arcane tools, manages triggers and event callbacks, orchestrates a data-driven model catalog from YAML or a Git definitions repo, hosts GitHub MCP tools with audit and artifact tracking, and records events. An embedded SvelteKit UI on a separate port provides ConnectRPC-backed dashboards for tasks, triggers, runners, sessions, artifacts, and audit logs.</p>
+          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven MCP tools, manages triggers and event callbacks, orchestrates a data-driven model catalog from YAML or a Git definitions repo, hosts GitHub MCP tools with audit and artifact tracking, and records events. An embedded SvelteKit UI on a separate port provides ConnectRPC-backed dashboards for tasks, triggers, runners, sessions, artifacts, and audit logs.</p>
         </article>
         <article>
           <span>execution</span>
-          <h3>Plain Docker + optional gVisor</h3>
-          <p>Agents run with normal Docker images and harness-specific execution paths. OpenCode and Claude Code get per-task Docker/gVisor containers; Pi runs through its RPC harness. The runner includes a <code>gh</code> wrapper that redirects write commands to Chetter MCP tools, plus image variants for Go, Python, Node, Rust, and minimal environments.</p>
+          <h3>Docker or Kubernetes with gVisor</h3>
+          <p>Agents run with normal container images and harness-specific execution paths. Deploy runners on Docker infrastructure or Kubernetes, and use optional gVisor sandboxing where supported. The runner includes a <code>gh</code> wrapper that redirects write commands to Chetter MCP tools, plus image variants for Go, Python, Node, Rust, and minimal environments.</p>
         </article>
         <article>
           <span>state</span>
           <h3>TiDB</h3>
-          <p>Tables hold tasks with leases, raw events, triggers, trigger runs, event callbacks, agent sessions, checkpoints, runner heartbeats, teams, users, API tokens, definitions, proposal records, audit log events, task artifacts, full-text search columns, and token/cost totals. Secrets are redacted.</p>
+          <p>Tables hold tasks with leases, raw events, triggers, trigger runs, event callbacks, agent sessions, checkpoints, runner heartbeats, teams, users, API tokens, definitions, proposal records, audit log events, task artifacts, full-text search columns, and token/cost totals.</p>
         </article>
       </div>
     </section>
@@ -108,7 +101,7 @@
         </article>
       <article>
         <h3>Readable codebase</h3>
-          <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, error classification and diagnostics, full-text search helpers, and optional Arcane vulnerability scanning.</p>
+          <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, error classification and diagnostics, and full-text search helpers.</p>
       </article>
       <article>
         <h3>Standard protocols</h3>
@@ -124,7 +117,7 @@
       <div>
         <p class="eyebrow">Tool surface</p>
         <h2>Everything is exposed as MCP tools.</h2>
-        <p>Chetter is designed for AI clients first. Tool schemas are generated from Go structs, so implementation and JSON contracts stay aligned. The always-on surface is 48 tools; Arcane adds five more when configured.</p>
+        <p>Chetter is designed for AI clients first. Tool schemas are generated from Go structs, so implementation and JSON contracts stay aligned.</p>
       </div>
       <div class="tool-groups">
         <article><b>Tasks</b><span>submit, status, search/list, cancel, clear queue, export session, recover failed work</span></article>
@@ -138,7 +131,6 @@
         <article><b>Audit &amp; Artifacts</b><span>list audit events, list task-created GitHub artifacts (admin)</span></article>
         <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
         <article><b>Teams</b><span>create, list, delete teams; list users for team-scoped access</span></article>
-        <article><b>Arcane</b><span>optional Trivy-backed image vulnerability tools</span></article>
       </div>
     </section>
 
@@ -201,10 +193,10 @@ curl http://localhost:18088/healthz</code></pre>
       </div>
       <div class="deploy-row">
         <div><b>chetter-mcp</b><span>Go server: MCP tools (port 18088) + web UI (port 18090) + ConnectRPC + triggers + webhook + model catalog</span></div>
-        <div><b>chetter-runner</b><span>plain Dockerfile-based environments with OpenCode, Claude Code, and Pi harnesses; Docker/gVisor isolation via <code>USE_GVISOR=true</code> where supported</span></div>
+        <div><b>chetter-runner</b><span>plain container environments with OpenCode, Claude Code, and Pi harnesses; Docker or Kubernetes execution with optional gVisor isolation where supported</span></div>
         <div><b>TiDB</b><span>task state, events, triggers, sessions, definitions, runners, auth, audit log, artifacts</span></div>
       </div>
-      <p class="note">Comes with Docker Compose and Kubernetes manifests. Production can use an external TiDB instance by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing by installing gVisor (<code>runsc</code>) on the Docker host and setting <code>USE_GVISOR=true</code>. Sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code>.</p>
+      <p class="note">Use Docker Compose for a small self-hosted deployment, or Kubernetes manifests when you want scheduler-managed runners. Production can use an external TiDB instance by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing with gVisor where supported, and sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code>.</p>
     </section>
   </main>
 

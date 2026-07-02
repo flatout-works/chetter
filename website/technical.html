@@ -29,19 +29,19 @@
     <section class="tech-hero section-shell">
       <p class="eyebrow">Technical Architecture</p>
       <h1>How Chetter is built.</h1>
-      <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron/PR/issue triggers, task-event callbacks, GitHub MCP tools, model catalogs, definitions sync, searchable observability, error diagnostics, session recovery, fleet health, web UI, and optional vulnerability scanning.</p>
+      <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron/PR/issue triggers, task-event callbacks, GitHub MCP tools, model catalogs, definitions sync, searchable observability, error diagnostics, session recovery, fleet health, and a web UI. Deploy it on Docker infrastructure or Kubernetes.</p>
       <div class="pills">
         <span class="pill">Go + SvelteKit</span>
         <span class="pill">Streamable HTTP MCP</span>
         <span class="pill">ConnectRPC</span>
         <span class="pill">TiDB</span>
+        <span class="pill">Docker or Kubernetes</span>
         <span class="pill">GitHub MCP tools</span>
         <span class="pill">Issue triggers</span>
         <span class="pill">Event callbacks</span>
         <span class="pill">Model Catalog</span>
         <span class="pill">Full-text search</span>
         <span class="pill">Error diagnostics</span>
-        <span class="pill">Arcane Trivy</span>
       </div>
     </section>
 
@@ -64,7 +64,7 @@
         <div class="system-box chetter">
           <h3>chetter/</h3>
           <p>MCP server, scheduler, trigger dispatcher, event callbacks, web UI, and ConnectRPC endpoint</p>
-          <span>streamable HTTP</span><span>48 core MCP tools</span><span>+5 Arcane tools</span><span>triggers (cron + PR + issue)</span><span>event callbacks</span><span>GitHub MCP tools</span><span>model catalog</span><span>definitions sync</span><span>audit log</span><span>artifact tracking</span><span>error classification</span><span>event reaper</span><span>Arcane client</span>
+          <span>streamable HTTP</span><span>schema-driven MCP tools</span><span>triggers (cron + PR + issue)</span><span>event callbacks</span><span>GitHub MCP tools</span><span>model catalog</span><span>definitions sync</span><span>audit log</span><span>artifact tracking</span><span>error classification</span><span>event reaper</span><span>Docker/Kubernetes deployment</span>
         </div>
         <div class="system-box server">
           <h3>store/</h3>
@@ -110,7 +110,7 @@
 
     <section class="section-shell" aria-labelledby="tools-title">
       <p class="eyebrow">Tool Surface</p>
-      <h2 id="tools-title">48 core tools, plus five optional Arcane tools. Schema-driven, no drift.</h2>
+      <h2 id="tools-title">Schema-driven MCP tools, no drift.</h2>
       <div class="tool-categories">
         <article>
           <b>Tasks (7)</b>
@@ -204,15 +204,6 @@
           <div class="tool-call"><span class="name">chetter_delete_team</span></div>
           <div class="tool-call"><span class="name">chetter_list_users</span></div>
         </article>
-        <article>
-          <b>Arcane (5)</b>
-          <p>Trivy-backed image scanning, registered only when creds are present.</p>
-          <div class="tool-call"><span class="name">chetter_arcane_scanner_status</span></div>
-          <div class="tool-call"><span class="name">chetter_arcane_environment_summary</span></div>
-          <div class="tool-call"><span class="name">chetter_arcane_list_images</span></div>
-          <div class="tool-call"><span class="name">chetter_arcane_image_summary</span></div>
-          <div class="tool-call"><span class="name">chetter_arcane_list_vulnerabilities</span></div>
-        </article>
         <article class="wide">
           <b>Schema-driven</b>
           <p>Every tool's input and output is a Go struct with <code>jsonschema</code> tags. <code>mcp.AddTool</code> reflects at startup, so the JSON schema and the Go types cannot drift.</p>
@@ -295,7 +286,7 @@
 
     <section class="section-shell" aria-labelledby="connectrpc-title">
       <p class="eyebrow">ConnectRPC Task Queue</p>
-      <h2 id="connectrpc-title">Four RPCs replace the message broker. The database is the queue.</h2>
+      <h2 id="connectrpc-title">Four RPCs coordinate runner work through lease-based task claiming.</h2>
       <div class="system-map" style="grid-template-columns: 1fr 1fr;">
         <div class="system-box">
           <h3>Runner lifecycle</h3>
@@ -313,10 +304,10 @@
           <span>lease via lease_expires_at column</span>
           <span>reaper reclaims expired leases (30s interval, 120s grace)</span>
           <span>cancel + drain commands flow in HeartbeatResponse</span>
-          <span>no separate broker to operate</span>
+          <span>cancel + drain state persisted with the task and runner rows</span>
         </div>
       </div>
-      <p class="center-note">Adding a third runner is just another container pointing at the same MCP server — no broker, no queue groups, no durable consumers.</p>
+      <p class="center-note">Adding a third runner is just another Docker container or Kubernetes workload pointing at the same MCP server.</p>
     </section>
 
     <section class="section-shell" aria-labelledby="triggers-title">
@@ -362,8 +353,7 @@
           <div class="entity">teams <span>id, name</span></div>
           <div class="entity">users <span>id, name, team_id</span></div>
           <div class="entity">api_tokens <span>id, name, token_hash, user_id</span></div>
-          <div class="entity">env redacted <span>SECRET / TOKEN / KEY / PASSWORD keys replaced with [redacted]</span></div>
-          <div class="entity encrypted">no plain creds <span>runner API keys live in container env, never in TiDB</span></div>
+          <div class="entity encrypted">scoped tokens <span>team and user ownership for API access</span></div>
         </div>
       </div>
     </section>
@@ -381,32 +371,9 @@
       <p class="center-note">Runners send heartbeats via ConnectRPC every 5s (configurable). Lease renewal is baked into the heartbeat response. No separate broker health to monitor.</p>
     </section>
 
-    <section class="section-shell" aria-labelledby="arcane-title">
-      <p class="eyebrow">Arcane</p>
-      <h2 id="arcane-title">Five Trivy-backed tools surface image vulnerabilities through MCP.</h2>
-      <div class="runtime-diagram">
-        <div class="boundary">
-          <div class="boundary-title">Chetter MCP server</div>
-          <div class="node primary">Arcane tools<br><span>registered when ARCANE_SERVER_URL + ARCANE_API_KEY are set</span></div>
-          <div class="node">ArcaneClient<br><span>30s timeout, X-API-Key auth, generic apiResponse[T] wrapper</span></div>
-          <div class="node accent">Generic over T<br><span>all tools share the same JSON parsing path</span></div>
-        </div>
-        <div class="edge-column"><span>HTTPS / X-API-Key</span></div>
-        <div class="provider-stack">
-          <div>Arcane (Trivy)</div>
-          <div>scanner-status</div>
-          <div>environment summary</div>
-          <div>list images</div>
-          <div>per-image summary</div>
-          <div>paginated CVEs</div>
-        </div>
-      </div>
-      <p class="center-note">Chetter is the only component that knows the Arcane API. A nightly vulnerability-scan task running inside a runner calls the same MCP server via ConnectRPC as a sub-tool — meta-agent territory.</p>
-    </section>
-
     <section class="section-shell" aria-labelledby="deploy-title">
       <p class="eyebrow">Deployment</p>
-      <h2 id="deploy-title">Docker Compose on Arcane. Two images, one DB, web UI.</h2>
+      <h2 id="deploy-title">Docker Compose or Kubernetes. Two images, one DB, web UI.</h2>
       <div class="deploy-flow">
         <div><b>TiDB</b><span>external or bundled via compose.local.yaml</span></div>
         <div><b>chetter-mcp</b><span>control plane, MCP on 18088, web UI on 18090</span></div>
@@ -417,7 +384,7 @@
         <article><b>Single process</b><p>Currently single-instance: cron entries, reaper, trigger dispatcher, event callbacks, model catalog, and ConnectRPC endpoint live in-process.</p></article>
         <article><b>Stateless MCP</b><p>The HTTP transport uses Stateless mode, so the MCP server <i>could</i> be scaled — the rest of the system cannot, yet.</p></article>
         <article><b>Web UI</b><p>SvelteKit-based ConnectRPC UI on separate port 18090: searchable tasks, triggers, runners, sessions, audit logs, artifacts, recovery actions, and admin actions.</p></article>
-        <article><b>CI redeploy</b><p>.github/workflows/chetter.yml runs checks, detects changed images, builds on wowbagger, drains runners, syncs Arcane GitOps, and redeploys with force recreate.</p></article>
+        <article><b>CI redeploy</b><p>.github/workflows/chetter.yml runs checks, detects changed images, builds the changed containers, drains runners, and redeploys.</p></article>
       </div>
     </section>
 
@@ -429,13 +396,13 @@
         <article><b>Drain via heartbeat</b><p>DrainRunner sets a flag; runner receives drain command in next HeartbeatResponse, stops claiming new work, finishes in-flight tasks, then exits.</p></article>
         <article><b>Error classification &amp; diagnostics</b><p>Prompt failures are classified into 8 categories (budget_exceeded, model_error, runtime_error, timeout, transport_error, stuck, cancelled, unknown). Transport errors capture container state, HTTP health probe, and log tail for root-cause visibility. Recoverable sessions are auto-paused for timeout and transport_error categories.</p></article>
         <article><b>Event write then ack</b><p>ReportTaskEvents writes to DB inside a transaction; error responses trigger runner retries. Idempotent updates keep replays safe.</p></article>
-        <article><b>Defensive env redaction</b><p>Keys matching SECRET|TOKEN|KEY|PASSWORD (case-insensitive) are scrubbed before both DB and wire paths.</p></article>
-        <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, trigger run 30s, Arcane 30s, HTTP read header 10s, shutdown 15s.</p></article>
+        <article><b>Deployment flexibility</b><p>Use Compose for a compact Docker deployment or Kubernetes when runner scheduling and cluster operations matter.</p></article>
+        <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, trigger run 30s, HTTP read header 10s, shutdown 15s.</p></article>
         <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE IF NOT EXISTS for add-only schema evolution on a small footprint.</p></article>
         <article><b>Config in Git</b><p>Model catalog, agents, skills, triggers, and task templates can be synced from a Git definitions repo via <code>DEFINITIONS_REPO</code>, with periodic auto-sync every 5 minutes and proposal PR tools for changes.</p></article>
         <article><b>Trigger-based webhook dispatch</b><p>GitHub PR reviews and issue automation no longer use hardcoded config. Triggers in the DB are matched by repo and event at webhook time.</p></article>
         <article><b>Server-side signatures</b><p>GitHub MCP tools append a canonical single-line Chetter signature footer to every created artifact, enabling passive artifact discovery and tracking.</p></article>
-        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, runner_rpc.go ConnectRPC, catalog.go model catalog, definitions.go, event_callbacks.go, arcane.go HTTP.</p></article>
+        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, runner_rpc.go ConnectRPC, catalog.go model catalog, definitions.go, and event_callbacks.go.</p></article>
       </div>
     </section>
 
