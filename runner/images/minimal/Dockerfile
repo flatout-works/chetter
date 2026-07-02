@@ -2,7 +2,7 @@
 
 # Chetter Runner — Minimal Variant
 # =========================================================================
-# Lightweight image with only opencode, claude-code, git, and curl.
+# Lightweight image with only opencode, claude-code, codewhale, git, and curl.
 # No language toolchain — suitable for generic tasks, documentation,
 # or as a starting point for custom variants.
 #
@@ -25,7 +25,8 @@ COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/claude-serve-proxy ./cmd/claude-serve-proxy
 
 FROM golang:1.26-bookworm AS mcp-bridge-builder
 
@@ -62,6 +63,9 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 RUN npm install -g @anthropic-ai/claude-code \
     && claude --version
 
+RUN npm install -g codewhale \
+    && codewhale --version
+
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
     && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi
 
@@ -85,11 +89,12 @@ ENV GOCACHE=/var/lib/chetter-runner/cache/go/build
 ENV npm_config_cache=/var/lib/chetter-runner/cache/npm
 
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
+COPY --from=runner-builder /out/claude-serve-proxy /usr/local/bin/claude-serve-proxy
 COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
 # Agent and skill definitions are injected at runtime.
 
-RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint
+RUN chmod +x /usr/local/bin/runner /usr/local/bin/claude-serve-proxy /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint
 
 ENV RUNNER_LOCAL=true
 ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces

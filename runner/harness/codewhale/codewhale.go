@@ -3,15 +3,25 @@ package codewhale
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-type CodeWhale struct{}
+type CodeWhale struct {
+	mu            sync.Mutex
+	turnByID      map[string]string
+	sessionExport map[string]string
+	publishFn     func(status, message string)
+	tokenFn       func(usage task.TokenUsage)
+}
 
 func New() *CodeWhale {
-	return &CodeWhale{}
+	return &CodeWhale{
+		turnByID:      make(map[string]string),
+		sessionExport: make(map[string]string),
+	}
 }
 
 func (cw *CodeWhale) Name() string { return "codewhale" }
@@ -29,7 +39,7 @@ func (cw *CodeWhale) ConfigFilePathGlobal(wsDir string) string {
 }
 
 func (cw *CodeWhale) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
-	return codewhaleEnv(wsDir, req)
+	return codewhaleEnv(wsDir, secret, req)
 }
 
 func (cw *CodeWhale) ServeCommand(port int) []string {
@@ -53,11 +63,11 @@ func (cw *CodeWhale) CreateSession(ctx context.Context, baseURL, secret string) 
 }
 
 func (cw *CodeWhale) SendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
-	return sendPrompt(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
+	return cw.sendPrompt(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
 }
 
 func (cw *CodeWhale) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
-	return abortSession(ctx, baseURL, sessionID, secret)
+	return cw.abortSession(ctx, baseURL, sessionID, secret)
 }
 
 func (cw *CodeWhale) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
@@ -65,10 +75,14 @@ func (cw *CodeWhale) ExportSession(ctx context.Context, baseURL, sessionID, secr
 }
 
 func (cw *CodeWhale) ReadSessionExport(wsDir, sessionID string) (string, error) {
+	if export := cw.getSessionExport(sessionID); export != "" {
+		return export, nil
+	}
 	return readSessionExport(wsDir, sessionID)
 }
 
 func (cw *CodeWhale) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+	cw.setCallbacks(publishFn, tokenFn)
 	watchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn)
 }
 
@@ -89,4 +103,41 @@ func (cw *CodeWhale) ServeArgs(port int) []string { return codewhaleServeCommand
 
 func (cw *CodeWhale) DockerConfigPath(wsDir string) string {
 	return wsDir + "/.codewhale/mcp.json"
+}
+
+func (cw *CodeWhale) setTurnID(sessionID, turnID string) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	cw.turnByID[sessionID] = turnID
+}
+
+func (cw *CodeWhale) turnID(sessionID string) string {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	return cw.turnByID[sessionID]
+}
+
+func (cw *CodeWhale) setCallbacks(publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	cw.publishFn = publishFn
+	cw.tokenFn = tokenFn
+}
+
+func (cw *CodeWhale) callbacks() (func(status, message string), func(usage task.TokenUsage)) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	return cw.publishFn, cw.tokenFn
+}
+
+func (cw *CodeWhale) setSessionExport(sessionID, export string) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	cw.sessionExport[sessionID] = export
+}
+
+func (cw *CodeWhale) getSessionExport(sessionID string) string {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	return cw.sessionExport[sessionID]
 }

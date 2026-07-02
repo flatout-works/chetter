@@ -14,7 +14,7 @@ Supported task inputs include:
 - `git_url` and `git_ref`: optional repository and ref to clone.
 - `agent_image`: runner image override, falling back to `DEFAULT_AGENT_IMAGE`.
 - `agent`: agent definition name.
-- `harness`: agent CLI harness, currently `opencode`, `claude-code`, or `pi`.
+- `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, or `codewhale`.
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
 - `env`: non-secret environment variables.

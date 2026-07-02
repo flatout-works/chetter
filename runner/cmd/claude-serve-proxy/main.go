@@ -21,15 +21,17 @@ import (
 )
 
 type session struct {
-	mu        sync.Mutex
-	id        string
-	cmd       *exec.Cmd
-	cancel    context.CancelFunc
-	events    chan event
-	done      chan struct{}
-	prompt    string
-	model     string
-	resumeID  string
+	mu       sync.Mutex
+	id       string
+	cmd      *exec.Cmd
+	cancel   context.CancelFunc
+	events   chan event
+	done     chan struct{}
+	prompt   string
+	model    string
+	resumeID string
+	summary  strings.Builder
+	runErr   string
 }
 
 type event struct {
@@ -47,7 +49,10 @@ func main() {
 	port := flag.Int("port", 9999, "HTTP server port")
 	flag.Parse()
 
-	password := generatePassword()
+	password := os.Getenv("CLAUDE_SERVE_PROXY_TOKEN")
+	if password == "" {
+		password = generatePassword()
+	}
 
 	srv := &server{
 		sessions: make(map[string]*session),
@@ -137,8 +142,7 @@ func base64Encode(data []byte) string {
 func withAuth(srv *server, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if srv.password != "" {
-			header := fmt.Sprintf("Basic %s", basicAuthHeader(srv.password))
-			if r.Header.Get("Authorization") != header {
+			if r.Header.Get("Authorization") != basicAuthHeader(srv.password) {
 				w.Header().Set("WWW-Authenticate", `Basic realm="claude-serve-proxy"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
@@ -220,11 +224,11 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 type messageRequest struct {
-	Prompt     string   `json:"prompt"`
-	Model      string   `json:"model"`
-	Skills     []string `json:"skills"`
-	Agent      string   `json:"agent"`
-	ResumeID   string   `json:"resume_session_id"`
+	Prompt   string   `json:"prompt"`
+	Model    string   `json:"model"`
+	Skills   []string `json:"skills"`
+	Agent    string   `json:"agent"`
+	ResumeID string   `json:"resume_session_id"`
 }
 
 func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session) {
@@ -323,14 +327,32 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 	go pipeStderr(stderr, s.id)
 	go srv.streamEvents(ctx, s, stdout)
 
+	select {
+	case <-s.done:
+	case <-r.Context().Done():
+		cancel()
+		return
+	}
+
+	s.mu.Lock()
+	summary := s.summary.String()
+	runErr := s.runErr
+	s.mu.Unlock()
+
+	if runErr != "" {
+		srv.sendError(w, runErr)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "completed", "summary": summary})
 }
 
 func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reader) {
 	defer close(s.events)
 	defer close(s.done)
+	defer s.waitForCommand(ctx)
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
@@ -349,6 +371,7 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 		}
 
 		parsed := parseStreamEvent(ev)
+		s.recordStreamEvent(ev)
 		if parsed != "" {
 			data, _ := json.Marshal(ev)
 			select {
@@ -369,11 +392,85 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 	}
 
 	if err := scanner.Err(); err != nil {
+		s.setError(err.Error())
 		data, _ := json.Marshal(map[string]string{"error": err.Error()})
 		select {
 		case s.events <- event{Type: "error", Data: data}:
 		default:
 		}
+	}
+}
+
+func (s *session) waitForCommand(ctx context.Context) {
+	s.mu.Lock()
+	cmd := s.cmd
+	s.cmd = nil
+	s.mu.Unlock()
+	if cmd == nil {
+		return
+	}
+	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+		s.setError(err.Error())
+	}
+}
+
+func (s *session) recordStreamEvent(ev map[string]any) {
+	typ, _ := ev["type"].(string)
+	switch typ {
+	case "assistant":
+		if s.summary.Len() == 0 {
+			appendAssistantMessage(&s.summary, ev)
+		}
+	case "stream_event":
+		appendTextDelta(&s.summary, ev)
+	case "result":
+		if errText, _ := ev["error"].(string); errText != "" {
+			s.setError(errText)
+		}
+		if subtype, _ := ev["subtype"].(string); subtype == "error" {
+			if message, _ := ev["message"].(string); message != "" {
+				s.setError(message)
+			}
+		}
+	}
+}
+
+func (s *session) setError(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runErr == "" {
+		s.runErr = message
+	}
+}
+
+func appendAssistantMessage(sb *strings.Builder, ev map[string]any) {
+	message, _ := ev["message"].(map[string]any)
+	if message == nil {
+		return
+	}
+	content, _ := message["content"].([]any)
+	for _, item := range content {
+		block, _ := item.(map[string]any)
+		if block == nil || block["type"] != "text" {
+			continue
+		}
+		if text, _ := block["text"].(string); text != "" {
+			sb.WriteString(text)
+		}
+	}
+}
+
+func appendTextDelta(sb *strings.Builder, ev map[string]any) {
+	event, _ := ev["event"].(map[string]any)
+	if event == nil {
+		return
+	}
+	delta, _ := event["delta"].(map[string]any)
+	if delta == nil || delta["type"] != "text_delta" {
+		return
+	}
+	if text, _ := delta["text"].(string); text != "" {
+		sb.WriteString(text)
 	}
 }
 

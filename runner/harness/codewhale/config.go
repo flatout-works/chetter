@@ -57,13 +57,20 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	return nil
 }
 
-func codewhaleEnv(wsDir string, req task.TaskRequest) map[string]string {
+func codewhaleEnv(wsDir, secret string, req task.TaskRequest) map[string]string {
+	provider, model := codewhaleModelFields(req)
 	env := map[string]string{
-		"CODEWHALE_CONFIG_DIR": wsDir + "/.codewhale",
-		"CODEWHALE_OFFLINE":    "1",
+		"CODEWHALE_CONFIG_DIR":    wsDir + "/.codewhale",
+		"CODEWHALE_OFFLINE":       "1",
+		"CODEWHALE_RUNTIME_TOKEN": secret,
+		"CODEWHALE_PROVIDER":      provider,
+		"CODEWHALE_MODEL":         model,
 	}
 
-	provider := strings.ToLower(strings.TrimSpace(req.ProviderID))
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if baseURL := strings.TrimSpace(req.ProviderBaseURL); baseURL != "" {
+		env["CODEWHALE_BASE_URL"] = baseURL
+	}
 	if provider == "deepseek" {
 		baseURL := strings.TrimSpace(req.ProviderBaseURL)
 		apiKeyEnv := strings.TrimSpace(req.ProviderAPIKeyEnv)
@@ -73,9 +80,9 @@ func codewhaleEnv(wsDir string, req task.TaskRequest) map[string]string {
 		if apiKeyEnv == "" {
 			apiKeyEnv = "DEEPSEEK_API_KEY"
 		}
-		env["CODEWHALE_API_BASE"] = baseURL
+		env["CODEWHALE_BASE_URL"] = baseURL
 		if apiKey := os.Getenv(apiKeyEnv); apiKey != "" {
-			env["CODEWHALE_API_KEY"] = apiKey
+			env["DEEPSEEK_API_KEY"] = apiKey
 		}
 	}
 

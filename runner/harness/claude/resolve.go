@@ -27,11 +27,12 @@ func claudeModelFields(req task.TaskRequest) (provider, model string) {
 	return
 }
 
-func claudeEnv(wsDir string, req task.TaskRequest) map[string]string {
+func claudeEnv(wsDir, secret string, req task.TaskRequest) map[string]string {
 	env := map[string]string{
 		"CLAUDE_CONFIG_DIR":                        wsDir + "/.claude",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		"CLAUDE_CODE_ATTRIBUTION_HEADER":           "0",
+		"CLAUDE_SERVE_PROXY_TOKEN":                 secret,
 	}
 
 	provider := strings.ToLower(strings.TrimSpace(req.ProviderID))

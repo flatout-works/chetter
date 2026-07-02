@@ -132,6 +132,10 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 RUN npm install -g @anthropic-ai/claude-code \
     && claude --version
 
+# CodeWhale (via npm)
+RUN npm install -g codewhale \
+    && codewhale --version
+
 # claude-serve-proxy — Go HTTP wrapper for Claude CLI headless mode
 COPY --from=proxy-builder /src/runner/claude-serve-proxy /usr/local/bin/claude-serve-proxy
 

@@ -9,7 +9,7 @@ import (
 func TestClaudeEnvSynthetic(t *testing.T) {
 	t.Setenv("SYNTHETIC_API_KEY", "syn-key")
 
-	env := claudeEnv("/workspace", task.TaskRequest{
+	env := claudeEnv("/workspace", "secret", task.TaskRequest{
 		ProviderID: "synthetic",
 		ModelID:    "syn:large:vision",
 	})
@@ -18,6 +18,7 @@ func TestClaudeEnvSynthetic(t *testing.T) {
 		"CLAUDE_CONFIG_DIR":                        "/workspace/.claude",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		"CLAUDE_CODE_ATTRIBUTION_HEADER":           "0",
+		"CLAUDE_SERVE_PROXY_TOKEN":                 "secret",
 		"ANTHROPIC_BASE_URL":                       "https://api.synthetic.new/anthropic",
 		"ANTHROPIC_AUTH_TOKEN":                     "syn-key",
 		"ANTHROPIC_DEFAULT_OPUS_MODEL":             "syn:large:vision",
@@ -35,7 +36,7 @@ func TestClaudeEnvSynthetic(t *testing.T) {
 func TestClaudeEnvCustomAnthropicCompatibleProvider(t *testing.T) {
 	t.Setenv("CUSTOM_API_KEY", "custom-key")
 
-	env := claudeEnv("/workspace", task.TaskRequest{
+	env := claudeEnv("/workspace", "secret", task.TaskRequest{
 		ProviderID:        "custom-provider",
 		ModelID:           "custom-model",
 		ProviderBaseURL:   "https://example.test/anthropic",
@@ -56,7 +57,7 @@ func TestClaudeEnvCustomAnthropicCompatibleProvider(t *testing.T) {
 func TestClaudeEnvAnthropicDefaultDoesNotOverrideEndpoint(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "anthropic-key")
 
-	env := claudeEnv("/workspace", task.TaskRequest{
+	env := claudeEnv("/workspace", "secret", task.TaskRequest{
 		ProviderID:        "anthropic",
 		ModelID:           "claude-sonnet-4-5",
 		ProviderAPIKeyEnv: "ANTHROPIC_API_KEY",

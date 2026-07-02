@@ -41,6 +41,9 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	if !isRunnerOwnedEnv("CLAUDE_CODE_SUBAGENT_MODEL") {
 		t.Fatal("CLAUDE_CODE_SUBAGENT_MODEL should be runner-owned")
 	}
+	if !isRunnerOwnedEnv("CLAUDE_SERVE_PROXY_TOKEN") {
+		t.Fatal("CLAUDE_SERVE_PROXY_TOKEN should be runner-owned")
+	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
 	}

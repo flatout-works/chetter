@@ -142,7 +142,13 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 		return "", fmt.Errorf("POST /message: status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return "", nil
+	var result struct {
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("parse message response: %w", err)
+	}
+	return result.Summary, nil
 }
 
 func abortSession(ctx context.Context, baseURL, sessionID, secret string) error {

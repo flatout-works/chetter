@@ -29,7 +29,7 @@ func (cc *ClaudeCode) ConfigFilePathGlobal(wsDir string) string {
 }
 
 func (cc *ClaudeCode) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
-	return claudeEnv(wsDir, req)
+	return claudeEnv(wsDir, secret, req)
 }
 
 func (cc *ClaudeCode) ServeCommand(port int) []string {

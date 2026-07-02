@@ -348,17 +348,17 @@ Tasks run inside a dev container image specified by `agent_image`. Chetter ships
 
 | Variant | Image Tag | Contents |
 |---------|-----------|----------|
-| Golang (default) | `ghcr.io/flatout-works/chetter-runner:main` | Go, buf, sqlc, goose, govulncheck, osv-scanner, gh, hcloud, opencode, claude-code |
-| Python | `ghcr.io/flatout-works/chetter-runner:python` | Python 3, pip, venv, ruff, mypy, pytest, opencode, claude-code |
-| Node.js | `ghcr.io/flatout-works/chetter-runner:node` | Node 22, pnpm, TypeScript, eslint, prettier, opencode, claude-code |
-| Rust | `ghcr.io/flatout-works/chetter-runner:rust` | rustup, cargo, clippy, rustfmt, cargo-audit, opencode, claude-code |
-| Minimal | `ghcr.io/flatout-works/chetter-runner:minimal` | opencode, claude-code, git, curl — no language toolchain |
+| Golang (default) | `ghcr.io/flatout-works/chetter-runner:main` | Go, buf, sqlc, goose, govulncheck, osv-scanner, gh, hcloud, opencode, claude-code, codewhale |
+| Python | `ghcr.io/flatout-works/chetter-runner:python` | Python 3, pip, venv, ruff, mypy, pytest, opencode, claude-code, codewhale |
+| Node.js | `ghcr.io/flatout-works/chetter-runner:node` | Node 22, pnpm, TypeScript, eslint, prettier, opencode, claude-code, codewhale |
+| Rust | `ghcr.io/flatout-works/chetter-runner:rust` | rustup, cargo, clippy, rustfmt, cargo-audit, opencode, claude-code, codewhale |
+| Minimal | `ghcr.io/flatout-works/chetter-runner:minimal` | opencode, claude-code, codewhale, git, curl — no language toolchain |
 
 Use `agent_image` in a task, or set `DEFAULT_AGENT_IMAGE` on the server for a default.
 
 ### Creating A Custom Image
 
-All images inherit from `chetter-runner-base` (except `minimal` which starts from `debian:bookworm-slim`). The base provides opencode, claude-code, git, and core tooling.
+All images inherit from `chetter-runner-base` (except `minimal` which starts from `debian:bookworm-slim`). The base provides opencode, claude-code, codewhale, git, and core tooling.
 
 Create `runner/images/<name>/Dockerfile`:
 
@@ -445,7 +445,7 @@ Today Chetter bakes these into `chetter-runner-base` and derived images:
 | Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
 | GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`) and guides agents to the MCP tools. The real binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` for manual debugging only (not advertised to agents). |
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
-| Agent harnesses | OpenCode, Claude Code, Pi, `mcp-bridge`, and `chetter-entrypoint`. |
+| Agent harnesses | OpenCode, Claude Code, Pi, CodeWhale, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
 | Current fallback agents | `.opencode/agent/` is copied into runner images today. These are intended to become fallback defaults once Git-backed runtime injection is complete. |
 
@@ -490,7 +490,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 ### Harness Interface Support Matrix
 
-Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, or `pi`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
+Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, `pi`, or `codewhale`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
 
 ## Arcane Deployment
 

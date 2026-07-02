@@ -2,12 +2,12 @@
 
 ## Goal
 
-All harnesses (OpenCode, Claude Code, Pi, Codex) run inside Docker/gVisor containers
+Supported serve-mode harnesses (OpenCode, Claude Code, CodeWhale) run inside Docker/gVisor containers
 with per-task isolation. Each exposes the same HTTP API. The runner has one execution
 path: `runDockerAgent` / `runLocalAgent`.
 
 Batch mode and RPC mode are removed from the harness interface. Harnesses that lack
-a native HTTP serve mode (Claude, Pi, Codex) get a thin **serve-proxy** Go binary
+a native HTTP serve mode get a thin **serve-proxy** Go binary
 that wraps the CLI and implements the HTTP API.
 
 ## Architecture

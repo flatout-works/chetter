@@ -259,7 +259,7 @@
           <div class="grid max-w-3xl gap-3 sm:grid-cols-3">
             <Card size="xl" class="!p-4 border-white/10 bg-white/10 text-white backdrop-blur">
               <p class="text-sm text-slate-300">Harnesses</p>
-              <p class="mt-1 text-xl font-bold">OpenCode, Claude Code, Pi</p>
+              <p class="mt-1 text-xl font-bold">OpenCode, Claude Code, Pi, CodeWhale</p>
             </Card>
             <Card size="xl" class="!p-4 border-white/10 bg-white/10 text-white backdrop-blur">
               <p class="text-sm text-slate-300">Runtime</p>

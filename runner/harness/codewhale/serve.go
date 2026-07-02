@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -58,8 +57,6 @@ func doGet(ctx context.Context, url, secret string) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
-// waitForReady polls GET /health until the server responds 2xx.
-// TODO: confirm exact readiness endpoint (might be /config or /health).
 func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: serveHTTPTimeout}
@@ -97,35 +94,36 @@ func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Dura
 	return fmt.Errorf("codewhale server at %s not responding within %v", baseURL, timeout)
 }
 
-// createSession sends POST /v1/thread to create a new thread.
-// TODO: confirm exact endpoint path and request/response JSON shape.
 func createSession(ctx context.Context, baseURL, secret string) (string, error) {
+	_, modelID := codewhaleModelFields(task.TaskRequest{})
 	payload, _ := json.Marshal(map[string]any{
-		"cwd": "/workspace",
+		"model":     modelID,
+		"workspace": "/workspace",
+		"mode":      "agent",
+		"archived":  false,
 	})
-	resp, err := doPost(ctx, baseURL+"/v1/thread", secret, bytes.NewReader(payload))
+	resp, err := doPost(ctx, baseURL+"/v1/threads", secret, bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("POST /v1/thread: %w", err)
+		return "", fmt.Errorf("POST /v1/threads: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 && resp.StatusCode != 201 {
 		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("POST /v1/thread: status %d: %s", resp.StatusCode, string(b))
+		return "", fmt.Errorf("POST /v1/threads: status %d: %s", resp.StatusCode, string(b))
 	}
 	var result struct {
-		ThreadID string `json:"thread_id"`
+		ID string `json:"id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("POST /v1/thread decode: %w", err)
+		return "", fmt.Errorf("POST /v1/threads decode: %w", err)
 	}
-	return result.ThreadID, nil
+	if result.ID == "" {
+		return "", fmt.Errorf("POST /v1/threads: response missing id")
+	}
+	return result.ID, nil
 }
 
-// sendPrompt sends POST /v1/thread/{id}/prompt to submit a user message.
-// TODO: confirm exact endpoint path, request shape, and response fields.
-func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
-	providerID, modelID := codewhaleModelFields(req)
-
+func (cw *CodeWhale) sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
 	prompt := req.Prompt
 	if len(req.Skills) > 0 {
 		prompt = fmt.Sprintf("You have access to the following skills: %s. Use them when relevant.\n\n%s",
@@ -133,16 +131,15 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 	}
 
 	payload := map[string]any{
-		"prompt":         prompt,
-		"model":          modelID,
-		"model_provider": providerID,
+		"prompt": prompt,
 	}
-	if req.ResumeHarnessSessionID != "" {
-		payload["resume_thread_id"] = req.ResumeHarnessSessionID
+	_, modelID := codewhaleModelFields(req)
+	if modelID != "" {
+		payload["model"] = modelID
 	}
 
 	body, _ := json.Marshal(payload)
-	url := baseURL + "/v1/thread/" + sessionID + "/prompt"
+	url := baseURL + "/v1/threads/" + sessionID + "/turns"
 	httpClient := &http.Client{Timeout: timeout}
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
@@ -160,28 +157,49 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 	resp.Body.Close()
 	slog.Info("codewhale prompt response", "status", resp.StatusCode, "len", len(respBody))
 
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("POST /prompt: status %d: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		return "", fmt.Errorf("POST /turns: status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	return "", nil
+	var result struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("parse turn response: %w", err)
+	}
+	if result.Turn.ID == "" {
+		return "", fmt.Errorf("POST /turns: response missing turn.id")
+	}
+	cw.setTurnID(sessionID, result.Turn.ID)
+
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	publishFn, tokenFn := cw.callbacks()
+	summary, err := waitForTurnCompletion(waitCtx, baseURL, sessionID, result.Turn.ID, secret, publishFn, tokenFn)
+	cw.setSessionExport(sessionID, renderMarkdownExport(sessionID, result.Turn.ID, prompt, summary, err))
+	return summary, err
 }
 
-// abortSession sends POST /v1/thread/{id}/abort to cancel a running thread.
-// TODO: confirm exact endpoint path.
-func abortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+func (cw *CodeWhale) abortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	turnID := cw.turnID(sessionID)
+	if turnID == "" {
+		return nil
+	}
 	abortCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := doPost(abortCtx, baseURL+"/v1/thread/"+sessionID+"/abort", secret, bytes.NewReader([]byte(`{}`)))
+	path := "/v1/threads/" + sessionID + "/turns/" + turnID + "/interrupt"
+	resp, err := doPost(abortCtx, baseURL+path, secret, bytes.NewReader([]byte(`{}`)))
 	if err != nil {
-		return fmt.Errorf("POST /v1/thread/%s/abort: %w", sessionID, err)
+		return fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 && resp.StatusCode != 202 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return fmt.Errorf("POST /v1/thread/%s/abort: status %d: %s", sessionID, resp.StatusCode, string(body))
+		return fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, string(body))
 	}
-	slog.Info("codewhale session aborted", "sessionID", sessionID)
+	slog.Info("codewhale turn interrupted", "sessionID", sessionID, "turnID", turnID)
 	return nil
 }
 
@@ -203,13 +221,17 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 	return string(exportBody), nil
 }
 
-// watchEvents connects to the SSE event stream and publishes status updates.
-// TODO: confirm exact SSE endpoint path and event type names.
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/event", nil)
+	// The thread-scoped event stream is opened by SendPrompt for terminal waiting.
+	// The generic watcher cannot know the thread ID until CreateSession has run,
+	// so CodeWhale progress is emitted from the terminal wait path instead.
+	<-ctx.Done()
+}
+
+func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/threads/"+sessionID+"/events?since_seq=0", nil)
 	if err != nil {
-		slog.Warn("codewhale event request failed", "taskID", taskID, "err", err)
-		return
+		return "", fmt.Errorf("create event request: %w", err)
 	}
 	if secret != "" {
 		req.Header.Set("Authorization", bearerAuthHeader(secret))
@@ -218,39 +240,102 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if ctx.Err() == nil {
-			slog.Warn("codewhale event stream failed", "taskID", taskID, "err", err)
-		}
-		return
+		return "", fmt.Errorf("event stream: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return "", fmt.Errorf("GET /events: status %d: %s", resp.StatusCode, string(body))
+	}
 
 	br := newSSEReader(resp.Body)
 	var lastPublished time.Time
+	var summary strings.Builder
 	for {
 		ev, err := br.Read()
 		if err != nil {
-			if ctx.Err() == nil && err != io.EOF {
-				slog.Warn("codewhale event read failed", "taskID", taskID, "err", err)
+			if ctx.Err() != nil {
+				return summary.String(), ctx.Err()
 			}
-			return
+			return summary.String(), err
 		}
 		if ev == nil {
 			continue
 		}
-		detail := summarizeCodewhaleEvent(ev)
+		envelope, ok := decodeCodewhaleEnvelope(ev)
+		if !ok || envelope.TurnID != turnID {
+			continue
+		}
+		detail := summarizeCodewhaleEnvelope(ev.Type, envelope)
 		if detail != "" {
+			if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
+				summary.WriteString(detail)
+			}
 			if time.Since(lastPublished) >= 3*time.Second || strings.Contains(detail, "error") {
-				publishFn("running", "codewhale: "+detail)
+				if publishFn != nil {
+					publishFn("running", "codewhale: "+detail)
+				}
 				lastPublished = time.Now()
 			}
 		}
-		if ev.Type == "result" && tokenFn != nil {
-			if usage := extractCodewhaleTokenUsage(ev.Data); usage != nil {
+		if ev.Type == "turn.completed" {
+			if tokenFn != nil {
+				usage := extractCodewhaleTokenUsage(envelope)
 				tokenFn(*usage)
+			}
+			status := strings.ToLower(envelope.Payload.Turn.Status)
+			switch status {
+			case "", "completed":
+				return summary.String(), nil
+			case "failed", "interrupted", "canceled", "cancelled":
+				if envelope.Payload.Turn.Error != "" {
+					return summary.String(), fmt.Errorf("turn %s: %s", status, envelope.Payload.Turn.Error)
+				}
+				return summary.String(), fmt.Errorf("turn %s", status)
+			default:
+				return summary.String(), nil
 			}
 		}
 	}
+}
+
+type codewhaleEnvelope struct {
+	Seq     uint64 `json:"seq"`
+	Event   string `json:"event"`
+	Kind    string `json:"kind"`
+	TurnID  string `json:"turn_id"`
+	Payload struct {
+		Kind  string `json:"kind"`
+		Delta string `json:"delta"`
+		Name  string `json:"name"`
+		Turn  struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+			Usage  struct {
+				InputTokens          int64 `json:"input_tokens"`
+				OutputTokens         int64 `json:"output_tokens"`
+				PromptCacheHitTokens int64 `json:"prompt_cache_hit_tokens"`
+				PromptCacheTokens    int64 `json:"prompt_cache_tokens"`
+				CachedTokens         int64 `json:"cached_tokens"`
+				ReasoningTokens      int64 `json:"reasoning_tokens"`
+			} `json:"usage"`
+			CostUSD float64 `json:"cost_usd"`
+		} `json:"turn"`
+	} `json:"payload"`
+}
+
+func decodeCodewhaleEnvelope(ev *sseEvent) (codewhaleEnvelope, bool) {
+	var envelope codewhaleEnvelope
+	if err := json.Unmarshal([]byte(ev.Data), &envelope); err != nil {
+		return envelope, false
+	}
+	if envelope.Event == "" {
+		envelope.Event = ev.Type
+	}
+	if envelope.Kind == "" {
+		envelope.Kind = envelope.Event
+	}
+	return envelope, true
 }
 
 // SSE parsing (modeled on claude/serve.go SSE reader).
@@ -296,88 +381,87 @@ func (r *sseReader) Read() (*sseEvent, error) {
 	}
 }
 
-// summarizeCodewhaleEvent extracts a human-readable summary from an SSE event.
-// TODO: confirm actual event type names from the CodeWhale serve API.
-func summarizeCodewhaleEvent(ev *sseEvent) string {
-	switch ev.Type {
-	case "text_delta":
-		var data map[string]any
-		if json.Unmarshal([]byte(ev.Data), &data) == nil {
-			if delta, ok := data["delta"].(map[string]any); ok {
-				if text, ok := delta["text"].(string); ok && text != "" {
-					return text
-				}
-			}
+func summarizeCodewhaleEnvelope(event string, envelope codewhaleEnvelope) string {
+	switch event {
+	case "turn.started":
+		return "turn started"
+	case "turn.lifecycle":
+		if envelope.Payload.Turn.Status != "" {
+			return "turn " + envelope.Payload.Turn.Status
 		}
-		return "text"
-	case "reasoning_delta":
-		return "reasoning"
-	case "tool_use":
-		var data map[string]any
-		if json.Unmarshal([]byte(ev.Data), &data) == nil {
-			if block, ok := data["content_block"].(map[string]any); ok {
-				if name, ok := block["name"].(string); ok {
-					return "tool_use: " + name
-				}
-			}
+		return "turn update"
+	case "item.started":
+		if envelope.Payload.Kind != "" {
+			return envelope.Payload.Kind + " started"
 		}
-		return "tool_use"
-	case "tool_result":
-		return "tool_result"
-	case "system_init":
-		return "system.init"
-	case "done":
+		return "item started"
+	case "item.delta":
+		if envelope.Payload.Delta != "" {
+			return envelope.Payload.Delta
+		}
+		return envelope.Payload.Kind
+	case "item.completed":
+		if envelope.Payload.Kind != "" {
+			return envelope.Payload.Kind + " completed"
+		}
+		return "item completed"
+	case "item.failed":
+		return "item failed"
+	case "approval.required":
+		return "approval required"
+	case "turn.completed":
 		return ""
-	case "error":
-		return ev.Data
 	default:
 		return ""
 	}
 }
 
-// extractCodewhaleTokenUsage extracts token usage from a result event.
-// TODO: confirm exact token usage field names from the CodeWhale API.
-func extractCodewhaleTokenUsage(data string) *task.TokenUsage {
-	var ev map[string]any
-	if err := json.Unmarshal([]byte(data), &ev); err != nil {
-		return nil
-	}
-	usage, _ := ev["usage"].(map[string]any)
-	if usage == nil {
-		return nil
-	}
+func extractCodewhaleTokenUsage(envelope codewhaleEnvelope) *task.TokenUsage {
+	usage := envelope.Payload.Turn.Usage
 	tu := &task.TokenUsage{
-		InputTokens:  floatToInt64(usage["input_tokens"]),
-		OutputTokens: floatToInt64(usage["output_tokens"]),
+		InputTokens:     usage.InputTokens,
+		OutputTokens:    usage.OutputTokens,
+		CacheReadTokens: usage.PromptCacheHitTokens + usage.PromptCacheTokens + usage.CachedTokens,
+		ReasoningTokens: usage.ReasoningTokens,
 	}
-	if reasoning, ok := usage["reasoning_tokens"]; ok {
-		tu.ReasoningTokens = floatToInt64(reasoning)
-	}
-	if cacheRead, ok := usage["cache_read_tokens"]; ok {
-		tu.CacheReadTokens = floatToInt64(cacheRead)
-	}
-	if cacheWrite, ok := usage["cache_write_tokens"]; ok {
-		tu.CacheWriteTokens = floatToInt64(cacheWrite)
-	}
-	if cost, ok := ev["total_cost_usd"].(float64); ok {
-		tu.CostCents = int64(cost * 100)
+	if envelope.Payload.Turn.CostUSD != 0 {
+		tu.CostCents = int64(envelope.Payload.Turn.CostUSD * 100)
 	}
 	return tu
 }
 
-func floatToInt64(v any) int64 {
-	switch val := v.(type) {
-	case float64:
-		return int64(val)
-	case int64:
-		return val
-	default:
-		return 0
+func renderMarkdownExport(sessionID, turnID, prompt, summary string, err error) string {
+	var sb strings.Builder
+	sb.WriteString("# CodeWhale Session\n\n")
+	sb.WriteString("- Thread: `")
+	sb.WriteString(sessionID)
+	sb.WriteString("`\n")
+	sb.WriteString("- Turn: `")
+	sb.WriteString(turnID)
+	sb.WriteString("`\n")
+	if err != nil {
+		sb.WriteString("- Status: failed\n\n")
+	} else {
+		sb.WriteString("- Status: completed\n\n")
 	}
+	sb.WriteString("## User\n\n")
+	sb.WriteString(prompt)
+	sb.WriteString("\n\n")
+	if summary != "" {
+		sb.WriteString("## Assistant\n\n")
+		sb.WriteString(summary)
+		sb.WriteString("\n\n")
+	}
+	if err != nil {
+		sb.WriteString("## Error\n\n")
+		sb.WriteString(err.Error())
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func codewhaleServeCommand(port int) []string {
-	return []string{"codewhale", "serve", "--port", strconv.Itoa(port)}
+	return []string{"codewhale", "app-server", "--http", "--host", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 
 func codewhaleServeArgsResume(port int) []string {
@@ -387,9 +471,6 @@ func codewhaleServeArgsResume(port int) []string {
 func codewhaleModelFields(req task.TaskRequest) (provider, model string) {
 	provider = req.ProviderID
 	model = req.ModelID
-	if model == "" {
-		model = os.Getenv("CODEWHALE_MODEL")
-	}
 	if model == "" {
 		model = "deepseek-v4-flash-free"
 	}

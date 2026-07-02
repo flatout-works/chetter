@@ -55,6 +55,7 @@
     { value: "opencode", label: "OpenCode" },
     { value: "claude-code", label: "Claude Code" },
     { value: "pi", label: "Pi" },
+    { value: "codewhale", label: "CodeWhale" },
   ];
 
   let selectedProvider = $derived(providers.find((p) => p.id === providerId));

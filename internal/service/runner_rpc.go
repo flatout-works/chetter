@@ -405,7 +405,7 @@ func catalogProviderModelConfig(catalog *modelcatalog.Catalog, harness, provider
 
 func catalogHarnessName(harness string) string {
 	switch strings.TrimSpace(harness) {
-	case "", "codex":
+	case "":
 		return "opencode"
 	default:
 		return strings.TrimSpace(harness)
