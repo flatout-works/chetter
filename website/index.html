@@ -19,6 +19,7 @@
       <a href="#deploy">Deploy</a>
       <a href="technical.html">Technical</a>
       <a href="https://github.com/flatout-works/chetter">GitHub</a>
+      <a href="https://discord.gg/KkZxKwSTvF">Discord</a>
     </nav>
   </header>
 
@@ -30,20 +31,13 @@
         <p class="lead">Chetter exposes an MCP tool surface so your AI agent — whether you use OpenCode, Claude Code, Pi, or another MCP client — can submit development work to remote runner containers. An embedded SvelteKit web UI and ConnectRPC API give humans and tools searchable dashboards for tasks, triggers, runners, sessions, audit events, and artifacts. One server. Docker Compose or Kubernetes. No message broker.</p>
         <div class="hero-actions" aria-label="Primary actions">
           <a class="button primary" href="https://github.com/flatout-works/chetter">View on GitHub</a>
+          <a class="button discord" href="https://discord.gg/KkZxKwSTvF">Join Discord</a>
           <a class="button secondary" href="#quick-start">Quick start</a>
         </div>
       </div>
-      <aside class="terminal-card" aria-label="Chetter task example">
-        <div class="terminal-top"><span></span><span></span><span></span><b>mcp tool call</b></div>
-        <pre><code>{
-  "tool": "chetter_submit_task",
-  "args": {
-    "prompt": "Fix failing tests and open a PR.",
-    "git_url": "https://github.com/org/app",
-    "git_ref": "main",
-    "agent_image": "ghcr.io/.../chetter-runner:main"
-  }
-}</code></pre>
+      <aside class="screenshot-hero" aria-label="Chetter dashboard screenshot">
+        <div class="screenshot-top"><span></span><span></span><span></span><b>chetter web ui</b></div>
+        <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and recent tasks" />
       </aside>
     </section>
 
@@ -145,6 +139,37 @@
         <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
         <article><b>Teams</b><span>create, list, delete teams; list users for team-scoped access</span></article>
         <article><b>Arcane</b><span>optional Trivy-backed image vulnerability tools</span></article>
+      </div>
+    </section>
+
+    <section class="section-shell screenshots" aria-labelledby="screenshots-title">
+      <div class="section-intro">
+        <p class="eyebrow">Screenshots</p>
+        <h2 id="screenshots-title">A web UI for operating your own agent fleet.</h2>
+        <p>Observe task runs, manage automation, and inspect GitHub-native workflows from the same self-hosted control plane.</p>
+      </div>
+      <div class="screenshot-grid">
+        <article>
+          <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and a recent tasks table" />
+          <div>
+            <h3>Fleet dashboard</h3>
+            <p>Track task throughput, live status, agents, timing, and runner health from the control plane.</p>
+          </div>
+        </article>
+        <article>
+          <img src="screenshots/screenshot-3.png" alt="Chetter triggers page showing cron, issue, and PR review automations" />
+          <div>
+            <h3>Automation triggers</h3>
+            <p>Manage cron jobs, issue responders, and GitHub PR review workflows from one table.</p>
+          </div>
+        </article>
+        <article>
+          <img src="screenshots/screenshot-1.png" alt="Chetter dashboard showing task filtering and operational details" />
+          <div>
+            <h3>Operational view</h3>
+            <p>Inspect recent work and drill into agent-created outcomes without leaving the web UI.</p>
+          </div>
+        </article>
       </div>
     </section>
 

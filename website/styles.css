@@ -198,6 +198,12 @@ p {
   color: var(--blue-dark);
 }
 
+.button.discord {
+  background: var(--purple);
+  border-color: var(--purple);
+  color: #ffffff;
+}
+
 .button:hover {
   box-shadow: 0 10px 22px rgba(31, 51, 115, 0.12);
   transform: translateY(-1px);
@@ -219,6 +225,55 @@ p {
 .terminal-card {
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+.screenshot-hero,
+.screenshot-grid article {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.screenshot-hero {
+  transform: rotate(1.2deg);
+}
+
+.screenshot-top {
+  align-items: center;
+  background: #0f1a40;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+}
+
+.screenshot-top span {
+  border-radius: 50%;
+  height: 0.72rem;
+  width: 0.72rem;
+}
+
+.screenshot-top span:nth-child(1) { background: #ef4444; }
+.screenshot-top span:nth-child(2) { background: #f59e0b; }
+.screenshot-top span:nth-child(3) { background: #22c55e; }
+
+.screenshot-top b {
+  color: #9fb0db;
+  font-size: 0.8rem;
+  margin-left: 0.35rem;
+}
+
+.screenshot-hero img,
+.screenshot-grid img {
+  display: block;
+  width: 100%;
+}
+
+.screenshot-hero img {
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: left top;
 }
 
 .terminal-top {
@@ -400,6 +455,34 @@ p {
   grid-column: 1 / -1;
 }
 
+.screenshots .section-intro p:not(.eyebrow) {
+  margin-top: 1rem;
+  max-width: 720px;
+}
+
+.screenshot-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 2rem;
+}
+
+.screenshot-grid img {
+  aspect-ratio: 16 / 9;
+  border-bottom: 1px solid var(--line);
+  object-fit: cover;
+  object-position: left top;
+}
+
+.screenshot-grid article div {
+  padding: 1.2rem;
+}
+
+.screenshot-grid article p {
+  font-size: 0.94rem;
+  margin-top: 0.6rem;
+}
+
 .deploy-row {
   border-radius: var(--radius);
   display: grid;
@@ -466,7 +549,8 @@ p {
   }
 
   .architecture-grid,
-  .value-grid {
+  .value-grid,
+  .screenshot-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -497,8 +581,13 @@ p {
   .architecture-grid,
   .value-grid,
   .tool-groups,
+  .screenshot-grid,
   .deploy-row {
     grid-template-columns: 1fr;
+  }
+
+  .screenshot-hero {
+    transform: none;
   }
 
   .tool-groups article:last-child {
