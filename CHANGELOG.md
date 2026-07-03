@@ -29,26 +29,6 @@ All notable changes to this project will be documented in this file.
 - `docs/HARNESSES.md` updated: new CodeWhale section with rationale, pros/cons, and comparison table column. MiMo Code and Codex added to future candidates table.
 - `docs/FEATURES.md`, `docs/MANUAL.md`, `docs/research/UNIVERSAL_HARNESS.md` updated to list codewhale alongside opencode/claude-code/pi.
 
-## 2026-07-02
-
-### Web UI
-
-- Landing page redesigned with screenshots, GitHub/Discord community links, and dark gradient background. Login form replaced with a hero section showing key features (harnesses, runtime, workflow). Server info polling only starts after authentication.
-- Table page layout unified across tasks, sessions, audit, and artifacts: title on its own row, filter bar below with search aligned left. Hand-rolled search inputs replaced with the Flowbite-Svelte `Search` component (built-in magnifier icon, proper dark mode styling). Search field widened from `!w-36` to `!w-72`. Action buttons moved to the title row; audit toggles moved to a separate row below the filter bar.
-- npm audit vulnerability fixed: `cookie` dependency overridden to 0.7.2 across the web dependency tree.
-
-### Documentation
-
-- `README.md` rewritten with expanded design principles section and improved repository layout table. `Golang` → `Go`, added `cmd/`, `proto/`, and `web/` directory descriptions.
-- Docs structure consolidated: `CONFIG_IN_GIT.md` and `MODEL_CATALOG.md` merged into `CONFIGURATION.md`. `FEATURES.md` and `MANUAL.md` trimmed by replacing inline tables with cross-references. Stale docs (`REVIEWER.md`, `UNIVERSAL_HARNESS.md`, `SNAPSHOTS.md`) moved to `docs/research/`. All cross-references and index files updated.
-- `web/README.md` expanded with detailed tech stack rundown.
-- `docs/EKS.md` added: EKS installation guide with taints/tolerations, GPU node groups, and IRSA for ECR access.
-- `docs/K3s.md` expanded into a full validation guide with gVisor setup, network policy, and debugging instructions.
-- `docs/testing/k3s-chetter.md` added: step-by-step k3s cluster setup with gVisor validation.
-- `docs/PLAN.md` updated with execution backend separation plan and runtime injection moved to P2.
-- Technical presentation (`docs/presentation/index.html`) reworked with expanded content.
-- Website (`website/index.html`, `website/technical.html`) updated to reflect transport error diagnostics and session recovery documentation.
-
 ## 2026-06-30
 
 ### Added
