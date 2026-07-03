@@ -76,7 +76,8 @@ one explicitly:
 ```yaml
 # runner.yaml
 execution:
-  harness: pi  # opencode (default), claude-code, pi, codewhale
+  harness: pi                               # opencode (default), claude-code, pi, codewhale
+  container_memory: 4g                      # optional Docker memory limit (e.g. 4g, 2048m)
 ```
 
 In Docker, the entrypoint reads `CHETTER_HARNESS` and writes the YAML.
