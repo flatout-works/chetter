@@ -46,3 +46,20 @@ func TestHarnessDefaults(t *testing.T) {
 		t.Fatalf("codewhale default = %s/%s", provider, model)
 	}
 }
+
+func TestParseYAMLRejectsUnknownFields(t *testing.T) {
+	data := []byte(`version: 1
+default_provider: synthetic
+default_model: hf:zai-org/GLM-5.2
+providers:
+  synthetic:
+    name: Synthetic
+    kind: openai_compatible
+    surprise: true
+    models:
+      - id: hf:zai-org/GLM-5.2
+`)
+	if _, err := ParseYAML(data); err == nil {
+		t.Fatal("expected unknown model catalog field to fail")
+	}
+}

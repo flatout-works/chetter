@@ -145,6 +145,119 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
 
+## YAML Configuration And Validation
+
+Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by the code paths that load them. Third-party YAML files such as Kubernetes manifests, Compose files, `buf.yaml`, and `sqlc.yaml` use their own upstream validators instead.
+
+| YAML file | Schema | Runtime validation |
+|---|---|---|
+| `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
+| Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
+| Definitions repo `triggers/*.yaml` | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
+| Agent definition frontmatter in `agents/*.md` | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
+
+Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
+
+### Runner YAML
+
+Runner config files use this shape:
+
+```yaml
+server:
+  url: http://localhost:8080
+  auth_token: ""
+
+runner:
+  workspace_root: /var/lib/runner
+  max_concurrent: 10
+
+proxy:
+  listen_addr: :18080
+  allowed_domains:
+    - github.com
+  blocked_domains:
+    - pastebin.com
+
+dns:
+  listen_addr: :53
+  upstream: 8.8.8.8:53
+  blocked_domains:
+    - 169.254.169.254
+
+git:
+  ssh_key_path: ""
+  pat: ""
+
+execution:
+  runtime: docker
+  harness: opencode
+  use_gvisor: true
+  container_memory: 4g
+
+deploy:
+  provider: local
+  registry: ""
+  chetter_url: chetter.flatout.works
+
+chetter_mcp:
+  url: ""
+  auth_token: ""
+```
+
+| Field | Default | Purpose |
+|---|---|---|
+| `server.url` | `CHETTER_SERVER_URL` env | Server URL used by the runner. |
+| `server.auth_token` | First of `CHETTER_RUNNER_AUTH_TOKEN`, `CHETTER_RUNNER_RPC_TOKEN`, `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN` | Runner-to-server ConnectRPC bearer token. |
+| `runner.workspace_root` | `/var/lib/runner` | Host/container directory for task workspaces. |
+| `runner.max_concurrent` | `10` | Maximum concurrent tasks per runner process. |
+| `proxy.listen_addr` | `:18080` | HTTP/HTTPS proxy listen address used for network filtering. |
+| `proxy.allowed_domains` | empty | Optional outbound HTTP/HTTPS allowlist. Empty means allowlist is disabled. |
+| `proxy.blocked_domains` | empty | Optional outbound HTTP/HTTPS blocklist. |
+| `dns.listen_addr` | `:53` | DNS proxy listen address. |
+| `dns.upstream` | `8.8.8.8:53` | Upstream DNS server. |
+| `dns.blocked_domains` | empty | Optional DNS blocklist. |
+| `git.ssh_key_path` | empty | Optional SSH key path for clone operations. |
+| `git.pat` | empty | Optional Git personal access token. Prefer env-provided `GITHUB_TOKEN` for normal deployments. |
+| `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
+| `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`. |
+| `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
+| `execution.container_memory` | empty | Optional Docker memory limit for task containers, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Empty means no runner-imposed limit. |
+| `deploy.provider` | `local` | Reserved deployment provider metadata. |
+| `deploy.registry` | empty | Reserved image registry metadata. |
+| `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |
+| `chetter_mcp.url` | empty | MCP URL injected into task environments when configured. |
+| `chetter_mcp.auth_token` | `CHETTER_MCP_AUTH_TOKEN` env | MCP token injected into task environments when configured. |
+
+### Definitions Repo YAML
+
+`DEFINITIONS_REPO` points at a Git repo with runtime configuration. Supported YAML formats are:
+
+| Path | Required fields | Notes |
+|---|---|---|
+| `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
+| `triggers/*.yaml` | `name` | `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
+| `agents/*.md` | none | Optional YAML frontmatter may include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. |
+
+Example trigger definition:
+
+```yaml
+name: issue-bug-triage
+enabled: true
+trigger_type: issue
+repo: flatout-works/chetter
+event: opened
+match_labels:
+  - bug
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+agent: issue-triage
+harness: opencode
+timeout_sec: 1800
+session_mode: none
+prompt: |-
+  Triage the issue and comment with next steps.
+```
+
 ## Submit A Task
 
 Use `chetter_submit_task` from an MCP client, the web UI, or an OpenCode command.

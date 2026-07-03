@@ -20,4 +20,16 @@ Example git repository for Chetter runtime configuration. The MCP server reads f
 4. Triggers are activated in the scheduler
 5. Changes go through PRs — the git repo is the source of truth
 
+## Validation
+
+Copy or reference the schemas from the Chetter repo when editing definitions:
+
+| File | Schema |
+|---|---|
+| `model-catalog.yaml` | `schemas/model-catalog.schema.json` |
+| `triggers/*.yaml` | `schemas/trigger.schema.json` |
+| Agent YAML frontmatter in `agents/*.md` | `schemas/agent-frontmatter.schema.json` |
+
+Chetter validates these files during definitions sync and rejects the sync if a definition is malformed.
+
 See `docs/CONFIGURATION.md` in the Chetter repo for full architecture details.

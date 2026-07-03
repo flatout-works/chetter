@@ -3,6 +3,7 @@ package definitions
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,85 @@ func TestScanDefinitions(t *testing.T) {
 		if def.ContentHash == "" {
 			t.Fatalf("definition %s/%s has empty hash", def.Type, def.Name)
 		}
+	}
+}
+
+func TestScanDefinitionsRejectsInvalidTriggerYAML(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "triggers/bad.yaml", "name: bad\nunknown: true\n")
+
+	m := New("", "", root)
+	_, err := m.ScanDefinitions()
+	if err == nil {
+		t.Fatal("expected invalid trigger yaml to fail")
+	}
+	if !strings.Contains(err.Error(), "triggers/bad.yaml") || !strings.Contains(err.Error(), "field unknown not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateAgentDefinitionFrontmatter(t *testing.T) {
+	valid := `---
+description: Reviews pull requests.
+model: synthetic/hf:zai-org/GLM-5.2
+mode: primary
+permission:
+  edit: allow
+---
+
+# Agent
+`
+	if err := ValidateAgentDefinition(valid); err != nil {
+		t.Fatalf("valid agent frontmatter failed: %v", err)
+	}
+	if err := ValidateAgentDefinition("# Plain markdown\n"); err != nil {
+		t.Fatalf("plain markdown should be accepted: %v", err)
+	}
+	invalid := `---
+description:
+  - not a string
+---
+`
+	if err := ValidateAgentDefinition(invalid); err == nil {
+		t.Fatal("expected invalid agent frontmatter to fail")
+	}
+}
+
+func TestParseTriggerYAMLCopiesTopLevelRuntimeConfig(t *testing.T) {
+	trigger, err := ParseTriggerYAML(`name: issue-handler
+trigger_type: issue
+repo: flatout-works/chetter
+event: comment
+match_labels:
+  - bug
+session_mode: resumable
+pause_reason: waiting
+ttl_hours: 24
+`)
+	if err != nil {
+		t.Fatalf("ParseTriggerYAML: %v", err)
+	}
+	for _, want := range []string{
+		`"repo":"flatout-works/chetter"`,
+		`"event":"comment"`,
+		`"match_labels":["bug"]`,
+		`"session_mode":"resumable"`,
+		`"pause_reason":"waiting"`,
+		`"ttl_hours":24`,
+	} {
+		if !strings.Contains(trigger.TriggerCfg, want) {
+			t.Fatalf("trigger_config %s missing %s", trigger.TriggerCfg, want)
+		}
+	}
+}
+
+func TestParseTriggerYAMLAllowsDisabledTrigger(t *testing.T) {
+	trigger, err := ParseTriggerYAML("name: disabled\nenabled: false\n")
+	if err != nil {
+		t.Fatalf("ParseTriggerYAML: %v", err)
+	}
+	if trigger.Enabled {
+		t.Fatal("expected enabled: false to be preserved")
 	}
 }
 

@@ -1,6 +1,7 @@
 package modelcatalog
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -63,7 +64,9 @@ type OpenCodeProvider struct {
 
 func ParseYAML(data []byte) (*Catalog, error) {
 	var c Catalog
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("parse model catalog yaml: %w", err)
 	}
 	if err := c.Validate(); err != nil {
@@ -144,7 +147,7 @@ func Default() *Catalog {
 }
 
 func (c Catalog) Validate() error {
-	if c.Version == 0 {
+	if c.Version < 1 {
 		return fmt.Errorf("model catalog version is required")
 	}
 	if strings.TrimSpace(c.DefaultProvider) == "" {

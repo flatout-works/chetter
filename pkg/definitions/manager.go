@@ -1,10 +1,12 @@
 package definitions
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -184,6 +186,9 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 			if err != nil {
 				return nil, fmt.Errorf("read definition %s: %w", rel, err)
 			}
+			if err := ValidateDefinitionContent(p.definitionType, rel, string(data)); err != nil {
+				return nil, err
+			}
 			sum := sha256.Sum256(data)
 			out = append(out, Definition{
 				Type:        p.definitionType,
@@ -260,6 +265,92 @@ func stemName(path string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
+func ValidateDefinitionContent(definitionType, path, content string) error {
+	switch definitionType {
+	case DefinitionTypeAgent:
+		if err := ValidateAgentDefinition(content); err != nil {
+			return fmt.Errorf("validate agent definition %s: %w", path, err)
+		}
+	case DefinitionTypeTrigger:
+		if _, err := ParseTriggerYAML(content); err != nil {
+			return fmt.Errorf("validate trigger definition %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+type agentFrontmatter struct {
+	Description any            `yaml:"description"`
+	Provider    any            `yaml:"provider"`
+	Model       any            `yaml:"model"`
+	Mode        any            `yaml:"mode"`
+	Permission  map[string]any `yaml:"permission"`
+}
+
+func ValidateAgentDefinition(content string) error {
+	frontmatter, ok, err := extractYAMLFrontmatter(content)
+	if err != nil || !ok {
+		return err
+	}
+	var raw map[string]any
+	if err := yaml.Unmarshal([]byte(frontmatter), &raw); err != nil {
+		return fmt.Errorf("parse frontmatter yaml: %w", err)
+	}
+	var fm agentFrontmatter
+	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		return fmt.Errorf("parse frontmatter fields: %w", err)
+	}
+	for _, field := range []struct {
+		name  string
+		value any
+	}{
+		{"description", fm.Description},
+		{"provider", fm.Provider},
+		{"model", fm.Model},
+		{"mode", fm.Mode},
+	} {
+		if field.value == nil {
+			continue
+		}
+		if _, ok := field.value.(string); !ok {
+			return fmt.Errorf("frontmatter field %q must be a string", field.name)
+		}
+	}
+	if _, ok := raw["permission"]; ok {
+		if fm.Permission == nil {
+			return fmt.Errorf("frontmatter field %q must be an object", "permission")
+		}
+		for key, value := range fm.Permission {
+			if _, ok := value.(string); !ok {
+				return fmt.Errorf("frontmatter permission %q must be a string", key)
+			}
+		}
+	}
+	return nil
+}
+
+func extractYAMLFrontmatter(content string) (string, bool, error) {
+	content = strings.TrimPrefix(content, "\ufeff")
+	if !strings.HasPrefix(content, "---\n") && !strings.HasPrefix(content, "---\r\n") {
+		return "", false, nil
+	}
+	lines := strings.SplitAfter(content, "\n")
+	var start int
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return "", false, nil
+	}
+	start = len(lines[0])
+	offset := start
+	for _, line := range lines[1:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "---" || trimmed == "..." {
+			return content[start:offset], true, nil
+		}
+		offset += len(line)
+	}
+	return "", false, errors.New("unterminated yaml frontmatter")
+}
+
 func (m *Manager) Catalog() *modelcatalog.Catalog {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -304,47 +395,63 @@ type TriggerDef struct {
 }
 
 type rawTriggerYAML struct {
-	Name          string            `yaml:"name"`
-	Enabled       bool              `yaml:"enabled"`
-	CronExpr      string            `yaml:"cron_expr"`
-	TriggerType   string            `yaml:"trigger_type"`
-	TriggerConfig string            `yaml:"trigger_config"`
-	Prompt        string            `yaml:"prompt"`
-	GitURL        string            `yaml:"git_url"`
-	GitRef        string            `yaml:"git_ref"`
-	AgentImage    string            `yaml:"agent_image"`
-	Agent         string            `yaml:"agent"`
-	ProviderID    string            `yaml:"provider_id"`
-	ModelID       string            `yaml:"model_id"`
-	VariantID     string            `yaml:"variant_id"`
-	Harness       string            `yaml:"harness"`
-	Skills        any               `yaml:"skills"`
-	TimeoutSec    int               `yaml:"timeout_sec"`
-	SessionMode   string            `yaml:"session_mode"`
-	PauseReason   string            `yaml:"pause_reason"`
-	TTLHours      int               `yaml:"ttl_hours"`
-	MatchLabels   []string          `yaml:"match_labels"`
-	Repo          string            `yaml:"repo"`
-	Event         string            `yaml:"event"`
-	Extra         map[string]any    `yaml:",inline"`
+	Name          string   `yaml:"name"`
+	Enabled       *bool    `yaml:"enabled"`
+	CronExpr      string   `yaml:"cron_expr"`
+	TriggerType   string   `yaml:"trigger_type"`
+	TriggerConfig string   `yaml:"trigger_config"`
+	Prompt        string   `yaml:"prompt"`
+	GitURL        string   `yaml:"git_url"`
+	GitRef        string   `yaml:"git_ref"`
+	AgentImage    string   `yaml:"agent_image"`
+	Agent         string   `yaml:"agent"`
+	ProviderID    string   `yaml:"provider_id"`
+	ModelID       string   `yaml:"model_id"`
+	VariantID     string   `yaml:"variant_id"`
+	Harness       string   `yaml:"harness"`
+	Skills        any      `yaml:"skills"`
+	TimeoutSec    int      `yaml:"timeout_sec"`
+	SessionMode   string   `yaml:"session_mode"`
+	PauseReason   string   `yaml:"pause_reason"`
+	TTLHours      int      `yaml:"ttl_hours"`
+	MatchLabels   []string `yaml:"match_labels"`
+	Repo          string   `yaml:"repo"`
+	Event         string   `yaml:"event"`
 }
 
 func ParseTriggerYAML(content string) (TriggerDef, error) {
 	var raw rawTriggerYAML
-	if err := yaml.Unmarshal([]byte(content), &raw); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(content)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&raw); err != nil {
 		return TriggerDef{}, fmt.Errorf("parse trigger yaml: %w", err)
 	}
 
 	if raw.Name == "" {
 		return TriggerDef{}, fmt.Errorf("trigger name is required")
 	}
-	if !raw.Enabled {
-		raw.Enabled = true
+	enabled := true
+	if raw.Enabled != nil {
+		enabled = *raw.Enabled
 	}
 
 	triggerType := raw.TriggerType
 	if triggerType == "" {
 		triggerType = "cron"
+	}
+	switch triggerType {
+	case "cron", "pr_review", "issue":
+	default:
+		return TriggerDef{}, fmt.Errorf("unknown trigger_type %q", triggerType)
+	}
+	if raw.Harness != "" && !isSupportedHarness(raw.Harness) {
+		return TriggerDef{}, fmt.Errorf("unknown harness %q", raw.Harness)
+	}
+	if raw.TimeoutSec < 0 {
+		return TriggerDef{}, fmt.Errorf("timeout_sec must be greater than or equal to 0")
+	}
+	if raw.TTLHours < 0 {
+		return TriggerDef{}, fmt.Errorf("ttl_hours must be greater than or equal to 0")
 	}
 
 	triggerCfg := raw.TriggerConfig
@@ -360,6 +467,9 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 	}
 
 	if raw.SessionMode != "" {
+		if raw.SessionMode != "none" && raw.SessionMode != "resumable" {
+			return TriggerDef{}, fmt.Errorf("session_mode must be none or resumable")
+		}
 		runCfg["session_mode"] = raw.SessionMode
 	}
 	if raw.PauseReason != "" {
@@ -367,6 +477,15 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 	}
 	if raw.TTLHours > 0 {
 		runCfg["ttl_hours"] = raw.TTLHours
+	}
+	if raw.Repo != "" {
+		runCfg["repo"] = raw.Repo
+	}
+	if raw.Event != "" {
+		runCfg["event"] = raw.Event
+	}
+	if len(raw.MatchLabels) > 0 {
+		runCfg["match_labels"] = raw.MatchLabels
 	}
 
 	if len(runCfg) > 0 {
@@ -393,7 +512,7 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 
 	return TriggerDef{
 		Name:        raw.Name,
-		Enabled:     raw.Enabled,
+		Enabled:     enabled,
 		CronExpr:    raw.CronExpr,
 		TriggerType: triggerType,
 		TriggerCfg:  triggerCfg,
@@ -409,4 +528,13 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		Skills:      skills,
 		TimeoutSec:  raw.TimeoutSec,
 	}, nil
+}
+
+func isSupportedHarness(harness string) bool {
+	switch harness {
+	case "opencode", "claude-code", "pi", "codewhale":
+		return true
+	default:
+		return false
+	}
 }

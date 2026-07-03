@@ -563,18 +563,15 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 		}
 		td, err := definitions.ParseTriggerYAML(def.Content)
 		if err != nil {
-			slog.Warn("skipping trigger definition: parse error", "path", def.Path, "err", err)
-			continue
+			return nil, fmt.Errorf("%s: %w", def.Path, err)
 		}
 		id, err := randomID("trig")
 		if err != nil {
-			slog.Warn("skipping trigger definition: id generation error", "path", def.Path, "err", err)
-			continue
+			return nil, fmt.Errorf("%s: generate trigger id: %w", def.Path, err)
 		}
 		skillsJSON, err := json.Marshal(nonEmptyStrings(td.Skills))
 		if err != nil {
-			slog.Warn("skipping trigger definition: marshal skills error", "path", def.Path, "err", err)
-			continue
+			return nil, fmt.Errorf("%s: marshal skills: %w", def.Path, err)
 		}
 		entries = append(entries, triggerSyncEntry{
 			def: td,

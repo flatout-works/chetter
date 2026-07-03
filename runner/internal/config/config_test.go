@@ -29,7 +29,7 @@ git:
   pat: ghp_token
 execution:
   runtime: docker
-  harness: default
+  harness: opencode
 `
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
 		t.Fatal(err)

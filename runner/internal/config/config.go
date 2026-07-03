@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"time"
@@ -27,6 +28,7 @@ type Config struct {
 	Proxy      ProxyConfig      `yaml:"proxy"`
 	DNS        DNSConfig        `yaml:"dns"`
 	Git        GitConfig        `yaml:"git"`
+	Workspace  map[string]any   `yaml:"workspace"`
 	Execution  ExecutionConfig  `yaml:"execution"`
 	Deploy     DeployConfig     `yaml:"deploy"`
 	ChetterMCP ChetterMCPConfig `yaml:"chetter_mcp"`
@@ -60,9 +62,9 @@ type GitConfig struct {
 }
 
 type ExecutionConfig struct {
-	Runtime        string `yaml:"runtime"`
-	Harness        string `yaml:"harness"`
-	UseGVisor      bool   `yaml:"use_gvisor"`
+	Runtime         string `yaml:"runtime"`
+	Harness         string `yaml:"harness"`
+	UseGVisor       bool   `yaml:"use_gvisor"`
 	ContainerMemory string `yaml:"container_memory"`
 }
 
@@ -83,11 +85,35 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	if err := validate(&cfg); err != nil {
+		return nil, err
 	}
 	applyDefaults(&cfg)
 	return &cfg, nil
+}
+
+func validate(cfg *Config) error {
+	if cfg.Runner.MaxConcurrent < 0 {
+		return fmt.Errorf("runner.max_concurrent must be greater than or equal to 0")
+	}
+	if cfg.Execution.Harness != "" && !isSupportedHarness(cfg.Execution.Harness) {
+		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, or codewhale")
+	}
+	return nil
+}
+
+func isSupportedHarness(harness string) bool {
+	switch harness {
+	case "opencode", "claude-code", "pi", "codewhale":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyDefaults(cfg *Config) {

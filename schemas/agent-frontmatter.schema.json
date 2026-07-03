@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flatout-works/chetter/main/schemas/agent-frontmatter.schema.json",
+  "title": "Chetter agent definition frontmatter",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "description": { "type": "string" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "mode": { "type": "string" },
+    "permission": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

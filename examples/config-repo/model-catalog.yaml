@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schemas/model-catalog.schema.json
 version: 1
 default_provider: anthropic
 default_model: claude-sonnet-4
@@ -12,15 +13,17 @@ defaults:
     provider: anthropic
     model: claude-sonnet-4
 providers:
-  - id: anthropic
+  anthropic:
     name: Anthropic
+    kind: native
     base_url: https://api.anthropic.com
     api_key_env: ANTHROPIC_API_KEY
     models:
       - id: claude-sonnet-4
         name: Claude Sonnet 4
-  - id: google
+  google:
     name: Google
+    kind: openai_compatible
     base_url: https://generativelanguage.googleapis.com
     api_key_env: GOOGLE_API_KEY
     models:

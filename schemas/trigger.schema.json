@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flatout-works/chetter/main/schemas/trigger.schema.json",
+  "title": "Chetter trigger definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "enabled": { "type": "boolean" },
+    "cron_expr": { "type": "string" },
+    "trigger_type": { "type": "string", "enum": ["cron", "pr_review", "issue"] },
+    "trigger_config": { "type": "string" },
+    "prompt": { "type": "string" },
+    "git_url": { "type": "string" },
+    "git_ref": { "type": "string" },
+    "agent_image": { "type": "string" },
+    "agent": { "type": "string" },
+    "provider_id": { "type": "string" },
+    "model_id": { "type": "string" },
+    "variant_id": { "type": "string" },
+    "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale"] },
+    "skills": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "timeout_sec": { "type": "integer", "minimum": 0 },
+    "session_mode": { "type": "string", "enum": ["none", "resumable"] },
+    "pause_reason": { "type": "string" },
+    "ttl_hours": { "type": "integer", "minimum": 0 },
+    "match_labels": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "repo": { "type": "string" },
+    "event": { "type": "string" }
+  }
+}
