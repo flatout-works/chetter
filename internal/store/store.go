@@ -1,4 +1,4 @@
-// Package store persists chetter state in a TiDB database.
+// Package store persists chetter state in a TiDB or MySQL-compatible database.
 package store
 
 import (
@@ -29,45 +29,81 @@ const (
 
 var errTiDBRequiresTCPHost = fmt.Errorf("tls=tidb requires a tcp database host")
 
+// Dialect identifies the database backend.
+type Dialect int
+
+const (
+	// DialectUnknown triggers auto-detection on Open.
+	DialectUnknown Dialect = iota
+	// DialectTiDB is TiDB (including TiDB Cloud).
+	DialectTiDB
+	// DialectMySQL is MySQL or a wire-compatible engine such as AWS Aurora MySQL.
+	DialectMySQL
+)
+
+func (d Dialect) String() string {
+	switch d {
+	case DialectTiDB:
+		return "tidb"
+	case DialectMySQL:
+		return "mysql"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseDialect converts a config string ("tidb", "mysql", or "") into a Dialect.
+func ParseDialect(s string) Dialect {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "tidb":
+		return DialectTiDB
+	case "mysql":
+		return DialectMySQL
+	default:
+		return DialectUnknown
+	}
+}
+
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect Dialect
 }
 
 // TaskRecord is the persisted task state exposed by MCP tools.
 type TaskRecord struct {
-	ID                string            `json:"id"`
-	TeamID            string            `json:"team_id,omitempty"`
-	Status            string            `json:"status"`
-	Prompt            string            `json:"prompt"`
-	GitURL            string            `json:"git_url,omitempty"`
-	GitRef            string            `json:"git_ref,omitempty"`
-	AgentImage        string            `json:"agent_image,omitempty"`
-	Agent             string            `json:"agent,omitempty"`
-	ProviderID        string            `json:"provider_id,omitempty"`
-	ModelID           string            `json:"model_id,omitempty"`
-	VariantID         string            `json:"variant_id,omitempty"`
-	OpenCodeSessionID string            `json:"opencode_session_id,omitempty"`
-	RunnerImageDigest string            `json:"runner_image_digest,omitempty"`
-	CommitAuthorName  string            `json:"commit_author_name,omitempty"`
-	CommitAuthorEmail string            `json:"commit_author_email,omitempty"`
-	TriggerName       string            `json:"trigger_name,omitempty"`
-	TriggerType       string            `json:"trigger_type,omitempty"`
-	Skills            []string          `json:"skills"`
-	Env               map[string]string `json:"env"`
-	TimeoutSec        int               `json:"timeout_sec"`
-	Summary           string            `json:"summary,omitempty"`
-	Error             string            `json:"error,omitempty"`
-	ErrorCategory     string            `json:"error_category,omitempty"`
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
-	StartedAt         *time.Time        `json:"started_at,omitempty"`
-	EndedAt           *time.Time        `json:"ended_at,omitempty"`
-	TotalInputTokens      int64         `json:"total_input_tokens"`
-	TotalOutputTokens     int64         `json:"total_output_tokens"`
-	TotalCacheReadTokens  int64         `json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens int64         `json:"total_cache_write_tokens"`
-	TotalReasoningTokens  int64         `json:"total_reasoning_tokens"`
-	CostCents             int64         `json:"cost_cents"`
+	ID                    string            `json:"id"`
+	TeamID                string            `json:"team_id,omitempty"`
+	Status                string            `json:"status"`
+	Prompt                string            `json:"prompt"`
+	GitURL                string            `json:"git_url,omitempty"`
+	GitRef                string            `json:"git_ref,omitempty"`
+	AgentImage            string            `json:"agent_image,omitempty"`
+	Agent                 string            `json:"agent,omitempty"`
+	ProviderID            string            `json:"provider_id,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
+	VariantID             string            `json:"variant_id,omitempty"`
+	OpenCodeSessionID     string            `json:"opencode_session_id,omitempty"`
+	RunnerImageDigest     string            `json:"runner_image_digest,omitempty"`
+	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
+	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
+	TriggerName           string            `json:"trigger_name,omitempty"`
+	TriggerType           string            `json:"trigger_type,omitempty"`
+	Skills                []string          `json:"skills"`
+	Env                   map[string]string `json:"env"`
+	TimeoutSec            int               `json:"timeout_sec"`
+	Summary               string            `json:"summary,omitempty"`
+	Error                 string            `json:"error,omitempty"`
+	ErrorCategory         string            `json:"error_category,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	StartedAt             *time.Time        `json:"started_at,omitempty"`
+	EndedAt               *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64             `json:"total_input_tokens"`
+	TotalOutputTokens     int64             `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64             `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
+	CostCents             int64             `json:"cost_cents"`
 }
 
 // TaskResponse is the runner status event shape.
@@ -149,7 +185,8 @@ type TriggerInput struct {
 }
 
 // Open creates a database pool and applies conservative connection limits.
-func Open(dsn string) (*Store, error) {
+// If dialect is DialectUnknown, the backend is auto-detected via SELECT VERSION().
+func Open(dsn string, dialect Dialect) (*Store, error) {
 	normalized := normalizeDSN(dsn)
 	if err := registerTiDBTLS(normalized); err != nil {
 		return nil, err
@@ -163,7 +200,13 @@ func Open(dsn string) (*Store, error) {
 	db.SetMaxIdleConns(maxIdleConns)
 	db.SetConnMaxLifetime(connMaxLifetime)
 	db.SetConnMaxIdleTime(connMaxIdleTime)
-	return &Store{db: db}, nil
+	st := &Store{db: db, dialect: dialect}
+	if st.dialect == DialectUnknown {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		st.detectDialect(ctx)
+	}
+	return st, nil
 }
 
 // ensureDatabaseExists best-effort creates the database named in the DSN if it
@@ -220,6 +263,46 @@ func (s *Store) Close() error {
 // DB exposes the underlying database pool for generated sqlc repositories.
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+// Dialect returns the detected or configured database dialect.
+func (s *Store) Dialect() Dialect { return s.dialect }
+
+// IsTiDB reports whether the backend is TiDB.
+func (s *Store) IsTiDB() bool { return s.dialect == DialectTiDB }
+
+// IsMySQL reports whether the backend is MySQL or a MySQL-compatible engine.
+func (s *Store) IsMySQL() bool { return s.dialect == DialectMySQL }
+
+// detectDialect probes the database version string to determine the backend.
+// Defaults to DialectTiDB if the probe fails (preserving existing behaviour).
+func (s *Store) detectDialect(ctx context.Context) {
+	var version string
+	if err := s.db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
+		slog.Warn("could not detect database dialect; defaulting to TiDB", "err", err)
+		s.dialect = DialectTiDB
+		return
+	}
+	if strings.Contains(strings.ToUpper(version), "TIDB") {
+		s.dialect = DialectTiDB
+	} else {
+		s.dialect = DialectMySQL
+	}
+	slog.Info("database dialect", "dialect", s.dialect, "version", version)
+}
+
+// fulltextParserClause returns the FULLTEXT index parser clause for the
+// current dialect: " WITH PARSER MULTILINGUAL" for TiDB, " WITH PARSER ngram"
+// for MySQL, or "" (default parser) for unknown dialects.
+func (s *Store) fulltextParserClause() string {
+	switch s.dialect {
+	case DialectMySQL:
+		return " WITH PARSER ngram"
+	case DialectTiDB:
+		return " WITH PARSER MULTILINGUAL"
+	default:
+		return ""
+	}
 }
 
 // Ping verifies database connectivity.
@@ -461,8 +544,8 @@ func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
 			return fmt.Errorf("drop old audit fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
-		slog.Warn("failed to add audit fulltext index (may need TiDB Cloud Starter/Essential in supported region)", "err", err)
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (search_text)"+s.fulltextParserClause()); err != nil {
+		slog.Warn("failed to add audit fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
 	return nil
@@ -485,8 +568,8 @@ func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
 			return fmt.Errorf("drop old tasks fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
-		slog.Warn("failed to add tasks fulltext index", "err", err)
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (search_text)"+s.fulltextParserClause()); err != nil {
+		slog.Warn("failed to add tasks fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
 	return nil
@@ -509,8 +592,8 @@ func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
 			return fmt.Errorf("drop old sessions fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
-		slog.Warn("failed to add sessions fulltext index", "err", err)
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (search_text)"+s.fulltextParserClause()); err != nil {
+		slog.Warn("failed to add sessions fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
 	return nil
@@ -533,8 +616,8 @@ func (s *Store) ensureArtifactFulltextIndex(ctx context.Context) error {
 			return fmt.Errorf("drop old artifacts fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (search_text) WITH PARSER MULTILINGUAL"); err != nil {
-		slog.Warn("failed to add artifacts fulltext index", "err", err)
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (search_text)"+s.fulltextParserClause()); err != nil {
+		slog.Warn("failed to add artifacts fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
 	return nil

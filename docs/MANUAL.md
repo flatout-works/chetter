@@ -13,7 +13,7 @@ AI client / web UI
       |
       | MCP / HTTP
       v
-Chetter server + TiDB
+Chetter server + TiDB/MySQL
       |
       | ConnectRPC claim, heartbeat, events
       v
@@ -56,7 +56,7 @@ cp .env.example .env
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 ```
 
-5. Or start with an external TiDB by setting `DATABASE_DSN` and omitting the local override:
+5. Or start with an external TiDB/MySQL database by setting `DATABASE_DSN` and omitting the local override:
 
 ```bash
 docker compose --env-file .env -f deploy/compose.yaml up -d
@@ -79,9 +79,11 @@ Open the web UI at `http://localhost:18090` and log in with `CHETTER_MCP_AUTH_TO
 
 The underlying server env vars are `HTTP_ADDR` and `WEB_ADDR`.
 
-## Why TiDB
+## Database Support
 
-Chetter uses [TiDB](https://www.pingcap.com/tidb/) as its sole database. TiDB speaks the MySQL wire protocol, so it works with Go's standard MySQL driver, but adds capabilities Chetter's roadmap depends on: vector search for semantic task/event retrieval, HTAP via TiFlash for fleet analytics, and TiDB Cloud for zero-ops managed deployments.
+Chetter supports [TiDB](https://www.pingcap.com/tidb/) and MySQL-compatible databases such as AWS Aurora MySQL. TiDB remains the preferred default because it speaks the MySQL wire protocol while adding capabilities Chetter's roadmap can use, including vector search for semantic task/event retrieval, HTAP via TiFlash for fleet analytics, and TiDB Cloud for zero-ops managed deployments.
+
+Set `CHETTER_DB_DIALECT=mysql` for MySQL/Aurora, `CHETTER_DB_DIALECT=tidb` for TiDB, or leave it unset to auto-detect via `SELECT VERSION()`.
 
 > **Local vs. real TiDB.** The bundled database in `deploy/compose.local.yaml` runs TiDB's single-container `unistore` *test* engine — convenient for local dev (it serves Chetter's plain MySQL-protocol workload), but it has no TiFlash, so vector search and HTAP do not run on it. Connect to a real TiDB via `DATABASE_DSN` for those features and for production.
 
@@ -95,7 +97,7 @@ There are three token contexts to keep distinct:
 | `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token and agent MCP token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Runner-to-server ConnectRPC token. | Required by the server. Compose falls back to `CHETTER_MCP_AUTH_TOKEN` if this is empty. |
 
-Team tokens are stored hashed in TiDB and belong to a user in a team. Team-scoped tokens can only see their team's tasks, triggers, schedule runs, and sessions.
+Team tokens are stored hashed in the configured database and belong to a user in a team. Team-scoped tokens can only see their team's tasks, triggers, schedule runs, and sessions.
 
 Create a scoped token with `chetterctl`:
 
@@ -113,7 +115,8 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `WEB_ADDR` | No | `:8090` | Web UI and ConnectRPC API listen address. |
 | `MCP_AUTH_TOKEN` | Yes | empty | Server admin bearer token. Empty and `change-me*` values are rejected. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Yes | empty | Dedicated runner ConnectRPC token. Empty and `change-me*` values are rejected. |
-| `DATABASE_DSN` | Yes for binary | empty | TiDB DSN. Compose local override can provide bundled TiDB. |
+| `DATABASE_DSN` | Yes for binary | empty | TiDB or MySQL DSN. Compose local override can provide bundled TiDB. |
+| `CHETTER_DB_DIALECT` | No | auto-detect | Optional database dialect override: `tidb` or `mysql`. |
 | `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default task runner image. |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and future definitions. |

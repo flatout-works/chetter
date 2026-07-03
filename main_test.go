@@ -212,7 +212,7 @@ func seedTokenInDB(t *testing.T, st *store.Store) (teamID, rawToken string) {
 func TestLookupTokenScope(t *testing.T) {
 	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
-	st, err := store.Open(tdb.DSN)
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestLookupTokenScope(t *testing.T) {
 func TestLookupTokenScopeInvalidToken(t *testing.T) {
 	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
-	st, err := store.Open(tdb.DSN)
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestLookupTokenScopeInvalidToken(t *testing.T) {
 func TestAuthMiddlewareWithDBToken(t *testing.T) {
 	tdb, cleanup := mainTestDB.NewTestDB(t)
 	defer cleanup()
-	st, err := store.Open(tdb.DSN)
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}

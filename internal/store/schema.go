@@ -51,7 +51,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_runner (runner_id, status),
 		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
 		KEY idx_chetter_tasks_required_runner (required_runner_id, status, created_at),
-		FULLTEXT INDEX idx_tasks_search (search_text) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_tasks_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (
 		id VARCHAR(64) NOT NULL,
@@ -82,7 +82,7 @@ var schemaStatements = []string{
 		KEY idx_agent_sessions_team_status (team_id, status, updated_at),
 		KEY idx_agent_sessions_runner_status (pinned_runner_id, status),
 		KEY idx_agent_sessions_expires (expires_at),
-		FULLTEXT INDEX idx_sessions_search (search_text) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_sessions_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_session_runs (
 		id VARCHAR(64) NOT NULL,
@@ -263,7 +263,7 @@ var schemaStatements = []string{
 		KEY idx_audit_source (source_type, source_id),
 		KEY idx_audit_target (target_type, target_id),
 		KEY idx_audit_created (created_at),
-		FULLTEXT INDEX idx_audit_search (search_text) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_audit_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_task_artifacts (
 		id VARCHAR(64) NOT NULL,
@@ -287,7 +287,7 @@ var schemaStatements = []string{
 		KEY idx_task_artifacts_session_run (session_run_id),
 		KEY idx_task_artifacts_type_repo (artifact_type, repo),
 		KEY idx_task_artifacts_number (repo, number),
-		FULLTEXT INDEX idx_artifacts_search (search_text) WITH PARSER MULTILINGUAL
+		FULLTEXT INDEX idx_artifacts_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_model_catalogs (
 		id VARCHAR(64) NOT NULL,

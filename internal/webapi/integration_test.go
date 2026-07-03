@@ -326,7 +326,7 @@ func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 	tdb, cleanupDB := webAPITestDB.NewTestDB(t)
 	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600}
-	st, err := store.Open(tdb.DSN)
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		cleanupDB()
 		t.Fatalf("store.Open: %v", err)

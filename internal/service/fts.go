@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
 )
 
 // sanitizeFTS escapes a search term so it can be safely interpolated into a
@@ -24,28 +25,38 @@ func sanitizeFTS(s string) string {
 	return s
 }
 
-// searchTasksFTS attempts a real full-text search using FTS_MATCH_WORD.
+// searchTasksFTS attempts a real full-text search. On TiDB it uses
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
 // If the FTS index is unavailable it falls back to the sqlc LIKE query.
 func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.ChetterTask, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
 	}
-	query := fmt.Sprintf(`
-		SELECT id FROM chetter_tasks
-		WHERE (? = '' OR team_id = ?)
-		  AND (? = '' OR status = ?)
-		  AND FTS_MATCH_WORD(search_text, '%s')
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`, safe)
-	rows, err := s.rawDB.QueryContext(ctx, query,
-		teamFilter, teamFilter,
-		status, status,
-		limit, offset,
-	)
+	var query string
+	var args []any
+	if s.dialect == store.DialectMySQL {
+		query = `
+			SELECT id FROM chetter_tasks
+			WHERE (? = '' OR team_id = ?)
+			  AND (? = '' OR status = ?)
+			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
+			ORDER BY created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []any{teamFilter, teamFilter, status, status, search, limit, offset}
+	} else {
+		query = fmt.Sprintf(`
+			SELECT id FROM chetter_tasks
+			WHERE (? = '' OR team_id = ?)
+			  AND (? = '' OR status = ?)
+			  AND FTS_MATCH_WORD(search_text, '%s')
+			ORDER BY created_at DESC
+			LIMIT ? OFFSET ?`, safe)
+		args = []any{teamFilter, teamFilter, status, status, limit, offset}
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.DebugContext(ctx, "FTS search tasks failed, falling back to LIKE", "err", err)
+		slog.DebugContext(ctx, "FTS search tasks failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		return s.repo.SearchTasks(ctx, repository.SearchTasksParams{
 			TeamFilter:   teamFilter,
 			StatusFilter: status,
@@ -77,27 +88,37 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 	return tasks, nil
 }
 
-// searchAgentSessionsFTS attempts a real full-text search using FTS_MATCH_WORD.
+// searchAgentSessionsFTS attempts a real full-text search. On TiDB it uses
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
 func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
 	}
-	query := fmt.Sprintf(`
-		SELECT id FROM chetter_agent_sessions
-		WHERE (? = '' OR COALESCE(team_id, '') = ?)
-		  AND (? = '' OR status = ?)
-		  AND FTS_MATCH_WORD(search_text, '%s')
-		ORDER BY updated_at DESC
-		LIMIT ? OFFSET ?
-	`, safe)
-	rows, err := s.rawDB.QueryContext(ctx, query,
-		teamFilter, teamFilter,
-		status, status,
-		limit, offset,
-	)
+	var query string
+	var args []any
+	if s.dialect == store.DialectMySQL {
+		query = `
+			SELECT id FROM chetter_agent_sessions
+			WHERE (? = '' OR COALESCE(team_id, '') = ?)
+			  AND (? = '' OR status = ?)
+			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
+			ORDER BY updated_at DESC
+			LIMIT ? OFFSET ?`
+		args = []any{teamFilter, teamFilter, status, status, search, limit, offset}
+	} else {
+		query = fmt.Sprintf(`
+			SELECT id FROM chetter_agent_sessions
+			WHERE (? = '' OR COALESCE(team_id, '') = ?)
+			  AND (? = '' OR status = ?)
+			  AND FTS_MATCH_WORD(search_text, '%s')
+			ORDER BY updated_at DESC
+			LIMIT ? OFFSET ?`, safe)
+		args = []any{teamFilter, teamFilter, status, status, limit, offset}
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.DebugContext(ctx, "FTS search sessions failed, falling back to LIKE", "err", err)
+		slog.DebugContext(ctx, "FTS search sessions failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		return s.repo.SearchAgentSessions(ctx, repository.SearchAgentSessionsParams{
 			TeamFilter:   teamFilter,
 			StatusFilter: status,
@@ -129,38 +150,68 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 	return sessions, nil
 }
 
-// searchAuditLogFTS attempts a real full-text search using FTS_MATCH_WORD.
+// searchAuditLogFTS attempts a real full-text search. On TiDB it uses
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
 func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilterInput, limit, offset int32, sinceTime sql.NullTime) ([]repository.ListAuditLogRow, error) {
 	safe := sanitizeFTS(filter.Search)
 	if safe == "" {
 		return nil, nil
 	}
-	query := fmt.Sprintf(`
-		SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
-		FROM chetter_audit_log
-		WHERE (event_type = ? OR ? = '')
-		  AND (source_type <=> ? OR ? = '')
-		  AND (source_id <=> ? OR ? = '')
-		  AND (target_type <=> ? OR ? = '')
-		  AND (target_id <=> ? OR ? = '')
-		  AND (repo <=> ? OR ? = '')
-		  AND (created_at >= ? OR ? IS NULL)
-		  AND FTS_MATCH_WORD(search_text, '%s')
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?
-	`, safe)
-	rows, err := s.rawDB.QueryContext(ctx, query,
-		filter.EventType, filter.EventType,
-		nullString(filter.SourceType), filter.SourceType,
-		nullString(filter.SourceID), filter.SourceID,
-		nullString(filter.TargetType), filter.TargetType,
-		nullString(filter.TargetID), filter.TargetID,
-		nullString(filter.Repo), filter.Repo,
-		sinceTime, sinceTime,
-		limit, offset,
-	)
+	var query string
+	var args []any
+	if s.dialect == store.DialectMySQL {
+		query = `
+			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+			FROM chetter_audit_log
+			WHERE (event_type = ? OR ? = '')
+			  AND (source_type <=> ? OR ? = '')
+			  AND (source_id <=> ? OR ? = '')
+			  AND (target_type <=> ? OR ? = '')
+			  AND (target_id <=> ? OR ? = '')
+			  AND (repo <=> ? OR ? = '')
+			  AND (created_at >= ? OR ? IS NULL)
+			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
+			ORDER BY created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []any{
+			filter.EventType, filter.EventType,
+			nullString(filter.SourceType), filter.SourceType,
+			nullString(filter.SourceID), filter.SourceID,
+			nullString(filter.TargetType), filter.TargetType,
+			nullString(filter.TargetID), filter.TargetID,
+			nullString(filter.Repo), filter.Repo,
+			sinceTime, sinceTime,
+			filter.Search,
+			limit, offset,
+		}
+	} else {
+		query = fmt.Sprintf(`
+			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+			FROM chetter_audit_log
+			WHERE (event_type = ? OR ? = '')
+			  AND (source_type <=> ? OR ? = '')
+			  AND (source_id <=> ? OR ? = '')
+			  AND (target_type <=> ? OR ? = '')
+			  AND (target_id <=> ? OR ? = '')
+			  AND (repo <=> ? OR ? = '')
+			  AND (created_at >= ? OR ? IS NULL)
+			  AND FTS_MATCH_WORD(search_text, '%s')
+			ORDER BY created_at DESC
+			LIMIT ? OFFSET ?`, safe)
+		args = []any{
+			filter.EventType, filter.EventType,
+			nullString(filter.SourceType), filter.SourceType,
+			nullString(filter.SourceID), filter.SourceID,
+			nullString(filter.TargetType), filter.TargetType,
+			nullString(filter.TargetID), filter.TargetID,
+			nullString(filter.Repo), filter.Repo,
+			sinceTime, sinceTime,
+			limit, offset,
+		}
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.DebugContext(ctx, "FTS search audit log failed, falling back to LIKE", "err", err)
+		slog.DebugContext(ctx, "FTS search audit log failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		searchRows, ferr := s.repo.SearchAuditLog(ctx, repository.SearchAuditLogParams{
 			EventType:  filter.EventType,
 			Column2:    filter.EventType,
@@ -219,32 +270,56 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 	return items, nil
 }
 
-// searchTaskArtifactsFTS attempts a real full-text search using FTS_MATCH_WORD.
+// searchTaskArtifactsFTS attempts a real full-text search. On TiDB it uses
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
 func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifactFilterInput, limit, offset int32) ([]repository.ListTaskArtifactsRow, error) {
 	safe := sanitizeFTS(filter.Search)
 	if safe == "" {
 		return nil, nil
 	}
-	query := fmt.Sprintf(`
-		SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-		FROM chetter_task_artifacts
-		WHERE (task_id = ? OR ? = '')
-		  AND (agent_session_id <=> ? OR ? = '')
-		  AND (artifact_type = ? OR ? = '')
-		  AND (repo = ? OR ? = '')
-		  AND FTS_MATCH_WORD(search_text, '%s')
-		ORDER BY discovered_at DESC
-		LIMIT ? OFFSET ?
-	`, safe)
-	rows, err := s.rawDB.QueryContext(ctx, query,
-		filter.TaskID, filter.TaskID,
-		nullString(filter.AgentSessionID), filter.AgentSessionID,
-		filter.ArtifactType, filter.ArtifactType,
-		filter.Repo, filter.Repo,
-		limit, offset,
-	)
+	var query string
+	var args []any
+	if s.dialect == store.DialectMySQL {
+		query = `
+			SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			FROM chetter_task_artifacts
+			WHERE (task_id = ? OR ? = '')
+			  AND (agent_session_id <=> ? OR ? = '')
+			  AND (artifact_type = ? OR ? = '')
+			  AND (repo = ? OR ? = '')
+			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
+			ORDER BY discovered_at DESC
+			LIMIT ? OFFSET ?`
+		args = []any{
+			filter.TaskID, filter.TaskID,
+			nullString(filter.AgentSessionID), filter.AgentSessionID,
+			filter.ArtifactType, filter.ArtifactType,
+			filter.Repo, filter.Repo,
+			filter.Search,
+			limit, offset,
+		}
+	} else {
+		query = fmt.Sprintf(`
+			SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			FROM chetter_task_artifacts
+			WHERE (task_id = ? OR ? = '')
+			  AND (agent_session_id <=> ? OR ? = '')
+			  AND (artifact_type = ? OR ? = '')
+			  AND (repo = ? OR ? = '')
+			  AND FTS_MATCH_WORD(search_text, '%s')
+			ORDER BY discovered_at DESC
+			LIMIT ? OFFSET ?`, safe)
+		args = []any{
+			filter.TaskID, filter.TaskID,
+			nullString(filter.AgentSessionID), filter.AgentSessionID,
+			filter.ArtifactType, filter.ArtifactType,
+			filter.Repo, filter.Repo,
+			limit, offset,
+		}
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.DebugContext(ctx, "FTS search artifacts failed, falling back to LIKE", "err", err)
+		slog.DebugContext(ctx, "FTS search artifacts failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		searchRows, err := s.repo.SearchTaskArtifacts(ctx, repository.SearchTaskArtifactsParams{
 			TaskID:         filter.TaskID,
 			Column2:        filter.TaskID,

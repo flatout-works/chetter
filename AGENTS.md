@@ -49,11 +49,13 @@ make docker-build-minimal        # build minimal variant (no language toolchain)
 ## Testing
 
 - Unit tests: `go test ./internal/config/`, `go test ./internal/store/` — fast, no DB.
-- Integration tests: `go test ./internal/service/` — require a **real TiDB**. The test harness (`internal/testdb`) auto-spins a Docker container if `CHETTER_TEST_DSN` is not set.
+- Integration tests: `go test ./internal/service/` — require a **real database** (TiDB or MySQL). The test harness (`internal/testdb`) auto-spins a Docker container if `CHETTER_TEST_DSN` is not set.
 - To skip integration tests: `go test ./internal/config/ ./internal/store/`
 - To run with an existing TiDB: `CHETTER_TEST_DSN="root@tcp(127.0.0.1:4000)/?parseTime=true" go test ./...`
-- `CHETTER_TEST_LOCAL_TIDB` (host:port) is also supported as a fallback.
-
+- To run with an existing MySQL: `CHETTER_TEST_DSN="root:root@tcp(127.0.0.1:3306)/?parseTime=true" CHETTER_TEST_DB_DIALECT=mysql go test ./...`
+- To spin up a MySQL test container: `CHETTER_TEST_DB_DIALECT=mysql go test ./internal/service/...`
+- `CHETTER_TEST_LOCAL_TIDB` (host:port) is also supported as a fallback for TiDB. For MySQL, use `CHETTER_TEST_LOCAL_MYSQL`.
+- `CHETTER_TEST_DB_IMAGE` overrides the Docker image for either dialect.
 **CI note:** If Docker is unavailable, integration tests skip automatically with a message. Do not treat skips as failures.
 
 ## CI/CD
@@ -152,6 +154,7 @@ Before committing, verify:
 
 ## Key Architecture Notes
 
+- **Database support**: Chetter runs on both TiDB and MySQL (including AWS Aurora MySQL). The dialect is auto-detected on startup or can be set explicitly via `CHETTER_DB_DIALECT`. The only dialect-specific feature is Full-Text Search: TiDB uses `FTS_MATCH_WORD` with `WITH PARSER MULTILINGUAL`; MySQL uses `MATCH ... AGAINST ... IN BOOLEAN MODE` with `WITH PARSER ngram`. Both fall back to `LIKE` if the FULLTEXT index is unavailable.
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.
 - **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
 - **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
@@ -168,7 +171,8 @@ Before committing, verify:
 Config is loaded from env vars in `internal/config/config.go`.
 
 Key env vars for local dev:
-- `DATABASE_DSN` — TiDB connection string.
+- `DATABASE_DSN` — Database connection string (TiDB or MySQL).
+- `CHETTER_DB_DIALECT` — Override database dialect: `"tidb"` or `"mysql"`. If unset, auto-detected via `SELECT VERSION()`.
 - `CHETTER_MCP_AUTH_TOKEN` — Admin bearer token.
 - `DEFAULT_AGENT_IMAGE` — Default runner image.
 - `DEFAULT_TASK_TIMEOUT_SEC` — Task timeout (default 600).

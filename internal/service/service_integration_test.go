@@ -38,7 +38,7 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 		DefaultAgentImage:     "runner:latest",
 		DefaultTaskTimeoutSec: 600,
 	}
-	st, err := store.Open(tdb.DSN)
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		cleanup()
 		t.Fatalf("store.Open: %v", err)

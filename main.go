@@ -54,7 +54,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, err := store.Open(cfg.DatabaseDSN)
+	st, err := store.Open(cfg.DatabaseDSN, store.ParseDialect(cfg.DBDialect))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}

@@ -94,6 +94,7 @@ type Service struct {
 	store          *store.Store
 	repo           *repository.Queries
 	rawDB          *sql.DB
+	dialect        store.Dialect
 	arcane         *ArcaneClient
 	github         *webhook.Client
 	runnerRPC      *RunnerRPCService
@@ -152,6 +153,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		store:       st,
 		repo:        repository.New(st.DB()),
 		rawDB:       st.DB(),
+		dialect:     st.Dialect(),
 		cron:        cron.New(cron.WithParser(defaultCronParser), cron.WithLocation(time.UTC)),
 		cronEntries: make(map[string]cron.EntryID),
 		reaperStop:  make(chan struct{}),

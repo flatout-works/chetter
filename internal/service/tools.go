@@ -1501,7 +1501,7 @@ type AuditEventFilterInput struct {
 	TargetType string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
 	TargetID   string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
 	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
-	Search     string `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires TiDB FULLTEXT index)"`
+	Search     string `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"`
 	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
 	Offset     int    `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`

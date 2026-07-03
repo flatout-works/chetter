@@ -15,6 +15,7 @@ type Config struct {
 	MCPAuthToken           string
 	RunnerRPCToken         string
 	DatabaseDSN            string
+	DBDialect              string
 	DefaultAgentImage      string
 	DefaultTaskTimeoutSec  int
 	ArcaneServerURL        string
@@ -37,6 +38,7 @@ func Load() Config {
 		MCPAuthToken:           os.Getenv("MCP_AUTH_TOKEN"),
 		RunnerRPCToken:         os.Getenv("CHETTER_RUNNER_RPC_TOKEN"),
 		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
+		DBDialect:              os.Getenv("CHETTER_DB_DIALECT"),
 		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
 		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:        env("ARCANE_SERVER_URL", ""),
