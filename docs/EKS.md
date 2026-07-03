@@ -4,7 +4,7 @@ This guide covers installing Chetter into a stock AWS EKS cluster (or similar ma
 Kubernetes environment) with gVisor sandboxing. It assumes you have an EKS cluster
 and `kubectl` configured.
 
-For local validation on k3s, see `docs/testing/k3s-chetter.md`.
+For local validation on k3s, see `docs/K3S.md`.
 
 ## Architecture
 

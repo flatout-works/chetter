@@ -304,7 +304,7 @@ make migrate-status
 
 The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. No special protocols, no broker, no runner pre-registration. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment. Scaling is `kubectl scale deployment chetter-runner --replicas=N`.
 
-For production Kubernetes deployment (EKS or similar), see [docs/EKS.md](EKS.md) for complete manifests, node group setup, RBAC, ingress, and gVisor node configuration. For local k3s validation, see [docs/testing/k3s-chetter.md](testing/k3s-chetter.md). For k3d, see [docs/testing/k3d-gvisor.md](testing/k3d-gvisor.md).
+For production Kubernetes deployment (EKS or similar), see [docs/EKS.md](EKS.md) for complete manifests, node group setup, RBAC, ingress, and gVisor node configuration. For local k3s validation, see [docs/K3S.md](K3S.md).
 
 See [Sandbox Isolation](#sandbox-isolation) below for the gVisor DaemonSet and RuntimeClass registration. On GKE, use [GKE Sandbox](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) instead.
 

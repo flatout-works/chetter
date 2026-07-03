@@ -37,7 +37,7 @@ The docs need consolidation before or alongside this work. Several files describ
 | `CONFIGURATION.md` | Configuration-as-code + model catalog | **New**: merged from `CONFIG_IN_GIT.md` + `MODEL_CATALOG.md` (both deleted). |
 | `HARNESSES.md` | Runner harness reference | Kept as canonical harness architecture docs. |
 | `PAUSED_SESSIONS.md` | Resumable session reference | Kept. |
-| `K3S.md` | k3s + gVisor setup guide | Fixed stale env var (`RUNNER_EXECUTION_BACKEND` → `EXECUTION_BACKEND`). |
+| `K3S.md` | Canonical local k3s guide | Merged k3s setup and full-stack validation into one document. |
 | `EKS.md` | EKS production guide | Kept. |
 | `PLAN.md` | This roadmap | Updated. |
 
@@ -58,7 +58,6 @@ docs/
   EKS.md                    # EKS production guide
   presentation/
   testing/
-    k3s-chetter.md
     k3d-gvisor.md
   research/
     OPENHANDS.md
@@ -229,12 +228,10 @@ The goal is to separate Docker mode (current behavior, good for Docker Compose) 
 Kubernetes mode (runner creates agent Pods via the Kubernetes API, with
 `runtimeClassName: gvisor`, no Docker socket).
 
-See `docs/testing/k3s-chetter.md` for local k3s + gVisor validation, and `docs/EKS.md`
-for production EKS installation.
+See `docs/K3S.md` for local k3s + gVisor validation, and `docs/EKS.md` for production EKS installation.
 
 Related docs:
-- `docs/K3S.md` — k3s + gVisor setup guide
-- `docs/testing/k3s-chetter.md` — full Chetter stack on k3s
+- `docs/K3S.md` — canonical local k3s guide
 - `docs/EKS.md` — production EKS installation guide
 
 #### Architecture Target
@@ -313,7 +310,7 @@ Production-ready manifests for Kubernetes backend.
 Prove Kubernetes executor works with `runtimeClassName: gvisor`.
 
 - Follow `docs/K3S.md` for k3s + gVisor setup.
-- Deploy full Chetter stack on k3s per `docs/testing/k3s-chetter.md`.
+- Deploy full Chetter stack on k3s per `docs/K3S.md`.
 - Submit trivial task, verify:
   - Runner creates `chetter-task-*` Pod with `runtimeClassName: gvisor`.
   - Agent harness starts and responds.
