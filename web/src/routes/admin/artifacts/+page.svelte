@@ -23,12 +23,17 @@
     return Number(initialUrl.searchParams.get(name)) || fallback;
   }
 
+  function initialArtifactType(): string {
+    const type = initialParam("type");
+    return type === "pull_request" ? "pr" : type;
+  }
+
   type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let taskId = $state(initialParam("task"));
-  let artifactType = $state(initialParam("type"));
+  let artifactType = $state(initialArtifactType());
   let repo = $state(initialParam("repo"));
   let pageNum = $state(initialNumberParam("page", 0));
   let pageSize = $state(initialNumberParam("size", 25));
@@ -46,7 +51,7 @@
     s("page", String(pageNum), "0");
     s("size", String(pageSize), "25");
     s("q", search.trim());
-    if (url.href !== u.href) goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+    if (url.href !== u.href) goto(`${resolve("/admin/artifacts")}${url.search}${url.hash}` as Parameters<typeof goto>[0], { replaceState: true, noScroll: true, keepFocus: true });
   }
 
   $effect(() => { taskId; artifactType; repo; pageNum; pageSize; search; syncURL(); });
@@ -76,6 +81,11 @@
   function sortIcon(col: SortColumn): string {
     if (sortColumn !== col) return "↕";
     return sortDirection === "asc" ? "↑" : "↓";
+  }
+
+  function reloadFromFirstPage() {
+    pageNum = 0;
+    load();
   }
 
   async function load() {
@@ -113,12 +123,12 @@
       onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }}
     />
     <div class="flex flex-wrap items-center gap-2">
-      <Input bind:value={taskId} placeholder="Task ID" class="!w-40" />
-      <Input bind:value={repo} placeholder="Repository" class="!w-44" />
-      <Select bind:value={artifactType} class="!w-auto min-w-44">
+      <Input bind:value={taskId} placeholder="Task ID" class="!w-40" onkeydown={(e) => { if (e.key === "Enter") reloadFromFirstPage(); }} />
+      <Input bind:value={repo} placeholder="Repository" class="!w-44" onkeydown={(e) => { if (e.key === "Enter") reloadFromFirstPage(); }} />
+      <Select bind:value={artifactType} onchange={reloadFromFirstPage} class="!w-auto min-w-44">
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
-        <option value="pull_request">Pull Request</option>
+        <option value="pr">Pull Request</option>
         <option value="issue_comment">Issue Comment</option>
         <option value="pr_review">PR Review</option>
       </Select>

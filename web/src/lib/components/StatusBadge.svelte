@@ -39,6 +39,7 @@
         return { color: "cyan", dot: "bg-cyan-500" };
       case "issue":
         return { color: "pink", dot: "bg-pink-500" };
+      case "pr":
       case "pull_request":
         return { color: "purple", dot: "bg-purple-500" };
       case "issue_comment":
@@ -58,7 +59,7 @@
     }
   });
 
-  const displayLabel = $derived((label === "paused_waiting_review" ? "paused" : label).replaceAll("_", " "));
+  const displayLabel = $derived((label === "paused_waiting_review" ? "paused" : label === "pr" ? "pull request" : label).replaceAll("_", " "));
 </script>
 
 <Badge color={meta.color} rounded class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10" title={status}>

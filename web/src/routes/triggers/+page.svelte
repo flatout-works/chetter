@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
+  import { page as pageStore } from "$app/stores";
   import { createClient } from "@connectrpc/connect";
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
   import type { Trigger } from "$gen/proto/api/v1/api_pb";
@@ -12,13 +14,26 @@
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Badge, Button, Card, Input, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea, Toggle } from "flowbite-svelte";
 
+  const initialUrl = new URL($pageStore.url);
+  const url = $derived($pageStore.url);
+
+  function initialNumberParam(name: string, fallback: number): number {
+    return Number(initialUrl.searchParams.get(name)) || fallback;
+  }
+
+  function initialBoolParam(name: string, fallback = true): boolean {
+    const value = initialUrl.searchParams.get(name);
+    if (value === null) return fallback;
+    return value === "1";
+  }
+
   let triggers = $state<Trigger[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
 
-  let showCron = $state(true);
-  let showIssue = $state(true);
-  let showPrReview = $state(true);
+  let showCron = $state(initialBoolParam("cron"));
+  let showIssue = $state(initialBoolParam("issue"));
+  let showPrReview = $state(initialBoolParam("pr_review"));
 
   let visibleTriggers = $derived.by(() => {
     if (showCron && showIssue && showPrReview) return triggers;
@@ -32,10 +47,27 @@
     });
   });
 
-  let page = $state(0);
-  let pageSize = $state(25);
+  let page = $state(initialNumberParam("page", 0));
+  let pageSize = $state(initialNumberParam("size", 25));
   let totalPages = $derived(Math.max(1, Math.ceil(visibleTriggers.length / pageSize)));
   let pagedTriggers = $derived(visibleTriggers.slice(page * pageSize, (page + 1) * pageSize));
+
+  function syncURL() {
+    const next = new URL(url);
+    const s = (key: string, value: string, fallback = "") => value && value !== fallback ? next.searchParams.set(key, value) : next.searchParams.delete(key);
+    s("cron", showCron ? "" : "0");
+    s("issue", showIssue ? "" : "0");
+    s("pr_review", showPrReview ? "" : "0");
+    s("page", String(page), "0");
+    s("size", String(pageSize), "25");
+    if (next.href !== url.href) goto(`${resolve("/triggers")}${next.search}${next.hash}` as Parameters<typeof goto>[0], { replaceState: true, noScroll: true, keepFocus: true });
+  }
+
+  $effect(() => { showCron; showIssue; showPrReview; page; pageSize; syncURL(); });
+
+  function resetFilterPage() {
+    page = 0;
+  }
 
   let showCreateForm = $state(false);
   let creating = $state(false);
@@ -194,9 +226,9 @@
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Triggers</h1>
     <div class="flex flex-wrap items-center gap-2">
       <div class="flex items-center gap-3 mr-2 border-r border-gray-300 dark:border-gray-600 pr-3">
-        <Toggle bind:checked={showCron} color="gray" size="small">Cron</Toggle>
-        <Toggle bind:checked={showIssue} color="gray" size="small">Issue</Toggle>
-        <Toggle bind:checked={showPrReview} color="gray" size="small">PR Review</Toggle>
+        <Toggle bind:checked={showCron} onchange={resetFilterPage} color="gray" size="small">Cron</Toggle>
+        <Toggle bind:checked={showIssue} onchange={resetFilterPage} color="gray" size="small">Issue</Toggle>
+        <Toggle bind:checked={showPrReview} onchange={resetFilterPage} color="gray" size="small">PR Review</Toggle>
       </div>
       <Select bind:value={pageSize} onchange={() => { page = 0; }} class="!w-auto">
         <option value={10}>10 / page</option>
