@@ -551,6 +551,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
+	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
+		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
+	}
 	// Put the dev container on the same network as the runner so it can
 	// reach the runner's MCP server directly (non-gVisor) or via the
 	// HTTP proxy (gVisor).
@@ -676,6 +679,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
 		}
 		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
 			workspacePath = session.WorkspaceDir
@@ -774,6 +778,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
+		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
 	}
 	// Put the dev container on the same network as the runner so it can
 	// reach the runner's MCP server directly (non-gVisor) or via the
@@ -876,6 +883,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
 		}
 		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
 			workspacePath = session.WorkspaceDir
@@ -946,6 +954,28 @@ func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness)
 
 func shouldPreserveWorkspaceOnPromptError(errorCategory string) bool {
 	return errorCategory == "timeout" || errorCategory == "transport_error"
+}
+
+func dumpContainerLogs(taskID, containerName, workspaceDir string) {
+	logPath := filepath.Join(workspaceDir, "docker-container.log")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "logs", "--tail", "500", "--timestamps", containerName).CombinedOutput()
+	if err != nil {
+		slog.Warn("failed to dump container logs", "taskID", taskID, "container", containerName, "err", err)
+		if len(out) > 0 {
+			os.WriteFile(logPath, out, 0644)
+		}
+		return
+	}
+	if len(out) == 0 {
+		return
+	}
+	if err := os.WriteFile(logPath, out, 0644); err != nil {
+		slog.Warn("failed to write container logs", "taskID", taskID, "path", logPath, "err", err)
+		return
+	}
+	slog.Info("dumped container logs", "taskID", taskID, "path", logPath, "bytes", len(out))
 }
 
 func (r *Runner) publishDockerPromptFailureDiagnostics(taskID, containerName, baseURL string, promptErr error) {

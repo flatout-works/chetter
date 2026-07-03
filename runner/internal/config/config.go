@@ -60,9 +60,10 @@ type GitConfig struct {
 }
 
 type ExecutionConfig struct {
-	Runtime   string `yaml:"runtime"`
-	Harness   string `yaml:"harness"`
-	UseGVisor bool   `yaml:"use_gvisor"`
+	Runtime        string `yaml:"runtime"`
+	Harness        string `yaml:"harness"`
+	UseGVisor      bool   `yaml:"use_gvisor"`
+	ContainerMemory string `yaml:"container_memory"`
 }
 
 type DeployConfig struct {
