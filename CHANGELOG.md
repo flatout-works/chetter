@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-03
+
+### Added
+
+- CodeWhale harness option (`execution.harness: codewhale`) with HTTP/SSE runtime API support (`app-server --http`, `/v1/threads`, `/v1/threads/{id}/turns`, SSE events until `turn.completed`, turn-interrupt cancellation). Bearer-token auth via `CODEWHALE_RUNTIME_TOKEN`, observed-turn markdown export fallback, and harness tests. `codewhale` npm package installed in base and minimal runner images.
+- CodeWhale harness defaults in the model catalog (`deepseek/deepseek-chat`); default provider/model pair added to `Default()` catalog, CONFIGURATION.md, and example model-catalog.yaml.
+- Optional `container_memory` execution config field (`execution.container_memory`) for Docker memory limits (`--memory` / `--memory-swap`) on both new task and resume containers.
+
+### Changed
+
+- Website public pages refreshed: new screenshot section with three annotated screenshots, Discord link in hero and nav, terminal-style MCP tool call replaced with dashboard screenshot, metrics bar removed. Web UI dashboard simplified (community hero section and social link cards removed, streamlined stat card layout).
+- Website marketing copy simplified throughout: removed hardcoded tool counts (48 core + 5 Arcane), removed Arcane/Trivy references, replaced "One server. Docker Compose or Kubernetes. No message broker." with deploy-agnostic phrasing. Technical architecture page similarly updated.
+- Runner dumps container logs (last 500 lines with timestamps) to `docker-container.log` in the workspace directory on transport error, preserving diagnostic data before the container is stopped or removed.
+- Codex harness stub removed from harness selection (`selectHarnessByName`) and catalog resolution (`catalogHarnessName`); Codex remains listed only as a future candidate in documentation.
+- All runner image variants now include `codewhale` alongside `opencode` and `claude-code`.
+
+### Fixed
+
+- Claude Code serve-proxy (`claude-serve-proxy`) now reads `CLAUDE_SERVE_PROXY_TOKEN` env var for auth (was generating its own random password); matches the token configured by the runner, fixing proxy authentication.
+- Claude Code `handleSendPrompt` now blocks until the Claude process exits, accumulates text deltas, and surfaces non-zero exit errors. Returns `{"status": "completed", "summary": ...}` instead of immediately responding `{"status": "started"}`.
+- Minimal runner image now includes the `claude-serve-proxy` binary (was missing), required for Claude Code harness operation.
+
+### Documentation
+
+- `docs/HARNESSES.md` updated: new CodeWhale section with rationale, pros/cons, and comparison table column. MiMo Code and Codex added to future candidates table.
+- `docs/FEATURES.md`, `docs/MANUAL.md`, `docs/research/UNIVERSAL_HARNESS.md` updated to list codewhale alongside opencode/claude-code/pi.
+
 ## 2026-07-02
 
 ### Web UI
