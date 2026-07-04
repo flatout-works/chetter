@@ -86,6 +86,13 @@ jobs:
             "GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
              bash ~/chetter-build.sh"
 
+      - name: Make agent-base package public on GHCR
+        run: |
+          for pkg in chetter-agent-base; do
+            gh api -X PATCH "/orgs/flatout-works/packages/container/$pkg/visibility" \
+              -f visibility=public || echo "Package $pkg not found yet (first push may still be in progress)"
+          done
+
       - name: Drain runners before redeploy
         run: |
           mkdir -p ~/.ssh
