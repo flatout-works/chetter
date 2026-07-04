@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chetter Architecture — Task Lifecycle</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --panel: #151c2c;
+    --ink: #e2e8f0;
+    --muted: #7c8aa5;
+    --accent: #38bdf8;
+    --server: #6366f1;
+    --runner: #14b8a6;
+    --container: #f59e0b;
+    --source: #a855f7;
+    --reaper: #ef4444;
+    --good: #22c55e;
+    --warn: #eab308;
+    --grid: #1e293b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(1200px 800px at 30% 20%, #0f1729 0%, var(--bg) 70%);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--grid);
+    background: linear-gradient(180deg, rgba(99,102,241,0.08), transparent);
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #a5b4fc, #67e8f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+  }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .controls { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid #2a3650;
+    border-radius: 9px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover { border-color: var(--accent); background: #1a2438; }
+  button.primary { background: linear-gradient(135deg, #4f46e5, #6366f1); border-color: #6366f1; }
+  button.primary:hover { filter: brightness(1.12); }
+  button:disabled { opacity: .4; cursor: default; }
+  .speed { display:flex; align-items:center; gap:6px; color: var(--muted); font-size:12px; }
+  input[type=range] { width: 110px; accent-color: var(--accent); }
+  .mode-toggle { display:flex; gap:0; border:1px solid #2a3650; border-radius:9px; overflow:hidden; }
+  .mode-toggle button { border:none; border-radius:0; background:transparent; }
+  .mode-toggle button.active { background:#1e293b; color:var(--accent); }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  .stage { position: relative; overflow: hidden; }
+  .stage svg { width: 100%; height: 100%; display: block; }
+  .step-panel {
+    border-left: 1px solid var(--grid);
+    background: linear-gradient(180deg, rgba(20,184,166,0.04), transparent);
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .step-panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .step-counter { font-size: 12px; color: var(--accent); font-weight:700; font-variant-numeric: tabular-nums; }
+  .step-title { font-size: 18px; font-weight: 700; line-height: 1.25; }
+  .step-desc { font-size: 13.5px; line-height: 1.6; color: #cbd5e1; }
+  .step-desc code {
+    background: #0b1222; border: 1px solid #1e293b; border-radius: 5px;
+    padding: 1px 5px; font-size: 12px; color: #93c5fd; font-family: 'SF Mono', ui-monospace, monospace;
+  }
+  .seq { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .seq-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; padding: 6px 9px; border-radius: 7px;
+    color: var(--muted); border: 1px solid transparent; cursor: pointer;
+    transition: all .15s;
+  }
+  .seq-item:hover { background: #11182a; color: var(--ink); }
+  .seq-item.active { background: rgba(56,189,248,0.12); border-color: rgba(56,189,248,.4); color: var(--ink); }
+  .seq-item.done { color: #64748b; }
+  .seq-item .dot { width: 9px; height: 9px; border-radius: 50%; background: #334155; flex: none; }
+  .seq-item.active .dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .seq-item.done .dot { background: #334155; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; padding: 10px 22px;
+    border-top: 1px solid var(--grid); background: rgba(10,14,26,.6);
+    font-size: 11.5px; color: var(--muted);
+  }
+  .legend .item { display:flex; align-items:center; gap:6px; }
+  .legend .sw { width: 22px; height: 10px; border-radius: 3px; }
+
+  /* SVG styles */
+  .node-bg { fill: var(--panel); stroke: #2a3650; stroke-width: 1.5; }
+  .node-label { fill: var(--ink); font: 700 13px 'Inter', sans-serif; }
+  .node-sub { fill: var(--muted); font: 500 10px 'Inter', sans-serif; letter-spacing: .03em; }
+  .edge { stroke: #243049; stroke-width: 1.6; fill: none; }
+  .edge-active { stroke: #3a4a6b; }
+  .pill { fill: #0b1222; stroke: #2a3650; }
+  .pill-text { fill: #94a3b8; font: 600 9px 'Inter', sans-serif; }
+  .anim-node { transition: filter .2s, opacity .25s; }
+  .dim { opacity: .35; }
+  .glow { filter: drop-shadow(0 0 8px currentColor); }
+  .msg { font: 700 10px 'Inter', sans-serif; }
+  .stat { fill: #64748b; font: 600 10px 'SF Mono', ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chetter — Server ⇄ Runner Task Lifecycle</h1>
+  <span class="sub">ConnectRPC · lease-based claiming · gVisor-sandboxed agents</span>
+  <div class="controls">
+    <div class="speed">
+      Speed
+      <input type="range" id="speed" min="0.4" max="2.4" step="0.1" value="1">
+      <span id="speedv">1.0×</span>
+    </div>
+    <div class="mode-toggle">
+      <button id="modeStep" class="active">Sequence</button>
+      <button id="modeLive">Live loop</button>
+    </div>
+    <button id="prev">◀ Prev</button>
+    <button id="play" class="primary">▶ Play</button>
+    <button id="next">Next ▶</button>
+    <button id="reset">↺ Reset</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="gServer" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#312e81"/><stop offset="1" stop-color="#1e1b4b"/>
+        </linearGradient>
+        <linearGradient id="gRunner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#0f766e"/><stop offset="1" stop-color="#0b3b38"/>
+        </linearGradient>
+        <linearGradient id="gContainer" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b45309"/><stop offset="1" stop-color="#7c2d12"/>
+        </linearGradient>
+        <linearGradient id="gSource" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#7e22ce"/><stop offset="1" stop-color="#4c1d95"/>
+        </linearGradient>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#3a4a6b"/>
+        </marker>
+        <filter id="blur"><feGaussianBlur stdDeviation="3"/></filter>
+      </defs>
+
+      <!-- grid backdrop -->
+      <g opacity="0.25">
+        <path d="M0 0" class="edge"/>
+      </g>
+
+      <!-- ===== SOURCES (left) ===== -->
+      <g id="sources">
+        <g class="anim-node" id="src-webhook" data-name="GitHub Webhook">
+          <rect x="24" y="120" width="150" height="64" rx="12" fill="url(#gSource)" stroke="#7e22ce" stroke-width="1.5"/>
+          <text x="99" y="150" text-anchor="middle" class="node-label">GitHub Webhook</text>
+          <text x="99" y="167" text-anchor="middle" class="node-sub">PR review · issue</text>
+        </g>
+        <g class="anim-node" id="src-cron" data-name="Cron Trigger">
+          <rect x="24" y="318" width="150" height="64" rx="12" fill="url(#gSource)" stroke="#7e22ce" stroke-width="1.5"/>
+          <text x="99" y="348" text-anchor="middle" class="node-label">Cron Trigger</text>
+          <text x="99" y="365" text-anchor="middle" class="node-sub">scheduled tasks</text>
+        </g>
+        <g class="anim-node" id="src-mcp" data-name="MCP Client">
+          <rect x="24" y="516" width="150" height="64" rx="12" fill="url(#gSource)" stroke="#7e22ce" stroke-width="1.5"/>
+          <text x="99" y="546" text-anchor="middle" class="node-label">MCP Client</text>
+          <text x="99" y="563" text-anchor="middle" class="node-sub">submit_task · CLI</text>
+        </g>
+      </g>
+
+      <!-- ===== SERVER (center) ===== -->
+      <g id="server">
+        <rect x="248" y="90" width="300" height="560" rx="18" fill="url(#gServer)" stroke="#4f46e5" stroke-width="2" opacity="0.96"/>
+        <text x="398" y="118" text-anchor="middle" fill="#c7d2fe" font-size="15" font-weight="800" letter-spacing="0.04em">CHETTER SERVER</text>
+        <text x="398" y="134" text-anchor="middle" class="node-sub">control plane · ConnectRPC</text>
+
+        <!-- MCP API -->
+        <g class="anim-node" id="srv-api">
+          <rect x="276" y="150" width="244" height="58" rx="10" class="node-bg" stroke="#4f46e5"/>
+          <text x="298" y="174" class="node-label">MCP / Web API</text>
+          <text x="298" y="193" class="node-sub">tools · triggers · auth · SSE stream</text>
+        </g>
+        <!-- Task Queue / DB -->
+        <g class="anim-node" id="srv-db">
+          <rect x="276" y="228" width="244" height="84" rx="10" class="node-bg" stroke="#4f46e5"/>
+          <text x="298" y="252" class="node-label">Task Queue</text>
+          <text x="298" y="270" class="node-sub">chetter_tasks · TiDB / MySQL</text>
+          <text x="298" y="298" class="stat" id="db-stat">status: pending · claim lease 60s</text>
+          <!-- task chips -->
+          <g id="task-chips"></g>
+        </g>
+        <!-- Runner Registry -->
+        <g class="anim-node" id="srv-registry">
+          <rect x="276" y="330" width="244" height="70" rx="10" class="node-bg" stroke="#4f46e5"/>
+          <text x="298" y="354" class="node-label">Runner Registry</text>
+          <text x="298" y="372" class="node-sub">heartbeat · lease renew · commands</text>
+          <g id="runner-reg"></g>
+        </g>
+        <!-- Reaper -->
+        <g class="anim-node" id="srv-reaper">
+          <rect x="276" y="418" width="244" height="70" rx="10" class="node-bg" stroke="#ef4444" stroke-opacity="0.5"/>
+          <text x="298" y="442" class="node-label" fill="#fca5a5">Reaper</text>
+          <text x="298" y="460" class="node-sub">every 30s · grace 120s</text>
+          <text x="298" y="478" class="node-sub">reclaim expired leases · stale sessions</text>
+        </g>
+        <!-- Event Bus -->
+        <g class="anim-node" id="srv-bus">
+          <rect x="276" y="506" width="244" height="58" rx="10" class="node-bg" stroke="#4f46e5"/>
+          <text x="298" y="530" class="node-label">Event Bus</text>
+          <text x="298" y="548" class="node-sub">task events → SSE · callbacks · artifacts</text>
+        </g>
+        <rect x="276" y="582" width="244" height="52" rx="10" class="node-bg" stroke="#4f46e5" stroke-opacity="0.4"/>
+        <text x="398" y="606" text-anchor="middle" class="node-sub">ClaimTask · ReportTaskEvents · Heartbeat</text>
+        <text x="398" y="622" text-anchor="middle" class="node-sub" fill="#94a3b8">SELECT … FOR UPDATE SKIP LOCKED</text>
+      </g>
+
+      <!-- ===== RUNNERS (right-center) ===== -->
+      <g id="runners"></g>
+
+      <!-- ===== CONTAINERS (far right) ===== -->
+      <g id="containers"></g>
+
+      <!-- ===== EDGES (defined in JS for flexibility) ===== -->
+      <g id="edges"></g>
+
+      <!-- ===== MESSAGES LAYER ===== -->
+      <g id="msgs"></g>
+
+      <!-- ===== LABELS LAYER ===== -->
+      <g id="labels"></g>
+    </svg>
+  </div>
+
+  <aside class="step-panel">
+    <div>
+      <div class="step-counter" id="stepCounter">Step 1 / 11</div>
+      <h2 style="margin-top:4px">Sequence</h2>
+    </div>
+    <div class="step-title" id="stepTitle">—</div>
+    <div class="step-desc" id="stepDesc">—</div>
+    <div class="seq" id="seq"></div>
+  </aside>
+</main>
+
+<div class="legend">
+  <div class="item"><div class="sw" style="background:var(--source)"></div>Task source</div>
+  <div class="item"><div class="sw" style="background:var(--server)"></div>Server / control plane</div>
+  <div class="item"><div class="sw" style="background:var(--runner)"></div>Runner harness</div>
+  <div class="item"><div class="sw" style="background:var(--container)"></div>Agent container (gVisor)</div>
+  <div class="item"><div class="sw" style="background:var(--accent)"></div>ClaimTask</div>
+  <div class="item"><div class="sw" style="background:var(--good)"></div>ReportTaskEvents</div>
+  <div class="item"><div class="sw" style="background:var(--warn)"></div>Heartbeat</div>
+  <div class="item"><div class="sw" style="background:var(--reaper)"></div>Reaper</div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// Layout coordinates (SVG viewBox 1280×720)
+// ─────────────────────────────────────────────────────────────
+const SERVER = { x: 398, y: 370 };
+const SERVER_RIGHT = { x: 520, y: 370 };
+const DB_CENTER = { x: 398, y: 270 };
+
+const RUNNERS = [
+  { id: 'r0', x: 720, y: 150, name: 'Runner A' },
+  { id: 'r1', x: 720, y: 360, name: 'Runner B' },
+  { id: 'r2', x: 720, y: 570, name: 'Runner C' },
+];
+
+const CONTAINER_X = 980;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// ─────────────────────────────────────────────────────────────
+// Build runner + registry nodes
+// ─────────────────────────────────────────────────────────────
+const runnersG = document.getElementById('runners');
+const regG = document.getElementById('runner-reg');
+const containersG = document.getElementById('containers');
+
+RUNNERS.forEach((r, i) => {
+  // runner node
+  const g = el('g', { class: 'anim-node', id: 'rn-' + r.id, 'data-name': r.name });
+  g.appendChild(el('rect', { x: r.x - 70, y: r.y - 44, width: 140, height: 88, rx: 12, fill: 'url(#gRunner)', stroke: '#14b8a6', 'stroke-width': 1.5 }));
+  g.appendChild(txt(r.x, r.y - 24, r.name, { class: 'node-label', ta: 'middle' }));
+  g.appendChild(txt(r.x, r.y - 8, 'harness: opencode', { class: 'node-sub', ta: 'middle' }));
+  g.appendChild(txt(r.x, r.y + 10, 'poll → ClaimTask', { class: 'node-sub', ta: 'middle', fill: '#5eead4' }));
+  g.appendChild(txt(r.x, r.y + 28, 'slots: 0/3', { class: 'stat', ta: 'middle', id: 'slots-' + r.id }));
+  runnersG.appendChild(g);
+
+  // registry mini-chip in server
+  const chipX = 460, chipY = 372 + i * 0; // overlay handled differently
+});
+
+// runner registry indicator dots
+RUNNERS.forEach((r, i) => {
+  const dot = el('circle', { cx: 296 + i * 26, cy: 388, r: 7, fill: '#14b8a6', opacity: 0.5, id: 'reg-' + r.id });
+  regG.appendChild(dot);
+  regG.appendChild(txt(296 + i * 26, 408, r.id.toUpperCase(), { class: 'node-sub', ta: 'middle', 'font-size': 8 }));
+});
+
+// ─────────────────────────────────────────────────────────────
+// Edges (paths) between nodes — used for message animation
+// ─────────────────────────────────────────────────────────────
+const edgesG = document.getElementById('edges');
+const EDGES = {
+  'src-api':     line(99, 152, 276, 178),       // webhook → api
+  'cron-api':    line(99, 350, 276, 178),
+  'mcp-api':     line(99, 548, 276, 178),
+  'api-db':      line(398, 208, 398, 228),
+  'db-api':      line(398, 228, 398, 208),
+  'r0-claim':    line(650, 150, 520, 270),      // runner → server claim
+  'r1-claim':    line(650, 360, 520, 270),
+  'r2-claim':    line(650, 570, 520, 270),
+  'r0-report':   line(520, 370, 650, 150),      // server → runner report (task handed back)
+  'r1-report':   line(520, 370, 650, 360),
+  'r2-report':   line(520, 370, 650, 570),
+  'r0-event':    line(650, 150, 520, 535),       // runner → eventbus
+  'r1-event':    line(650, 360, 520, 535),
+  'r2-event':    line(650, 570, 520, 535),
+  'r0-hb':       line(650, 170, 520, 365),
+  'r1-hb':       line(650, 360, 520, 365),
+  'r2-hb':       line(650, 550, 520, 365),
+  'reaper-db':   line(398, 418, 398, 312),
+  'bus-ui':      line(520, 535, 99, 548),         // event bus → client (SSE)
+};
+Object.values(EDGES).forEach(d => {
+  const p = el('path', { d, class: 'edge', 'marker-end': 'url(#arrow)' });
+  edgesG.appendChild(p);
+});
+
+function line(x1, y1, x2, y2) {
+  return `M${x1} ${y1} C ${(x1+x2)/2} ${y1}, ${(x1+x2)/2} ${y2}, ${x2} ${y2}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+function el(tag, attrs) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+function txt(x, y, t, opts = {}) {
+  const n = el('text', { x, y, ...opts });
+  n.textContent = t;
+  return n;
+}
+function pathPoint(d, t) {
+  // sample a point along path d at t∈[0,1] using a temp path element
+  const tmp = el('path', { d });
+  edgesG.appendChild(tmp);
+  const len = tmp.getTotalLength();
+  const p = tmp.getPointAtLength(len * t);
+  edgesG.removeChild(tmp);
+  return p;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Message animation
+// ─────────────────────────────────────────────────────────────
+const msgsG = document.getElementById('msgs');
+let activeMsgs = [];
+
+function sendMessage(edgeKey, { color = 'var(--accent)', label = '', dur = 900, shape = 'pill' } = {}) {
+  return new Promise(resolve => {
+    const d = EDGES[edgeKey];
+    if (!d) return resolve();
+    const tmp = el('path', { d });
+    edgesG.appendChild(tmp);
+    const len = tmp.getTotalLength();
+    edgesG.removeChild(tmp);
+
+    const g = el('g', {});
+    let body;
+    if (shape === 'dot') {
+      body = el('circle', { r: 6, fill: color, class: 'glow', style: `color:${color}` });
+      g.appendChild(body);
+    } else {
+      const w = Math.max(46, label.length * 6.2 + 16);
+      body = el('rect', { x: -w / 2, y: -10, width: w, height: 20, rx: 10, fill: '#0b1222', stroke: color, 'stroke-width': 1.6 });
+      g.appendChild(body);
+      g.appendChild(txt(0, 4, label, { 'text-anchor': 'middle', class: 'msg', fill: color }));
+    }
+    msgsG.appendChild(g);
+
+    const start = performance.now();
+    const speed = parseFloat(document.getElementById('speed').value);
+    const duration = dur / speed;
+
+    function frame(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const p = pathPoint(d, t);
+      // tangent for rotation
+      const p0 = pathPoint(d, Math.max(0, t - 0.02));
+      const ang = Math.atan2(p.y - p0.y, p.x - p0.x) * 180 / Math.PI;
+      g.setAttribute('transform', `translate(${p.x} ${p.y}) rotate(${ang})`);
+      g.style.opacity = t < 0.08 ? t / 0.08 : (t > 0.92 ? (1 - t) / 0.08 : 1);
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        g.remove();
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Node highlighting + task chips
+// ─────────────────────────────────────────────────────────────
+function highlight(ids = [], dimOthers = true) {
+  document.querySelectorAll('#svg .anim-node').forEach(n => n.classList.remove('dim', 'glow'));
+  if (dimOthers) {
+    document.querySelectorAll('#svg .anim-node').forEach(n => {
+      if (!ids.includes(n.id)) n.classList.add('dim');
+    });
+  }
+  ids.forEach(id => {
+    const n = document.getElementById(id);
+    if (n) n.classList.add('glow');
+  });
+}
+function clearHL() {
+  document.querySelectorAll('#svg .anim-node').forEach(n => n.classList.remove('dim', 'glow'));
+}
+
+const taskChipsG = document.getElementById('task-chips');
+let taskState = []; // {id, status, runner}
+
+function renderTasks() {
+  taskChipsG.innerHTML = '';
+  taskState.forEach((t, i) => {
+    const x = 286 + (i % 5) * 46;
+    const y = 286 + Math.floor(i / 5) * 16;
+    const c = { pending: '#64748b', running: '#38bdf8', done: '#22c55e', error: '#ef4444', cancelled: '#eab308' }[t.status];
+    const g = el('g', { transform: `translate(${x} ${y})` });
+    g.appendChild(el('rect', { width: 40, height: 11, rx: 4, fill: '#0b1222', stroke: c, 'stroke-width': 1.3 }));
+    g.appendChild(txt(20, 8, t.id, { 'text-anchor': 'middle', 'font-size': 7.5, fill: c, 'font-family': 'monospace', 'font-weight': 700 }));
+    if (t.runner) g.appendChild(txt(44, 8, t.runner, { 'font-size': 7, fill: '#475569', 'font-family': 'monospace' }));
+    taskChipsG.appendChild(g);
+  });
+  document.getElementById('db-stat').textContent =
+    `pending ${taskState.filter(t=>t.status==='pending').length} · running ${taskState.filter(t=>t.status==='running').length} · done ${taskState.filter(t=>t.status==='done').length}`;
+}
+
+function setSlots(runnerId, used, max) {
+  const n = document.getElementById('slots-' + runnerId);
+  if (n) n.textContent = `slots: ${used}/${max}`;
+}
+
+function regPulse(runnerId, on) {
+  const d = document.getElementById('reg-' + runnerId);
+  if (d) { d.setAttribute('opacity', on ? 1 : 0.5); d.setAttribute('r', on ? 9 : 7); }
+}
+
+// containers
+function spawnContainer(runner, taskId) {
+  const cx = CONTAINER_X + (Math.random() * 30 - 15);
+  const cy = runner.y + (taskState.filter(t => t.runner === runner.id).length - 1) * 0;
+  const g = el('g', { id: 'ctr-' + taskId, class: 'anim-node', 'data-name': 'Agent container', transform: `translate(${cx} ${cy}) scale(0)` });
+  g.appendChild(el('rect', { x: -90, y: -52, width: 180, height: 104, rx: 12, fill: 'url(#gContainer)', stroke: '#f59e0b', 'stroke-width': 1.5 }));
+  g.appendChild(txt(0, -34, 'Agent Container', { class: 'node-label', ta: 'middle', fill: '#fef3c7' }));
+  g.appendChild(txt(0, -18, 'gVisor · runsc', { class: 'node-sub', ta: 'middle', fill: '#fcd34d' }));
+  g.appendChild(txt(0, 0, 'opencode serve', { class: 'node-sub', ta: 'middle', fill: '#fde68a' }));
+  g.appendChild(txt(0, 16, 'workspace + git clone', { class: 'node-sub', ta: 'middle' }));
+  g.appendChild(txt(0, 32, taskId, { class: 'stat', ta: 'middle', fill: '#fbbf24' }));
+  // container → runner link
+  const link = el('path', { d: line(cx - 90, cy, runner.x + 70, runner.y), class: 'edge', stroke: '#7c2d12', 'marker-end': 'url(#arrow)' });
+  edgesG.appendChild(link);
+  g._link = link;
+  containersG.appendChild(g);
+  // animate scale-in
+  animateScale(g, 0, 1, 350);
+  return g;
+}
+function removeContainer(taskId) {
+  const g = document.getElementById('ctr-' + taskId);
+  if (!g) return;
+  animateScale(g, 1, 0, 250, () => { g.remove(); if (g._link) g._link.remove(); });
+}
+function animateScale(g, from, to, dur, cb) {
+  const start = performance.now();
+  (function f(now) {
+    const t = Math.min(1, (now - start) / dur);
+    const e = t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+    const s = from + (to - from) * e;
+    const tr = g.getAttribute('transform').replace(/scale\([^)]*\)/, `scale(${s})`);
+    g.setAttribute('transform', tr);
+    if (t < 1) requestAnimationFrame(f); else if (cb) cb();
+  })(performance.now());
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sequence definition
+// ─────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    title: 'Task submitted to the server',
+    desc: 'A task arrives via a <code>GitHub webhook</code>, <code>cron trigger</code>, or an <code>MCP client</code>. The MCP/Web API inserts a row into the task queue with status <code>pending</code>.',
+    nodes: ['src-webhook', 'srv-api', 'srv-db'],
+    async run() {
+      highlight(this.nodes);
+      taskState = [{ id: 'T-7Q', status: 'pending', runner: null }, { id: 'T-8K', status: 'pending', runner: null }];
+      renderTasks();
+      await sendMessage('src-api', { color: '#a855f7', label: 'POST /webhook', dur: 700 });
+      await sendMessage('api-db', { color: '#a855f7', label: 'INSERT pending', dur: 500, shape: 'dot' });
+    }
+  },
+  {
+    title: 'Runner polls for a claimable task',
+    desc: 'Each runner loop calls <code>ClaimTask</code> over ConnectRPC. The server runs <code>SELECT … FOR UPDATE SKIP LOCKED</code> so multiple runners never grab the same row. No task yet → empty response, poll again.',
+    nodes: ['rn-r0', 'rn-r1', 'rn-r2', 'srv-db'],
+    async run() {
+      highlight(this.nodes);
+      await Promise.all([
+        sendMessage('r0-claim', { color: '#38bdf8', label: 'ClaimTask?', dur: 1000 }),
+        sendMessage('r1-claim', { color: '#38bdf8', label: 'ClaimTask?', dur: 1100 }),
+        sendMessage('r2-claim', { color: '#38bdf8', label: 'ClaimTask?', dur: 900 }),
+      ]);
+      await sleep(150);
+    }
+  },
+  {
+    title: 'Task claimed — lease granted (60 s)',
+    desc: 'A runner wins the claim. The server atomically sets <code>status=running</code>, stamps <code>runner_id</code>, and sets <code>lease_expires_at = now + 60s</code>. The task object is returned with prompt, git URL, image, model config.',
+    nodes: ['rn-r1', 'srv-db', 'srv-registry'],
+    async run() {
+      highlight(this.nodes);
+      await sendMessage('db-api', { color: '#22c55e', label: 'task T-7Q → R1', dur: 700 });
+      taskState[0].status = 'running'; taskState[0].runner = 'R1';
+      renderTasks();
+      setSlots('r1', 1, 3);
+      regPulse('r1', true);
+      await sleep(200);
+    }
+  },
+  {
+    title: 'Runner provisions the workspace',
+    desc: 'The runner creates an isolated workspace dir, <code>git clone</code>s the repo (with PAT or SSH key), writes any extra files, and starts a workspace-local <code>MCP server</code> exposing GitHub tools to the agent.',
+    nodes: ['rn-r1'],
+    async run() {
+      highlight(this.nodes);
+      await sleep(400);
+    }
+  },
+  {
+    title: 'Runner fires up the agent container',
+    desc: '<code>docker run</code> launches the configured <code>agent_image</code> with <code>--runtime runsc</code> (gVisor sandbox). The workspace is bind-mounted; secrets & API keys injected as env. A transparent HTTP proxy + DNS proxy enforce network egress allow/deny lists.',
+    nodes: ['rn-r1', 'ctr-T-7Q'],
+    async run() {
+      spawnContainer(RUNNERS[1], 'T-7Q');
+      highlight(['rn-r1', 'ctr-T-7Q']);
+      await sleep(650);
+    }
+  },
+  {
+    title: 'Harness serves, session created, prompt sent',
+    desc: 'The harness (opencode / claude-code / pi) starts its HTTP server inside the container. The runner waits for <code>/config</code> readiness, creates a session, and sends the task prompt. <code>WatchEvents</code> opens a live event stream.',
+    nodes: ['ctr-T-7Q', 'rn-r1'],
+    async run() {
+      highlight(this.nodes);
+      await sleep(500);
+    }
+  },
+  {
+    title: 'Agent works — events stream back to the server',
+    desc: 'As the agent runs tools and writes code, the runner calls <code>ReportTaskEvents</code> with progress, heartbeats, and token-usage. The server updates the task row, inserts event rows, and publishes to the <code>Event Bus</code> → live SSE to the UI + event callbacks.',
+    nodes: ['rn-r1', 'srv-db', 'srv-bus', 'src-mcp'],
+    async run() {
+      highlight(this.nodes);
+      await sendMessage('r1-event', { color: '#22c55e', label: 'task.progress', dur: 900 });
+      await sendMessage('r1-hb', { color: '#eab308', label: 'heartbeat', dur: 700 });
+      await sendMessage('bus-ui', { color: '#22c55e', label: 'SSE → UI', dur: 700 });
+    }
+  },
+  {
+    title: 'Heartbeat renews the lease',
+    desc: 'Every heartbeat the server renews <code>lease_expires_at</code> for running tasks and returns <code>commands</code> (e.g. <code>cancel</code>, <code>drain</code>). The registry marks the runner healthy; stale runners (no heartbeat &gt; 120s) are reaped.',
+    nodes: ['rn-r1', 'srv-registry'],
+    async run() {
+      highlight(this.nodes);
+      regPulse('r1', true);
+      await sendMessage('r1-hb', { color: '#eab308', label: 'Heartbeat', dur: 800 });
+      await sleep(150);
+      regPulse('r1', false);
+    }
+  },
+  {
+    title: 'Task completes — terminal status',
+    desc: 'The agent finishes. The runner sends a final <code>ReportTaskEvents</code> with <code>status=done</code>, a summary, session export, and token usage. The server marks the session run <code>completed</code>, and if <code>checkpoint_after_success</code> is set, pauses the session for later resume.',
+    nodes: ['rn-r1', 'srv-db', 'srv-bus'],
+    async run() {
+      highlight(this.nodes);
+      await sendMessage('r1-event', { color: '#22c55e', label: 'task.completed', dur: 900 });
+      taskState[0].status = 'done';
+      renderTasks();
+      setSlots('r1', 0, 3);
+      regPulse('r1', false);
+      await sleep(200);
+    }
+  },
+  {
+    title: 'Container torn down — workspace pruned',
+    desc: 'The runner <code>docker stop</code>s and <code>rm -f</code>s the container, reads the session export, and destroys the workspace (unless preserved for resume). Periodically it asks the server which orphaned workspaces are safe to delete.',
+    nodes: ['rn-r1', 'ctr-T-7Q'],
+    async run() {
+      highlight(this.nodes);
+      removeContainer('T-7Q');
+      await sleep(500);
+    }
+  },
+  {
+    title: 'Reaper reclaims zombie tasks (every 30 s)',
+    desc: 'In the background, the server reaper reclaims tasks whose <code>lease_expires_at</code> passed (runner crashed/silent): they go back to <code>pending</code> for another runner to pick up, up to <code>max_attempts=5</code>. It also prunes stale session runs and expired paused sessions.',
+    nodes: ['srv-reaper', 'srv-db'],
+    async run() {
+      highlight(this.nodes);
+      taskState[1].status = 'pending'; // pretend R2's lease expired
+      renderTasks();
+      await sendMessage('reaper-db', { color: '#ef4444', label: 'lease expired → pending', dur: 900 });
+      await sleep(300);
+    }
+  },
+];
+
+// ─────────────────────────────────────────────────────────────
+// Sequence UI
+// ─────────────────────────────────────────────────────────────
+const seqEl = document.getElementById('seq');
+STEPS.forEach((s, i) => {
+  const it = el('div', { class: 'seq-item', 'data-i': i });
+  it.appendChild(el('span', { class: 'dot' }));
+  it.appendChild(document.createTextNode(`${i + 1}. ${s.title}`));
+  it.addEventListener('click', () => goTo(i, true));
+  seqEl.appendChild(it);
+});
+
+function renderSeqUI(cur) {
+  [...seqEl.children].forEach((c, i) => {
+    c.classList.toggle('active', i === cur);
+    c.classList.toggle('done', i < cur);
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────────────────────
+// Player
+// ─────────────────────────────────────────────────────────────
+let current = 0;
+let playing = false;
+let liveMode = false;
+let advanceTimer = null;
+
+function setStepMeta(i) {
+  document.getElementById('stepCounter').textContent = `Step ${i + 1} / ${STEPS.length}`;
+  document.getElementById('stepTitle').textContent = STEPS[i].title;
+  document.getElementById('stepDesc').innerHTML = STEPS[i].desc;
+  renderSeqUI(i);
+}
+
+async function goTo(i, manual = false) {
+  if (manual && playing) { playing = false; updatePlayBtn(); }
+  current = (i + STEPS.length) % STEPS.length;
+  setStepMeta(current);
+  // reset transient state for clarity on manual jumps
+  if (manual) { resetState(); }
+  await STEPS[current].run();
+  if (playing) scheduleNext();
+}
+
+function scheduleNext() {
+  clearTimeout(advanceTimer);
+  const gap = 700 / parseFloat(document.getElementById('speed').value);
+  advanceTimer = setTimeout(async () => {
+    if (liveMode) {
+      current = (current + 1) % STEPS.length;
+      setStepMeta(current);
+      await STEPS[current].run();
+      if (playing) scheduleNext();
+    } else {
+      if (current < STEPS.length - 1) {
+        current++; setStepMeta(current);
+        await STEPS[current].run();
+        if (playing) scheduleNext();
+      } else {
+        playing = false; updatePlayBtn();
+      }
+    }
+  }, gap);
+}
+
+function updatePlayBtn() {
+  document.getElementById('play').innerHTML = playing ? '❚❚ Pause' : '▶ Play';
+}
+
+function resetState() {
+  taskState = [];
+  renderTasks();
+  RUNNERS.forEach(r => setSlots(r.id, 0, 3));
+  RUNNERS.forEach(r => regPulse(r.id, false));
+  document.querySelectorAll('[id^="ctr-"]').forEach(g => { if (g._link) g._link.remove(); g.remove(); });
+  clearHL();
+  msgsG.innerHTML = '';
+}
+
+document.getElementById('play').addEventListener('click', () => {
+  playing = !playing;
+  updatePlayBtn();
+  if (playing) {
+    if (current === STEPS.length - 1 && !liveMode) { current = -1; resetState(); }
+    if (taskState.length === 0 && current <= 0) resetState();
+    (async () => {
+      if (current < 0) current = 0;
+      setStepMeta(current);
+      await STEPS[current].run();
+      if (playing) scheduleNext();
+    })();
+  }
+});
+document.getElementById('next').addEventListener('click', () => {
+  playing = false; updatePlayBtn();
+  goTo(current + 1, true);
+});
+document.getElementById('prev').addEventListener('click', () => {
+  playing = false; updatePlayBtn();
+  goTo(current - 1, true);
+});
+document.getElementById('reset').addEventListener('click', () => {
+  playing = false; updatePlayBtn();
+  current = 0; resetState(); setStepMeta(0);
+  STEPS[0].run();
+});
+document.getElementById('speed').addEventListener('input', e => {
+  document.getElementById('speedv').textContent = parseFloat(e.target.value).toFixed(1) + '×';
+});
+
+document.getElementById('modeStep').addEventListener('click', () => {
+  liveMode = false; document.getElementById('modeStep').classList.add('active'); document.getElementById('modeLive').classList.remove('active');
+});
+document.getElementById('modeLive').addEventListener('click', () => {
+  liveMode = true; document.getElementById('modeLive').classList.add('active'); document.getElementById('modeStep').classList.remove('active');
+  if (playing) scheduleNext();
+});
+
+// init
+setStepMeta(0);
+resetState();
+STEPS[0].run();
+</script>
+</body>
+</html>
