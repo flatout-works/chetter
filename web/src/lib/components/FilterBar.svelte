@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { createClient } from "@connectrpc/connect";
-  import { TaskService } from "$gen/proto/api/v1/api_pb";
-  import { getTransport } from "$lib/api/client";
-  import { teamFilter, setTeamOptions, toggleTeam, selectAllTeams, deselectAllTeams, setRepoOptions, repoFilter, addRepo, removeRepo, hasRepoFilter, selectedRepos } from "$lib/stores/filter.svelte";
+  import { teamFilter, setTeamOptions, toggleTeam, selectAllTeams, setRepoOptions, repoFilter, addRepo, removeRepo } from "$lib/stores/filter.svelte";
   import { Badge, Button, Input } from "flowbite-svelte";
 
   let { teams }: { teams: { id: string; name: string }[] } = $props();
@@ -35,51 +32,60 @@
   }
 </script>
 
-<div class="flex flex-wrap items-center gap-2 px-6 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
+<section class="border-t border-gray-200 dark:border-gray-700 px-3 py-4 space-y-4">
+  <div class="flex items-center justify-between gap-2">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Global filters</h2>
+    {#if anyFilterActive()}
+      <Button color="alternative" size="xs" class="!px-2 !py-1 !text-xs" onclick={clearAll}>Clear</Button>
+    {/if}
+  </div>
+
+  <div class="space-y-2">
     {#if teams.length > 0}
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Teams:</span>
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Teams</span>
+        <Button color="alternative" size="xs" class="!px-2 !py-1 !text-xs" onclick={selectAllTeams}>All</Button>
+      </div>
+      <div class="flex flex-wrap gap-1.5">
       {#each teamOptions as opt (opt.id)}
-        <button
+        <Button
           onclick={() => toggleTeam(opt.name)}
-          class="px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors cursor-pointer"
-          class:bg-blue-100:text-blue-800:border-blue-300={opt.selected}
-          class:dark:bg-blue-900:dark:text-blue-200:dark:border-blue-700={opt.selected}
-          class:bg-gray-100:text-gray-500:border-gray-200={!opt.selected}
-          class:dark:bg-gray-800:dark:text-gray-400:dark:border-gray-600={!opt.selected}
+          color={opt.selected ? "blue" : "alternative"}
+          size="xs"
+          class="!rounded-full !px-2.5 !py-1 !text-xs"
         >
           {opt.name}
-        </button>
+        </Button>
       {/each}
+      </div>
     {:else}
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Teams: <span class="text-gray-400 dark:text-gray-500 font-normal">all (admin)</span></span>
+      <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Teams <span class="text-gray-400 dark:text-gray-500 font-normal">all (admin)</span></p>
     {/if}
+  </div>
 
-    <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0 ml-2">Repos:</span>
+  <div class="space-y-2">
+    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Repos</span>
 
+    {#if activeRepos.length > 0}
+      <div class="flex flex-wrap gap-1.5">
     {#each activeRepos as repo (repo)}
       <Badge color="blue" class="!cursor-pointer" onclick={() => removeRepo(repo)}>
         {repo} &times;
       </Badge>
     {/each}
+      </div>
+    {/if}
 
     <form onsubmit={(e) => { e.preventDefault(); addRepoFromInput(); }}
-          class="inline-flex items-center gap-1 ml-1">
+          class="flex items-center gap-1">
       <Input
         bind:value={repoInput}
         placeholder="org/repo"
         size="sm"
-        class="!w-28 !h-7 !text-xs"
+        class="!h-8 !text-xs"
         onkeydown={(e) => { if (e.key === "Enter") addRepoFromInput(); }}
       />
-      <Button color="alternative" size="xs" class="!h-7 !px-2 !text-xs" onclick={addRepoFromInput}>+</Button>
+      <Button color="alternative" size="xs" class="!h-8 !px-2 !text-xs" onclick={addRepoFromInput}>+</Button>
     </form>
-
-    {#if anyFilterActive()}
-      <button
-        onclick={clearAll}
-        class="ml-auto text-xs text-blue-600 dark:text-blue-400 hover:underline shrink-0 cursor-pointer"
-      >
-        Clear filters
-      </button>
-    {/if}
   </div>
+</section>

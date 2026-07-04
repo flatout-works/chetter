@@ -176,6 +176,9 @@
         {/each}
       {/if}
     </SidebarGroup>
+    {#if !sidebarCollapsed}
+      <FilterBar teams={whoamiTeams} />
+    {/if}
     <div class="p-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
       {#if sidebarCollapsed}
         <button onclick={toggleTheme} title={$theme === "dark" ? "Light mode" : "Dark mode"}
@@ -283,8 +286,6 @@
           </div>
         </Alert>
       {/if}
-
-      <FilterBar teams={whoamiTeams} />
 
       <main class="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_right,rgba(14,165,233,0.10),transparent_30%),linear-gradient(180deg,rgba(248,250,252,0.9),rgba(241,245,249,1))] text-slate-900 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.13),transparent_30%),linear-gradient(180deg,rgba(15,23,42,1),rgba(2,6,23,1))] dark:text-slate-100">
         {@render children()}

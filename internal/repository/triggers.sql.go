@@ -78,6 +78,16 @@ func (q *Queries) DeleteTrigger(ctx context.Context, name string) error {
 	return err
 }
 
+const deleteTriggersBySource = `-- name: DeleteTriggersBySource :exec
+DELETE FROM chetter_triggers
+WHERE source_id = ?
+`
+
+func (q *Queries) DeleteTriggersBySource(ctx context.Context, sourceID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteTriggersBySource, sourceID)
+	return err
+}
+
 const getTriggerByID = `-- name: GetTriggerByID :one
 SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE id = ?

@@ -644,23 +644,14 @@ func (s *Service) enrichTriggerSources(ctx context.Context, triggers []store.Tri
 		}
 		triggers[i].SourceRepoURL = src.RepoUrl
 		triggers[i].SourceBranch = src.Branch
-		path := src.Path
-		if path == "" {
-			path = "triggers"
-		}
-		filePath := path + "/" + triggers[i].Name + ".yaml"
-		if path == "triggers" {
-			filePath = "triggers/" + triggers[i].Name + ".yaml"
-		}
 		def, err := s.repo.GetDefinitionBySourceTypeName(ctx, repository.GetDefinitionBySourceTypeNameParams{
 			SourceID:       sid,
 			DefinitionType: "trigger",
 			Name:           triggers[i].Name,
 		})
 		if err == nil {
-			filePath = def.Path
+			triggers[i].SourcePath = def.Path
 		}
-		triggers[i].SourcePath = filePath
 	}
 }
 

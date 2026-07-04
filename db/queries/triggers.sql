@@ -103,6 +103,10 @@ ON DUPLICATE KEY UPDATE
 DELETE FROM chetter_triggers
 WHERE name = ?;
 
+-- name: DeleteTriggersBySource :exec
+DELETE FROM chetter_triggers
+WHERE source_id = ?;
+
 -- name: SetTriggerLastRun :exec
 UPDATE chetter_triggers
 SET last_run_at = ?, updated_at = ?

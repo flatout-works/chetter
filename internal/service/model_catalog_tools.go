@@ -352,6 +352,10 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 				return err
 			}
 		}
+		// Remove triggers that no longer have a definition file (renamed or deleted in git).
+		if err := q.DeleteTriggersBySource(ctx, nullString(defaultDefinitionSourceID)); err != nil {
+			return fmt.Errorf("delete orphan triggers: %w", err)
+		}
 		for _, t := range triggerEntries {
 			if err := q.UpsertTrigger(ctx, t.params); err != nil {
 				return fmt.Errorf("upsert trigger %q: %w", t.def.Name, err)
