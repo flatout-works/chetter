@@ -1293,7 +1293,15 @@ func (s *Service) Whoami(ctx context.Context) (WhoamiOutput, error) {
 		return WhoamiOutput{IsAdmin: true}, nil
 	}
 	if scope.Admin {
-		return WhoamiOutput{IsAdmin: true}, nil
+		allTeams, err := s.repo.ListTeams(ctx)
+		if err != nil {
+			return WhoamiOutput{IsAdmin: true}, nil
+		}
+		teams := make([]WhoamiTeamInfo, 0, len(allTeams))
+		for _, t := range allTeams {
+			teams = append(teams, WhoamiTeamInfo{ID: t.ID, Name: t.Name})
+		}
+		return WhoamiOutput{IsAdmin: true, Teams: teams}, nil
 	}
 	teamIDs := scope.Teams()
 	teams := make([]WhoamiTeamInfo, 0, len(teamIDs))

@@ -35,8 +35,7 @@
   }
 </script>
 
-{#if teams.length > 0 || activeRepos.length > 0}
-  <div class="flex flex-wrap items-center gap-2 px-6 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
+<div class="flex flex-wrap items-center gap-2 px-6 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 text-sm">
     {#if teams.length > 0}
       <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Teams:</span>
       {#each teamOptions as opt (opt.id)}
@@ -51,11 +50,11 @@
           {opt.name}
         </button>
       {/each}
+    {:else}
+      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Teams: <span class="text-gray-400 dark:text-gray-500 font-normal">all (admin)</span></span>
     {/if}
 
-    {#if activeRepos.length > 0 || teams.length > 0}
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0 ml-2">Repos:</span>
-    {/if}
+    <span class="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0 ml-2">Repos:</span>
 
     {#each activeRepos as repo (repo)}
       <Badge color="blue" class="!cursor-pointer" onclick={() => removeRepo(repo)}>
@@ -84,4 +83,3 @@
       </button>
     {/if}
   </div>
-{/if}
