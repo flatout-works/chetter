@@ -9,10 +9,10 @@ cd "$(dirname "$0")/.."
 echo "=== Building MCP image ==="
 docker build -t chetter-mcp:latest .
 
-echo "=== Building runner base image ==="
-docker build -f runner/Dockerfile.chetter-base -t chetter-runner-base:latest .
+echo "=== Building agent-base image ==="
+docker build -f runner/images/base/Dockerfile -t chetter-agent-base:latest .
 
-echo "=== Building runner image ==="
+echo "=== Building runner daemon image ==="
 docker build -f runner/Dockerfile.chetter -t chetter-runner:latest .
 
 echo "=== Done ==="

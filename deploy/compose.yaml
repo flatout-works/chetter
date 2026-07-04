@@ -21,17 +21,17 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       DEFINITIONS_REPO: ${DEFINITIONS_REPO:-}
       DEFINITIONS_BRANCH: ${DEFINITIONS_BRANCH:-main}
-      DEFAULT_AGENT_IMAGE: chetter-runner:latest
+      DEFAULT_AGENT_IMAGE: chetter-agent-base:latest
     ports:
       - "18088:8080"
       - "18090:8090"
 
-  chetter-runner-base:
+  chetter-agent-base:
     profiles: ["build"]
-    image: chetter-runner-base:latest
+    image: chetter-agent-base:latest
     build:
       context: ..
-      dockerfile: runner/Dockerfile.chetter-base
+      dockerfile: runner/images/base/Dockerfile
     command: ["true"]
 
   chetter-runner:
@@ -39,8 +39,6 @@ services:
     build:
       context: ..
       dockerfile: runner/Dockerfile.chetter
-      args:
-        BASE_IMAGE: chetter-runner-base:latest
     restart: unless-stopped
     depends_on:
       - chetter-mcp

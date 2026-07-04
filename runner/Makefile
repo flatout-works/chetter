@@ -17,10 +17,10 @@ local:
 	go build -o claude-serve-proxy ./cmd/claude-serve-proxy
 
 build:
-	docker build -f $(CURDIR)/Dockerfile.runner -t $(IMAGE) $(ROOT)
+	docker build -f $(CURDIR)/Dockerfile.chetter -t $(IMAGE) $(ROOT)
 
 rebuild:
-	docker build --no-cache -f $(CURDIR)/Dockerfile.runner -t $(IMAGE) $(ROOT)
+	docker build --no-cache -f $(CURDIR)/Dockerfile.chetter -t $(IMAGE) $(ROOT)
 
 verify-image:
 	docker run --rm \

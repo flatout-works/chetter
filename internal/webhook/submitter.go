@@ -115,7 +115,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 // defaultReviewAgentImage is the runner image the webhook submitter fills in
 // for review tasks when the caller did not override AgentImage. It must match
 // the image used by the chetter runners deployed alongside this service.
-const defaultReviewAgentImage = "ghcr.io/flatout-works/chetter-runner:main"
+const defaultReviewAgentImage = "ghcr.io/flatout-works/chetter-agent-base:main"
 
 // reviewPromptTemplate is the prompt sent to the review agent. The agent
 // receives PR context via environment variables and uses gh CLI for

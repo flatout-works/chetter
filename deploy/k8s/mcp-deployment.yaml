@@ -33,7 +33,7 @@ spec:
               name: chetter-secrets
               key: CHETTER_MCP_AUTH_TOKEN
         - name: DEFAULT_AGENT_IMAGE
-          value: ghcr.io/flatout-works/chetter-runner:main
+          value: ghcr.io/flatout-works/chetter-agent-base:main
         resources:
           requests:
             cpu: 100m

@@ -30,14 +30,9 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      runner-base: ${{ steps.filter.outputs.runner-base }}
+      agent-base: ${{ steps.filter.outputs.agent-base }}
       mcp: ${{ steps.filter.outputs.mcp }}
       runner: ${{ steps.filter.outputs.runner }}
-      variant-golang: ${{ steps.filter.outputs.variant-golang }}
-      variant-python: ${{ steps.filter.outputs.variant-python }}
-      variant-node: ${{ steps.filter.outputs.variant-node }}
-      variant-rust: ${{ steps.filter.outputs.variant-rust }}
-      variant-minimal: ${{ steps.filter.outputs.variant-minimal }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,8 +41,8 @@ jobs:
         id: filter
         with:
           filters: |
-            runner-base:
-              - runner/Dockerfile.chetter-base
+            agent-base:
+              - runner/images/base/Dockerfile
             mcp:
               - Dockerfile
               - main.go
@@ -69,16 +64,6 @@ jobs:
               - runner/chetter-entrypoint.sh
               - tools/skills/**
               - .opencode/agent/**
-            variant-golang:
-              - runner/images/golang/Dockerfile
-            variant-python:
-              - runner/images/python/Dockerfile
-            variant-node:
-              - runner/images/node/Dockerfile
-            variant-rust:
-              - runner/images/rust/Dockerfile
-            variant-minimal:
-              - runner/images/minimal/Dockerfile
 
   arcane-build-deploy:
     runs-on: ubuntu-latest
@@ -89,12 +74,7 @@ jobs:
 
       - name: Build images on wowbagger
         env:
-          BUILD_BASE: ${{ needs.detect-changes.outputs.runner-base }}
-          BUILD_VARIANT_GOLANG: ${{ needs.detect-changes.outputs.variant-golang }}
-          BUILD_VARIANT_PYTHON: ${{ needs.detect-changes.outputs.variant-python }}
-          BUILD_VARIANT_NODE: ${{ needs.detect-changes.outputs.variant-node }}
-          BUILD_VARIANT_RUST: ${{ needs.detect-changes.outputs.variant-rust }}
-          BUILD_VARIANT_MINIMAL: ${{ needs.detect-changes.outputs.variant-minimal }}
+          BUILD_AGENT_BASE: ${{ needs.detect-changes.outputs.agent-base }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.WOWBAGGER_SSH_KEY }}" > ~/.ssh/wowbagger
@@ -102,14 +82,9 @@ jobs:
           # Upload updated build script
           scp -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger \
             ci/chetter-build.sh gokr@wowbagger.krampe.se:~/chetter-build.sh
-          # Build with variant flags
+          # Build
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
-            "BUILD_BASE='$BUILD_BASE' \
-             BUILD_VARIANT_GOLANG='$BUILD_VARIANT_GOLANG' \
-             BUILD_VARIANT_PYTHON='$BUILD_VARIANT_PYTHON' \
-             BUILD_VARIANT_NODE='$BUILD_VARIANT_NODE' \
-             BUILD_VARIANT_RUST='$BUILD_VARIANT_RUST' \
-             BUILD_VARIANT_MINIMAL='$BUILD_VARIANT_MINIMAL' \
+            "BUILD_AGENT_BASE='$BUILD_AGENT_BASE' \
              bash ~/chetter-build.sh"
 
       - name: Drain runners before redeploy

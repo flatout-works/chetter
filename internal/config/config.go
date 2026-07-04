@@ -39,7 +39,7 @@ func Load() Config {
 		RunnerRPCToken:         os.Getenv("CHETTER_RUNNER_RPC_TOKEN"),
 		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
 		DBDialect:              os.Getenv("CHETTER_DB_DIALECT"),
-		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-runner:latest"),
+		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-agent-base:latest"),
 		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:        env("ARCANE_SERVER_URL", ""),
 		ArcaneAPIKey:           env("ARCANE_API_KEY", ""),

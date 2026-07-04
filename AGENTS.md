@@ -6,7 +6,7 @@ Repo-local guidance for OpenCode sessions working on Chetter.
 
 - **Root** (`main.go`, `internal/*`): The MCP server and control plane.
 - **Runner** (`runner/`): The containerized agent harness. Separate Go module with its own `go.mod` and `Makefile`.
-- **Runner Images** (`runner/images/`): Dockerfile variants for agent execution environments (golang, python, node, rust, minimal). All inherit from `Dockerfile.chetter-base` except `minimal` which builds from `debian:bookworm-slim`.
+- **Agent Base Image** (`runner/images/base/`): Harness CLIs (opencode, claude-code, codewhale, pi), Node, gh, git, and shared runtime tools. Stack-specific variants inherit from this and live in chetter-config.
 - **CLI** (`cmd/chetterctl/`): Token management CLI.
 - **DB** (`db/`): Goose migrations and sqlc query files.
 - **Proto** (`proto/`): ConnectRPC service between server and runner.
@@ -35,13 +35,8 @@ make local          # build runner + mcp-bridge binaries
 
 # Docker images (from repo root)
 make docker-build-mcp            # build MCP server image
-make docker-build-runner-base    # build heavy base image (Go, opencode, claude, tools)
-make docker-build-runner         # build default runner image (base + app layer)
-make docker-build-golang         # build golang variant
-make docker-build-python         # build python variant
-make docker-build-node           # build node variant
-make docker-build-rust           # build rust variant
-make docker-build-minimal        # build minimal variant (no language toolchain)
+make docker-build-agent-base     # build agent base image (harnesses, Node, gh, git)
+make docker-build-runner         # build runner daemon image (tight, no harnesses)
 ```
 
 **Order matters for schema changes:** `sqlc generate` reads from `db/migrations/`, so always update migrations **before** running `make generate`.
@@ -63,10 +58,22 @@ make docker-build-minimal        # build minimal variant (no language toolchain)
 Push to `main` triggers `.github/workflows/chetter.yml` with three jobs:
 
 1. **check** — runs `make check` (test, vet, lint).
-2. **detect-changes** — identifies which Dockerfile paths changed (runner-base, mcp, runner, variant images).
+2. **detect-changes** — identifies which Dockerfile paths changed (agent-base, mcp, runner).
 3. **arcane-build-deploy** — after check + detect-changes pass, SSHes into **wowbagger** (`gokr@wowbagger.krampe.se`), runs `ci/chetter-build.sh` to build and push images to GHCR, drains runners gracefully via `ci/drain-runners.sh`, syncs GitOps via Arcane API, then triggers a project redeploy with `forceRecreate: true`.
 
 Image builds happen **on wowbagger** (not GitHub Actions) to save Actions minutes. The build logs and timings are visible in the CI run's `arcane-build-deploy` step.
+
+## Docker Image Architecture
+
+```text
+chetter-mcp          — MCP server/control plane (Dockerfile)
+chetter-runner       — Tight runner daemon (runner/Dockerfile.chetter)
+chetter-agent-base   — Agent base with all harness CLIs (runner/images/base/Dockerfile)
+```
+
+Stack-specific agent variants (golang, python, node, rust, java-spring, etc.) live in
+**chetter-config** where teams own their own images, inheriting `FROM chetter-agent-base`.
+Reference example Dockerfiles are in `runner/images/examples/`.
 
 ## Schema & Codegen
 

@@ -1,7 +1,7 @@
-.PHONY: generate tools build web-build web-check test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-runner-base docker-build-runner docker-build-golang docker-build-python docker-build-node docker-build-rust docker-build-minimal
+.PHONY: generate tools build web-build web-check test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-agent-base docker-build-runner
 
 MCP_IMAGE ?= ghcr.io/flatout-works/chetter-mcp:local
-RUNNER_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-runner-base:local
+AGENT_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-agent-base:local
 RUNNER_IMAGE ?= ghcr.io/flatout-works/chetter-runner:local
 DB_DSN ?= root@tcp(127.0.0.1:4000)/chetter?parseTime=true
 BIN_DIR := $(CURDIR)/bin
@@ -95,23 +95,8 @@ check-runner:
 docker-build-mcp:
 	docker build -t $(MCP_IMAGE) .
 
-docker-build-runner-base:
-	docker build -f runner/Dockerfile.chetter-base -t $(RUNNER_BASE_IMAGE) .
+docker-build-agent-base:
+	docker build -f runner/images/base/Dockerfile -t $(AGENT_BASE_IMAGE) .
 
 docker-build-runner:
 	docker build -f runner/Dockerfile.chetter -t $(RUNNER_IMAGE) .
-
-docker-build-golang:
-	docker build -f runner/images/golang/Dockerfile -t $(RUNNER_IMAGE)-golang .
-
-docker-build-python:
-	docker build -f runner/images/python/Dockerfile -t $(RUNNER_IMAGE)-python .
-
-docker-build-node:
-	docker build -f runner/images/node/Dockerfile -t $(RUNNER_IMAGE)-node .
-
-docker-build-rust:
-	docker build -f runner/images/rust/Dockerfile -t $(RUNNER_IMAGE)-rust .
-
-docker-build-minimal:
-	docker build -f runner/images/minimal/Dockerfile -t $(RUNNER_IMAGE)-minimal .

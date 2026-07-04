@@ -1,13 +1,11 @@
 # syntax=docker/dockerfile:1.7
 
-# Chetter Runner — App Layer
+# Chetter Runner — Daemon Image
 # =========================================================================
-# Uses chetter-runner-base for heavy tooling and layers the Chetter runner
-# binary, mcp-bridge, entrypoint, skills, and OpenCode agents on top.
-# Fast rebuilds: only the COPY layers below rebuild on code changes.
+# Long-running runner service only. It claims tasks, prepares workspaces, and
+# starts per-task agent containers. Harness CLIs and language toolchains live in
+# runner/images/* agent images instead of this daemon image.
 # =========================================================================
-
-ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
 
 # --------------------------------------------------------------------------
 # Stage 1: Build runner binary
@@ -32,64 +30,48 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/flatout-works/chetter/runner/cmd/runner._gitHash=${GIT_HASH}'" -o /out/runner ./cmd/runner
 
 # --------------------------------------------------------------------------
-# Stage 2: Build mcp-bridge
+# Stage 2: Download Docker CLI
 # --------------------------------------------------------------------------
-FROM golang:1.26-bookworm AS mcp-bridge-builder
+FROM debian:bookworm-slim AS binary-downloader
 
-WORKDIR /build
-COPY runner/harness/mcp-bridge/main.go ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/mcp-bridge ./main.go
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+
+ARG DOCKER_VERSION=27.5.1
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+    | tar -C /usr/local/bin --strip-components=1 -xzf - docker/docker \
+    && chmod +x /usr/local/bin/docker
 
 # --------------------------------------------------------------------------
-# Stage 3: Final runtime image (base + app layer)
+# Stage 3: Final daemon image
 # --------------------------------------------------------------------------
-FROM ${BASE_IMAGE}
+FROM debian:bookworm-slim
 
 ARG GIT_HASH=unknown
 
 ENV GITHUB_SHA=${GIT_HASH}
 ENV CHETTER_RUNNER_IMAGE_DIGEST=${GIT_HASH}
+ENV TMPDIR=/tmp/chetter-runner
 
-# Keep Pi in the app layer so rebuilding chetter-runner picks it up even if
-# the published base image tag has not been refreshed yet.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    node_ok="$(node -p 'const [maj,min]=process.versions.node.split(".").map(Number); Number(maj > 22 || (maj === 22 && min >= 19))' 2>/dev/null || echo 0)" \
-    && if [ "$node_ok" != "1" ]; then \
-        apt-get update; \
-        apt-get install -y --no-install-recommends ca-certificates curl; \
-        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
-        apt-get install -y --no-install-recommends nodejs; \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    openssh-client \
+    socat \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=cache,target=/root/.npm \
-    if ! command -v pi >/dev/null 2>&1; then \
-        npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
-        ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi; \
-    fi \
-    && mkdir -p /opt/pi-extensions \
-    && cd /opt/pi-extensions \
-    && if [ ! -d node_modules/pi-mcp-adapter ]; then \
-        npm init -y; \
-        npm install --ignore-scripts pi-mcp-adapter; \
-    fi
-
-ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
-
-# App binaries
+COPY --from=binary-downloader /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
-COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
 COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
 
-# Skills and agents are now injected at runtime by the runner
-# via resolveTaskDefinitions. See internal/service/runner_rpc.go.
+RUN chmod +x /usr/local/bin/runner /usr/local/bin/docker /usr/local/bin/chetter-entrypoint \
+    && mkdir -p /var/lib/chetter-runner/workspaces "$TMPDIR"
 
-RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint
-
-ENV RUNNER_LOCAL=true
+ENV RUNNER_LOCAL=false
 ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces
 
 WORKDIR /var/lib/chetter-runner/workspaces
