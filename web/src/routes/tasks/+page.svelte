@@ -8,6 +8,7 @@
   import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
+  import { teamFilter, repoFilter } from "$lib/stores/filter.svelte";
   import { applyFilters } from "$lib/filter.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -69,6 +70,12 @@
   $effect(() => { selectedStatus; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
 
   let sortedTasks = $derived.by(() => {
+    function durationMs(t: typeof taskList[number]): number {
+      if (!t.startedAt) return -1;
+      const start = new Date(t.startedAt).getTime();
+      const end = t.endedAt ? new Date(t.endedAt).getTime() : Date.now();
+      return end - start;
+    }
     let sorted = [...taskList].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
@@ -78,11 +85,11 @@
         case "model": cmp = (a.modelId || "").localeCompare(b.modelId || ""); break;
         case "prompt": cmp = a.prompt.localeCompare(b.prompt); break;
         case "created": cmp = a.createdAt.localeCompare(b.createdAt); break;
-        case "duration": cmp = ((a.startedAt || "") < (b.startedAt || "") ? -1 : 1); break;
+        case "duration": cmp = durationMs(a) - durationMs(b); break;
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
-    return applyFilters(sorted);
+    return applyFilters(sorted, $teamFilter, $repoFilter);
   });
 
   let totalPages = $derived(Math.max(1, Math.ceil(sortedTasks.length / pageSize)));

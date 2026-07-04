@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import { get } from "svelte/store";
   import { tasks, fleetHealth, statusFilter } from "$lib/stores/tasks.svelte";
+  import { teamFilter, repoFilter } from "$lib/stores/filter.svelte";
   import { applyFilters } from "$lib/filter.svelte";
   import { formatTime, formatAge, formatDuration } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -24,7 +25,7 @@
     if (activeFilter) {
       list = list.filter((t) => t.status === activeFilter);
     }
-    return applyFilters(list).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return applyFilters(list, $teamFilter, $repoFilter).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   });
 
   const cards = $derived([

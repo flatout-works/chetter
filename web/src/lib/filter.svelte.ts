@@ -1,14 +1,14 @@
-import { get } from "svelte/store";
-import { teamFilter, repoFilter, selectedTeamIDs, selectedRepos } from "$lib/stores/filter.svelte";
+import type { TeamOption } from "$lib/stores/filter.svelte";
 
 /** Apply client-side team + repo filters to a list of records.
- *  Each record should have `teamId` and optionally `gitUrl`. */
+ *  Each record should have `teamId` and optionally `gitUrl`.
+ *  Pass the current filter values explicitly (in a $derived.by call,
+ *  access the stores via $storeName first so Svelte tracks them). */
 export function applyFilters<T extends { teamId?: string | null; gitUrl?: string | null }>(
-  items: T[]
+  items: T[],
+  teams: TeamOption[],
+  repos: string[]
 ): T[] {
-  const teams = get(teamFilter);
-  const repos = get(repoFilter);
-
   const allTeamsSelected = teams.length === 0 || teams.every((t) => t.selected);
   const noRepos = repos.length === 0;
 
