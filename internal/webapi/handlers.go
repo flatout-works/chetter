@@ -322,6 +322,22 @@ func (h *taskHandler) ClearQueue(ctx context.Context, req *connect.Request[apiv1
 	}), nil
 }
 
+func (h *taskHandler) Whoami(ctx context.Context, req *connect.Request[apiv1.WhoamiRequest]) (*connect.Response[apiv1.WhoamiResponse], error) {
+	out, err := h.svc.Whoami(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	protoTeams := make([]*apiv1.WhoamiTeamInfo, len(out.Teams))
+	for i, t := range out.Teams {
+		protoTeams[i] = &apiv1.WhoamiTeamInfo{Id: t.ID, Name: t.Name}
+	}
+	return connect.NewResponse(&apiv1.WhoamiResponse{
+		IsAdmin:         out.IsAdmin,
+		PrimaryTeamName: out.PrimaryTeamName,
+		Teams:           protoTeams,
+	}), nil
+}
+
 // --- EventServiceHandler ---
 
 type eventHandler struct {

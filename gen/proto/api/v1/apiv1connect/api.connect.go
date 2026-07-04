@@ -64,6 +64,8 @@ const (
 	// TaskServiceSubscribeTaskEventsProcedure is the fully-qualified name of the TaskService's
 	// SubscribeTaskEvents RPC.
 	TaskServiceSubscribeTaskEventsProcedure = "/api.v1.TaskService/SubscribeTaskEvents"
+	// TaskServiceWhoamiProcedure is the fully-qualified name of the TaskService's Whoami RPC.
+	TaskServiceWhoamiProcedure = "/api.v1.TaskService/Whoami"
 	// EventServiceGetTaskEventsProcedure is the fully-qualified name of the EventService's
 	// GetTaskEvents RPC.
 	EventServiceGetTaskEventsProcedure = "/api.v1.EventService/GetTaskEvents"
@@ -158,6 +160,7 @@ type TaskServiceClient interface {
 	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
 	ClearQueue(context.Context, *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error)
 	SubscribeTaskEvents(context.Context, *connect.Request[v1.SubscribeTaskEventsRequest]) (*connect.ServerStreamForClient[v1.TaskEvent], error)
+	Whoami(context.Context, *connect.Request[v1.WhoamiRequest]) (*connect.Response[v1.WhoamiResponse], error)
 }
 
 // NewTaskServiceClient constructs a client for the api.v1.TaskService service. By default, it uses
@@ -219,6 +222,12 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("SubscribeTaskEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		whoami: connect.NewClient[v1.WhoamiRequest, v1.WhoamiResponse](
+			httpClient,
+			baseURL+TaskServiceWhoamiProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("Whoami")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -232,6 +241,7 @@ type taskServiceClient struct {
 	recoverTask         *connect.Client[v1.RecoverTaskRequest, v1.RecoverTaskResponse]
 	clearQueue          *connect.Client[v1.ClearQueueRequest, v1.ClearQueueResponse]
 	subscribeTaskEvents *connect.Client[v1.SubscribeTaskEventsRequest, v1.TaskEvent]
+	whoami              *connect.Client[v1.WhoamiRequest, v1.WhoamiResponse]
 }
 
 // SubmitTask calls api.v1.TaskService.SubmitTask.
@@ -274,6 +284,11 @@ func (c *taskServiceClient) SubscribeTaskEvents(ctx context.Context, req *connec
 	return c.subscribeTaskEvents.CallServerStream(ctx, req)
 }
 
+// Whoami calls api.v1.TaskService.Whoami.
+func (c *taskServiceClient) Whoami(ctx context.Context, req *connect.Request[v1.WhoamiRequest]) (*connect.Response[v1.WhoamiResponse], error) {
+	return c.whoami.CallUnary(ctx, req)
+}
+
 // TaskServiceHandler is an implementation of the api.v1.TaskService service.
 type TaskServiceHandler interface {
 	SubmitTask(context.Context, *connect.Request[v1.SubmitTaskRequest]) (*connect.Response[v1.SubmitTaskResponse], error)
@@ -284,6 +299,7 @@ type TaskServiceHandler interface {
 	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
 	ClearQueue(context.Context, *connect.Request[v1.ClearQueueRequest]) (*connect.Response[v1.ClearQueueResponse], error)
 	SubscribeTaskEvents(context.Context, *connect.Request[v1.SubscribeTaskEventsRequest], *connect.ServerStream[v1.TaskEvent]) error
+	Whoami(context.Context, *connect.Request[v1.WhoamiRequest]) (*connect.Response[v1.WhoamiResponse], error)
 }
 
 // NewTaskServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -341,6 +357,12 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("SubscribeTaskEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceWhoamiHandler := connect.NewUnaryHandler(
+		TaskServiceWhoamiProcedure,
+		svc.Whoami,
+		connect.WithSchema(taskServiceMethods.ByName("Whoami")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.v1.TaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskServiceSubmitTaskProcedure:
@@ -359,6 +381,8 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceClearQueueHandler.ServeHTTP(w, r)
 		case TaskServiceSubscribeTaskEventsProcedure:
 			taskServiceSubscribeTaskEventsHandler.ServeHTTP(w, r)
+		case TaskServiceWhoamiProcedure:
+			taskServiceWhoamiHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -398,6 +422,10 @@ func (UnimplementedTaskServiceHandler) ClearQueue(context.Context, *connect.Requ
 
 func (UnimplementedTaskServiceHandler) SubscribeTaskEvents(context.Context, *connect.Request[v1.SubscribeTaskEventsRequest], *connect.ServerStream[v1.TaskEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.SubscribeTaskEvents is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) Whoami(context.Context, *connect.Request[v1.WhoamiRequest]) (*connect.Response[v1.WhoamiResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.Whoami is not implemented"))
 }
 
 // EventServiceClient is a client for the api.v1.EventService service.

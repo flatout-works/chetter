@@ -1274,3 +1274,43 @@ func (s *Service) ArcaneListVulnerabilities(ctx context.Context, envID, imageID,
 	}
 	return out, total, nil
 }
+
+// WhoamiInfo describes the current authenticated session.
+type WhoamiTeamInfo struct {
+	ID   string
+	Name string
+}
+
+type WhoamiOutput struct {
+	IsAdmin         bool
+	PrimaryTeamName string
+	Teams           []WhoamiTeamInfo
+}
+
+func (s *Service) Whoami(ctx context.Context) (WhoamiOutput, error) {
+	scope, ok := auth.GetScope(ctx)
+	if !ok {
+		return WhoamiOutput{IsAdmin: true}, nil
+	}
+	if scope.Admin {
+		return WhoamiOutput{IsAdmin: true}, nil
+	}
+	teamIDs := scope.Teams()
+	teams := make([]WhoamiTeamInfo, 0, len(teamIDs))
+	for _, teamID := range teamIDs {
+		team, err := s.repo.GetTeamByID(ctx, teamID)
+		if err != nil {
+			continue
+		}
+		teams = append(teams, WhoamiTeamInfo{ID: team.ID, Name: team.Name})
+	}
+	primaryName := ""
+	if len(teams) > 0 {
+		primaryName = teams[0].Name
+	}
+	return WhoamiOutput{
+		IsAdmin:         false,
+		PrimaryTeamName: primaryName,
+		Teams:           teams,
+	}, nil
+}

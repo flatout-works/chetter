@@ -255,6 +255,7 @@ service TaskService {
   rpc RecoverTask(RecoverTaskRequest) returns (RecoverTaskResponse);
   rpc ClearQueue(ClearQueueRequest) returns (ClearQueueResponse);
   rpc SubscribeTaskEvents(SubscribeTaskEventsRequest) returns (stream TaskEvent);
+  rpc Whoami(WhoamiRequest) returns (WhoamiResponse);
 }
 
 message SubmitTaskRequest {
@@ -330,6 +331,19 @@ message ClearQueueRequest {
 message ClearQueueResponse {
   bool cleared = 1;
   int32 cancelled_pending_tasks = 2;
+}
+
+message WhoamiRequest {}
+
+message WhoamiResponse {
+  bool is_admin = 1;
+  string primary_team_name = 2;
+  repeated WhoamiTeamInfo teams = 3;
+}
+
+message WhoamiTeamInfo {
+  string id = 1;
+  string name = 2;
 }
 
 message SubscribeTaskEventsRequest {

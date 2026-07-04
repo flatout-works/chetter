@@ -7,6 +7,7 @@
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
   import type { Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
+  import { applyFilters } from "$lib/filter.svelte";
   import { formatTime } from "$lib/utils.svelte";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
@@ -35,9 +36,11 @@
   let showIssue = $state(initialBoolParam("issue"));
   let showPrReview = $state(initialBoolParam("pr_review"));
 
+  let filteredTriggers = $derived(applyFilters(triggers));
+
   let visibleTriggers = $derived.by(() => {
-    if (showCron && showIssue && showPrReview) return triggers;
-    return triggers.filter((t) => {
+    if (showCron && showIssue && showPrReview) return filteredTriggers;
+    return filteredTriggers.filter((t) => {
       switch (t.triggerType) {
         case "cron": return showCron;
         case "issue": return showIssue;

@@ -9,8 +9,13 @@
   import { startLiveUpdates, stopLiveUpdates } from "$lib/stores/tasks.svelte";
   import { clearTaskDetail } from "$lib/stores/taskDetail.svelte";
   import { startServerInfoPolling, stopServerInfoPolling, getServerInfo } from "$lib/stores/serverInfo.svelte";
+  import { setTeamOptions, teamFilter } from "$lib/stores/filter.svelte";
+  import { createClient } from "@connectrpc/connect";
+  import { TaskService } from "$gen/proto/api/v1/api_pb";
+  import { getTransport } from "$lib/api/client";
   import Toast from "$lib/components/Toast.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import FilterBar from "$lib/components/FilterBar.svelte";
   import { Alert, Button, Card, Input, Label, Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, SidebarButton } from "flowbite-svelte";
 
   let { children } = $props();
@@ -22,6 +27,7 @@
   let sidebarCollapsed = $state(false);
 
   let pageUrls = $state(new Map<string, string>());
+  let whoamiTeams = $state<{ id: string; name: string }[]>([]);
 
   $effect(() => {
     pageUrls.set(activePath, $page.url.href);
@@ -34,6 +40,23 @@
     initAuth();
     initSettings();
     initTheme();
+  });
+
+  // After auth is established, fetch Whoami to discover teams
+  $effect(() => {
+    if ($auth.authenticated) {
+      (async () => {
+        try {
+          const client = createClient(TaskService, getTransport());
+          const resp = await client.whoami({});
+          const wTeams = resp.teams ?? [];
+          whoamiTeams = wTeams.map((t) => ({ id: t.id || "", name: t.name || "" })).filter((t) => t.id);
+          if (whoamiTeams.length > 0) {
+            setTeamOptions(whoamiTeams.map((t) => ({ id: t.id, name: t.name, selected: true })));
+          }
+        } catch { /* auth-dependent; ignore on transient fail */ }
+      })();
+    }
   });
 
   $effect(() => {
@@ -260,6 +283,8 @@
           </div>
         </Alert>
       {/if}
+
+      <FilterBar teams={whoamiTeams} />
 
       <main class="flex-1 overflow-auto bg-[radial-gradient(circle_at_top_right,rgba(14,165,233,0.10),transparent_30%),linear-gradient(180deg,rgba(248,250,252,0.9),rgba(241,245,249,1))] text-slate-900 dark:bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.13),transparent_30%),linear-gradient(180deg,rgba(15,23,42,1),rgba(2,6,23,1))] dark:text-slate-100">
         {@render children()}

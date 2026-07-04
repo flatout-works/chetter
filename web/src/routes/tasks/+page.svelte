@@ -8,6 +8,7 @@
   import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
+  import { applyFilters } from "$lib/filter.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
@@ -68,7 +69,7 @@
   $effect(() => { selectedStatus; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
 
   let sortedTasks = $derived.by(() => {
-    const sorted = [...taskList].sort((a, b) => {
+    let sorted = [...taskList].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -81,7 +82,7 @@
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
-    return sorted;
+    return applyFilters(sorted);
   });
 
   let totalPages = $derived(Math.max(1, Math.ceil(sortedTasks.length / pageSize)));
