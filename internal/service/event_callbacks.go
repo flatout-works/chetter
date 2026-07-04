@@ -23,6 +23,8 @@ const (
 )
 
 type EventCallbackInput struct {
+	TeamID       string
+	TeamName     string
 	Name         string
 	EventType    string
 	ActionType   string
@@ -83,7 +85,10 @@ func (s *Service) CreateEventCallback(ctx context.Context, in EventCallbackInput
 	if err := validateEventCallbackInput(in); err != nil {
 		return EventCallbackRecord{}, err
 	}
-	teamID := callbackTeamID(ctx)
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return EventCallbackRecord{}, err
+	}
 	id, err := randomID("ecb")
 	if err != nil {
 		return EventCallbackRecord{}, fmt.Errorf("generate event callback id: %w", err)
@@ -113,7 +118,10 @@ func (s *Service) UpdateEventCallback(ctx context.Context, name string, in Event
 	if name == "" {
 		return EventCallbackRecord{}, fmt.Errorf("name is required")
 	}
-	teamID := callbackTeamID(ctx)
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return EventCallbackRecord{}, err
+	}
 	existing, err := s.repo.GetEventCallbackByName(ctx, repository.GetEventCallbackByNameParams{
 		Name:   name,
 		TeamID: nullString(teamID),
@@ -170,16 +178,42 @@ func (s *Service) UpdateEventCallback(ctx context.Context, name string, in Event
 
 func (s *Service) ListEventCallbacks(ctx context.Context, enabledOnly bool, eventType string, limit, offset int) ([]EventCallbackRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
-	teamID := callbackTeamID(ctx)
 	includeGlobal := !scoped || scope.Admin
-	rows, err := s.repo.ListEventCallbacks(ctx, repository.ListEventCallbacksParams{
-		EnabledOnly:     enabledOnly,
-		EventTypeFilter: eventType,
-		IncludeGlobal:   includeGlobal,
-		TeamID:          nullString(teamID),
-		Limit:           clampListLimit(limit),
-		Offset:          int32(max(offset, 0)),
-	})
+	var rows []repository.ChetterEventCallback
+	var err error
+	if scoped && !scope.Admin {
+		teamIDs := scope.Teams()
+		if len(teamIDs) == 0 {
+			return nil, nil
+		}
+		if len(teamIDs) > 1 {
+			rows, err = s.repo.ListEventCallbacksByTeams(ctx, repository.ListEventCallbacksByTeamsParams{
+				EnabledOnly:     enabledOnly,
+				EventTypeFilter: eventType,
+				TeamIds:         nullStringSlice(teamIDs),
+				Limit:           clampListLimit(limit),
+				Offset:          int32(max(offset, 0)),
+			})
+		} else {
+			rows, err = s.repo.ListEventCallbacks(ctx, repository.ListEventCallbacksParams{
+				EnabledOnly:     enabledOnly,
+				EventTypeFilter: eventType,
+				IncludeGlobal:   false,
+				TeamID:          nullString(teamIDs[0]),
+				Limit:           clampListLimit(limit),
+				Offset:          int32(max(offset, 0)),
+			})
+		}
+	} else {
+		rows, err = s.repo.ListEventCallbacks(ctx, repository.ListEventCallbacksParams{
+			EnabledOnly:     enabledOnly,
+			EventTypeFilter: eventType,
+			IncludeGlobal:   includeGlobal,
+			TeamID:          sql.NullString{},
+			Limit:           clampListLimit(limit),
+			Offset:          int32(max(offset, 0)),
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list event callbacks: %w", err)
 	}
@@ -190,13 +224,17 @@ func (s *Service) ListEventCallbacks(ctx context.Context, enabledOnly bool, even
 	return out, nil
 }
 
-func (s *Service) DeleteEventCallback(ctx context.Context, name string) (bool, error) {
+func (s *Service) DeleteEventCallback(ctx context.Context, name, teamIDInput, teamName string) (bool, error) {
 	if name == "" {
 		return false, fmt.Errorf("name is required")
 	}
+	teamID, err := s.resolveOwnerTeamID(ctx, teamIDInput, teamName)
+	if err != nil {
+		return false, err
+	}
 	rows, err := s.repo.DeleteEventCallback(ctx, repository.DeleteEventCallbackParams{
 		Name:   name,
-		TeamID: nullString(callbackTeamID(ctx)),
+		TeamID: nullString(teamID),
 	})
 	if err != nil {
 		return false, fmt.Errorf("delete event callback: %w", err)
@@ -372,14 +410,6 @@ func validateEventCallbackInput(in EventCallbackInput) error {
 		return fmt.Errorf("action_config must be valid JSON")
 	}
 	return nil
-}
-
-func callbackTeamID(ctx context.Context) string {
-	scope, scoped := auth.GetScope(ctx)
-	if scoped && !scope.Admin {
-		return scope.TeamID
-	}
-	return teamIDFromContext(ctx)
 }
 
 func eventCallbackRecord(row repository.ChetterEventCallback) EventCallbackRecord {

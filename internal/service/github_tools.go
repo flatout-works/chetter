@@ -190,7 +190,7 @@ func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (rep
 		}
 		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("get task: %w", err)
 	}
-	if scope, ok := auth.GetScope(ctx); ok && !scope.Admin && scope.TeamID != "" && task.TeamID.String != scope.TeamID {
+	if scope, ok := auth.GetScope(ctx); ok && !scope.Admin && (!task.TeamID.Valid || !scope.HasTeam(task.TeamID.String)) {
 		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("task %q not found", taskID)
 	}
 	sessionRun, err := s.repo.GetSessionRunByTaskID(ctx, taskID)

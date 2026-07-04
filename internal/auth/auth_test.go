@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ func TestWithScopeAndGetScope(t *testing.T) {
 		if !ok {
 			t.Fatal("GetScope returned ok=false, want true")
 		}
-		if got != s {
+		if !reflect.DeepEqual(got, s) {
 			t.Errorf("GetScope returned %+v, want %+v", got, s)
 		}
 	})
@@ -27,7 +28,7 @@ func TestWithScopeAndGetScope(t *testing.T) {
 		if !ok {
 			t.Fatal("GetScope returned ok=false for admin scope")
 		}
-		if got != s {
+		if !reflect.DeepEqual(got, s) {
 			t.Errorf("GetScope returned %+v for admin scope, want %+v", got, s)
 		}
 	})
@@ -75,5 +76,23 @@ func TestScopeIsNotShared(t *testing.T) {
 	gotB, _ := GetScope(ctxB)
 	if gotA.TeamID == gotB.TeamID {
 		t.Error("scopes leaked between independent contexts")
+	}
+}
+
+func TestScopeTeamsAndHasTeam(t *testing.T) {
+	legacy := Scope{TeamID: "legacy"}
+	if got := legacy.Teams(); !reflect.DeepEqual(got, []string{"legacy"}) {
+		t.Fatalf("legacy Teams() = %#v", got)
+	}
+	if !legacy.HasTeam("legacy") || legacy.HasTeam("other") {
+		t.Fatalf("legacy HasTeam mismatch")
+	}
+
+	multi := Scope{TeamID: "legacy", TeamIDs: []string{"a", "b"}}
+	if got := multi.Teams(); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("multi Teams() = %#v", got)
+	}
+	if !multi.HasTeam("a") || !multi.HasTeam("b") || multi.HasTeam("legacy") {
+		t.Fatalf("multi HasTeam mismatch")
 	}
 }

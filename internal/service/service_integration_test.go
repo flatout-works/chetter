@@ -1079,6 +1079,10 @@ func ctxWithTeam(ctx context.Context, teamID string) context.Context {
 	return auth.WithScope(ctx, auth.Scope{TeamID: teamID})
 }
 
+func ctxWithTeams(ctx context.Context, teamIDs ...string) context.Context {
+	return auth.WithScope(ctx, auth.Scope{TeamIDs: teamIDs})
+}
+
 func ctxWithAdmin(ctx context.Context) context.Context {
 	return auth.WithScope(ctx, auth.Scope{Admin: true})
 }
@@ -1184,6 +1188,57 @@ func TestListTasksByTeamScopesCorrectly(t *testing.T) {
 	}
 	if len(bTasks) != 1 {
 		t.Errorf("team B: expected 1 task, got %d", len(bTasks))
+	}
+}
+
+func TestMultiTeamTokenListsUnionAndRequiresSubmitOwner(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
+	teamC, _ := seedTeam(t, tdb.DB, "security", "carol")
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{Prompt: "a1", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit a1: %v", err)
+	}
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamB), SubmitTaskRequest{Prompt: "b1", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit b1: %v", err)
+	}
+	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamC), SubmitTaskRequest{Prompt: "c1", AgentImage: "runner:latest"}); err != nil {
+		t.Fatalf("submit c1: %v", err)
+	}
+
+	multiCtx := ctxWithTeams(ctx, teamA, teamB)
+	if _, err := svc.SubmitTask(multiCtx, SubmitTaskRequest{Prompt: "missing owner", AgentImage: "runner:latest"}); err == nil {
+		t.Fatal("expected multi-team submit without owner to fail")
+	}
+	rec, err := svc.SubmitTask(multiCtx, SubmitTaskRequest{TeamID: teamB, Prompt: "owned", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit with owner: %v", err)
+	}
+	if rec.TeamID != teamB {
+		t.Fatalf("owned task team_id = %s, want %s", rec.TeamID, teamB)
+	}
+	if _, err := svc.SubmitTask(multiCtx, SubmitTaskRequest{TeamID: teamC, Prompt: "wrong owner", AgentImage: "runner:latest"}); err == nil {
+		t.Fatal("expected submit for out-of-scope team to fail")
+	}
+
+	tasks, err := svc.ListTasks(multiCtx, "", 20, 0, "")
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, task := range tasks {
+		seen[task.Prompt] = true
+		if task.TeamID == teamC {
+			t.Fatalf("multi-team list leaked team C task: %#v", task)
+		}
+	}
+	for _, prompt := range []string{"a1", "b1", "owned"} {
+		if !seen[prompt] {
+			t.Fatalf("multi-team list missing %q: %#v", prompt, tasks)
+		}
 	}
 }
 
@@ -1427,6 +1482,43 @@ func TestCreateTokenCreatesTeamUserAndToken(t *testing.T) {
 	}
 	if team.ID != out.TeamID {
 		t.Errorf("team id mismatch: %s vs %s", team.ID, out.TeamID)
+	}
+}
+
+func TestCreateTokenWithMultipleTeams(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, out, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamNames: []string{"engineering", "platform", "engineering"},
+		UserName:  "alice",
+		TokenName: "alice-cli",
+	})
+	if err != nil {
+		t.Fatalf("createTokenTool: %v", err)
+	}
+	if len(out.TeamNames) != 2 || out.TeamNames[0] != "engineering" || out.TeamNames[1] != "platform" {
+		t.Fatalf("unexpected team names: %#v", out.TeamNames)
+	}
+	if len(out.TeamIDs) != 2 {
+		t.Fatalf("expected two team ids, got %#v", out.TeamIDs)
+	}
+
+	q := repository.New(tdb.DB)
+	tokens, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0].TeamNames != "engineering,platform" {
+		t.Fatalf("unexpected token rows: %#v", tokens)
+	}
+	_, listed, err := svc.listTokensTool(ctx, nil, ListTokensInput{})
+	if err != nil {
+		t.Fatalf("listTokensTool: %v", err)
+	}
+	if len(listed.Tokens) != 1 || len(listed.Tokens[0].TeamNames) != 2 {
+		t.Fatalf("unexpected token tool output: %#v", listed)
 	}
 }
 

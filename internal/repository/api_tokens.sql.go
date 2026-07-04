@@ -7,25 +7,70 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
+const addTokenTeam = `-- name: AddTokenTeam :exec
+INSERT IGNORE INTO api_token_teams (token_id, team_id, created_at)
+VALUES (?, ?, ?)
+`
+
+type AddTokenTeamParams struct {
+	TokenID   string    `json:"token_id"`
+	TeamID    string    `json:"team_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) AddTokenTeam(ctx context.Context, arg AddTokenTeamParams) error {
+	_, err := q.db.ExecContext(ctx, addTokenTeam, arg.TokenID, arg.TeamID, arg.CreatedAt)
+	return err
+}
+
+const addUserTeamMembership = `-- name: AddUserTeamMembership :exec
+INSERT IGNORE INTO user_team_memberships (user_id, team_id, source, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type AddUserTeamMembershipParams struct {
+	UserID    string    `json:"user_id"`
+	TeamID    string    `json:"team_id"`
+	Source    string    `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (q *Queries) AddUserTeamMembership(ctx context.Context, arg AddUserTeamMembershipParams) error {
+	_, err := q.db.ExecContext(ctx, addUserTeamMembership,
+		arg.UserID,
+		arg.TeamID,
+		arg.Source,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createTeam = `-- name: CreateTeam :exec
-INSERT INTO teams (id, name, created_at, updated_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO teams (id, name, okta_group_id, okta_group_name, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateTeamParams struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	OktaGroupID   sql.NullString `json:"okta_group_id"`
+	OktaGroupName sql.NullString `json:"okta_group_name"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) error {
 	_, err := q.db.ExecContext(ctx, createTeam,
 		arg.ID,
 		arg.Name,
+		arg.OktaGroupID,
+		arg.OktaGroupName,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -102,13 +147,39 @@ func (q *Queries) DeleteToken(ctx context.Context, name string) error {
 	return err
 }
 
-const deleteTokensByTeam = `-- name: DeleteTokensByTeam :exec
-DELETE FROM api_tokens
-WHERE user_id IN (SELECT id FROM users WHERE team_id = ?)
+const deleteTokenTeamsByTeam = `-- name: DeleteTokenTeamsByTeam :exec
+DELETE FROM api_token_teams
+WHERE team_id = ?
 `
 
-func (q *Queries) DeleteTokensByTeam(ctx context.Context, teamID string) error {
-	_, err := q.db.ExecContext(ctx, deleteTokensByTeam, teamID)
+func (q *Queries) DeleteTokenTeamsByTeam(ctx context.Context, teamID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTokenTeamsByTeam, teamID)
+	return err
+}
+
+const deleteTokensByTeam = `-- name: DeleteTokensByTeam :exec
+DELETE FROM api_tokens
+WHERE id IN (SELECT token_id FROM api_token_teams WHERE api_token_teams.team_id = ?)
+   OR user_id IN (SELECT id FROM users WHERE users.team_id = ?)
+`
+
+type DeleteTokensByTeamParams struct {
+	TeamID   string `json:"team_id"`
+	TeamID_2 string `json:"team_id_2"`
+}
+
+func (q *Queries) DeleteTokensByTeam(ctx context.Context, arg DeleteTokensByTeamParams) error {
+	_, err := q.db.ExecContext(ctx, deleteTokensByTeam, arg.TeamID, arg.TeamID_2)
+	return err
+}
+
+const deleteUserTeamMembershipsByTeam = `-- name: DeleteUserTeamMembershipsByTeam :exec
+DELETE FROM user_team_memberships
+WHERE team_id = ?
+`
+
+func (q *Queries) DeleteUserTeamMembershipsByTeam(ctx context.Context, teamID string) error {
+	_, err := q.db.ExecContext(ctx, deleteUserTeamMembershipsByTeam, teamID)
 	return err
 }
 
@@ -123,7 +194,7 @@ func (q *Queries) DeleteUsersByTeam(ctx context.Context, teamID string) error {
 }
 
 const getTeamByID = `-- name: GetTeamByID :one
-SELECT id, name, created_at, updated_at FROM teams
+SELECT id, name, created_at, updated_at, okta_group_id, okta_group_name FROM teams
 WHERE id = ?
 `
 
@@ -135,12 +206,14 @@ func (q *Queries) GetTeamByID(ctx context.Context, id string) (Team, error) {
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OktaGroupID,
+		&i.OktaGroupName,
 	)
 	return i, err
 }
 
 const getTeamByName = `-- name: GetTeamByName :one
-SELECT id, name, created_at, updated_at FROM teams
+SELECT id, name, created_at, updated_at, okta_group_id, okta_group_name FROM teams
 WHERE name = ?
 `
 
@@ -152,6 +225,8 @@ func (q *Queries) GetTeamByName(ctx context.Context, name string) (Team, error) 
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OktaGroupID,
+		&i.OktaGroupName,
 	)
 	return i, err
 }
@@ -213,7 +288,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 }
 
 const listTeams = `-- name: ListTeams :many
-SELECT id, name, created_at, updated_at FROM teams
+SELECT id, name, created_at, updated_at, okta_group_id, okta_group_name FROM teams
 ORDER BY name ASC
 `
 
@@ -231,6 +306,8 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 			&i.Name,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OktaGroupID,
+			&i.OktaGroupName,
 		); err != nil {
 			return nil, err
 		}
@@ -247,10 +324,14 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 
 const listTokens = `-- name: ListTokens :many
 SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
-       u.name AS user_name, u.team_id, tm.name AS team_name
+       u.name AS user_name, u.team_id, tm.name AS team_name,
+       COALESCE(GROUP_CONCAT(ttm.name ORDER BY ttm.name SEPARATOR ','), tm.name) AS team_names
 FROM api_tokens t
 JOIN users u ON u.id = t.user_id
 JOIN teams tm ON tm.id = u.team_id
+LEFT JOIN api_token_teams tt ON tt.token_id = t.id
+LEFT JOIN teams ttm ON ttm.id = tt.team_id
+GROUP BY t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at, u.name, u.team_id, tm.name
 ORDER BY t.created_at DESC
 `
 
@@ -264,6 +345,7 @@ type ListTokensRow struct {
 	UserName  string    `json:"user_name"`
 	TeamID    string    `json:"team_id"`
 	TeamName  string    `json:"team_name"`
+	TeamNames string    `json:"team_names"`
 }
 
 func (q *Queries) ListTokens(ctx context.Context) ([]ListTokensRow, error) {
@@ -285,6 +367,7 @@ func (q *Queries) ListTokens(ctx context.Context) ([]ListTokensRow, error) {
 			&i.UserName,
 			&i.TeamID,
 			&i.TeamName,
+			&i.TeamNames,
 		); err != nil {
 			return nil, err
 		}

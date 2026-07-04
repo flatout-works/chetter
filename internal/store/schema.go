@@ -217,10 +217,13 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS teams (
 		id VARCHAR(64) NOT NULL,
 		name VARCHAR(128) NOT NULL,
+		okta_group_id VARCHAR(255) NULL,
+		okta_group_name VARCHAR(255) NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),
-		UNIQUE KEY uq_teams_name (name)
+		UNIQUE KEY uq_teams_name (name),
+		UNIQUE KEY uq_teams_okta_group_id (okta_group_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS users (
 		id VARCHAR(64) NOT NULL,
@@ -241,6 +244,22 @@ var schemaStatements = []string{
 		PRIMARY KEY (id),
 		UNIQUE KEY uq_api_tokens_hash (token_hash),
 		KEY idx_api_tokens_user (user_id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS user_team_memberships (
+		user_id VARCHAR(64) NOT NULL,
+		team_id VARCHAR(64) NOT NULL,
+		source VARCHAR(32) NOT NULL DEFAULT 'manual',
+		created_at DATETIME(6) NOT NULL,
+		updated_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (user_id, team_id),
+		KEY idx_user_team_memberships_team (team_id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS api_token_teams (
+		token_id VARCHAR(64) NOT NULL,
+		team_id VARCHAR(64) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (token_id, team_id),
+		KEY idx_api_token_teams_team (team_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_audit_log (
 		id VARCHAR(64) NOT NULL,

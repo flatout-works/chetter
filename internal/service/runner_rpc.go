@@ -1040,6 +1040,37 @@ func nullString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
 }
 
+func nullStringSlice(values []string) []sql.NullString {
+	out := make([]sql.NullString, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			out = append(out, nullString(value))
+		}
+	}
+	return out
+}
+
+func normalizeTeamNames(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func splitCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return normalizeTeamNames(strings.Split(value, ","))
+}
+
 func parseOptionalTime(value string) sql.NullTime {
 	if value == "" {
 		return sql.NullTime{}

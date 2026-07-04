@@ -22,6 +22,21 @@ WHERE (sqlc.arg(team_filter) = '' OR COALESCE(team_id, '') = sqlc.arg(team_filte
 ORDER BY updated_at DESC
 LIMIT ? OFFSET ?;
 
+-- name: ListAgentSessionsByTeams :many
+SELECT * FROM chetter_agent_sessions
+WHERE team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: SearchAgentSessionsByTeams :many
+SELECT * FROM chetter_agent_sessions
+WHERE team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?;
+
 -- name: MarkAgentSessionTerminalByTask :execrows
 UPDATE chetter_agent_sessions
 SET status = ?,

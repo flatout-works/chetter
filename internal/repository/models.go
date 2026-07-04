@@ -19,6 +19,12 @@ type ApiToken struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type ApiTokenTeam struct {
+	TokenID   string    `json:"token_id"`
+	TeamID    string    `json:"team_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type ChetterAgentSession struct {
 	ID               string         `json:"id"`
 	TeamID           sql.NullString `json:"team_id"`
@@ -312,16 +318,26 @@ type DefinitionSyncRun struct {
 }
 
 type Team struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	OktaGroupID   sql.NullString `json:"okta_group_id"`
+	OktaGroupName sql.NullString `json:"okta_group_name"`
 }
 
 type User struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	TeamID    string    `json:"team_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type UserTeamMembership struct {
+	UserID    string    `json:"user_id"`
+	TeamID    string    `json:"team_id"`
+	Source    string    `json:"source"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

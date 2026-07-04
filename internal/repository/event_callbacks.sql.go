@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -194,6 +195,71 @@ func (q *Queries) ListEventCallbacks(ctx context.Context, arg ListEventCallbacks
 		arg.Limit,
 		arg.Offset,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterEventCallback{}
+	for rows.Next() {
+		var i ChetterEventCallback
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Name,
+			&i.EventType,
+			&i.ActionType,
+			&i.ActionConfig,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventCallbacksByTeams = `-- name: ListEventCallbacksByTeams :many
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+WHERE (? = false OR enabled = true)
+  AND (COALESCE(?, '') = '' OR event_type = ?)
+  AND team_id IN (/*SLICE:team_ids*/?)
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListEventCallbacksByTeamsParams struct {
+	EnabledOnly     interface{}      `json:"enabled_only"`
+	EventTypeFilter string           `json:"event_type_filter"`
+	TeamIds         []sql.NullString `json:"team_ids"`
+	Limit           int32            `json:"limit"`
+	Offset          int32            `json:"offset"`
+}
+
+func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg ListEventCallbacksByTeamsParams) ([]ChetterEventCallback, error) {
+	query := listEventCallbacksByTeams
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.EnabledOnly)
+	queryParams = append(queryParams, arg.EventTypeFilter)
+	queryParams = append(queryParams, arg.EventTypeFilter)
+	if len(arg.TeamIds) > 0 {
+		for _, v := range arg.TeamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(arg.TeamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

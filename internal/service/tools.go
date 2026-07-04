@@ -16,6 +16,8 @@ import (
 
 // SubmitTaskInput is the input for chetter_submit_task.
 type SubmitTaskInput struct {
+	TeamID      string            `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName    string            `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
 	Prompt      string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
 	GitURL      string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
 	GitRef      string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
@@ -69,40 +71,42 @@ type ListTasksOutput struct {
 // MCP JSON Schema validation (jsonschema-go v0.3.0 maps time.Time but not
 // *time.Time to string schema).
 type TaskToolRecord struct {
-	ID             string            `json:"id"`
-	TeamID         string            `json:"team_id,omitempty"`
-	Status         string            `json:"status"`
-	Prompt         string            `json:"prompt"`
-	GitURL         string            `json:"git_url,omitempty"`
-	GitRef         string            `json:"git_ref,omitempty"`
-	AgentImage     string            `json:"agent_image,omitempty"`
-	Agent          string            `json:"agent,omitempty"`
-	ProviderID     string            `json:"provider_id,omitempty"`
-	ModelID        string            `json:"model_id,omitempty"`
-	VariantID      string            `json:"variant_id,omitempty"`
-	TriggerName    string            `json:"trigger_name,omitempty"`
-	TriggerType    string            `json:"trigger_type,omitempty"`
-	Skills         []string          `json:"skills,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	TimeoutSec     int               `json:"timeout_sec"`
-	Summary        string            `json:"summary,omitempty"`
-	Error          string            `json:"error,omitempty"`
-	ErrorCategory  string            `json:"error_category,omitempty"`
-	AgentSessionID string            `json:"agent_session_id,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	StartedAt      *time.Time        `json:"started_at,omitempty"`
-	EndedAt        *time.Time        `json:"ended_at,omitempty"`
-	TotalInputTokens      int64      `json:"total_input_tokens"`
-	TotalOutputTokens     int64      `json:"total_output_tokens"`
-	TotalCacheReadTokens  int64      `json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens int64      `json:"total_cache_write_tokens"`
-	TotalReasoningTokens  int64      `json:"total_reasoning_tokens"`
-	CostCents             int64      `json:"cost_cents"`
+	ID                    string            `json:"id"`
+	TeamID                string            `json:"team_id,omitempty"`
+	Status                string            `json:"status"`
+	Prompt                string            `json:"prompt"`
+	GitURL                string            `json:"git_url,omitempty"`
+	GitRef                string            `json:"git_ref,omitempty"`
+	AgentImage            string            `json:"agent_image,omitempty"`
+	Agent                 string            `json:"agent,omitempty"`
+	ProviderID            string            `json:"provider_id,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
+	VariantID             string            `json:"variant_id,omitempty"`
+	TriggerName           string            `json:"trigger_name,omitempty"`
+	TriggerType           string            `json:"trigger_type,omitempty"`
+	Skills                []string          `json:"skills,omitempty"`
+	Env                   map[string]string `json:"env,omitempty"`
+	TimeoutSec            int               `json:"timeout_sec"`
+	Summary               string            `json:"summary,omitempty"`
+	Error                 string            `json:"error,omitempty"`
+	ErrorCategory         string            `json:"error_category,omitempty"`
+	AgentSessionID        string            `json:"agent_session_id,omitempty"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	StartedAt             *time.Time        `json:"started_at,omitempty"`
+	EndedAt               *time.Time        `json:"ended_at,omitempty"`
+	TotalInputTokens      int64             `json:"total_input_tokens"`
+	TotalOutputTokens     int64             `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64             `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
+	CostCents             int64             `json:"cost_cents"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
 type CreateTriggerInput struct {
+	TeamID      string   `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName    string   `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
 	Name        string   `json:"name" jsonschema:"Unique trigger name"`
 	TriggerType string   `json:"trigger_type" jsonschema:"Trigger type: cron, pr_review, or issue"`
 	CronExpr    string   `json:"cron_expr,omitempty" jsonschema:"Five-field cron expression or descriptor like @hourly (required for cron)"`
@@ -172,6 +176,8 @@ type ListTriggersOutput struct {
 }
 
 type CreateEventCallbackInput struct {
+	TeamID       string `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName     string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
 	Name         string `json:"name" jsonschema:"Unique event callback name"`
 	EventType    string `json:"event_type" jsonschema:"Event type to match, e.g. task.completed, task.failed.*, task.failed.model_error"`
 	ActionType   string `json:"action_type" jsonschema:"Action type: create_task, webhook, or slack"`
@@ -184,6 +190,8 @@ type CreateEventCallbackOutput struct {
 }
 
 type UpdateEventCallbackInput struct {
+	TeamID       string `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName     string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
 	Name         string `json:"name" jsonschema:"Name of the event callback to update"`
 	EventType    string `json:"event_type,omitempty" jsonschema:"Updated event type matcher"`
 	ActionType   string `json:"action_type,omitempty" jsonschema:"Updated action type: create_task, webhook, or slack"`
@@ -206,7 +214,9 @@ type ListEventCallbacksOutput struct {
 }
 
 type DeleteEventCallbackInput struct {
-	Name string `json:"name" jsonschema:"Name of the event callback to delete"`
+	TeamID   string `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Name     string `json:"name" jsonschema:"Name of the event callback to delete"`
 }
 
 type DeleteEventCallbackOutput struct {
@@ -362,18 +372,21 @@ type ClearQueueOutput struct {
 
 // CreateTokenInput is the input for chetter_create_token.
 type CreateTokenInput struct {
-	TeamName  string `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
-	UserName  string `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
-	TokenName string `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
+	TeamName  string   `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
+	TeamNames []string `json:"team_names,omitempty" jsonschema:"Names of teams this token should belong to; defaults to team_name"`
+	UserName  string   `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
+	TokenName string   `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
 }
 
 // CreateTokenOutput is the output for chetter_create_token.
 type CreateTokenOutput struct {
-	Token    string `json:"token"`
-	TeamID   string `json:"team_id"`
-	TeamName string `json:"team_name"`
-	UserID   string `json:"user_id"`
-	UserName string `json:"user_name"`
+	Token     string   `json:"token"`
+	TeamID    string   `json:"team_id"`
+	TeamName  string   `json:"team_name"`
+	TeamIDs   []string `json:"team_ids"`
+	TeamNames []string `json:"team_names"`
+	UserID    string   `json:"user_id"`
+	UserName  string   `json:"user_name"`
 }
 
 // ListTokensInput is the input for chetter_list_tokens.
@@ -384,6 +397,7 @@ type TokenInfo struct {
 	Name      string    `json:"name"`
 	UserName  string    `json:"user_name"`
 	TeamName  string    `json:"team_name"`
+	TeamNames []string  `json:"team_names"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -632,6 +646,8 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
+		TeamID:      in.TeamID,
+		TeamName:    in.TeamName,
 		Prompt:      in.Prompt,
 		GitURL:      in.GitURL,
 		GitRef:      in.GitRef,
@@ -774,29 +790,29 @@ func nullTimePtr(value sql.NullTime) *time.Time {
 
 func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitURL,
-		GitRef:        task.GitRef,
-		AgentImage:    task.AgentImage,
-		Agent:         task.Agent,
-		ProviderID:    task.ProviderID,
-		ModelID:       task.ModelID,
-		VariantID:     task.VariantID,
-		TriggerName:   task.TriggerName,
-		TriggerType:   task.TriggerType,
-		Skills:        task.Skills,
-		Env:           task.Env,
-		TimeoutSec:    task.TimeoutSec,
-		Summary:       task.Summary,
-		Error:         task.Error,
-		ErrorCategory: task.ErrorCategory,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     task.StartedAt,
-		EndedAt:       task.EndedAt,
+		ID:                    task.ID,
+		TeamID:                task.TeamID,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitURL,
+		GitRef:                task.GitRef,
+		AgentImage:            task.AgentImage,
+		Agent:                 task.Agent,
+		ProviderID:            task.ProviderID,
+		ModelID:               task.ModelID,
+		VariantID:             task.VariantID,
+		TriggerName:           task.TriggerName,
+		TriggerType:           task.TriggerType,
+		Skills:                task.Skills,
+		Env:                   task.Env,
+		TimeoutSec:            task.TimeoutSec,
+		Summary:               task.Summary,
+		Error:                 task.Error,
+		ErrorCategory:         task.ErrorCategory,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             task.StartedAt,
+		EndedAt:               task.EndedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -810,29 +826,29 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	return TaskToolRecord{
-		ID:            task.ID,
-		TeamID:        task.TeamID.String,
-		Status:        task.Status,
-		Prompt:        task.Prompt,
-		GitURL:        task.GitUrl.String,
-		GitRef:        task.GitRef.String,
-		AgentImage:    task.AgentImage.String,
-		Agent:         task.Agent.String,
-		ProviderID:    task.ProviderID.String,
-		ModelID:       task.ModelID.String,
-		VariantID:     task.VariantID.String,
-		TriggerName:   task.TriggerName.String,
-		TriggerType:   task.TriggerType.String,
-		Skills:        skills,
-		Env:           env,
-		TimeoutSec:    int(task.TimeoutSec),
-		Summary:       task.Summary.String,
-		Error:         task.Error.String,
-		ErrorCategory: task.ErrorCategory.String,
-		CreatedAt:     task.CreatedAt,
-		UpdatedAt:     task.UpdatedAt,
-		StartedAt:     store.NullTimePtr(task.StartedAt),
-		EndedAt:       store.NullTimePtr(task.EndedAt),
+		ID:                    task.ID,
+		TeamID:                task.TeamID.String,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitUrl.String,
+		GitRef:                task.GitRef.String,
+		AgentImage:            task.AgentImage.String,
+		Agent:                 task.Agent.String,
+		ProviderID:            task.ProviderID.String,
+		ModelID:               task.ModelID.String,
+		VariantID:             task.VariantID.String,
+		TriggerName:           task.TriggerName.String,
+		TriggerType:           task.TriggerType.String,
+		Skills:                skills,
+		Env:                   env,
+		TimeoutSec:            int(task.TimeoutSec),
+		Summary:               task.Summary.String,
+		Error:                 task.Error.String,
+		ErrorCategory:         task.ErrorCategory.String,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             store.NullTimePtr(task.StartedAt),
+		EndedAt:               store.NullTimePtr(task.EndedAt),
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -894,6 +910,8 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		}
 	}
 	trigger, err := s.CreateTrigger(ctx, store.TriggerInput{
+		TeamID:        in.TeamID,
+		TeamName:      in.TeamName,
 		Name:          in.Name,
 		TriggerType:   in.TriggerType,
 		TriggerConfig: triggerConfig,
@@ -1008,6 +1026,8 @@ func (s *Service) createEventCallbackTool(ctx context.Context, _ *mcp.CallToolRe
 		enabled = *in.Enabled
 	}
 	callback, err := s.CreateEventCallback(ctx, EventCallbackInput{
+		TeamID:       in.TeamID,
+		TeamName:     in.TeamName,
 		Name:         in.Name,
 		EventType:    in.EventType,
 		ActionType:   in.ActionType,
@@ -1026,6 +1046,8 @@ func (s *Service) updateEventCallbackTool(ctx context.Context, _ *mcp.CallToolRe
 		cfg = json.RawMessage(in.ActionConfig)
 	}
 	callback, err := s.UpdateEventCallback(ctx, in.Name, EventCallbackInput{
+		TeamID:       in.TeamID,
+		TeamName:     in.TeamName,
 		EventType:    in.EventType,
 		ActionType:   in.ActionType,
 		ActionConfig: cfg,
@@ -1045,7 +1067,7 @@ func (s *Service) listEventCallbacksTool(ctx context.Context, _ *mcp.CallToolReq
 }
 
 func (s *Service) deleteEventCallbackTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteEventCallbackInput) (*mcp.CallToolResult, DeleteEventCallbackOutput, error) {
-	deleted, err := s.DeleteEventCallback(ctx, in.Name)
+	deleted, err := s.DeleteEventCallback(ctx, in.Name, in.TeamID, in.TeamName)
 	if err != nil {
 		return nil, DeleteEventCallbackOutput{}, err
 	}
@@ -1237,7 +1259,11 @@ func (s *Service) clearQueueTool(ctx context.Context, _ *mcp.CallToolRequest, in
 // --- Token Management Tools ---
 
 func (s *Service) createTokenTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateTokenInput) (*mcp.CallToolResult, CreateTokenOutput, error) {
-	out, err := s.CreateToken(ctx, in.TeamName, in.UserName, in.TokenName)
+	teamNames := in.TeamNames
+	if len(teamNames) == 0 && in.TeamName != "" {
+		teamNames = []string{in.TeamName}
+	}
+	out, err := s.CreateToken(ctx, teamNames, in.UserName, in.TokenName)
 	if err != nil {
 		return nil, CreateTokenOutput{}, err
 	}
@@ -1323,7 +1349,7 @@ func authorizeTaskToolAccess(ctx context.Context, task repository.ChetterTask) e
 	if !scoped || scope.Admin {
 		return nil
 	}
-	if scope.TeamID == "" || !task.TeamID.Valid || task.TeamID.String != scope.TeamID {
+	if !task.TeamID.Valid || !scope.HasTeam(task.TeamID.String) {
 		return fmt.Errorf("task not found")
 	}
 	return nil

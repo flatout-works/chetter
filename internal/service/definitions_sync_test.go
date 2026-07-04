@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -93,6 +94,59 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	}
 }
 
+func TestSyncDefinitionsScopedLayout(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	now := time.Now().UTC()
+	if err := svc.repo.CreateTeam(context.Background(), repository.CreateTeamParams{
+		ID:        "team_eng",
+		Name:      "engineering",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+	repoDir := createScopedDefinitionsRepo(t)
+	svc.SetDefinitions(definitions.New(repoDir, "main", filepath.Join(t.TempDir(), "cache")))
+
+	if _, err := svc.SyncDefinitions(context.Background()); err != nil {
+		t.Fatalf("sync definitions: %v", err)
+	}
+
+	defs, err := svc.repo.ListDefinitions(context.Background(), repository.ListDefinitionsParams{
+		Column1:        "",
+		DefinitionType: "",
+		Column3:        "",
+		SourceID:       "",
+	})
+	if err != nil {
+		t.Fatalf("list definitions: %v", err)
+	}
+	byPath := map[string]repository.Definition{}
+	for _, def := range defs {
+		byPath[def.Path] = def
+	}
+	globalDef := byPath["global/agents/global-reviewer.md"]
+	if globalDef.Scope != definitionScopeGlobal || globalDef.TeamID.Valid || globalDef.Repo.Valid {
+		t.Fatalf("unexpected global definition: %#v", globalDef)
+	}
+	teamDef := byPath["groups/engineering/triggers/team-nightly.yaml"]
+	if teamDef.Scope != definitionScopeTeam || !teamDef.TeamID.Valid || teamDef.TeamID.String != "team_eng" {
+		t.Fatalf("unexpected team definition: %#v", teamDef)
+	}
+	repoDef := byPath["repos/acme/app/agents/repo-reviewer.md"]
+	if repoDef.Scope != definitionScopeRepo || !repoDef.Repo.Valid || repoDef.Repo.String != "acme/app" || repoDef.TeamID.Valid {
+		t.Fatalf("unexpected repo definition: %#v", repoDef)
+	}
+	trigger, err := svc.repo.GetTriggerByName(context.Background(), "team-nightly")
+	if err != nil {
+		t.Fatalf("get synced trigger: %v", err)
+	}
+	if !trigger.TeamID.Valid || trigger.TeamID.String != "team_eng" {
+		t.Fatalf("expected group-scoped trigger to be team-owned, got %#v", trigger)
+	}
+}
+
 func createDefinitionsRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -119,6 +173,34 @@ providers:
 	writeRepoFile(t, dir, "task-templates/improve.md", "Improve this\n")
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "initial definitions")
+	return dir
+}
+
+func createScopedDefinitionsRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "checkout", "-b", "main")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "Test User")
+	writeRepoFile(t, dir, "model-catalog.yaml", `version: 1
+default_provider: test
+default_model: test-model
+providers:
+  test:
+    name: Test
+    kind: openai_compatible
+    models:
+      - id: test-model
+`)
+	writeRepoFile(t, dir, "global/agents/global-reviewer.md", "# Global reviewer\n")
+	writeRepoFile(t, dir, "groups/engineering/triggers/team-nightly.yaml", "name: team-nightly\n")
+	writeRepoFile(t, dir, "repos/acme/app/agents/repo-reviewer.md", "# Repo reviewer\n")
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "scoped definitions")
 	return dir
 }
 

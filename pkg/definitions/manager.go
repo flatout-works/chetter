@@ -34,14 +34,27 @@ const (
 	DefinitionTypeSkill        = "skill"
 	DefinitionTypeTrigger      = "trigger"
 	DefinitionTypeTaskTemplate = "task_template"
+	DefinitionScopeGlobal      = "global"
+	DefinitionScopeTeam        = "team"
+	DefinitionScopeRepo        = "repo"
 )
 
 type Definition struct {
 	Type        string
 	Name        string
+	Scope       string
+	TeamName    string
+	Repo        string
 	Path        string
 	Content     string
 	ContentHash string
+}
+
+type definitionRoot struct {
+	path     string
+	scope    string
+	teamName string
+	repo     string
 }
 
 func New(repoURL, branch, cacheDir string) *Manager {
@@ -147,6 +160,77 @@ func (m *Manager) SyncAndLoad(ctx context.Context) error {
 
 func (m *Manager) ScanDefinitions() ([]Definition, error) {
 	var out []Definition
+	roots, err := m.definitionRoots()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	for _, root := range roots {
+		defs, err := m.scanDefinitionsRoot(root, seen)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, defs...)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out, nil
+}
+
+func (m *Manager) definitionRoots() ([]definitionRoot, error) {
+	roots := []definitionRoot{{scope: DefinitionScopeGlobal}}
+	if isDir(filepath.Join(m.cacheDir, "global")) {
+		roots = append(roots, definitionRoot{path: "global", scope: DefinitionScopeGlobal})
+	}
+	groupsDir := filepath.Join(m.cacheDir, "groups")
+	if isDir(groupsDir) {
+		entries, err := os.ReadDir(groupsDir)
+		if err != nil {
+			return nil, fmt.Errorf("read groups definitions: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				teamName := entry.Name()
+				roots = append(roots, definitionRoot{path: filepath.Join("groups", teamName), scope: DefinitionScopeTeam, teamName: teamName})
+			}
+		}
+	}
+	reposDir := filepath.Join(m.cacheDir, "repos")
+	if isDir(reposDir) {
+		owners, err := os.ReadDir(reposDir)
+		if err != nil {
+			return nil, fmt.Errorf("read repo definitions: %w", err)
+		}
+		for _, owner := range owners {
+			if !owner.IsDir() {
+				continue
+			}
+			ownerDir := filepath.Join(reposDir, owner.Name())
+			repos, err := os.ReadDir(ownerDir)
+			if err != nil {
+				return nil, fmt.Errorf("read repo definitions for %s: %w", owner.Name(), err)
+			}
+			for _, repo := range repos {
+				if repo.IsDir() {
+					repoName := owner.Name() + "/" + repo.Name()
+					roots = append(roots, definitionRoot{path: filepath.Join("repos", owner.Name(), repo.Name()), scope: DefinitionScopeRepo, repo: repoName})
+				}
+			}
+		}
+	}
+	return roots, nil
+}
+
+func (m *Manager) scanDefinitionsRoot(root definitionRoot, seen map[string]struct{}) ([]Definition, error) {
+	var out []Definition
 	patterns := []struct {
 		definitionType string
 		pattern        string
@@ -158,11 +242,10 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yml"), stemName},
 		{DefinitionTypeTaskTemplate, filepath.Join("task-templates", "*.md"), stemName},
 	}
-	seen := map[string]struct{}{}
 	for _, p := range patterns {
-		matches, err := filepath.Glob(filepath.Join(m.cacheDir, p.pattern))
+		matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, p.pattern))
 		if err != nil {
-			return nil, fmt.Errorf("scan %s: %w", p.pattern, err)
+			return nil, fmt.Errorf("scan %s: %w", filepath.Join(root.path, p.pattern), err)
 		}
 		for _, path := range matches {
 			info, err := os.Stat(path)
@@ -193,6 +276,9 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 			out = append(out, Definition{
 				Type:        p.definitionType,
 				Name:        p.nameFunc(path),
+				Scope:       root.scope,
+				TeamName:    root.teamName,
+				Repo:        root.repo,
 				Path:        rel,
 				Content:     string(data),
 				ContentHash: hex.EncodeToString(sum[:]),
@@ -202,7 +288,7 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 
 	// Skills with subdirectories: walk each skill directory to capture all
 	// files (SKILL.md plus references/, scripts/, etc.).
-	skillDirs, err := filepath.Glob(filepath.Join(m.cacheDir, "skills", "*"))
+	skillDirs, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, "skills", "*"))
 	if err != nil {
 		return nil, fmt.Errorf("scan skill dirs: %w", err)
 	}
@@ -237,6 +323,9 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 			out = append(out, Definition{
 				Type:        DefinitionTypeSkill,
 				Name:        skillName,
+				Scope:       root.scope,
+				TeamName:    root.teamName,
+				Repo:        root.repo,
 				Path:        rel,
 				Content:     string(data),
 				ContentHash: hex.EncodeToString(sum[:]),
@@ -247,17 +336,12 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 			return nil, fmt.Errorf("walk skill dir %s: %w", skillName, err)
 		}
 	}
-
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Type != out[j].Type {
-			return out[i].Type < out[j].Type
-		}
-		if out[i].Name != out[j].Name {
-			return out[i].Name < out[j].Name
-		}
-		return out[i].Path < out[j].Path
-	})
 	return out, nil
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func stemName(path string) string {

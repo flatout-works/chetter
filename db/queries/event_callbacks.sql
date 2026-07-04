@@ -23,6 +23,14 @@ WHERE (sqlc.arg(enabled_only) = false OR enabled = true)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
+-- name: ListEventCallbacksByTeams :many
+SELECT * FROM chetter_event_callbacks
+WHERE (sqlc.arg(enabled_only) = false OR enabled = true)
+  AND (COALESCE(sqlc.arg(event_type_filter), '') = '' OR event_type = sqlc.arg(event_type_filter))
+  AND team_id IN (sqlc.slice(team_ids))
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
 -- name: ListEnabledEventCallbacksForEvent :many
 SELECT * FROM chetter_event_callbacks
 WHERE enabled = true

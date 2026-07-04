@@ -26,6 +26,17 @@ WHERE team_id = sqlc.arg(team_id)
   AND enabled = TRUE
 ORDER BY created_at DESC;
 
+-- name: ListTriggersByTeams :many
+SELECT * FROM chetter_triggers
+WHERE team_id IN (sqlc.slice(team_ids))
+ORDER BY created_at DESC;
+
+-- name: ListEnabledTriggersByTeams :many
+SELECT * FROM chetter_triggers
+WHERE team_id IN (sqlc.slice(team_ids))
+  AND enabled = TRUE
+ORDER BY created_at DESC;
+
 -- name: ListEnabledTriggersByType :many
 SELECT * FROM chetter_triggers
 WHERE enabled = TRUE
@@ -106,6 +117,14 @@ SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.t
 FROM chetter_trigger_runs sr
 JOIN chetter_triggers s ON s.id = sr.trigger_id
 WHERE s.team_id = sqlc.arg(team_id)
+ORDER BY sr.created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: ListTriggerRunsByTeams :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
+WHERE s.team_id IN (sqlc.slice(team_ids))
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?;
 

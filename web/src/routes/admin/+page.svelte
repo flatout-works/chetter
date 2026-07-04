@@ -44,8 +44,9 @@
   async function createToken() {
     try {
       const client = createClient(AdminService, getTransport());
+      const teamNames = newTeam.split(",").map((t) => t.trim()).filter(Boolean);
       const resp = await client.createToken({
-        teamName: newTeam,
+        teamNames,
         userName: newUser,
         tokenName: newTokenName,
       });
@@ -57,6 +58,8 @@
       newTokenName = "";
       await load();
     } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to create token.";
+      addToast(actionError, "error");
       console.error(e);
     }
   }
@@ -155,7 +158,7 @@
         </div>
         {#if showTokenForm}
           <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-2">
-            <Input bind:value={newTeam} placeholder="Team name" />
+            <Input bind:value={newTeam} placeholder="Team name(s), comma-separated" />
             <Input bind:value={newUser} placeholder="User name" />
             <Input bind:value={newTokenName} placeholder="Token name" />
             <Button color="blue" class="w-full" size="xs" onclick={createToken}>Create Token</Button>
@@ -166,7 +169,7 @@
             <div class="px-4 py-3 flex items-center justify-between">
               <div>
                 <p class="text-sm font-medium text-gray-900 dark:text-white">{token.name}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{token.userName} · {token.teamName}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{token.userName} · {(token.teamNames ?? [token.teamName]).join(", ")}</p>
               </div>
               <Button color="red" size="xs" outline onclick={() => deleteToken(token.name)}>Delete</Button>
             </div>

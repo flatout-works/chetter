@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -394,6 +395,70 @@ func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.Null
 	return items, nil
 }
 
+const listEnabledTriggersByTeams = `-- name: ListEnabledTriggersByTeams :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+WHERE team_id IN (/*SLICE:team_ids*/?)
+  AND enabled = TRUE
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]ChetterTrigger, error) {
+	query := listEnabledTriggersByTeams
+	var queryParams []interface{}
+	if len(teamIds) > 0 {
+		for _, v := range teamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(teamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTrigger{}
+	for rows.Next() {
+		var i ChetterTrigger
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Harness,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
+			&i.SourceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
 SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
 WHERE enabled = TRUE
@@ -482,6 +547,74 @@ func (q *Queries) ListTriggerRunsByTeam(ctx context.Context, arg ListTriggerRuns
 	items := []ListTriggerRunsByTeamRow{}
 	for rows.Next() {
 		var i ListTriggerRunsByTeamRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TriggerID,
+			&i.TriggerName,
+			&i.TaskID,
+			&i.Status,
+			&i.TriggeredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTriggerRunsByTeams = `-- name: ListTriggerRunsByTeams :many
+SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
+FROM chetter_trigger_runs sr
+JOIN chetter_triggers s ON s.id = sr.trigger_id
+WHERE s.team_id IN (/*SLICE:team_ids*/?)
+ORDER BY sr.created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListTriggerRunsByTeamsParams struct {
+	TeamIds []sql.NullString `json:"team_ids"`
+	Limit   int32            `json:"limit"`
+	Offset  int32            `json:"offset"`
+}
+
+type ListTriggerRunsByTeamsRow struct {
+	ID          string    `json:"id"`
+	TriggerID   string    `json:"trigger_id"`
+	TriggerName string    `json:"trigger_name"`
+	TaskID      string    `json:"task_id"`
+	Status      string    `json:"status"`
+	TriggeredAt time.Time `json:"triggered_at"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListTriggerRunsByTeams(ctx context.Context, arg ListTriggerRunsByTeamsParams) ([]ListTriggerRunsByTeamsRow, error) {
+	query := listTriggerRunsByTeams
+	var queryParams []interface{}
+	if len(arg.TeamIds) > 0 {
+		for _, v := range arg.TeamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(arg.TeamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTriggerRunsByTeamsRow{}
+	for rows.Next() {
+		var i ListTriggerRunsByTeamsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TriggerID,
@@ -620,6 +753,69 @@ ORDER BY created_at DESC
 
 func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterTrigger, error) {
 	rows, err := q.db.QueryContext(ctx, listTriggersByTeam, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTrigger{}
+	for rows.Next() {
+		var i ChetterTrigger
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.TriggerType,
+			&i.TriggerConfig,
+			&i.CronExpr,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.Harness,
+			&i.Skills,
+			&i.TimeoutSec,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+			&i.NextRunAt,
+			&i.TeamID,
+			&i.SourceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTriggersByTeams = `-- name: ListTriggersByTeams :many
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+WHERE team_id IN (/*SLICE:team_ids*/?)
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]ChetterTrigger, error) {
+	query := listTriggersByTeams
+	var queryParams []interface{}
+	if len(teamIds) > 0 {
+		for _, v := range teamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(teamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

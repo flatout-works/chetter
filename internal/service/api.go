@@ -8,15 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
- 	"strings"
- 	"time"
+	"strings"
+	"time"
 
- 	"github.com/flatout-works/chetter/internal/auth"
- 	"github.com/flatout-works/chetter/internal/repository"
- 	"github.com/flatout-works/chetter/internal/store"
- )
+	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
+)
 
- // --- Task Methods ---
+// --- Task Methods ---
 
 // GetTask returns a single task by ID, respecting team-scoped access.
 func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
@@ -51,17 +51,37 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	var tasks []repository.ChetterTask
 	var err error
 	if search != "" {
-		var teamFilter sql.NullString
-		if scoped && !scope.Admin && scope.TeamID != "" {
-			teamFilter = sql.NullString{String: scope.TeamID, Valid: true}
+		if scoped && !scope.Admin {
+			teamIDs := scope.Teams()
+			if len(teamIDs) == 0 {
+				return nil, nil
+			}
+			if len(teamIDs) > 1 {
+				tasks, err = s.repo.SearchTasksByTeams(ctx, repository.SearchTasksByTeamsParams{
+					TeamIds:           nullStringSlice(teamIDs),
+					StatusFilter:      status,
+					TriggerNameFilter: sql.NullString{},
+					Search:            search,
+					Limit:             clamped,
+					Offset:            clampedOffset,
+				})
+			} else {
+				tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: teamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
+			}
+		} else {
+			tasks, err = s.searchTasksFTS(ctx, sql.NullString{}, status, search, clamped, clampedOffset)
 		}
-		tasks, err = s.searchTasksFTS(ctx, teamFilter, status, search, clamped, clampedOffset)
-	} else if scoped && !scope.Admin && scope.TeamID != "" {
-		tasks, err = s.repo.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
-			TeamID:       sql.NullString{String: scope.TeamID, Valid: true},
-			StatusFilter: status,
-			Limit:        clamped,
-			Offset:       clampedOffset,
+	} else if scoped && !scope.Admin {
+		teamIDs := scope.Teams()
+		if len(teamIDs) == 0 {
+			return nil, nil
+		}
+		tasks, err = s.repo.ListTasksByStatusAndTeams(ctx, repository.ListTasksByStatusAndTeamsParams{
+			TeamIds:           nullStringSlice(teamIDs),
+			StatusFilter:      status,
+			TriggerNameFilter: sql.NullString{},
+			Limit:             clamped,
+			Offset:            clampedOffset,
 		})
 	} else {
 		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
@@ -442,19 +462,44 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 // ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
 func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int, search string) ([]AgentSessionRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
-	teamID := sql.NullString{String: "", Valid: true}
-	if scoped && !scope.Admin && scope.TeamID != "" {
-		teamID = sql.NullString{String: scope.TeamID, Valid: true}
-	}
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var rows []repository.ChetterAgentSession
 	var err error
 	if search != "" {
-		rows, err = s.searchAgentSessionsFTS(ctx, teamID, status, search, clamped, clampedOffset)
+		if scoped && !scope.Admin {
+			teamIDs := scope.Teams()
+			if len(teamIDs) == 0 {
+				return nil, nil
+			}
+			if len(teamIDs) > 1 {
+				rows, err = s.repo.SearchAgentSessionsByTeams(ctx, repository.SearchAgentSessionsByTeamsParams{
+					TeamIds:      nullStringSlice(teamIDs),
+					StatusFilter: status,
+					Search:       search,
+					Limit:        clamped,
+					Offset:       clampedOffset,
+				})
+			} else {
+				rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{String: teamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
+			}
+		} else {
+			rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{}, status, search, clamped, clampedOffset)
+		}
+	} else if scoped && !scope.Admin {
+		teamIDs := scope.Teams()
+		if len(teamIDs) == 0 {
+			return nil, nil
+		}
+		rows, err = s.repo.ListAgentSessionsByTeams(ctx, repository.ListAgentSessionsByTeamsParams{
+			TeamIds:      nullStringSlice(teamIDs),
+			StatusFilter: status,
+			Limit:        clamped,
+			Offset:       clampedOffset,
+		})
 	} else {
 		rows, err = s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
-			TeamFilter:   teamID,
+			TeamFilter:   sql.NullString{},
 			StatusFilter: status,
 			Limit:        clamped,
 			Offset:       clampedOffset,
@@ -539,12 +584,15 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 	scope, scoped := auth.GetScope(ctx)
 	var repoRecords []repository.ChetterTrigger
 	var err error
-	if scoped && !scope.Admin && scope.TeamID != "" {
-		teamID := sql.NullString{String: scope.TeamID, Valid: true}
+	if scoped && !scope.Admin {
+		teamIDs := scope.Teams()
+		if len(teamIDs) == 0 {
+			return nil, nil
+		}
 		if enabledOnly {
-			repoRecords, err = s.repo.ListEnabledTriggersByTeam(ctx, teamID)
+			repoRecords, err = s.repo.ListEnabledTriggersByTeams(ctx, nullStringSlice(teamIDs))
 		} else {
-			repoRecords, err = s.repo.ListTriggersByTeam(ctx, teamID)
+			repoRecords, err = s.repo.ListTriggersByTeams(ctx, nullStringSlice(teamIDs))
 		}
 	} else {
 		if enabledOnly {
@@ -627,7 +675,7 @@ func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit
 		if err != nil {
 			return nil, fmt.Errorf("trigger %q not found", triggerName)
 		}
-		if scoped && !scope.Admin && scope.TeamID != "" && trigger.TeamID.String != scope.TeamID {
+		if scoped && !scope.Admin && (!trigger.TeamID.Valid || !scope.HasTeam(trigger.TeamID.String)) {
 			return nil, fmt.Errorf("trigger %q not found", triggerName)
 		}
 		rows, err := s.repo.ListTriggerRunsByTrigger(ctx, repository.ListTriggerRunsByTriggerParams{
@@ -652,11 +700,15 @@ func (s *Service) ListTriggerRuns(ctx context.Context, triggerName string, limit
 		return out, nil
 	}
 
-	if scoped && !scope.Admin && scope.TeamID != "" {
-		rows, err := s.repo.ListTriggerRunsByTeam(ctx, repository.ListTriggerRunsByTeamParams{
-			TeamID: sql.NullString{String: scope.TeamID, Valid: true},
-			Limit:  clamped,
-			Offset: clampedOffset,
+	if scoped && !scope.Admin {
+		teamIDs := scope.Teams()
+		if len(teamIDs) == 0 {
+			return nil, nil
+		}
+		rows, err := s.repo.ListTriggerRunsByTeams(ctx, repository.ListTriggerRunsByTeamsParams{
+			TeamIds: nullStringSlice(teamIDs),
+			Limit:   clamped,
+			Offset:  clampedOffset,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("list trigger runs: %w", err)
@@ -694,13 +746,14 @@ func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store
 
 // --- Token Management ---
 
-// CreateToken creates a new API token for a team and user. Admin only.
-func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName string) (CreateTokenOutput, error) {
+// CreateToken creates a new API token for one or more teams and a user. Admin only.
+func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName, tokenName string) (CreateTokenOutput, error) {
 	if !isAdmin(ctx) {
 		return CreateTokenOutput{}, fmt.Errorf("admin access required")
 	}
-	if teamName == "" {
-		return CreateTokenOutput{}, fmt.Errorf("team_name is required")
+	teamNames = normalizeTeamNames(teamNames)
+	if len(teamNames) == 0 {
+		return CreateTokenOutput{}, fmt.Errorf("team_names is required")
 	}
 	if userName == "" {
 		return CreateTokenOutput{}, fmt.Errorf("user_name is required")
@@ -710,40 +763,9 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 	}
 	now := time.Now().UTC()
 
-	team, err := s.repo.GetTeamByName(ctx, teamName)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			teamID, err := randomID("team")
-			if err != nil {
-				return CreateTokenOutput{}, fmt.Errorf("generate team id: %w", err)
-			}
-			if err := s.repo.CreateTeam(ctx, repository.CreateTeamParams{
-				ID:        teamID,
-				Name:      teamName,
-				CreatedAt: now,
-				UpdatedAt: now,
-			}); err != nil {
-				return CreateTokenOutput{}, fmt.Errorf("create team: %w", err)
-			}
-			team.ID = teamID
-			team.Name = teamName
-		} else {
-			return CreateTokenOutput{}, fmt.Errorf("look up team: %w", err)
-		}
-	}
-
 	userID, err := randomID("user")
 	if err != nil {
 		return CreateTokenOutput{}, fmt.Errorf("generate user id: %w", err)
-	}
-	if err := s.repo.CreateUser(ctx, repository.CreateUserParams{
-		ID:        userID,
-		Name:      userName,
-		TeamID:    team.ID,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}); err != nil {
-		return CreateTokenOutput{}, fmt.Errorf("create user: %w", err)
 	}
 
 	rawToken, err := randomID("chtr")
@@ -755,15 +777,87 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 	if err != nil {
 		return CreateTokenOutput{}, fmt.Errorf("generate token id: %w", err)
 	}
-	if err := s.repo.CreateToken(ctx, repository.CreateTokenParams{
-		ID:        tokenID,
-		Name:      tokenName,
-		TokenHash: hex.EncodeToString(hash[:]),
-		UserID:    userID,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}); err != nil {
-		return CreateTokenOutput{}, fmt.Errorf("create token: %w", err)
+
+	teams := make([]repository.Team, 0, len(teamNames))
+	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+		for _, teamName := range teamNames {
+			team, err := q.GetTeamByName(ctx, teamName)
+			if err != nil {
+				if err != sql.ErrNoRows {
+					return fmt.Errorf("look up team %q: %w", teamName, err)
+				}
+				teamID, err := randomID("team")
+				if err != nil {
+					return fmt.Errorf("generate team id: %w", err)
+				}
+				if err := q.CreateTeam(ctx, repository.CreateTeamParams{
+					ID:        teamID,
+					Name:      teamName,
+					CreatedAt: now,
+					UpdatedAt: now,
+				}); err != nil {
+					return fmt.Errorf("create team %q: %w", teamName, err)
+				}
+				team.ID = teamID
+				team.Name = teamName
+			}
+			teams = append(teams, team)
+		}
+
+		if err := q.CreateUser(ctx, repository.CreateUserParams{
+			ID:        userID,
+			Name:      userName,
+			TeamID:    teams[0].ID,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+
+		for _, team := range teams {
+			if err := q.AddUserTeamMembership(ctx, repository.AddUserTeamMembershipParams{
+				UserID:    userID,
+				TeamID:    team.ID,
+				Source:    "local",
+				CreatedAt: now,
+				UpdatedAt: now,
+			}); err != nil {
+				return fmt.Errorf("add user team membership: %w", err)
+			}
+		}
+
+		if err := q.CreateToken(ctx, repository.CreateTokenParams{
+			ID:        tokenID,
+			Name:      tokenName,
+			TokenHash: hex.EncodeToString(hash[:]),
+			UserID:    userID,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("create token: %w", err)
+		}
+
+		for _, team := range teams {
+			if err := q.AddTokenTeam(ctx, repository.AddTokenTeamParams{
+				TokenID:   tokenID,
+				TeamID:    team.ID,
+				CreatedAt: now,
+			}); err != nil {
+				return fmt.Errorf("add token team: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return CreateTokenOutput{}, err
+	}
+
+	teamIDs := make([]string, 0, len(teams))
+	returnedTeamNames := make([]string, 0, len(teams))
+	for _, team := range teams {
+		teamIDs = append(teamIDs, team.ID)
+		returnedTeamNames = append(returnedTeamNames, team.Name)
 	}
 
 	s.auditAsync(AuditEventParams{
@@ -771,17 +865,20 @@ func (s *Service) CreateToken(ctx context.Context, teamName, userName, tokenName
 		SourceType: "api",
 		TargetType: "token",
 		TargetID:   tokenName,
-		Detail:     fmt.Sprintf("token %q created for user %q in team %q", tokenName, userName, teamName),
+		Detail:     fmt.Sprintf("token %q created for user %q in teams %q", tokenName, userName, strings.Join(returnedTeamNames, ",")),
 	})
 
 	return CreateTokenOutput{
-		Token:    rawToken,
-		TeamID:   team.ID,
-		TeamName: team.Name,
-		UserID:   userID,
-		UserName: userName,
+		Token:     rawToken,
+		TeamID:    teams[0].ID,
+		TeamName:  teams[0].Name,
+		TeamIDs:   teamIDs,
+		TeamNames: returnedTeamNames,
+		UserID:    userID,
+		UserName:  userName,
 	}, nil
 }
+
 // ListTokens returns all API tokens. Admin only.
 func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 	if !isAdmin(ctx) {
@@ -797,6 +894,7 @@ func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 			Name:      r.Name,
 			UserName:  r.UserName,
 			TeamName:  r.TeamName,
+			TeamNames: splitCSV(r.TeamNames),
 			CreatedAt: r.CreatedAt,
 		}
 	}
@@ -891,8 +989,14 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("team %q not found", name)
 	}
-	if err := s.repo.DeleteTokensByTeam(ctx, team.ID); err != nil {
+	if err := s.repo.DeleteTokensByTeam(ctx, repository.DeleteTokensByTeamParams{TeamID: team.ID, TeamID_2: team.ID}); err != nil {
 		return fmt.Errorf("delete tokens for team: %w", err)
+	}
+	if err := s.repo.DeleteTokenTeamsByTeam(ctx, team.ID); err != nil {
+		return fmt.Errorf("delete token team memberships: %w", err)
+	}
+	if err := s.repo.DeleteUserTeamMembershipsByTeam(ctx, team.ID); err != nil {
+		return fmt.Errorf("delete user team memberships: %w", err)
 	}
 	if err := s.repo.DeleteUsersByTeam(ctx, team.ID); err != nil {
 		return fmt.Errorf("delete users for team: %w", err)

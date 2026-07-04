@@ -835,7 +835,7 @@ func TestListUsersAndCascadeDelete(t *testing.T) {
 		t.Errorf("ListUsersByTeam = %+v", engUsers)
 	}
 
-	if err := q.DeleteTokensByTeam(ctx, "t1"); err != nil {
+	if err := q.DeleteTokensByTeam(ctx, DeleteTokensByTeamParams{TeamID: "t1", TeamID_2: "t1"}); err != nil {
 		t.Fatalf("DeleteTokensByTeam: %v", err)
 	}
 	tokens, _ := q.ListTokens(ctx)

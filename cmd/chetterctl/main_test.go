@@ -32,13 +32,14 @@ type testAdminService struct {
 }
 
 func (s *testAdminService) CreateToken(_ context.Context, req *connect.Request[apiv1.CreateTokenRequest]) (*connect.Response[apiv1.CreateTokenResponse], error) {
-	if req.Msg.TeamName != "platform" || req.Msg.UserName != "alice" || req.Msg.TokenName != "alice-cli" {
+	if len(req.Msg.TeamNames) != 1 || req.Msg.TeamNames[0] != "platform" || req.Msg.UserName != "alice" || req.Msg.TokenName != "alice-cli" {
 		s.t.Fatalf("CreateToken request = %+v", req.Msg)
 	}
 	return connect.NewResponse(&apiv1.CreateTokenResponse{
-		Token:    "new-token-value",
-		TeamName: req.Msg.TeamName,
-		UserName: req.Msg.UserName,
+		Token:     "new-token-value",
+		TeamName:  req.Msg.TeamNames[0],
+		TeamNames: req.Msg.TeamNames,
+		UserName:  req.Msg.UserName,
 	}), nil
 }
 

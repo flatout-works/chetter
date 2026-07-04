@@ -7,8 +7,8 @@ SELECT * FROM teams
 WHERE id = ?;
 
 -- name: CreateTeam :exec
-INSERT INTO teams (id, name, created_at, updated_at)
-VALUES (?, ?, ?, ?);
+INSERT INTO teams (id, name, okta_group_id, okta_group_name, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: GetUserByID :one
 SELECT * FROM users
@@ -22,6 +22,14 @@ VALUES (?, ?, ?, ?, ?);
 INSERT INTO api_tokens (id, name, token_hash, user_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?);
 
+-- name: AddUserTeamMembership :exec
+INSERT IGNORE INTO user_team_memberships (user_id, team_id, source, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: AddTokenTeam :exec
+INSERT IGNORE INTO api_token_teams (token_id, team_id, created_at)
+VALUES (?, ?, ?);
+
 -- name: GetTokenByHash :one
 SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name
@@ -32,10 +40,14 @@ WHERE t.token_hash = ?;
 
 -- name: ListTokens :many
 SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
-       u.name AS user_name, u.team_id, tm.name AS team_name
+       u.name AS user_name, u.team_id, tm.name AS team_name,
+       COALESCE(GROUP_CONCAT(ttm.name ORDER BY ttm.name SEPARATOR ','), tm.name) AS team_names
 FROM api_tokens t
 JOIN users u ON u.id = t.user_id
 JOIN teams tm ON tm.id = u.team_id
+LEFT JOIN api_token_teams tt ON tt.token_id = t.id
+LEFT JOIN teams ttm ON ttm.id = tt.team_id
+GROUP BY t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at, u.name, u.team_id, tm.name
 ORDER BY t.created_at DESC;
 
 -- name: ListTeams :many
@@ -65,7 +77,16 @@ WHERE team_id = ?;
 
 -- name: DeleteTokensByTeam :exec
 DELETE FROM api_tokens
-WHERE user_id IN (SELECT id FROM users WHERE team_id = ?);
+WHERE id IN (SELECT token_id FROM api_token_teams WHERE api_token_teams.team_id = ?)
+   OR user_id IN (SELECT id FROM users WHERE users.team_id = ?);
+
+-- name: DeleteTokenTeamsByTeam :exec
+DELETE FROM api_token_teams
+WHERE team_id = ?;
+
+-- name: DeleteUserTeamMembershipsByTeam :exec
+DELETE FROM user_team_memberships
+WHERE team_id = ?;
 
 -- name: DeleteToken :exec
 DELETE FROM api_tokens

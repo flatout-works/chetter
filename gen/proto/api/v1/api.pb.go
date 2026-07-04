@@ -1636,6 +1636,7 @@ type TokenInfo struct {
 	UserName      string                 `protobuf:"bytes,2,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
 	TeamName      string                 `protobuf:"bytes,3,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	TeamNames     []string               `protobuf:"bytes,5,rep,name=team_names,json=teamNames,proto3" json:"team_names,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1696,6 +1697,13 @@ func (x *TokenInfo) GetCreatedAt() string {
 		return x.CreatedAt
 	}
 	return ""
+}
+
+func (x *TokenInfo) GetTeamNames() []string {
+	if x != nil {
+		return x.TeamNames
+	}
+	return nil
 }
 
 type TeamInfo struct {
@@ -4609,6 +4617,7 @@ func (x *FleetUpdate) GetRunner() *RunnerInfo {
 type CreateTokenRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TeamName      string                 `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
+	TeamNames     []string               `protobuf:"bytes,4,rep,name=team_names,json=teamNames,proto3" json:"team_names,omitempty"`
 	UserName      string                 `protobuf:"bytes,2,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
 	TokenName     string                 `protobuf:"bytes,3,opt,name=token_name,json=tokenName,proto3" json:"token_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -4652,6 +4661,13 @@ func (x *CreateTokenRequest) GetTeamName() string {
 	return ""
 }
 
+func (x *CreateTokenRequest) GetTeamNames() []string {
+	if x != nil {
+		return x.TeamNames
+	}
+	return nil
+}
+
 func (x *CreateTokenRequest) GetUserName() string {
 	if x != nil {
 		return x.UserName
@@ -4673,6 +4689,8 @@ type CreateTokenResponse struct {
 	TeamName      string                 `protobuf:"bytes,3,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
 	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	UserName      string                 `protobuf:"bytes,5,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
+	TeamIds       []string               `protobuf:"bytes,6,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
+	TeamNames     []string               `protobuf:"bytes,7,rep,name=team_names,json=teamNames,proto3" json:"team_names,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4740,6 +4758,20 @@ func (x *CreateTokenResponse) GetUserName() string {
 		return x.UserName
 	}
 	return ""
+}
+
+func (x *CreateTokenResponse) GetTeamIds() []string {
+	if x != nil {
+		return x.TeamIds
+	}
+	return nil
+}
+
+func (x *CreateTokenResponse) GetTeamNames() []string {
+	if x != nil {
+		return x.TeamNames
+	}
+	return nil
 }
 
 type ListTokensRequest struct {
@@ -6830,13 +6862,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\rlast_event_at\x18\b \x01(\tR\vlastEventAt\x12*\n" +
 	"\x11heartbeat_age_sec\x18\t \x01(\x05R\x0fheartbeatAgeSec\x12\x19\n" +
 	"\bis_stale\x18\n" +
-	" \x01(\bR\aisStale\"x\n" +
+	" \x01(\bR\aisStale\"\x97\x01\n" +
 	"\tTokenInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tuser_name\x18\x02 \x01(\tR\buserName\x12\x1b\n" +
 	"\tteam_name\x18\x03 \x01(\tR\bteamName\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\tR\tcreatedAt\"M\n" +
+	"created_at\x18\x04 \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"team_names\x18\x05 \x03(\tR\tteamNames\"M\n" +
 	"\bTeamInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -7068,18 +7102,23 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\vFleetUpdate\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12 \n" +
 	"\x04task\x18\x02 \x01(\v2\f.api.v1.TaskR\x04task\x12*\n" +
-	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"\x88\x01\n" +
-	"\x12CreateTokenRequest\x12$\n" +
-	"\tteam_name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bteamName\x12$\n" +
+	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"\x9e\x01\n" +
+	"\x12CreateTokenRequest\x12\x1b\n" +
+	"\tteam_name\x18\x01 \x01(\tR\bteamName\x12\x1d\n" +
+	"\n" +
+	"team_names\x18\x04 \x03(\tR\tteamNames\x12$\n" +
 	"\tuser_name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\buserName\x12&\n" +
 	"\n" +
-	"token_name\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\ttokenName\"\x97\x01\n" +
+	"token_name\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\ttokenName\"\xd1\x01\n" +
 	"\x13CreateTokenResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1b\n" +
 	"\tteam_name\x18\x03 \x01(\tR\bteamName\x12\x17\n" +
 	"\auser_id\x18\x04 \x01(\tR\x06userId\x12\x1b\n" +
-	"\tuser_name\x18\x05 \x01(\tR\buserName\"\x13\n" +
+	"\tuser_name\x18\x05 \x01(\tR\buserName\x12\x19\n" +
+	"\bteam_ids\x18\x06 \x03(\tR\ateamIds\x12\x1d\n" +
+	"\n" +
+	"team_names\x18\a \x03(\tR\tteamNames\"\x13\n" +
 	"\x11ListTokensRequest\"?\n" +
 	"\x12ListTokensResponse\x12)\n" +
 	"\x06tokens\x18\x01 \x03(\v2\x11.api.v1.TokenInfoR\x06tokens\"1\n" +

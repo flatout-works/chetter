@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-
-	"github.com/flatout-works/chetter/internal/repository"
 )
 
 // ResolveToken validates a raw bearer token against the admin token
@@ -17,7 +15,7 @@ func ResolveToken(ctx context.Context, adminToken string, db *sql.DB, rawToken s
 	}
 	if db != nil {
 		scope := lookupTokenScope(ctx, db, rawToken)
-		if scope.TeamID != "" {
+		if len(scope.Teams()) > 0 {
 			return scope, true
 		}
 	}
@@ -27,10 +25,36 @@ func ResolveToken(ctx context.Context, adminToken string, db *sql.DB, rawToken s
 func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(hash[:])
-	repo := repository.New(db)
-	row, err := repo.GetTokenByHash(ctx, tokenHash)
+	var tokenID, fallbackTeamID string
+	err := db.QueryRowContext(ctx, `
+		SELECT t.id, u.team_id
+		FROM api_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE t.token_hash = ?`, tokenHash).Scan(&tokenID, &fallbackTeamID)
 	if err != nil {
 		return Scope{}
 	}
-	return Scope{TeamID: row.TeamID}
+	rows, err := db.QueryContext(ctx, `
+		SELECT team_id
+		FROM api_token_teams
+		WHERE token_id = ?
+		ORDER BY team_id ASC`, tokenID)
+	if err != nil {
+		return Scope{TeamID: fallbackTeamID, TeamIDs: []string{fallbackTeamID}}
+	}
+	defer rows.Close()
+	var teamIDs []string
+	for rows.Next() {
+		var teamID string
+		if err := rows.Scan(&teamID); err == nil && teamID != "" {
+			teamIDs = append(teamIDs, teamID)
+		}
+	}
+	if len(teamIDs) == 0 && fallbackTeamID != "" {
+		teamIDs = []string{fallbackTeamID}
+	}
+	if len(teamIDs) == 0 {
+		return Scope{}
+	}
+	return Scope{TeamID: teamIDs[0], TeamIDs: teamIDs}
 }

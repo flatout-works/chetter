@@ -137,31 +137,31 @@ type PRReviewTriggerConfig struct {
 
 // TriggerRecord is a persisted task trigger (cron, pr_review, etc.).
 type TriggerRecord struct {
-	ID            string     `json:"id"`
-	TeamID        string     `json:"team_id,omitempty"`
-	Name          string     `json:"name"`
-	TriggerType   string     `json:"trigger_type"`
-	TriggerConfig string     `json:"trigger_config"`
-	CronExpr      string     `json:"cron_expr"`
-	Prompt        string     `json:"prompt"`
-	GitURL        string     `json:"git_url,omitempty"`
-	GitRef        string     `json:"git_ref,omitempty"`
-	AgentImage    string     `json:"agent_image,omitempty"`
-	Agent         string     `json:"agent,omitempty"`
-	ProviderID    string     `json:"provider_id,omitempty"`
-	ModelID       string     `json:"model_id,omitempty"`
-	VariantID     string     `json:"variant_id,omitempty"`
-	Harness       string     `json:"harness,omitempty"`
-	Skills        []string   `json:"skills"`
-	TimeoutSec    int        `json:"timeout_sec"`
-	Enabled       bool       `json:"enabled"`
-	SourceID      string     `json:"source_id,omitempty"`
+	ID            string   `json:"id"`
+	TeamID        string   `json:"team_id,omitempty"`
+	Name          string   `json:"name"`
+	TriggerType   string   `json:"trigger_type"`
+	TriggerConfig string   `json:"trigger_config"`
+	CronExpr      string   `json:"cron_expr"`
+	Prompt        string   `json:"prompt"`
+	GitURL        string   `json:"git_url,omitempty"`
+	GitRef        string   `json:"git_ref,omitempty"`
+	AgentImage    string   `json:"agent_image,omitempty"`
+	Agent         string   `json:"agent,omitempty"`
+	ProviderID    string   `json:"provider_id,omitempty"`
+	ModelID       string   `json:"model_id,omitempty"`
+	VariantID     string   `json:"variant_id,omitempty"`
+	Harness       string   `json:"harness,omitempty"`
+	Skills        []string `json:"skills"`
+	TimeoutSec    int      `json:"timeout_sec"`
+	Enabled       bool     `json:"enabled"`
+	SourceID      string   `json:"source_id,omitempty"`
 	// SourceRepoURL, SourceBranch, and SourcePath are transient fields
 	// populated by the service layer from the definition_sources and
 	// definitions tables. They are not stored in chetter_triggers.
-	SourceRepoURL string `json:"source_repo_url,omitempty"`
-	SourceBranch  string `json:"source_branch,omitempty"`
-	SourcePath    string `json:"source_path,omitempty"`
+	SourceRepoURL string     `json:"source_repo_url,omitempty"`
+	SourceBranch  string     `json:"source_branch,omitempty"`
+	SourcePath    string     `json:"source_path,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
@@ -170,8 +170,9 @@ type TriggerRecord struct {
 
 // TriggerInput contains fields needed to create a trigger.
 type TriggerInput struct {
-	ID            string
 	TeamID        string
+	TeamName      string
+	ID            string
 	Name          string
 	TriggerType   string
 	TriggerConfig string
@@ -373,6 +374,81 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	}
 	if err := s.ensureTokenColumns(ctx); err != nil {
 		return err
+	}
+	if err := s.ensureTeamAuthSchema(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureTeamAuthSchema(ctx context.Context) error {
+	columns := []struct {
+		table string
+		name  string
+		ddl   string
+	}{
+		{"teams", "okta_group_id", "ALTER TABLE teams ADD COLUMN okta_group_id VARCHAR(255) NULL AFTER name"},
+		{"teams", "okta_group_name", "ALTER TABLE teams ADD COLUMN okta_group_name VARCHAR(255) NULL AFTER okta_group_id"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, column.table, column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add %s.%s: %w", column.table, column.name, err)
+		}
+	}
+	indexExists, err := s.indexExists(ctx, "teams", "uq_teams_okta_group_id")
+	if err != nil {
+		return err
+	}
+	if !indexExists {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX uq_teams_okta_group_id ON teams (okta_group_id)"); err != nil {
+			return fmt.Errorf("create teams.okta_group_id index: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS user_team_memberships (
+			user_id VARCHAR(64) NOT NULL,
+			team_id VARCHAR(64) NOT NULL,
+			source VARCHAR(32) NOT NULL DEFAULT 'manual',
+			created_at DATETIME(6) NOT NULL,
+			updated_at DATETIME(6) NOT NULL,
+			PRIMARY KEY (user_id, team_id),
+			KEY idx_user_team_memberships_team (team_id)
+		)`); err != nil {
+		return fmt.Errorf("create user_team_memberships: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS api_token_teams (
+			token_id VARCHAR(64) NOT NULL,
+			team_id VARCHAR(64) NOT NULL,
+			created_at DATETIME(6) NOT NULL,
+			PRIMARY KEY (token_id, team_id),
+			KEY idx_api_token_teams_team (team_id)
+		)`); err != nil {
+		return fmt.Errorf("create api_token_teams: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT IGNORE INTO user_team_memberships (user_id, team_id, source, created_at, updated_at)
+		SELECT id, team_id, 'manual', created_at, updated_at
+		FROM users
+		WHERE team_id IS NOT NULL AND team_id <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill user team memberships: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT IGNORE INTO api_token_teams (token_id, team_id, created_at)
+		SELECT t.id, u.team_id, t.created_at
+		FROM api_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE u.team_id IS NOT NULL AND u.team_id <> ''
+	`); err != nil {
+		return fmt.Errorf("backfill api token teams: %w", err)
 	}
 	return nil
 }

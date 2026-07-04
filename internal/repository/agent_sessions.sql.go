@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -533,6 +534,83 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 	return items, nil
 }
 
+const listAgentSessionsByTeams = `-- name: ListAgentSessionsByTeams :many
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text FROM chetter_agent_sessions
+WHERE team_id IN (/*SLICE:team_ids*/?)
+  AND (? = '' OR status = ?)
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListAgentSessionsByTeamsParams struct {
+	TeamIds      []sql.NullString `json:"team_ids"`
+	StatusFilter string           `json:"status_filter"`
+	Limit        int32            `json:"limit"`
+	Offset       int32            `json:"offset"`
+}
+
+func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg ListAgentSessionsByTeamsParams) ([]ChetterAgentSession, error) {
+	query := listAgentSessionsByTeams
+	var queryParams []interface{}
+	if len(arg.TeamIds) > 0 {
+		for _, v := range arg.TeamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(arg.TeamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.StatusFilter)
+	queryParams = append(queryParams, arg.StatusFilter)
+	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterAgentSession{}
+	for rows.Next() {
+		var i ChetterAgentSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Status,
+			&i.ResumeMode,
+			&i.PinnedRunnerID,
+			&i.PinnedRunnerName,
+			&i.CheckpointID,
+			&i.WorkspacePath,
+			&i.ContainerName,
+			&i.HarnessSessionID,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PausedAt,
+			&i.ExpiresAt,
+			&i.PauseReason,
+			&i.Error,
+			&i.SearchText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionRunsBySession = `-- name: ListSessionRunsBySession :many
 SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at FROM chetter_session_runs
 WHERE agent_session_id = ?
@@ -859,6 +937,86 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 		arg.Limit,
 		arg.Offset,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterAgentSession{}
+	for rows.Next() {
+		var i ChetterAgentSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Status,
+			&i.ResumeMode,
+			&i.PinnedRunnerID,
+			&i.PinnedRunnerName,
+			&i.CheckpointID,
+			&i.WorkspacePath,
+			&i.ContainerName,
+			&i.HarnessSessionID,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.AgentImage,
+			&i.Agent,
+			&i.ProviderID,
+			&i.ModelID,
+			&i.VariantID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PausedAt,
+			&i.ExpiresAt,
+			&i.PauseReason,
+			&i.Error,
+			&i.SearchText,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchAgentSessionsByTeams = `-- name: SearchAgentSessionsByTeams :many
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text FROM chetter_agent_sessions
+WHERE team_id IN (/*SLICE:team_ids*/?)
+  AND (? = '' OR status = ?)
+  AND (search_text LIKE CONCAT('%', ?, '%'))
+ORDER BY updated_at DESC
+LIMIT ? OFFSET ?
+`
+
+type SearchAgentSessionsByTeamsParams struct {
+	TeamIds      []sql.NullString `json:"team_ids"`
+	StatusFilter string           `json:"status_filter"`
+	Search       interface{}      `json:"search"`
+	Limit        int32            `json:"limit"`
+	Offset       int32            `json:"offset"`
+}
+
+func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg SearchAgentSessionsByTeamsParams) ([]ChetterAgentSession, error) {
+	query := searchAgentSessionsByTeams
+	var queryParams []interface{}
+	if len(arg.TeamIds) > 0 {
+		for _, v := range arg.TeamIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", strings.Repeat(",?", len(arg.TeamIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:team_ids*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.StatusFilter)
+	queryParams = append(queryParams, arg.StatusFilter)
+	queryParams = append(queryParams, arg.Search)
+	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

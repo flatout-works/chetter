@@ -155,6 +155,23 @@ WHERE team_id = sqlc.arg(team_id)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
+-- name: ListTasksByStatusAndTeams :many
+SELECT * FROM chetter_tasks
+WHERE team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: SearchTasksByTeams :many
+SELECT * FROM chetter_tasks
+WHERE team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
+  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
 -- name: UpdateTaskSearchText :exec
 UPDATE chetter_tasks
 SET search_text = CONCAT_WS(' ',

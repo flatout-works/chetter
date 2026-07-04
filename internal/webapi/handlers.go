@@ -41,12 +41,12 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		EndedAt:        optTimeStr(t.EndedAt),
 		AgentSessionId: t.AgentSessionID,
 		TokenUsage: &apiv1.TokenUsage{
-			InputTokens:     t.TotalInputTokens,
-			OutputTokens:    t.TotalOutputTokens,
-			CacheReadTokens: t.TotalCacheReadTokens,
+			InputTokens:      t.TotalInputTokens,
+			OutputTokens:     t.TotalOutputTokens,
+			CacheReadTokens:  t.TotalCacheReadTokens,
 			CacheWriteTokens: t.TotalCacheWriteTokens,
-			ReasoningTokens: t.TotalReasoningTokens,
-			CostCents:       t.CostCents,
+			ReasoningTokens:  t.TotalReasoningTokens,
+			CostCents:        t.CostCents,
 		},
 	}
 }
@@ -557,16 +557,22 @@ type adminHandler struct {
 }
 
 func (h *adminHandler) CreateToken(ctx context.Context, req *connect.Request[apiv1.CreateTokenRequest]) (*connect.Response[apiv1.CreateTokenResponse], error) {
-	out, err := h.svc.CreateToken(ctx, req.Msg.TeamName, req.Msg.UserName, req.Msg.TokenName)
+	teamNames := req.Msg.TeamNames
+	if len(teamNames) == 0 && req.Msg.TeamName != "" {
+		teamNames = []string{req.Msg.TeamName}
+	}
+	out, err := h.svc.CreateToken(ctx, teamNames, req.Msg.UserName, req.Msg.TokenName)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&apiv1.CreateTokenResponse{
-		Token:    out.Token,
-		TeamId:   out.TeamID,
-		TeamName: out.TeamName,
-		UserId:   out.UserID,
-		UserName: out.UserName,
+		Token:     out.Token,
+		TeamId:    out.TeamID,
+		TeamName:  out.TeamName,
+		UserId:    out.UserID,
+		UserName:  out.UserName,
+		TeamIds:   out.TeamIDs,
+		TeamNames: out.TeamNames,
 	}), nil
 }
 
@@ -581,6 +587,7 @@ func (h *adminHandler) ListTokens(ctx context.Context, req *connect.Request[apiv
 			Name:      t.Name,
 			UserName:  t.UserName,
 			TeamName:  t.TeamName,
+			TeamNames: t.TeamNames,
 			CreatedAt: t.CreatedAt.Format(time.RFC3339),
 		}
 	}

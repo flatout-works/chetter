@@ -61,7 +61,15 @@ ORDER BY definition_type ASC, name ASC, scope ASC;
 -- name: GetDefinitionBySourceTypeName :one
 SELECT * FROM definitions
 WHERE source_id = ? AND definition_type = ? AND name = ? AND active = true
-ORDER BY updated_at DESC
+  AND (sqlc.arg(scope_filter) = '' OR scope = sqlc.arg(scope_filter))
+ORDER BY
+  CASE scope
+    WHEN 'global' THEN 0
+    WHEN 'team' THEN 1
+    WHEN 'repo' THEN 2
+    ELSE 3
+  END,
+  updated_at DESC
 LIMIT 1;
 
 -- name: InsertDefinitionSyncRun :exec

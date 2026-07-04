@@ -94,7 +94,7 @@ func TestWebAPITeamTokenScopesTasks(t *testing.T) {
 
 	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
 	teamA, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "team-a",
+		TeamNames: []string{"team-a"},
 		UserName:  "alice",
 		TokenName: "alice-token",
 	}))
@@ -102,7 +102,7 @@ func TestWebAPITeamTokenScopesTasks(t *testing.T) {
 		t.Fatalf("CreateToken team-a: %v", err)
 	}
 	teamB, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "team-b",
+		TeamNames: []string{"team-b"},
 		UserName:  "bob",
 		TokenName: "bob-token",
 	}))
@@ -201,7 +201,7 @@ func TestWebAPITeamTokenCannotMutateOtherTeamTrigger(t *testing.T) {
 
 	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
 	teamA, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "trigger-team-a",
+		TeamNames: []string{"trigger-team-a"},
 		UserName:  "alice",
 		TokenName: "trigger-alice-token",
 	}))
@@ -209,7 +209,7 @@ func TestWebAPITeamTokenCannotMutateOtherTeamTrigger(t *testing.T) {
 		t.Fatalf("CreateToken team-a: %v", err)
 	}
 	teamB, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "trigger-team-b",
+		TeamNames: []string{"trigger-team-b"},
 		UserName:  "bob",
 		TokenName: "trigger-bob-token",
 	}))
@@ -256,7 +256,7 @@ func TestWebAPITeamTokenCannotSubscribeOtherTeamTaskEvents(t *testing.T) {
 
 	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
 	teamA, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "events-team-a",
+		TeamNames: []string{"events-team-a"},
 		UserName:  "alice",
 		TokenName: "events-alice-token",
 	}))
@@ -264,7 +264,7 @@ func TestWebAPITeamTokenCannotSubscribeOtherTeamTaskEvents(t *testing.T) {
 		t.Fatalf("CreateToken team-a: %v", err)
 	}
 	teamB, err := admin.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-		TeamName:  "events-team-b",
+		TeamNames: []string{"events-team-b"},
 		UserName:  "bob",
 		TokenName: "events-bob-token",
 	}))

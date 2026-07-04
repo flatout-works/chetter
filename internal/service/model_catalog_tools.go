@@ -84,6 +84,7 @@ type GetDefinitionInput struct {
 	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template"`
 	Name           string `json:"name" jsonschema:"Definition name"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
+	Scope          string `json:"scope,omitempty" jsonschema:"Optional scope filter: global, team, repo. If omitted, returns the highest-priority match."`
 }
 
 type GetDefinitionOutput struct {
@@ -126,6 +127,8 @@ const (
 	defaultDefinitionSourceID   = "defs_default"
 	defaultDefinitionSourceName = "default"
 	definitionScopeGlobal       = "global"
+	definitionScopeTeam         = "team"
+	definitionScopeRepo         = "repo"
 	definitionSyncStatusSuccess = "success"
 	definitionSyncStatusError   = "error"
 )
@@ -234,6 +237,7 @@ func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest,
 		SourceID:       sourceID,
 		DefinitionType: in.DefinitionType,
 		Name:           in.Name,
+		ScopeFilter:    in.Scope,
 	})
 	if err != nil {
 		return nil, GetDefinitionOutput{}, fmt.Errorf("get definition: %w", err)
@@ -287,7 +291,12 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		return ModelCatalogRecord{}, err
 	}
 	now := time.Now().UTC()
-	triggerEntries, err := parseTriggerDefsForSync(defs, now)
+	definitionTeamIDs, err := s.definitionTeamIDs(ctx, defs)
+	if err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, err
+	}
+	triggerEntries, err := parseTriggerDefsForSync(defs, now, definitionTeamIDs)
 	if err != nil {
 		return ModelCatalogRecord{}, fmt.Errorf("parse trigger definitions: %w", err)
 	}
@@ -321,14 +330,16 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 			return err
 		}
 		for _, def := range defs {
+			scope := definitionScope(def)
+			teamID := definitionTeamID(def, definitionTeamIDs)
 			if err := q.UpsertDefinition(ctx, repository.UpsertDefinitionParams{
 				ID:             definitionID(defaultDefinitionSourceID, def.Type, def.Path),
 				SourceID:       defaultDefinitionSourceID,
 				DefinitionType: def.Type,
 				Name:           def.Name,
-				Scope:          definitionScopeGlobal,
-				TeamID:         sql.NullString{},
-				Repo:           sql.NullString{},
+				Scope:          scope,
+				TeamID:         nullString(teamID),
+				Repo:           nullString(def.Repo),
 				Path:           def.Path,
 				SourceCommit:   sourceCommit,
 				ContentHash:    def.ContentHash,
@@ -445,6 +456,45 @@ func definitionID(sourceID, definitionType, path string) string {
 	return "def_" + hex.EncodeToString(sum[:])[:32]
 }
 
+func (s *Service) definitionTeamIDs(ctx context.Context, defs []definitions.Definition) (map[string]string, error) {
+	teamIDs := map[string]string{}
+	for _, def := range defs {
+		if def.Scope != definitions.DefinitionScopeTeam || def.TeamName == "" {
+			continue
+		}
+		if _, ok := teamIDs[def.TeamName]; ok {
+			continue
+		}
+		team, err := s.repo.GetTeamByName(ctx, def.TeamName)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, fmt.Errorf("definition group %q does not match an existing team", def.TeamName)
+			}
+			return nil, fmt.Errorf("look up definition group %q: %w", def.TeamName, err)
+		}
+		teamIDs[def.TeamName] = team.ID
+	}
+	return teamIDs, nil
+}
+
+func definitionScope(def definitions.Definition) string {
+	switch def.Scope {
+	case definitions.DefinitionScopeTeam:
+		return definitionScopeTeam
+	case definitions.DefinitionScopeRepo:
+		return definitionScopeRepo
+	default:
+		return definitionScopeGlobal
+	}
+}
+
+func definitionTeamID(def definitions.Definition, teamIDs map[string]string) string {
+	if def.Scope != definitions.DefinitionScopeTeam || def.TeamName == "" {
+		return ""
+	}
+	return teamIDs[def.TeamName]
+}
+
 func definitionSourceToolRecord(source repository.DefinitionSource) DefinitionSourceToolRecord {
 	return DefinitionSourceToolRecord{
 		ID:         source.ID,
@@ -555,7 +605,7 @@ type triggerSyncEntry struct {
 	params repository.UpsertTriggerParams
 }
 
-func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]triggerSyncEntry, error) {
+func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time, teamIDs map[string]string) ([]triggerSyncEntry, error) {
 	var entries []triggerSyncEntry
 	for _, def := range defs {
 		if def.Type != definitions.DefinitionTypeTrigger {
@@ -573,11 +623,12 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time) ([]tr
 		if err != nil {
 			return nil, fmt.Errorf("%s: marshal skills: %w", def.Path, err)
 		}
+		teamID := definitionTeamID(def, teamIDs)
 		entries = append(entries, triggerSyncEntry{
 			def: td,
 			params: repository.UpsertTriggerParams{
 				ID:            id,
-				TeamID:        sql.NullString{},
+				TeamID:        nullString(teamID),
 				Name:          td.Name,
 				TriggerType:   td.TriggerType,
 				TriggerConfig: json.RawMessage(td.TriggerCfg),

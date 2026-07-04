@@ -27,6 +27,7 @@ import (
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
 	TeamID      string
+	TeamName    string
 	Prompt      string
 	GitURL      string
 	GitRef      string
@@ -433,9 +434,9 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
-	teamID := in.TeamID
-	if teamID == "" {
-		teamID = teamIDFromContext(ctx)
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return store.TaskRecord{}, err
 	}
 	resumeMode := "none"
 	pauseReason := ""
@@ -828,33 +829,33 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		endedAt = &task.EndedAt.Time
 	}
 	return store.TaskRecord{
-		ID:                task.ID,
-		TeamID:            task.TeamID.String,
-		Status:            task.Status,
-		Prompt:            task.Prompt,
-		GitURL:            task.GitUrl.String,
-		GitRef:            task.GitRef.String,
-		AgentImage:        task.AgentImage.String,
-		Agent:             task.Agent.String,
-		ProviderID:        task.ProviderID.String,
-		ModelID:           task.ModelID.String,
-		VariantID:         task.VariantID.String,
-		OpenCodeSessionID: task.OpencodeSessionID.String,
-		RunnerImageDigest: task.RunnerImageDigest.String,
-		CommitAuthorName:  task.CommitAuthorName.String,
-		CommitAuthorEmail: task.CommitAuthorEmail.String,
-		TriggerName:       task.TriggerName.String,
-		TriggerType:       task.TriggerType.String,
-		Skills:            skills,
-		Env:               env,
-		TimeoutSec:        int(task.TimeoutSec),
-		Summary:           task.Summary.String,
-		Error:             task.Error.String,
-		ErrorCategory:     task.ErrorCategory.String,
-		CreatedAt:         task.CreatedAt,
-		UpdatedAt:         task.UpdatedAt,
-		StartedAt:         startedAt,
-		EndedAt:           endedAt,
+		ID:                    task.ID,
+		TeamID:                task.TeamID.String,
+		Status:                task.Status,
+		Prompt:                task.Prompt,
+		GitURL:                task.GitUrl.String,
+		GitRef:                task.GitRef.String,
+		AgentImage:            task.AgentImage.String,
+		Agent:                 task.Agent.String,
+		ProviderID:            task.ProviderID.String,
+		ModelID:               task.ModelID.String,
+		VariantID:             task.VariantID.String,
+		OpenCodeSessionID:     task.OpencodeSessionID.String,
+		RunnerImageDigest:     task.RunnerImageDigest.String,
+		CommitAuthorName:      task.CommitAuthorName.String,
+		CommitAuthorEmail:     task.CommitAuthorEmail.String,
+		TriggerName:           task.TriggerName.String,
+		TriggerType:           task.TriggerType.String,
+		Skills:                skills,
+		Env:                   env,
+		TimeoutSec:            int(task.TimeoutSec),
+		Summary:               task.Summary.String,
+		Error:                 task.Error.String,
+		ErrorCategory:         task.ErrorCategory.String,
+		CreatedAt:             task.CreatedAt,
+		UpdatedAt:             task.UpdatedAt,
+		StartedAt:             startedAt,
+		EndedAt:               endedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,
 		TotalCacheReadTokens:  task.TotalCacheReadTokens,
@@ -961,7 +962,10 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	if err != nil {
 		return store.TriggerRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
-	teamID := teamIDFromContext(ctx)
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return store.TriggerRecord{}, err
+	}
 	triggerConfig := emptyTriggerConfig()
 	if in.TriggerConfig != "" {
 		triggerConfig = json.RawMessage(in.TriggerConfig)
@@ -1368,7 +1372,49 @@ func teamIDFromContext(ctx context.Context) string {
 	if !ok || scope.Admin {
 		return ""
 	}
-	return scope.TeamID
+	teams := scope.Teams()
+	if len(teams) == 1 {
+		return teams[0]
+	}
+	return ""
+}
+
+func (s *Service) resolveOwnerTeamID(ctx context.Context, requestedID, requestedName string) (string, error) {
+	scope, ok := auth.GetScope(ctx)
+	if !ok || scope.Admin {
+		if requestedID != "" {
+			return requestedID, nil
+		}
+		if requestedName != "" {
+			team, err := s.repo.GetTeamByName(ctx, requestedName)
+			if err != nil {
+				return "", fmt.Errorf("team %q not found", requestedName)
+			}
+			return team.ID, nil
+		}
+		return "", nil
+	}
+	teams := scope.Teams()
+	if requestedName != "" {
+		team, err := s.repo.GetTeamByName(ctx, requestedName)
+		if err != nil {
+			return "", fmt.Errorf("team %q not found", requestedName)
+		}
+		requestedID = team.ID
+	}
+	if requestedID != "" {
+		if !scope.HasTeam(requestedID) {
+			return "", fmt.Errorf("team %q is not in token scope", requestedID)
+		}
+		return requestedID, nil
+	}
+	if len(teams) == 1 {
+		return teams[0], nil
+	}
+	if len(teams) > 1 {
+		return "", fmt.Errorf("team_id or team_name is required for multi-team tokens")
+	}
+	return "", fmt.Errorf("token has no team scope")
 }
 
 func (s *Service) triggerForToolAccess(ctx context.Context, name string) (repository.ChetterTrigger, error) {
@@ -1387,7 +1433,7 @@ func authorizeTriggerAccess(ctx context.Context, trigger repository.ChetterTrigg
 	if !scoped || scope.Admin {
 		return nil
 	}
-	if scope.TeamID == "" || !trigger.TeamID.Valid || trigger.TeamID.String != scope.TeamID {
+	if !trigger.TeamID.Valid || !scope.HasTeam(trigger.TeamID.String) {
 		return fmt.Errorf("trigger not found")
 	}
 	return nil
@@ -1398,7 +1444,7 @@ func authorizeAgentSessionAccess(ctx context.Context, session repository.Chetter
 	if !scoped || scope.Admin {
 		return nil
 	}
-	if scope.TeamID == "" || !session.TeamID.Valid || session.TeamID.String != scope.TeamID {
+	if !session.TeamID.Valid || !scope.HasTeam(session.TeamID.String) {
 		return fmt.Errorf("agent session not found")
 	}
 	return nil

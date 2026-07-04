@@ -97,7 +97,9 @@ There are three token contexts to keep distinct:
 | `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token and agent MCP token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Runner-to-server ConnectRPC token. | Required by the server. Compose falls back to `CHETTER_MCP_AUTH_TOKEN` if this is empty. |
 
-Team tokens are stored hashed in the configured database and belong to a user in a team. Team-scoped tokens can only see their team's tasks, triggers, schedule runs, and sessions.
+Team tokens are stored hashed in the configured database. A user and token can belong to one or more teams, which matches Okta-style group membership: Okta groups map to Chetter teams. Team-scoped tokens see the union of their teams' tasks, triggers, schedule runs, sessions, event callbacks, and artifacts.
+
+Created resources still have one owning `team_id`. If a non-admin token belongs to multiple teams, create/update/delete operations that need an owner require `team_id` or `team_name`; single-team tokens default to their only team. Admin tokens can create global resources by omitting team ownership.
 
 Create a scoped token with `chetterctl`:
 
@@ -153,8 +155,8 @@ Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by
 |---|---|---|
 | `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
 | Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
-| Definitions repo `triggers/*.yaml` | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
-| Agent definition frontmatter in `agents/*.md` | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
+| Definitions repo `triggers/*.yaml` and scoped trigger paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
+| Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
 
 Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
 
@@ -230,13 +232,29 @@ chetter_mcp:
 
 ### Definitions Repo YAML
 
-`DEFINITIONS_REPO` points at a Git repo with runtime configuration. Supported YAML formats are:
+`DEFINITIONS_REPO` points at a Git repo with runtime configuration. Definitions can live at the repo root for legacy global scope, or under explicit scope directories:
+
+```text
+model-catalog.yaml
+agents/...
+triggers/...
+global/agents/...
+global/triggers/...
+groups/<team-name>/agents/...
+groups/<team-name>/triggers/...
+repos/<owner>/<repo>/agents/...
+repos/<owner>/<repo>/triggers/...
+```
+
+Root-level `agents/`, `skills/`, `triggers/`, and `task-templates/` are treated as global definitions. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned.
+
+Supported YAML formats are:
 
 | Path | Required fields | Notes |
 |---|---|---|
 | `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
-| `triggers/*.yaml` | `name` | `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
-| `agents/*.md` | none | Optional YAML frontmatter may include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. |
+| `triggers/*.yaml` | `name` | Also supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
+| `agents/*.md` | none | Also supported under scoped directories. Optional YAML frontmatter may include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. |
 
 Example trigger definition:
 

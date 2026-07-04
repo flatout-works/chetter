@@ -196,6 +196,7 @@ message TokenInfo {
   string user_name = 2;
   string team_name = 3;
   string created_at = 4;
+  repeated string team_names = 5;
 }
 
 message TeamInfo {
@@ -552,7 +553,8 @@ service AdminService {
 }
 
 message CreateTokenRequest {
-  string team_name = 1 [(buf.validate.field).string.min_len = 1];
+  string team_name = 1;
+  repeated string team_names = 4;
   string user_name = 2 [(buf.validate.field).string.min_len = 1];
   string token_name = 3 [(buf.validate.field).string.min_len = 1];
 }
@@ -563,6 +565,8 @@ message CreateTokenResponse {
   string team_name = 3;
   string user_id = 4;
   string user_name = 5;
+  repeated string team_ids = 6;
+  repeated string team_names = 7;
 }
 
 message ListTokensRequest {}

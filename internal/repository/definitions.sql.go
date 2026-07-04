@@ -31,7 +31,15 @@ func (q *Queries) DeactivateDefinitionsBySource(ctx context.Context, arg Deactiv
 const getDefinitionBySourceTypeName = `-- name: GetDefinitionBySourceTypeName :one
 SELECT id, source_id, definition_type, name, scope, team_id, repo, path, source_commit, content_hash, content, metadata, active, created_at, updated_at FROM definitions
 WHERE source_id = ? AND definition_type = ? AND name = ? AND active = true
-ORDER BY updated_at DESC
+  AND (? = '' OR scope = ?)
+ORDER BY
+  CASE scope
+    WHEN 'global' THEN 0
+    WHEN 'team' THEN 1
+    WHEN 'repo' THEN 2
+    ELSE 3
+  END,
+  updated_at DESC
 LIMIT 1
 `
 
@@ -39,10 +47,17 @@ type GetDefinitionBySourceTypeNameParams struct {
 	SourceID       string `json:"source_id"`
 	DefinitionType string `json:"definition_type"`
 	Name           string `json:"name"`
+	ScopeFilter    string `json:"scope_filter"`
 }
 
 func (q *Queries) GetDefinitionBySourceTypeName(ctx context.Context, arg GetDefinitionBySourceTypeNameParams) (Definition, error) {
-	row := q.db.QueryRowContext(ctx, getDefinitionBySourceTypeName, arg.SourceID, arg.DefinitionType, arg.Name)
+	row := q.db.QueryRowContext(ctx, getDefinitionBySourceTypeName,
+		arg.SourceID,
+		arg.DefinitionType,
+		arg.Name,
+		arg.ScopeFilter,
+		arg.ScopeFilter,
+	)
 	var i Definition
 	err := row.Scan(
 		&i.ID,

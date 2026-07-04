@@ -63,7 +63,8 @@ func tokenCmd(args []string, serverURL, token string) error {
 
 	switch sub {
 	case "create":
-		team := fs.String("team", "", "Team name")
+		teams := stringSlice{}
+		fs.Var(&teams, "team", "Team name (repeatable for multi-team tokens)")
 		user := fs.String("user", "", "User name")
 		tokenName := fs.String("name", "", "Token name (e.g. 'alice-cli')")
 		_ = fs.Parse(args[1:])
@@ -73,15 +74,16 @@ func tokenCmd(args []string, serverURL, token string) error {
 		if *tok == "" {
 			return fmt.Errorf("--token or CHETTER_TOKEN is required")
 		}
-		if *team == "" || *user == "" || *tokenName == "" {
+		if len(teams) == 0 || *user == "" || *tokenName == "" {
 			return fmt.Errorf("--team, --user, and --name are required")
 		}
 		client := newAdminClient(*server, *tok)
-		resp, err := client.CreateToken(context.Background(), connect.NewRequest(&apiv1.CreateTokenRequest{
-			TeamName:  *team,
+		req := &apiv1.CreateTokenRequest{
+			TeamNames: teams,
 			UserName:  *user,
 			TokenName: *tokenName,
-		}))
+		}
+		resp, err := client.CreateToken(context.Background(), connect.NewRequest(req))
 		if err != nil {
 			return err
 		}
@@ -225,11 +227,22 @@ func printTokenUsage() {
 	fmt.Println(`chetterctl token - Manage API tokens
 
 Usage:
-  chetterctl token create --team <name> --user <name> --name <token-name>
+  chetterctl token create --team <name> [--team <name2>] --user <name> --name <token-name>
   chetterctl token list
   chetterctl token delete --name <token-name>
 
 Options:
   --server  Web API URL (or CHETTER_API_URL)
   --token   Admin API token (or CHETTER_TOKEN)`)
+}
+
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSlice) Set(value string) error {
+	*s = append(*s, value)
+	return nil
 }
