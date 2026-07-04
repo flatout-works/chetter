@@ -52,7 +52,6 @@ ARG GIT_HASH=unknown
 
 ENV GITHUB_SHA=${GIT_HASH}
 ENV CHETTER_RUNNER_IMAGE_DIGEST=${GIT_HASH}
-ENV TMPDIR=/tmp/chetter-runner
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -63,6 +62,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     openssh-client \
     socat \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TMPDIR=/tmp/chetter-runner
 
 COPY --from=binary-downloader /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=runner-builder /out/runner /usr/local/bin/runner
