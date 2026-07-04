@@ -34,7 +34,7 @@
         <span class="pill">Go + SvelteKit</span>
         <span class="pill">Streamable HTTP MCP</span>
         <span class="pill">ConnectRPC</span>
-        <span class="pill">TiDB</span>
+        <span class="pill">TiDB / MySQL</span>
         <span class="pill">Docker or Kubernetes</span>
         <span class="pill">GitHub MCP tools</span>
         <span class="pill">Issue triggers</span>
@@ -42,6 +42,7 @@
         <span class="pill">Model Catalog</span>
         <span class="pill">Full-text search</span>
         <span class="pill">Error diagnostics</span>
+        <span class="pill">YAML schemas</span>
       </div>
     </section>
 
@@ -52,7 +53,7 @@
         <article><span>01</span><b>General purpose</b><p>Any MCP-capable client (Claude, OpenCode, ChatGPT, curl) or browser (web UI) can talk to it. Runners can execute OpenCode, Claude Code, or Pi harnesses.</p></article>
         <article><span>02</span><b>For AI, by AI</b><p>The control surface is tools, backed by a web UI for humans. An LLM is the typical operator.</p></article>
         <article><span>03</span><b>Remote, not local</b><p>Tasks run inside runner containers somewhere else. The MCP server holds no execution responsibilities.</p></article>
-        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers, event callbacks, sessions, checkpoints, and recovery context survive restarts via TiDB. No separate broker required.</p></article>
+        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers, event callbacks, sessions, checkpoints, and recovery context survive restarts via TiDB or MySQL. No separate broker required.</p></article>
         <article><span>05</span><b>Observable fleet</b><p>Every task carries provider, model, variant, session id, runner image digest, token totals, and cost totals for traceability. Audit log and artifact tracking record server-side events.</p></article>
       </div>
     </section>
@@ -68,7 +69,7 @@
         </div>
         <div class="system-box server">
           <h3>store/</h3>
-          <p>TiDB persistence</p>
+          <p>TiDB / MySQL persistence</p>
           <span>tasks + leases</span><span>events</span><span>triggers + runs</span><span>event callbacks</span><span>agent sessions</span><span>checkpoints</span><span>runners</span><span>teams + tokens</span>
           <span>definitions</span><span>audit log</span><span>task artifacts</span><span>full-text search</span>
         </div>
@@ -103,7 +104,7 @@
           <div>service layer</div>
           <div>ConnectRPC task queue</div>
           <div>lease-based runner communication</div>
-          <div class="muted">TiDB</div>
+          <div class="muted">TiDB / MySQL</div>
         </div>
       </div>
     </section>
@@ -317,7 +318,7 @@
         <div class="lifecycle-step"><b>cron triggers</b><span>Five-field expressions + descriptors; fired by in-process robfig/cron</span></div>
         <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; built-in review template when prompt omitted; dispatches review tasks + PR label</span></div>
         <div class="lifecycle-step"><b>issue triggers</b><span>Opened/reopened issues and issue comments; optional event and label filters; no author write gate for triage</span></div>
-        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from TiDB on startup</span></div>
+        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from the database on startup</span></div>
         <div class="lifecycle-step"><b>Individual mgmt</b><span>Create, update, delete per trigger via MCP tools; no bulk sync</span></div>
       </div>
       <div class="protocol-cards">
@@ -325,7 +326,7 @@
         <article><b>Webhook dispatch</b><p>GitHub webhooks query enabled PR review and issue triggers by repo at event time. Bot comments are skipped unless a trigger opts in with <code>bot_comments:true</code>.</p></article>
         <article><b>DB-backed config</b><p><code>trigger_type</code> plus JSON <code>trigger_config</code> drives cron, PR review, and issue behavior without hardcoded reviewer configuration.</p></article>
         <article><b>Trigger run history</b><p>The web UI shows trigger runs with links to task detail pages, token totals, and task-created artifacts for traceability.</p></article>
-        <article><b>Definitions in Git</b><p>Optionally sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code> with periodic auto-sync every 5 minutes.</p></article>
+        <article><b>Definitions in Git</b><p>Optionally sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code> with periodic auto-sync every 5 minutes. YAML definitions are validated against JSON Schemas at sync time — invalid definitions fail with path-specific errors.</p></article>
       </div>
     </section>
 
@@ -375,7 +376,7 @@
       <p class="eyebrow">Deployment</p>
       <h2 id="deploy-title">Docker Compose or Kubernetes. Two images, one DB, web UI.</h2>
       <div class="deploy-flow">
-        <div><b>TiDB</b><span>external or bundled via compose.local.yaml</span></div>
+        <div><b>TiDB / MySQL</b><span>external or bundled TiDB via compose.local.yaml</span></div>
         <div><b>chetter-mcp</b><span>control plane, MCP on 18088, web UI on 18090</span></div>
         <div><b>chetter-runner</b><span>worker 1, connects via ConnectRPC</span></div>
         <div><b>chetter-runner-2</b><span>worker 2, same image, separate workspace</span></div>
@@ -399,7 +400,7 @@
         <article><b>Deployment flexibility</b><p>Use Compose for a compact Docker deployment or Kubernetes when runner scheduling and cluster operations matter.</p></article>
         <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, trigger run 30s, HTTP read header 10s, shutdown 15s.</p></article>
         <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE IF NOT EXISTS for add-only schema evolution on a small footprint.</p></article>
-        <article><b>Config in Git</b><p>Model catalog, agents, skills, triggers, and task templates can be synced from a Git definitions repo via <code>DEFINITIONS_REPO</code>, with periodic auto-sync every 5 minutes and proposal PR tools for changes.</p></article>
+        <article><b>Config in Git</b><p>Model catalog, agents, skills, triggers, and task templates can be synced from a Git definitions repo via <code>DEFINITIONS_REPO</code>, with periodic auto-sync every 5 minutes. All YAML is validated against JSON Schemas at sync time — invalid definitions fail with path-specific errors instead of being silently skipped. Proposal PR tools support change workflows.</p></article>
         <article><b>Trigger-based webhook dispatch</b><p>GitHub PR reviews and issue automation no longer use hardcoded config. Triggers in the DB are matched by repo and event at webhook time.</p></article>
         <article><b>Server-side signatures</b><p>GitHub MCP tools append a canonical single-line Chetter signature footer to every created artifact, enabling passive artifact discovery and tracking.</p></article>
         <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, runner_rpc.go ConnectRPC, catalog.go model catalog, definitions.go, and event_callbacks.go.</p></article>
@@ -413,7 +414,7 @@
         <article><b>MCP, not REST</b><p>The control surface is for AI agents, not humans. Tools are the native interface for any LLM client.</p></article>
         <article><b>Streamable HTTP</b><p>Modern MCP transport. Stateless mode makes the server trivially load-balancer-friendly.</p></article>
         <article><b>ConnectRPC</b><p>Task queue via long-polling RPC over HTTP; lease-based claiming; cancel and drain commands piggyback on heartbeats. No separate broker.</p></article>
-        <article><b>TiDB</b><p>MySQL wire protocol. Small, add-only schema, FULLTEXT indexes for table search, conservative pool, and room for vector search and HTAP on the roadmap.</p></article>
+        <article><b>TiDB / MySQL</b><p>MySQL wire protocol with automatic dialect detection. Small, add-only schema, FULLTEXT indexes for table search (TiDB multilingual parser or MySQL ngram), conservative pool. Set <code>CHETTER_DB_DIALECT</code> to force a specific dialect.</p></article>
         <article><b>robfig/cron v3</b><p>Battle-tested, tiny, descriptor parser for @hourly-style. In-process is fine for single-instance.</p></article>
         <article><b>Data-driven model catalog</b><p>YAML-based <code>pkg/modelcatalog</code> replaces hardcoded provider config. Supports DeepSeek, Z.ai, Anthropic, Synthetic (GLM-5.2), and OpenCode Zen (deepseek-v4-flash-free) with per-harness overrides.</p></article>
         <article><b>Server image</b><p>Multi-stage Go build on <code>debian:bookworm-slim</code>, with git and openssh-client available for definitions repository clone/pull operations.</p></article>

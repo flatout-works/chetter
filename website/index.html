@@ -45,7 +45,7 @@
       <div>
         <p class="eyebrow">How it works</p>
         <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB, serves it to runners via ConnectRPC, manages cron, PR review, issue, and event-callback automation, runs a data-driven model catalog with Git-backed definitions, hosts GitHub MCP tools with audit and artifact tracking, and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode, Claude Code, or Pi through harnesses, stream progress, record token usage, and report results. The same control plane can run with Docker Compose or in Kubernetes with the included manifests.</p>
+        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB or MySQL, serves it to runners via ConnectRPC, manages cron, PR review, issue, and event-callback automation, runs a data-driven model catalog with Git-backed definitions validated against JSON Schemas, hosts GitHub MCP tools with audit and artifact tracking, and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode, Claude Code, or Pi through harnesses, stream progress, record token usage, and report results. The same control plane can run with Docker Compose or in Kubernetes with the included manifests.</p>
       </div>
       <div class="flow-card">
         <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
@@ -76,8 +76,8 @@
         </article>
         <article>
           <span>state</span>
-          <h3>TiDB</h3>
-          <p>Tables hold tasks with leases, raw events, triggers, trigger runs, event callbacks, agent sessions, checkpoints, runner heartbeats, teams, users, API tokens, definitions, proposal records, audit log events, task artifacts, full-text search columns, and token/cost totals.</p>
+          <h3>TiDB / MySQL</h3>
+          <p>Tables hold tasks with leases, raw events, triggers, trigger runs, event callbacks, agent sessions, checkpoints, runner heartbeats, teams, users, API tokens, definitions, proposal records, audit log events, task artifacts, full-text search columns, and token/cost totals. Auto-detects dialect at startup; supports both TiDB and MySQL (including AWS Aurora).</p>
         </article>
       </div>
     </section>
@@ -104,8 +104,8 @@
           <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, error classification and diagnostics, and full-text search helpers.</p>
       </article>
       <article>
-        <h3>Standard protocols</h3>
-        <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), TiDB (MySQL wire protocol), Docker Compose, and cron. No proprietary agent protocol required.</p>
+          <h3>Standard protocols</h3>
+          <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), TiDB / MySQL, Docker Compose, and cron. No proprietary agent protocol required.</p>
       </article>
       <article>
         <h3>Built for operators</h3>
@@ -194,9 +194,9 @@ curl http://localhost:18088/healthz</code></pre>
       <div class="deploy-row">
         <div><b>chetter-mcp</b><span>Go server: MCP tools (port 18088) + web UI (port 18090) + ConnectRPC + triggers + webhook + model catalog</span></div>
         <div><b>chetter-runner</b><span>plain container environments with OpenCode, Claude Code, and Pi harnesses; Docker or Kubernetes execution with optional gVisor isolation where supported</span></div>
-        <div><b>TiDB</b><span>task state, events, triggers, sessions, definitions, runners, auth, audit log, artifacts</span></div>
+        <div><b>TiDB / MySQL</b><span>task state, events, triggers, sessions, definitions, runners, auth, audit log, artifacts</span></div>
       </div>
-      <p class="note">Use Docker Compose for a small self-hosted deployment, or Kubernetes manifests when you want scheduler-managed runners. Production can use an external TiDB instance by setting <code>DATABASE_DSN</code>. Enable kernel-level sandboxing with gVisor where supported, and sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code>.</p>
+      <p class="note">Use Docker Compose for a small self-hosted deployment, or Kubernetes manifests when you want scheduler-managed runners. Production can use an external TiDB or MySQL instance by setting <code>DATABASE_DSN</code>, with optional <code>CHETTER_DB_DIALECT</code> override. Enable kernel-level sandboxing with gVisor where supported, and sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code> — all validated against JSON Schemas for correctness at sync time.</p>
     </section>
   </main>
 
