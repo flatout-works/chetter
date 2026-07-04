@@ -97,7 +97,7 @@ Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side
 
 ## Agent Harnesses
 
-The runner drives agent CLIs through harness implementations. Three harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), and Pi (RPC subprocess). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
+The runner drives agent CLIs through harness implementations. Four harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), CodeWhale (HTTP/SSE runtime API), and Pi (RPC subprocess). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
 
 See [HARNESSES.md](HARNESSES.md) for the full capability matrix and guidance on adding new harnesses.
 
@@ -130,7 +130,7 @@ Host-side command and deployment tools such as `workspace_bash`, `git_*`, `fetch
 Chetter supports:
 
 - Admin token auth for global access.
-- Team tokens stored hashed in TiDB.
+- Team tokens stored hashed in the configured database.
 - Automatic `team_id` stamping for tasks, triggers, schedule runs, and sessions.
 - Team-scoped reads for non-admin tokens.
 
