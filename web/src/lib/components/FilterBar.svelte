@@ -2,7 +2,7 @@
   import { createClient } from "@connectrpc/connect";
   import { TaskService } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { teamFilter, setTeamOptions, toggleTeam, selectAllTeams, deselectAllTeams, repoFilter, addRepo, removeRepo, hasRepoFilter, selectedRepos } from "$lib/stores/filter.svelte";
+  import { teamFilter, setTeamOptions, toggleTeam, selectAllTeams, deselectAllTeams, setRepoOptions, repoFilter, addRepo, removeRepo, hasRepoFilter, selectedRepos } from "$lib/stores/filter.svelte";
   import { Badge, Button, Input } from "flowbite-svelte";
 
   let { teams }: { teams: { id: string; name: string }[] } = $props();
@@ -33,10 +33,6 @@
     selectAllTeams();
     setRepoOptions([]);
   }
-
-  function repoBadgeColor(): string {
-    return "blue";
-  }
 </script>
 
 {#if teams.length > 0 || activeRepos.length > 0}
@@ -62,7 +58,7 @@
     {/if}
 
     {#each activeRepos as repo (repo)}
-      <Badge color={repoBadgeColor()} class="!cursor-pointer" onclick={() => removeRepo(repo)}>
+      <Badge color="blue" class="!cursor-pointer" onclick={() => removeRepo(repo)}>
         {repo} &times;
       </Badge>
     {/each}
@@ -72,7 +68,7 @@
       <Input
         bind:value={repoInput}
         placeholder="org/repo"
-        size="xs"
+        size="sm"
         class="!w-28 !h-7 !text-xs"
         onkeydown={(e) => { if (e.key === "Enter") addRepoFromInput(); }}
       />
