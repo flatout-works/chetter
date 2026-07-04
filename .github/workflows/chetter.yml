@@ -74,8 +74,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build images on wowbagger
-        env:
-          BUILD_AGENT_BASE: ${{ needs.detect-changes.outputs.agent-base }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.WOWBAGGER_SSH_KEY }}" > ~/.ssh/wowbagger
@@ -85,8 +83,7 @@ jobs:
             ci/chetter-build.sh gokr@wowbagger.krampe.se:~/chetter-build.sh
           # Build
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
-            "BUILD_AGENT_BASE='$BUILD_AGENT_BASE' \
-             GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
+            "GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
              bash ~/chetter-build.sh"
 
       - name: Drain runners before redeploy

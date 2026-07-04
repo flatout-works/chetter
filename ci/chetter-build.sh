@@ -9,12 +9,7 @@ git pull --ff-only 2>/dev/null || (git fetch --depth=1 origin main && git reset 
 NEW=$(git rev-parse HEAD)
 
 if [ "$OLD" = "$NEW" ]; then
-  echo "No changes since last pull, checking if agent-base build was requested..."
-  if [ "${BUILD_AGENT_BASE:-false}" != "true" ]; then
-    echo "No agent-base build requested either — nothing to do."
-    exit 0
-  fi
-  echo "Source unchanged but agent-base build requested — building that only."
+  echo "No changes since last pull."
   SKIP_MAIN=true
 else
   echo "Source updated: $OLD -> $NEW"
@@ -27,21 +22,22 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "$GITHUB_TOKEN" | docker login ghcr.io -u gokr --password-stdin
 fi
 
+GIT_HASH=$(git rev-parse --short HEAD)
+
+# Always build and push agent-base on every CI run.
+# Variant images in chetter-config depend on the :main tag being current,
+# and BuildKit caching makes rebuilds near-free when nothing changed.
+echo "=== Building agent-base image ==="
+docker build \
+  -f runner/images/base/Dockerfile \
+  -t "chetter-agent-base:latest" \
+  -t "ghcr.io/flatout-works/chetter-agent-base:$GIT_HASH" \
+  -t "ghcr.io/flatout-works/chetter-agent-base:main" .
+echo "=== Pushing agent-base to GHCR ==="
+docker push "ghcr.io/flatout-works/chetter-agent-base:$GIT_HASH"
+docker push "ghcr.io/flatout-works/chetter-agent-base:main"
+
 if [ "${SKIP_MAIN}" != "true" ]; then
-
-  GIT_HASH=$(git rev-parse --short HEAD)
-
-  if [ "${BUILD_AGENT_BASE:-false}" = "true" ] || ! docker image inspect chetter-agent-base:latest >/dev/null 2>&1; then
-    echo "=== Building agent-base image ==="
-    docker build \
-      -f runner/images/base/Dockerfile \
-      -t "chetter-agent-base:latest" \
-      -t "ghcr.io/flatout-works/chetter-agent-base:$GIT_HASH" \
-      -t "ghcr.io/flatout-works/chetter-agent-base:main" .
-    echo "=== Pushing agent-base to GHCR ==="
-    docker push "ghcr.io/flatout-works/chetter-agent-base:$GIT_HASH"
-    docker push "ghcr.io/flatout-works/chetter-agent-base:main"
-  fi
 
   echo "=== Building MCP image ==="
   docker build \
