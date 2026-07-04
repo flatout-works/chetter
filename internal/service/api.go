@@ -569,7 +569,51 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 	for i, r := range repoRecords {
 		triggers[i] = triggerToStoreRecord(r)
 	}
+	s.enrichTriggerSources(ctx, triggers)
 	return triggers, nil
+}
+
+// enrichTriggerSources populates the SourceRepoURL, SourceBranch, and
+// SourcePath transient fields on git-managed triggers by looking up the
+// definition_sources and definitions tables. Triggers without a source_id
+// are left unchanged.
+func (s *Service) enrichTriggerSources(ctx context.Context, triggers []store.TriggerRecord) {
+	sourceCache := map[string]repository.DefinitionSource{}
+	for i := range triggers {
+		sid := triggers[i].SourceID
+		if sid == "" {
+			continue
+		}
+		src, ok := sourceCache[sid]
+		if !ok {
+			ph, err := s.repo.GetDefinitionSource(ctx, sid)
+			if err != nil {
+				slog.DebugContext(ctx, "enrichTriggerSources: definition source not found", "source_id", sid, "err", err)
+				continue
+			}
+			src = ph
+			sourceCache[sid] = src
+		}
+		triggers[i].SourceRepoURL = src.RepoUrl
+		triggers[i].SourceBranch = src.Branch
+		path := src.Path
+		if path == "" {
+			path = "triggers"
+		}
+		filePath := path + "/" + triggers[i].Name + ".yaml"
+		if path == "triggers" {
+			filePath = "triggers/" + triggers[i].Name + ".yaml"
+		}
+		def, err := s.repo.GetDefinitionBySourceTypeName(ctx, repository.GetDefinitionBySourceTypeNameParams{
+			SourceID:       sid,
+			DefinitionType: "trigger",
+			Name:           triggers[i].Name,
+		})
+		if err == nil {
+			filePath = def.Path
+		}
+		triggers[i].SourcePath = filePath
+	}
 }
 
 // ListTriggerRuns returns trigger runs, optionally filtered by trigger name, respecting team scope.

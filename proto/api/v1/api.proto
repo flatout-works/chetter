@@ -106,6 +106,9 @@ message Trigger {
   optional string last_run_at = 21;
   optional string next_run_at = 22;
   optional string source_id = 23;
+  optional string source_repo_url = 24;
+  optional string source_branch = 25;
+  optional string source_path = 26;
 }
 
 message TaskEvent {

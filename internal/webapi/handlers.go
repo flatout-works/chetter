@@ -152,6 +152,9 @@ func protoTrigger(t store.TriggerRecord) *apiv1.Trigger {
 		LastRunAt:     optTimeStr(t.LastRunAt),
 		NextRunAt:     optTimeStr(t.NextRunAt),
 		SourceId:      optStr(t.SourceID),
+		SourceRepoUrl: optStr(t.SourceRepoURL),
+		SourceBranch:  optStr(t.SourceBranch),
+		SourcePath:    optStr(t.SourcePath),
 	}
 }
 

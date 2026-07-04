@@ -93,6 +93,13 @@
     return !!trigger.sourceId;
   }
 
+  function sourceFileUrl(trigger: Trigger): string | null {
+    if (!trigger.sourceRepoUrl || !trigger.sourcePath) return null;
+    const branch = trigger.sourceBranch || "main";
+    const base = trigger.sourceRepoUrl.replace(/\.git$/, "").replace(/\/$/, "");
+    return `${base}/blob/${branch}/${trigger.sourcePath}`;
+  }
+
   async function load() {
     loading = true;
     error = null;
@@ -297,7 +304,13 @@
                 {trigger.name}
               </a>
               {#if isGitManaged(trigger)}
-                <Badge color="gray" class="ml-1">git</Badge>
+                {#if sourceFileUrl(trigger)}
+                  <a href={sourceFileUrl(trigger)} target="_blank" rel="noopener noreferrer" class="ml-1">
+                    <Badge color="gray">git</Badge>
+                  </a>
+                {:else}
+                  <Badge color="gray" class="ml-1">git</Badge>
+                {/if}
               {/if}
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={trigger.triggerType} /></TableBodyCell>

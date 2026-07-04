@@ -156,6 +156,12 @@ type TriggerRecord struct {
 	TimeoutSec    int        `json:"timeout_sec"`
 	Enabled       bool       `json:"enabled"`
 	SourceID      string     `json:"source_id,omitempty"`
+	// SourceRepoURL, SourceBranch, and SourcePath are transient fields
+	// populated by the service layer from the definition_sources and
+	// definitions tables. They are not stored in chetter_triggers.
+	SourceRepoURL string `json:"source_repo_url,omitempty"`
+	SourceBranch  string `json:"source_branch,omitempty"`
+	SourcePath    string `json:"source_path,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	LastRunAt     *time.Time `json:"last_run_at,omitempty"`

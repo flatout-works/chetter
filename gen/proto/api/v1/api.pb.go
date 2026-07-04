@@ -687,6 +687,9 @@ type Trigger struct {
 	LastRunAt     *string                `protobuf:"bytes,21,opt,name=last_run_at,json=lastRunAt,proto3,oneof" json:"last_run_at,omitempty"`
 	NextRunAt     *string                `protobuf:"bytes,22,opt,name=next_run_at,json=nextRunAt,proto3,oneof" json:"next_run_at,omitempty"`
 	SourceId      *string                `protobuf:"bytes,23,opt,name=source_id,json=sourceId,proto3,oneof" json:"source_id,omitempty"`
+	SourceRepoUrl *string                `protobuf:"bytes,24,opt,name=source_repo_url,json=sourceRepoUrl,proto3,oneof" json:"source_repo_url,omitempty"`
+	SourceBranch  *string                `protobuf:"bytes,25,opt,name=source_branch,json=sourceBranch,proto3,oneof" json:"source_branch,omitempty"`
+	SourcePath    *string                `protobuf:"bytes,26,opt,name=source_path,json=sourcePath,proto3,oneof" json:"source_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -878,6 +881,27 @@ func (x *Trigger) GetNextRunAt() string {
 func (x *Trigger) GetSourceId() string {
 	if x != nil && x.SourceId != nil {
 		return *x.SourceId
+	}
+	return ""
+}
+
+func (x *Trigger) GetSourceRepoUrl() string {
+	if x != nil && x.SourceRepoUrl != nil {
+		return *x.SourceRepoUrl
+	}
+	return ""
+}
+
+func (x *Trigger) GetSourceBranch() string {
+	if x != nil && x.SourceBranch != nil {
+		return *x.SourceBranch
+	}
+	return ""
+}
+
+func (x *Trigger) GetSourcePath() string {
+	if x != nil && x.SourcePath != nil {
+		return *x.SourcePath
 	}
 	return ""
 }
@@ -6682,7 +6706,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01\x12\x16\n" +
 	"\x06prompt\x18\f \x01(\tR\x06promptB\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\xce\x05\n" +
+	"\t_ended_at\"\x81\a\n" +
 	"\aTrigger\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x12\n" +
@@ -6713,11 +6737,18 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"updated_at\x18\x14 \x01(\tR\tupdatedAt\x12#\n" +
 	"\vlast_run_at\x18\x15 \x01(\tH\x00R\tlastRunAt\x88\x01\x01\x12#\n" +
 	"\vnext_run_at\x18\x16 \x01(\tH\x01R\tnextRunAt\x88\x01\x01\x12 \n" +
-	"\tsource_id\x18\x17 \x01(\tH\x02R\bsourceId\x88\x01\x01B\x0e\n" +
+	"\tsource_id\x18\x17 \x01(\tH\x02R\bsourceId\x88\x01\x01\x12+\n" +
+	"\x0fsource_repo_url\x18\x18 \x01(\tH\x03R\rsourceRepoUrl\x88\x01\x01\x12(\n" +
+	"\rsource_branch\x18\x19 \x01(\tH\x04R\fsourceBranch\x88\x01\x01\x12$\n" +
+	"\vsource_path\x18\x1a \x01(\tH\x05R\n" +
+	"sourcePath\x88\x01\x01B\x0e\n" +
 	"\f_last_run_atB\x0e\n" +
 	"\f_next_run_atB\f\n" +
 	"\n" +
-	"_source_id\"\xbe\x01\n" +
+	"_source_idB\x12\n" +
+	"\x10_source_repo_urlB\x10\n" +
+	"\x0e_source_branchB\x0e\n" +
+	"\f_source_path\"\xbe\x01\n" +
 	"\tTaskEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +

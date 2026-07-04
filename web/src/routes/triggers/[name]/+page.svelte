@@ -33,6 +33,13 @@
     return !!trigger?.sourceId;
   }
 
+  function sourceFileUrl(): string | null {
+    if (!trigger?.sourceRepoUrl || !trigger?.sourcePath) return null;
+    const branch = trigger.sourceBranch || "main";
+    const base = trigger.sourceRepoUrl.replace(/\.git$/, "").replace(/\/$/, "");
+    return `${base}/blob/${branch}/${trigger.sourcePath}`;
+  }
+
   function triggerTarget(): string {
     if (!trigger) return "—";
     if (trigger.cronExpr) return trigger.cronExpr;
@@ -168,7 +175,13 @@
         <StatusBadge status={trigger.triggerType} />
         <StatusBadge status={trigger.enabled ? "enabled" : "disabled"} />
         {#if isGitManaged()}
-          <Badge color="gray">git-managed</Badge>
+          {#if sourceFileUrl()}
+            <a href={sourceFileUrl()} target="_blank" rel="noopener noreferrer">
+              <Badge color="gray">git-managed</Badge>
+            </a>
+          {:else}
+            <Badge color="gray">git-managed</Badge>
+          {/if}
         {/if}
       </div>
       <div class="flex items-center gap-2">
@@ -299,7 +312,11 @@
         {#if trigger.sourceId}
           <div>
             <span class="text-xs text-gray-400 dark:text-gray-500">Source</span>
-            <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.sourceId}</p>
+            {#if sourceFileUrl()}
+              <p><a href={sourceFileUrl()} target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline font-mono text-xs">{trigger.sourcePath}</a></p>
+            {:else}
+              <p class="text-gray-900 dark:text-white font-mono text-xs">{trigger.sourceId}</p>
+            {/if}
           </div>
         {/if}
       </div>
