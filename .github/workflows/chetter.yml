@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: write  # needed to push chetter-agent-base to GHCR
 
 jobs:
   check:
@@ -85,6 +86,7 @@ jobs:
           # Build
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/wowbagger gokr@wowbagger.krampe.se \
             "BUILD_AGENT_BASE='$BUILD_AGENT_BASE' \
+             GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
              bash ~/chetter-build.sh"
 
       - name: Drain runners before redeploy
