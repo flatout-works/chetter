@@ -39,14 +39,15 @@
 
       <div class="stats">
         <div class="card stat"><span>Harnesses</span><b>OpenCode, Claude Code, Pi, CodeWhale</b><p class="stat-desc">Add the coding harness you like — the runner is modular by design.</p></div>
-        <div class="card stat"><span>Runtime</span><b>Docker or Kubernetes</b><p class="stat-desc">Tailor developer containers for different agents and their needs. Secure sandboxing via gVisor, supported by both platforms.</p></div>
+        <div class="card stat"><span>Runtime</span><b>Docker &amp; Kubernetes with gVisor</b><p class="stat-desc">Tailor developer containers for different agents and their needs. Secure sandboxing via gVisor, supported by both platforms.</p></div>
         <div class="card stat"><span>Workflow</span><b>GitHub PRs, issues, reviews</b><p class="stat-desc">Agents work just like you do: opening PRs, triaging issues, posting reviews — all with auditable artifacts.</p></div>
+        <div class="card stat"><span>Isolation</span><b>Kernel-level sandboxing</b><p class="stat-desc">gVisor intercepts syscalls at the kernel boundary, so each agent container gets its own isolated view of the host.</p></div>
       </div>
 
       <section class="section">
         <div class="section-intro">
           <p class="eyebrow">What it gives you</p>
-          <h2>A web UI for operating your own agent fleet.</h2>
+          <h2>A web UI for observing your own agent fleet.</h2>
           <p>Observe task runs, manage automation, and inspect GitHub-native workflows from the same self-hosted control plane.</p>
         </div>
 
@@ -70,6 +71,14 @@
         <article class="card feature"><p class="eyebrow">Open Source</p><h3>Run it yourself</h3><p>No hosted Chetter service. Clone the repo, deploy the server and runners, and keep the execution path under your control.</p></article>
         <article class="card feature"><p class="eyebrow">GitHub Native</p><h3>PRs, issues, reviews</h3><p>Wire agents into the tools developers already use, with tracked artifacts and auditable outcomes.</p></article>
         <article class="card feature"><p class="eyebrow">Standard Runners</p><h3>Plain containers</h3><p>Use Docker or Kubernetes images with the language tools and harnesses your projects already rely on.</p></article>
+      </section>
+
+      <section class="section">
+        <div class="card callout">
+          <p class="eyebrow">Secure by default</p>
+          <h2 style="font-size: 28px;">gVisor sandboxes every agent container.</h2>
+          <p style="margin: 10px 0 0; color: var(--muted); line-height: 1.65; max-width: 760px;">Chetter runs agent containers under <code>gVisor</code> (<code>runsc</code>), a userspace kernel that intercepts system calls. Each agent gets an isolated filesystem view, restricted network egress through transparent HTTP and DNS proxies, and no direct access to the host kernel. This means a compromised or misbehaving agent stays inside its container boundary — it cannot reach the runner's credentials, other tasks' workspaces, or the host machine. gVisor works on standard Docker and Kubernetes nodes; no custom AMI or kernel patches are required.</p>
+        </div>
       </section>
 
       <section class="card cta">
