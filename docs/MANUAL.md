@@ -119,7 +119,8 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `CHETTER_RUNNER_RPC_TOKEN` | Yes | empty | Dedicated runner ConnectRPC token. Empty and `change-me*` values are rejected. |
 | `DATABASE_DSN` | Yes for binary | empty | TiDB or MySQL DSN. Compose local override can provide bundled TiDB. |
 | `CHETTER_DB_DIALECT` | No | auto-detect | Optional database dialect override: `tidb` or `mysql`. |
-| `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-runner:latest` | Default task runner image. |
+| `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-agent-base:latest` | Default agent dev container image used when task or trigger config omits `agent_image`. |
+| `AGENT_IMAGE_PREFIX` | No | empty | Registry/namespace prefix prepended to unqualified `agent_image` values. For chetter-config images, set `ghcr.io/flatout-works` so `chetter-agent:golang` resolves to `ghcr.io/flatout-works/chetter-agent:golang`. Fully qualified image refs are left unchanged. |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and future definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
@@ -287,7 +288,7 @@ Example input:
   "prompt": "Add input validation to all API handlers and run the tests.",
   "git_url": "https://github.com/my-org/my-repo",
   "git_ref": "main",
-  "agent_image": "chetter-runner:latest",
+  "agent_image": "chetter-agent:golang",
   "harness": "opencode",
   "timeout_sec": 1800
 }
@@ -474,81 +475,88 @@ chetter-runner:
 
 The runner passes `--runtime=runsc` to `docker run` when creating agent containers. Only the host Docker daemon needs `runsc` registered — the binary does not need to exist inside the runner container. The Docker socket mount is required because the runner shells out to `docker run`.
 
-## Custom Dev Container Images
+## Dev Container Images
 
-Tasks run inside a dev container image specified by `agent_image`. Chetter ships several variants, and you can create your own.
+Tasks run inside a dev container image selected by `agent_image`. The runner does not decide where images live; it receives the final Docker image reference from the server and passes it to `docker run`. If that image is not present on the host, Docker pulls it using the host's registry credentials.
 
-### Built-in Variants
+### Image Sources
 
-| Variant | Image Tag | Contents |
-|---------|-----------|----------|
-| Golang (default) | `ghcr.io/flatout-works/chetter-runner:main` | Go, buf, sqlc, goose, govulncheck, osv-scanner, gh, hcloud, opencode, claude-code, codewhale |
-| Python | `ghcr.io/flatout-works/chetter-runner:python` | Python 3, pip, venv, ruff, mypy, pytest, opencode, claude-code, codewhale |
-| Node.js | `ghcr.io/flatout-works/chetter-runner:node` | Node 22, pnpm, TypeScript, eslint, prettier, opencode, claude-code, codewhale |
-| Rust | `ghcr.io/flatout-works/chetter-runner:rust` | rustup, cargo, clippy, rustfmt, cargo-audit, opencode, claude-code, codewhale |
-| Minimal | `ghcr.io/flatout-works/chetter-runner:minimal` | opencode, claude-code, codewhale, git, curl — no language toolchain |
+Chetter's shared development images are defined in the Git-backed config repo, not in the runner image. The current layout is:
 
-Use `agent_image` in a task, or set `DEFAULT_AGENT_IMAGE` on the server for a default.
+```text
+global/images/golang/Dockerfile
+global/images/python/Dockerfile
+global/images/node/Dockerfile
+global/images/rust/Dockerfile
+global/images/minimal/Dockerfile
+global/images/java-spring/Dockerfile
+```
+
+The `chetter-config` GitHub Actions workflow builds those Dockerfiles and publishes tags as `ghcr.io/flatout-works/chetter-agent:<variant>`, for example `ghcr.io/flatout-works/chetter-agent:golang`.
+
+Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, which is built by the main Chetter CI and contains the shared harness CLIs (`opencode`, `claude-code`, `codewhale`, `pi`), `mcp-bridge`, `chetter-entrypoint`, `git`, `gh`, and common runtime tools.
+
+### Image Resolution
+
+Tasks, triggers, and definition YAML can use either fully qualified image refs or short refs:
+
+```yaml
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+```
+
+```yaml
+agent_image: chetter-agent:golang
+```
+
+Set `AGENT_IMAGE_PREFIX=ghcr.io/flatout-works` on the server to make short refs portable. With that setting, the server resolves `chetter-agent:golang` to `ghcr.io/flatout-works/chetter-agent:golang` before storing tasks or handing work to runners. Fully qualified refs such as `ghcr.io/...`, `registry.example.com:5000/...`, and `localhost:5000/...` are left unchanged.
+
+`DEFAULT_AGENT_IMAGE` is used only when a task or trigger omits `agent_image`. It is resolved through the same prefix logic, so either of these work:
+
+```env
+DEFAULT_AGENT_IMAGE=chetter-agent:golang
+AGENT_IMAGE_PREFIX=ghcr.io/flatout-works
+```
+
+```env
+DEFAULT_AGENT_IMAGE=ghcr.io/flatout-works/chetter-agent:golang
+```
+
+For production, prefer `AGENT_IMAGE_PREFIX=ghcr.io/flatout-works` and short `agent_image` values in config definitions. This keeps team/repo config readable while ensuring wowbagger or any other runner host pulls from GHCR instead of looking for local-only tags.
+
+### Available Variants
+
+| Variant | Image Ref With Prefix | Contents |
+|---|---|---|
+| Golang | `chetter-agent:golang` | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud, MySQL client |
+| Python | `chetter-agent:python` | Python 3, pip, venv, ruff, mypy, pytest, black, httpx |
+| Node.js | `chetter-agent:node` | Node 22, pnpm, TypeScript, ts-node, eslint, prettier |
+| Rust | `chetter-agent:rust` | rustup, cargo, clippy, rustfmt, cargo-audit, build-essential, libssl |
+| Minimal | `chetter-agent:minimal` | Base harnesses only, no language toolchain |
+| Java/Spring | `chetter-agent:java-spring` | JDK 21, Maven, Gradle, Liquibase, PostgreSQL client |
 
 ### Creating A Custom Image
 
-All images inherit from `chetter-runner-base` (except `minimal` which starts from `debian:bookworm-slim`). The base provides opencode, claude-code, codewhale, git, and core tooling.
+Add a new Dockerfile under the appropriate scope in the config repo:
 
-Create `runner/images/<name>/Dockerfile`:
+```text
+global/images/<variant>/Dockerfile
+groups/<team>/images/<variant>/Dockerfile
+repos/<owner>/<repo>/images/<variant>/Dockerfile
+```
+
+Start from the shared base unless there is a specific reason not to:
 
 ```dockerfile
 # syntax=docker/dockerfile:1.7
-ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-runner-base:main
-
-FROM golang:1.26-bookworm AS runner-builder
-ARG CACHEBUST
-WORKDIR /src
-COPY go.mod go.sum* ./
-COPY gen/ ./gen/
-COPY runner/go.mod runner/go.sum* ./runner/
-WORKDIR /src/runner
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go mod download
-WORKDIR /src
-COPY runner/ ./runner/
-WORKDIR /src/runner
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/runner ./cmd/runner
-
-FROM golang:1.26-bookworm AS mcp-bridge-builder
-WORKDIR /build
-COPY runner/harness/mcp-bridge/main.go ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/mcp-bridge ./main.go
-
+ARG BASE_IMAGE=ghcr.io/flatout-works/chetter-agent-base:main
 FROM ${BASE_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     my-language-runtime \
     && rm -rf /var/lib/apt/lists/*
-
-COPY --from=runner-builder /out/runner /usr/local/bin/runner
-COPY --from=mcp-bridge-builder /out/mcp-bridge /usr/local/bin/mcp-bridge
-COPY runner/chetter-entrypoint.sh /usr/local/bin/chetter-entrypoint
-COPY .opencode/agent/ /opt/opencode/.config/opencode/agent/
-RUN chmod +x /usr/local/bin/runner /usr/local/bin/mcp-bridge /usr/local/bin/chetter-entrypoint \
-    && chmod -R 755 /opt/opencode/.agents/skills /opt/opencode/.config/opencode/agent
-
-ENV RUNNER_LOCAL=true
-ENV RUNNER_WORKSPACE_ROOT=/var/lib/chetter-runner/workspaces
-WORKDIR /var/lib/chetter-runner/workspaces
-ENTRYPOINT ["chetter-entrypoint"]
 ```
 
-Requirements:
-- `opencode` in `$PATH` (or `claude` for Claude Code harness)
-- `HOME=/opt/opencode`
-- `chetter-entrypoint` as ENTRYPOINT
-
-Build with `docker build -f runner/images/myvariant/Dockerfile -t my-org/chetter-runner:myvariant .` from the repo root.
+Update the config repo image workflow if the new scope/path should be built automatically. After GitHub Actions pushes the image, reference it in trigger YAML or task submissions with `agent_image`.
 
 ### Image Contract
 

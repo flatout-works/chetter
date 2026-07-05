@@ -21,7 +21,8 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       DEFINITIONS_REPO: ${DEFINITIONS_REPO:-}
       DEFINITIONS_BRANCH: ${DEFINITIONS_BRANCH:-main}
-      DEFAULT_AGENT_IMAGE: chetter-agent-base:latest
+      DEFAULT_AGENT_IMAGE: ${DEFAULT_AGENT_IMAGE:-chetter-agent:golang}
+      AGENT_IMAGE_PREFIX: ${AGENT_IMAGE_PREFIX:-ghcr.io/flatout-works}
     ports:
       - "18088:8080"
       - "18090:8090"

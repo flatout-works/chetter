@@ -172,6 +172,7 @@ func TestLoad(t *testing.T) {
 	t.Run("env overrides", func(t *testing.T) {
 		t.Setenv("HTTP_ADDR", ":9090")
 		t.Setenv("DEFAULT_AGENT_IMAGE", "custom:latest")
+		t.Setenv("AGENT_IMAGE_PREFIX", "ghcr.io/example")
 		t.Setenv("DEFAULT_TASK_TIMEOUT_SEC", "300")
 		cfg := Load()
 		if cfg.HTTPAddr != ":9090" {
@@ -179,6 +180,9 @@ func TestLoad(t *testing.T) {
 		}
 		if cfg.DefaultAgentImage != "custom:latest" {
 			t.Errorf("expected custom:latest, got %q", cfg.DefaultAgentImage)
+		}
+		if cfg.AgentImagePrefix != "ghcr.io/example" {
+			t.Errorf("expected ghcr.io/example, got %q", cfg.AgentImagePrefix)
 		}
 		if cfg.DefaultTaskTimeoutSec != 300 {
 			t.Errorf("expected 300, got %d", cfg.DefaultTaskTimeoutSec)

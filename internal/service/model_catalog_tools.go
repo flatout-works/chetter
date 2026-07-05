@@ -296,7 +296,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, err
 	}
-	triggerEntries, err := parseTriggerDefsForSync(defs, now, definitionTeamIDs)
+	triggerEntries, err := s.parseTriggerDefsForSync(defs, now, definitionTeamIDs)
 	if err != nil {
 		return ModelCatalogRecord{}, fmt.Errorf("parse trigger definitions: %w", err)
 	}
@@ -609,7 +609,7 @@ type triggerSyncEntry struct {
 	params repository.UpsertTriggerParams
 }
 
-func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time, teamIDs map[string]string) ([]triggerSyncEntry, error) {
+func (s *Service) parseTriggerDefsForSync(defs []definitions.Definition, now time.Time, teamIDs map[string]string) ([]triggerSyncEntry, error) {
 	var entries []triggerSyncEntry
 	for _, def := range defs {
 		if def.Type != definitions.DefinitionTypeTrigger {
@@ -640,7 +640,7 @@ func parseTriggerDefsForSync(defs []definitions.Definition, now time.Time, teamI
 				Prompt:        td.Prompt,
 				GitUrl:        nullString(td.GitURL),
 				GitRef:        nullString(td.GitRef),
-				AgentImage:    nullString(td.AgentImage),
+				AgentImage:    nullString(s.resolveAgentImage(td.AgentImage)),
 				Agent:         nullString(td.Agent),
 				ProviderID:    nullString(td.ProviderID),
 				ModelID:       nullString(td.ModelID),

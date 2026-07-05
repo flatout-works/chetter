@@ -17,6 +17,7 @@ type Config struct {
 	DatabaseDSN            string
 	DBDialect              string
 	DefaultAgentImage      string
+	AgentImagePrefix       string
 	DefaultTaskTimeoutSec  int
 	ArcaneServerURL        string
 	ArcaneAPIKey           string
@@ -40,6 +41,7 @@ func Load() Config {
 		DatabaseDSN:            os.Getenv("DATABASE_DSN"),
 		DBDialect:              os.Getenv("CHETTER_DB_DIALECT"),
 		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-agent-base:latest"),
+		AgentImagePrefix:       os.Getenv("AGENT_IMAGE_PREFIX"),
 		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
 		ArcaneServerURL:        env("ARCANE_SERVER_URL", ""),
 		ArcaneAPIKey:           env("ARCANE_API_KEY", ""),

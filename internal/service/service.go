@@ -399,6 +399,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		}
 		in.AgentImage = s.cfg.DefaultAgentImage
 	}
+	in.AgentImage = s.resolveAgentImage(in.AgentImage)
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
@@ -933,6 +934,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 		}
 		in.AgentImage = s.cfg.DefaultAgentImage
 	}
+	in.AgentImage = s.resolveAgentImage(in.AgentImage)
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
@@ -1046,6 +1048,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	if in.AgentImage == "" {
 		return store.TriggerRecord{}, fmt.Errorf("agent_image is required")
 	}
+	in.AgentImage = s.resolveAgentImage(in.AgentImage)
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
