@@ -44,21 +44,38 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
-func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search string) ([]TaskToolRecord, error) {
+func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search string, uiTeamIDs, uiRepos []string) ([]TaskToolRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var tasks []repository.ChetterTask
 	var err error
-	if search != "" {
-		if scoped && !scope.Admin {
-			teamIDs := scope.Teams()
-			if len(teamIDs) == 0 {
-				return nil, nil
-			}
-			if len(teamIDs) > 1 {
+
+	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
+	var effectiveTeamIDs []string
+	if scoped && !scope.Admin {
+		effectiveTeamIDs = scope.Teams()
+	}
+	if len(uiTeamIDs) > 0 {
+		if len(effectiveTeamIDs) == 0 {
+			effectiveTeamIDs = uiTeamIDs
+		} else {
+			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
+		}
+	}
+	hasRepos := len(uiRepos) > 0
+
+	// When repo filtering is needed, use raw queries to apply both team and repo
+	// filters before LIMIT/OFFSET (avoids client-side pagination bug).
+	if hasRepos && search != "" {
+		tasks, err = s.searchTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, search, clamped, clampedOffset)
+	} else if hasRepos {
+		tasks, err = s.listTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, clamped, clampedOffset)
+	} else if search != "" {
+		if len(effectiveTeamIDs) > 0 {
+			if len(effectiveTeamIDs) > 1 {
 				tasks, err = s.repo.SearchTasksByTeams(ctx, repository.SearchTasksByTeamsParams{
-					TeamIds:           nullStringSlice(teamIDs),
+					TeamIds:           nullStringSlice(effectiveTeamIDs),
 					StatusFilter:      status,
 					TriggerNameFilter: sql.NullString{},
 					Search:            search,
@@ -66,22 +83,18 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 					Offset:            clampedOffset,
 				})
 			} else {
-				tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: teamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
+				tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: effectiveTeamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
 			}
 		} else {
-			tasks, err = s.searchTasksFTS(ctx, sql.NullString{}, status, search, clamped, clampedOffset)
+			tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: "", Valid: true}, status, search, clamped, clampedOffset)
 		}
-	} else if scoped && !scope.Admin {
-		teamIDs := scope.Teams()
-		if len(teamIDs) == 0 {
-			return nil, nil
-		}
+	} else if len(effectiveTeamIDs) > 0 {
 		tasks, err = s.repo.ListTasksByStatusAndTeams(ctx, repository.ListTasksByStatusAndTeamsParams{
-			TeamIds:           nullStringSlice(teamIDs),
+			TeamIds:           nullStringSlice(effectiveTeamIDs),
 			StatusFilter:      status,
 			TriggerNameFilter: sql.NullString{},
 			Limit:             clamped,
-			Offset:            clampedOffset,
+			Offset:             clampedOffset,
 		})
 	} else {
 		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
@@ -460,46 +473,57 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 // --- Session Methods ---
 
 // ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
-func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int, search string) ([]AgentSessionRecord, error) {
+func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int, search string, uiTeamIDs, uiRepos []string) ([]AgentSessionRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var rows []repository.ChetterAgentSession
 	var err error
-	if search != "" {
-		if scoped && !scope.Admin {
-			teamIDs := scope.Teams()
-			if len(teamIDs) == 0 {
-				return nil, nil
-			}
-			if len(teamIDs) > 1 {
+
+	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
+	var effectiveTeamIDs []string
+	if scoped && !scope.Admin {
+		effectiveTeamIDs = scope.Teams()
+	}
+	if len(uiTeamIDs) > 0 {
+		if len(effectiveTeamIDs) == 0 {
+			effectiveTeamIDs = uiTeamIDs
+		} else {
+			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
+		}
+	}
+	hasRepos := len(uiRepos) > 0
+
+	if hasRepos && search != "" {
+		rows, err = s.searchAgentSessionsRaw(ctx, effectiveTeamIDs, uiRepos, status, search, clamped, clampedOffset)
+	} else if hasRepos {
+		rows, err = s.listAgentSessionsRaw(ctx, effectiveTeamIDs, uiRepos, status, clamped, clampedOffset)
+	} else if search != "" {
+		if len(effectiveTeamIDs) > 0 {
+			if len(effectiveTeamIDs) > 1 {
 				rows, err = s.repo.SearchAgentSessionsByTeams(ctx, repository.SearchAgentSessionsByTeamsParams{
-					TeamIds:      nullStringSlice(teamIDs),
+					TeamIds:      nullStringSlice(effectiveTeamIDs),
 					StatusFilter: status,
 					Search:       search,
 					Limit:        clamped,
 					Offset:       clampedOffset,
 				})
 			} else {
-				rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{String: teamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
+				rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{String: effectiveTeamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
 			}
 		} else {
-			rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{}, status, search, clamped, clampedOffset)
+			rows, err = s.searchAgentSessionsFTS(ctx, sql.NullString{String: "", Valid: true}, status, search, clamped, clampedOffset)
 		}
-	} else if scoped && !scope.Admin {
-		teamIDs := scope.Teams()
-		if len(teamIDs) == 0 {
-			return nil, nil
-		}
+	} else if len(effectiveTeamIDs) > 0 {
 		rows, err = s.repo.ListAgentSessionsByTeams(ctx, repository.ListAgentSessionsByTeamsParams{
-			TeamIds:      nullStringSlice(teamIDs),
+			TeamIds:      nullStringSlice(effectiveTeamIDs),
 			StatusFilter: status,
 			Limit:        clamped,
 			Offset:       clampedOffset,
 		})
 	} else {
 		rows, err = s.repo.ListAgentSessions(ctx, repository.ListAgentSessionsParams{
-			TeamFilter:   sql.NullString{},
+			TeamFilter:   sql.NullString{String: "", Valid: true},
 			StatusFilter: status,
 			Limit:        clamped,
 			Offset:       clampedOffset,
@@ -580,19 +604,29 @@ func (s *Service) batchSessionRunCounts(ctx context.Context, sessionIDs []string
 // --- Trigger Methods ---
 
 // ListTriggers returns triggers, optionally filtered by type and enabled status, respecting team scope.
-func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string) ([]store.TriggerRecord, error) {
+func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string, uiTeamIDs, uiRepos []string) ([]store.TriggerRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	var repoRecords []repository.ChetterTrigger
 	var err error
+
+	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
+	var effectiveTeamIDs []string
 	if scoped && !scope.Admin {
-		teamIDs := scope.Teams()
-		if len(teamIDs) == 0 {
-			return nil, nil
-		}
-		if enabledOnly {
-			repoRecords, err = s.repo.ListEnabledTriggersByTeams(ctx, nullStringSlice(teamIDs))
+		effectiveTeamIDs = scope.Teams()
+	}
+	if len(uiTeamIDs) > 0 {
+		if len(effectiveTeamIDs) == 0 {
+			effectiveTeamIDs = uiTeamIDs
 		} else {
-			repoRecords, err = s.repo.ListTriggersByTeams(ctx, nullStringSlice(teamIDs))
+			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
+		}
+	}
+
+	if len(effectiveTeamIDs) > 0 {
+		if enabledOnly {
+			repoRecords, err = s.repo.ListEnabledTriggersByTeams(ctx, nullStringSlice(effectiveTeamIDs))
+		} else {
+			repoRecords, err = s.repo.ListTriggersByTeams(ctx, nullStringSlice(effectiveTeamIDs))
 		}
 	} else {
 		if enabledOnly {
@@ -609,6 +643,23 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 		for _, r := range repoRecords {
 			if r.TriggerType == triggerType {
 				filtered = append(filtered, r)
+			}
+		}
+		repoRecords = filtered
+	}
+	if len(uiRepos) > 0 {
+		filtered := repoRecords[:0]
+		for _, r := range repoRecords {
+			url := r.GitUrl.String
+			if url == "" {
+				continue
+			}
+			lower := strings.ToLower(url)
+			for _, repo := range uiRepos {
+				if strings.Contains(lower, strings.ToLower(repo)) {
+					filtered = append(filtered, r)
+					break
+				}
 			}
 		}
 		repoRecords = filtered
@@ -1055,29 +1106,36 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 		sinceTime = sql.NullTime{Time: time.Now().UTC().Add(-time.Duration(filter.SinceHours) * time.Hour), Valid: true}
 	}
 
-	baseParams := repository.ListAuditLogParams{
-		EventType:  filter.EventType,
-		Column2:    filter.EventType,
-		SourceType: nullString(filter.SourceType),
-		Column4:    filter.SourceType,
-		SourceID:   nullString(filter.SourceID),
-		Column6:    filter.SourceID,
-		TargetType: nullString(filter.TargetType),
-		Column8:    filter.TargetType,
-		TargetID:   nullString(filter.TargetID),
-		Column10:   filter.TargetID,
-		Repo:       nullString(filter.Repo),
-		Column12:   filter.Repo,
-		CreatedAt:  sinceTime.Time,
-		Column14:   sinceTime,
-		Limit:      int32(limit),
-		Offset:     int32(max(filter.Offset, 0)),
-	}
+	clampedOffset := int32(max(filter.Offset, 0))
+	hasExclusions := len(filter.ExcludeTypes) > 0
+
 	var rows []repository.ListAuditLogRow
 	var listErr error
-	if filter.Search != "" {
-		rows, listErr = s.searchAuditLogFTS(ctx, filter, int32(limit), int32(max(filter.Offset, 0)), sinceTime)
+	if hasExclusions && filter.Search != "" {
+		rows, listErr = s.searchAuditLogFTS(ctx, filter, int32(limit), clampedOffset, sinceTime)
+	} else if hasExclusions {
+		rows, listErr = s.listAuditLogRaw(ctx, filter, int32(limit), clampedOffset, sinceTime)
+	} else if filter.Search != "" {
+		rows, listErr = s.searchAuditLogFTS(ctx, filter, int32(limit), clampedOffset, sinceTime)
 	} else {
+		baseParams := repository.ListAuditLogParams{
+			EventType:  filter.EventType,
+			Column2:    filter.EventType,
+			SourceType: nullString(filter.SourceType),
+			Column4:    filter.SourceType,
+			SourceID:   nullString(filter.SourceID),
+			Column6:    filter.SourceID,
+			TargetType: nullString(filter.TargetType),
+			Column8:    filter.TargetType,
+			TargetID:   nullString(filter.TargetID),
+			Column10:   filter.TargetID,
+			Repo:       nullString(filter.Repo),
+			Column12:   filter.Repo,
+			CreatedAt:  sinceTime.Time,
+			Column14:   sinceTime,
+			Limit:      int32(limit),
+			Offset:     clampedOffset,
+		}
 		rows, listErr = s.repo.ListAuditLog(ctx, baseParams)
 	}
 	if listErr != nil {

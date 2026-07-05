@@ -7,8 +7,7 @@
   import { TriggerService } from "$gen/proto/api/v1/api_pb";
   import type { Trigger } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { teamFilter, repoFilter } from "$lib/stores/filter.svelte";
-  import { applyFilters } from "$lib/filter.svelte";
+  import { effectiveTeamIDs, effectiveRepos } from "$lib/stores/filter.svelte";
   import { formatTime } from "$lib/utils.svelte";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
@@ -37,7 +36,7 @@
   let showIssue = $state(initialBoolParam("issue"));
   let showPrReview = $state(initialBoolParam("pr_review"));
 
-  let filteredTriggers = $derived(applyFilters(triggers, $teamFilter, $repoFilter));
+  let filteredTriggers = $derived(triggers);
 
   let visibleTriggers = $derived.by(() => {
     if (showCron && showIssue && showPrReview) return filteredTriggers;
@@ -109,7 +108,10 @@
     error = null;
     try {
       const client = createClient(TriggerService, getTransport());
-      const resp = await client.listTriggers({});
+      const resp = await client.listTriggers({
+        ...(effectiveTeamIDs().length > 0 ? { teamIds: effectiveTeamIDs() } : {}),
+        ...(effectiveRepos().length > 0 ? { repos: effectiveRepos() } : {}),
+      });
       triggers = resp.triggers ?? [];
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load triggers.";

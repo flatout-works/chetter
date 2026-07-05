@@ -148,12 +148,12 @@
     expandedDetailId = expandedDetailId === id ? null : id;
   }
 
-  const excludedTypes = $derived(new Set([
+  const excludeTypes = $derived([
     ...(showSync ? [] : ["definitions_synced"]),
     ...(showTriggers ? [] : ["trigger_run", "trigger_updated"]),
     ...(showResumes ? [] : ["session_resumed"]),
     ...(showGate ? [] : ["webhook_author_gate_denied"]),
-  ]));
+  ]);
 
   let sortedEvents = $derived.by(() => {
     return [...events].sort((a, b) => {
@@ -190,11 +190,10 @@
         ...(eventTypeFilter ? { eventType: eventTypeFilter } : {}),
         ...(sourceTypeFilter ? { sourceType: sourceTypeFilter } : {}),
         ...(search ? { search } : {}),
+        ...(excludeTypes.length > 0 ? { excludeTypes } : {}),
         sinceHours, limit: pageSize, offset,
       });
-      let filtered = resp.events ?? [];
-      filtered = filtered.filter((e) => !excludedTypes.has(e.eventType));
-      events = filtered;
+      events = resp.events ?? [];
     } catch (e) { console.error(e); }
     finally {
       loading = false;
@@ -232,7 +231,7 @@
       onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }}
     />
     <div class="flex flex-wrap items-center gap-2">
-      <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-48">
+      <Select bind:value={eventTypeFilter} placeholder="" onchange={() => { pageNum = 0; load(); }} class="!w-auto min-w-48">
         <option value="">All types</option>
         <option value="webhook_received">Webhook Received</option>
         <option value="webhook_author_gate_denied">Webhook Author Gate Denied</option>
@@ -242,7 +241,7 @@
         <option value="trigger_updated">Trigger Updated</option>
         <option value="github_artifact_created">GitHub Artifact Created</option>
       </Select>
-      <Select bind:value={sourceTypeFilter} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-48">
+      <Select bind:value={sourceTypeFilter} placeholder="" onchange={() => { pageNum = 0; load(); }} class="!w-auto min-w-48">
         <option value="">All sources</option>
         <option value="webhook">Webhook</option>
         <option value="trigger">Trigger</option>
@@ -251,7 +250,7 @@
         <option value="task">Task</option>
         <option value="rpc">RPC</option>
       </Select>
-      <Select bind:value={sinceHours} placeholder="" onchange={() => { offset = 0; load(); }} class="!w-auto min-w-44">
+      <Select bind:value={sinceHours} placeholder="" onchange={() => { pageNum = 0; load(); }} class="!w-auto min-w-44">
         <option value={1}>Last hour</option>
         <option value={6}>Last 6 hours</option>
         <option value={24}>Last 24 hours</option>
@@ -268,10 +267,10 @@
   </div>
 
   <div class="flex flex-wrap items-center gap-3 mb-6 text-sm text-gray-600 dark:text-gray-400">
-    <Toggle bind:checked={showSync} onchange={() => { offset = 0; load(); }} color="gray" size="small">Sync</Toggle>
-    <Toggle bind:checked={showTriggers} onchange={() => { offset = 0; load(); }} color="gray" size="small">Trigger</Toggle>
-    <Toggle bind:checked={showResumes} onchange={() => { offset = 0; load(); }} color="gray" size="small">Resume</Toggle>
-    <Toggle bind:checked={showGate} onchange={() => { offset = 0; load(); }} color="gray" size="small">Auth Gate</Toggle>
+    <Toggle bind:checked={showSync} onchange={() => { pageNum = 0; load(); }} color="gray" size="small">Sync</Toggle>
+    <Toggle bind:checked={showTriggers} onchange={() => { pageNum = 0; load(); }} color="gray" size="small">Trigger</Toggle>
+    <Toggle bind:checked={showResumes} onchange={() => { pageNum = 0; load(); }} color="gray" size="small">Resume</Toggle>
+    <Toggle bind:checked={showGate} onchange={() => { pageNum = 0; load(); }} color="gray" size="small">Auth Gate</Toggle>
   </div>
 
   {#if firstLoad && loading}

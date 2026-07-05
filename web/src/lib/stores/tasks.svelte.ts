@@ -3,6 +3,7 @@ import { createClient } from "@connectrpc/connect";
 import { TaskService, FleetService } from "$gen/proto/api/v1/api_pb";
 import type { Task } from "$gen/proto/api/v1/api_pb";
 import { getTransport } from "$lib/api/client";
+import { effectiveTeamIDs, effectiveRepos } from "$lib/stores/filter.svelte";
 
 export const tasks = writable<Task[]>([]);
 export const fleetHealth = writable<{
@@ -33,7 +34,13 @@ let fleetStream: AbortController | null = null;
 export async function refreshTasks(status = "", limit = 100, search = "") {
   try {
     const client = createClient(TaskService, getTransport());
-    const resp = await client.listTasks({ status, limit, ...(search ? { search } : {}) });
+    const teamIds = effectiveTeamIDs();
+    const repos = effectiveRepos();
+    const resp = await client.listTasks({
+      status, limit, ...(search ? { search } : {}),
+      ...(teamIds.length > 0 ? { teamIds } : {}),
+      ...(repos.length > 0 ? { repos } : {}),
+    });
     tasks.set(resp.tasks);
   } catch (e) {
     console.error("Failed to refresh tasks:", e);

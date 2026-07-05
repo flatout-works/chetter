@@ -695,7 +695,7 @@ func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	tasks, err := s.ListTasks(ctx, in.Status, in.Limit, 0, in.Search)
+	tasks, err := s.ListTasks(ctx, in.Status, in.Limit, 0, in.Search, nil, nil)
 	if err != nil {
 		return nil, ListTasksOutput{}, err
 	}
@@ -703,7 +703,7 @@ func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {
-	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit, 0, in.Search)
+	sessions, err := s.ListAgentSessions(ctx, in.Status, in.Limit, 0, in.Search, nil, nil)
 	if err != nil {
 		return nil, ListAgentSessionsOutput{}, err
 	}
@@ -943,7 +943,7 @@ func (s *Service) runTriggerTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTriggersInput) (*mcp.CallToolResult, ListTriggersOutput, error) {
-	records, err := s.ListTriggers(ctx, in.EnabledOnly, in.TriggerType)
+	records, err := s.ListTriggers(ctx, in.EnabledOnly, in.TriggerType, nil, nil)
 	if err != nil {
 		return nil, ListTriggersOutput{}, err
 	}
@@ -1521,16 +1521,17 @@ func (s *Service) arcaneListVulnerabilitiesTool(ctx context.Context, _ *mcp.Call
 }
 
 type AuditEventFilterInput struct {
-	EventType  string `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
-	SourceType string `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
-	SourceID   string `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
-	TargetType string `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
-	TargetID   string `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
-	Repo       string `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
-	Search     string `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"`
-	SinceHours int    `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
-	Offset     int    `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
+	EventType   string   `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
+	SourceType  string   `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
+	SourceID    string   `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
+	TargetType  string   `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
+	TargetID    string   `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	Search      string   `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"`
+	SinceHours  int      `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
+	Limit       int      `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+	Offset      int      `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
+	ExcludeTypes []string `json:"exclude_types,omitempty" jsonschema:"Event types to exclude from results"`
 }
 
 type AuditEventRecord struct {

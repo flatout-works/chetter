@@ -273,7 +273,7 @@ func (h *taskHandler) GetTask(ctx context.Context, req *connect.Request[apiv1.Ge
 }
 
 func (h *taskHandler) ListTasks(ctx context.Context, req *connect.Request[apiv1.ListTasksRequest]) (*connect.Response[apiv1.ListTasksResponse], error) {
-	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search)
+	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search, req.Msg.TeamIds, req.Msg.Repos)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -396,7 +396,7 @@ type sessionHandler struct {
 }
 
 func (h *sessionHandler) ListSessions(ctx context.Context, req *connect.Request[apiv1.ListSessionsRequest]) (*connect.Response[apiv1.ListSessionsResponse], error) {
-	sessions, err := h.svc.ListAgentSessions(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search)
+	sessions, err := h.svc.ListAgentSessions(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search, req.Msg.TeamIds, req.Msg.Repos)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -500,7 +500,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 }
 
 func (h *triggerHandler) ListTriggers(ctx context.Context, req *connect.Request[apiv1.ListTriggersRequest]) (*connect.Response[apiv1.ListTriggersResponse], error) {
-	triggers, err := h.svc.ListTriggers(ctx, req.Msg.EnabledOnly, req.Msg.TriggerType)
+	triggers, err := h.svc.ListTriggers(ctx, req.Msg.EnabledOnly, req.Msg.TriggerType, req.Msg.TeamIds, req.Msg.Repos)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -671,16 +671,17 @@ func (h *adminHandler) ListUsers(ctx context.Context, req *connect.Request[apiv1
 
 func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request[apiv1.ListAuditEventsRequest]) (*connect.Response[apiv1.ListAuditEventsResponse], error) {
 	events, err := h.svc.ListAuditEvents(ctx, service.AuditEventFilterInput{
-		EventType:  req.Msg.EventType,
-		SourceType: req.Msg.SourceType,
-		SourceID:   req.Msg.SourceId,
-		TargetType: req.Msg.TargetType,
-		TargetID:   req.Msg.TargetId,
-		Repo:       req.Msg.Repo,
-		Search:     req.Msg.Search,
-		SinceHours: int(req.Msg.SinceHours),
-		Limit:      int(req.Msg.Limit),
-		Offset:     int(req.Msg.Offset),
+		EventType:   req.Msg.EventType,
+		SourceType:  req.Msg.SourceType,
+		SourceID:    req.Msg.SourceId,
+		TargetType:  req.Msg.TargetType,
+		TargetID:    req.Msg.TargetId,
+		Repo:        req.Msg.Repo,
+		Search:      req.Msg.Search,
+		SinceHours:  int(req.Msg.SinceHours),
+		Limit:       int(req.Msg.Limit),
+		Offset:      int(req.Msg.Offset),
+		ExcludeTypes: req.Msg.ExcludeTypes,
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
