@@ -1849,6 +1849,8 @@ type AuditEvent struct {
 	GithubDeliveryId string                 `protobuf:"bytes,11,opt,name=github_delivery_id,json=githubDeliveryId,proto3" json:"github_delivery_id,omitempty"`
 	ParentEventId    string                 `protobuf:"bytes,12,opt,name=parent_event_id,json=parentEventId,proto3" json:"parent_event_id,omitempty"`
 	Detail           string                 `protobuf:"bytes,13,opt,name=detail,proto3" json:"detail,omitempty"`
+	TokenId          string                 `protobuf:"bytes,14,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	TokenName        string                 `protobuf:"bytes,15,opt,name=token_name,json=tokenName,proto3" json:"token_name,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1970,6 +1972,20 @@ func (x *AuditEvent) GetParentEventId() string {
 func (x *AuditEvent) GetDetail() string {
 	if x != nil {
 		return x.Detail
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetTokenName() string {
+	if x != nil {
+		return x.TokenName
 	}
 	return ""
 }
@@ -7093,7 +7109,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
 	"\tteam_name\x18\x03 \x01(\tR\bteamName\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\tR\tcreatedAt\"\xa0\x03\n" +
+	"created_at\x18\x04 \x01(\tR\tcreatedAt\"\xda\x03\n" +
 	"\n" +
 	"AuditEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -7113,7 +7129,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	" \x01(\tR\fgithubAction\x12,\n" +
 	"\x12github_delivery_id\x18\v \x01(\tR\x10githubDeliveryId\x12&\n" +
 	"\x0fparent_event_id\x18\f \x01(\tR\rparentEventId\x12\x16\n" +
-	"\x06detail\x18\r \x01(\tR\x06detail\"\xfd\x02\n" +
+	"\x06detail\x18\r \x01(\tR\x06detail\x12\x19\n" +
+	"\btoken_id\x18\x0e \x01(\tR\atokenId\x12\x1d\n" +
+	"\n" +
+	"token_name\x18\x0f \x01(\tR\ttokenName\"\xfd\x02\n" +
 	"\fTaskArtifact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12(\n" +

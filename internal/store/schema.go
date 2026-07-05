@@ -277,11 +277,14 @@ var schemaStatements = []string{
 		detail TEXT NULL,
 		search_text TEXT NULL,
 		payload JSON NULL,
+		token_id VARCHAR(64) NULL,
+		token_name VARCHAR(128) NULL,
 		PRIMARY KEY (id),
 		KEY idx_audit_event_type (event_type, created_at),
 		KEY idx_audit_source (source_type, source_id),
 		KEY idx_audit_target (target_type, target_id),
 		KEY idx_audit_created (created_at),
+		KEY idx_audit_token (token_id),
 		FULLTEXT INDEX idx_audit_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_task_artifacts (

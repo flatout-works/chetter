@@ -348,6 +348,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureAuditFulltextIndex(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureAuditTokenIdentityColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTaskFulltextIndex(ctx); err != nil {
 		return err
 	}
@@ -629,6 +632,37 @@ func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (search_text)"+s.fulltextParserClause()); err != nil {
 		slog.Warn("failed to add audit fulltext index", "err", err, "dialect", s.dialect)
 		return nil
+	}
+	return nil
+}
+
+func (s *Store) ensureAuditTokenIdentityColumns(ctx context.Context) error {
+	cols := []struct {
+		name string
+		ddl  string
+	}{
+		{"token_id", "ALTER TABLE chetter_audit_log ADD COLUMN token_id VARCHAR(64) NULL AFTER payload"},
+		{"token_name", "ALTER TABLE chetter_audit_log ADD COLUMN token_name VARCHAR(128) NULL AFTER token_id"},
+	}
+	for _, c := range cols {
+		exists, err := s.columnExists(ctx, "chetter_audit_log", c.name)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err := s.db.ExecContext(ctx, c.ddl); err != nil {
+				return fmt.Errorf("add %s: %w", c.name, err)
+			}
+		}
+	}
+	indexExists, err := s.indexExists(ctx, "chetter_audit_log", "idx_audit_token")
+	if err != nil {
+		return err
+	}
+	if !indexExists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD KEY idx_audit_token (token_id)"); err != nil {
+			slog.Warn("failed to add audit token index", "err", err)
+		}
 	}
 	return nil
 }

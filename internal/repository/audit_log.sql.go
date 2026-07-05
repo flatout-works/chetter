@@ -13,8 +13,8 @@ import (
 )
 
 const insertAuditLog = `-- name: InsertAuditLog :exec
-INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload, token_id, token_name)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertAuditLogParams struct {
@@ -33,6 +33,8 @@ type InsertAuditLogParams struct {
 	Detail           sql.NullString   `json:"detail"`
 	SearchText       sql.NullString   `json:"search_text"`
 	Payload          *json.RawMessage `json:"payload"`
+	TokenID          sql.NullString   `json:"token_id"`
+	TokenName        sql.NullString   `json:"token_name"`
 }
 
 func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error {
@@ -52,12 +54,14 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 		arg.Detail,
 		arg.SearchText,
 		arg.Payload,
+		arg.TokenID,
+		arg.TokenName,
 	)
 	return err
 }
 
 const listAuditLog = `-- name: ListAuditLog :many
-SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 FROM chetter_audit_log
 WHERE (event_type = ? OR ? = '')
   AND (source_type = ? OR ? = '')
@@ -104,6 +108,8 @@ type ListAuditLogRow struct {
 	ParentEventID    sql.NullString   `json:"parent_event_id"`
 	Detail           sql.NullString   `json:"detail"`
 	Payload          *json.RawMessage `json:"payload"`
+	TokenID          sql.NullString   `json:"token_id"`
+	TokenName        sql.NullString   `json:"token_name"`
 }
 
 func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error) {
@@ -147,6 +153,8 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 			&i.ParentEventID,
 			&i.Detail,
 			&i.Payload,
+			&i.TokenID,
+			&i.TokenName,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +170,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 }
 
 const searchAuditLog = `-- name: SearchAuditLog :many
-SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 FROM chetter_audit_log
 WHERE (event_type = ? OR ? = '')
   AND (source_type = ? OR ? = '')
@@ -211,6 +219,8 @@ type SearchAuditLogRow struct {
 	ParentEventID    sql.NullString   `json:"parent_event_id"`
 	Detail           sql.NullString   `json:"detail"`
 	Payload          *json.RawMessage `json:"payload"`
+	TokenID          sql.NullString   `json:"token_id"`
+	TokenName        sql.NullString   `json:"token_name"`
 }
 
 func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) ([]SearchAuditLogRow, error) {
@@ -255,6 +265,8 @@ func (q *Queries) SearchAuditLog(ctx context.Context, arg SearchAuditLogParams) 
 			&i.ParentEventID,
 			&i.Detail,
 			&i.Payload,
+			&i.TokenID,
+			&i.TokenName,
 		); err != nil {
 			return nil, err
 		}

@@ -226,6 +226,8 @@ message AuditEvent {
   string github_delivery_id = 11;
   string parent_event_id = 12;
   string detail = 13;
+  string token_id = 14;
+  string token_name = 15;
 }
 
 message TaskArtifact {

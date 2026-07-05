@@ -86,6 +86,8 @@ type ChetterAuditLog struct {
 	Detail           sql.NullString   `json:"detail"`
 	Payload          *json.RawMessage `json:"payload"`
 	SearchText       sql.NullString   `json:"search_text"`
+	TokenID          sql.NullString   `json:"token_id"`
+	TokenName        sql.NullString   `json:"token_name"`
 }
 
 type ChetterEventCallback struct {
