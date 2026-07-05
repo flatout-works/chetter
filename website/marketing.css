@@ -169,6 +169,7 @@ h3 { margin: 0; font-size: 20px; }
 
 .stat, .feature, .detail-card, .protocol-card, .step-card { padding: 22px; }
 .stat span, .detail-card span, .protocol-card span, .step-card span { display: block; color: var(--soft); font-size: 14px; }
+.stat-desc { margin: 8px 0 0; color: var(--soft); font-size: 13px; line-height: 1.5; }
 .stat b { display: block; margin-top: 8px; font-size: 20px; line-height: 1.15; }
 
 .screen, .shot { overflow: hidden; }
