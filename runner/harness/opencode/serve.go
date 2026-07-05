@@ -120,37 +120,145 @@ func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, r
 		"providerID": providerID,
 		"modelID":    modelID,
 	}
-payload, _ := json.Marshal(map[string]any{
-    "role": "user",
-    "parts": []map[string]any{
-        {"type": "text", "text": promptWithSkillHints(req.Prompt, req.Skills)},
-    },
-    "model": model,
-})
-
-	url := baseURL + "/session/" + sessionID + "/message"
-	httpClient := &http.Client{Timeout: timeout}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+	if variantID != "" {
+		model["variant"] = variantID
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	payload, _ := json.Marshal(map[string]any{
+		"parts": []map[string]any{
+			{"type": "text", "text": promptWithSkillHints(req.Prompt, req.Skills)},
+		},
+		"model": model,
+	})
+
+	if err := startAsyncPrompt(ctx, baseURL, sessionID, secret, payload); err != nil {
+		return "", err
+	}
+
+	if err := waitForSessionIdle(ctx, baseURL, sessionID, secret, timeout); err != nil {
+		return "", err
+	}
+
+	return fetchSessionSummary(ctx, baseURL, sessionID, secret)
+}
+
+func startAsyncPrompt(ctx context.Context, baseURL, sessionID, secret string, payload []byte) error {
+	url := baseURL + "/session/" + sessionID + "/prompt_async"
+	client := &http.Client{Timeout: 30 * time.Second}
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("create prompt_async request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if secret != "" {
+			httpReq.Header.Set("Authorization", basicAuthHeader(secret))
+		}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			slog.Warn("prompt_async POST failed, checking if session is already busy", "sessionID", sessionID, "attempt", attempt, "err", err)
+			if status, sErr := getSessionStatus(ctx, baseURL, sessionID, secret); sErr == nil && status == "busy" {
+				slog.Info("session already busy after POST failure, continuing to poll", "sessionID", sessionID)
+				return nil
+			}
+			if attempt < 2 {
+				time.Sleep(2 * time.Second)
+			}
+			continue
+		}
+		resp.Body.Close()
+		if resp.StatusCode == 204 || resp.StatusCode == 200 {
+			return nil
+		}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		lastErr = fmt.Errorf("POST /prompt_async: status %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			break
+		}
+		if attempt < 2 {
+			time.Sleep(2 * time.Second)
+		}
+	}
+	return lastErr
+}
+
+func waitForSessionIdle(ctx context.Context, baseURL, sessionID, secret string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return fmt.Errorf("session %s did not finish within %v", sessionID, timeout)
+			}
+			status, err := getSessionStatus(ctx, baseURL, sessionID, secret)
+			if err != nil {
+				slog.Warn("failed to poll session status", "sessionID", sessionID, "err", err)
+				continue
+			}
+			if status == "idle" {
+				return nil
+			}
+		}
+	}
+}
+
+func getSessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/session/status", nil)
+	if err != nil {
+		return "", err
+	}
 	if secret != "" {
-		httpReq.Header.Set("Authorization", basicAuthHeader(secret))
+		req.Header.Set("Authorization", basicAuthHeader(secret))
 	}
-	resp, err := httpClient.Do(httpReq)
+	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("POST /message: %w", err)
+		return "", err
 	}
-	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	slog.Info("message response", "status", resp.StatusCode, "len", len(respBody))
-
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("POST /message: status %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("GET /session/status: status %d", resp.StatusCode)
 	}
+	var statuses map[string]struct {
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&statuses); err != nil {
+		return "", err
+	}
+	s, ok := statuses[sessionID]
+	if !ok {
+		return "idle", nil
+	}
+	return s.Type, nil
+}
 
-	var msg struct {
+func fetchSessionSummary(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/session/"+sessionID+"/message", nil)
+	if err != nil {
+		return "", err
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", basicAuthHeader(secret))
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET /message: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("GET /message: status %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+
+	var messages []struct {
 		Info struct {
 			Role string `json:"role"`
 		} `json:"info"`
@@ -159,16 +267,24 @@ payload, _ := json.Marshal(map[string]any{
 			Text string `json:"text"`
 		} `json:"parts"`
 	}
-	if err := json.Unmarshal(respBody, &msg); err != nil {
-		return "", fmt.Errorf("parse message response: %w", err)
+	if err := json.Unmarshal(body, &messages); err != nil {
+		return "", fmt.Errorf("parse messages: %w", err)
 	}
-	var summaryLines []string
-	for _, part := range msg.Parts {
-		if part.Type == "text" {
-			summaryLines = append(summaryLines, part.Text)
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" {
+			var lines []string
+			for _, part := range messages[i].Parts {
+				if part.Type == "text" && part.Text != "" {
+					lines = append(lines, part.Text)
+				}
+			}
+			if len(lines) > 0 {
+				return strings.Join(lines, "\n"), nil
+			}
 		}
 	}
-	return strings.Join(summaryLines, "\n"), nil
+	return "", fmt.Errorf("no assistant response found in session %s messages", sessionID)
 }
 
 func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
@@ -179,7 +295,7 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 			{"type": "text", "text": "/export"},
 		},
 	})
-	url := baseURL + "/session/" + sessionID + "/message"
+	url := baseURL + "/session/" + sessionID + "/prompt_async"
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(exportCtx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
@@ -191,26 +307,52 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("POST /message /export: %w", err)
+		return "", fmt.Errorf("POST /prompt_async /export: %w", err)
 	}
-	respBody, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("POST /message /export: status %d: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode != 204 && resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return "", fmt.Errorf("POST /prompt_async /export: status %d: %s", resp.StatusCode, string(body))
 	}
-	var msg struct {
+
+	if err := waitForSessionIdle(exportCtx, baseURL, sessionID, secret, 25*time.Second); err != nil {
+		return "", fmt.Errorf("export wait: %w", err)
+	}
+
+	var messages []struct {
+		Info struct {
+			Role string `json:"role"`
+		} `json:"info"`
 		Parts []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"parts"`
 	}
-	if err := json.Unmarshal(respBody, &msg); err != nil {
+	msgReq, _ := http.NewRequestWithContext(exportCtx, "GET", baseURL+"/session/"+sessionID+"/message", nil)
+	if secret != "" {
+		msgReq.Header.Set("Authorization", basicAuthHeader(secret))
+	}
+	msgResp, err := httpClient.Do(msgReq)
+	if err != nil {
+		return "", fmt.Errorf("GET /message /export: %w", err)
+	}
+	defer msgResp.Body.Close()
+	if msgResp.StatusCode != 200 {
+		return "", fmt.Errorf("GET /message /export: status %d", msgResp.StatusCode)
+	}
+	respBody, _ := io.ReadAll(msgResp.Body)
+	if err := json.Unmarshal(respBody, &messages); err != nil {
 		return "", fmt.Errorf("parse export response: %w", err)
 	}
 	var lines []string
-	for _, part := range msg.Parts {
-		if part.Type == "text" {
-			lines = append(lines, part.Text)
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Info.Role == "assistant" {
+			for _, part := range messages[i].Parts {
+				if part.Type == "text" {
+					lines = append(lines, part.Text)
+				}
+			}
+			break
 		}
 	}
 	return strings.Join(lines, "\n"), nil
