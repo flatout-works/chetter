@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chetter - How it works</title>
+  <meta name="description" content="A plain-language explanation of how Chetter accepts tasks, lets runners claim them, runs agent containers, and reports results back." />
+  <link rel="icon" href="chetter-mark.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="marketing.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Chetter home">
+        <img src="chetter-text.svg" alt="Chetter" />
+        <span class="brand-subtitle">Open source agent control plane</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="nav-link active" href="how-it-works.html">How it works</a>
+        <a class="nav-link" href="technical.html">Technical</a>
+        <a class="button" href="https://github.com/flatout-works/chetter">GitHub</a>
+        <a class="button secondary" href="https://discord.gg/KkZxKwSTvF">Discord</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="badge">The simple version</div>
+        <h1>Chetter is a dispatch desk for coding agents.</h1>
+        <p class="lead">The server keeps the queue, audit trail, UI, triggers, and GitHub integration. Runners do the risky part: clone repositories, start agent harnesses in isolated workspaces, stream progress, and return results.</p>
+      </section>
+
+      <section class="section">
+        <div class="map">
+          <article class="card"><small>1. Request</small><h3>Someone asks for work</h3><p>An MCP client, cron trigger, GitHub PR review trigger, or issue trigger creates a task.</p></article>
+          <article class="card"><small>2. Queue</small><h3>The server stores it</h3><p>The task is persisted in TiDB or MySQL with status <code>pending</code>, team ownership, model settings, timeout, and optional repo metadata.</p></article>
+          <article class="card"><small>3. Claim</small><h3>A runner pulls work</h3><p>Runners poll over ConnectRPC. One runner claims a task with a database lease so two runners cannot execute the same work.</p></article>
+          <article class="card"><small>4. Execute</small><h3>The agent runs remotely</h3><p>The runner creates a workspace, clones the repo, writes config, starts the selected harness, and reports events back.</p></article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-intro">
+          <p class="eyebrow">Lifecycle</p>
+          <h2>From prompt to pull request.</h2>
+          <p>This is the normal path for a task that asks an agent to change code and open a PR.</p>
+        </div>
+
+        <div class="story-flow">
+          <article class="card story-row"><span class="num">01</span><div><b>Submit</b><p>An MCP tool call, webhook, or trigger inserts a task row. The server returns a task id immediately, so callers can watch progress later.</p></div></article>
+          <article class="card story-row"><span class="num">02</span><div><b>Claim</b><p>Runners long-poll <code>ClaimTask</code>. Claiming is database-backed with row locking and a 60 second default lease. If no task is available, the runner just polls again.</p></div></article>
+          <article class="card story-row"><span class="num">03</span><div><b>Prepare</b><p>The winning runner creates a workspace, optionally clones <code>git_url</code>, writes extra recovery files, injects selected agent and skill definitions, and starts a small workspace MCP server for GitHub actions.</p></div></article>
+          <article class="card story-row"><span class="num">04</span><div><b>Run</b><p>The runner starts OpenCode, Claude Code, Pi, or CodeWhale through a harness. In Docker mode it launches an agent container from the configured <code>agent_image</code>; gVisor can add kernel-level sandboxing where supported.</p></div></article>
+          <article class="card story-row"><span class="num">05</span><div><b>Report</b><p>Progress, heartbeats, token usage, model ids, session ids, summaries, errors, and artifacts flow back through <code>ReportTaskEvents</code>. The web UI updates from persisted task events.</p></div></article>
+          <article class="card story-row"><span class="num">06</span><div><b>Finish or recover</b><p>Successful tasks become <code>done</code>. Timeout and transport errors can preserve the workspace and session export, making the session recoverable instead of silently losing context.</p></div></article>
+        </div>
+      </section>
+
+      <section class="section detail-grid">
+        <article class="card detail-card"><span>Reliability</span><h3>Leases, not hope</h3><p>Heartbeats renew leases while work is active. If a runner disappears, the reaper reclaims expired leases back to <code>pending</code> until attempts are exhausted, then fails the task with a timeout category.</p></article>
+        <article class="card detail-card"><span>GitHub</span><h3>Artifacts are tracked</h3><p>Agents create issues, comments, PRs, and reviews through Chetter MCP tools. The server adds canonical signatures and records audit/artifact metadata.</p></article>
+        <article class="card detail-card"><span>Definitions</span><h3>Behavior can live in Git</h3><p>Model catalogs, agents, skills, triggers, and task templates can be synced from a definitions repository. Invalid definitions fail validation instead of silently becoming active.</p></article>
+      </section>
+
+      <section class="card cta">
+        <div><h2>Need the component-level view?</h2><p>The technical page explains protocols, data model, deployment, and failure paths.</p></div>
+        <a class="button" href="technical.html">Read technical details</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <img src="chetter-mark.svg" alt="" />
+      <p>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</p>
+      <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
+    </footer>
+  </div>
+</body>
+</html>

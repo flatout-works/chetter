@@ -3,429 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chetter - Technical Architecture</title>
-  <meta name="description" content="Chetter technical design and architecture — MCP control plane, ConnectRPC task queue, triggers, and runner fleet." />
+  <title>Chetter - Technical architecture</title>
+  <meta name="description" content="A pedagogical technical tour of Chetter: MCP control plane, ConnectRPC runners, leases, agent containers, definitions, and deployment." />
   <link rel="icon" href="chetter-mark.svg" type="image/svg+xml" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="marketing.css" />
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="index.html" aria-label="Chetter home">
-      <img src="chetter-text.svg" alt="Chetter" />
-    </a>
-    <nav class="nav" aria-label="Primary navigation">
-      <a href="index.html#how-it-works">How it works</a>
-      <a href="index.html#tools">Tools</a>
-      <a href="index.html#deploy">Deploy</a>
-      <a class="active" href="technical.html">Technical</a>
-      <a href="https://github.com/flatout-works/chetter">GitHub</a>
-    </nav>
-  </header>
+  <div class="shell">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Chetter home">
+        <img src="chetter-text.svg" alt="Chetter" />
+        <span class="brand-subtitle">Open source agent control plane</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="nav-link" href="how-it-works.html">How it works</a>
+        <a class="nav-link active" href="technical.html">Technical</a>
+        <a class="button" href="https://github.com/flatout-works/chetter">GitHub</a>
+        <a class="button secondary" href="https://discord.gg/KkZxKwSTvF">Discord</a>
+      </nav>
+    </header>
 
-  <main>
-    <section class="tech-hero section-shell">
-      <p class="eyebrow">Technical Architecture</p>
-      <h1>How Chetter is built.</h1>
-      <p class="lead">A small MCP control plane for orchestrating remote AI coding agent runners — durable task queues, cron/PR/issue triggers, task-event callbacks, GitHub MCP tools, model catalogs, definitions sync, searchable observability, error diagnostics, session recovery, fleet health, and a web UI. Deploy it on Docker infrastructure or Kubernetes.</p>
-      <div class="pills">
-        <span class="pill">Go + SvelteKit</span>
-        <span class="pill">Streamable HTTP MCP</span>
-        <span class="pill">ConnectRPC</span>
-        <span class="pill">TiDB / MySQL</span>
-        <span class="pill">Docker or Kubernetes</span>
-        <span class="pill">GitHub MCP tools</span>
-        <span class="pill">Issue triggers</span>
-        <span class="pill">Event callbacks</span>
-        <span class="pill">Model Catalog</span>
-        <span class="pill">Full-text search</span>
-        <span class="pill">Error diagnostics</span>
-        <span class="pill">YAML schemas</span>
-      </div>
-    </section>
+    <main>
+      <section class="page-hero">
+        <div class="badge">Technical tour</div>
+        <h1>One control plane, many disposable runners.</h1>
+        <p class="lead">Chetter is intentionally boring: one Go server, one SQL database, a ConnectRPC runner protocol, and ordinary container images. The interesting part is how these pieces combine into durable agent automation.</p>
+      </section>
 
-    <section class="section-shell" aria-labelledby="what-title">
-      <p class="eyebrow">What &amp; Why</p>
-      <h2 id="what-title">Chetter is an MCP control plane that recruits AI agents as sub-contractors.</h2>
-      <div class="principle-grid">
-        <article><span>01</span><b>General purpose</b><p>Any MCP-capable client (Claude, OpenCode, ChatGPT, curl) or browser (web UI) can talk to it. Runners can execute OpenCode, Claude Code, or Pi harnesses.</p></article>
-        <article><span>02</span><b>For AI, by AI</b><p>The control surface is tools, backed by a web UI for humans. An LLM is the typical operator.</p></article>
-        <article><span>03</span><b>Remote, not local</b><p>Tasks run inside runner containers somewhere else. The MCP server holds no execution responsibilities.</p></article>
-        <article><span>04</span><b>Durable queue</b><p>Tasks survive runner outages via DB-backed leases. Triggers, event callbacks, sessions, checkpoints, and recovery context survive restarts via TiDB or MySQL. No separate broker required.</p></article>
-        <article><span>05</span><b>Observable fleet</b><p>Every task carries provider, model, variant, session id, runner image digest, token totals, and cost totals for traceability. Audit log and artifact tracking record server-side events.</p></article>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="system-title">
-      <p class="eyebrow">System Map</p>
-      <h2 id="system-title">One Go process, one database, many runners.</h2>
-      <div class="system-map">
-        <div class="system-box chetter">
-          <h3>chetter/</h3>
-          <p>MCP server, scheduler, trigger dispatcher, event callbacks, web UI, and ConnectRPC endpoint</p>
-          <span>streamable HTTP</span><span>schema-driven MCP tools</span><span>triggers (cron + PR + issue)</span><span>event callbacks</span><span>GitHub MCP tools</span><span>model catalog</span><span>definitions sync</span><span>audit log</span><span>artifact tracking</span><span>error classification</span><span>event reaper</span><span>Docker/Kubernetes deployment</span>
+      <section class="section">
+        <div class="section-intro">
+          <p class="eyebrow">System map</p>
+          <h2>The server owns state. Runners own execution.</h2>
+          <p>This split keeps the control plane understandable and lets you scale execution by adding runner containers or Kubernetes workloads.</p>
         </div>
-        <div class="system-box server">
-          <h3>store/</h3>
-          <p>TiDB / MySQL persistence</p>
-          <span>tasks + leases</span><span>events</span><span>triggers + runs</span><span>event callbacks</span><span>agent sessions</span><span>checkpoints</span><span>runners</span><span>teams + tokens</span>
-          <span>definitions</span><span>audit log</span><span>task artifacts</span><span>full-text search</span>
+        <div class="map">
+          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, model catalog, definitions sync, audit log, and embedded SvelteKit UI.</p></article>
+          <article class="card"><small>Database</small><h3>TiDB / MySQL</h3><p>Stores tasks, leases, events, triggers, sessions, checkpoints, runners, teams, API tokens, definitions, audit events, artifacts, and searchable text.</p></article>
+          <article class="card"><small>Runner</small><h3>Harness controller</h3><p>Claims work, prepares a workspace, starts the chosen harness, supervises timeouts, streams events, and cleans up containers and workspaces.</p></article>
+          <article class="card"><small>Agent image</small><h3>Project runtime</h3><p>Language/tooling images inherit from the agent base and run OpenCode, Claude Code, Pi, or CodeWhale against the mounted workspace.</p></article>
         </div>
-        <div class="system-box runner">
-          <h3>runner_rpc/</h3>
-          <p>ConnectRPC task queue service</p>
-          <span>ClaimTask</span><span>Heartbeat</span><span>ReportTaskEvents</span><span>lease renewal</span><span>cancel + drain commands</span>
-        </div>
-        <div class="system-box local">
-          <h3>runner containers</h3>
-          <p>Workers that claim tasks via ConnectRPC</p>
-          <span>lease-based claim</span><span>harness interface</span><span>opencode serve</span><span>claude serve-proxy</span><span>pi RPC</span><span>gh wrapper → MCP tools</span><span>5 image variants</span><span>status events</span>
-        </div>
-      </div>
-      <p class="center-note">Chetter is the single point of truth. Runners are interchangeable; the control plane never knows how many exist.</p>
-    </section>
+      </section>
 
-    <section class="section-shell" aria-labelledby="core-title">
-      <p class="eyebrow">Core Concept</p>
-      <h2 id="core-title">MCP turns any LLM client into a fleet operator.</h2>
-      <div class="runtime-diagram">
-        <div class="boundary">
-          <div class="boundary-title">Caller</div>
-          <div class="node primary">MCP client<br><span>Claude, OpenCode, curl, custom agent</span></div>
-          <div class="node">MCP request<br><span>tool name + JSON args</span></div>
-          <div class="node accent">Chetter tools<br><span>submit_task, recover_task, create_trigger, create_event_callback, runner_health, ...</span></div>
-          <div class="node">MCP response<br><span>JSON result with task record or fleet snapshot</span></div>
+      <section class="section protocol-grid">
+        <article class="card protocol-card"><span>MCP</span><h3>AI-facing control surface</h3><p>Tasks, triggers, sessions, runner health, GitHub artifacts, definitions, and admin actions are exposed as schema-driven MCP tools.</p></article>
+        <article class="card protocol-card"><span>ConnectRPC</span><h3>Runner protocol</h3><p>Runners use <code>RegisterRunner</code>, <code>Heartbeat</code>, <code>ClaimTask</code>, and <code>ReportTaskEvents</code>. Cancel and drain commands return on heartbeat responses.</p></article>
+        <article class="card protocol-card"><span>Web UI</span><h3>Human operations</h3><p>The UI uses ConnectRPC to show tasks, triggers, runners, sessions, audit events, artifacts, team/repo filters, and recovery actions.</p></article>
+      </section>
+
+      <section class="section">
+        <div class="section-intro">
+          <p class="eyebrow">Queue semantics</p>
+          <h2>The task queue is just SQL plus leases.</h2>
+          <p>No separate broker is required. The database is the source of truth for pending work, ownership, attempts, terminal state, and event history.</p>
         </div>
-        <div class="edge-column"><span>streamable HTTP / JSON-RPC</span></div>
-        <div class="provider-stack">
-          <div>chetter MCP server</div>
-          <div>service layer</div>
-          <div>ConnectRPC task queue</div>
-          <div>lease-based runner communication</div>
-          <div class="muted">TiDB / MySQL</div>
+        <div class="story-flow">
+          <article class="card story-row"><span class="num">A</span><div><b>Claim safely</b><p><code>SELECT ... FOR UPDATE SKIP LOCKED</code> finds claimable work. The winner sets <code>status=running</code>, <code>runner_id</code>, <code>claimed_at</code>, <code>started_at</code>, and a lease expiry.</p></div></article>
+          <article class="card story-row"><span class="num">B</span><div><b>Renew cheaply</b><p>Heartbeats refresh leases for the runner's current task ids and return commands such as cancel or drain.</p></div></article>
+          <article class="card story-row"><span class="num">C</span><div><b>Recover predictably</b><p>The reaper runs every 30 seconds. Expired leases are reclaimed to <code>pending</code> while attempts remain; otherwise they become <code>error</code> with a timeout category.</p></div></article>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="section-shell" aria-labelledby="tools-title">
-      <p class="eyebrow">Tool Surface</p>
-      <h2 id="tools-title">Schema-driven MCP tools, no drift.</h2>
-      <div class="tool-categories">
-        <article>
-          <b>Tasks (7)</b>
-          <p>Submit, fetch, search/list, cancel, clear queue, export transcript, and recover terminal tasks.</p>
-          <div class="tool-call"><span class="name">chetter_submit_task</span></div>
-          <div class="tool-call"><span class="name">chetter_task_status</span></div>
-          <div class="tool-call"><span class="name">chetter_list_tasks</span></div>
-          <div class="tool-call"><span class="name">chetter_cancel_task</span></div>
-          <div class="tool-call"><span class="name">chetter_clear_queue</span></div>
-          <div class="tool-call"><span class="name">chetter_task_export</span></div>
-          <div class="tool-call"><span class="name">chetter_recover_task</span></div>
-        </article>
-        <article>
-          <b>Agent Sessions (3)</b>
-          <p>List, inspect, and resume multi-step agent sessions.</p>
-          <div class="tool-call"><span class="name">chetter_list_agent_sessions</span></div>
-          <div class="tool-call"><span class="name">chetter_agent_session_status</span></div>
-          <div class="tool-call"><span class="name">chetter_resume_agent_session</span></div>
-        </article>
-        <article>
-          <b>Events (3)</b>
-          <p>Inspect runner output, get the latest, distill progress.</p>
-          <div class="tool-call"><span class="name">chetter_task_events</span></div>
-          <div class="tool-call"><span class="name">chetter_task_progress</span></div>
-          <div class="tool-call"><span class="name">chetter_task_latest_event</span></div>
-        </article>
-        <article>
-          <b>Triggers (6)</b>
-          <p>Cron schedules, PR review webhooks, and issue/comment responders with run history.</p>
-          <div class="tool-call"><span class="name">chetter_create_trigger</span></div>
-          <div class="tool-call"><span class="name">chetter_update_trigger</span></div>
-          <div class="tool-call"><span class="name">chetter_list_triggers</span></div>
-          <div class="tool-call"><span class="name">chetter_run_trigger</span></div>
-          <div class="tool-call"><span class="name">chetter_delete_trigger</span></div>
-          <div class="tool-call"><span class="name">chetter_list_trigger_runs</span></div>
-        </article>
-        <article>
-          <b>Event Callbacks (4)</b>
-          <p>React to task lifecycle events by creating tasks or calling webhook/Slack endpoints.</p>
-          <div class="tool-call"><span class="name">chetter_create_event_callback</span></div>
-          <div class="tool-call"><span class="name">chetter_update_event_callback</span></div>
-          <div class="tool-call"><span class="name">chetter_list_event_callbacks</span></div>
-          <div class="tool-call"><span class="name">chetter_delete_event_callback</span></div>
-        </article>
-        <article>
-          <b>GitHub (4)</b>
-          <p>Create issues, comments, PRs, and reviews with server-side signatures and audit/artifact records.</p>
-          <div class="tool-call"><span class="name">chetter_create_issue</span></div>
-          <div class="tool-call"><span class="name">chetter_issue_comment</span></div>
-          <div class="tool-call"><span class="name">chetter_create_pr</span></div>
-          <div class="tool-call"><span class="name">chetter_pr_review</span></div>
-        </article>
-        <article>
-          <b>Fleet (2)</b>
-          <p>Health inferred from runner heartbeats, plus graceful drain for rollouts.</p>
-          <div class="tool-call"><span class="name">chetter_runner_health</span></div>
-          <div class="tool-call"><span class="name">chetter_drain_runner</span></div>
-        </article>
-        <article>
-          <b>Definitions &amp; Catalog (10)</b>
-          <p>Data-driven provider/model catalog, Git-backed definition sources, materialized definitions, and proposal PRs.</p>
-          <div class="tool-call"><span class="name">chetter_get_model_catalog</span></div>
-          <div class="tool-call"><span class="name">chetter_sync_definitions</span></div>
-          <div class="tool-call"><span class="name">chetter_list_definition_sources</span></div>
-          <div class="tool-call"><span class="name">chetter_get_definition_source</span></div>
-          <div class="tool-call"><span class="name">chetter_sync_definition_source</span></div>
-          <div class="tool-call"><span class="name">chetter_list_definitions</span></div>
-          <div class="tool-call"><span class="name">chetter_get_definition</span></div>
-          <div class="tool-call"><span class="name">chetter_create_definition_proposal</span></div>
-          <div class="tool-call"><span class="name">chetter_list_definition_proposals</span></div>
-          <div class="tool-call"><span class="name">chetter_get_definition_proposal</span></div>
-        </article>
-        <article>
-          <b>Audit &amp; Artifacts (2)</b>
-          <p>Server-side event log and task-created GitHub artifact tracking. Admin only.</p>
-          <div class="tool-call"><span class="name">chetter_list_audit_events</span></div>
-          <div class="tool-call"><span class="name">chetter_list_task_artifacts</span></div>
-        </article>
-        <article>
-          <b>Tokens (3)</b>
-          <p>Team-scoped API token management. Admin only.</p>
-          <div class="tool-call"><span class="name">chetter_create_token</span></div>
-          <div class="tool-call"><span class="name">chetter_list_tokens</span></div>
-          <div class="tool-call"><span class="name">chetter_delete_token</span></div>
-        </article>
-        <article>
-          <b>Teams (4)</b>
-          <p>Team and user CRUD for team-scoped access control. Admin only.</p>
-          <div class="tool-call"><span class="name">chetter_create_team</span></div>
-          <div class="tool-call"><span class="name">chetter_list_teams</span></div>
-          <div class="tool-call"><span class="name">chetter_delete_team</span></div>
-          <div class="tool-call"><span class="name">chetter_list_users</span></div>
-        </article>
-        <article class="wide">
-          <b>Schema-driven</b>
-          <p>Every tool's input and output is a Go struct with <code>jsonschema</code> tags. <code>mcp.AddTool</code> reflects at startup, so the JSON schema and the Go types cannot drift.</p>
-        </article>
-        <article class="wide">
-          <b>Three trigger types</b>
-          <p><code>cron</code> triggers fire on a schedule; <code>pr_review</code> triggers fire on GitHub pull_request / issue_comment events; <code>issue</code> triggers fire on opened/reopened issues or issue comments, with optional label filtering. All trigger types share prompt, agent, harness, model, timeout, session, and run-history machinery.</p>
-        </article>
-      </div>
-    </section>
+      <section class="section detail-grid">
+        <article class="card detail-card"><span>Execution modes</span><h3>Serve mode and RPC mode</h3><p>OpenCode and Claude-style harnesses can expose an HTTP serve API; RPC-capable harnesses can stream JSONL-style events over stdio. The runner normalizes both into task events.</p></article>
+        <article class="card detail-card"><span>Isolation</span><h3>Workspace + container boundary</h3><p>Docker mode bind-mounts the workspace into <code>/workspace</code>. gVisor can run containers with <code>runsc</code>, and proxy/DNS settings constrain outbound network access.</p></article>
+        <article class="card detail-card"><span>Diagnostics</span><h3>Failures keep evidence</h3><p>Transport failures capture container state, HTTP probes, and log tails. Recoverable failures can preserve workspaces and session exports for follow-up tasks.</p></article>
+        <article class="card detail-card"><span>Definitions</span><h3>Git-backed configuration</h3><p>Agent markdown, skills, triggers, task templates, and model catalogs can sync from Git every five minutes. Definitions are materialized and validated before use.</p></article>
+        <article class="card detail-card"><span>Model catalog</span><h3>Provider details stay data-driven</h3><p>The catalog resolves provider id, model id, base URL, API key env var, and per-harness overrides before the task reaches a runner.</p></article>
+        <article class="card detail-card"><span>Artifacts</span><h3>GitHub output is auditable</h3><p>Server-side Chetter signatures on issues, comments, PRs, and reviews make task-created artifacts discoverable and auditable later.</p></article>
+      </section>
 
-    <section class="section-shell" aria-labelledby="lifecycle-title">
-      <p class="eyebrow">Task Lifecycle</p>
-      <h2 id="lifecycle-title">From MCP tool call to runner event, in one linear flow.</h2>
-      <div class="lifecycle-flow">
-        <div class="lifecycle-step"><b>1. Submit</b><span>InsertTask with random task_id; status = pending; lease columns null. Or resume an existing agent session.</span></div>
-        <div class="lifecycle-step"><b>2. Claim</b><span>Runner polls ClaimTask via ConnectRPC; SELECT ... FOR UPDATE picks one pending task, sets lease + status = running</span></div>
-        <div class="lifecycle-step"><b>3. Run</b><span>Runner spawns the selected harness (OpenCode, Claude Code, or Pi), sends status via ReportTaskEvents RPC, tracks token usage, redirects GitHub writes, and captures container state + HTTP probes on transport failures for diagnostics.</span></div>
-        <div class="lifecycle-step"><b>4. Renew / Reap / Drain</b><span>Heartbeat RPC renews lease; reaper reclaims expired leases and fails orphaned tasks; drain requests stop new claims and exit after in-flight work completes.</span></div>
-        <div class="lifecycle-step"><b>5. Complete</b><span>Terminal state written once; replay-safe. Errors classified into budget_exceeded, model_error, runtime_error, timeout, transport_error, stuck, cancelled, or unknown. Transport errors and timeouts are recoverable — sessions auto-pause with preserved workspaces for checkpoint resume.</span></div>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="protocol-title">
-      <p class="eyebrow">Task Protocol</p>
-      <h2 id="protocol-title">What travels on the wire.</h2>
-      <div class="toolbox-card">
-        <div>
-          <h3>ClaimTask response (runner receives via ConnectRPC)</h3>
-          <pre class="dark-pre"><code>{
-  "task_id":       "task_a1b2c3d4...",
-  "agent_image":   "ghcr.io/.../chetter-runner:main",
-  "prompt":        "...",
-  "git_url":       "https://github.com/.../myapp",
-  "git_ref":       "main",
-  "agent":         "code-quality-auditor",
-  "provider_id":   "deepseek",
-  "model_id":      "deepseek-chat",
-  "variant_id":    "high",
-  "harness":       "opencode | claude-code | pi",
-  "provider_name": "Synthetic",
-  "provider_base_url":"https://api.synthetic.new/anthropic",
-  "provider_api_key_env":"SYNTHETIC_API_KEY",
-  "agent_definition":"...materialized agent markdown...",
-  "skill_definitions": { "skill/SKILL.md": "..." },
-  "extra_files":   { "chetter_recovery_task_x.md": "..." },
-  "skills":        ["vuln-scan"],
-  "timeout_sec":   7200,
-  "max_memory_mb": 4096,
-  "max_cpu":       2,
-  "env":           { ...sanitized },
-  "attempt":       1
+      <section class="section">
+        <div class="section-intro">
+          <p class="eyebrow">What a runner receives</p>
+          <h2>A task is a complete execution envelope.</h2>
+        </div>
+        <pre class="code-block"><code>{
+  "task_id": "task_...",
+  "agent_image": "chetter-agent:golang",
+  "harness": "opencode",
+  "agent": "issue-implementer",
+  "prompt": "Implement the issue and open a PR",
+  "git_url": "https://github.com/org/repo",
+  "provider_id": "opencode",
+  "model_id": "deepseek-v4-flash-free",
+  "agent_definition": "---\npermission:\n  edit: allow\n---\n...",
+  "skill_definitions": { "skill-name": "tar.gz bytes" },
+  "timeout_seconds": 7200,
+  "attempt": 1
 }</code></pre>
-        </div>
-        <div>
-          <h3>ReportTaskEvents request (runner → Chetter)</h3>
-          <pre class="dark-pre"><code>{
-  "runner_id":            "runner_uuid...",
-  "events": [{
-    "task_id":            "task_a1b2c3d4...",
-    "status":             "done | running | error",
-    "summary":            "human-readable",
-    "error":              "message if status=error",
-    "artifacts":          ["https://github.com/.../pull/123"],
-    "harness":            "opencode",
-    "provider_id":        "deepseek",
-    "model_id":           "deepseek-chat",
-    "variant_id":         "high",
-    "opencode_session_id":"sess_...",
-    "runner_image_digest":"sha256:...",
-    "token_usage":        { "input_tokens": 1234, "output_tokens": 567 },
-    "started_at":         "...",
-    "ended_at":           "...",
-    "payload_json":       "{...raw...}"
-  }]
-}</code></pre>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="section-shell" aria-labelledby="connectrpc-title">
-      <p class="eyebrow">ConnectRPC Task Queue</p>
-      <h2 id="connectrpc-title">Four RPCs coordinate runner work through lease-based task claiming.</h2>
-      <div class="system-map" style="grid-template-columns: 1fr 1fr;">
-        <div class="system-box">
-          <h3>Runner lifecycle</h3>
-          <p>Runners connect directly to the Chetter MCP server via ConnectRPC over HTTP. A dedicated <code>CHETTER_RUNNER_RPC_TOKEN</code> authenticates runner RPC calls.</p>
-          <span>RegisterRunner — announce presence</span>
-          <span>Heartbeat — renew lease, get commands (cancel, drain)</span>
-          <span>ClaimTask — poll pending tasks</span>
-          <span>ReportTaskEvents — stream status updates</span>
-          <span>lease renewal on each heartbeat</span>
-        </div>
-        <div class="system-box">
-          <h3>Database-backed queue</h3>
-          <p>Tasks stored in chetter_tasks; SELECT ... FOR UPDATE with lease-based claiming.</p>
-          <span>pending → claimed → running</span>
-          <span>lease via lease_expires_at column</span>
-          <span>reaper reclaims expired leases (30s interval, 120s grace)</span>
-          <span>cancel + drain commands flow in HeartbeatResponse</span>
-          <span>cancel + drain state persisted with the task and runner rows</span>
-        </div>
-      </div>
-      <p class="center-note">Adding a third runner is just another Docker container or Kubernetes workload pointing at the same MCP server.</p>
-    </section>
+      <section class="card cta">
+        <div><h2>Prefer the less technical story?</h2><p>The how-it-works page explains the same lifecycle without implementation details.</p></div>
+        <a class="button" href="how-it-works.html">Read how it works</a>
+      </section>
+    </main>
 
-    <section class="section-shell" aria-labelledby="triggers-title">
-      <p class="eyebrow">Triggers</p>
-      <h2 id="triggers-title">Unified trigger system: cron, PR review, and issue automation share the same DB-backed machinery.</h2>
-      <div class="lifecycle-flow">
-        <div class="lifecycle-step"><b>cron triggers</b><span>Five-field expressions + descriptors; fired by in-process robfig/cron</span></div>
-        <div class="lifecycle-step"><b>pr_review triggers</b><span>Webhook events matched by repo; built-in review template when prompt omitted; dispatches review tasks + PR label</span></div>
-        <div class="lifecycle-step"><b>issue triggers</b><span>Opened/reopened issues and issue comments; optional event and label filters; no author write gate for triage</span></div>
-        <div class="lifecycle-step"><b>Restart safe</b><span>Service.Start loads all enabled triggers from the database on startup</span></div>
-        <div class="lifecycle-step"><b>Individual mgmt</b><span>Create, update, delete per trigger via MCP tools; no bulk sync</span></div>
-      </div>
-      <div class="protocol-cards">
-        <article><b>robfig/cron v3</b><p>Five-field expressions and @descriptors for cron triggers. In-process, single-instance.</p></article>
-        <article><b>Webhook dispatch</b><p>GitHub webhooks query enabled PR review and issue triggers by repo at event time. Bot comments are skipped unless a trigger opts in with <code>bot_comments:true</code>.</p></article>
-        <article><b>DB-backed config</b><p><code>trigger_type</code> plus JSON <code>trigger_config</code> drives cron, PR review, and issue behavior without hardcoded reviewer configuration.</p></article>
-        <article><b>Trigger run history</b><p>The web UI shows trigger runs with links to task detail pages, token totals, and task-created artifacts for traceability.</p></article>
-        <article><b>Definitions in Git</b><p>Optionally sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code> with periodic auto-sync every 5 minutes. YAML definitions are validated against JSON Schemas at sync time — invalid definitions fail with path-specific errors.</p></article>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="data-title">
-      <p class="eyebrow">Data Model</p>
-      <h2 id="data-title">Persistent control-plane tables. Lease-based claiming. Team-scoped auth.</h2>
-      <div class="er-diagram">
-        <div class="er-cluster local-er">
-          <h3>Core tables</h3>
-          <div class="entity">chetter_tasks <span>id, team_id, status, prompt, lease, runner_id, attempt, tokens, search_text</span></div>
-          <div class="entity">chetter_task_events <span>id, task_id, subject, status, payload (raw JSON), ts</span></div>
-          <div class="entity">chetter_triggers <span>id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, model, enabled</span></div>
-          <div class="entity">chetter_trigger_runs <span>id, trigger_id, task_id, team_id, status, triggered_at</span></div>
-          <div class="entity">chetter_event_callbacks <span>id, team_id, event_type, action_type, action_config, enabled</span></div>
-          <div class="entity">chetter_agent_sessions <span>id, status, pinned_runner_id, checkpoint_id, search_text</span></div>
-          <div class="entity">chetter_agent_session_checkpoints <span>id, session_id, runner_id, path, expires_at</span></div>
-          <div class="entity">chetter_runners <span>id, status, image, capacity, heartbeat metadata</span></div>
-          <div class="entity">definition_* tables <span>sources, materialized definitions, sync runs, change proposals</span></div>
-          <div class="entity">chetter_audit_log <span>id, event_type, payload, actor, ts — server-side event record</span></div>
-          <div class="entity">chetter_task_artifacts <span>id, task_id, artifact_type, url, repo — GitHub artifacts from tasks</span></div>
-        </div>
-        <div class="er-link">team-scoped auth</div>
-        <div class="er-cluster cloud-er">
-          <h3>Auth tables</h3>
-          <div class="entity">teams <span>id, name</span></div>
-          <div class="entity">users <span>id, name, team_id</span></div>
-          <div class="entity">api_tokens <span>id, name, token_hash, user_id</span></div>
-          <div class="entity encrypted">scoped tokens <span>team and user ownership for API access</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="reaper-title">
-      <p class="eyebrow">Reaper &amp; Health</p>
-      <h2 id="reaper-title">Runner heartbeats every 5s; fleet health inferred from ConnectRPC activity.</h2>
-      <div class="lifecycle-flow">
-        <div class="lifecycle-step"><b>ReapStaleTasks</b><span>running tasks older than timeout + 120s grace → error</span></div>
-        <div class="lifecycle-step"><b>ReapExpiredLeases</b><span>leases past lease_expires_at → reclaimed; tasks → failed</span></div>
-        <div class="lifecycle-step"><b>DrainRunner</b><span>MCP tool requests a runner to stop claiming, finish in-flight work, then exit. Runner reports draining status on heartbeats.</span></div>
-        <div class="lifecycle-step"><b>GetRunnerFleetHealth</b><span>joins runner heartbeats; is_stale = last_seen_at &gt; 60s ago</span></div>
-        <div class="lifecycle-step"><b>FleetActive</b><span>running_tasks &gt; stale_tasks (idle fleet looks dead)</span></div>
-      </div>
-      <p class="center-note">Runners send heartbeats via ConnectRPC every 5s (configurable). Lease renewal is baked into the heartbeat response. No separate broker health to monitor.</p>
-    </section>
-
-    <section class="section-shell" aria-labelledby="deploy-title">
-      <p class="eyebrow">Deployment</p>
-      <h2 id="deploy-title">Docker Compose or Kubernetes. Two images, one DB, web UI.</h2>
-      <div class="deploy-flow">
-        <div><b>TiDB / MySQL</b><span>external or bundled TiDB via compose.local.yaml</span></div>
-        <div><b>chetter-mcp</b><span>control plane, MCP on 18088, web UI on 18090</span></div>
-        <div><b>chetter-runner</b><span>worker 1, connects via ConnectRPC</span></div>
-        <div><b>chetter-runner-2</b><span>worker 2, same image, separate workspace</span></div>
-      </div>
-      <div class="protocol-cards">
-        <article><b>Single process</b><p>Currently single-instance: cron entries, reaper, trigger dispatcher, event callbacks, model catalog, and ConnectRPC endpoint live in-process.</p></article>
-        <article><b>Stateless MCP</b><p>The HTTP transport uses Stateless mode, so the MCP server <i>could</i> be scaled — the rest of the system cannot, yet.</p></article>
-        <article><b>Web UI</b><p>SvelteKit-based ConnectRPC UI on separate port 18090: searchable tasks, triggers, runners, sessions, audit logs, artifacts, recovery actions, and admin actions.</p></article>
-        <article><b>CI redeploy</b><p>.github/workflows/chetter.yml runs checks, detects changed images, builds the changed containers, drains runners, and redeploys.</p></article>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="patterns-title">
-      <p class="eyebrow">Patterns &amp; Tradeoffs</p>
-      <h2 id="patterns-title">Choices that keep the codebase small and predictable.</h2>
-      <div class="choice-grid">
-        <article><b>Cancel via heartbeat</b><p>Cancel sets DB row to cancelled; runner receives cancel command in next HeartbeatResponse. No separate signal path needed.</p></article>
-        <article><b>Drain via heartbeat</b><p>DrainRunner sets a flag; runner receives drain command in next HeartbeatResponse, stops claiming new work, finishes in-flight tasks, then exits.</p></article>
-        <article><b>Error classification &amp; diagnostics</b><p>Prompt failures are classified into 8 categories (budget_exceeded, model_error, runtime_error, timeout, transport_error, stuck, cancelled, unknown). Transport errors capture container state, HTTP health probe, and log tail for root-cause visibility. Recoverable sessions are auto-paused for timeout and transport_error categories.</p></article>
-        <article><b>Event write then ack</b><p>ReportTaskEvents writes to DB inside a transaction; error responses trigger runner retries. Idempotent updates keep replays safe.</p></article>
-        <article><b>Deployment flexibility</b><p>Use Compose for a compact Docker deployment or Kubernetes when runner scheduling and cluster operations matter.</p></article>
-        <article><b>Timeouts on every call</b><p>ConnectRPC claim 30s poll, event handler 10s, trigger run 30s, HTTP read header 10s, shutdown 15s.</p></article>
-        <article><b>Schema probes, not migrations</b><p>information_schema lookups at startup; ALTER TABLE IF NOT EXISTS for add-only schema evolution on a small footprint.</p></article>
-        <article><b>Config in Git</b><p>Model catalog, agents, skills, triggers, and task templates can be synced from a Git definitions repo via <code>DEFINITIONS_REPO</code>, with periodic auto-sync every 5 minutes. All YAML is validated against JSON Schemas at sync time — invalid definitions fail with path-specific errors instead of being silently skipped. Proposal PR tools support change workflows.</p></article>
-        <article><b>Trigger-based webhook dispatch</b><p>GitHub PR reviews and issue automation no longer use hardcoded config. Triggers in the DB are matched by repo and event at webhook time.</p></article>
-        <article><b>Server-side signatures</b><p>GitHub MCP tools append a canonical single-line Chetter signature footer to every created artifact, enabling passive artifact discovery and tracking.</p></article>
-        <article><b>One file per concern</b><p>service.go orchestration, tools.go MCP, store.go SQL, runner_rpc.go ConnectRPC, catalog.go model catalog, definitions.go, and event_callbacks.go.</p></article>
-      </div>
-    </section>
-
-    <section class="section-shell" aria-labelledby="choices-title">
-      <p class="eyebrow">Technical Choices</p>
-      <h2 id="choices-title">Each technology is biased toward operational simplicity and at-least-once delivery.</h2>
-      <div class="choice-grid">
-        <article><b>MCP, not REST</b><p>The control surface is for AI agents, not humans. Tools are the native interface for any LLM client.</p></article>
-        <article><b>Streamable HTTP</b><p>Modern MCP transport. Stateless mode makes the server trivially load-balancer-friendly.</p></article>
-        <article><b>ConnectRPC</b><p>Task queue via long-polling RPC over HTTP; lease-based claiming; cancel and drain commands piggyback on heartbeats. No separate broker.</p></article>
-        <article><b>TiDB / MySQL</b><p>MySQL wire protocol with automatic dialect detection. Small, add-only schema, FULLTEXT indexes for table search (TiDB multilingual parser or MySQL ngram), conservative pool. Set <code>CHETTER_DB_DIALECT</code> to force a specific dialect.</p></article>
-        <article><b>robfig/cron v3</b><p>Battle-tested, tiny, descriptor parser for @hourly-style. In-process is fine for single-instance.</p></article>
-        <article><b>Data-driven model catalog</b><p>YAML-based <code>pkg/modelcatalog</code> replaces hardcoded provider config. Supports DeepSeek, Z.ai, Anthropic, Synthetic (GLM-5.2), and OpenCode Zen (deepseek-v4-flash-free) with per-harness overrides.</p></article>
-        <article><b>Server image</b><p>Multi-stage Go build on <code>debian:bookworm-slim</code>, with git and openssh-client available for definitions repository clone/pull operations.</p></article>
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <img src="chetter-mark.svg" alt="" />
-    <p>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</p>
-    <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
-  </footer>
+    <footer class="site-footer">
+      <img src="chetter-mark.svg" alt="" />
+      <p>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</p>
+      <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
+    </footer>
+  </div>
 </body>
 </html>

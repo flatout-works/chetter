@@ -3,207 +3,91 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chetter - MCP control plane for AI coding agents</title>
-  <meta name="description" content="Chetter is a small, self-hosted MCP control plane for sending software development work to a fleet of containerized AI coding agents." />
+  <title>Chetter - Self-hosted agent control plane</title>
+  <meta name="description" content="Chetter coordinates standard agent harnesses, isolated runners, GitHub-native workflows, and a live web control plane for teams that self-host their automation." />
   <link rel="icon" href="chetter-mark.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="marketing.css" />
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="#top" aria-label="Chetter home">
-      <img src="chetter-text.svg" alt="Chetter" />
-    </a>
-    <nav class="nav" aria-label="Primary navigation">
-      <a href="#how-it-works">How it works</a>
-      <a href="#tools">Tools</a>
-      <a href="#deploy">Deploy</a>
-      <a href="technical.html">Technical</a>
-      <a href="https://github.com/flatout-works/chetter">GitHub</a>
-      <a href="https://discord.gg/KkZxKwSTvF">Discord</a>
-    </nav>
-  </header>
+  <div class="shell">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Chetter home">
+        <img src="chetter-text.svg" alt="Chetter" />
+        <span class="brand-subtitle">Open source agent control plane</span>
+      </a>
+      <nav class="nav" aria-label="Primary navigation">
+        <a class="nav-link" href="how-it-works.html">How it works</a>
+        <a class="nav-link" href="technical.html">Technical</a>
+        <a class="button" href="https://github.com/flatout-works/chetter">GitHub</a>
+        <a class="button secondary" href="https://discord.gg/KkZxKwSTvF">Discord</a>
+      </nav>
+    </header>
 
-  <main id="top">
-    <section class="hero section-shell">
-      <div class="hero-copy">
-        <p class="eyebrow">Self-hosted MCP control plane</p>
-        <h1>Run AI coding agents like a small, observable fleet.</h1>
-        <p class="lead">Chetter exposes an MCP tool surface so your AI agent — whether you use OpenCode, Claude Code, Pi, or another MCP client — can submit development work to remote runner containers. An embedded SvelteKit web UI and ConnectRPC API give humans and tools searchable dashboards for tasks, triggers, runners, sessions, audit events, and artifacts. Deploy it on Docker infrastructure or Kubernetes.</p>
-        <div class="hero-actions" aria-label="Primary actions">
-          <a class="button primary" href="https://github.com/flatout-works/chetter">View on GitHub</a>
-          <a class="button discord" href="https://discord.gg/KkZxKwSTvF">Join Discord</a>
-          <a class="button secondary" href="#quick-start">Quick start</a>
+    <main>
+      <section class="hero">
+        <div>
+          <div class="badge">Self-hosted by design</div>
+          <h1>Run autonomous coding agents on infrastructure you control.</h1>
+          <p class="lead">Chetter coordinates standard agent harnesses, isolated runners, GitHub-native workflows, and a live web control plane for teams that self-host their automation.</p>
+          <div class="stats">
+            <div class="card stat"><span>Harnesses</span><b>OpenCode, Claude Code, Pi, CodeWhale</b></div>
+            <div class="card stat"><span>Runtime</span><b>Docker or Kubernetes</b></div>
+            <div class="card stat"><span>Workflow</span><b>GitHub PRs and issues</b></div>
+          </div>
         </div>
-      </div>
-      <aside class="screenshot-hero" aria-label="Chetter dashboard screenshot">
-        <div class="screenshot-top"><span></span><span></span><span></span><b>chetter web ui</b></div>
-        <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and recent tasks" />
-      </aside>
-    </section>
 
-    <section class="section-shell split" id="how-it-works">
-      <div>
-        <p class="eyebrow">How it works</p>
-        <h2>One Go service coordinates the work. Runners do the execution.</h2>
-        <p>Chetter stays deliberately small: the MCP server accepts tool calls, persists task state to TiDB or MySQL, serves it to runners via ConnectRPC, manages cron, PR review, issue, and event-callback automation, runs a data-driven model catalog with Git-backed definitions validated against JSON Schemas, hosts GitHub MCP tools with audit and artifact tracking, and ingests runner events. Runners poll for pending work, clone repositories, start OpenCode, Claude Code, or Pi through harnesses, stream progress, record token usage, and report results. The same control plane can run with Docker Compose or in Kubernetes with the included manifests.</p>
-      </div>
-      <div class="flow-card">
-        <div><b>1. Submit</b><span>MCP tool call creates a pending task row in the database.</span></div>
-        <div><b>2. Claim</b><span>Runners poll the ConnectRPC endpoint; one claims the task via lease.</span></div>
-        <div><b>3. Run</b><span>A runner starts OpenCode, Claude Code, or Pi through its harness, with Docker/gVisor isolation where supported.</span></div>
-        <div><b>4. Observe</b><span>Events are persisted for status, progress, and audit trails.</span></div>
-      </div>
-    </section>
+        <aside class="card screen" aria-label="Chetter dashboard screenshot">
+          <div class="screen-top"><span></span><span></span><span></span><b>chetter web ui</b></div>
+          <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and recent tasks" />
+        </aside>
+      </section>
 
-    <section class="section-shell architecture" aria-labelledby="architecture-title">
-      <p class="eyebrow">Architecture</p>
-      <h2 id="architecture-title">A boring stack on purpose.</h2>
-      <div class="architecture-grid">
-        <article>
-          <span>client</span>
-          <h3>OpenCode, Claude Code &amp; Pi</h3>
-          <p>The runner ships with integrated harnesses for OpenCode, Claude Code, and Pi. It runs stock CLIs behind harness adapters — OpenCode serve mode, Claude Code through a serve-proxy, and Pi through JSONL RPC — without inventing a custom agent runtime.</p>
-        </article>
-        <article>
-          <span>control plane</span>
-          <h3>Go MCP server + web UI</h3>
-          <p>A small Go process exposes <code>/mcp</code>, <code>/healthz</code>, and <code>/webhook/github</code>, registers schema-driven MCP tools, manages triggers and event callbacks, orchestrates a data-driven model catalog from YAML or a Git definitions repo, hosts GitHub MCP tools with audit and artifact tracking, and records events. An embedded SvelteKit UI on a separate port provides ConnectRPC-backed dashboards for tasks, triggers, runners, sessions, artifacts, and audit logs.</p>
-        </article>
-        <article>
-          <span>execution</span>
-          <h3>Docker or Kubernetes with gVisor</h3>
-          <p>Agents run with normal container images and harness-specific execution paths. Deploy runners on Docker infrastructure or Kubernetes, and use optional gVisor sandboxing where supported. The runner includes a <code>gh</code> wrapper that redirects write commands to Chetter MCP tools, plus image variants for Go, Python, Node, Rust, and minimal environments.</p>
-        </article>
-        <article>
-          <span>state</span>
-          <h3>TiDB / MySQL</h3>
-          <p>Tables hold tasks with leases, raw events, triggers, trigger runs, event callbacks, agent sessions, checkpoints, runner heartbeats, teams, users, API tokens, definitions, proposal records, audit log events, task artifacts, full-text search columns, and token/cost totals. Auto-detects dialect at startup; supports both TiDB and MySQL (including AWS Aurora).</p>
-        </article>
-      </div>
-    </section>
+      <section class="section">
+        <div class="section-intro">
+          <p class="eyebrow">What it gives you</p>
+          <h2>A web UI for operating your own agent fleet.</h2>
+          <p>Observe task runs, manage automation, and inspect GitHub-native workflows from the same self-hosted control plane.</p>
+        </div>
 
-    <section class="section-shell value-grid" aria-labelledby="why-title">
-      <div class="section-intro">
-        <p class="eyebrow">Why developers use it</p>
-        <h2 id="why-title">Useful automation without a giant platform.</h2>
-      </div>
-      <article>
-        <h3>Remote, isolated execution</h3>
-        <p>Keep agent work off your laptop. Runners execute inside Docker containers — optionally under gVisor sandboxing — with explicit CPU, memory, timeout, image, model, and provider settings.</p>
-      </article>
-      <article>
-        <h3>Durable by default</h3>
-        <p>Tasks survive runner restarts. Events are written before ack. Terminal states are updated idempotently. Timeouts and transport errors are classified as recoverable — failed sessions are automatically paused with workspace preservation, captured container diagnostics, and previous session export context, so you can resume from checkpoints on the same runner.</p>
-      </article>
-        <article>
-          <h3>Triggers &amp; schedules</h3>
-          <p>Cron schedules, PR reviews, issue/comment responders, and task-event callbacks share DB-backed automation. PR review triggers have a built-in review template, issue triggers can filter labels and comments, and callbacks can create follow-up tasks or post webhook/Slack notifications.</p>
-        </article>
-      <article>
-        <h3>Readable codebase</h3>
-          <p>The main surface is a few focused Go packages: service orchestration, MCP tools, store, config, webhook handler, model catalog, definitions manager, event callbacks, error classification and diagnostics, and full-text search helpers.</p>
-      </article>
-      <article>
-          <h3>Standard protocols</h3>
-          <p>Streamable HTTP MCP, ConnectRPC (HTTP/gRPC), TiDB / MySQL, Docker Compose, and cron. No proprietary agent protocol required.</p>
-      </article>
-      <article>
-        <h3>Built for operators</h3>
-          <p>Inspect status, logs, latest events, container diagnostics for transport failures, progress summaries, fleet health, runner image digests, model IDs, session exports, token totals, audit log events, trigger runs, and task-created artifacts from MCP and the web UI.</p>
-      </article>
-    </section>
+        <div class="shots">
+          <article class="card shot">
+            <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and recent tasks" />
+            <div><h3>Fleet dashboard</h3><p>Track task throughput, live status, agents, timing, and runner health from the control plane.</p></div>
+          </article>
+          <article class="card shot">
+            <img src="screenshots/screenshot-3.png" alt="Chetter triggers page showing automation workflows" />
+            <div><h3>Automation triggers</h3><p>Manage cron jobs, issue responders, and GitHub PR review workflows from one table.</p></div>
+          </article>
+          <article class="card shot">
+            <img src="screenshots/screenshot-1.png" alt="Chetter operational view showing task details" />
+            <div><h3>Operational view</h3><p>Inspect recent work and drill into agent-created outcomes without leaving the web UI.</p></div>
+          </article>
+        </div>
+      </section>
 
-    <section class="section-shell tools" id="tools">
-      <div>
-        <p class="eyebrow">Tool surface</p>
-        <h2>Everything is exposed as MCP tools.</h2>
-        <p>Chetter is designed for AI clients first. Tool schemas are generated from Go structs, so implementation and JSON contracts stay aligned.</p>
-      </div>
-      <div class="tool-groups">
-        <article><b>Tasks</b><span>submit, status, search/list, cancel, clear queue, export session, recover failed work</span></article>
-        <article><b>Events</b><span>full history, progress, latest event</span></article>
-        <article><b>Triggers</b><span>create, update, run, list, delete, and view run history for cron, PR review, and issue triggers</span></article>
-        <article><b>Event callbacks</b><span>create, update, list, delete callbacks that create tasks or call webhook/Slack endpoints</span></article>
-        <article><b>Fleet</b><span>runner health, heartbeat age, active images, and graceful runner drain</span></article>
-        <article><b>GitHub</b><span>create issue, comment, PR, review with server-side signatures and audit trail</span></article>
-        <article><b>Agent Sessions</b><span>list, status, resume multi-step agent sessions</span></article>
-        <article><b>Definitions &amp; catalog</b><span>get catalog, sync sources, list/get materialized definitions, propose definition PRs</span></article>
-        <article><b>Audit &amp; Artifacts</b><span>list audit events, list task-created GitHub artifacts (admin)</span></article>
-        <article><b>Tokens</b><span>create, list, delete API tokens for team-scoped access</span></article>
-        <article><b>Teams</b><span>create, list, delete teams; list users for team-scoped access</span></article>
-      </div>
-    </section>
+      <section class="section feature-grid">
+        <article class="card feature"><p class="eyebrow">Open Source</p><h3>Run it yourself</h3><p>No hosted Chetter service. Clone the repo, deploy the server and runners, and keep the execution path under your control.</p></article>
+        <article class="card feature"><p class="eyebrow">GitHub Native</p><h3>PRs, issues, reviews</h3><p>Wire agents into the tools developers already use, with tracked artifacts and auditable outcomes.</p></article>
+        <article class="card feature"><p class="eyebrow">Standard Runners</p><h3>Plain containers</h3><p>Use Docker or Kubernetes images with the language tools and harnesses your projects already rely on.</p></article>
+      </section>
 
-    <section class="section-shell screenshots" aria-labelledby="screenshots-title">
-      <div class="section-intro">
-        <p class="eyebrow">Screenshots</p>
-        <h2 id="screenshots-title">A web UI for operating your own agent fleet.</h2>
-        <p>Observe task runs, manage automation, and inspect GitHub-native workflows from the same self-hosted control plane.</p>
-      </div>
-      <div class="screenshot-grid">
-        <article>
-          <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and a recent tasks table" />
-          <div>
-            <h3>Fleet dashboard</h3>
-            <p>Track task throughput, live status, agents, timing, and runner health from the control plane.</p>
-          </div>
-        </article>
-        <article>
-          <img src="screenshots/screenshot-3.png" alt="Chetter triggers page showing cron, issue, and PR review automations" />
-          <div>
-            <h3>Automation triggers</h3>
-            <p>Manage cron jobs, issue responders, and GitHub PR review workflows from one table.</p>
-          </div>
-        </article>
-        <article>
-          <img src="screenshots/screenshot-1.png" alt="Chetter dashboard showing task filtering and operational details" />
-          <div>
-            <h3>Operational view</h3>
-            <p>Inspect recent work and drill into agent-created outcomes without leaving the web UI.</p>
-          </div>
-        </article>
-      </div>
-    </section>
+      <section class="card cta">
+        <div>
+          <h2>Want the deeper version?</h2>
+          <p>Start with the simple lifecycle, then drill into architecture and operational details.</p>
+        </div>
+        <nav class="nav" aria-label="Learn more links">
+          <a class="button" href="how-it-works.html">How it works</a>
+          <a class="button ghost" href="technical.html">Technical details</a>
+        </nav>
+      </section>
+    </main>
 
-    <section class="section-shell split" id="quick-start">
-      <div>
-        <p class="eyebrow">Quick start</p>
-        <h2>Bring up the control plane and two runners with Compose.</h2>
-        <p>Clone the repo, configure tokens, start the stack, then point your MCP client at <code>/mcp</code>. The web UI and ConnectRPC API are available on port 18090. Use a <code>GITHUB_TOKEN</code> when runners need private repo access or pull request permissions.</p>
-      </div>
-      <aside class="terminal-card compact" aria-label="Quick start commands">
-        <div class="terminal-top"><span></span><span></span><span></span><b>shell</b></div>
-        <pre><code>git clone https://github.com/flatout-works/chetter.git
-cd chetter
-cp .env.example .env
-./deploy/build.sh
-
-docker compose --env-file .env \
-  -f deploy/compose.yaml \
-  -f deploy/compose.local.yaml up -d
-
-curl http://localhost:18088/healthz</code></pre>
-      </aside>
-    </section>
-
-    <section class="section-shell deploy" id="deploy">
-      <div>
-        <p class="eyebrow">Deployment shape</p>
-        <h2>Small enough to understand, useful enough to automate real work.</h2>
-      </div>
-      <div class="deploy-row">
-        <div><b>chetter-mcp</b><span>Go server: MCP tools (port 18088) + web UI (port 18090) + ConnectRPC + triggers + webhook + model catalog</span></div>
-        <div><b>chetter-runner</b><span>plain container environments with OpenCode, Claude Code, and Pi harnesses; Docker or Kubernetes execution with optional gVisor isolation where supported</span></div>
-        <div><b>TiDB / MySQL</b><span>task state, events, triggers, sessions, definitions, runners, auth, audit log, artifacts</span></div>
-      </div>
-      <p class="note">Use Docker Compose for a small self-hosted deployment, or Kubernetes manifests when you want scheduler-managed runners. Production can use an external TiDB or MySQL instance by setting <code>DATABASE_DSN</code>, with optional <code>CHETTER_DB_DIALECT</code> override. Enable kernel-level sandboxing with gVisor where supported, and sync model catalogs, agents, skills, triggers, and task templates from a Git definitions repo via <code>DEFINITIONS_REPO</code> — all validated against JSON Schemas for correctness at sync time.</p>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <img src="chetter-mark.svg" alt="" />
-    <p>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</p>
-    <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
-  </footer>
+    <footer class="site-footer">
+      <img src="chetter-mark.svg" alt="" />
+      <p>Chetter is a small MCP control plane for orchestrating remote AI coding agents.</p>
+      <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
+    </footer>
+  </div>
 </body>
 </html>
