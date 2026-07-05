@@ -377,7 +377,7 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 	excludeClause := fmt.Sprintf(" AND event_type NOT IN (%s)", strings.Join(placeholders, ","))
 
 	query := `
-		SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+		SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 		FROM chetter_audit_log
 		WHERE (event_type = ? OR ? = '')
 		  AND (source_type = ? OR ? = '')
@@ -426,6 +426,8 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 			&i.ParentEventID,
 			&i.Detail,
 			&i.Payload,
+			&i.TokenID,
+			&i.TokenName,
 		); err != nil {
 			return nil, err
 		}
@@ -456,7 +458,7 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 	var args []any
 	if s.dialect == store.DialectMySQL {
 		query = `
-			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 			FROM chetter_audit_log
 			WHERE (event_type = ? OR ? = '')
 			  AND (source_type <=> ? OR ? = '')
@@ -483,7 +485,7 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 		args = append(args, filter.Search, limit, offset)
 	} else {
 		query = fmt.Sprintf(`
-			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload
+			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 			FROM chetter_audit_log
 			WHERE (event_type = ? OR ? = '')
 			  AND (source_type <=> ? OR ? = '')
@@ -566,6 +568,8 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 			&i.ParentEventID,
 			&i.Detail,
 			&i.Payload,
+			&i.TokenID,
+			&i.TokenName,
 		); err != nil {
 			return nil, err
 		}

@@ -374,7 +374,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
 	}
 	activateTriggerEntries(ctx, s, triggerEntries)
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "definitions_synced",
 		SourceType: "api",
 		Detail:     fmt.Sprintf("definitions synced: %d definitions, %d triggers", len(defs), len(triggerEntries)),

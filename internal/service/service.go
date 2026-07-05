@@ -60,6 +60,8 @@ type AuditEventParams struct {
 	ParentEventID    string
 	Detail           string
 	Payload          json.RawMessage
+	TokenID          string
+	TokenName        string
 }
 
 type RecordArtifactParams struct {
@@ -550,7 +552,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 				})
 			}
 		}
-		s.auditAsync(AuditEventParams{
+		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "trigger_run",
 			SourceType: in.TriggerType,
 			SourceID:   in.TriggerName,
@@ -559,7 +561,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Detail:     fmt.Sprintf("trigger %q ran, task %s created", in.TriggerName, taskID),
 		})
 	} else {
-		s.auditAsync(AuditEventParams{
+		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "task_submitted",
 			SourceType: "api",
 			TargetType: "task",
@@ -622,7 +624,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
 	}
 
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "task_recover",
 		SourceType: "task",
 		SourceID:   taskID,
@@ -764,7 +766,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	slog.Info("agent session resumed", "session_id", sessionID, "task_id", taskID, "session_run_id", runID)
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "session_resumed",
 		SourceType: "api",
 		TargetType: "session",
@@ -1000,7 +1002,7 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	sRecord := triggerToStoreRecord(record)
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "trigger_created",
 		SourceType: "api",
 		TargetType: "trigger",
@@ -1100,7 +1102,7 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 		return store.TriggerRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
 	sRecord := triggerToStoreRecord(record)
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "trigger_updated",
 		SourceType: "api",
 		SourceID:   name,
@@ -1133,7 +1135,7 @@ func (s *Service) DeleteTrigger(ctx context.Context, name string) error {
 	if err := s.repo.DeleteTrigger(ctx, name); err != nil {
 		return fmt.Errorf("delete trigger: %w", err)
 	}
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "trigger_deleted",
 		SourceType: "api",
 		TargetType: "trigger",
@@ -1174,7 +1176,7 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 		time.Now().UTC(),
 	)
 	if err == nil {
-		s.auditAsync(AuditEventParams{
+		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "trigger_run",
 			SourceType: "api",
 			SourceID:   name,
@@ -1459,7 +1461,7 @@ func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) er
 		return err
 	}
 	now := time.Now().UTC()
-	auditSearchText := strings.Join(strings.Fields(params.Detail+" "+params.SourceType+" "+params.SourceID+" "+params.TargetType+" "+params.TargetID+" "+params.Repo+" "+params.EventType), " ")
+	auditSearchText := strings.Join(strings.Fields(params.Detail+" "+params.SourceType+" "+params.SourceID+" "+params.TargetType+" "+params.TargetID+" "+params.Repo+" "+params.EventType+" "+params.TokenName+" "+params.TokenID), " ")
 	return s.repo.InsertAuditLog(ctx, repository.InsertAuditLogParams{
 		ID:               id,
 		EventType:        params.EventType,
@@ -1476,13 +1478,23 @@ func (s *Service) LogAuditEvent(ctx context.Context, params AuditEventParams) er
 		Detail:           nullString(params.Detail),
 		SearchText:       nullString(auditSearchText),
 		Payload:          (*json.RawMessage)(&params.Payload),
+		TokenID:          nullString(params.TokenID),
+		TokenName:        nullString(params.TokenName),
 	})
 }
 
-func (s *Service) auditAsync(params AuditEventParams) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (s *Service) auditAsync(ctx context.Context, params AuditEventParams) {
+	if scope, ok := auth.GetScope(ctx); ok {
+		if params.TokenID == "" {
+			params.TokenID = scope.TokenID
+		}
+		if params.TokenName == "" {
+			params.TokenName = scope.TokenName
+		}
+	}
+	auditCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := s.LogAuditEvent(ctx, params); err != nil {
+	if err := s.LogAuditEvent(auditCtx, params); err != nil {
 		slog.Warn("audit event", "err", err, "event_type", params.EventType)
 	}
 }

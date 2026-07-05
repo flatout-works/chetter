@@ -134,7 +134,7 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 	if rows == 0 {
 		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
 	}
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "task_cancelled",
 		SourceType: "api",
 		TargetType: "task",
@@ -158,7 +158,7 @@ func (s *Service) ClearQueue(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cancel pending tasks: %w", err)
 	}
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "queue_cleared",
 		SourceType: "api",
 		TargetType: "task",
@@ -902,7 +902,7 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 		returnedTeamNames = append(returnedTeamNames, team.Name)
 	}
 
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "token_created",
 		SourceType: "api",
 		TargetType: "token",
@@ -954,7 +954,7 @@ func (s *Service) DeleteToken(ctx context.Context, name string) error {
 	if err := s.repo.DeleteToken(ctx, name); err != nil {
 		return fmt.Errorf("delete token: %w", err)
 	}
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "token_deleted",
 		SourceType: "api",
 		TargetType: "token",
@@ -988,7 +988,7 @@ func (s *Service) CreateTeam(ctx context.Context, name string) (CreateTeamOutput
 		return CreateTeamOutput{}, fmt.Errorf("create team: %w", err)
 	}
 
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "team_created",
 		SourceType: "api",
 		TargetType: "team",
@@ -1049,7 +1049,7 @@ func (s *Service) DeleteTeam(ctx context.Context, name string) error {
 	if err := s.repo.DeleteTeam(ctx, name); err != nil {
 		return fmt.Errorf("delete team: %w", err)
 	}
-	s.auditAsync(AuditEventParams{
+	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "team_deleted",
 		SourceType: "api",
 		TargetType: "team",
@@ -1157,6 +1157,8 @@ func (s *Service) ListAuditEvents(ctx context.Context, filter AuditEventFilterIn
 			GitHubDeliveryID: r.GithubDeliveryID.String,
 			ParentEventID:    r.ParentEventID.String,
 			Detail:           r.Detail.String,
+			TokenID:          r.TokenID.String,
+			TokenName:        r.TokenName.String,
 		}
 	}
 	return out, nil

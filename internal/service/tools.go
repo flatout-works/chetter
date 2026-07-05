@@ -1548,6 +1548,8 @@ type AuditEventRecord struct {
 	GitHubDeliveryID string    `json:"github_delivery_id,omitempty"`
 	ParentEventID    string    `json:"parent_event_id,omitempty"`
 	Detail           string    `json:"detail,omitempty"`
+	TokenID          string    `json:"token_id,omitempty"`
+	TokenName        string    `json:"token_name,omitempty"`
 }
 
 type AuditEventsOutput struct {

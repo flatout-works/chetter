@@ -703,6 +703,8 @@ func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request
 			GithubDeliveryId: e.GitHubDeliveryID,
 			ParentEventId:    e.ParentEventID,
 			Detail:           e.Detail,
+			TokenId:          e.TokenID,
+			TokenName:        e.TokenName,
 		}
 	}
 	return connect.NewResponse(&apiv1.ListAuditEventsResponse{Events: out}), nil
