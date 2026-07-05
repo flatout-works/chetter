@@ -212,31 +212,80 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 	defer resp.Body.Close()
 
 	br := newSSEReader(resp.Body)
-	var lastPublished time.Time
+
+	var textBuf strings.Builder
+	var pending []string
+	lastFlush := time.Now()
+
+	flush := func(force bool) {
+		if !force && time.Since(lastFlush) < 3*time.Second {
+			return
+		}
+		if textBuf.Len() > 0 {
+			publishFn("running", "claude: "+strings.TrimSpace(textBuf.String()))
+			textBuf.Reset()
+		}
+		for _, s := range pending {
+			publishFn("running", s)
+		}
+		pending = pending[:0]
+		lastFlush = time.Now()
+	}
+
 	for {
 		ev, err := br.Read()
 		if err != nil {
 			if ctx.Err() == nil && err != io.EOF {
 				slog.Warn("claude event read failed", "taskID", taskID, "err", err)
 			}
+			flush(true)
 			return
 		}
 		if ev == nil {
 			continue
 		}
-		detail := summarizeClaudeEvent(ev)
-		if detail != "" {
-			if time.Since(lastPublished) >= 3*time.Second || strings.Contains(detail, "error") {
-				publishFn("running", "claude: "+detail)
-				lastPublished = time.Now()
-			}
-		}
 		if ev.Type == "result" && tokenFn != nil {
 			if usage := extractClaudeTokenUsage(ev.Data); usage != nil {
 				tokenFn(*usage)
 			}
+			continue
+		}
+		switch ev.Type {
+		case "text_delta":
+			if text := extractClaudeDeltaText(ev.Data); text != "" {
+				textBuf.WriteString(text)
+				flush(false)
+			}
+		case "error":
+			flush(true)
+			publishFn("running", "claude: "+ev.Data)
+		case "tool_use":
+			detail := summarizeClaudeEvent(ev)
+			if detail != "" {
+				pending = append(pending, "claude: "+detail)
+				flush(false)
+			}
+		default:
+			detail := summarizeClaudeEvent(ev)
+			if detail != "" {
+				pending = append(pending, "claude: "+detail)
+				flush(false)
+			}
 		}
 	}
+}
+
+func extractClaudeDeltaText(data string) string {
+	var parsed map[string]any
+	if json.Unmarshal([]byte(data), &parsed) != nil {
+		return ""
+	}
+	delta, _ := parsed["delta"].(map[string]any)
+	if delta == nil {
+		return ""
+	}
+	text, _ := delta["text"].(string)
+	return text
 }
 
 type sseEvent struct {

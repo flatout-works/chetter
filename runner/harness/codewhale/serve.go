@@ -249,8 +249,26 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 	}
 
 	br := newSSEReader(resp.Body)
-	var lastPublished time.Time
 	var summary strings.Builder
+	var pending []string
+	lastFlush := time.Now()
+
+	flush := func(force bool) {
+		if !force && time.Since(lastFlush) < 3*time.Second {
+			return
+		}
+		if summary.Len() > 0 && publishFn != nil {
+			publishFn("running", "codewhale: "+summary.String())
+		}
+		for _, s := range pending {
+			if publishFn != nil {
+				publishFn("running", s)
+			}
+		}
+		pending = pending[:0]
+		lastFlush = time.Now()
+	}
+
 	for {
 		ev, err := br.Read()
 		if err != nil {
@@ -266,19 +284,8 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 		if !ok || envelope.TurnID != turnID {
 			continue
 		}
-		detail := summarizeCodewhaleEnvelope(ev.Type, envelope)
-		if detail != "" {
-			if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
-				summary.WriteString(detail)
-			}
-			if time.Since(lastPublished) >= 3*time.Second || strings.Contains(detail, "error") {
-				if publishFn != nil {
-					publishFn("running", "codewhale: "+detail)
-				}
-				lastPublished = time.Now()
-			}
-		}
 		if ev.Type == "turn.completed" {
+			flush(true)
 			if tokenFn != nil {
 				usage := extractCodewhaleTokenUsage(envelope)
 				tokenFn(*usage)
@@ -296,6 +303,24 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 				return summary.String(), nil
 			}
 		}
+		detail := summarizeCodewhaleEnvelope(ev.Type, envelope)
+		if detail == "" {
+			continue
+		}
+		if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
+			summary.WriteString(detail)
+		} else {
+			switch ev.Type {
+			case "approval.required", "item.failed":
+				flush(true)
+				if publishFn != nil {
+					publishFn("running", "codewhale: "+detail)
+				}
+			default:
+				pending = append(pending, "codewhale: "+detail)
+			}
+		}
+		flush(false)
 	}
 }
 

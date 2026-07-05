@@ -57,29 +57,63 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 
 	br := bufio.NewReader(resp.Body)
 	var dataLines []string
-	lastPublished := time.Time{}
+
+	var textBuf strings.Builder
+	var pending []string
+	lastFlush := time.Now()
+
+	flush := func(force bool) {
+		if !force && time.Since(lastFlush) < 3*time.Second {
+			return
+		}
+		if textBuf.Len() > 0 {
+			publishFn("running", "opencode: "+truncate(textBuf.String()))
+			textBuf.Reset()
+		}
+		for _, s := range pending {
+			publishFn("running", s)
+		}
+		pending = pending[:0]
+		lastFlush = time.Now()
+	}
+
 	for {
 		line, readErr := br.ReadString('\n')
 		if readErr != nil {
 			if readErr != io.EOF && ctx.Err() == nil {
 				slog.Warn("opencode event stream read failed", "taskID", taskID, "err", readErr)
 			}
+			flush(true)
 			return
 		}
 		line = strings.TrimRight(line, "\n\r")
 		if strings.TrimSpace(line) == "" {
 			if len(dataLines) > 0 {
-				detail := summarizeEvent(strings.Join(dataLines, "\n"))
-				if detail != "" {
-					slog.Info("opencode event", "taskID", taskID, "detail", detail)
-					if time.Since(lastPublished) >= 3*time.Second || strings.Contains(detail, "error") || strings.Contains(detail, "permission") {
-						publishFn("running", "opencode: "+detail)
-						lastPublished = time.Now()
-					}
-				}
+				raw := strings.Join(dataLines, "\n")
+				typeName, props := parseEventType(raw)
+				slog.Info("opencode event", "taskID", taskID, "type", typeName)
 				if tokenFn != nil {
 					if usage := extractTokenUsage(dataLines); usage != nil {
 						tokenFn(*usage)
+					}
+				}
+				switch typeName {
+				case "message.part.delta":
+					if text := extractOpenCodeDeltaText(props); text != "" {
+						textBuf.WriteString(text)
+						flush(false)
+					}
+				case "error", "session.error", "session.status":
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						flush(true)
+						publishFn("running", "opencode: "+detail)
+					}
+				default:
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						pending = append(pending, "opencode: "+detail)
+						flush(false)
 					}
 				}
 				dataLines = nil
@@ -90,6 +124,31 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 		}
 	}
+}
+
+func parseEventType(raw string) (string, map[string]any) {
+	var evt map[string]any
+	if err := json.Unmarshal([]byte(raw), &evt); err != nil {
+		return "", nil
+	}
+	typeName, _ := evt["type"].(string)
+	props, _ := evt["properties"].(map[string]any)
+	if props == nil {
+		props, _ = evt["data"].(map[string]any)
+	}
+	return typeName, props
+}
+
+func extractOpenCodeDeltaText(props map[string]any) string {
+	if props == nil {
+		return ""
+	}
+	delta, _ := props["delta"].(map[string]any)
+	if delta == nil {
+		return ""
+	}
+	text, _ := delta["text"].(string)
+	return text
 }
 
 func summarizeEvent(raw string) string {
