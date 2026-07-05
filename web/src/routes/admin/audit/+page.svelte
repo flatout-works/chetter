@@ -281,9 +281,10 @@
       <TableHead>
         <TableHeadCell onclick={() => toggleSort("time")} class="cursor-pointer select-none">Time {sortIcon("time")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("event")} class="cursor-pointer select-none">Event Type {sortIcon("event")}</TableHeadCell>
+        <TableHeadCell>Source</TableHeadCell>
+        <TableHeadCell>Target</TableHeadCell>
+        <TableHeadCell>Token</TableHeadCell>
         <TableHeadCell>Repo</TableHeadCell>
-        <TableHeadCell onclick={() => toggleSort("source")} class="cursor-pointer select-none">Source {sortIcon("source")}</TableHeadCell>
-        <TableHeadCell onclick={() => toggleSort("target")} class="cursor-pointer select-none">Target {sortIcon("target")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("detail")} class="cursor-pointer select-none">Detail {sortIcon("detail")}</TableHeadCell>
       </TableHead>
       <TableBody>
@@ -291,13 +292,6 @@
           <TableBodyRow>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(event.createdAt)}</span></TableBodyCell>
             <TableBodyCell><StatusBadge status={event.eventType} /></TableBodyCell>
-            <TableBodyCell>
-              {#if event.repo}
-                <a href={repoLink(event.repo)} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">{event.repo}</a>
-              {:else}
-                <span class="text-gray-400 text-sm">—</span>
-              {/if}
-            </TableBodyCell>
             <TableBodyCell>
               <span class="text-gray-700 dark:text-gray-300">
                 {#if event.sourceType}
@@ -337,6 +331,20 @@
                 {/if}
               </span>
             </TableBodyCell>
+            <TableBodyCell>
+              {#if event.tokenName}
+                <span class="text-gray-700 dark:text-gray-300" title={event.tokenId}>{event.tokenName}</span>
+              {:else}
+                <span class="text-gray-400 text-sm">—</span>
+              {/if}
+            </TableBodyCell>
+            <TableBodyCell>
+              {#if event.repo}
+                <a href={repoLink(event.repo)} target="_blank" rel="noopener" class="text-blue-600 dark:text-blue-400 hover:underline text-sm">{event.repo}</a>
+              {:else}
+                <span class="text-gray-400 text-sm">—</span>
+              {/if}
+            </TableBodyCell>
             <TableBodyCell class="max-w-xs">
               {#if expandedDetailId === event.id}
                 {@const detailSegments = linkifyDetail(event.detail)}
@@ -369,7 +377,7 @@
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={6}>
+            <TableBodyCell colspan={7}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No audit events found</div>
             </TableBodyCell>
           </TableBodyRow>
