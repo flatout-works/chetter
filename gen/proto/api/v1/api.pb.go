@@ -2939,6 +2939,7 @@ type WhoamiResponse struct {
 	IsAdmin         bool                   `protobuf:"varint,1,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
 	PrimaryTeamName string                 `protobuf:"bytes,2,opt,name=primary_team_name,json=primaryTeamName,proto3" json:"primary_team_name,omitempty"`
 	Teams           []*WhoamiTeamInfo      `protobuf:"bytes,3,rep,name=teams,proto3" json:"teams,omitempty"`
+	Repos           []string               `protobuf:"bytes,4,rep,name=repos,proto3" json:"repos,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2990,6 +2991,13 @@ func (x *WhoamiResponse) GetPrimaryTeamName() string {
 func (x *WhoamiResponse) GetTeams() []*WhoamiTeamInfo {
 	if x != nil {
 		return x.Teams
+	}
+	return nil
+}
+
+func (x *WhoamiResponse) GetRepos() []string {
+	if x != nil {
+		return x.Repos
 	}
 	return nil
 }
@@ -7179,11 +7187,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12ClearQueueResponse\x12\x18\n" +
 	"\acleared\x18\x01 \x01(\bR\acleared\x126\n" +
 	"\x17cancelled_pending_tasks\x18\x02 \x01(\x05R\x15cancelledPendingTasks\"\x0f\n" +
-	"\rWhoamiRequest\"\x85\x01\n" +
+	"\rWhoamiRequest\"\x9b\x01\n" +
 	"\x0eWhoamiResponse\x12\x19\n" +
 	"\bis_admin\x18\x01 \x01(\bR\aisAdmin\x12*\n" +
 	"\x11primary_team_name\x18\x02 \x01(\tR\x0fprimaryTeamName\x12,\n" +
-	"\x05teams\x18\x03 \x03(\v2\x16.api.v1.WhoamiTeamInfoR\x05teams\"4\n" +
+	"\x05teams\x18\x03 \x03(\v2\x16.api.v1.WhoamiTeamInfoR\x05teams\x12\x14\n" +
+	"\x05repos\x18\x04 \x03(\tR\x05repos\"4\n" +
 	"\x0eWhoamiTeamInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"T\n" +

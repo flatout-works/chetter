@@ -1,18 +1,29 @@
 <script lang="ts">
   import { teamFilter, setTeamOptions, toggleTeam, selectAllTeams, setRepoOptions, repoFilter, addRepo, removeRepo } from "$lib/stores/filter.svelte";
-  import { Badge, Button, Input } from "flowbite-svelte";
+  import { Badge, Button, Input, Select } from "flowbite-svelte";
 
-  let { teams }: { teams: { id: string; name: string }[] } = $props();
+  let { teams, repos = [] }: { teams: { id: string; name: string }[]; repos?: string[] } = $props();
 
   let teamOptions = $derived($teamFilter);
   let activeRepos = $derived($repoFilter);
   let repoInput = $state("");
+  let repoSelect = $state("");
 
   $effect(() => {
     if (teams.length > 0 && teamOptions.length === 0) {
       setTeamOptions(teams.map((t) => ({ id: t.id, name: t.name, selected: true })));
     }
   });
+
+  let unusedRepos = $derived(repos.filter((r) => !activeRepos.includes(r)));
+
+  function addRepoFromSelect() {
+    const trimmed = repoSelect.trim();
+    if (trimmed) {
+      addRepo(trimmed);
+      repoSelect = "";
+    }
+  }
 
   function addRepoFromInput() {
     const trimmed = repoInput.trim();
@@ -76,11 +87,20 @@
       </div>
     {/if}
 
+    {#if unusedRepos.length > 0}
+      <Select bind:value={repoSelect} onchange={addRepoFromSelect} size="sm" class="!h-8 !text-xs">
+        <option value="">Add repo…</option>
+        {#each unusedRepos as repo (repo)}
+          <option value={repo}>{repo}</option>
+        {/each}
+      </Select>
+    {/if}
+
     <form onsubmit={(e) => { e.preventDefault(); addRepoFromInput(); }}
           class="flex items-center gap-1">
       <Input
         bind:value={repoInput}
-        placeholder="org/repo"
+        placeholder="Type org/repo…"
         size="sm"
         class="!h-8 !text-xs"
         onkeydown={(e) => { if (e.key === "Enter") addRepoFromInput(); }}

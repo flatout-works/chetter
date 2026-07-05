@@ -10,7 +10,7 @@
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
-  import { Alert, Button, Input, PaginationNav, Search, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
+  import { Alert, Button, PaginationNav, Search, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell } from "flowbite-svelte";
 
   const initialUrl = new URL($page.url);
   const u = $derived($page.url);
@@ -32,9 +32,7 @@
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
-  let taskId = $state(initialParam("task"));
   let artifactType = $state(initialArtifactType());
-  let repo = $state(initialParam("repo"));
   let pageNum = $state(initialNumberParam("page", 0));
   let pageSize = $state(initialNumberParam("size", 25));
   let search = $state(initialParam("q"));
@@ -45,16 +43,14 @@
   function syncURL() {
     const url = new URL(u);
     const s = (k: string, v: string, d: string = "") => v && v !== d ? url.searchParams.set(k, v) : url.searchParams.delete(k);
-    s("task", taskId.trim());
     s("type", artifactType);
-    s("repo", repo.trim());
     s("page", String(pageNum), "0");
     s("size", String(pageSize), "25");
     s("q", search.trim());
     if (url.href !== u.href) goto(`${resolve("/admin/artifacts")}${url.search}${url.hash}` as Parameters<typeof goto>[0], { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  $effect(() => { taskId; artifactType; repo; pageNum; pageSize; search; syncURL(); });
+  $effect(() => { artifactType; pageNum; pageSize; search; syncURL(); });
 
   let sortedArtifacts = $derived.by(() => {
     return [...artifacts].sort((a, b) => {
@@ -83,17 +79,12 @@
     return sortDirection === "asc" ? "↑" : "↓";
   }
 
-  function reloadFromFirstPage() {
-    pageNum = 0;
-    load();
-  }
-
   async function load() {
     loading = true; error = null;
     try {
       const client = createClient(AdminService, getTransport());
       const resp = await client.listTaskArtifacts({
-        taskId: taskId.trim(), artifactType, repo: repo.trim(), search: search.trim(), limit: pageSize, offset,
+        artifactType, search: search.trim(), limit: pageSize, offset,
       });
       artifacts = resp.artifacts ?? [];
     } catch (e) {
@@ -123,9 +114,7 @@
       onkeydown={(e) => { if (e.key === "Enter") { pageNum = 0; load(); } }}
     />
     <div class="flex flex-wrap items-center gap-2">
-      <Input bind:value={taskId} placeholder="Task ID" class="!w-40" onkeydown={(e) => { if (e.key === "Enter") reloadFromFirstPage(); }} />
-      <Input bind:value={repo} placeholder="Repository" class="!w-44" onkeydown={(e) => { if (e.key === "Enter") reloadFromFirstPage(); }} />
-      <Select bind:value={artifactType} onchange={reloadFromFirstPage} class="!w-auto min-w-44">
+      <Select bind:value={artifactType} onchange={() => { pageNum = 0; load(); }} class="!w-auto min-w-44">
         <option value="">All artifact types</option>
         <option value="issue">Issue</option>
         <option value="pr">Pull Request</option>

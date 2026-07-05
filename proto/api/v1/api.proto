@@ -341,6 +341,7 @@ message WhoamiResponse {
   bool is_admin = 1;
   string primary_team_name = 2;
   repeated WhoamiTeamInfo teams = 3;
+  repeated string repos = 4;
 }
 
 message WhoamiTeamInfo {

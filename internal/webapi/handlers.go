@@ -335,6 +335,7 @@ func (h *taskHandler) Whoami(ctx context.Context, req *connect.Request[apiv1.Who
 		IsAdmin:         out.IsAdmin,
 		PrimaryTeamName: out.PrimaryTeamName,
 		Teams:           protoTeams,
+		Repos:           out.KnownRepos,
 	}), nil
 }
 

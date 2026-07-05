@@ -28,6 +28,7 @@
 
   let pageUrls = $state(new Map<string, string>());
   let whoamiTeams = $state<{ id: string; name: string }[]>([]);
+  let whoamiRepos = $state<string[]>([]);
 
   $effect(() => {
     pageUrls.set(activePath, $page.url.href);
@@ -51,6 +52,7 @@
           const resp = await client.whoami({});
           const wTeams = resp.teams ?? [];
           whoamiTeams = wTeams.map((t) => ({ id: t.id || "", name: t.name || "" })).filter((t) => t.id);
+          whoamiRepos = resp.repos ?? [];
           if (whoamiTeams.length > 0) {
             setTeamOptions(whoamiTeams.map((t) => ({ id: t.id, name: t.name, selected: true })));
           }
@@ -187,7 +189,7 @@
       {/if}
     </SidebarGroup>
     {#if !sidebarCollapsed}
-      <FilterBar teams={whoamiTeams} />
+      <FilterBar teams={whoamiTeams} repos={whoamiRepos} />
     {/if}
     <div class="p-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
       {#if sidebarCollapsed}
