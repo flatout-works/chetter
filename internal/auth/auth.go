@@ -5,9 +5,11 @@ import "context"
 type ctxKey struct{}
 
 type Scope struct {
-	TeamID  string
-	TeamIDs []string
-	Admin   bool
+	TeamID    string
+	TeamIDs   []string
+	TokenID   string
+	TokenName string
+	Admin     bool
 }
 
 func WithScope(ctx context.Context, s Scope) context.Context {

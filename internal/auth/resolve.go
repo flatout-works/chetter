@@ -25,12 +25,12 @@ func ResolveToken(ctx context.Context, adminToken string, db *sql.DB, rawToken s
 func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(hash[:])
-	var tokenID, fallbackTeamID string
+	var tokenID, tokenName, fallbackTeamID sql.NullString
 	err := db.QueryRowContext(ctx, `
-		SELECT t.id, u.team_id
+		SELECT t.id, t.name, u.team_id
 		FROM api_tokens t
 		JOIN users u ON u.id = t.user_id
-		WHERE t.token_hash = ?`, tokenHash).Scan(&tokenID, &fallbackTeamID)
+		WHERE t.token_hash = ?`, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
 	if err != nil {
 		return Scope{}
 	}
@@ -38,9 +38,9 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 		SELECT team_id
 		FROM api_token_teams
 		WHERE token_id = ?
-		ORDER BY team_id ASC`, tokenID)
+		ORDER BY team_id ASC`, tokenID.String)
 	if err != nil {
-		return Scope{TeamID: fallbackTeamID, TeamIDs: []string{fallbackTeamID}}
+		return Scope{TokenID: tokenID.String, TokenName: tokenName.String, TeamID: fallbackTeamID.String, TeamIDs: []string{fallbackTeamID.String}}
 	}
 	defer rows.Close()
 	var teamIDs []string
@@ -50,11 +50,11 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 			teamIDs = append(teamIDs, teamID)
 		}
 	}
-	if len(teamIDs) == 0 && fallbackTeamID != "" {
-		teamIDs = []string{fallbackTeamID}
+	if len(teamIDs) == 0 && fallbackTeamID.Valid && fallbackTeamID.String != "" {
+		teamIDs = []string{fallbackTeamID.String}
 	}
 	if len(teamIDs) == 0 {
 		return Scope{}
 	}
-	return Scope{TeamID: teamIDs[0], TeamIDs: teamIDs}
+	return Scope{TokenID: tokenID.String, TokenName: tokenName.String, TeamID: teamIDs[0], TeamIDs: teamIDs}
 }
