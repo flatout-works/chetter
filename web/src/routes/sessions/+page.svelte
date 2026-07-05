@@ -38,7 +38,7 @@
   $effect(() => { statusFilter; search; page; pageSize; syncURL(); });
 
   let sortedSessions = $derived.by(() => {
-    return sessions.sort((a, b) => {
+    return [...sessions].sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;

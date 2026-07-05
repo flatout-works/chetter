@@ -23,7 +23,7 @@
     if (activeFilter) {
       list = list.filter((t) => t.status === activeFilter);
     }
-    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   });
 
   const cards = $derived([

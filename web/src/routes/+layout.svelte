@@ -93,6 +93,18 @@
 
   let activePath = $derived($page.url.pathname);
 
+  let activeNavHref = $derived.by(() => {
+    let best = "";
+    for (let i = navItems.length - 1; i >= 0; i--) {
+      const href = navItems[i].href;
+      if (href === "/" ? activePath === "/" : activePath.startsWith(href)) {
+        best = href;
+        break;
+      }
+    }
+    return best;
+  });
+
   let needsLiveUpdates = $derived(
     authState.authenticated &&
     (activePath === "/" || activePath === "/tasks")
@@ -112,8 +124,7 @@
   });
 
   let isActiveLink = (href: string): boolean => {
-    if (href === "/") return activePath === "/";
-    return activePath.startsWith(href);
+    return href === activeNavHref;
   };
 
   function navHref(href: string): string {
