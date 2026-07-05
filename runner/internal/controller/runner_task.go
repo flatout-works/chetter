@@ -609,11 +609,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		}
 	}
 
-	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, serveArgs...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
+	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, serveArgs...)
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -835,11 +835,11 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		}
 	}
 
-	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, serveArgs...)
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
+	dockerArgs = append(dockerArgs, req.AgentImage)
+	dockerArgs = append(dockerArgs, serveArgs...)
 
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
