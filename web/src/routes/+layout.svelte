@@ -166,7 +166,7 @@
         {/each}
       {:else}
         {#each navItems as item (item.href)}
-          <SidebarItem href={navHref(item.href)} label={item.label}>
+          <SidebarItem href={navHref(item.href)} label={item.label} active={isActiveLink(item.href)}>
             {#snippet icon()}
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />

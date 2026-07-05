@@ -110,3 +110,18 @@ export function hasRepoFilter(): boolean {
 export function selectedRepos(): string[] {
   return get(repoFilter);
 }
+
+// effectiveTeamIDs returns team IDs to send as a server-side filter.
+// Returns empty when all teams are selected (no filtering needed) or when no
+// teams exist; returns selected IDs when the user has deselected some teams.
+export function effectiveTeamIDs(): string[] {
+  const teams = get(teamFilter);
+  if (teams.length === 0) return [];
+  if (teams.every((t) => t.selected)) return [];
+  return teams.filter((t) => t.selected).map((t) => t.id);
+}
+
+// effectiveRepos returns repo patterns to send as a server-side filter.
+export function effectiveRepos(): string[] {
+  return get(repoFilter);
+}

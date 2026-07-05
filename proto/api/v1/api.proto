@@ -293,6 +293,8 @@ message ListTasksRequest {
   int32 limit = 2;
   int32 offset = 3;
   string search = 4;
+  repeated string team_ids = 5;
+  repeated string repos = 6;
 }
 
 message ListTasksResponse {
@@ -402,6 +404,8 @@ message ListSessionsRequest {
   int32 limit = 2;
   int32 offset = 3;
   string search = 4;
+  repeated string team_ids = 5;
+  repeated string repos = 6;
 }
 
 message ListSessionsResponse {
@@ -497,6 +501,8 @@ message UpdateTriggerResponse {
 message ListTriggersRequest {
   bool enabled_only = 1;
   string trigger_type = 2;
+  repeated string team_ids = 3;
+  repeated string repos = 4;
 }
 
 message ListTriggersResponse {
@@ -640,6 +646,7 @@ message ListAuditEventsRequest {
   int32 limit = 8;
   int32 offset = 9;
   string search = 10;
+  repeated string exclude_types = 11;
 }
 
 message ListAuditEventsResponse {

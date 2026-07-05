@@ -6,8 +6,7 @@
   import { SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { teamFilter, repoFilter } from "$lib/stores/filter.svelte";
-  import { applyFilters } from "$lib/filter.svelte";
+  import { effectiveTeamIDs, effectiveRepos } from "$lib/stores/filter.svelte";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
@@ -39,7 +38,7 @@
   $effect(() => { statusFilter; search; page; pageSize; syncURL(); });
 
   let sortedSessions = $derived.by(() => {
-    return applyFilters(sessions, $teamFilter, $repoFilter).sort((a, b) => {
+    return sessions.sort((a, b) => {
       let cmp = 0;
       switch (sortColumn) {
         case "id": cmp = a.id.localeCompare(b.id); break;
@@ -70,7 +69,12 @@
   async function load() {
     try {
       const [sessionResp, fleetResp] = await Promise.all([
-        createClient(SessionService, getTransport()).listSessions({ status: statusFilter, limit: 50, ...(search.trim() ? { search: search.trim() } : {}) }),
+        createClient(SessionService, getTransport()).listSessions({
+          status: statusFilter, limit: 50,
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(effectiveTeamIDs().length > 0 ? { teamIds: effectiveTeamIDs() } : {}),
+          ...(effectiveRepos().length > 0 ? { repos: effectiveRepos() } : {}),
+        }),
         createClient(FleetService, getTransport()).getRunnerHealth({ includeTasks: false }),
       ]);
       sessions = sessionResp.sessions ?? [];

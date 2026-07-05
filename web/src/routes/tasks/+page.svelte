@@ -8,8 +8,6 @@
   import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
-  import { teamFilter, repoFilter } from "$lib/stores/filter.svelte";
-  import { applyFilters } from "$lib/filter.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
@@ -89,7 +87,7 @@
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
-    return applyFilters(sorted, $teamFilter, $repoFilter);
+    return sorted;
   });
 
   let totalPages = $derived(Math.max(1, Math.ceil(sortedTasks.length / pageSize)));

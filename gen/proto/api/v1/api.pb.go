@@ -2408,6 +2408,8 @@ type ListTasksRequest struct {
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	Search        string                 `protobuf:"bytes,4,opt,name=search,proto3" json:"search,omitempty"`
+	TeamIds       []string               `protobuf:"bytes,5,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
+	Repos         []string               `protobuf:"bytes,6,rep,name=repos,proto3" json:"repos,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2468,6 +2470,20 @@ func (x *ListTasksRequest) GetSearch() string {
 		return x.Search
 	}
 	return ""
+}
+
+func (x *ListTasksRequest) GetTeamIds() []string {
+	if x != nil {
+		return x.TeamIds
+	}
+	return nil
+}
+
+func (x *ListTasksRequest) GetRepos() []string {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
 }
 
 type ListTasksResponse struct {
@@ -3400,6 +3416,8 @@ type ListSessionsRequest struct {
 	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	Search        string                 `protobuf:"bytes,4,opt,name=search,proto3" json:"search,omitempty"`
+	TeamIds       []string               `protobuf:"bytes,5,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
+	Repos         []string               `protobuf:"bytes,6,rep,name=repos,proto3" json:"repos,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3460,6 +3478,20 @@ func (x *ListSessionsRequest) GetSearch() string {
 		return x.Search
 	}
 	return ""
+}
+
+func (x *ListSessionsRequest) GetTeamIds() []string {
+	if x != nil {
+		return x.TeamIds
+	}
+	return nil
+}
+
+func (x *ListSessionsRequest) GetRepos() []string {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
 }
 
 type ListSessionsResponse struct {
@@ -4206,6 +4238,8 @@ type ListTriggersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EnabledOnly   bool                   `protobuf:"varint,1,opt,name=enabled_only,json=enabledOnly,proto3" json:"enabled_only,omitempty"`
 	TriggerType   string                 `protobuf:"bytes,2,opt,name=trigger_type,json=triggerType,proto3" json:"trigger_type,omitempty"`
+	TeamIds       []string               `protobuf:"bytes,3,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
+	Repos         []string               `protobuf:"bytes,4,rep,name=repos,proto3" json:"repos,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4252,6 +4286,20 @@ func (x *ListTriggersRequest) GetTriggerType() string {
 		return x.TriggerType
 	}
 	return ""
+}
+
+func (x *ListTriggersRequest) GetTeamIds() []string {
+	if x != nil {
+		return x.TeamIds
+	}
+	return nil
+}
+
+func (x *ListTriggersRequest) GetRepos() []string {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
 }
 
 type ListTriggersResponse struct {
@@ -5462,6 +5510,7 @@ type ListAuditEventsRequest struct {
 	Limit         int32                  `protobuf:"varint,8,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int32                  `protobuf:"varint,9,opt,name=offset,proto3" json:"offset,omitempty"`
 	Search        string                 `protobuf:"bytes,10,opt,name=search,proto3" json:"search,omitempty"`
+	ExcludeTypes  []string               `protobuf:"bytes,11,rep,name=exclude_types,json=excludeTypes,proto3" json:"exclude_types,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5564,6 +5613,13 @@ func (x *ListAuditEventsRequest) GetSearch() string {
 		return x.Search
 	}
 	return ""
+}
+
+func (x *ListAuditEventsRequest) GetExcludeTypes() []string {
+	if x != nil {
+		return x.ExcludeTypes
+	}
+	return nil
 }
 
 type ListAuditEventsResponse struct {
@@ -7095,12 +7151,14 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eGetTaskRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"3\n" +
 	"\x0fGetTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"p\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"\xa1\x01\n" +
 	"\x10ListTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x16\n" +
-	"\x06search\x18\x04 \x01(\tR\x06search\"7\n" +
+	"\x06search\x18\x04 \x01(\tR\x06search\x12\x19\n" +
+	"\bteam_ids\x18\x05 \x03(\tR\ateamIds\x12\x14\n" +
+	"\x05repos\x18\x06 \x03(\tR\x05repos\"7\n" +
 	"\x11ListTasksResponse\x12\"\n" +
 	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\"M\n" +
 	"\x11CancelTaskRequest\x12 \n" +
@@ -7149,12 +7207,14 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x1aGetLatestTaskEventResponse\x12'\n" +
 	"\x05event\x18\x01 \x01(\v2\x11.api.v1.TaskEventR\x05event\x12\x17\n" +
 	"\aage_sec\x18\x02 \x01(\x05R\x06ageSec\x12\x19\n" +
-	"\bis_stale\x18\x03 \x01(\bR\aisStale\"s\n" +
+	"\bis_stale\x18\x03 \x01(\bR\aisStale\"\xa4\x01\n" +
 	"\x13ListSessionsRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x16\n" +
-	"\x06search\x18\x04 \x01(\tR\x06search\"H\n" +
+	"\x06search\x18\x04 \x01(\tR\x06search\x12\x19\n" +
+	"\bteam_ids\x18\x05 \x03(\tR\ateamIds\x12\x14\n" +
+	"\x05repos\x18\x06 \x03(\tR\x05repos\"H\n" +
 	"\x14ListSessionsResponse\x120\n" +
 	"\bsessions\x18\x01 \x03(\v2\x14.api.v1.AgentSessionR\bsessions\";\n" +
 	"\x11GetSessionRequest\x12&\n" +
@@ -7230,10 +7290,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"\b_enabled\"B\n" +
 	"\x15UpdateTriggerResponse\x12)\n" +
-	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"[\n" +
+	"\atrigger\x18\x01 \x01(\v2\x0f.api.v1.TriggerR\atrigger\"\x8c\x01\n" +
 	"\x13ListTriggersRequest\x12!\n" +
 	"\fenabled_only\x18\x01 \x01(\bR\venabledOnly\x12!\n" +
-	"\ftrigger_type\x18\x02 \x01(\tR\vtriggerType\"C\n" +
+	"\ftrigger_type\x18\x02 \x01(\tR\vtriggerType\x12\x19\n" +
+	"\bteam_ids\x18\x03 \x03(\tR\ateamIds\x12\x14\n" +
+	"\x05repos\x18\x04 \x03(\tR\x05repos\"C\n" +
 	"\x14ListTriggersResponse\x12+\n" +
 	"\btriggers\x18\x01 \x03(\v2\x0f.api.v1.TriggerR\btriggers\"3\n" +
 	"\x14DeleteTriggerRequest\x12\x1b\n" +
@@ -7299,7 +7361,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x10ListUsersRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\";\n" +
 	"\x11ListUsersResponse\x12&\n" +
-	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\xae\x02\n" +
+	"\x05users\x18\x01 \x03(\v2\x10.api.v1.UserInfoR\x05users\"\xd3\x02\n" +
 	"\x16ListAuditEventsRequest\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x01 \x01(\tR\teventType\x12\x1f\n" +
@@ -7315,7 +7377,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x05limit\x18\b \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\t \x01(\x05R\x06offset\x12\x16\n" +
 	"\x06search\x18\n" +
-	" \x01(\tR\x06search\"E\n" +
+	" \x01(\tR\x06search\x12#\n" +
+	"\rexclude_types\x18\v \x03(\tR\fexcludeTypes\"E\n" +
 	"\x17ListAuditEventsResponse\x12*\n" +
 	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xdc\x01\n" +
 	"\x18ListTaskArtifactsRequest\x12\x17\n" +

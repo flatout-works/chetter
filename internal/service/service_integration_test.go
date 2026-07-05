@@ -1224,7 +1224,7 @@ func TestMultiTeamTokenListsUnionAndRequiresSubmitOwner(t *testing.T) {
 		t.Fatal("expected submit for out-of-scope team to fail")
 	}
 
-	tasks, err := svc.ListTasks(multiCtx, "", 20, 0, "")
+	tasks, err := svc.ListTasks(multiCtx, "", 20, 0, "", nil, nil)
 	if err != nil {
 		t.Fatalf("list tasks: %v", err)
 	}
