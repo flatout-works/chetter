@@ -359,15 +359,15 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 }
 
 func opencodeServeCommand(port int) []string {
-	return []string{"opencode", "serve", "--port", strconv.Itoa(port)}
+	return []string{"opencode", "serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 
 func opencodeServeArgs(port int) []string {
-	return []string{"serve", "--port", strconv.Itoa(port)}
+	return []string{"serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 
 func opencodeServeArgsResume(port int) []string {
-	return []string{"serve", "--port", strconv.Itoa(port)}
+	return []string{"serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 
 func LogMCPStatus(ctx context.Context, baseURL, secret string) {
