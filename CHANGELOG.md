@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-06
+
+### Added
+
+- `CHETTER_IMAGE_REGISTRY` environment variable for resolving unqualified agent images via a configurable registry prefix. Images without a registry host (e.g. `my-agent:latest`) are prefixed automatically.
+- Audit log now captures and displays the token identity (id/name) that performed each action, with a new Token column in the audit table UI showing the token name.
+
+### Changed
+
+- OpenCode harness switched from a blocking long-lived HTTP POST to `prompt_async` + status polling every 2s, preventing EOF/timeout failures on long-running tasks (45+ min) caused by gVisor connection drops, proxy timeouts, or network hiccups. Session export also uses the async path.
+- Streaming events from OpenCode, Claude, and CodeWhale harnesses are now accumulated and batched between 3-second publish windows instead of being silently dropped, improving real-time progress reporting.
+- Sidebar and audit log filters moved from client-side to server-side: exclude_types, team_ids, and repo filtering are now applied via raw SQL before LIMIT/OFFSET on the audit log, tasks, sessions, and triggers pages, fixing page-size shrinkage when toggling exclusions.
+- Website redesigned with SVG logo, matching subpages (how-it-works, technical), and shared marketing CSS. Documentation content updated to emphasize gVisor sandboxing and reword UI section.
+- Admin icon changed from gear to shield-check for distinctiveness from the Settings icon.
+
+### Fixed
+
+- OpenCode serve binds to `0.0.0.0` instead of `127.0.0.1`, fixing `connection reset by peer` errors under gVisor where Docker port-mapped traffic arrives on a non-loopback interface.
+- `--hostname` Docker flag correctly placed before the image name in `docker run` arguments, fixing CodeWhale harness failure (the flag was treated as a command argument).
+- Nav highlighting picks the most specific (longest) matching href, preventing `/admin` from highlighting on `/admin/audit` and similar sub-paths.
+- Svelte 5 `$state` arrays no longer mutated in place on sessions and dashboard pages, fixing sorting UI bugs that broke reactivity.
+- CodeWhale harness: duplicate `turn.completed` event handling removed.
+
+### Web UI
+
+- Audit log Token column showing which API token performed each action, with full token_id as title tooltip.
+- FilterBar repo dropdown showing known repos populated from distinct `chetter_task_artifacts.repo` values, alongside the free-text repo input.
+- Artifacts page simplified: Task ID and Repository filter inputs removed (redundant with global repo filtering in FilterBar).
+- Sidebar active state correctly highlights current page in expanded state.
+
 ## 2026-07-03
 
 ### Added
