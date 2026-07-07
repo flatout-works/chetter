@@ -108,7 +108,7 @@ maps the string to a constructor.
 ## OpenCode (default)
 
 **Binary:** `opencode` (installed via opencode.ai/install)
-**Execution model:** Serve (HTTP API on localhost)
+**Execution model:** Serve (HTTP API, binds to `0.0.0.0` for gVisor)
 
 OpenCode runs as a local HTTP server binding to `0.0.0.0` (required
 for gVisor port-mapped traffic). The runner starts `opencode serve`,
