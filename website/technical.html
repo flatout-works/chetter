@@ -64,7 +64,7 @@
       </section>
 
       <section class="section detail-grid">
-        <article class="card detail-card"><span>Execution modes</span><h3>Serve mode and RPC mode</h3><p>OpenCode and Claude-style harnesses can expose an HTTP serve API; RPC-capable harnesses can stream JSONL-style events over stdio. The runner normalizes both into task events.</p></article>
+        <article class="card detail-card"><span>Execution modes</span><h3>Serve mode and RPC mode</h3><p>OpenCode, Claude Code (serve-proxy), and CodeWhale harnesses expose an HTTP serve API for streaming, session management, and prompt dispatch. Pi uses RPC mode with JSONL events over stdio. The runner normalizes both into task events.</p></article>
         <article class="card detail-card"><span>Isolation</span><h3>Workspace + container boundary</h3><p>Docker mode bind-mounts the workspace into <code>/workspace</code>. gVisor can run containers with <code>runsc</code>, and proxy/DNS settings constrain outbound network access.</p></article>
         <article class="card detail-card"><span>Diagnostics</span><h3>Failures keep evidence</h3><p>Transport failures capture container state, HTTP probes, and log tails. Recoverable failures can preserve workspaces and session exports for follow-up tasks.</p></article>
         <article class="card detail-card"><span>Definitions</span><h3>Git-backed configuration</h3><p>Agent markdown, skills, triggers, task templates, and model catalogs can sync from Git every five minutes. Definitions are materialized and validated before use.</p></article>
