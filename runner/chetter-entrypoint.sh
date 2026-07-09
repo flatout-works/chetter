@@ -191,10 +191,6 @@ deploy:
   provider: local
   registry: "${DOCKER_REGISTRY:-}"
   chetter_url: chetter.flatout.works
-
-chetter_mcp:
-  url: "${CHETTER_MCP_URL:-}"
-  auth_token: "${CHETTER_MCP_AUTH_TOKEN:-}"
 EOF
 
 exec runner -config /tmp/runner.yaml

@@ -6,10 +6,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/configguard"
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error {
 	codewhaleDir := wsDir + "/.codewhale"
 	if err := os.MkdirAll(codewhaleDir, 0750); err != nil {
 		return err
@@ -25,18 +27,10 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		}
 	}
 
-	if chetterMCPURL != "" {
-		chetterMCP := map[string]any{
-			"type":    "http",
-			"url":     chetterMCPURL,
-			"enabled": true,
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddCodeWhaleServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
 		}
-		if chetterMCPToken != "" {
-			chetterMCP["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
-		mcpServers["chetter"] = chetterMCP
 	}
 
 	if len(mcpServers) > 0 {
@@ -49,6 +43,9 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		}
 		agentMCPPath := codewhaleDir + "/mcp.json"
 		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
+			return err
+		}
+		if err := configguard.Protect(wsDir, agentMCPPath); err != nil {
 			return err
 		}
 		slog.Info("wrote codewhale mcp config", "path", agentMCPPath)

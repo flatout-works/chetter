@@ -41,9 +41,15 @@ func TestResolvedModelID(t *testing.T) {
 
 func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
+	t.Setenv("EXAMPLE_MCP_TOKEN", "token")
 
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", false); err != nil {
+	req := task.TaskRequest{MCPProfiles: []task.MCPProfile{{
+		Name:           "context",
+		URL:            "https://mcp.example.com/mcp",
+		BearerTokenEnv: "EXAMPLE_MCP_TOKEN",
+	}}}
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -68,8 +74,13 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if _, ok := servers["runner-bridge"]; !ok {
 		t.Fatal("expected runner-bridge MCP server")
 	}
-	if _, ok := servers["chetter"]; !ok {
-		t.Fatal("expected chetter MCP server")
+	profile, ok := servers["context"].(map[string]any)
+	if !ok {
+		t.Fatal("expected context MCP server")
+	}
+	headers, ok := profile["headers"].(map[string]any)
+	if !ok || headers["Authorization"] != "Bearer token" {
+		t.Fatalf("expected resolved bearer token, got %#v", profile["headers"])
 	}
 }
 

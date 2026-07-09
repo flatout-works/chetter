@@ -31,7 +31,3 @@ workspace: {}
 git:
   ssh_key_path: ""
   pat: ""
-
-chetter_mcp:
-  url: ""
-  auth_token: ""

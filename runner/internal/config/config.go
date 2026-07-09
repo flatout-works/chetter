@@ -23,15 +23,14 @@ const (
 )
 
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	Runner     RunnerConfig     `yaml:"runner"`
-	Proxy      ProxyConfig      `yaml:"proxy"`
-	DNS        DNSConfig        `yaml:"dns"`
-	Git        GitConfig        `yaml:"git"`
-	Workspace  map[string]any   `yaml:"workspace"`
-	Execution  ExecutionConfig  `yaml:"execution"`
-	Deploy     DeployConfig     `yaml:"deploy"`
-	ChetterMCP ChetterMCPConfig `yaml:"chetter_mcp"`
+	Server    ServerConfig    `yaml:"server"`
+	Runner    RunnerConfig    `yaml:"runner"`
+	Proxy     ProxyConfig     `yaml:"proxy"`
+	DNS       DNSConfig       `yaml:"dns"`
+	Git       GitConfig       `yaml:"git"`
+	Workspace map[string]any  `yaml:"workspace"`
+	Execution ExecutionConfig `yaml:"execution"`
+	Deploy    DeployConfig    `yaml:"deploy"`
 }
 
 type ServerConfig struct {
@@ -72,11 +71,6 @@ type DeployConfig struct {
 	Provider   string `yaml:"provider"`
 	Registry   string `yaml:"registry"`
 	ChetterURL string `yaml:"chetter_url"`
-}
-
-type ChetterMCPConfig struct {
-	URL       string `yaml:"url"`
-	AuthToken string `yaml:"auth_token"`
 }
 
 func Load(path string) (*Config, error) {
@@ -143,9 +137,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Deploy.ChetterURL == "" {
 		cfg.Deploy.ChetterURL = DefaultChetterURL
-	}
-	if cfg.ChetterMCP.AuthToken == "" {
-		cfg.ChetterMCP.AuthToken = os.Getenv("CHETTER_MCP_AUTH_TOKEN")
 	}
 	if !cfg.Execution.UseGVisor {
 		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"

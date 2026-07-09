@@ -150,7 +150,7 @@ func TestGenerateOpenCodeConfig_UsesMCPKeyNotMCPservers(t *testing.T) {
 
 	wsDir := t.TempDir()
 
-	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", false, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -173,12 +173,35 @@ func TestGenerateOpenCodeConfig_UsesMCPKeyNotMCPservers(t *testing.T) {
 	}
 }
 
-func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
+func TestGenerateOpenCodeConfig_DoesNotMountAmbientChetterToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-
+	t.Setenv("CHETTER_MCP_AUTH_TOKEN", "ambient-admin-token")
 	wsDir := t.TempDir()
 
-	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "test-token", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", false, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(wsDir, ".opencode.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if strings.Contains(string(data), "ambient-admin-token") || strings.Contains(string(data), `"chetter"`) {
+		t.Fatalf("ambient Chetter MCP auth leaked into task config: %s", data)
+	}
+}
+
+func TestGenerateOpenCodeConfig_TaskMCPProfileUnderMCPKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("EXAMPLE_MCP_TOKEN", "test-token")
+
+	wsDir := t.TempDir()
+	req := task.TaskRequest{MCPProfiles: []task.MCPProfile{{
+		Name:           "context",
+		Transport:      "http",
+		URL:            "https://mcp.example.com/mcp",
+		BearerTokenEnv: "EXAMPLE_MCP_TOKEN",
+	}}}
+	if err := opencode.GenerateConfigForTask(wsDir, "http://localhost:9999/mcp", false, req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -198,28 +221,32 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 
 	mcps, ok := parsed["mcp"].(map[string]any)
 	if !ok {
-		t.Fatal("expected 'mcp' key to be present with chetter configured")
+		t.Fatal("expected 'mcp' key to be present with a task profile configured")
 	}
 
-	chetter, ok := mcps["chetter"].(map[string]any)
+	contextMCP, ok := mcps["context"].(map[string]any)
 	if !ok {
-		t.Fatal("expected chetter MCP entry under 'mcp' key")
+		t.Fatal("expected context MCP entry under 'mcp' key")
 	}
-	if chetter["type"] != "remote" {
-		t.Errorf("expected chetter type 'remote', got %v", chetter["type"])
+	if contextMCP["type"] != "remote" {
+		t.Errorf("expected profile type 'remote', got %v", contextMCP["type"])
 	}
-	if chetter["url"] != "https://chetter.example.com/mcp" {
-		t.Errorf("unexpected chetter URL: %v", chetter["url"])
+	if contextMCP["url"] != "https://mcp.example.com/mcp" {
+		t.Errorf("unexpected profile URL: %v", contextMCP["url"])
 	}
-	if chetter["enabled"] != true {
-		t.Errorf("expected chetter MCP enabled, got %v", chetter["enabled"])
+	if contextMCP["enabled"] != true {
+		t.Errorf("expected profile enabled, got %v", contextMCP["enabled"])
 	}
-	headers, ok := chetter["headers"].(map[string]any)
+	headers, ok := contextMCP["headers"].(map[string]any)
 	if !ok {
-		t.Fatal("expected chetter MCP to include auth headers")
+		t.Fatal("expected profile to include auth headers")
 	}
 	if headers["Authorization"] != "Bearer test-token" {
 		t.Errorf("unexpected auth header: %v", headers["Authorization"])
+	}
+	permissions, ok := parsed["permission"].(map[string]any)
+	if !ok || permissions["mcp__context__*"] != "allow" {
+		t.Fatalf("expected all context profile tools to be allowed, got %#v", parsed["permission"])
 	}
 }
 
@@ -229,7 +256,7 @@ func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 
 	wsDir := t.TempDir()
 
-	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", true, true); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", true, true); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -272,7 +299,7 @@ func TestGenerateOpenCodeConfig_NoMCPBridgeWhenNotRequested(t *testing.T) {
 
 	wsDir := t.TempDir()
 
-	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", "", "", false, false); err != nil {
+	if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", false, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -301,17 +328,19 @@ func TestGenerateOpenCodeConfig_ValidatedByOpenCode(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		chetterURL    string
-		chetterToken  string
+		profiles      []task.MCPProfile
 		includeBridge bool
 	}{
 		{
 			name: "minimal",
 		},
 		{
-			name:          "with_chetter_mcp",
-			chetterURL:    "https://chetter.example.com/mcp",
-			chetterToken:  "test-token",
+			name: "with_task_mcp_profile",
+			profiles: []task.MCPProfile{{
+				Name:           "context",
+				URL:            "https://mcp.example.com/mcp",
+				BearerTokenEnv: "EXAMPLE_MCP_TOKEN",
+			}},
 			includeBridge: true,
 		},
 	}
@@ -319,10 +348,11 @@ func TestGenerateOpenCodeConfig_ValidatedByOpenCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
+			t.Setenv("EXAMPLE_MCP_TOKEN", "test-token")
 
 			wsDir := t.TempDir()
-
-			if err := opencode.GenerateConfig(wsDir, "http://localhost:9999/mcp", tt.chetterURL, tt.chetterToken, tt.includeBridge, false); err != nil {
+			req := task.TaskRequest{MCPProfiles: tt.profiles}
+			if err := opencode.GenerateConfigForTask(wsDir, "http://localhost:9999/mcp", tt.includeBridge, req, false); err != nil {
 				t.Fatalf("GenerateConfig failed: %v", err)
 			}
 
@@ -636,6 +666,26 @@ func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
 	})
 	if req.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", req.Harness)
+	}
+}
+
+func TestProtoTaskToRequest_MapsMCPProfilesWithoutResolvingToken(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{
+		TaskId: "task-mcp",
+		McpProfiles: []*runnerv1.MCPProfile{{
+			Name:           "context",
+			Transport:      "http",
+			Url:            "https://mcp.example.com/mcp",
+			Headers:        map[string]string{"X-Tenant": "engineering"},
+			BearerTokenEnv: "CONTEXT_MCP_TOKEN",
+		}},
+	})
+	if len(req.MCPProfiles) != 1 {
+		t.Fatalf("expected one MCP profile, got %#v", req.MCPProfiles)
+	}
+	profile := req.MCPProfiles[0]
+	if profile.Name != "context" || profile.URL != "https://mcp.example.com/mcp" || profile.BearerTokenEnv != "CONTEXT_MCP_TOKEN" {
+		t.Fatalf("unexpected MCP profile: %#v", profile)
 	}
 }
 

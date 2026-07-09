@@ -69,14 +69,6 @@
         "registry": { "type": "string" },
         "chetter_url": { "type": "string" }
       }
-    },
-    "chetter_mcp": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "url": { "type": "string" },
-        "auth_token": { "type": "string" }
-      }
     }
   }
 }

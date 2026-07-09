@@ -264,35 +264,7 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 	s.cancel = cancel
 	s.mu.Unlock()
 
-	prompt := req.Prompt
-	if len(req.Skills) > 0 {
-		prompt = fmt.Sprintf("You have access to the following skills: %s. Use them when relevant.\n\n%s",
-			strings.Join(req.Skills, ", "), prompt)
-	}
-
-	model := req.Model
-	if model == "" {
-		model = "claude-sonnet-4-5"
-	}
-
-	args := []string{
-		"claude",
-		"-p", prompt,
-		"--output-format", "stream-json",
-		"--verbose",
-		"--include-partial-messages",
-		"--model", model,
-		"--max-turns", "100",
-	}
-	if req.Agent != "" {
-		systemPrompt := resolveAgentFile(req.Agent)
-		if systemPrompt != "" {
-			args = append(args, "--system-prompt", systemPrompt)
-		}
-	}
-	if req.ResumeID != "" {
-		args = append(args, "--resume", req.ResumeID)
-	}
+	args, model := buildClaudeCommand(req)
 
 	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID)
 
@@ -347,6 +319,40 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "completed", "summary": summary})
+}
+
+func buildClaudeCommand(req messageRequest) ([]string, string) {
+	prompt := req.Prompt
+	if len(req.Skills) > 0 {
+		prompt = fmt.Sprintf("You have access to the following skills: %s. Use them when relevant.\n\n%s",
+			strings.Join(req.Skills, ", "), prompt)
+	}
+
+	model := req.Model
+	if model == "" {
+		model = "claude-sonnet-4-5"
+	}
+
+	args := []string{
+		"claude",
+		"-p", prompt,
+		"--output-format", "stream-json",
+		"--verbose",
+		"--include-partial-messages",
+		"--model", model,
+		"--max-turns", "100",
+		"--mcp-config", "/workspace/.mcp.json",
+		"--strict-mcp-config",
+	}
+	if req.Agent != "" {
+		if systemPrompt := resolveAgentFile(req.Agent); systemPrompt != "" {
+			args = append(args, "--system-prompt", systemPrompt)
+		}
+	}
+	if req.ResumeID != "" {
+		args = append(args, "--resume", req.ResumeID)
+	}
+	return args, model
 }
 
 func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reader) {

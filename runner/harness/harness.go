@@ -11,7 +11,7 @@ import (
 type Harness interface {
 	Name() string
 
-	GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error
+	GenerateConfig(wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error
 
 	ConfigFilePath(wsDir string) string
 	ConfigFilePathGlobal(wsDir string) string

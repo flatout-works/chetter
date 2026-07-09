@@ -26,8 +26,8 @@ func New() *CodeWhale {
 
 func (cw *CodeWhale) Name() string { return "codewhale" }
 
-func (cw *CodeWhale) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req, isLocal)
+func (cw *CodeWhale) GenerateConfig(wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfig(wsDir, runnerMCPURL, req, isLocal)
 }
 
 func (cw *CodeWhale) ConfigFilePath(wsDir string) string {

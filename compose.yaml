@@ -58,7 +58,6 @@ services:
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}
-      CHETTER_MCP_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-chetter-runner:latest}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-}
     volumes:
@@ -84,7 +83,6 @@ services:
       MEM9_API_URL: ${MEM9_API_URL:-https://api.mem9.ai}
       MEM9_DEBUG: ${MEM9_DEBUG:-false}
       CHETTER_MCP_AUTH_TOKEN: ${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}
-      CHETTER_MCP_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_IMAGE: ${CHETTER_RUNNER_IMAGE:-chetter-runner:latest}
       CHETTER_RUNNER_IMAGE_DIGEST: ${CHETTER_RUNNER_IMAGE_DIGEST:-}
     volumes:

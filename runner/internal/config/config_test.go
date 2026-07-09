@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -113,5 +114,22 @@ func TestLoadInvalidYAML(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
+	}
+}
+
+func TestLoadRejectsRemovedGlobalChetterMCPConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.yaml")
+	data := `chetter_mcp:
+  url: https://chetter.example.com/mcp
+  auth_token: admin-token
+`
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "field chetter_mcp not found") {
+		t.Fatalf("expected removed chetter_mcp config to be rejected, got %v", err)
 	}
 }

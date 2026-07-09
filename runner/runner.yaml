@@ -58,7 +58,3 @@ deploy:
   provider: local
   registry: ""
   chetter_url: chetter.flatout.works
-
-chetter_mcp:
-  url: ""
-  auth_token: ""

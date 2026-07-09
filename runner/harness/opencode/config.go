@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/configguard"
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -118,15 +120,15 @@ func ensureProvider(cfg map[string]any, providerID string) {
 	}
 }
 
-func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{}, isLocal)
+func GenerateConfig(wsDir, runnerMCPURL string, includeRunnerMCP, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, includeRunnerMCP, task.TaskRequest{}, isLocal)
 }
 
-func GenerateConfigWithEnv(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
+func GenerateConfigWithEnv(wsDir, runnerMCPURL string, includeRunnerMCP bool, taskEnv map[string]string, isLocal bool) error {
+	return GenerateConfigForTask(wsDir, runnerMCPURL, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
 }
 
-func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
+func GenerateConfigForTask(wsDir, runnerMCPURL string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
 	configSource := wsConfigPath
@@ -153,24 +155,15 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 			"enabled": true,
 		}
 	}
-	if chetterMCPURL != "" {
+	if len(req.MCPProfiles) > 0 {
 		mcpServers, _ := cfg["mcp"].(map[string]any)
 		if mcpServers == nil {
 			mcpServers = make(map[string]any)
 			cfg["mcp"] = mcpServers
 		}
-		dfm := map[string]any{
-			"type":    "remote",
-			"url":     chetterMCPURL,
-			"enabled": true,
+		if err := mcpconfig.AddOpenCodeServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
 		}
-		if chetterMCPToken != "" {
-			dfm["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
-		mcpServers["chetter"] = dfm
-		slog.Info("injected chetter MCP into opencode config", "url", chetterMCPURL)
 	}
 
 	perms := map[string]any{
@@ -192,6 +185,9 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
 		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
 	}
+	for _, profile := range req.MCPProfiles {
+		perms["mcp__"+profile.Name+"__*"] = "allow"
+	}
 
 	cfg["permission"] = perms
 
@@ -209,6 +205,9 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 	globalConfigPath := globalConfigDir + "/config.json"
 	if err := os.WriteFile(globalConfigPath, out, 0644); err != nil {
 		return fmt.Errorf("write opencode global config: %w", err)
+	}
+	if err := configguard.Protect(wsDir, wsConfigPath, globalConfigPath); err != nil {
+		return fmt.Errorf("protect opencode config: %w", err)
 	}
 	writeAgentAndSkillDefinitions(wsDir, req)
 	copyOpenCodeState(wsDir, isLocal)

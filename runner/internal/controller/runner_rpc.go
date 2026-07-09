@@ -110,6 +110,19 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 	if timeoutSec == 0 {
 		timeoutSec = defaultTaskTimeoutSec
 	}
+	mcpProfiles := make([]task.MCPProfile, 0, len(t.McpProfiles))
+	for _, profile := range t.McpProfiles {
+		if profile == nil {
+			continue
+		}
+		mcpProfiles = append(mcpProfiles, task.MCPProfile{
+			Name:           profile.Name,
+			Transport:      profile.Transport,
+			URL:            profile.Url,
+			Headers:        profile.Headers,
+			BearerTokenEnv: profile.BearerTokenEnv,
+		})
+	}
 	return task.TaskRequest{
 		TaskID:                 t.TaskId,
 		AgentImage:             t.AgentImage,
@@ -124,6 +137,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		ProviderAPIKeyEnv:      t.ProviderApiKeyEnv,
 		VariantID:              t.VariantId,
 		Skills:                 t.Skills,
+		MCPProfiles:            mcpProfiles,
 		TimeoutSec:             timeoutSec,
 		MaxMemoryMB:            int(t.MaxMemoryMb),
 		MaxCPU:                 int(t.MaxCpu),
@@ -166,12 +180,12 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		WorkspacePath:     resp.WorkspacePath,
 		ErrorCategory:     resp.ErrorCategory,
 		TokenUsage: &runnerv1.TokenUsage{
-			InputTokens:     resp.TokenUsage.InputTokens,
-			OutputTokens:    resp.TokenUsage.OutputTokens,
-			CacheReadTokens: resp.TokenUsage.CacheReadTokens,
+			InputTokens:      resp.TokenUsage.InputTokens,
+			OutputTokens:     resp.TokenUsage.OutputTokens,
+			CacheReadTokens:  resp.TokenUsage.CacheReadTokens,
 			CacheWriteTokens: resp.TokenUsage.CacheWriteTokens,
-			ReasoningTokens: resp.TokenUsage.ReasoningTokens,
-			CostCents:       resp.TokenUsage.CostCents,
+			ReasoningTokens:  resp.TokenUsage.ReasoningTokens,
+			CostCents:        resp.TokenUsage.CostCents,
 		},
 	}
 	report := func(ctx context.Context) error {

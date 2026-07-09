@@ -62,3 +62,11 @@ func TestSessionRecordsTextDeltaAndResultError(t *testing.T) {
 		t.Fatalf("runErr = %q, want boom", s.runErr)
 	}
 }
+
+func TestBuildClaudeCommandLoadsGeneratedMCPConfig(t *testing.T) {
+	args, _ := buildClaudeCommand(messageRequest{Prompt: "review"})
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--mcp-config /workspace/.mcp.json") || !strings.Contains(joined, "--strict-mcp-config") {
+		t.Fatalf("Claude command does not load the generated MCP config: %v", args)
+	}
+}

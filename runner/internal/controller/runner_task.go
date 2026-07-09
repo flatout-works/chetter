@@ -147,7 +147,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, req, isLocal); err != nil {
 		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
 	}
 

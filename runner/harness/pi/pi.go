@@ -18,8 +18,8 @@ func (p *Pi) Name() string { return "pi" }
 
 func (p *Pi) SupportsRpc() bool { return true }
 
-func (p *Pi) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
-	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, isLocal)
+func (p *Pi) GenerateConfig(wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfig(wsDir, runnerMCPURL, req, isLocal)
 }
 
 func (p *Pi) ConfigFilePath(wsDir string) string {

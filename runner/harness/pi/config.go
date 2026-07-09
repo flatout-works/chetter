@@ -5,9 +5,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/harness/configguard"
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL string, req task.TaskRequest, isLocal bool) error {
 	piDir := filepath.Join(wsDir, ".pi")
 	agentDir := filepath.Join(piDir, "agent")
 	if err := os.MkdirAll(agentDir, 0750); err != nil {
@@ -45,31 +49,28 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"url":       runnerMCPURL,
-			"lifecycle": "keep-alive",
+			"url":         runnerMCPURL,
+			"lifecycle":   "keep-alive",
 			"idleTimeout": 0,
 		}
 	}
-	if chetterMCPURL != "" {
-		server := map[string]any{
-			"url":       chetterMCPURL,
-			"lifecycle": "keep-alive",
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddPiServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
 		}
-		if chetterMCPToken != "" {
-			server["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
-		mcpServers["chetter"] = server
 	}
 	if len(mcpServers) > 0 {
 		mcpConfig := map[string]any{
 			"mcpServers": mcpServers,
 		}
-		if err := writeJSON(filepath.Join(wsDir, ".mcp.json"), mcpConfig, 0644); err != nil {
+		mcpPath := filepath.Join(wsDir, ".mcp.json")
+		if err := writeJSON(mcpPath, mcpConfig, 0644); err != nil {
 			return err
 		}
-		slog.Info("wrote pi mcp config", "path", filepath.Join(wsDir, ".mcp.json"))
+		if err := configguard.Protect(wsDir, mcpPath); err != nil {
+			return err
+		}
+		slog.Info("wrote pi mcp config", "path", mcpPath)
 	}
 
 	if isLocal {
