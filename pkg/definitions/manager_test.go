@@ -49,6 +49,149 @@ func TestScanDefinitionsRejectsInvalidTriggerYAML(t *testing.T) {
 	}
 }
 
+func TestScanDefinitionsIncludesOnlyGlobalMCPProfiles(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "mcp-profiles/root-profile.yaml", "name: root-profile\nurl: https://mcp.example.com/root\n")
+	writeFile(t, root, "global/mcp-profiles/global-profile.yml", "name: global-profile\nurl: https://mcp.example.com/global\n")
+
+	defs, err := New("", "", root).ScanDefinitions()
+	if err != nil {
+		t.Fatalf("scan definitions: %v", err)
+	}
+	if len(defs) != 2 {
+		t.Fatalf("expected only two global MCP profiles, got %d: %#v", len(defs), defs)
+	}
+	assertDefinition(t, defs, DefinitionTypeMCPProfile, "root-profile", "mcp-profiles/root-profile.yaml")
+	assertDefinition(t, defs, DefinitionTypeMCPProfile, "global-profile", "global/mcp-profiles/global-profile.yml")
+	for _, def := range defs {
+		if def.Scope != DefinitionScopeGlobal {
+			t.Fatalf("MCP profile must be global: %#v", def)
+		}
+	}
+}
+
+func TestScanDefinitionsRejectsScopedMCPProfiles(t *testing.T) {
+	for _, path := range []string{
+		"groups/engineering/mcp-profiles/team-profile.yaml",
+		"repos/acme/app/mcp-profiles/repo-profile.yml",
+	} {
+		t.Run(path, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, path, "name: scoped\nurl: https://mcp.example.com/mcp\n")
+			_, err := New("", "", root).ScanDefinitions()
+			if err == nil || !strings.Contains(err.Error(), "MCP profiles are global-only") {
+				t.Fatalf("expected scoped profile rejection, got %v", err)
+			}
+		})
+	}
+}
+
+func TestScanDefinitionsRejectsDuplicateGlobalMCPProfileNames(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "mcp-profiles/context.yaml", "name: context\nurl: https://one.example.com/mcp\n")
+	writeFile(t, root, "global/mcp-profiles/context.yml", "name: context\nurl: https://two.example.com/mcp\n")
+
+	_, err := New("", "", root).ScanDefinitions()
+	if err == nil || !strings.Contains(err.Error(), `duplicate global MCP profile name "context"`) {
+		t.Fatalf("expected duplicate profile error, got %v", err)
+	}
+}
+
+func TestScanDefinitionsRejectsMCPProfileNameMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "mcp-profiles/file-name.yaml", "name: other-name\nurl: https://mcp.example.com\n")
+
+	_, err := New("", "", root).ScanDefinitions()
+	if err == nil || !strings.Contains(err.Error(), `profile name "other-name" must match file name "file-name"`) {
+		t.Fatalf("expected file name mismatch, got %v", err)
+	}
+}
+
+func TestParseMCPProfileYAMLBearerTokenEnv(t *testing.T) {
+	profile, err := ParseMCPProfileYAML(`name: context
+transport: http
+url: https://mcp.example.com/mcp
+headers:
+  X-Tenant: engineering
+auth:
+  type: bearer
+  token_env: EXAMPLE_MCP_TOKEN
+`)
+	if err != nil {
+		t.Fatalf("ParseMCPProfileYAML: %v", err)
+	}
+	if profile.Name != "context" || profile.Transport != "http" || profile.URL != "https://mcp.example.com/mcp" {
+		t.Fatalf("unexpected profile: %#v", profile)
+	}
+	if profile.Auth == nil || profile.Auth.Type != "bearer" || profile.Auth.TokenEnv != "EXAMPLE_MCP_TOKEN" {
+		t.Fatalf("unexpected auth: %#v", profile.Auth)
+	}
+	if profile.Headers["X-Tenant"] != "engineering" {
+		t.Fatalf("unexpected headers: %#v", profile.Headers)
+	}
+}
+
+func TestParseMCPProfileYAMLRejectsUnsafeCredentials(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name: "literal bearer token",
+			content: `name: bad
+url: https://mcp.example.com
+auth:
+  type: bearer
+  token: literal-secret
+`,
+			want: "field token not found",
+		},
+		{
+			name: "literal authorization header",
+			content: `name: bad
+url: https://mcp.example.com
+headers:
+  Authorization: Bearer literal-secret
+`,
+			want: "auth.token_env",
+		},
+		{
+			name: "invalid token env",
+			content: `name: bad
+url: https://mcp.example.com
+auth:
+  type: bearer
+  token_env: lower-case
+`,
+			want: "valid environment variable name",
+		},
+		{
+			name:    "url credentials",
+			content: "name: bad\nurl: https://user:secret@mcp.example.com\n",
+			want:    "must not contain credentials",
+		},
+		{
+			name:    "url query token",
+			content: "name: bad\nurl: https://mcp.example.com/mcp?token=literal-secret\n",
+			want:    "must not contain query parameters",
+		},
+		{
+			name:    "punctuation-only name",
+			content: "name: ...\nurl: https://mcp.example.com/mcp\n",
+			want:    "name must start with a letter or number",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseMCPProfileYAML(tt.content)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected error containing %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func TestValidateAgentDefinitionFrontmatter(t *testing.T) {
 	valid := `---
 description: Reviews pull requests.

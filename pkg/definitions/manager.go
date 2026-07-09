@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,7 @@ const (
 	DefinitionTypeSkill        = "skill"
 	DefinitionTypeTrigger      = "trigger"
 	DefinitionTypeTaskTemplate = "task_template"
+	DefinitionTypeMCPProfile   = "mcp_profile"
 	DefinitionScopeGlobal      = "global"
 	DefinitionScopeTeam        = "team"
 	DefinitionScopeRepo        = "repo"
@@ -172,6 +174,16 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 		}
 		out = append(out, defs...)
 	}
+	profilePaths := make(map[string]string)
+	for _, def := range out {
+		if def.Type != DefinitionTypeMCPProfile {
+			continue
+		}
+		if previous, ok := profilePaths[def.Name]; ok {
+			return nil, fmt.Errorf("duplicate global MCP profile name %q in %s and %s", def.Name, previous, def.Path)
+		}
+		profilePaths[def.Name] = def.Path
+	}
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Type != out[j].Type {
@@ -231,16 +243,38 @@ func (m *Manager) definitionRoots() ([]definitionRoot, error) {
 
 func (m *Manager) scanDefinitionsRoot(root definitionRoot, seen map[string]struct{}) ([]Definition, error) {
 	var out []Definition
-	patterns := []struct {
+	if root.scope != DefinitionScopeGlobal {
+		for _, pattern := range []string{filepath.Join("mcp-profiles", "*.yaml"), filepath.Join("mcp-profiles", "*.yml")} {
+			matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, pattern))
+			if err != nil {
+				return nil, fmt.Errorf("scan scoped MCP profiles: %w", err)
+			}
+			if len(matches) > 0 {
+				rel, relErr := filepath.Rel(m.cacheDir, matches[0])
+				if relErr != nil {
+					rel = matches[0]
+				}
+				return nil, fmt.Errorf("MCP profiles are global-only; scoped profile %s is not supported", filepath.ToSlash(rel))
+			}
+		}
+	}
+	type definitionPattern struct {
 		definitionType string
 		pattern        string
 		nameFunc       func(string) string
-	}{
+	}
+	patterns := []definitionPattern{
 		{DefinitionTypeAgent, filepath.Join("agents", "*.md"), stemName},
 		{DefinitionTypeSkill, filepath.Join("skills", "*.md"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yaml"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yml"), stemName},
 		{DefinitionTypeTaskTemplate, filepath.Join("task-templates", "*.md"), stemName},
+	}
+	if root.scope == DefinitionScopeGlobal {
+		patterns = append(patterns,
+			definitionPattern{DefinitionTypeMCPProfile, filepath.Join("mcp-profiles", "*.yaml"), stemName},
+			definitionPattern{DefinitionTypeMCPProfile, filepath.Join("mcp-profiles", "*.yml"), stemName},
+		)
 	}
 	for _, p := range patterns {
 		matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, p.pattern))
@@ -359,6 +393,14 @@ func ValidateDefinitionContent(definitionType, path, content string) error {
 		if _, err := ParseTriggerYAML(content); err != nil {
 			return fmt.Errorf("validate trigger definition %s: %w", path, err)
 		}
+	case DefinitionTypeMCPProfile:
+		profile, err := ParseMCPProfileYAML(content)
+		if err != nil {
+			return fmt.Errorf("validate mcp profile definition %s: %w", path, err)
+		}
+		if profile.Name != stemName(path) {
+			return fmt.Errorf("validate mcp profile definition %s: profile name %q must match file name %q", path, profile.Name, stemName(path))
+		}
 	}
 	return nil
 }
@@ -476,6 +518,32 @@ type TriggerDef struct {
 	Harness     string
 	Skills      []string
 	TimeoutSec  int
+}
+
+type MCPProfileAuth struct {
+	Type     string
+	TokenEnv string
+}
+
+type MCPProfileDef struct {
+	Name      string
+	Transport string
+	URL       string
+	Headers   map[string]string
+	Auth      *MCPProfileAuth
+}
+
+type rawMCPProfileAuthYAML struct {
+	Type     string `yaml:"type"`
+	TokenEnv string `yaml:"token_env"`
+}
+
+type rawMCPProfileYAML struct {
+	Name      string                 `yaml:"name"`
+	Transport string                 `yaml:"transport"`
+	URL       string                 `yaml:"url"`
+	Headers   map[string]string      `yaml:"headers"`
+	Auth      *rawMCPProfileAuthYAML `yaml:"auth"`
 }
 
 type rawTriggerYAML struct {
@@ -612,6 +680,121 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		Skills:      skills,
 		TimeoutSec:  raw.TimeoutSec,
 	}, nil
+}
+
+func ParseMCPProfileYAML(content string) (MCPProfileDef, error) {
+	var raw rawMCPProfileYAML
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(content)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&raw); err != nil {
+		return MCPProfileDef{}, fmt.Errorf("parse mcp profile yaml: %w", err)
+	}
+
+	name := strings.TrimSpace(raw.Name)
+	if !validMCPProfileName(name) {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile name must start with a letter or number, contain only letters, numbers, dot, underscore, or dash, and be at most 128 characters")
+	}
+	if reservedMCPProfileName(name) {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile name %q is reserved", name)
+	}
+
+	rawURL := strings.TrimSpace(raw.URL)
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile %q url must be an absolute http or https URL", name)
+	}
+	if parsedURL.User != nil {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile %q url must not contain credentials", name)
+	}
+	if parsedURL.RawQuery != "" || parsedURL.Fragment != "" {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile %q url must not contain query parameters or fragments", name)
+	}
+
+	transport := strings.ToLower(strings.TrimSpace(raw.Transport))
+	if transport == "" {
+		transport = "http"
+	}
+	if transport != "http" && transport != "sse" {
+		return MCPProfileDef{}, fmt.Errorf("mcp profile %q transport must be http or sse", name)
+	}
+
+	headers := make(map[string]string, len(raw.Headers))
+	seenHeaders := make(map[string]string, len(raw.Headers))
+	for key, value := range raw.Headers {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q headers must have non-empty names and values", name)
+		}
+		lookup := strings.ToLower(key)
+		if lookup == "authorization" {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q must configure bearer authorization with auth.token_env", name)
+		}
+		if previous, ok := seenHeaders[lookup]; ok {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q has duplicate headers %q and %q", name, previous, key)
+		}
+		seenHeaders[lookup] = key
+		headers[key] = value
+	}
+
+	var auth *MCPProfileAuth
+	if raw.Auth != nil {
+		authType := strings.ToLower(strings.TrimSpace(raw.Auth.Type))
+		if authType != "bearer" {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q auth.type must be bearer", name)
+		}
+		tokenEnv := strings.TrimSpace(raw.Auth.TokenEnv)
+		if !validEnvName(tokenEnv) {
+			return MCPProfileDef{}, fmt.Errorf("mcp profile %q auth.token_env must be a valid environment variable name", name)
+		}
+		auth = &MCPProfileAuth{Type: authType, TokenEnv: tokenEnv}
+	}
+
+	return MCPProfileDef{
+		Name:      name,
+		Transport: transport,
+		URL:       rawURL,
+		Headers:   headers,
+		Auth:      auth,
+	}, nil
+}
+
+func validMCPProfileName(name string) bool {
+	if name == "" || len(name) > 128 || !asciiAlphaNumeric(name[0]) {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func asciiAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9'
+}
+
+func reservedMCPProfileName(name string) bool {
+	return strings.EqualFold(name, "runner-bridge") || strings.EqualFold(name, "chetter")
+}
+
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if (r >= 'A' && r <= 'Z') || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func isSupportedHarness(harness string) bool {

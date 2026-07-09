@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flatout-works/chetter/main/schemas/mcp-profile.schema.json",
+  "title": "Chetter MCP profile definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "url"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["http", "sse"]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "token_env"],
+      "properties": {
+        "type": { "const": "bearer" },
+        "token_env": {
+          "type": "string",
+          "pattern": "^[A-Z_][A-Z0-9_]*$"
+        }
+      }
+    }
+  }
+}
