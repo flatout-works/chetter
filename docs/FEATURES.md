@@ -17,6 +17,7 @@ Supported task inputs include:
 - `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, or `codewhale`.
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
+- `mcp_profiles`: global Git-backed remote MCP profiles selected by an admin for a global one-off task.
 - `env`: non-secret environment variables.
 - `timeout_sec`: per-task timeout.
 - `session_mode`, `pause_reason`, and `ttl_hours`: resumable session controls.
@@ -29,6 +30,18 @@ Task monitoring includes:
 - Latest activity via `chetter_task_latest_event`.
 - Markdown transcript via `chetter_task_export`.
 - Cancellation via `chetter_cancel_task` or admin queue clearing via `chetter_clear_queue`.
+
+### Task MCP Profiles
+
+Trusted admins can define remote HTTP/SSE MCP profiles in the global `mcp-profiles/` directory of `DEFINITIONS_REPO` and attach them to one-off tasks with `mcp_profiles`. Team-owned tasks cannot attach profiles. Triggers, callbacks, recovery, and session resume do not inherit profiles in this MVP.
+
+Profiles store an optional bearer token environment variable name, never the token value. At task configuration time the runner reads that variable from its own environment and writes the resolved header into the selected harness config. The config is readable by the task agent, so profile access must be limited to trusted tasks. Literal `Authorization` headers and credentials in profile URLs are rejected.
+
+Attaching a profile exposes all tools advertised by that MCP server to the selected harness; this MVP has no per-tool allowlist or server-side tool policy.
+
+Generated harness configs are protected in the temporary clone: untracked files are added to `.git/info/exclude`, while tracked config files are marked `assume-unchanged` in that clone's index. This prevents routine `git add -A` flows from committing resolved bearer tokens.
+
+Remote MCP endpoints are not added to the runner network allowlist automatically. Operators using `CHETTER_PROXY_ALLOWED_DOMAINS` must add each selected endpoint explicitly.
 
 ## Agent Sessions
 

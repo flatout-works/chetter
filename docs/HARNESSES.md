@@ -11,7 +11,7 @@ All harnesses implement `harness.Harness` in `runner/harness/harness.go`:
 ```go
 type Harness interface {
     Name() string
-    GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req TaskRequest, isLocal bool) error
+    GenerateConfig(wsDir, runnerMCPURL string, req TaskRequest, isLocal bool) error
     ConfigFilePath(wsDir string) string
     ConfigFilePathGlobal(wsDir string) string
     Env(wsDir string, secret string, req TaskRequest) map[string]string
@@ -133,7 +133,7 @@ per-task Docker container isolation with gVisor.
 - SSE streaming events for live progress
 - Per-task Docker isolation with gVisor (strongest sandboxing)
 - Session export from SQLite DB (full conversation history)
-- MCP support built-in (runner-bridge + chetter MCP)
+- MCP support built-in (runner bridge plus admin-selected task profiles)
 - Configurable providers, agents, skills, permissions
 - Active development
 
@@ -177,7 +177,7 @@ SSE, session export, and resume support.
 - Session export from JSONL files
 - Clean stream-json output format
 - Permission system (allow/deny lists in settings.json)
-- MCP support built-in (.claude/mcp.json)
+- MCP support built-in (`.mcp.json`, loaded explicitly by the serve proxy)
 
 ### Cons
 

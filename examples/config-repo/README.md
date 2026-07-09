@@ -9,6 +9,7 @@ Example git repository for Chetter runtime configuration. The MCP server reads f
 ├── agents/                 # Agent definitions (*.md)
 ├── skills/                 # Skill definitions (SKILL.md)
 ├── triggers/               # Trigger definitions (*.yaml)
+├── mcp-profiles/           # Global remote MCP profiles (*.yaml)
 └── task-templates/         # Reusable task templates (*.md)
 ```
 
@@ -17,8 +18,11 @@ Example git repository for Chetter runtime configuration. The MCP server reads f
 1. Point Chetter at your config repo with `DEFINITIONS_REPO=https://github.com/your-org/chetter-config`
 2. Chetter clones the repo and syncs definitions into its database
 3. Agents and skills are injected into runner containers at task time
-4. Triggers are activated in the scheduler
-5. Changes go through PRs — the git repo is the source of truth
+4. Trusted admins can attach global MCP profiles to one-off tasks
+5. Triggers are activated in the scheduler
+6. Changes go through PRs — the git repo is the source of truth
+
+MCP profiles never contain bearer token values. Set `auth.token_env` to the name of an environment variable injected into every runner that may execute the task. The runner resolves the value when it generates the task's harness config. Profile-bearing tasks are admin-only and global in this MVP.
 
 ## Validation
 
@@ -28,6 +32,7 @@ Copy or reference the schemas from the Chetter repo when editing definitions:
 |---|---|
 | `model-catalog.yaml` | `schemas/model-catalog.schema.json` |
 | `triggers/*.yaml` | `schemas/trigger.schema.json` |
+| `mcp-profiles/*.yaml` | `schemas/mcp-profile.schema.json` |
 | Agent YAML frontmatter in `agents/*.md` | `schemas/agent-frontmatter.schema.json` |
 
 Chetter validates these files during definitions sync and rejects the sync if a definition is malformed.

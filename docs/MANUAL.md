@@ -94,7 +94,7 @@ There are three token contexts to keep distinct:
 | Token | Where used | Notes |
 |---|---|---|
 | `MCP_AUTH_TOKEN` | Server binary admin token. | Required by the server process. Compose/K8s examples set this from external `CHETTER_MCP_AUTH_TOKEN`. |
-| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token and agent MCP token. | Use this in `.env`, Kubernetes secrets, and clients unless running the binary directly. |
+| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing server admin token. | Use this in `.env`, Kubernetes secrets, and admin clients unless running the binary directly. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Runner-to-server ConnectRPC token. | Required by the server. Compose falls back to `CHETTER_MCP_AUTH_TOKEN` if this is empty. |
 
 Team tokens are stored hashed in the configured database. A user and token can belong to one or more teams, which matches Okta-style group membership: Okta groups map to Chetter teams. Team-scoped tokens see the union of their teams' tasks, triggers, schedule runs, sessions, event callbacks, and artifacts.
@@ -138,8 +138,8 @@ chetterctl token create --team engineering --user alice --name alice-cli
 |---|---|
 | `CHETTER_SERVER_URL` | Server URL used by the runner. |
 | `CHETTER_RUNNER_AUTH_TOKEN` | Runner config token env. Compose fills this from `CHETTER_RUNNER_RPC_TOKEN` for current runner fallback compatibility. |
-| `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
-| `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `CHETTER_MCP_AUTH_TOKEN` | Deployment-facing admin token. Compose also makes it available to the runner, but it is not mounted into task harnesses unless an admin-selected MCP profile explicitly names it as `auth.token_env`. |
+| Profile-specific token variables | Bearer token values referenced by global MCP profiles. These variables must be injected into each runner deployment; the server and task row store only the variable name. |
 | `USE_GVISOR` | Enables Docker `runsc` execution and checkpoint support when `true`. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
@@ -157,6 +157,7 @@ Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by
 | `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
 | Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
 | Definitions repo `triggers/*.yaml` and scoped trigger paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
+| Definitions repo `mcp-profiles/*.yaml` | `schemas/mcp-profile.schema.json` | Definitions sync accepts global profiles only and rejects literal authorization, URL credentials, reserved names, and invalid token env names. |
 | Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
 
 Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
@@ -201,10 +202,6 @@ deploy:
   provider: local
   registry: ""
   chetter_url: chetter.flatout.works
-
-chetter_mcp:
-  url: ""
-  auth_token: ""
 ```
 
 | Field | Default | Purpose |
@@ -228,8 +225,6 @@ chetter_mcp:
 | `deploy.provider` | `local` | Reserved deployment provider metadata. |
 | `deploy.registry` | empty | Reserved image registry metadata. |
 | `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |
-| `chetter_mcp.url` | empty | MCP URL injected into task environments when configured. |
-| `chetter_mcp.auth_token` | `CHETTER_MCP_AUTH_TOKEN` env | MCP token injected into task environments when configured. |
 
 ### Definitions Repo YAML
 
@@ -239,15 +234,17 @@ chetter_mcp:
 model-catalog.yaml
 agents/...
 triggers/...
+mcp-profiles/...
 global/agents/...
 global/triggers/...
+global/mcp-profiles/...
 groups/<team-name>/agents/...
 groups/<team-name>/triggers/...
 repos/<owner>/<repo>/agents/...
 repos/<owner>/<repo>/triggers/...
 ```
 
-Root-level `agents/`, `skills/`, `triggers/`, and `task-templates/` are treated as global definitions. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned.
+Root-level `agents/`, `skills/`, `triggers/`, `task-templates/`, and `mcp-profiles/` are treated as global definitions. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned. MCP profiles are accepted only from root-level or `global/mcp-profiles/`; definitions sync rejects group/repo MCP profiles.
 
 Supported YAML formats are:
 
@@ -255,7 +252,23 @@ Supported YAML formats are:
 |---|---|---|
 | `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
 | `triggers/*.yaml` | `name` | Also supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
+| `mcp-profiles/*.yaml` | `name`, `url` | Global only. `transport` is `http` (default) or `sse`. Optional bearer auth uses `auth.type: bearer` and `auth.token_env`; literal `Authorization` headers, URL credentials, query parameters, and fragments are rejected. The profile name must match the file name. |
 | `agents/*.md` | none | Also supported under scoped directories. Optional YAML frontmatter may include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. |
+
+Example MCP profile (`mcp-profiles/context.yaml`):
+
+```yaml
+name: context
+transport: http
+url: https://mcp.example.com/mcp
+headers:
+  X-Tenant: engineering
+auth:
+  type: bearer
+  token_env: CONTEXT_MCP_TOKEN
+```
+
+Inject `CONTEXT_MCP_TOKEN` into the runner process, not the server or task input. The runner resolves it only while generating the task's harness config. That config is task-readable, so this mechanism grants the selected trusted task access to the remote MCP server. The runner protects generated config paths in the temporary clone so routine `git add -A` flows do not commit resolved tokens. All tools advertised by the selected profile are enabled; this MVP has no per-tool allowlist or server-side MCP tool policy. If runner egress uses `CHETTER_PROXY_ALLOWED_DOMAINS`, add `mcp.example.com` explicitly.
 
 Example trigger definition:
 
@@ -290,9 +303,12 @@ Example input:
   "git_ref": "main",
   "agent_image": "chetter-agent:golang",
   "harness": "opencode",
+  "mcp_profiles": ["context"],
   "timeout_sec": 1800
 }
 ```
+
+`mcp_profiles` is accepted only for admin-authenticated, global one-off tasks. Team-owned tasks cannot use it, and triggers, callbacks, recovery, and resumed sessions do not inherit it in this MVP.
 
 For a resumable session:
 
@@ -601,7 +617,7 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 |---|---|
 | Task content | Prompt, repo URL/ref, timeout, harness name, selected agent name, skill hints, and optional non-secret task env. |
 | Workspace mounts | The cloned workspace is mounted at `/workspace`; the runner MCP bridge socket is mounted at `/workspace/.chetter.sock`. |
-| Harness config | OpenCode config is generated into the workspace (`/workspace/.opencode.json` and `/workspace/.config/opencode/config.json`) with Chetter MCP and runner bridge MCP entries. |
+| Harness config | The runner generates the selected harness config in the workspace with the runner bridge and any admin-selected task MCP profiles. Profile bearer tokens are resolved from runner env at this point. |
 | Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
 | Git identity | `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and `GIT_COMMITTER_EMAIL` are set to the Chetter runner identity. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |

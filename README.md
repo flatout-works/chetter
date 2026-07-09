@@ -7,6 +7,7 @@ If you are looking for a simple(r) solution to self host standard autonomous cod
 - **Track live progress** — streaming events, logs, session transcripts
 - **Automation** — cron triggers, generic webhooks, PR review webhooks, GitHub PR/issue/comment responders
 - **Pause and resume** — pause agent sessions and resume on the same runner with follow-up prompts
+- **Attach remote MCP servers** — trusted admins can select Git-backed MCP profiles for one-off tasks, with bearer tokens filled from runner environment variables
 - **Manage via MCP or web UI** — web UI, MCP tools, team tokens, audit log, runner fleet health
 
 ## Design Principles
