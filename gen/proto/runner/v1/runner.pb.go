@@ -510,6 +510,7 @@ type Task struct {
 	AgentDefinition        string                 `protobuf:"bytes,23,opt,name=agent_definition,json=agentDefinition,proto3" json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte      `protobuf:"bytes,24,rep,name=skill_definitions,json=skillDefinitions,proto3" json:"skill_definitions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ExtraFiles             map[string][]byte      `protobuf:"bytes,26,rep,name=extra_files,json=extraFiles,proto3" json:"extra_files,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	McpProfiles            []*MCPProfile          `protobuf:"bytes,27,rep,name=mcp_profiles,json=mcpProfiles,proto3" json:"mcp_profiles,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -726,6 +727,89 @@ func (x *Task) GetExtraFiles() map[string][]byte {
 	return nil
 }
 
+func (x *Task) GetMcpProfiles() []*MCPProfile {
+	if x != nil {
+		return x.McpProfiles
+	}
+	return nil
+}
+
+type MCPProfile struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Transport      string                 `protobuf:"bytes,2,opt,name=transport,proto3" json:"transport,omitempty"`
+	Url            string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	Headers        map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	BearerTokenEnv string                 `protobuf:"bytes,5,opt,name=bearer_token_env,json=bearerTokenEnv,proto3" json:"bearer_token_env,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *MCPProfile) Reset() {
+	*x = MCPProfile{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MCPProfile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MCPProfile) ProtoMessage() {}
+
+func (x *MCPProfile) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MCPProfile.ProtoReflect.Descriptor instead.
+func (*MCPProfile) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *MCPProfile) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *MCPProfile) GetTransport() string {
+	if x != nil {
+		return x.Transport
+	}
+	return ""
+}
+
+func (x *MCPProfile) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *MCPProfile) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *MCPProfile) GetBearerTokenEnv() string {
+	if x != nil {
+		return x.BearerTokenEnv
+	}
+	return ""
+}
+
 type ClaimTaskResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
@@ -735,7 +819,7 @@ type ClaimTaskResponse struct {
 
 func (x *ClaimTaskResponse) Reset() {
 	*x = ClaimTaskResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[8]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +831,7 @@ func (x *ClaimTaskResponse) String() string {
 func (*ClaimTaskResponse) ProtoMessage() {}
 
 func (x *ClaimTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[8]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +844,7 @@ func (x *ClaimTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimTaskResponse.ProtoReflect.Descriptor instead.
 func (*ClaimTaskResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{8}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ClaimTaskResponse) GetTask() *Task {
@@ -784,7 +868,7 @@ type TokenUsage struct {
 
 func (x *TokenUsage) Reset() {
 	*x = TokenUsage{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[9]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -796,7 +880,7 @@ func (x *TokenUsage) String() string {
 func (*TokenUsage) ProtoMessage() {}
 
 func (x *TokenUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[9]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -809,7 +893,7 @@ func (x *TokenUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenUsage.ProtoReflect.Descriptor instead.
 func (*TokenUsage) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{9}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TokenUsage) GetInputTokens() int64 {
@@ -880,7 +964,7 @@ type TaskEvent struct {
 
 func (x *TaskEvent) Reset() {
 	*x = TaskEvent{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[10]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -892,7 +976,7 @@ func (x *TaskEvent) String() string {
 func (*TaskEvent) ProtoMessage() {}
 
 func (x *TaskEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[10]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -905,7 +989,7 @@ func (x *TaskEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskEvent.ProtoReflect.Descriptor instead.
 func (*TaskEvent) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{10}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TaskEvent) GetTaskId() string {
@@ -1044,7 +1128,7 @@ type ReportTaskEventsRequest struct {
 
 func (x *ReportTaskEventsRequest) Reset() {
 	*x = ReportTaskEventsRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[11]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1056,7 +1140,7 @@ func (x *ReportTaskEventsRequest) String() string {
 func (*ReportTaskEventsRequest) ProtoMessage() {}
 
 func (x *ReportTaskEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[11]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1069,7 +1153,7 @@ func (x *ReportTaskEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskEventsRequest.ProtoReflect.Descriptor instead.
 func (*ReportTaskEventsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{11}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReportTaskEventsRequest) GetRunnerId() string {
@@ -1094,7 +1178,7 @@ type ReportTaskEventsResponse struct {
 
 func (x *ReportTaskEventsResponse) Reset() {
 	*x = ReportTaskEventsResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1106,7 +1190,7 @@ func (x *ReportTaskEventsResponse) String() string {
 func (*ReportTaskEventsResponse) ProtoMessage() {}
 
 func (x *ReportTaskEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[12]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1119,7 +1203,7 @@ func (x *ReportTaskEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskEventsResponse.ProtoReflect.Descriptor instead.
 func (*ReportTaskEventsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{12}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{13}
 }
 
 type PruneWorkspacesRequest struct {
@@ -1132,7 +1216,7 @@ type PruneWorkspacesRequest struct {
 
 func (x *PruneWorkspacesRequest) Reset() {
 	*x = PruneWorkspacesRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1144,7 +1228,7 @@ func (x *PruneWorkspacesRequest) String() string {
 func (*PruneWorkspacesRequest) ProtoMessage() {}
 
 func (x *PruneWorkspacesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[13]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1157,7 +1241,7 @@ func (x *PruneWorkspacesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PruneWorkspacesRequest.ProtoReflect.Descriptor instead.
 func (*PruneWorkspacesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{13}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PruneWorkspacesRequest) GetRunnerId() string {
@@ -1183,7 +1267,7 @@ type PruneWorkspacesResponse struct {
 
 func (x *PruneWorkspacesResponse) Reset() {
 	*x = PruneWorkspacesResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[14]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1195,7 +1279,7 @@ func (x *PruneWorkspacesResponse) String() string {
 func (*PruneWorkspacesResponse) ProtoMessage() {}
 
 func (x *PruneWorkspacesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[14]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1208,7 +1292,7 @@ func (x *PruneWorkspacesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PruneWorkspacesResponse.ProtoReflect.Descriptor instead.
 func (*PruneWorkspacesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{14}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PruneWorkspacesResponse) GetSafeToDelete() []string {
@@ -1231,7 +1315,7 @@ type GitHubCreateIssueRequest struct {
 
 func (x *GitHubCreateIssueRequest) Reset() {
 	*x = GitHubCreateIssueRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[15]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1243,7 +1327,7 @@ func (x *GitHubCreateIssueRequest) String() string {
 func (*GitHubCreateIssueRequest) ProtoMessage() {}
 
 func (x *GitHubCreateIssueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[15]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1256,7 +1340,7 @@ func (x *GitHubCreateIssueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubCreateIssueRequest.ProtoReflect.Descriptor instead.
 func (*GitHubCreateIssueRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{15}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GitHubCreateIssueRequest) GetTaskId() string {
@@ -1304,7 +1388,7 @@ type GitHubCreateIssueResponse struct {
 
 func (x *GitHubCreateIssueResponse) Reset() {
 	*x = GitHubCreateIssueResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[16]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1316,7 +1400,7 @@ func (x *GitHubCreateIssueResponse) String() string {
 func (*GitHubCreateIssueResponse) ProtoMessage() {}
 
 func (x *GitHubCreateIssueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[16]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1329,7 +1413,7 @@ func (x *GitHubCreateIssueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubCreateIssueResponse.ProtoReflect.Descriptor instead.
 func (*GitHubCreateIssueResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{16}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GitHubCreateIssueResponse) GetNumber() int32 {
@@ -1358,7 +1442,7 @@ type GitHubIssueCommentRequest struct {
 
 func (x *GitHubIssueCommentRequest) Reset() {
 	*x = GitHubIssueCommentRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[17]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1370,7 +1454,7 @@ func (x *GitHubIssueCommentRequest) String() string {
 func (*GitHubIssueCommentRequest) ProtoMessage() {}
 
 func (x *GitHubIssueCommentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[17]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1383,7 +1467,7 @@ func (x *GitHubIssueCommentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubIssueCommentRequest.ProtoReflect.Descriptor instead.
 func (*GitHubIssueCommentRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{17}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GitHubIssueCommentRequest) GetTaskId() string {
@@ -1423,7 +1507,7 @@ type GitHubIssueCommentResponse struct {
 
 func (x *GitHubIssueCommentResponse) Reset() {
 	*x = GitHubIssueCommentResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[18]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1435,7 +1519,7 @@ func (x *GitHubIssueCommentResponse) String() string {
 func (*GitHubIssueCommentResponse) ProtoMessage() {}
 
 func (x *GitHubIssueCommentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[18]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1448,7 +1532,7 @@ func (x *GitHubIssueCommentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubIssueCommentResponse.ProtoReflect.Descriptor instead.
 func (*GitHubIssueCommentResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{18}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GitHubIssueCommentResponse) GetUrl() string {
@@ -1473,7 +1557,7 @@ type GitHubCreatePRRequest struct {
 
 func (x *GitHubCreatePRRequest) Reset() {
 	*x = GitHubCreatePRRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[19]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1485,7 +1569,7 @@ func (x *GitHubCreatePRRequest) String() string {
 func (*GitHubCreatePRRequest) ProtoMessage() {}
 
 func (x *GitHubCreatePRRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[19]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1498,7 +1582,7 @@ func (x *GitHubCreatePRRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubCreatePRRequest.ProtoReflect.Descriptor instead.
 func (*GitHubCreatePRRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{19}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GitHubCreatePRRequest) GetTaskId() string {
@@ -1560,7 +1644,7 @@ type GitHubCreatePRResponse struct {
 
 func (x *GitHubCreatePRResponse) Reset() {
 	*x = GitHubCreatePRResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[20]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1656,7 @@ func (x *GitHubCreatePRResponse) String() string {
 func (*GitHubCreatePRResponse) ProtoMessage() {}
 
 func (x *GitHubCreatePRResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[20]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1669,7 @@ func (x *GitHubCreatePRResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubCreatePRResponse.ProtoReflect.Descriptor instead.
 func (*GitHubCreatePRResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{20}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GitHubCreatePRResponse) GetNumber() int32 {
@@ -1615,7 +1699,7 @@ type GitHubPRReviewRequest struct {
 
 func (x *GitHubPRReviewRequest) Reset() {
 	*x = GitHubPRReviewRequest{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[21]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1627,7 +1711,7 @@ func (x *GitHubPRReviewRequest) String() string {
 func (*GitHubPRReviewRequest) ProtoMessage() {}
 
 func (x *GitHubPRReviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[21]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1724,7 @@ func (x *GitHubPRReviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubPRReviewRequest.ProtoReflect.Descriptor instead.
 func (*GitHubPRReviewRequest) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{21}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GitHubPRReviewRequest) GetTaskId() string {
@@ -1687,7 +1771,7 @@ type GitHubPRReviewResponse struct {
 
 func (x *GitHubPRReviewResponse) Reset() {
 	*x = GitHubPRReviewResponse{}
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[22]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1699,7 +1783,7 @@ func (x *GitHubPRReviewResponse) String() string {
 func (*GitHubPRReviewResponse) ProtoMessage() {}
 
 func (x *GitHubPRReviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_runner_v1_runner_proto_msgTypes[22]
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1712,7 +1796,7 @@ func (x *GitHubPRReviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubPRReviewResponse.ProtoReflect.Descriptor instead.
 func (*GitHubPRReviewResponse) Descriptor() ([]byte, []int) {
-	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{22}
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GitHubPRReviewResponse) GetUrl() string {
@@ -1762,7 +1846,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb7\t\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xf1\t\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -1794,7 +1878,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10agent_definition\x18\x17 \x01(\tR\x0fagentDefinition\x12R\n" +
 	"\x11skill_definitions\x18\x18 \x03(\v2%.runner.v1.Task.SkillDefinitionsEntryR\x10skillDefinitions\x12@\n" +
 	"\vextra_files\x18\x1a \x03(\v2\x1f.runner.v1.Task.ExtraFilesEntryR\n" +
-	"extraFiles\x1a6\n" +
+	"extraFiles\x128\n" +
+	"\fmcp_profiles\x18\x1b \x03(\v2\x15.runner.v1.MCPProfileR\vmcpProfiles\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -1803,7 +1888,17 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
 	"\x0fExtraFilesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"8\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\xf4\x01\n" +
+	"\n" +
+	"MCPProfile\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\ttransport\x18\x02 \x01(\tR\ttransport\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12<\n" +
+	"\aheaders\x18\x04 \x03(\v2\".runner.v1.MCPProfile.HeadersEntryR\aheaders\x12(\n" +
+	"\x10bearer_token_env\x18\x05 \x01(\tR\x0ebearerTokenEnv\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
 	"\x11ClaimTaskResponse\x12#\n" +
 	"\x04task\x18\x01 \x01(\v2\x0f.runner.v1.TaskR\x04task\"\xf8\x01\n" +
 	"\n" +
@@ -1908,7 +2003,7 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*RunnerInfo)(nil),                 // 0: runner.v1.RunnerInfo
 	(*RegisterRunnerRequest)(nil),      // 1: runner.v1.RegisterRunnerRequest
@@ -1918,58 +2013,62 @@ var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*HeartbeatResponse)(nil),          // 5: runner.v1.HeartbeatResponse
 	(*ClaimTaskRequest)(nil),           // 6: runner.v1.ClaimTaskRequest
 	(*Task)(nil),                       // 7: runner.v1.Task
-	(*ClaimTaskResponse)(nil),          // 8: runner.v1.ClaimTaskResponse
-	(*TokenUsage)(nil),                 // 9: runner.v1.TokenUsage
-	(*TaskEvent)(nil),                  // 10: runner.v1.TaskEvent
-	(*ReportTaskEventsRequest)(nil),    // 11: runner.v1.ReportTaskEventsRequest
-	(*ReportTaskEventsResponse)(nil),   // 12: runner.v1.ReportTaskEventsResponse
-	(*PruneWorkspacesRequest)(nil),     // 13: runner.v1.PruneWorkspacesRequest
-	(*PruneWorkspacesResponse)(nil),    // 14: runner.v1.PruneWorkspacesResponse
-	(*GitHubCreateIssueRequest)(nil),   // 15: runner.v1.GitHubCreateIssueRequest
-	(*GitHubCreateIssueResponse)(nil),  // 16: runner.v1.GitHubCreateIssueResponse
-	(*GitHubIssueCommentRequest)(nil),  // 17: runner.v1.GitHubIssueCommentRequest
-	(*GitHubIssueCommentResponse)(nil), // 18: runner.v1.GitHubIssueCommentResponse
-	(*GitHubCreatePRRequest)(nil),      // 19: runner.v1.GitHubCreatePRRequest
-	(*GitHubCreatePRResponse)(nil),     // 20: runner.v1.GitHubCreatePRResponse
-	(*GitHubPRReviewRequest)(nil),      // 21: runner.v1.GitHubPRReviewRequest
-	(*GitHubPRReviewResponse)(nil),     // 22: runner.v1.GitHubPRReviewResponse
-	nil,                                // 23: runner.v1.Task.EnvEntry
-	nil,                                // 24: runner.v1.Task.SkillDefinitionsEntry
-	nil,                                // 25: runner.v1.Task.ExtraFilesEntry
+	(*MCPProfile)(nil),                 // 8: runner.v1.MCPProfile
+	(*ClaimTaskResponse)(nil),          // 9: runner.v1.ClaimTaskResponse
+	(*TokenUsage)(nil),                 // 10: runner.v1.TokenUsage
+	(*TaskEvent)(nil),                  // 11: runner.v1.TaskEvent
+	(*ReportTaskEventsRequest)(nil),    // 12: runner.v1.ReportTaskEventsRequest
+	(*ReportTaskEventsResponse)(nil),   // 13: runner.v1.ReportTaskEventsResponse
+	(*PruneWorkspacesRequest)(nil),     // 14: runner.v1.PruneWorkspacesRequest
+	(*PruneWorkspacesResponse)(nil),    // 15: runner.v1.PruneWorkspacesResponse
+	(*GitHubCreateIssueRequest)(nil),   // 16: runner.v1.GitHubCreateIssueRequest
+	(*GitHubCreateIssueResponse)(nil),  // 17: runner.v1.GitHubCreateIssueResponse
+	(*GitHubIssueCommentRequest)(nil),  // 18: runner.v1.GitHubIssueCommentRequest
+	(*GitHubIssueCommentResponse)(nil), // 19: runner.v1.GitHubIssueCommentResponse
+	(*GitHubCreatePRRequest)(nil),      // 20: runner.v1.GitHubCreatePRRequest
+	(*GitHubCreatePRResponse)(nil),     // 21: runner.v1.GitHubCreatePRResponse
+	(*GitHubPRReviewRequest)(nil),      // 22: runner.v1.GitHubPRReviewRequest
+	(*GitHubPRReviewResponse)(nil),     // 23: runner.v1.GitHubPRReviewResponse
+	nil,                                // 24: runner.v1.Task.EnvEntry
+	nil,                                // 25: runner.v1.Task.SkillDefinitionsEntry
+	nil,                                // 26: runner.v1.Task.ExtraFilesEntry
+	nil,                                // 27: runner.v1.MCPProfile.HeadersEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 0: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
 	0,  // 1: runner.v1.HeartbeatRequest.runner:type_name -> runner.v1.RunnerInfo
 	4,  // 2: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
-	23, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
-	24, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
-	25, // 5: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
-	7,  // 6: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
-	9,  // 7: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
-	10, // 8: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
-	1,  // 9: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
-	3,  // 10: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
-	6,  // 11: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
-	11, // 12: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
-	13, // 13: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
-	15, // 14: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
-	17, // 15: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
-	19, // 16: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
-	21, // 17: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
-	2,  // 18: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	5,  // 19: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	8,  // 20: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	12, // 21: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	14, // 22: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
-	16, // 23: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
-	18, // 24: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
-	20, // 25: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
-	22, // 26: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
-	18, // [18:27] is the sub-list for method output_type
-	9,  // [9:18] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	24, // 3: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
+	25, // 4: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
+	26, // 5: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
+	8,  // 6: runner.v1.Task.mcp_profiles:type_name -> runner.v1.MCPProfile
+	27, // 7: runner.v1.MCPProfile.headers:type_name -> runner.v1.MCPProfile.HeadersEntry
+	7,  // 8: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
+	10, // 9: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
+	11, // 10: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
+	1,  // 11: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
+	3,  // 12: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
+	6,  // 13: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
+	12, // 14: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
+	14, // 15: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
+	16, // 16: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
+	18, // 17: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
+	20, // 18: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
+	22, // 19: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
+	2,  // 20: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	5,  // 21: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	9,  // 22: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	13, // 23: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	15, // 24: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
+	17, // 25: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
+	19, // 26: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
+	21, // 27: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
+	23, // 28: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
+	20, // [20:29] is the sub-list for method output_type
+	11, // [11:20] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_proto_runner_v1_runner_proto_init() }
@@ -1983,7 +2082,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

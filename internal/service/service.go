@@ -38,6 +38,7 @@ type SubmitTaskRequest struct {
 	VariantID   string
 	Harness     string
 	Skills      []string
+	MCPProfiles []string
 	Env         map[string]string
 	TimeoutSec  int
 	TriggerName string
@@ -429,6 +430,26 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
+	profileNames := normalizeMCPProfileNames(in.MCPProfiles)
+	if len(profileNames) > 0 {
+		if !isAdmin(ctx) {
+			return store.TaskRecord{}, fmt.Errorf("mcp_profiles require admin access")
+		}
+		if teamID != "" {
+			return store.TaskRecord{}, fmt.Errorf("mcp_profiles require a global admin-owned task")
+		}
+		if _, err := loadGlobalMCPProfiles(ctx, s.rawDB, profileNames); err != nil {
+			return store.TaskRecord{}, err
+		}
+	}
+	mcpProfiles, err := json.Marshal(profileNames)
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal mcp_profiles: %w", err)
+	}
 	taskEnv := sanitizeTaskEnv(in.Env)
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
@@ -436,10 +457,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	env, err := json.Marshal(taskEnv)
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
-	}
-	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
-	if err != nil {
-		return store.TaskRecord{}, err
 	}
 	resumeMode := "none"
 	pauseReason := ""
@@ -477,6 +494,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerType:            nullString(in.TriggerType),
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
@@ -561,12 +579,16 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Detail:     fmt.Sprintf("trigger %q ran, task %s created", in.TriggerName, taskID),
 		})
 	} else {
+		detail := fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt)
+		if len(profileNames) > 0 {
+			detail += fmt.Sprintf(" mcp_profiles=%s", strings.Join(profileNames, ","))
+		}
 		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "task_submitted",
 			SourceType: "api",
 			TargetType: "task",
 			TargetID:   taskID,
-			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
+			Detail:     detail,
 		})
 	}
 	return repoTaskToStoreRecord(task), nil
@@ -701,6 +723,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	skills := mustMarshalJSON([]string{})
+	mcpProfiles := mustMarshalJSON([]string{})
 	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
@@ -723,6 +746,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
+			McpProfiles:            mcpProfiles,
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
@@ -823,6 +847,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpProfiles := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
@@ -850,6 +875,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
 		Skills:                skills,
+		MCPProfiles:           mcpProfiles,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,

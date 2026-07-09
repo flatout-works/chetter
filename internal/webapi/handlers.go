@@ -30,6 +30,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		ModelId:        t.ModelID,
 		VariantId:      t.VariantID,
 		Skills:         t.Skills,
+		McpProfiles:    t.MCPProfiles,
 		Env:            t.Env,
 		TimeoutSec:     int32(t.TimeoutSec),
 		Summary:        t.Summary,
@@ -244,6 +245,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		ModelID:     req.Msg.ModelId,
 		VariantID:   req.Msg.VariantId,
 		Skills:      req.Msg.Skills,
+		MCPProfiles: req.Msg.McpProfiles,
 		Env:         req.Msg.Env,
 		Harness:     req.Msg.Harness,
 		TimeoutSec:  int(req.Msg.TimeoutSec),
@@ -258,7 +260,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
 		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
-		VariantID: task.VariantID, Skills: task.Skills, Env: task.Env,
+		VariantID: task.VariantID, Skills: task.Skills, MCPProfiles: task.MCPProfiles, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
 		StartedAt: task.StartedAt, EndedAt: task.EndedAt,
 	})}), nil
@@ -672,16 +674,16 @@ func (h *adminHandler) ListUsers(ctx context.Context, req *connect.Request[apiv1
 
 func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request[apiv1.ListAuditEventsRequest]) (*connect.Response[apiv1.ListAuditEventsResponse], error) {
 	events, err := h.svc.ListAuditEvents(ctx, service.AuditEventFilterInput{
-		EventType:   req.Msg.EventType,
-		SourceType:  req.Msg.SourceType,
-		SourceID:    req.Msg.SourceId,
-		TargetType:  req.Msg.TargetType,
-		TargetID:    req.Msg.TargetId,
-		Repo:        req.Msg.Repo,
-		Search:      req.Msg.Search,
-		SinceHours:  int(req.Msg.SinceHours),
-		Limit:       int(req.Msg.Limit),
-		Offset:      int(req.Msg.Offset),
+		EventType:    req.Msg.EventType,
+		SourceType:   req.Msg.SourceType,
+		SourceID:     req.Msg.SourceId,
+		TargetType:   req.Msg.TargetType,
+		TargetID:     req.Msg.TargetId,
+		Repo:         req.Msg.Repo,
+		Search:       req.Msg.Search,
+		SinceHours:   int(req.Msg.SinceHours),
+		Limit:        int(req.Msg.Limit),
+		Offset:       int(req.Msg.Offset),
 		ExcludeTypes: req.Msg.ExcludeTypes,
 	})
 	if err != nil {

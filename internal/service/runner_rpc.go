@@ -148,6 +148,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			mcpProfileNames := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {
 				delete(protoTask.Env, "__recover_from")
@@ -165,6 +166,14 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			}
 			s.resolveTaskModel(ctx, protoTask)
 			s.resolveTaskDefinitions(ctx, protoTask)
+			if len(mcpProfileNames) > 0 {
+				if task.TeamID.Valid {
+					slog.Warn("team-owned task selected admin-only MCP profiles", "task_id", task.ID, "profiles", mcpProfileNames)
+					protoTask.McpProfiles = invalidMCPProfiles(mcpProfileNames)
+				} else {
+					protoTask.McpProfiles = s.resolveMCPProfiles(ctx, mcpProfileNames)
+				}
+			}
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -235,6 +244,37 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 			task.SkillDefinitions = skillDefs
 		}
 	}
+}
+
+func (s *RunnerRPCService) resolveMCPProfiles(ctx context.Context, names []string) []*runnerv1.MCPProfile {
+	profiles, err := loadGlobalMCPProfiles(ctx, s.rawDB, names)
+	if err != nil {
+		slog.Warn("resolve global MCP profiles", "profiles", names, "err", err)
+		return invalidMCPProfiles(names)
+	}
+	out := make([]*runnerv1.MCPProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		resolved := &runnerv1.MCPProfile{
+			Name:      profile.Name,
+			Transport: profile.Transport,
+			Url:       profile.URL,
+			Headers:   profile.Headers,
+		}
+		if profile.Auth != nil {
+			resolved.BearerTokenEnv = profile.Auth.TokenEnv
+		}
+		out = append(out, resolved)
+	}
+	return out
+}
+
+func invalidMCPProfiles(names []string) []*runnerv1.MCPProfile {
+	names = normalizeMCPProfileNames(names)
+	out := make([]*runnerv1.MCPProfile, 0, len(names))
+	for _, name := range names {
+		out = append(out, &runnerv1.MCPProfile{Name: name})
+	}
+	return out
 }
 
 func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {

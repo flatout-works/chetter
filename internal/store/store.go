@@ -89,6 +89,7 @@ type TaskRecord struct {
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	Skills                []string          `json:"skills"`
+	MCPProfiles           []string          `json:"mcp_profiles"`
 	Env                   map[string]string `json:"env"`
 	TimeoutSec            int               `json:"timeout_sec"`
 	Summary               string            `json:"summary,omitempty"`
@@ -487,6 +488,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
 		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
 		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
+		{"mcp_profiles", "ALTER TABLE chetter_tasks ADD COLUMN mcp_profiles JSON NULL AFTER skills"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -498,6 +500,18 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+		}
+	}
+	nullable, err := s.columnIsNullable(ctx, "chetter_tasks", "mcp_profiles")
+	if err != nil {
+		return err
+	}
+	if nullable {
+		if _, err := s.db.ExecContext(ctx, "UPDATE chetter_tasks SET mcp_profiles = JSON_ARRAY() WHERE mcp_profiles IS NULL"); err != nil {
+			return fmt.Errorf("backfill chetter_tasks.mcp_profiles: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks MODIFY COLUMN mcp_profiles JSON NOT NULL"); err != nil {
+			return fmt.Errorf("make chetter_tasks.mcp_profiles not null: %w", err)
 		}
 	}
 	return nil
@@ -877,6 +891,18 @@ func (s *Store) columnExists(ctx context.Context, table, column string) (bool, e
 		return false, fmt.Errorf("check column %s.%s: %w", table, column, err)
 	}
 	return count > 0, nil
+}
+
+func (s *Store) columnIsNullable(ctx context.Context, table, column string) (bool, error) {
+	var nullable string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?
+	`, table, column).Scan(&nullable); err != nil {
+		return false, fmt.Errorf("check column nullability %s.%s: %w", table, column, err)
+	}
+	return strings.EqualFold(nullable, "YES"), nil
 }
 
 func (s *Store) indexExists(ctx context.Context, table, index string) (bool, error) {

@@ -41,6 +41,7 @@ message Task {
   string error_category = 21;
   string agent_session_id = 22;
   TokenUsage token_usage = 23;
+  repeated string mcp_profiles = 24;
 }
 
 message AgentSession {
@@ -276,6 +277,7 @@ message SubmitTaskRequest {
   string session_mode = 13;
   string pause_reason = 14;
   int32 ttl_hours = 15;
+  repeated string mcp_profiles = 16;
 }
 
 message SubmitTaskResponse {
