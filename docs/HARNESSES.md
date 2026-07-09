@@ -110,10 +110,16 @@ maps the string to a constructor.
 **Binary:** `opencode` (installed via opencode.ai/install)
 **Execution model:** Serve (HTTP API on localhost)
 
-OpenCode runs as a local HTTP server. The runner starts `opencode serve`,
-polls `/config` for readiness, creates a session, sends the prompt via
-`POST /session/{id}/message`, watches an SSE event stream, and reads the
-session export from the on-disk SQLite database (`opencode.db`).
+OpenCode runs as a local HTTP server binding to `0.0.0.0` (required
+for gVisor port-mapped traffic). The runner starts `opencode serve`,
+polls `/config` for readiness, creates a session, dispatches the
+prompt asynchronously via `POST /session/{id}/prompt_async`, polls
+`GET /session/status` every 2s until the session is idle, fetches the
+last assistant message from `GET /session/{id}/message`, watches an
+SSE event stream (text deltas and significant events accumulated and
+batched in 3-second windows; urgent events published immediately),
+and reads the session export from the on-disk SQLite database
+(`opencode.db`).
 
 ### Why chosen
 
