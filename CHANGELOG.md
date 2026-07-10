@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-10
+
+### Added
+
+- Codex harness option (`harness: codex`) backed by a pinned Codex App Server bridge. It supports gVisor-isolated task containers, MCP configuration, streamed progress and token usage, turn interruption, markdown exports, and resumable Codex thread sessions. The agent base image now installs `@openai/codex@0.144.1` and `codex-serve-proxy`.
+
 ## 2026-07-06
 
 ### Added

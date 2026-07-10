@@ -6,7 +6,7 @@ Repo-local guidance for OpenCode sessions working on Chetter.
 
 - **Root** (`main.go`, `internal/*`): The MCP server and control plane.
 - **Runner** (`runner/`): The containerized agent harness. Separate Go module with its own `go.mod` and `Makefile`.
-- **Agent Base Image** (`runner/images/base/`): Harness CLIs (opencode, claude-code, codewhale, pi), Node, gh, git, and shared runtime tools. Stack-specific variants inherit from this and live in chetter-config.
+- **Agent Base Image** (`runner/images/base/`): Harness CLIs (opencode, claude-code, codewhale, pi, codex), Node, gh, git, and shared runtime tools. Stack-specific variants inherit from this and live in chetter-config.
 - **CLI** (`cmd/chetterctl/`): Token management CLI.
 - **DB** (`db/`): Goose migrations and sqlc query files.
 - **Proto** (`proto/`): ConnectRPC service between server and runner.

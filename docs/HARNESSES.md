@@ -76,7 +76,7 @@ one explicitly:
 ```yaml
 # runner.yaml
 execution:
-  harness: pi                               # opencode (default), claude-code, pi, codewhale
+  harness: pi                               # opencode (default), claude-code, pi, codewhale, codex
   container_memory: 4g                      # optional Docker memory limit (e.g. 4g, 2048m)
 ```
 
@@ -294,23 +294,59 @@ Chetter's existing serve-mode runner model.
 When you want an open-model-first runtime with strong provider breadth and a
 native HTTP/SSE control API.
 
+## Codex
+
+**Binary:** `codex` (npm: `@openai/codex`)
+**Execution model:** Serve (Codex App Server behind `codex-serve-proxy`)
+
+Codex App Server exposes a JSON-RPC thread and turn API over stdio. Chetter's
+proxy starts it inside each task container, creates or resumes the real Codex
+thread, and translates streamed JSON-RPC notifications into the runner's
+HTTP/SSE harness contract. This preserves per-task Docker and gVisor isolation
+while retaining the Codex thread ID needed for follow-up sessions.
+
+### Pros
+
+- Official OpenAI coding CLI with durable thread and turn IDs
+- Streaming assistant deltas, tool progress, token usage, and turn completion
+- Graceful cancellation through `turn/interrupt`
+- Native Streamable HTTP MCP support through `.codex/config.toml`
+- Workspace-scoped configuration and state, including markdown session export
+- Apache 2.0 license
+
+### Constraints
+
+- The App Server protocol is currently experimental, so Chetter pins the CLI
+  package version and covers the bridge's protocol handling with unit tests.
+- Initial deployment uses `OPENAI_API_KEY` with a Responses API-compatible
+  provider. Interactive ChatGPT login is intentionally not used in task
+  containers.
+- Chetter rejects interactive approval and elicitation requests. Codex runs
+  with `workspace-write` permissions and the outer task container remains the
+  security boundary.
+
+### When to use
+
+Use Codex when you need OpenAI models, durable follow-up sessions, and native
+MCP support inside Chetter's isolated task containers.
+
 ## Comparison
 
-| Feature | OpenCode | Claude Code | Pi | CodeWhale |
-|---------|----------|-------------|-----|-----------|
-| Execution model | Serve (HTTP) | Serve (proxy) | RPC (subprocess) | Serve (HTTP/SSE) |
-| Streaming | SSE events | SSE events | JSONL events | SSE events |
-| Abort | Kill process | SIGINT→SIGTERM | `abort` command | Turn interrupt endpoint |
-| Steering | No | No | `steer` / `follow_up` | Runtime API supports steer; Chetter does not expose it yet |
-| Model switching | Per-session config | Per-task flag | `set_model` mid-session | Per-thread/turn model |
-| MCP support | Built-in | Built-in | via pi-mcp-adapter | Built-in `.codewhale/mcp.json` |
-| Session export | SQLite DB | JSONL files | `get_messages` → markdown | Observed-turn markdown fallback |
-| Per-task Docker isolation | Yes (gVisor) | Yes (gVisor) | No | Yes (gVisor) |
-| Provider breadth | Multiple | Anthropic only | 30+ | Broad multi-provider/open-model |
-| Permission system | Config-based | Settings-based | None (container-reliant) | Runtime approval/sandbox policy |
-| Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh | Model/provider dependent |
-| Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) |
-| License | Apache 2.0 | Proprietary (CLI) | MIT | MIT |
+| Feature | OpenCode | Claude Code | Pi | CodeWhale | Codex |
+|---------|----------|-------------|-----|-----------|-------|
+| Execution model | Serve (HTTP) | Serve (proxy) | RPC (subprocess) | Serve (HTTP/SSE) | Serve (App Server proxy) |
+| Streaming | SSE events | SSE events | JSONL events | SSE events | JSON-RPC bridged to SSE |
+| Abort | Kill process | SIGINT→SIGTERM | `abort` command | Turn interrupt endpoint | `turn/interrupt` |
+| Steering | No | No | `steer` / `follow_up` | Runtime API supports steer; Chetter does not expose it yet | Runtime API supports steer; Chetter does not expose it yet |
+| Model switching | Per-session config | Per-task flag | `set_model` mid-session | Per-thread/turn model | Per-thread/turn model |
+| MCP support | Built-in | Built-in | via pi-mcp-adapter | Built-in `.codewhale/mcp.json` | Built-in `.codex/config.toml` |
+| Session export | SQLite DB | JSONL files | `get_messages` → markdown | Observed-turn markdown fallback | Observed-turn markdown export |
+| Per-task Docker isolation | Yes (gVisor) | Yes (gVisor) | No | Yes (gVisor) | Yes (gVisor) |
+| Provider breadth | Multiple | Anthropic only | 30+ | Broad multi-provider/open-model | Responses API-compatible providers |
+| Permission system | Config-based | Settings-based | None (container-reliant) | Runtime approval/sandbox policy | `workspace-write` plus no interactive approvals |
+| Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh | Model/provider dependent | Model/provider dependent |
+| Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) |
+| License | Apache 2.0 | Proprietary (CLI) | MIT | MIT | Apache 2.0 |
 
 ## Adding a New Harness
 
@@ -326,7 +362,7 @@ native HTTP/SSE control API.
 4. If the harness needs env var passthrough, add keys to
    `runnerOwnedEnvKeys()` and `isRunnerOwnedEnv()` in
    `runner/internal/controller/runner_task.go`.
-5. Install the harness binary in `runner/Dockerfile.chetter-base`, and the
+5. Install the harness binary in `runner/images/base/Dockerfile`, and the
    serve-proxy binary (if applicable).
 6. Add `Harness` to MCP input schemas in `internal/service/tools.go`
    (`SubmitTaskInput`, `CreateTriggerInput`, `UpdateTriggerInput`).
@@ -343,6 +379,5 @@ native HTTP/SSE control API.
 |---------|---------|-----|-------|
 | Aider | Apache 2.0 | `aider --message "..." --yes` | Model-agnostic, git-native, pip install. Simplest possible harness. |
 | Goose | Apache 2.0 | `goose session ...` | Rust single binary, 15+ providers, 70+ MCP extensions. Linux Foundation governed. |
-| Codex | Apache 2.0 | `codex` | OpenAI's CLI. Not wired as a Chetter harness yet; needs non-interactive mode investigation. |
 | MiMo Code | MIT | `mimo` | XiaomiMiMo OpenCode fork with memory/goals/compose workflows. Needs serve/API compatibility investigation. |
 | Reasonix | MIT | `reasonix run "task"` | DeepSeek cost-optimization specialist. Go static binary, reads `.mcp.json` natively. DeepSeek-only. Pin `@next` never `@latest`. |

@@ -14,6 +14,7 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [SCHEDULES.md](SCHEDULES.md) | Cron trigger/schedule management. |
 | [REVIEWS.md](REVIEWS.md) | GitHub PR review automation. |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration-as-code: definitions repo, model catalog, sync, and change workflow. |
+| [PROVIDERS.md](PROVIDERS.md) | Supported provider matrix per harness and catalog `kind` reference. |
 | [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) | Resumable session model, checkpoint/restore, and remaining work. |
 | [K3S.md](K3S.md) | Canonical local k3s guide for running the Chetter stack with Docker/gVisor task execution. |
 | [EKS.md](EKS.md) | Production EKS (or similar managed Kubernetes) installation guide. |
