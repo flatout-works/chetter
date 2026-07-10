@@ -90,11 +90,7 @@ func mcpAdapterPath() string {
 	if path := os.Getenv("PI_MCP_ADAPTER_PATH"); path != "" {
 		return path
 	}
-	const defaultPath = "/opt/pi-extensions/node_modules/pi-mcp-adapter"
-	if _, err := os.Stat(defaultPath); err == nil {
-		return defaultPath
-	}
-	return ""
+	return "/opt/pi-extensions/node_modules/pi-mcp-adapter"
 }
 
 func writeJSON(path string, v any, perm os.FileMode) error {

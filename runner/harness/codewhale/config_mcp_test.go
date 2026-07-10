@@ -26,7 +26,7 @@ func TestGenerateConfigAddsTaskMCPProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := cfg["servers"].(map[string]any)["context"].(map[string]any)
-	if profile["transport"] != "sse" || profile["headers"].(map[string]any)["Authorization"] != "Bearer ${EXAMPLE_MCP_TOKEN}" {
+	if profile["transport"] != "sse" || profile["bearer_token_env_var"] != "EXAMPLE_MCP_TOKEN" {
 		t.Fatalf("unexpected MCP profile: %#v", profile)
 	}
 }

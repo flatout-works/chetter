@@ -40,7 +40,7 @@ func TestResolvedModelID(t *testing.T) {
 }
 
 func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
-	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
+	t.Setenv("PI_MCP_ADAPTER_PATH", "")
 
 	wsDir := t.TempDir()
 	req := task.TaskRequest{MCPProfiles: []task.MCPProfile{{
@@ -52,8 +52,9 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 
 	assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "settings.json"))
 	projectSettings := assertJSONPath(t, filepath.Join(wsDir, ".pi", "settings.json"))
-	if _, ok := projectSettings["extensions"]; !ok {
-		t.Fatal("expected project settings to load pi-mcp-adapter extension")
+	extensions, ok := projectSettings["extensions"].([]any)
+	if !ok || len(extensions) != 1 || extensions[0] != "/opt/pi-extensions/node_modules/pi-mcp-adapter" {
+		t.Fatalf("expected project settings to load the agent-image adapter, got %#v", projectSettings["extensions"])
 	}
 
 	data, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))

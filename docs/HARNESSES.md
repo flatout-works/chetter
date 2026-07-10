@@ -113,7 +113,7 @@ All four harnesses connect directly to selected HTTP/SSE profile URLs. The runne
 |---|---|
 | OpenCode | `Bearer {env:NAME}` |
 | Claude Code | `Bearer ${NAME}` |
-| CodeWhale | `Bearer ${NAME}` |
+| CodeWhale | `bearer_token_env_var: NAME` |
 | Pi | Native `bearerTokenEnv: NAME` |
 
 Chetter does not proxy remote MCP traffic or reimplement the MCP tool protocol. Generated configuration contains endpoint metadata and variable names, never profile token values.

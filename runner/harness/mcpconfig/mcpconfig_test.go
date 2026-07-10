@@ -36,7 +36,7 @@ func TestHarnessServerFormatsReferenceTokenEnvironment(t *testing.T) {
 	if err := AddCodeWhaleServers(servers, []task.MCPProfile{profile}); err != nil {
 		t.Fatal(err)
 	}
-	if server := servers["context"].(map[string]any); server["transport"] != "sse" || server["headers"].(map[string]string)["Authorization"] != "Bearer ${EXAMPLE_MCP_TOKEN}" {
+	if server := servers["context"].(map[string]any); server["transport"] != "sse" || server["bearer_token_env_var"] != "EXAMPLE_MCP_TOKEN" {
 		t.Fatalf("unexpected CodeWhale server: %#v", server)
 	}
 

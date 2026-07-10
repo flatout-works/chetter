@@ -39,7 +39,7 @@ func AddClaudeServers(servers map[string]any, profiles []task.MCPProfile) error 
 
 func AddCodeWhaleServers(servers map[string]any, profiles []task.MCPProfile) error {
 	for _, profile := range profiles {
-		headers, err := profileHeaders(profile, shellEnvReference)
+		headers, err := profileHeaders(profile, nil)
 		if err != nil {
 			return err
 		}
@@ -49,6 +49,9 @@ func AddCodeWhaleServers(servers map[string]any, profiles []task.MCPProfile) err
 		}
 		if len(headers) > 0 {
 			server["headers"] = headers
+		}
+		if profile.BearerTokenEnv != "" {
+			server["bearer_token_env_var"] = profile.BearerTokenEnv
 		}
 		servers[profile.Name] = server
 	}
