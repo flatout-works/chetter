@@ -21,11 +21,12 @@ A schedule is a **persisted task template** with a cron expression. On each cron
 |---|---|---|---|
 | `name` | Yes | — | Unique schedule name. Used as the stable identifier for updates and deletion. |
 | `cron_expr` | Yes | — | 5-field cron expression (e.g. `0 4 * * *`) or descriptor (`@hourly`, `@daily`). Parsed by `robfig/cron` in UTC. |
-| `prompt` | Yes | — | The task prompt. Executed by the runner's OpenCode agent on each fire. |
+| `prompt` | Yes | — | The task prompt. Executed by the runner's configured harness on each fire. |
 | `git_url` | No | — | Repository URL to clone before running the task. |
 | `git_ref` | No | `main` | Branch, tag, or commit to check out. |
 | `agent_image` | Yes | — | Runner Docker image. Falls back to `DEFAULT_AGENT_IMAGE` if omitted and configured. |
-| `agent` | No | — | OpenCode agent name (e.g. `changelog-maintainer`). |
+| `agent` | No | — | Agent definition name (e.g. `changelog-maintainer`). |
+| `harness` | No | — | Runner harness: `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`. Defaults to the runner's `execution.harness` config. |
 | `provider_id` | No | — | LLM provider (e.g. \`opencode\`). |
 | `model_id` | No | — | LLM model (e.g. `deepseek-v4-pro`). |
 | `variant_id` | No | — | Model variant (e.g. `high`, `minimal`). |
@@ -136,8 +137,9 @@ cron_expr: "0 4 * * *"
 git_url: https://github.com/org/repo
 git_ref: main
 agent_image: ghcr.io/flatout-works/chetter-runner:main
-provider_id: opencode
-model_id: deepseek-v4-pro
+harness: opencode
+provider_id: anthropic
+model_id: claude-sonnet-4
 skills:
   - docs-update
 timeout_sec: 3600
