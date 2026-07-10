@@ -122,6 +122,8 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		ProviderName:           t.ProviderName,
 		ProviderBaseURL:        t.ProviderBaseUrl,
 		ProviderAPIKeyEnv:      t.ProviderApiKeyEnv,
+		ProviderAPI:            t.ProviderApi,
+		ProviderAuthHeader:     t.ProviderAuthHeader,
 		VariantID:              t.VariantId,
 		Skills:                 t.Skills,
 		TimeoutSec:             timeoutSec,

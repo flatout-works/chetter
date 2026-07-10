@@ -695,10 +695,12 @@ func TestResolveModelForTaskUsesHarnessMappings(t *testing.T) {
 				APIKeyEnv: "SYNTHETIC_API_KEY",
 				Harnesses: map[string]modelcatalog.ProviderHarness{
 					"opencode": {
-						ID:        "synthetic-openai",
-						Name:      "Synthetic OpenAI",
-						BaseURL:   "https://api.example.test/openai",
-						APIKeyEnv: "SYNTHETIC_OPENAI_KEY",
+						ID:         "synthetic-openai",
+						Name:       "Synthetic OpenAI",
+						BaseURL:    "https://api.example.test/openai",
+						APIKeyEnv:  "SYNTHETIC_OPENAI_KEY",
+						API:        "openai-completions",
+						AuthHeader: true,
 					},
 				},
 				Models: []modelcatalog.Model{{
@@ -714,7 +716,112 @@ func TestResolveModelForTaskUsesHarnessMappings(t *testing.T) {
 	if got.ProviderID != "synthetic-openai" || got.ModelID != "mapped-model" {
 		t.Fatalf("unexpected resolved model: %+v", got)
 	}
-	if got.ProviderName != "Synthetic OpenAI" || got.ProviderBaseURL != "https://api.example.test/openai" || got.ProviderAPIKeyEnv != "SYNTHETIC_OPENAI_KEY" {
+	if got.ProviderName != "Synthetic OpenAI" || got.ProviderBaseURL != "https://api.example.test/openai" || got.ProviderAPIKeyEnv != "SYNTHETIC_OPENAI_KEY" || got.ProviderAPI != "openai-completions" || !got.ProviderAuthHeader {
 		t.Fatalf("unexpected provider metadata: %+v", got)
+	}
+}
+
+func TestResolveModelForTaskNoHarnessMappingOmitsAPI(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "litellm",
+		DefaultModel:    "coding-model",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"opencode": {Provider: "litellm", Model: "coding-model"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"litellm": {
+				Name:      "LiteLLM",
+				BaseURL:   "https://litellm.example.com/v1",
+				APIKeyEnv: "LITELLM_API_KEY",
+				Models:    []modelcatalog.Model{{ID: "coding-model"}},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{Harness: "opencode"})
+	if got.ProviderAPI != "" {
+		t.Fatalf("ProviderAPI should be empty without harness mapping, got %q", got.ProviderAPI)
+	}
+	if got.ProviderAuthHeader {
+		t.Fatal("ProviderAuthHeader should be false without harness mapping")
+	}
+	if got.ProviderBaseURL != "https://litellm.example.com/v1" {
+		t.Fatalf("ProviderBaseURL should fall back to provider level, got %q", got.ProviderBaseURL)
+	}
+}
+
+func TestResolveModelForTaskDisabledHarnessFallsBackToDefault(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "litellm",
+		DefaultModel:    "coding-model",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"opencode":  {Provider: "litellm", Model: "coding-model"},
+			"codewhale": {Provider: "anthropic", Model: "claude-sonnet-4-5"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"litellm": {
+				Name:      "LiteLLM",
+				BaseURL:   "https://litellm.example.com/v1",
+				APIKeyEnv: "LITELLM_API_KEY",
+				Harnesses: map[string]modelcatalog.ProviderHarness{
+					"codewhale": {
+						Disabled: true,
+						API:      "openai-completions",
+					},
+				},
+				Models: []modelcatalog.Model{{ID: "coding-model"}},
+			},
+			"anthropic": {
+				Name:      "Anthropic",
+				BaseURL:   "https://api.anthropic.com",
+				APIKeyEnv: "ANTHROPIC_API_KEY",
+				Models:    []modelcatalog.Model{{ID: "claude-sonnet-4-5"}},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{
+		Harness:    "codewhale",
+		ProviderId: "litellm",
+		ModelId:    "coding-model",
+	})
+	if got.ProviderID != "anthropic" {
+		t.Fatalf("disabled harness should fall back to default provider, got %q", got.ProviderID)
+	}
+	if got.ModelID != "claude-sonnet-4-5" {
+		t.Fatalf("disabled harness should fall back to default model, got %q", got.ModelID)
+	}
+	if got.ProviderAPI != "" {
+		t.Fatalf("disabled harness fallback should not carry API, got %q", got.ProviderAPI)
+	}
+}
+
+func TestResolveModelForTaskDisabledHarnessCircularGuard(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "litellm",
+		DefaultModel:    "coding-model",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"codewhale": {Provider: "litellm", Model: "coding-model"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"litellm": {
+				Name:      "LiteLLM",
+				BaseURL:   "https://litellm.example.com/v1",
+				APIKeyEnv: "LITELLM_API_KEY",
+				Harnesses: map[string]modelcatalog.ProviderHarness{
+					"codewhale": {Disabled: true},
+				},
+				Models: []modelcatalog.Model{{ID: "coding-model"}},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{
+		Harness:    "codewhale",
+		ProviderId: "litellm",
+		ModelId:    "coding-model",
+	})
+	if got.ProviderID == "" {
+		t.Fatal("circular disabled fallback should return a non-empty provider ID")
 	}
 }

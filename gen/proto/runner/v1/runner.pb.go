@@ -510,6 +510,8 @@ type Task struct {
 	AgentDefinition        string                 `protobuf:"bytes,23,opt,name=agent_definition,json=agentDefinition,proto3" json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte      `protobuf:"bytes,24,rep,name=skill_definitions,json=skillDefinitions,proto3" json:"skill_definitions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ExtraFiles             map[string][]byte      `protobuf:"bytes,26,rep,name=extra_files,json=extraFiles,proto3" json:"extra_files,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ProviderApi            string                 `protobuf:"bytes,27,opt,name=provider_api,json=providerApi,proto3" json:"provider_api,omitempty"`
+	ProviderAuthHeader     bool                   `protobuf:"varint,28,opt,name=provider_auth_header,json=providerAuthHeader,proto3" json:"provider_auth_header,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -724,6 +726,20 @@ func (x *Task) GetExtraFiles() map[string][]byte {
 		return x.ExtraFiles
 	}
 	return nil
+}
+
+func (x *Task) GetProviderApi() string {
+	if x != nil {
+		return x.ProviderApi
+	}
+	return ""
+}
+
+func (x *Task) GetProviderAuthHeader() bool {
+	if x != nil {
+		return x.ProviderAuthHeader
+	}
+	return false
 }
 
 type ClaimTaskResponse struct {
@@ -1762,7 +1778,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb7\t\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x8c\n" +
+	"\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -1794,7 +1811,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10agent_definition\x18\x17 \x01(\tR\x0fagentDefinition\x12R\n" +
 	"\x11skill_definitions\x18\x18 \x03(\v2%.runner.v1.Task.SkillDefinitionsEntryR\x10skillDefinitions\x12@\n" +
 	"\vextra_files\x18\x1a \x03(\v2\x1f.runner.v1.Task.ExtraFilesEntryR\n" +
-	"extraFiles\x1a6\n" +
+	"extraFiles\x12!\n" +
+	"\fprovider_api\x18\x1b \x01(\tR\vproviderApi\x120\n" +
+	"\x14provider_auth_header\x18\x1c \x01(\bR\x12providerAuthHeader\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +

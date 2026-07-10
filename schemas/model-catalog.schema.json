@@ -57,6 +57,8 @@
         "name": { "type": "string" },
         "base_url": { "type": "string" },
         "api_key_env": { "type": "string" },
+        "api": { "type": "string", "enum": ["", "openai-completions", "anthropic-messages"] },
+        "auth_header": { "type": "boolean" },
         "disabled": { "type": "boolean" }
       }
     },
