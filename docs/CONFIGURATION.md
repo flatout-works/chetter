@@ -278,8 +278,48 @@ providers can still be listed for harnesses such as Claude Code, Pi, or
 CodeWhale without
 OpenCode trying to render them as OpenAI-compatible endpoints.
 
-Use provider or model `harnesses` overrides only when a harness needs a
-different ID or should disable an entry.
+Use provider or model `harnesses` overrides when a harness needs a different
+ID, API transport, endpoint, credential environment variable, or should
+disable an entry.
+
+### LiteLLM
+
+LiteLLM is a first-class router provider for OpenCode, Pi, and Claude Code.
+Use one logical provider and map it to the API contract each harness expects:
+
+```yaml
+providers:
+  litellm:
+    name: Corporate LiteLLM
+    kind: openai_compatible
+    api_key_env: LITELLM_API_KEY
+    models:
+      - id: coding-model # LiteLLM model_name alias
+    harnesses:
+      opencode:
+        id: litellm
+        api: openai-completions
+        base_url: https://litellm.example.com/v1
+      pi:
+        id: litellm
+        api: openai-completions
+        auth_header: true
+        base_url: https://litellm.example.com/v1
+      claude-code:
+        id: litellm
+        api: anthropic-messages
+        base_url: https://litellm.example.com
+      codewhale:
+        disabled: true
+```
+
+Set `LITELLM_API_KEY` on every runner, not in the catalog or a submitted task.
+Chetter forwards only the resolved provider key to the agent container. The
+LiteLLM router hostname must also be included in the runner's
+`proxy.allowed_domains` list for gVisor-isolated tasks. OpenCode and Pi use
+LiteLLM's OpenAI-compatible endpoint; Claude Code uses its
+Anthropic-compatible messages endpoint. CodeWhale is disabled because it does
+not yet support generic provider credentials.
 
 ### Viewing
 
