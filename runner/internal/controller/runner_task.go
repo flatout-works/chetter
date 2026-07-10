@@ -221,6 +221,25 @@ func addRunnerOwnedEnv(env map[string]string) {
 	}
 }
 
+func providerCredentialEnv(req task.TaskRequest) []string {
+	key := strings.TrimSpace(req.ProviderAPIKeyEnv)
+	if key == "" {
+		return nil
+	}
+	if value := os.Getenv(key); value != "" {
+		return []string{key + "=" + value}
+	}
+	return nil
+}
+
+func isManagedEnv(key string, req task.TaskRequest) bool {
+	if isRunnerOwnedEnv(key) {
+		return true
+	}
+	credKey := strings.TrimSpace(req.ProviderAPIKeyEnv)
+	return credKey != "" && key == credKey
+}
+
 func runnerOwnedEnvKeys() []string {
 	return []string{
 		"ANTHROPIC_API_KEY",
@@ -387,7 +406,7 @@ func gvisorHostAliases() []string {
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if isManagedEnv(k, req) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
@@ -413,6 +432,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	for k, v := range h.Env(session.WorkspaceDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
+	env = append(env, providerCredentialEnv(req)...)
 	env = append(env, "HOME="+session.WorkspaceDir)
 
 	if req.Prompt == "" {
@@ -598,7 +618,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if isManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
@@ -607,6 +627,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		if val := os.Getenv(key); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
+	}
+	for _, value := range providerCredentialEnv(req) {
+		dockerArgs = append(dockerArgs, "-e", value)
 	}
 
 	if gvisor {
@@ -824,7 +847,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if isManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
@@ -833,6 +856,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		if val := os.Getenv(key); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
+	}
+	for _, value := range providerCredentialEnv(req) {
+		dockerArgs = append(dockerArgs, "-e", value)
 	}
 
 	if gvisor {
@@ -1166,7 +1192,7 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if isManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
@@ -1175,6 +1201,9 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		if val := os.Getenv(key); val != "" {
 			dockerArgs = append(dockerArgs, "-e", key+"="+val)
 		}
+	}
+	for _, value := range providerCredentialEnv(req) {
+		dockerArgs = append(dockerArgs, "-e", value)
 	}
 
 	dockerArgs = append(dockerArgs, req.AgentImage)
@@ -1324,7 +1353,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isRunnerOwnedEnv(k) {
+		if isManagedEnv(k, req) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
@@ -1347,6 +1376,7 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.
 	for k, v := range h.Env(wsDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
+	env = append(env, providerCredentialEnv(req)...)
 	return env
 }
 
