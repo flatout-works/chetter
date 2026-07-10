@@ -17,6 +17,7 @@ import (
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/runner/harness/claude"
+	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -566,6 +567,19 @@ func TestSelectHarnessByName_Claude(t *testing.T) {
 	}
 	if h.SupportsRpc() {
 		t.Fatal("claude-code should not support RPC")
+	}
+}
+
+func TestSelectHarnessByName_Codex(t *testing.T) {
+	h := selectHarnessByName("codex")
+	if h.Name() != "codex" {
+		t.Fatalf("expected codex harness, got %s", h.Name())
+	}
+	if _, ok := h.(*codex.Codex); !ok {
+		t.Fatalf("expected *codex.Codex, got %T", h)
+	}
+	if h.SupportsRpc() {
+		t.Fatal("codex should not support RPC")
 	}
 }
 

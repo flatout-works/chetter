@@ -29,7 +29,7 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${
     && chmod +x /usr/local/bin/docker
 
 # --------------------------------------------------------------------------
-# Stage 2: Build claude-serve-proxy
+# Stage 2: Build harness serve proxies
 # --------------------------------------------------------------------------
 FROM golang:1.26-bookworm AS proxy-builder
 
@@ -43,6 +43,7 @@ WORKDIR /src
 COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/claude-serve-proxy ./cmd/claude-serve-proxy
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/codex-serve-proxy ./cmd/codex-serve-proxy
 
 # --------------------------------------------------------------------------
 # Stage 3: Final agent base image
@@ -85,8 +86,14 @@ RUN npm install -g @anthropic-ai/claude-code \
 RUN npm install -g codewhale \
     && codewhale --version
 
+# Codex CLI. Pin its App Server protocol because the Chetter bridge relies on it.
+ARG CODEX_VERSION=0.144.1
+RUN npm install -g @openai/codex@${CODEX_VERSION} \
+    && codex --version
+
 # claude-serve-proxy — Go HTTP wrapper for Claude CLI headless mode
 COPY --from=proxy-builder /out/claude-serve-proxy /usr/local/bin/claude-serve-proxy
+COPY --from=proxy-builder /out/codex-serve-proxy /usr/local/bin/codex-serve-proxy
 
 # Pi coding agent (via npm) + MCP adapter extension.
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
