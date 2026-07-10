@@ -45,6 +45,10 @@ func TestHarnessDefaults(t *testing.T) {
 	if provider != "deepseek" || model != "deepseek-chat" {
 		t.Fatalf("codewhale default = %s/%s", provider, model)
 	}
+	provider, model = catalog.DefaultForHarness("codex", "fallback", "fallback-model")
+	if provider != "openai" || model != "gpt-5.4" {
+		t.Fatalf("codex default = %s/%s", provider, model)
+	}
 }
 
 func TestParseYAMLRejectsUnknownFields(t *testing.T) {
@@ -61,5 +65,46 @@ providers:
 `)
 	if _, err := ParseYAML(data); err == nil {
 		t.Fatal("expected unknown model catalog field to fail")
+	}
+}
+
+func TestParseYAML_BedrockProvider(t *testing.T) {
+	data := []byte(`version: 1
+default_provider: aws-bedrock
+default_model: claude-sonnet-4
+defaults:
+  codex:
+    provider: aws-bedrock
+    model: claude-sonnet-4
+providers:
+  aws-bedrock:
+    name: Amazon Bedrock
+    kind: aws_bedrock
+    aws_profile: my-profile
+    aws_region: us-west-2
+    models:
+      - id: claude-sonnet-4
+`)
+	catalog, err := ParseYAML(data)
+	if err != nil {
+		t.Fatalf("ParseYAML: %v", err)
+	}
+	p, ok := catalog.Providers["aws-bedrock"]
+	if !ok {
+		t.Fatal("expected aws-bedrock provider")
+	}
+	if p.Kind != "aws_bedrock" {
+		t.Fatalf("expected kind=aws_bedrock, got %q", p.Kind)
+	}
+	if p.AwsProfile != "my-profile" {
+		t.Fatalf("expected aws_profile=my-profile, got %q", p.AwsProfile)
+	}
+	if p.AwsRegion != "us-west-2" {
+		t.Fatalf("expected aws_region=us-west-2, got %q", p.AwsRegion)
+	}
+
+	provider, model := catalog.DefaultForHarness("codex", "", "")
+	if provider != "aws-bedrock" || model != "claude-sonnet-4" {
+		t.Fatalf("codex default = %s/%s, want aws-bedrock/claude-sonnet-4", provider, model)
 	}
 }

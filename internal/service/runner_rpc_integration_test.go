@@ -717,4 +717,104 @@ func TestResolveModelForTaskUsesHarnessMappings(t *testing.T) {
 	if got.ProviderName != "Synthetic OpenAI" || got.ProviderBaseURL != "https://api.example.test/openai" || got.ProviderAPIKeyEnv != "SYNTHETIC_OPENAI_KEY" {
 		t.Fatalf("unexpected provider metadata: %+v", got)
 	}
+	if got.ProviderKind != "" || got.AwsProfile != "" || got.AwsRegion != "" {
+		t.Fatalf("unexpected Bedrock fields on non-Bedrock provider: kind=%q profile=%q region=%q", got.ProviderKind, got.AwsProfile, got.AwsRegion)
+	}
+}
+
+func TestResolveModelForTask_BedrockProvider(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "openai",
+		DefaultModel:    "gpt-5.4",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"codex": {Provider: "aws-bedrock", Model: "bedrock-model"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"openai": {
+				Name:      "OpenAI",
+				Kind:      "native",
+				BaseURL:   "https://api.openai.com/v1",
+				APIKeyEnv: "OPENAI_API_KEY",
+				Models:    []modelcatalog.Model{{ID: "gpt-5.4"}},
+			},
+			"aws-bedrock": {
+				Name:       "Amazon Bedrock",
+				Kind:       "aws_bedrock",
+				BaseURL:    "https://bedrock-runtime.us-east-1.amazonaws.com",
+				AwsProfile: "my-profile",
+				AwsRegion:  "us-east-1",
+				Models:     []modelcatalog.Model{{ID: "bedrock-model"}},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{Harness: "codex"})
+	if got.ProviderID != "aws-bedrock" || got.ModelID != "bedrock-model" {
+		t.Fatalf("unexpected resolved model: %+v", got)
+	}
+	if got.ProviderKind != "aws_bedrock" {
+		t.Fatalf("expected ProviderKind=aws_bedrock, got %q", got.ProviderKind)
+	}
+	if got.AwsProfile != "my-profile" {
+		t.Fatalf("expected AwsProfile=my-profile, got %q", got.AwsProfile)
+	}
+	if got.AwsRegion != "us-east-1" {
+		t.Fatalf("expected AwsRegion=us-east-1, got %q", got.AwsRegion)
+	}
+}
+
+func TestResolveModelForTask_BedrockWithHarnessOverride(t *testing.T) {
+	catalog := &modelcatalog.Catalog{
+		Version:         1,
+		DefaultProvider: "aws-bedrock",
+		DefaultModel:    "bedrock-model",
+		Defaults: map[string]modelcatalog.HarnessDefault{
+			"codex": {Provider: "aws-bedrock", Model: "bedrock-model"},
+		},
+		Providers: map[string]modelcatalog.Provider{
+			"aws-bedrock": {
+				Name:       "Amazon Bedrock",
+				Kind:       "aws_bedrock",
+				BaseURL:    "https://bedrock-runtime.us-east-1.amazonaws.com",
+				AwsProfile: "global-profile",
+				AwsRegion:  "global-region",
+				Models:     []modelcatalog.Model{{ID: "bedrock-model"}},
+				Harnesses: map[string]modelcatalog.ProviderHarness{
+					"codex": {
+						AwsProfile: "codex-profile",
+						AwsRegion:  "codex-region",
+					},
+				},
+			},
+		},
+	}
+	got := resolveModelForTask(catalog, &runnerv1.Task{Harness: "codex"})
+	if got.AwsProfile != "codex-profile" {
+		t.Fatalf("expected harness override AwsProfile=codex-profile, got %q", got.AwsProfile)
+	}
+	if got.AwsRegion != "codex-region" {
+		t.Fatalf("expected harness override AwsRegion=codex-region, got %q", got.AwsRegion)
+	}
+}
+
+func TestDefaultCatalogIncludesBedrockProvider(t *testing.T) {
+	catalog := modelcatalog.Default()
+	p, ok := catalog.Providers["aws-bedrock"]
+	if !ok {
+		t.Fatal("expected aws-bedrock provider in default catalog")
+	}
+	if p.Kind != "aws_bedrock" {
+		t.Fatalf("expected kind=aws_bedrock, got %q", p.Kind)
+	}
+	if p.Name != "Amazon Bedrock" {
+		t.Fatalf("expected name=Amazon Bedrock, got %q", p.Name)
+	}
+	if len(p.Models) == 0 {
+		t.Fatal("expected at least one model")
+	}
+
+	provider, model := catalog.DefaultForHarness("codex", "openai", "gpt-5.4")
+	if provider != "openai" || model != "gpt-5.4" {
+		t.Fatalf("codex default should be openai/gpt-5.4 (Bedrock is opt-in), got %s/%s", provider, model)
+	}
 }

@@ -187,6 +187,9 @@ type resolvedModelConfig struct {
 	ProviderName      string
 	ProviderBaseURL   string
 	ProviderAPIKeyEnv string
+	ProviderKind      string
+	AwsProfile        string
+	AwsRegion         string
 }
 
 func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.Task) {
@@ -213,6 +216,18 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderName = resolved.ProviderName
 	task.ProviderBaseUrl = resolved.ProviderBaseURL
 	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
+	if task.Env == nil {
+		task.Env = make(map[string]string)
+	}
+	if resolved.ProviderKind != "" {
+		task.Env["__chetter_provider_kind"] = resolved.ProviderKind
+	}
+	if resolved.AwsProfile != "" {
+		task.Env["__chetter_aws_profile"] = resolved.AwsProfile
+	}
+	if resolved.AwsRegion != "" {
+		task.Env["__chetter_aws_region"] = resolved.AwsRegion
+	}
 }
 
 func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) {
@@ -380,11 +395,16 @@ func catalogProviderModelConfig(catalog *modelcatalog.Catalog, harness, provider
 		resolved.ProviderName = firstNonEmpty(hp.Name, provider.Name, resolved.ProviderID)
 		resolved.ProviderBaseURL = firstNonEmpty(hp.BaseURL, provider.BaseURL)
 		resolved.ProviderAPIKeyEnv = firstNonEmpty(hp.APIKeyEnv, provider.APIKeyEnv)
+		resolved.AwsProfile = firstNonEmpty(hp.AwsProfile, provider.AwsProfile)
+		resolved.AwsRegion = firstNonEmpty(hp.AwsRegion, provider.AwsRegion)
 	} else {
 		resolved.ProviderName = firstNonEmpty(provider.Name, resolved.ProviderID)
 		resolved.ProviderBaseURL = provider.BaseURL
 		resolved.ProviderAPIKeyEnv = provider.APIKeyEnv
+		resolved.AwsProfile = provider.AwsProfile
+		resolved.AwsRegion = provider.AwsRegion
 	}
+	resolved.ProviderKind = provider.Kind
 	for _, model := range provider.Models {
 		if model.ID != modelID {
 			continue

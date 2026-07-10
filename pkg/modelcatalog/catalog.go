@@ -25,20 +25,24 @@ type HarnessDefault struct {
 }
 
 type Provider struct {
-	Name      string                     `yaml:"name" json:"name"`
-	Kind      string                     `yaml:"kind" json:"kind"`
-	BaseURL   string                     `yaml:"base_url" json:"base_url"`
-	APIKeyEnv string                     `yaml:"api_key_env" json:"api_key_env"`
-	Models    []Model                    `yaml:"models" json:"models"`
-	Harnesses map[string]ProviderHarness `yaml:"harnesses" json:"harnesses"`
+	Name       string                     `yaml:"name" json:"name"`
+	Kind       string                     `yaml:"kind" json:"kind"`
+	BaseURL    string                     `yaml:"base_url" json:"base_url"`
+	APIKeyEnv  string                     `yaml:"api_key_env" json:"api_key_env"`
+	AwsProfile string                     `yaml:"aws_profile" json:"aws_profile"`
+	AwsRegion  string                     `yaml:"aws_region" json:"aws_region"`
+	Models     []Model                    `yaml:"models" json:"models"`
+	Harnesses  map[string]ProviderHarness `yaml:"harnesses" json:"harnesses"`
 }
 
 type ProviderHarness struct {
-	ID        string `yaml:"id" json:"id"`
-	Name      string `yaml:"name" json:"name"`
-	BaseURL   string `yaml:"base_url" json:"base_url"`
-	APIKeyEnv string `yaml:"api_key_env" json:"api_key_env"`
-	Disabled  bool   `yaml:"disabled" json:"disabled"`
+	ID         string `yaml:"id" json:"id"`
+	Name       string `yaml:"name" json:"name"`
+	BaseURL    string `yaml:"base_url" json:"base_url"`
+	APIKeyEnv  string `yaml:"api_key_env" json:"api_key_env"`
+	AwsProfile string `yaml:"aws_profile" json:"aws_profile"`
+	AwsRegion  string `yaml:"aws_region" json:"aws_region"`
+	Disabled   bool   `yaml:"disabled" json:"disabled"`
 }
 
 type Model struct {
@@ -106,6 +110,7 @@ func Default() *Catalog {
 			"pi":          {Provider: "zai", Model: "glm-5.2"},
 			"claude-code": {Provider: "anthropic", Model: "claude-sonnet-4-5"},
 			"codewhale":   {Provider: "deepseek", Model: "deepseek-chat"},
+			"codex":       {Provider: "openai", Model: "gpt-5.4"},
 		},
 		Providers: map[string]Provider{
 			"synthetic": {
@@ -141,6 +146,20 @@ func Default() *Catalog {
 				Kind:      "native",
 				APIKeyEnv: "ANTHROPIC_API_KEY",
 				Models:    []Model{{ID: "claude-sonnet-4-5"}},
+			},
+			"openai": {
+				Name:      "OpenAI",
+				Kind:      "native",
+				BaseURL:   "https://api.openai.com/v1",
+				APIKeyEnv: "OPENAI_API_KEY",
+				Models:    []Model{{ID: "gpt-5.4"}},
+			},
+			"aws-bedrock": {
+				Name:      "Amazon Bedrock",
+				Kind:      "aws_bedrock",
+				BaseURL:   "https://bedrock-runtime.us-east-1.amazonaws.com",
+				APIKeyEnv: "AWS_ACCESS_KEY_ID",
+				Models:    []Model{{ID: "us.anthropic.claude-sonnet-4-20250514-v1:0"}},
 			},
 		},
 	}
