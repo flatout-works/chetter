@@ -67,6 +67,51 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	}
 }
 
+func TestProviderCredentialEnvUsesResolvedRunnerCredential(t *testing.T) {
+	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
+	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"})
+	if len(got) != 1 || got[0] != "LITELLM_API_KEY=runner-litellm-key" {
+		t.Fatalf("providerCredentialEnv() = %v", got)
+	}
+}
+
+func TestProviderCredentialEnvEmptyKeyReturnsNil(t *testing.T) {
+	got := providerCredentialEnv(task.TaskRequest{})
+	if got != nil {
+		t.Fatalf("providerCredentialEnv() with empty key should return nil, got %v", got)
+	}
+}
+
+func TestProviderCredentialEnvUnsetVarReturnsNil(t *testing.T) {
+	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "UNSET_LITELLM_KEY"})
+	if got != nil {
+		t.Fatalf("providerCredentialEnv() with unset env var should return nil, got %v", got)
+	}
+}
+
+func TestManagedEnvRejectsTaskProviderCredential(t *testing.T) {
+	req := task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"}
+	if !isManagedEnv("LITELLM_API_KEY", req) {
+		t.Fatal("catalog-selected provider credential should be runner-managed")
+	}
+	if !isManagedEnv("OPENAI_API_KEY", req) {
+		t.Fatal("existing runner credential should remain runner-managed")
+	}
+	if isManagedEnv("CUSTOM_ENV", req) {
+		t.Fatal("unrelated task environment should be allowed")
+	}
+}
+
+func TestManagedEnvEmptyProviderKeyDoesNotMatch(t *testing.T) {
+	req := task.TaskRequest{}
+	if isManagedEnv("", req) {
+		t.Fatal("empty key should not be managed when ProviderAPIKeyEnv is empty")
+	}
+	if isManagedEnv("CUSTOM_ENV", req) {
+		t.Fatal("non-runner-owned env should not be managed without a provider key")
+	}
+}
+
 func TestTruncateSummary(t *testing.T) {
 	if s := truncateSummary("short"); s != "short" {
 		t.Errorf("short text should not be truncated: %q", s)
@@ -653,17 +698,34 @@ func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
 	}
 }
 
+func TestProtoTaskToRequestProviderTransport(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{
+		ProviderId:         "litellm",
+		ModelId:            "coding-model",
+		ProviderBaseUrl:    "https://litellm.example.test/v1",
+		ProviderApiKeyEnv:  "LITELLM_API_KEY",
+		ProviderApi:        "openai-completions",
+		ProviderAuthHeader: true,
+	})
+	if req.ProviderID != "litellm" || req.ModelID != "coding-model" || req.ProviderBaseURL != "https://litellm.example.test/v1" || req.ProviderAPIKeyEnv != "LITELLM_API_KEY" || req.ProviderAPI != "openai-completions" || !req.ProviderAuthHeader {
+		t.Fatalf("unexpected resolved provider request: %+v", req)
+	}
+}
+
 func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
+	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
 	h := pi.New()
 	req := task.TaskRequest{
-		TaskID:     "task-123",
-		AgentImage: "ghcr.io/flatout-works/chetter-runner:main",
-		Agent:      "issue-creator",
-		ProviderID: "synthetic",
-		ModelID:    "pi-model",
+		TaskID:            "task-123",
+		AgentImage:        "ghcr.io/flatout-works/chetter-runner:main",
+		Agent:             "issue-creator",
+		ProviderID:        "synthetic",
+		ProviderAPIKeyEnv: "LITELLM_API_KEY",
+		ModelID:           "pi-model",
 		Env: map[string]string{
-			"CUSTOM_ENV":     "custom-value",
-			"OPENAI_API_KEY": "task-key",
+			"CUSTOM_ENV":      "custom-value",
+			"OPENAI_API_KEY":  "task-key",
+			"LITELLM_API_KEY": "task-key",
 		},
 	}
 	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
@@ -696,6 +758,12 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 	if hasAdjacentArgs(args, "-e", "OPENAI_API_KEY=task-key") {
 		t.Fatalf("runner-owned env must not use task-provided value, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", "LITELLM_API_KEY=task-key") {
+		t.Fatalf("catalog-selected credential must not use task-provided value, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "LITELLM_API_KEY=runner-litellm-key") {
+		t.Fatalf("expected runner provider credential, got %v", args)
 	}
 }
 

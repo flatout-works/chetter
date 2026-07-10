@@ -2,12 +2,16 @@ package pi
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	piDir := filepath.Join(wsDir, ".pi")
 	agentDir := filepath.Join(piDir, "agent")
 	if err := os.MkdirAll(agentDir, 0750); err != nil {
@@ -31,6 +35,9 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	if err := writeJSON(filepath.Join(agentDir, "settings.json"), globalSettings, 0644); err != nil {
 		return err
 	}
+	if err := writeProviderConfig(agentDir, req); err != nil {
+		return err
+	}
 
 	projectSettings := map[string]any{}
 	if adapterPath := mcpAdapterPath(); adapterPath != "" {
@@ -45,8 +52,8 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"url":       runnerMCPURL,
-			"lifecycle": "keep-alive",
+			"url":         runnerMCPURL,
+			"lifecycle":   "keep-alive",
 			"idleTimeout": 0,
 		}
 	}
@@ -76,6 +83,36 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		copyPiState(wsDir)
 	}
 	return nil
+}
+
+func writeProviderConfig(agentDir string, req task.TaskRequest) error {
+	api := strings.TrimSpace(req.ProviderAPI)
+	if api == "" {
+		return nil
+	}
+	if strings.TrimSpace(req.ProviderID) == "" || strings.TrimSpace(req.ModelID) == "" || strings.TrimSpace(req.ProviderBaseURL) == "" {
+		return fmt.Errorf("pi custom provider requires provider_id, model_id, and provider_base_url")
+	}
+
+	provider := map[string]any{
+		"baseUrl": req.ProviderBaseURL,
+		"api":     api,
+		"models": []map[string]string{{
+			"id": req.ModelID,
+		}},
+	}
+	if apiKeyEnv := strings.TrimSpace(req.ProviderAPIKeyEnv); apiKeyEnv != "" {
+		provider["apiKey"] = "$" + apiKeyEnv
+	}
+	if req.ProviderAuthHeader {
+		provider["authHeader"] = true
+	}
+
+	return writeJSON(filepath.Join(agentDir, "models.json"), map[string]any{
+		"providers": map[string]any{
+			req.ProviderID: provider,
+		},
+	}, 0644)
 }
 
 func mcpAdapterPath() string {

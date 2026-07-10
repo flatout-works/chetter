@@ -79,6 +79,8 @@ message Task {
   string agent_definition = 23;
   map<string, bytes> skill_definitions = 24;
   map<string, bytes> extra_files = 26;
+  string provider_api = 27;
+  bool provider_auth_header = 28;
 }
 
 message ClaimTaskResponse {

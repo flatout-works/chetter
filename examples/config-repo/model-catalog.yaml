@@ -50,3 +50,26 @@ providers:
   #   models:
   #     - id: us.anthropic.claude-sonnet-4-20250514-v1:0
   #       name: Claude Sonnet 4 (Bedrock)
+  litellm:
+    name: Corporate LiteLLM
+    kind: openai_compatible
+    api_key_env: LITELLM_API_KEY
+    models:
+      - id: coding-model
+        name: Corporate Coding Model
+    harnesses:
+      opencode:
+        id: litellm
+        api: openai-completions
+        base_url: https://litellm.example.com/v1
+      pi:
+        id: litellm
+        api: openai-completions
+        auth_header: true
+        base_url: https://litellm.example.com/v1
+      claude-code:
+        id: litellm
+        api: anthropic-messages
+        base_url: https://litellm.example.com
+      codewhale:
+        disabled: true

@@ -73,3 +73,30 @@ func TestClaudeEnvAnthropicDefaultDoesNotOverrideEndpoint(t *testing.T) {
 		t.Fatalf("CLAUDE_CODE_SUBAGENT_MODEL should not be set for native Anthropic")
 	}
 }
+
+func TestClaudeEnvLiteLLMProvider(t *testing.T) {
+	t.Setenv("LITELLM_API_KEY", "litellm-proxy-key")
+
+	env := claudeEnv("/workspace", "secret", task.TaskRequest{
+		ProviderID:         "litellm",
+		ProviderName:       "Corporate LiteLLM",
+		ProviderBaseURL:    "https://litellm.example.com",
+		ProviderAPIKeyEnv:  "LITELLM_API_KEY",
+		ProviderAPI:        "anthropic-messages",
+		ProviderAuthHeader: true,
+		ModelID:            "coding-model",
+	})
+
+	if got := env["ANTHROPIC_BASE_URL"]; got != "https://litellm.example.com" {
+		t.Fatalf("ANTHROPIC_BASE_URL = %q, want https://litellm.example.com", got)
+	}
+	if got := env["ANTHROPIC_AUTH_TOKEN"]; got != "litellm-proxy-key" {
+		t.Fatalf("ANTHROPIC_AUTH_TOKEN = %q, want litellm-proxy-key", got)
+	}
+	if got := env["CLAUDE_CODE_SUBAGENT_MODEL"]; got != "coding-model" {
+		t.Fatalf("CLAUDE_CODE_SUBAGENT_MODEL = %q, want coding-model", got)
+	}
+	if got := env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "coding-model" {
+		t.Fatalf("ANTHROPIC_DEFAULT_OPUS_MODEL = %q, want coding-model", got)
+	}
+}

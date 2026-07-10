@@ -42,6 +42,8 @@ type ProviderHarness struct {
 	APIKeyEnv  string `yaml:"api_key_env" json:"api_key_env"`
 	AwsProfile string `yaml:"aws_profile" json:"aws_profile"`
 	AwsRegion  string `yaml:"aws_region" json:"aws_region"`
+	API        string `yaml:"api" json:"api"`
+	AuthHeader bool   `yaml:"auth_header" json:"auth_header"`
 	Disabled   bool   `yaml:"disabled" json:"disabled"`
 }
 
@@ -200,6 +202,11 @@ func (c Catalog) Validate() error {
 			}
 			seenModels[m.ID] = struct{}{}
 		}
+		for harness, mapping := range p.Harnesses {
+			if mapping.API != "" && !validHarnessAPI(mapping.API) {
+				return fmt.Errorf("provider %q has unsupported api %q for harness %q", id, mapping.API, harness)
+			}
+		}
 	}
 	for _, m := range provider.Models {
 		if m.ID == c.DefaultModel {
@@ -230,6 +237,15 @@ func (c Catalog) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validHarnessAPI(api string) bool {
+	switch api {
+	case "openai-completions", "anthropic-messages":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c Catalog) Counts() (providers, models int) {

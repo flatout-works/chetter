@@ -22,6 +22,8 @@ type TaskRequest struct {
 	ProviderName           string            `json:"provider_name,omitempty"`
 	ProviderBaseURL        string            `json:"provider_base_url,omitempty"`
 	ProviderAPIKeyEnv      string            `json:"provider_api_key_env,omitempty"`
+	ProviderAPI            string            `json:"provider_api,omitempty"`
+	ProviderAuthHeader     bool              `json:"provider_auth_header,omitempty"`
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
 	Harness                string            `json:"harness,omitempty"`
