@@ -19,7 +19,7 @@
     "provider_id": { "type": "string" },
     "model_id": { "type": "string" },
     "variant_id": { "type": "string" },
-    "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale"] },
+    "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex"] },
     "skills": {
       "oneOf": [
         { "type": "string" },
