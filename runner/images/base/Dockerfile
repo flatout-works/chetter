@@ -82,7 +82,7 @@ RUN npm install -g @anthropic-ai/claude-code \
     && claude --version
 
 # CodeWhale (via npm)
-RUN npm install -g codewhale \
+RUN npm install -g codewhale@0.8.67 \
     && codewhale --version
 
 # claude-serve-proxy — Go HTTP wrapper for Claude CLI headless mode
@@ -95,7 +95,7 @@ RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
 RUN mkdir -p /opt/pi-extensions \
     && cd /opt/pi-extensions \
     && npm init -y \
-    && npm install --ignore-scripts pi-mcp-adapter
+    && npm install --ignore-scripts pi-mcp-adapter@2.11.0
 
 ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
 

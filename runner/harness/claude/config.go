@@ -5,50 +5,57 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, isLocal bool) error {
+func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
 	claudeDir := wsDir + "/.claude"
 	if err := os.MkdirAll(claudeDir, 0750); err != nil {
 		return err
 	}
 
+	allowedTools := []string{
+		"Bash(ls:*)",
+		"Bash(find:*)",
+		"Bash(git:*)",
+		"Bash(make:*)",
+		"Bash(gh:*)",
+		"Bash(go:*)",
+		"Bash(cat:*)",
+		"Bash(jq:*)",
+		"Bash(sed:*)",
+		"Bash(grep:*)",
+		"Bash(curl:*)",
+		"Bash(date:*)",
+		"Bash(echo:*)",
+		"Bash(mkdir:*)",
+		"Bash(cp:*)",
+		"Bash(mv:*)",
+		"Bash(rm:*)",
+		"Bash(chmod:*)",
+		"Bash(chown:*)",
+		"Bash(ln:*)",
+		"Bash(tar:*)",
+		"Bash(unzip:*)",
+		"Bash(head:*)",
+		"Bash(tail:*)",
+		"Bash(sort:*)",
+		"Bash(uniq:*)",
+		"Bash(wc:*)",
+		"Read",
+		"Edit",
+		"Glob",
+		"Grep",
+		"Write",
+	}
+	for _, profile := range req.MCPProfiles {
+		allowedTools = append(allowedTools, "mcp__"+profile.Name+"__*")
+	}
 	settings := map[string]any{
 		"permissions": map[string]any{
-			"allow": []string{
-				"Bash(ls:*)",
-				"Bash(find:*)",
-				"Bash(git:*)",
-				"Bash(make:*)",
-				"Bash(gh:*)",
-				"Bash(go:*)",
-				"Bash(cat:*)",
-				"Bash(jq:*)",
-				"Bash(sed:*)",
-				"Bash(grep:*)",
-				"Bash(curl:*)",
-				"Bash(date:*)",
-				"Bash(echo:*)",
-				"Bash(mkdir:*)",
-				"Bash(cp:*)",
-				"Bash(mv:*)",
-				"Bash(rm:*)",
-				"Bash(chmod:*)",
-				"Bash(chown:*)",
-				"Bash(ln:*)",
-				"Bash(tar:*)",
-				"Bash(unzip:*)",
-				"Bash(head:*)",
-				"Bash(tail:*)",
-				"Bash(sort:*)",
-				"Bash(uniq:*)",
-				"Bash(wc:*)",
-				"Read",
-				"Edit",
-				"Glob",
-				"Grep",
-				"Write",
-			},
+			"allow": allowedTools,
 			"deny": []string{
 				"Bash(docker:*)",
 				"Bash(systemctl:*)",
@@ -94,6 +101,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		}
 		mcpServers["chetter"] = chetterMCP
 	}
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddClaudeServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
+		}
+	}
 
 	if len(mcpServers) > 0 {
 		agentMCP := map[string]any{
@@ -103,7 +115,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		if err != nil {
 			return err
 		}
-		agentMCPPath := claudeDir + "/mcp.json"
+		agentMCPPath := filepath.Join(wsDir, ".mcp.json")
 		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
 			return err
 		}

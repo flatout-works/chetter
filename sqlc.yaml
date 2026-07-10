@@ -11,6 +11,10 @@ sql:
         emit_empty_slices: true
         emit_pointers_for_null_types: true
         overrides:
+          - column: "chetter_tasks.mcp_profiles"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
           - db_type: "json"
             nullable: true
             go_type:

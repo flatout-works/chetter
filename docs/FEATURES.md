@@ -17,6 +17,7 @@ Supported task inputs include:
 - `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, or `codewhale`.
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
+- `mcp_profiles`: admin-selected global HTTP/SSE endpoints for non-resumable tasks. Bearer credentials are supplied by runner environment variables.
 - `env`: non-secret environment variables.
 - `timeout_sec`: per-task timeout.
 - `session_mode`, `pause_reason`, and `ttl_hours`: resumable session controls.

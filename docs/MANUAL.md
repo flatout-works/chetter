@@ -157,6 +157,7 @@ Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by
 | `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
 | Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
 | Definitions repo `triggers/*.yaml` and scoped trigger paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
+| Definitions repo `mcp-profiles/*.yaml` | `schemas/mcp-profile.schema.json` | Global HTTP/SSE endpoints. Bearer token values stay in runner environment variables. |
 | Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
 
 Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
@@ -239,6 +240,7 @@ chetter_mcp:
 model-catalog.yaml
 agents/...
 triggers/...
+mcp-profiles/...
 global/agents/...
 global/triggers/...
 groups/<team-name>/agents/...
@@ -255,7 +257,23 @@ Supported YAML formats are:
 |---|---|---|
 | `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
 | `triggers/*.yaml` | `name` | Also supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
+| `mcp-profiles/*.yaml` | `name`, `url` | Global-only HTTP or SSE endpoint. `auth.token_env` names a variable configured on every runner; static `headers` are persisted and must not contain secrets. |
 | `agents/*.md` | none | Also supported under scoped directories. Optional YAML frontmatter may include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. |
+
+Example MCP profile:
+
+```yaml
+name: context
+transport: http
+url: https://mcp.example.com/mcp
+headers:
+  X-Tenant: engineering
+auth:
+  type: bearer
+  token_env: CONTEXT_MCP_TOKEN
+```
+
+Set `CONTEXT_MCP_TOKEN` on each runner deployment. Bearer authentication is represented by this variable name, never its value, in definitions, task data, and runner RPC; the runner imports the value into the selected task environment.
 
 Example trigger definition:
 
@@ -291,6 +309,17 @@ Example input:
   "agent_image": "chetter-agent:golang",
   "harness": "opencode",
   "timeout_sec": 1800
+}
+```
+
+An admin can attach global MCP profiles to a non-resumable, global task:
+
+```json
+{
+  "prompt": "Use the context MCP tools to inspect the service.",
+  "agent_image": "chetter-agent:golang",
+  "harness": "opencode",
+  "mcp_profiles": ["context"]
 }
 ```
 

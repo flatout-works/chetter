@@ -27,6 +27,7 @@ type SubmitTaskInput struct {
 	ModelID     string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	MCPProfiles []string          `json:"mcp_profiles,omitempty" jsonschema:"Global MCP profile names to mount; admin-only"`
 	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
 	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
 	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
@@ -85,6 +86,7 @@ type TaskToolRecord struct {
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	Skills                []string          `json:"skills,omitempty"`
+	MCPProfiles           []string          `json:"mcp_profiles,omitempty"`
 	Env                   map[string]string `json:"env,omitempty"`
 	TimeoutSec            int               `json:"timeout_sec"`
 	Summary               string            `json:"summary,omitempty"`
@@ -657,6 +659,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		ModelID:     in.ModelID,
 		VariantID:   in.VariantID,
 		Skills:      in.Skills,
+		MCPProfiles: in.MCPProfiles,
 		Env:         in.Env,
 		Harness:     in.Harness,
 		TimeoutSec:  in.TimeoutSec,
@@ -804,6 +807,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		TriggerName:           task.TriggerName,
 		TriggerType:           task.TriggerType,
 		Skills:                task.Skills,
+		MCPProfiles:           task.MCPProfiles,
 		Env:                   task.Env,
 		TimeoutSec:            task.TimeoutSec,
 		Summary:               task.Summary,
@@ -824,6 +828,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 
 func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpProfiles := parseJSON[[]string](task.McpProfiles, "task:"+task.ID+" mcp_profiles")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	return TaskToolRecord{
 		ID:                    task.ID,
@@ -840,6 +845,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
 		Skills:                skills,
+		MCPProfiles:           mcpProfiles,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,

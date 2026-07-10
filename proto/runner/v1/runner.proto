@@ -79,6 +79,15 @@ message Task {
   string agent_definition = 23;
   map<string, bytes> skill_definitions = 24;
   map<string, bytes> extra_files = 26;
+  repeated MCPProfile mcp_profiles = 27;
+}
+
+message MCPProfile {
+  string name = 1;
+  string transport = 2;
+  string url = 3;
+  map<string, string> headers = 4;
+  string bearer_token_env = 5;
 }
 
 message ClaimTaskResponse {

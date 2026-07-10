@@ -24,6 +24,7 @@ type TaskRequest struct {
 	ProviderAPIKeyEnv      string            `json:"provider_api_key_env,omitempty"`
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
+	MCPProfiles            []MCPProfile      `json:"mcp_profiles,omitempty"`
 	Harness                string            `json:"harness,omitempty"`
 	TimeoutSec             int               `json:"timeout_sec"`
 	MaxMemoryMB            int               `json:"max_memory_mb"`
@@ -36,6 +37,14 @@ type TaskRequest struct {
 	AgentDefinition        string            `json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
 	ExtraFiles             map[string][]byte `json:"extra_files,omitempty"`
+}
+
+type MCPProfile struct {
+	Name           string            `json:"name"`
+	Transport      string            `json:"transport"`
+	URL            string            `json:"url"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	BearerTokenEnv string            `json:"bearer_token_env,omitempty"`
 }
 
 // TokenUsage tracks cumulative token consumption for a task.

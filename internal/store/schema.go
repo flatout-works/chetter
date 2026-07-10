@@ -26,6 +26,7 @@ var schemaStatements = []string{
 		attempt INT NOT NULL DEFAULT 0,
 		max_attempts INT NOT NULL DEFAULT 3,
 		skills JSON NOT NULL,
+		mcp_profiles JSON NULL,
 		env JSON NOT NULL,
 		timeout_sec INT NOT NULL,
 		summary TEXT NULL,

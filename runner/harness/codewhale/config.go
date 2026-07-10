@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -19,7 +20,6 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 
 	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"type":    "remote",
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
@@ -27,7 +27,6 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 
 	if chetterMCPURL != "" {
 		chetterMCP := map[string]any{
-			"type":    "http",
 			"url":     chetterMCPURL,
 			"enabled": true,
 		}
@@ -38,11 +37,14 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		}
 		mcpServers["chetter"] = chetterMCP
 	}
+	if len(req.MCPProfiles) > 0 {
+		if err := mcpconfig.AddCodeWhaleServers(mcpServers, req.MCPProfiles); err != nil {
+			return err
+		}
+	}
 
 	if len(mcpServers) > 0 {
-		agentMCP := map[string]any{
-			"mcpServers": mcpServers,
-		}
+		agentMCP := map[string]any{"servers": mcpServers}
 		agentMCPData, err := json.MarshalIndent(agentMCP, "", "  ")
 		if err != nil {
 			return err
@@ -60,7 +62,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 func codewhaleEnv(wsDir, secret string, req task.TaskRequest) map[string]string {
 	provider, model := codewhaleModelFields(req)
 	env := map[string]string{
-		"CODEWHALE_CONFIG_DIR":    wsDir + "/.codewhale",
+		"DEEPSEEK_MCP_CONFIG":     wsDir + "/.codewhale/mcp.json",
 		"CODEWHALE_OFFLINE":       "1",
 		"CODEWHALE_RUNTIME_TOKEN": secret,
 		"CODEWHALE_PROVIDER":      provider,

@@ -43,7 +43,10 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
 
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", false); err != nil {
+	req := task.TaskRequest{MCPProfiles: []task.MCPProfile{{
+		Name: "context", URL: "https://mcp.example.com/mcp", BearerTokenEnv: "EXAMPLE_MCP_TOKEN",
+	}}}
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -70,6 +73,10 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	}
 	if _, ok := servers["chetter"]; !ok {
 		t.Fatal("expected chetter MCP server")
+	}
+	profile, ok := servers["context"].(map[string]any)
+	if !ok || profile["auth"] != "bearer" || profile["bearerTokenEnv"] != "EXAMPLE_MCP_TOKEN" {
+		t.Fatalf("unexpected task MCP profile: %#v", servers["context"])
 	}
 }
 

@@ -34,6 +34,7 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 		TriggerName:       "nightly-docs",
 		TriggerType:       store.TriggerTypeCron,
 		Skills:            []string{"go"},
+		MCPProfiles:       []string{"context"},
 		Env:               map[string]string{"SAFE": "value"},
 		TimeoutSec:        300,
 		Summary:           "summary",
@@ -46,6 +47,9 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.AgentImage != "image" || record.Agent != "changelog-maintainer" || len(record.Skills) != 1 || record.Env["SAFE"] != "value" {
 		t.Fatalf("expected core task fields to be preserved: %+v", record)
+	}
+	if len(record.MCPProfiles) != 1 || record.MCPProfiles[0] != "context" {
+		t.Fatalf("expected MCP profiles to be preserved: %+v", record)
 	}
 	if record.ProviderID != "synthetic" || record.ModelID != "model" || record.VariantID != "variant" {
 		t.Fatalf("expected model fields to be preserved: %+v", record)

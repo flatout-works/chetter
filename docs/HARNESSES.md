@@ -105,6 +105,19 @@ The `harness` field is optional. When omitted or empty, the runner's
 The `selectHarnessByName()` function in `runner/internal/controller/runner.go`
 maps the string to a constructor.
 
+## Task MCP Profiles
+
+All four harnesses connect directly to selected HTTP/SSE profile URLs. The runner validates the configured bearer-token variable, prevents task env from overriding it, and imports it into the task container without placing its value in Docker arguments.
+
+| Harness | Bearer environment reference |
+|---|---|
+| OpenCode | `Bearer {env:NAME}` |
+| Claude Code | `Bearer ${NAME}` |
+| CodeWhale | `Bearer ${NAME}` |
+| Pi | Native `bearerTokenEnv: NAME` |
+
+Chetter does not proxy remote MCP traffic or reimplement the MCP tool protocol. Generated configuration contains endpoint metadata and variable names, never profile token values.
+
 ## OpenCode (default)
 
 **Binary:** `opencode` (installed via opencode.ai/install)

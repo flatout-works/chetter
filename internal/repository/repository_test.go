@@ -133,7 +133,7 @@ func TestTaskLifecycle(t *testing.T) {
 	start := now.Add(-time.Hour)
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "hello", TeamID: sql.NullString{},
-		Skills: json.RawMessage("null"), Env: json.RawMessage("null"),
+		Skills: json.RawMessage("null"), McpProfiles: json.RawMessage("[]"), Env: json.RawMessage("null"),
 		TimeoutSec: 600, CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -202,7 +202,7 @@ func TestListTasksByStatus(t *testing.T) {
 	for _, id := range []string{"t1", "t2", "t3"} {
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: id, Prompt: id, TeamID: null,
-			Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+			Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", id, err)
@@ -237,7 +237,7 @@ func TestRenewAndReclaimLeases(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -305,7 +305,7 @@ func TestClearPendingTasks(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -338,7 +338,7 @@ func TestTaskEvents(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -645,7 +645,7 @@ func TestFailExpiredLeases(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-expired", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -687,7 +687,7 @@ func TestUpdateTaskFromRunnerEvent(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -739,7 +739,7 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 		}
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: tc.id, Prompt: tc.id, TeamID: teamID,
-			Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+			Skills: nullJSON, McpProfiles: json.RawMessage("[]"), Env: nullJSON, TimeoutSec: 300,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", tc.id, err)

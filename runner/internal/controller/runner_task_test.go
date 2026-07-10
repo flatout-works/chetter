@@ -639,7 +639,32 @@ func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
 	}
 }
 
+func TestProtoTaskToRequest_MapsMCPProfilesWithoutResolvingToken(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{McpProfiles: []*runnerv1.MCPProfile{{
+		Name: "context", Url: "https://mcp.example.com/mcp", BearerTokenEnv: "CONTEXT_MCP_TOKEN",
+	}}})
+	if len(req.MCPProfiles) != 1 || req.MCPProfiles[0].BearerTokenEnv != "CONTEXT_MCP_TOKEN" {
+		t.Fatalf("unexpected MCP profiles: %#v", req.MCPProfiles)
+	}
+}
+
+func TestValidateProfileTokenEnvironment(t *testing.T) {
+	profiles := []task.MCPProfile{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}}
+	t.Setenv("CONTEXT_MCP_TOKEN", "")
+	if err := validateProfileTokenEnvironment(profiles); err == nil {
+		t.Fatal("expected missing profile token environment to fail")
+	}
+	t.Setenv("CONTEXT_MCP_TOKEN", "runner-secret")
+	if err := validateProfileTokenEnvironment(profiles); err != nil {
+		t.Fatalf("expected configured profile token environment: %v", err)
+	}
+	if err := validateProfileTokenEnvironment([]task.MCPProfile{{BearerTokenEnv: "DEEPSEEK_MCP_CONFIG"}}); err == nil {
+		t.Fatal("expected harness control environment to be rejected")
+	}
+}
+
 func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
+	t.Setenv("CONTEXT_MCP_TOKEN", "runner-secret")
 	h := pi.New()
 	req := task.TaskRequest{
 		TaskID:     "task-123",
@@ -648,9 +673,11 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 		ProviderID: "synthetic",
 		ModelID:    "pi-model",
 		Env: map[string]string{
-			"CUSTOM_ENV":     "custom-value",
-			"OPENAI_API_KEY": "task-key",
+			"CUSTOM_ENV":        "custom-value",
+			"CONTEXT_MCP_TOKEN": "task-secret",
+			"OPENAI_API_KEY":    "task-key",
 		},
+		MCPProfiles: []task.MCPProfile{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}},
 	}
 	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
 
@@ -682,6 +709,12 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 	if hasAdjacentArgs(args, "-e", "OPENAI_API_KEY=task-key") {
 		t.Fatalf("runner-owned env must not use task-provided value, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "CONTEXT_MCP_TOKEN") {
+		t.Fatalf("expected Docker to import the selected token environment, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", "CONTEXT_MCP_TOKEN=task-secret") || strings.Contains(strings.Join(args, " "), "runner-secret") {
+		t.Fatalf("token values must not be embedded in Docker arguments, got %v", args)
 	}
 }
 

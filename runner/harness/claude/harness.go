@@ -16,8 +16,8 @@ func New() *ClaudeCode {
 
 func (cc *ClaudeCode) Name() string { return "claude" }
 
-func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, _ task.TaskRequest, isLocal bool) error {
-	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, isLocal)
+func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
+	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req, isLocal)
 }
 
 func (cc *ClaudeCode) ConfigFilePath(wsDir string) string {
@@ -87,5 +87,5 @@ func (cc *ClaudeCode) RpcCommand(req task.TaskRequest) []string { return nil }
 func (cc *ClaudeCode) ServeArgs(port int) []string { return claudeServeCommand(port)[1:] }
 
 func (cc *ClaudeCode) DockerConfigPath(wsDir string) string {
-	return wsDir + "/.claude/mcp.json"
+	return wsDir + "/.mcp.json"
 }
