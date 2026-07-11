@@ -199,6 +199,11 @@
   let ghIssueTitle = $derived(task?.env?.ISSUE_TITLE || (task?.env && task.env["ISSUE_TITLE"]));
   let ghIssueUrl = $derived(task?.env?.ISSUE_URL || (task?.env && task.env["ISSUE_URL"]));
   let ghPrNum = $derived(task?.env?.PR_NUMBER || (task?.env && task.env["PR_NUMBER"]));
+  let taskHarness = $derived(task?.env?.__chetter_harness || "");
+  let visibleEnv = $derived.by(() =>
+    Object.entries(task?.env ?? {}).filter(([key]) => key !== "__chetter_harness")
+  );
+  let sessionMode = $derived(taskSession ? (taskSession.resumeMode === "harness_session" ? "resumable" : "none") : "—");
 
   let ghLink = $derived.by(() => {
     if (ghIssueUrl) return ghIssueUrl;
@@ -502,17 +507,33 @@
     {/if}
 
     <!-- Task metadata -->
-    <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
+      </Card>
+      <Card size="md" shadow="sm" class="!p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Provider</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.providerId || "default"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "default"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Image</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Variant</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.variantId || "default"}</p>
+      </Card>
+      <Card size="md" shadow="sm" class="!p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Harness</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{taskHarness || "default"}</p>
+      </Card>
+      <Card size="md" shadow="sm" class="!p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session Mode</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{sessionMode}</p>
+      </Card>
+      <Card size="md" shadow="sm" class="!p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
@@ -543,6 +564,50 @@
         </Card>
       {/if}
     </div>
+
+    {#if task.gitUrl || task.gitRef || task.skills.length > 0 || visibleEnv.length > 0 || taskSession?.pauseReason || taskSession?.expiresAt}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Task Configuration</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+          {#if task.gitUrl}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Git URL</p>
+              <a href={task.gitUrl} target="_blank" rel="noopener noreferrer" class="block font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline break-all">{task.gitUrl}</a>
+            </div>
+          {/if}
+          {#if task.gitRef}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Git Ref</p>
+              <p class="font-mono text-gray-900 dark:text-white">{task.gitRef}</p>
+            </div>
+          {/if}
+          {#if task.skills.length > 0}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills</p>
+              <p class="text-gray-900 dark:text-white">{task.skills.join(", ")}</p>
+            </div>
+          {/if}
+          {#if taskSession?.pauseReason}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Pause Reason</p>
+              <p class="text-gray-900 dark:text-white">{taskSession.pauseReason}</p>
+            </div>
+          {/if}
+          {#if taskSession?.expiresAt}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session Expires</p>
+              <p class="text-gray-900 dark:text-white">{formatTime(taskSession.expiresAt)}</p>
+            </div>
+          {/if}
+          {#if visibleEnv.length > 0}
+            <div class="md:col-span-2">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Environment</p>
+              <pre class="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-gray-50 p-3 font-mono text-xs text-gray-600 dark:bg-gray-900/50 dark:text-gray-400">{visibleEnv.map(([key, value]) => `${key}=${value}`).join("\n")}</pre>
+            </div>
+          {/if}
+        </div>
+      </Card>
+    {/if}
 
     {#if ghContext}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
