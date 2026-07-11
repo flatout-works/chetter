@@ -21,7 +21,7 @@ If the user directs an instruction at Chetter (for example, messages that start 
 
 For example, if the user says "Chetter, can you create an issue about xxx", do **not** call `gh issue create` yourself. Submit a Chetter task whose prompt instructs the remote agent to create the issue, including the desired title, body, and repository details.
 
-Use a sensible default runner image such as `ghcr.io/flatout-works/chetter-runner:main` if none is specified. If the request implies a schedule or recurring task, use the schedule tools instead.
+For `agent_image`, use an **agent** image that bundles the harness CLIs (e.g. `ghcr.io/flatout-works/chetter-agent-base`, or a stack variant such as `ghcr.io/flatout-works/chetter-agent:golang`) if none is specified. Do **not** use `chetter-runner` — that is the tight runner daemon image with no harnesses, and tasks will fail with "no assistant response". If the request implies a schedule or recurring task, use the schedule tools instead.
 
 ## Available MCP Tools
 
@@ -103,7 +103,7 @@ The agent will use `chetter_list_tasks` with `trigger_name="nightly-docs-update"
 Use `/chetter-submit` or ask explicitly. When submitting, specify:
 - `git_url`: your repository URL
 - `git_ref`: usually `main`
-- `agent_image`: your runner image, such as `ghcr.io/your-org/chetter-runner:main`
+- `agent_image`: your **agent** image (must contain the harness CLIs), such as `ghcr.io/your-org/chetter-agent:golang` or `ghcr.io/flatout-works/chetter-agent-base`. Do not use the `chetter-runner` daemon image here.
 - `prompt`: clear, scoped instructions
 - Optional: `agent`, `provider_id`, `model_id`, `variant_id`, `skills`, `timeout_sec`
 
