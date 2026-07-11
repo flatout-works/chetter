@@ -292,6 +292,14 @@ func (h *taskHandler) CancelTask(ctx context.Context, req *connect.Request[apiv1
 	return connect.NewResponse(&apiv1.CancelTaskResponse{Task: protoTask(task)}), nil
 }
 
+func (h *taskHandler) ExtendTask(ctx context.Context, req *connect.Request[apiv1.ExtendTaskRequest]) (*connect.Response[apiv1.ExtendTaskResponse], error) {
+	task, err := h.svc.ExtendTaskTimeout(ctx, req.Msg.TaskId, int(req.Msg.ExtensionSec))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&apiv1.ExtendTaskResponse{Task: protoTask(task)}), nil
+}
+
 func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1.ExportTaskRequest]) (*connect.Response[apiv1.ExportTaskResponse], error) {
 	export, err := h.svc.ExportTask(ctx, req.Msg.TaskId)
 	if err != nil {

@@ -73,6 +73,17 @@ func TestWebAPISubmitGetAndCancelTask(t *testing.T) {
 		t.Fatalf("prompt = %q", got.Msg.Task.GetPrompt())
 	}
 
+	extended, err := tasks.ExtendTask(context.Background(), connect.NewRequest(&apiv1.ExtendTaskRequest{
+		TaskId:       submitted.Msg.Task.Id,
+		ExtensionSec: 300,
+	}))
+	if err != nil {
+		t.Fatalf("ExtendTask: %v", err)
+	}
+	if extended.Msg.Task.GetTimeoutSec() != 900 {
+		t.Fatalf("timeout = %d, want 900", extended.Msg.Task.GetTimeoutSec())
+	}
+
 	cancelled, err := tasks.CancelTask(context.Background(), connect.NewRequest(&apiv1.CancelTaskRequest{
 		TaskId: submitted.Msg.Task.Id,
 		Reason: "integration cancel",
@@ -85,6 +96,17 @@ func TestWebAPISubmitGetAndCancelTask(t *testing.T) {
 	}
 	if cancelled.Msg.Task.GetError() != "integration cancel" {
 		t.Fatalf("error = %q, want integration cancel", cancelled.Msg.Task.GetError())
+	}
+
+	_, err = tasks.ExtendTask(context.Background(), connect.NewRequest(&apiv1.ExtendTaskRequest{
+		TaskId:       submitted.Msg.Task.Id,
+		ExtensionSec: 300,
+	}))
+	if err == nil {
+		t.Fatal("expected ExtendTask to reject a cancelled task")
+	}
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("ExtendTask error code = %s, want %s", connect.CodeOf(err), connect.CodeFailedPrecondition)
 	}
 }
 

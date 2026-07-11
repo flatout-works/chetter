@@ -12,7 +12,7 @@
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
 
   let { params } = $props();
@@ -226,6 +226,7 @@
     taskSession?.status === "paused_waiting_review") &&
     pinnedRunnerAvailable
   );
+  let restartingTimedOutTask = $derived(task?.errorCategory === "timeout" && taskSession?.status === "recoverable");
 
   let timerInterval: ReturnType<typeof setInterval> | undefined;
   let progressRefreshCounter = $state(0);
@@ -357,10 +358,13 @@
   let showResumeModal = $state(false);
   let resumePrompt = $state("");
   let resuming = $state(false);
+  let showExtendModal = $state(false);
+  let extensionSeconds = $state("900");
+  let extending = $state(false);
 
   async function resumeTask() {
     if (!taskSession) return;
-    resumePrompt = "";
+    resumePrompt = restartingTimedOutTask ? "Continue from where the task timed out." : "";
     showResumeModal = true;
   }
 
@@ -375,6 +379,20 @@
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to resume session";
     } finally { resuming = false; }
+  }
+
+  async function extendTask() {
+    const extensionSec = Number(extensionSeconds);
+    if (!Number.isInteger(extensionSec) || extensionSec <= 0) return;
+    extending = true;
+    try {
+      const client = createClient(TaskService, getTransport());
+      const resp = await client.extendTask({ taskId: params.id, extensionSec });
+      task = resp.task ?? task;
+      showExtendModal = false;
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to extend task timeout";
+    } finally { extending = false; }
   }
 
   async function exportTask() {
@@ -451,11 +469,14 @@
       </div>
       <div class="flex flex-wrap gap-2">
         {#if task.status === "running" || task.status === "pending"}
+          {#if task.timeoutSec > 0}
+            <Button color="alternative" size="sm" onclick={() => showExtendModal = true}>Extend deadline</Button>
+          {/if}
           <Button color="red" size="sm" onclick={cancelTask}>Cancel</Button>
         {/if}
         {#if taskSession && (taskSession.status === "paused" || taskSession.status === "recoverable" || taskSession.status === "paused_waiting_review")}
           <Button color="green" size="sm" onclick={resumeTask} disabled={!pinnedRunnerAvailable}>
-            {pinnedRunnerAvailable ? "Resume" : "Pinned runner offline, can not resume"}
+            {pinnedRunnerAvailable ? (restartingTimedOutTask ? "Restart" : "Resume") : "Pinned runner offline, can not resume"}
           </Button>
         {/if}
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
@@ -713,14 +734,32 @@
 {/if}
 
 <!-- Resume session modal -->
-<Modal title="Resume Session" bind:open={showResumeModal} size="md" onclose={() => showResumeModal = false}>
+<Modal title={restartingTimedOutTask ? "Restart Timed-Out Task" : "Resume Session"} bind:open={showResumeModal} size="md" onclose={() => showResumeModal = false}>
   <div class="space-y-4">
     <div>
       <Label for="rt-prompt" class="mb-2">Follow-up prompt</Label>
       <Textarea id="rt-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" />
     </div>
     <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
-      {resuming ? "Resuming…" : "Resume"}
+      {resuming ? "Resuming…" : (restartingTimedOutTask ? "Restart task" : "Resume")}
+    </Button>
+  </div>
+</Modal>
+
+<Modal title="Extend Task Deadline" bind:open={showExtendModal} size="md" onclose={() => showExtendModal = false}>
+  <div class="space-y-4">
+    <p class="text-sm text-gray-600 dark:text-gray-400">Add time to this task's current timeout without interrupting the runner.</p>
+    <div>
+      <Label for="extension-seconds" class="mb-2">Additional time</Label>
+      <Select id="extension-seconds" bind:value={extensionSeconds}>
+        <option value="300">5 minutes</option>
+        <option value="900">15 minutes</option>
+        <option value="1800">30 minutes</option>
+        <option value="3600">1 hour</option>
+      </Select>
+    </div>
+    <Button color="blue" disabled={extending} onclick={extendTask} class="w-full">
+      {extending ? "Extending…" : "Extend deadline"}
     </Button>
   </div>
 </Modal>

@@ -252,6 +252,7 @@ service TaskService {
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
   rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc ExtendTask(ExtendTaskRequest) returns (ExtendTaskResponse);
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
   rpc ExportTask(ExportTaskRequest) returns (ExportTaskResponse);
   rpc RecoverTask(RecoverTaskRequest) returns (RecoverTaskResponse);
@@ -301,6 +302,15 @@ message ListTasksRequest {
 
 message ListTasksResponse {
   repeated Task tasks = 1;
+}
+
+message ExtendTaskRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  int32 extension_sec = 2 [(buf.validate.field).int32.gt = 0];
+}
+
+message ExtendTaskResponse {
+  Task task = 1;
 }
 
 message CancelTaskRequest {

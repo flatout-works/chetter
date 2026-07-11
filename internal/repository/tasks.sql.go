@@ -67,6 +67,28 @@ func (q *Queries) ClearPendingTasks(ctx context.Context, arg ClearPendingTasksPa
 	return result.RowsAffected()
 }
 
+const extendTaskTimeout = `-- name: ExtendTaskTimeout :execrows
+UPDATE chetter_tasks
+SET timeout_sec = timeout_sec + ?,
+    updated_at = ?
+WHERE id = ?
+  AND status IN ('pending', 'running')
+`
+
+type ExtendTaskTimeoutParams struct {
+	ExtensionSec int32     `json:"extension_sec"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+}
+
+func (q *Queries) ExtendTaskTimeout(ctx context.Context, arg ExtendTaskTimeoutParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, extendTaskTimeout, arg.ExtensionSec, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const failExpiredLeases = `-- name: FailExpiredLeases :execrows
 UPDATE chetter_tasks
 SET status = 'error',

@@ -53,6 +53,8 @@ const (
 	TaskServiceGetTaskProcedure = "/api.v1.TaskService/GetTask"
 	// TaskServiceListTasksProcedure is the fully-qualified name of the TaskService's ListTasks RPC.
 	TaskServiceListTasksProcedure = "/api.v1.TaskService/ListTasks"
+	// TaskServiceExtendTaskProcedure is the fully-qualified name of the TaskService's ExtendTask RPC.
+	TaskServiceExtendTaskProcedure = "/api.v1.TaskService/ExtendTask"
 	// TaskServiceCancelTaskProcedure is the fully-qualified name of the TaskService's CancelTask RPC.
 	TaskServiceCancelTaskProcedure = "/api.v1.TaskService/CancelTask"
 	// TaskServiceExportTaskProcedure is the fully-qualified name of the TaskService's ExportTask RPC.
@@ -155,6 +157,7 @@ type TaskServiceClient interface {
 	SubmitTask(context.Context, *connect.Request[v1.SubmitTaskRequest]) (*connect.Response[v1.SubmitTaskResponse], error)
 	GetTask(context.Context, *connect.Request[v1.GetTaskRequest]) (*connect.Response[v1.GetTaskResponse], error)
 	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
+	ExtendTask(context.Context, *connect.Request[v1.ExtendTaskRequest]) (*connect.Response[v1.ExtendTaskResponse], error)
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ExportTask(context.Context, *connect.Request[v1.ExportTaskRequest]) (*connect.Response[v1.ExportTaskResponse], error)
 	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
@@ -190,6 +193,12 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			httpClient,
 			baseURL+TaskServiceListTasksProcedure,
 			connect.WithSchema(taskServiceMethods.ByName("ListTasks")),
+			connect.WithClientOptions(opts...),
+		),
+		extendTask: connect.NewClient[v1.ExtendTaskRequest, v1.ExtendTaskResponse](
+			httpClient,
+			baseURL+TaskServiceExtendTaskProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("ExtendTask")),
 			connect.WithClientOptions(opts...),
 		),
 		cancelTask: connect.NewClient[v1.CancelTaskRequest, v1.CancelTaskResponse](
@@ -236,6 +245,7 @@ type taskServiceClient struct {
 	submitTask          *connect.Client[v1.SubmitTaskRequest, v1.SubmitTaskResponse]
 	getTask             *connect.Client[v1.GetTaskRequest, v1.GetTaskResponse]
 	listTasks           *connect.Client[v1.ListTasksRequest, v1.ListTasksResponse]
+	extendTask          *connect.Client[v1.ExtendTaskRequest, v1.ExtendTaskResponse]
 	cancelTask          *connect.Client[v1.CancelTaskRequest, v1.CancelTaskResponse]
 	exportTask          *connect.Client[v1.ExportTaskRequest, v1.ExportTaskResponse]
 	recoverTask         *connect.Client[v1.RecoverTaskRequest, v1.RecoverTaskResponse]
@@ -257,6 +267,11 @@ func (c *taskServiceClient) GetTask(ctx context.Context, req *connect.Request[v1
 // ListTasks calls api.v1.TaskService.ListTasks.
 func (c *taskServiceClient) ListTasks(ctx context.Context, req *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error) {
 	return c.listTasks.CallUnary(ctx, req)
+}
+
+// ExtendTask calls api.v1.TaskService.ExtendTask.
+func (c *taskServiceClient) ExtendTask(ctx context.Context, req *connect.Request[v1.ExtendTaskRequest]) (*connect.Response[v1.ExtendTaskResponse], error) {
+	return c.extendTask.CallUnary(ctx, req)
 }
 
 // CancelTask calls api.v1.TaskService.CancelTask.
@@ -294,6 +309,7 @@ type TaskServiceHandler interface {
 	SubmitTask(context.Context, *connect.Request[v1.SubmitTaskRequest]) (*connect.Response[v1.SubmitTaskResponse], error)
 	GetTask(context.Context, *connect.Request[v1.GetTaskRequest]) (*connect.Response[v1.GetTaskResponse], error)
 	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
+	ExtendTask(context.Context, *connect.Request[v1.ExtendTaskRequest]) (*connect.Response[v1.ExtendTaskResponse], error)
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ExportTask(context.Context, *connect.Request[v1.ExportTaskRequest]) (*connect.Response[v1.ExportTaskResponse], error)
 	RecoverTask(context.Context, *connect.Request[v1.RecoverTaskRequest]) (*connect.Response[v1.RecoverTaskResponse], error)
@@ -325,6 +341,12 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		TaskServiceListTasksProcedure,
 		svc.ListTasks,
 		connect.WithSchema(taskServiceMethods.ByName("ListTasks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceExtendTaskHandler := connect.NewUnaryHandler(
+		TaskServiceExtendTaskProcedure,
+		svc.ExtendTask,
+		connect.WithSchema(taskServiceMethods.ByName("ExtendTask")),
 		connect.WithHandlerOptions(opts...),
 	)
 	taskServiceCancelTaskHandler := connect.NewUnaryHandler(
@@ -371,6 +393,8 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceGetTaskHandler.ServeHTTP(w, r)
 		case TaskServiceListTasksProcedure:
 			taskServiceListTasksHandler.ServeHTTP(w, r)
+		case TaskServiceExtendTaskProcedure:
+			taskServiceExtendTaskHandler.ServeHTTP(w, r)
 		case TaskServiceCancelTaskProcedure:
 			taskServiceCancelTaskHandler.ServeHTTP(w, r)
 		case TaskServiceExportTaskProcedure:
@@ -402,6 +426,10 @@ func (UnimplementedTaskServiceHandler) GetTask(context.Context, *connect.Request
 
 func (UnimplementedTaskServiceHandler) ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.ListTasks is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) ExtendTask(context.Context, *connect.Request[v1.ExtendTaskRequest]) (*connect.Response[v1.ExtendTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TaskService.ExtendTask is not implemented"))
 }
 
 func (UnimplementedTaskServiceHandler) CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error) {

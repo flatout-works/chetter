@@ -144,6 +144,36 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 	return s.GetTask(ctx, taskID)
 }
 
+// ExtendTaskTimeout adds time to a pending or running task's deadline.
+func (s *Service) ExtendTaskTimeout(ctx context.Context, taskID string, extensionSec int) (TaskToolRecord, error) {
+	if extensionSec <= 0 {
+		return TaskToolRecord{}, fmt.Errorf("extension must be greater than zero")
+	}
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
+		return TaskToolRecord{}, err
+	}
+	now := time.Now().UTC()
+	rows, err := s.repo.ExtendTaskTimeout(ctx, repository.ExtendTaskTimeoutParams{
+		ExtensionSec: int32(extensionSec),
+		UpdatedAt:    now,
+		ID:           taskID,
+	})
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("extend task timeout: %w", err)
+	}
+	if rows == 0 {
+		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
+	}
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "task_timeout_extended",
+		SourceType: "api",
+		TargetType: "task",
+		TargetID:   taskID,
+		Detail:     fmt.Sprintf("task timeout extended by %d seconds", extensionSec),
+	})
+	return s.GetTask(ctx, taskID)
+}
+
 // ClearQueue cancels all pending tasks. Admin only.
 func (s *Service) ClearQueue(ctx context.Context) (int, error) {
 	if !isAdmin(ctx) {

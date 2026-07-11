@@ -132,6 +132,13 @@ SET status = 'cancelled',
     updated_at = ?
 WHERE id = ? AND status IN ('pending', 'running');
 
+-- name: ExtendTaskTimeout :execrows
+UPDATE chetter_tasks
+SET timeout_sec = timeout_sec + sqlc.arg(extension_sec),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+  AND status IN ('pending', 'running');
+
 -- name: ClearPendingTasks :execrows
 UPDATE chetter_tasks
 SET status = 'cancelled',
