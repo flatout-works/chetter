@@ -29,7 +29,7 @@ type SubmitTaskInput struct {
 	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	MCPProfiles []string          `json:"mcp_profiles,omitempty" jsonschema:"Global MCP profile names to mount; admin-only"`
 	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
-	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
+	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
 	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -123,7 +123,7 @@ type CreateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -154,7 +154,7 @@ type UpdateTriggerInput struct {
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
-	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi; empty = runner default)"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -1527,16 +1527,16 @@ func (s *Service) arcaneListVulnerabilitiesTool(ctx context.Context, _ *mcp.Call
 }
 
 type AuditEventFilterInput struct {
-	EventType   string   `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
-	SourceType  string   `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
-	SourceID    string   `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
-	TargetType  string   `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
-	TargetID    string   `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
-	Repo        string   `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
-	Search      string   `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"`
-	SinceHours  int      `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
-	Limit       int      `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
-	Offset      int      `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
+	EventType    string   `json:"event_type,omitempty" jsonschema:"Filter by event type (e.g. webhook_received, task_submitted)"`
+	SourceType   string   `json:"source_type,omitempty" jsonschema:"Filter by source type (e.g. webhook, trigger, task)"`
+	SourceID     string   `json:"source_id,omitempty" jsonschema:"Filter by source ID (e.g. delivery ID, trigger name)"`
+	TargetType   string   `json:"target_type,omitempty" jsonschema:"Filter by target type (e.g. issue, pr, task)"`
+	TargetID     string   `json:"target_id,omitempty" jsonschema:"Filter by target ID"`
+	Repo         string   `json:"repo,omitempty" jsonschema:"Filter by repository (e.g. flatout-works/chetter)"`
+	Search       string   `json:"search,omitempty" jsonschema:"Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"`
+	SinceHours   int      `json:"since_hours,omitempty" jsonschema:"Only return events from the last N hours (default 24)"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"Maximum events to return (default 100, max 500)"`
+	Offset       int      `json:"offset,omitempty" jsonschema:"Number of events to skip (default 0)"`
 	ExcludeTypes []string `json:"exclude_types,omitempty" jsonschema:"Event types to exclude from results"`
 }
 

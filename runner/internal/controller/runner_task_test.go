@@ -17,6 +17,7 @@ import (
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/runner/harness/claude"
+	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -63,6 +64,57 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	}
 	if env["DEEPSEEK_API_KEY"] != "runner-deepseek-key" {
 		t.Fatalf("expected runner deepseek key to win, got %q", env["DEEPSEEK_API_KEY"])
+	}
+}
+
+func TestProviderCredentialEnvUsesResolvedRunnerCredential(t *testing.T) {
+	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
+	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"})
+	if len(got) != 1 || got[0] != "LITELLM_API_KEY=runner-litellm-key" {
+		t.Fatalf("providerCredentialEnv() = %v", got)
+	}
+}
+
+func TestProviderCredentialEnvEmptyKeyReturnsNil(t *testing.T) {
+	got := providerCredentialEnv(task.TaskRequest{})
+	if got != nil {
+		t.Fatalf("providerCredentialEnv() with empty key should return nil, got %v", got)
+	}
+}
+
+func TestProviderCredentialEnvUnsetVarReturnsNil(t *testing.T) {
+	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "UNSET_LITELLM_KEY"})
+	if got != nil {
+		t.Fatalf("providerCredentialEnv() with unset env var should return nil, got %v", got)
+	}
+}
+
+func TestManagedEnvRejectsTaskProviderCredential(t *testing.T) {
+	req := task.TaskRequest{
+		ProviderAPIKeyEnv: "LITELLM_API_KEY",
+		MCPProfiles:       []task.MCPProfile{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}},
+	}
+	if !isManagedEnv("LITELLM_API_KEY", req) {
+		t.Fatal("catalog-selected provider credential should be runner-managed")
+	}
+	if !isManagedEnv("OPENAI_API_KEY", req) {
+		t.Fatal("existing runner credential should remain runner-managed")
+	}
+	if !isManagedEnv("CONTEXT_MCP_TOKEN", req) {
+		t.Fatal("MCP profile token should be runner-managed")
+	}
+	if isManagedEnv("CUSTOM_ENV", req) {
+		t.Fatal("unrelated task environment should be allowed")
+	}
+}
+
+func TestManagedEnvEmptyProviderKeyDoesNotMatch(t *testing.T) {
+	req := task.TaskRequest{}
+	if isManagedEnv("", req) {
+		t.Fatal("empty key should not be managed when ProviderAPIKeyEnv is empty")
+	}
+	if isManagedEnv("CUSTOM_ENV", req) {
+		t.Fatal("non-runner-owned env should not be managed without a provider key")
 	}
 }
 
@@ -569,6 +621,19 @@ func TestSelectHarnessByName_Claude(t *testing.T) {
 	}
 }
 
+func TestSelectHarnessByName_Codex(t *testing.T) {
+	h := selectHarnessByName("codex")
+	if h.Name() != "codex" {
+		t.Fatalf("expected codex harness, got %s", h.Name())
+	}
+	if _, ok := h.(*codex.Codex); !ok {
+		t.Fatalf("expected *codex.Codex, got %T", h)
+	}
+	if h.SupportsRpc() {
+		t.Fatal("codex should not support RPC")
+	}
+}
+
 func TestSelectHarnessByName_OpenCode(t *testing.T) {
 	h := selectHarnessByName("opencode")
 	if h.Name() != "opencode" {
@@ -663,19 +728,36 @@ func TestValidateProfileTokenEnvironment(t *testing.T) {
 	}
 }
 
+func TestProtoTaskToRequestProviderTransport(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{
+		ProviderId:         "litellm",
+		ModelId:            "coding-model",
+		ProviderBaseUrl:    "https://litellm.example.test/v1",
+		ProviderApiKeyEnv:  "LITELLM_API_KEY",
+		ProviderApi:        "openai-completions",
+		ProviderAuthHeader: true,
+	})
+	if req.ProviderID != "litellm" || req.ModelID != "coding-model" || req.ProviderBaseURL != "https://litellm.example.test/v1" || req.ProviderAPIKeyEnv != "LITELLM_API_KEY" || req.ProviderAPI != "openai-completions" || !req.ProviderAuthHeader {
+		t.Fatalf("unexpected resolved provider request: %+v", req)
+	}
+}
+
 func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	t.Setenv("CONTEXT_MCP_TOKEN", "runner-secret")
+	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
 	h := pi.New()
 	req := task.TaskRequest{
-		TaskID:     "task-123",
-		AgentImage: "ghcr.io/flatout-works/chetter-runner:main",
-		Agent:      "issue-creator",
-		ProviderID: "synthetic",
-		ModelID:    "pi-model",
+		TaskID:            "task-123",
+		AgentImage:        "ghcr.io/flatout-works/chetter-runner:main",
+		Agent:             "issue-creator",
+		ProviderID:        "synthetic",
+		ProviderAPIKeyEnv: "LITELLM_API_KEY",
+		ModelID:           "pi-model",
 		Env: map[string]string{
 			"CUSTOM_ENV":        "custom-value",
 			"CONTEXT_MCP_TOKEN": "task-secret",
 			"OPENAI_API_KEY":    "task-key",
+			"LITELLM_API_KEY":   "task-key",
 		},
 		MCPProfiles: []task.MCPProfile{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}},
 	}
@@ -715,6 +797,12 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 	if hasAdjacentArgs(args, "-e", "CONTEXT_MCP_TOKEN=task-secret") || strings.Contains(strings.Join(args, " "), "runner-secret") {
 		t.Fatalf("token values must not be embedded in Docker arguments, got %v", args)
+	}
+	if hasAdjacentArgs(args, "-e", "LITELLM_API_KEY=task-key") {
+		t.Fatalf("catalog-selected credential must not use task-provided value, got %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "LITELLM_API_KEY=runner-litellm-key") {
+		t.Fatalf("expected runner provider credential, got %v", args)
 	}
 }
 

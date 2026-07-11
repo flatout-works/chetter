@@ -102,14 +102,14 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("runner.max_concurrent must be greater than or equal to 0")
 	}
 	if cfg.Execution.Harness != "" && !isSupportedHarness(cfg.Execution.Harness) {
-		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, or codewhale")
+		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, codewhale, or codex")
 	}
 	return nil
 }
 
 func isSupportedHarness(harness string) bool {
 	switch harness {
-	case "opencode", "claude-code", "pi", "codewhale":
+	case "opencode", "claude-code", "pi", "codewhale", "codex":
 		return true
 	default:
 		return false

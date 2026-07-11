@@ -12,6 +12,9 @@ defaults:
   codewhale:
     provider: anthropic
     model: claude-sonnet-4
+  codex:
+    provider: openai
+    model: gpt-5.4
 providers:
   anthropic:
     name: Anthropic
@@ -29,3 +32,44 @@ providers:
     models:
       - id: gemini-2.5-pro
         name: Gemini 2.5 Pro
+  openai:
+    name: OpenAI
+    kind: native
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    models:
+      - id: gpt-5.4
+        name: GPT-5.4
+  # aws-bedrock:
+  #   name: Amazon Bedrock
+  #   kind: aws_bedrock
+  #   base_url: https://bedrock-runtime.us-east-1.amazonaws.com
+  #   api_key_env: AWS_ACCESS_KEY_ID
+  #   aws_profile: my-profile    # optional AWS SSO profile name
+  #   aws_region: us-east-1      # optional AWS region
+  #   models:
+  #     - id: us.anthropic.claude-sonnet-4-20250514-v1:0
+  #       name: Claude Sonnet 4 (Bedrock)
+  litellm:
+    name: Corporate LiteLLM
+    kind: openai_compatible
+    api_key_env: LITELLM_API_KEY
+    models:
+      - id: coding-model
+        name: Corporate Coding Model
+    harnesses:
+      opencode:
+        id: litellm
+        api: openai-completions
+        base_url: https://litellm.example.com/v1
+      pi:
+        id: litellm
+        api: openai-completions
+        auth_header: true
+        base_url: https://litellm.example.com/v1
+      claude-code:
+        id: litellm
+        api: anthropic-messages
+        base_url: https://litellm.example.com
+      codewhale:
+        disabled: true

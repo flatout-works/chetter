@@ -256,6 +256,9 @@ defaults:
   codewhale:
     provider: deepseek
     model: deepseek-chat
+  codex:
+    provider: openai
+    model: gpt-5.4
 
 providers:
   synthetic:
@@ -271,15 +274,85 @@ providers:
     base_url: https://api.deepseek.com
     models:
       - id: deepseek-chat
+
+  openai:
+    name: OpenAI
+    kind: native
+    api_key_env: OPENAI_API_KEY
+    base_url: https://api.openai.com/v1
+    models:
+      - id: gpt-5.4
+
+  aws-bedrock:
+    name: Amazon Bedrock
+    kind: aws_bedrock
+    api_key_env: AWS_ACCESS_KEY_ID
+    base_url: https://bedrock-runtime.us-east-1.amazonaws.com
+    aws_profile: my-profile    # optional AWS SSO profile name
+    aws_region: us-east-1      # optional AWS region
+    models:
+      - id: us.anthropic.claude-sonnet-4-20250514-v1:0
 ```
 
 `kind: openai_compatible` is enough for OpenCode provider rendering. Native
-providers can still be listed for harnesses such as Claude Code, Pi, or
-CodeWhale without
+providers can still be listed for harnesses such as Claude Code, Pi, CodeWhale,
+or Codex without
 OpenCode trying to render them as OpenAI-compatible endpoints.
 
-Use provider or model `harnesses` overrides only when a harness needs a
-different ID or should disable an entry.
+Use provider or model `harnesses` overrides when a harness needs a different
+ID, API transport, endpoint, credential environment variable, or should
+disable an entry.
+
+### LiteLLM
+
+LiteLLM is a first-class router provider for OpenCode, Pi, and Claude Code.
+Use one logical provider and map it to the API contract each harness expects:
+
+```yaml
+providers:
+  litellm:
+    name: Corporate LiteLLM
+    kind: openai_compatible
+    api_key_env: LITELLM_API_KEY
+    models:
+      - id: coding-model # LiteLLM model_name alias
+    harnesses:
+      opencode:
+        id: litellm
+        api: openai-completions
+        base_url: https://litellm.example.com/v1
+      pi:
+        id: litellm
+        api: openai-completions
+        auth_header: true
+        base_url: https://litellm.example.com/v1
+      claude-code:
+        id: litellm
+        api: anthropic-messages
+        base_url: https://litellm.example.com
+      codewhale:
+        disabled: true
+```
+
+Set `LITELLM_API_KEY` on every runner, not in the catalog or a submitted task.
+Chetter forwards only the resolved provider key to the agent container. The
+LiteLLM router hostname must also be included in the runner's
+`proxy.allowed_domains` list for gVisor-isolated tasks. OpenCode and Pi use
+LiteLLM's OpenAI-compatible endpoint; Claude Code uses its
+Anthropic-compatible messages endpoint. CodeWhale is disabled because it does
+not yet support generic provider credentials.
+
+### Provider Kinds
+
+| Kind | Protocol | Supported harnesses |
+|---|---|---|
+| `openai_compatible` | OpenAI Completions API (`/v1/chat/completions`) | OpenCode, Pi† |
+| `native` | Harness-native (Responses API, Anthropic API, etc.) | Claude Code, Pi, CodeWhale, Codex |
+| `aws_bedrock` | Responses API via AWS SigV4 auth | Codex |
+
+† Pi resolves providers through its own catalog; Chetter supplies defaults via env vars.
+
+See [docs/PROVIDERS.md](PROVIDERS.md) for the full harness × provider matrix.
 
 ### Viewing
 

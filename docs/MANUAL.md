@@ -223,7 +223,7 @@ chetter_mcp:
 | `git.ssh_key_path` | empty | Optional SSH key path for clone operations. |
 | `git.pat` | empty | Optional Git personal access token. Prefer env-provided `GITHUB_TOKEN` for normal deployments. |
 | `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
-| `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`. |
+| `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
 | `execution.container_memory` | empty | Optional Docker memory limit for task containers, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Empty means no runner-imposed limit. |
 | `deploy.provider` | `local` | Reserved deployment provider metadata. |
@@ -523,7 +523,7 @@ global/images/java-spring/Dockerfile
 
 The `chetter-config` GitHub Actions workflow builds those Dockerfiles and publishes tags as `ghcr.io/flatout-works/chetter-agent:<variant>`, for example `ghcr.io/flatout-works/chetter-agent:golang`.
 
-Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, which is built by the main Chetter CI and contains the shared harness CLIs (`opencode`, `claude-code`, `codewhale`, `pi`), `mcp-bridge`, `chetter-entrypoint`, `git`, `gh`, and common runtime tools.
+Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, which is built by the main Chetter CI and contains the shared harness CLIs (`opencode`, `claude-code`, `codewhale`, `pi`, `codex`), `mcp-bridge`, `chetter-entrypoint`, `git`, `gh`, and common runtime tools.
 
 ### Image Resolution
 
@@ -661,7 +661,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 ### Harness Interface Support Matrix
 
-Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, `pi`, or `codewhale`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
+Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, `pi`, `codewhale`, or `codex`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
 
 ## Arcane Deployment
 

@@ -186,11 +186,16 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 }
 
 type resolvedModelConfig struct {
-	ProviderID        string
-	ModelID           string
-	ProviderName      string
-	ProviderBaseURL   string
-	ProviderAPIKeyEnv string
+	ProviderID         string
+	ModelID            string
+	ProviderName       string
+	ProviderBaseURL    string
+	ProviderAPIKeyEnv  string
+	ProviderKind       string
+	AwsProfile         string
+	AwsRegion          string
+	ProviderAPI        string
+	ProviderAuthHeader bool
 }
 
 func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.Task) {
@@ -217,6 +222,20 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderName = resolved.ProviderName
 	task.ProviderBaseUrl = resolved.ProviderBaseURL
 	task.ProviderApiKeyEnv = resolved.ProviderAPIKeyEnv
+	if task.Env == nil {
+		task.Env = make(map[string]string)
+	}
+	if resolved.ProviderKind != "" {
+		task.Env["__chetter_provider_kind"] = resolved.ProviderKind
+	}
+	if resolved.AwsProfile != "" {
+		task.Env["__chetter_aws_profile"] = resolved.AwsProfile
+	}
+	if resolved.AwsRegion != "" {
+		task.Env["__chetter_aws_region"] = resolved.AwsRegion
+	}
+	task.ProviderApi = resolved.ProviderAPI
+	task.ProviderAuthHeader = resolved.ProviderAuthHeader
 }
 
 func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) {
@@ -394,13 +413,24 @@ func catalogDefaultForHarness(catalog *modelcatalog.Catalog, harness string) (pr
 }
 
 func catalogProviderModelConfig(catalog *modelcatalog.Catalog, harness, providerID, modelID string) resolvedModelConfig {
+	return catalogProviderModelConfigVisited(catalog, harness, providerID, modelID, nil)
+}
+
+func catalogProviderModelConfigVisited(catalog *modelcatalog.Catalog, harness, providerID, modelID string, visited map[string]bool) resolvedModelConfig {
 	provider, ok := catalog.Providers[providerID]
 	if !ok {
 		return resolvedModelConfig{ProviderID: providerID, ModelID: modelID}
 	}
 	if hp, ok := provider.Harnesses[harness]; ok && hp.Disabled {
+		if visited == nil {
+			visited = map[string]bool{}
+		}
+		visited[providerID+"/"+modelID] = true
 		defaultProvider, defaultModel := catalogDefaultForHarness(catalog, harness)
-		return catalogProviderModelConfig(catalog, harness, defaultProvider, defaultModel)
+		if visited[defaultProvider+"/"+defaultModel] {
+			return resolvedModelConfig{ProviderID: defaultProvider, ModelID: defaultModel}
+		}
+		return catalogProviderModelConfigVisited(catalog, harness, defaultProvider, defaultModel, visited)
 	}
 	resolved := resolvedModelConfig{ProviderID: providerID, ModelID: modelID}
 	if hp, ok := provider.Harnesses[harness]; ok && !hp.Disabled {
@@ -410,19 +440,33 @@ func catalogProviderModelConfig(catalog *modelcatalog.Catalog, harness, provider
 		resolved.ProviderName = firstNonEmpty(hp.Name, provider.Name, resolved.ProviderID)
 		resolved.ProviderBaseURL = firstNonEmpty(hp.BaseURL, provider.BaseURL)
 		resolved.ProviderAPIKeyEnv = firstNonEmpty(hp.APIKeyEnv, provider.APIKeyEnv)
+		resolved.AwsProfile = firstNonEmpty(hp.AwsProfile, provider.AwsProfile)
+		resolved.AwsRegion = firstNonEmpty(hp.AwsRegion, provider.AwsRegion)
+		resolved.ProviderAPI = hp.API
+		resolved.ProviderAuthHeader = hp.AuthHeader
 	} else {
 		resolved.ProviderName = firstNonEmpty(provider.Name, resolved.ProviderID)
 		resolved.ProviderBaseURL = provider.BaseURL
 		resolved.ProviderAPIKeyEnv = provider.APIKeyEnv
+		resolved.AwsProfile = provider.AwsProfile
+		resolved.AwsRegion = provider.AwsRegion
 	}
+	resolved.ProviderKind = provider.Kind
 	for _, model := range provider.Models {
 		if model.ID != modelID {
 			continue
 		}
 		if hm, ok := model.Harnesses[harness]; ok {
 			if hm.Disabled {
+				if visited == nil {
+					visited = map[string]bool{}
+				}
+				visited[providerID+"/"+modelID] = true
 				defaultProvider, defaultModel := catalogDefaultForHarness(catalog, harness)
-				return catalogProviderModelConfig(catalog, harness, defaultProvider, defaultModel)
+				if visited[defaultProvider+"/"+defaultModel] {
+					return resolvedModelConfig{ProviderID: defaultProvider, ModelID: defaultModel}
+				}
+				return catalogProviderModelConfigVisited(catalog, harness, defaultProvider, defaultModel, visited)
 			}
 			if hm.ID != "" {
 				resolved.ModelID = hm.ID

@@ -14,7 +14,7 @@ Supported task inputs include:
 - `git_url` and `git_ref`: optional repository and ref to clone.
 - `agent_image`: runner image override, falling back to `DEFAULT_AGENT_IMAGE`.
 - `agent`: agent definition name.
-- `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, or `codewhale`.
+- `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`.
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
 - `mcp_profiles`: admin-selected global HTTP/SSE endpoints for non-resumable tasks. Bearer credentials are supplied by runner environment variables.
@@ -98,7 +98,7 @@ Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side
 
 ## Agent Harnesses
 
-The runner drives agent CLIs through harness implementations. Four harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), Pi (RPC subprocess), and CodeWhale (HTTP/SSE runtime API). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
+The runner drives agent CLIs through harness implementations. Five harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), Pi (RPC subprocess), CodeWhale (HTTP/SSE runtime API), and Codex (App Server proxy via codex-serve-proxy). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
 
 See [HARNESSES.md](HARNESSES.md) for the full capability matrix and guidance on adding new harnesses.
 

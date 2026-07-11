@@ -81,6 +81,114 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigWritesCustomProvider(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:         "litellm",
+		ProviderName:       "Corporate LiteLLM",
+		ProviderBaseURL:    "https://litellm.example.test/v1",
+		ProviderAPIKeyEnv:  "LITELLM_API_KEY",
+		ProviderAPI:        "openai-completions",
+		ProviderAuthHeader: true,
+		ModelID:            "coding-model",
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	models := assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "models.json"))
+	providers := models["providers"].(map[string]any)
+	provider := providers["litellm"].(map[string]any)
+	if provider["baseUrl"] != "https://litellm.example.test/v1" || provider["api"] != "openai-completions" || provider["apiKey"] != "$LITELLM_API_KEY" || provider["authHeader"] != true {
+		t.Fatalf("unexpected provider config: %+v", provider)
+	}
+	registeredModels := provider["models"].([]any)
+	model := registeredModels[0].(map[string]any)
+	if model["id"] != "coding-model" {
+		t.Fatalf("unexpected registered model: %+v", model)
+	}
+}
+
+func TestGenerateConfigNoProviderConfigWithoutAPI(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:      "litellm",
+		ProviderBaseURL: "https://litellm.example.test/v1",
+		ModelID:         "coding-model",
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, ".pi", "agent", "models.json")); err == nil {
+		t.Fatal("models.json should not be written when ProviderAPI is empty")
+	}
+}
+
+func TestGenerateConfigProviderConfigMissingFields(t *testing.T) {
+	tests := []struct {
+		name string
+		req  task.TaskRequest
+	}{
+		{
+			name: "missing provider_id",
+			req:  task.TaskRequest{ProviderAPI: "openai-completions", ProviderBaseURL: "https://x.test", ModelID: "m"},
+		},
+		{
+			name: "missing model_id",
+			req:  task.TaskRequest{ProviderAPI: "openai-completions", ProviderID: "litellm", ProviderBaseURL: "https://x.test"},
+		},
+		{
+			name: "missing base_url",
+			req:  task.TaskRequest{ProviderAPI: "openai-completions", ProviderID: "litellm", ModelID: "m"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			wsDir := t.TempDir()
+			if err := GenerateConfig(wsDir, "", "", "", tc.req, false); err == nil {
+				t.Fatal("expected error when provider config fields are missing")
+			}
+		})
+	}
+}
+
+func TestGenerateConfigProviderConfigWithoutAuthHeader(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:        "litellm",
+		ProviderBaseURL:   "https://litellm.example.test/v1",
+		ProviderAPIKeyEnv: "LITELLM_API_KEY",
+		ProviderAPI:       "openai-completions",
+		ModelID:           "coding-model",
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	models := assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "models.json"))
+	provider := models["providers"].(map[string]any)["litellm"].(map[string]any)
+	if _, ok := provider["authHeader"]; ok {
+		t.Fatal("authHeader should be omitted when false")
+	}
+}
+
+func TestGenerateConfigProviderConfigWithoutAPIKey(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:      "litellm",
+		ProviderBaseURL: "https://litellm.example.test/v1",
+		ProviderAPI:     "openai-completions",
+		ModelID:         "coding-model",
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	models := assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "models.json"))
+	provider := models["providers"].(map[string]any)["litellm"].(map[string]any)
+	if _, ok := provider["apiKey"]; ok {
+		t.Fatal("apiKey should be omitted when ProviderAPIKeyEnv is empty")
+	}
+}
+
 func assertJSONPath(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)

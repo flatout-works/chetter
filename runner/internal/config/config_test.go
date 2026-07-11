@@ -115,3 +115,14 @@ func TestLoadInvalidYAML(t *testing.T) {
 		t.Fatal("expected error for invalid YAML")
 	}
 }
+
+func TestLoadAcceptsCodexHarness(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "codex.yaml")
+	if err := os.WriteFile(path, []byte("execution:\n  harness: codex\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("Load codex harness: %v", err)
+	}
+}

@@ -795,7 +795,7 @@ func validEnvName(name string) bool {
 
 func isSupportedHarness(harness string) bool {
 	switch harness {
-	case "opencode", "claude-code", "pi", "codewhale":
+	case "opencode", "claude-code", "pi", "codewhale", "codex":
 		return true
 	default:
 		return false

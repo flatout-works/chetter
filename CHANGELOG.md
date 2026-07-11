@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-11
+
+### Added
+
+- AWS Bedrock provider kind (`aws_bedrock`) with per-harness model overrides. Claude Sonnet 4 added to the default catalog with AwsProfile/AwsRegion fields.
+- LiteLLM / custom OpenAI-compatible provider support through per-harness API transport mapping: provider harnesses gain `api` (`openai-completions | anthropic-messages`) and `auth_header` fields, enabling one logical provider to serve different wire protocols per harness.
+- Pi harness generates `.pi/agent/models.json` for custom OpenAI-compatible providers at startup, registering provider baseUrl, api type, apiKey, and authHeader from the resolved catalog.
+- Runner injects the catalog-selected `ProviderAPIKeyEnv` credential into the agent environment automatically, eliminating per-key hard-coding in runner environment allowlists. The managed-key is also filtered from task-supplied environment to prevent overrides.
+- Codex harness fully wired across the stack: JSON schemas and trigger schemas accept `"codex"`, MCP tool descriptions list Codex, `definitions.isSupportedHarness` accepts it, task form harness dropdown includes Codex, runner `selectHarnessByName` returns the codex harness, and the agent base image builds the `codex-serve-proxy` binary.
+
+### Documentation
+
+- New `docs/PROVIDERS.md`: harness×provider support matrix, catalog kind→protocol mapping table, and LiteLLM configuration notes.
+- `docs/CONFIGURATION.md`: LiteLLM provider configuration section, Bedrock YAML example per-harness API transport block, and Provider Kinds reference table.
+- `docs/HARNESSES.md`: Codex section with pros, constraints, and when-to-use guidance; comparison table column; future candidates list updated.
+- `docs/FEATURES.md`, `README.md`, `docs/MANUAL.md`, `AGENTS.md` updated to list Codex alongside existing harnesses.
+
+## 2026-07-10
+
+### Added
+
+- Codex harness option (`harness: codex`) backed by a pinned Codex App Server bridge. It supports gVisor-isolated task containers, MCP configuration, streamed progress and token usage, turn interruption, markdown exports, and resumable Codex thread sessions. The agent base image now installs `@openai/codex@0.144.1` and `codex-serve-proxy`.
+
 ## 2026-07-06
 
 ### Added

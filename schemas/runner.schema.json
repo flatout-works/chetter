@@ -56,7 +56,7 @@
       "additionalProperties": false,
       "properties": {
         "runtime": { "type": "string" },
-        "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale"] },
+        "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex"] },
         "use_gvisor": { "type": "boolean" },
         "container_memory": { "type": "string" }
       }
