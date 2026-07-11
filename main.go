@@ -149,9 +149,14 @@ func run() error {
 	webMux.HandleFunc("GET /api/server-info", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		lastReap := svc.LastReapAt()
+		lastReapField := "null"
+		if !lastReap.IsZero() {
+			lastReapField = fmt.Sprintf("%q", lastReap.Format(time.RFC3339Nano))
+		}
 		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t}`,
-			serverVersion, _gitHash, svc.QuotaExhausted(),
+			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t,"lastReapAt":%s}`,
+			serverVersion, _gitHash, svc.QuotaExhausted(), lastReapField,
 		)))
 	})
 	webMux.Handle("/", webui.Handler())

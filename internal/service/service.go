@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -105,8 +106,10 @@ type Service struct {
 	cronMu         sync.Mutex
 	cronEntries    map[string]cron.EntryID
 	reaperStop     chan struct{}
+	reaperSteps    []func()
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
+	lastReapAt     atomic.Int64
 }
 
 func (s *Service) QuotaExhausted() bool {
@@ -123,7 +126,9 @@ func isQuotaExhaustedError(err error) bool {
 		strings.Contains(msg, "Error 1105")
 }
 
-func (s *Service) checkDBQuota(ctx context.Context) {
+func (s *Service) checkDBQuota() {
+	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	defer cancel()
 	err := s.rawDB.PingContext(ctx)
 	if err != nil {
 		if isQuotaExhaustedError(err) {
@@ -164,6 +169,19 @@ func New(cfg config.Config, st *store.Store) *Service {
 	if cfg.ArcaneServerURL != "" && cfg.ArcaneAPIKey != "" {
 		svc.arcane = NewArcaneClient(cfg.ArcaneServerURL, cfg.ArcaneAPIKey)
 	}
+	svc.reaperSteps = []func(){
+		svc.reapStaleTasks,
+		svc.reapExpiredLeases,
+		svc.reapStaleSessionRuns,
+		svc.reapUnavailablePinnedResumeTasks,
+		svc.reapExpiredSessions,
+		svc.checkDBQuota,
+		func() {
+			if svc.runnerRPC != nil {
+				svc.runnerRPC.cleanupHeartbeatSeen()
+			}
+		},
+	}
 	return svc
 }
 
@@ -191,37 +209,41 @@ func (s *Service) Stop() {
 // heartbeat for longer than their configured timeout + grace period and marks
 // them as error so they do not stay as zombie "running" rows forever.
 func (s *Service) taskReaper() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-	s.reapStaleTasks()
-	s.reapExpiredLeases()
-	s.reapStaleSessionRuns()
-	s.reapUnavailablePinnedResumeTasks()
-	s.reapExpiredSessions()
-	s.checkDBQuota(ctx)
-	if s.runnerRPC != nil {
-		s.runnerRPC.cleanupHeartbeatSeen()
-	}
-	cancel()
+	s.runReaperCycle()
 	ticker := time.NewTicker(reaperInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-			s.reapStaleTasks()
-			s.reapExpiredLeases()
-			s.reapStaleSessionRuns()
-			s.reapUnavailablePinnedResumeTasks()
-			s.reapExpiredSessions()
-			s.checkDBQuota(ctx)
-			if s.runnerRPC != nil {
-				s.runnerRPC.cleanupHeartbeatSeen()
-			}
-			cancel()
+			s.runReaperCycle()
 		case <-s.reaperStop:
 			return
 		}
 	}
+}
+
+// runReaperCycle executes one pass of the reaper. A panic in any step is
+// recovered and logged so a single bad cycle never kills the reaper goroutine;
+// the loop continues on the next tick.
+func (s *Service) runReaperCycle() {
+	defer s.recoverReaperPanic()
+	for _, step := range s.reaperSteps {
+		step()
+	}
+	s.lastReapAt.Store(time.Now().UnixNano())
+}
+
+func (s *Service) recoverReaperPanic() {
+	if r := recover(); r != nil {
+		slog.Error("reaper panic recovered", "panic", r, "stack", string(debug.Stack()))
+	}
+}
+
+func (s *Service) LastReapAt() time.Time {
+	if v := s.lastReapAt.Load(); v != 0 {
+		return time.Unix(0, v).UTC()
+	}
+	return time.Time{}
 }
 
 func (s *Service) definitionsSyncLoop() {
