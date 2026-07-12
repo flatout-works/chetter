@@ -1627,3 +1627,265 @@ func TestGetModelCatalogNoAdminRequired(t *testing.T) {
 		t.Fatal("get model catalog should not require admin")
 	}
 }
+
+// --- Usage Summary Tests ---
+
+func TestUsageSummaryGroupsByTeamTriggerRepo(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "platform", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "frontend", "bob")
+
+	// Insert tasks with known token/cost values.
+	now := time.Now().UTC()
+	insertTask(t, tdb.DB, "task_a1", teamA, "trigger-x", "cron",
+		"https://github.com/owner/repo-a.git", 100, 50, 0, 0, 0, 10, now)
+	insertTask(t, tdb.DB, "task_a2", teamA, "trigger-x", "cron",
+		"https://github.com/owner/repo-a.git", 200, 100, 0, 0, 0, 20, now)
+	insertTask(t, tdb.DB, "task_a3", teamA, "trigger-y", "pr_review",
+		"https://github.com/owner/repo-b.git", 300, 150, 50, 25, 0, 30, now)
+	insertTask(t, tdb.DB, "task_b1", teamB, "trigger-z", "issue",
+		"https://github.com/other/repo-c.git", 50, 25, 0, 0, 0, 5, now)
+
+	// Admin sees all teams.
+	out, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary: %v", err)
+	}
+	if len(out.Summary) != 3 {
+		t.Fatalf("expected 3 groups, got %d: %+v", len(out.Summary), out.Summary)
+	}
+
+	// Verify sums.
+	var totalCost int64
+	var totalTasks int64
+	for _, row := range out.Summary {
+		totalCost += row.CostCents
+		totalTasks += row.TaskCount
+	}
+	if totalCost != 65 {
+		t.Errorf("total cost: want 65, got %d", totalCost)
+	}
+	if totalTasks != 4 {
+		t.Errorf("total tasks: want 4, got %d", totalTasks)
+	}
+
+	// Team-scoped: platform team only.
+	outB, err := svc.GetUsageSummary(ctxWithTeam(ctx, teamA), UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary scoped: %v", err)
+	}
+	for _, row := range outB.Summary {
+		if row.TeamID != teamA {
+			t.Errorf("scoped result has wrong team: %s", row.TeamID)
+		}
+	}
+	if len(outB.Summary) != 2 {
+		t.Errorf("platform team: expected 2 groups, got %d", len(outB.Summary))
+	}
+}
+
+func TestUsageSummaryDateFiltering(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "infra", "carol")
+
+	oldTime := time.Now().UTC().Add(-48 * time.Hour)
+	recentTime := time.Now().UTC().Add(-1 * time.Hour)
+
+	insertTask(t, tdb.DB, "old_1", teamID, "nightly", "cron",
+		"https://github.com/owner/repo.git", 500, 250, 0, 0, 0, 50, oldTime)
+	insertTask(t, tdb.DB, "recent_1", teamID, "nightly", "cron",
+		"https://github.com/owner/repo.git", 100, 50, 0, 0, 0, 10, recentTime)
+
+	// Last 24 hours — only recent task.
+	out, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{SinceHours: 24})
+	if err != nil {
+		t.Fatalf("GetUsageSummary: %v", err)
+	}
+	if len(out.Summary) != 1 {
+		t.Fatalf("expected 1 group with 24h filter, got %d", len(out.Summary))
+	}
+	row := out.Summary[0]
+	if row.TaskCount != 1 {
+		t.Errorf("expected 1 task in 24h window, got %d", row.TaskCount)
+	}
+	if row.CostCents != 10 {
+		t.Errorf("expected 10 cost cents in 24h, got %d", row.CostCents)
+	}
+
+	// No filter (defaults to 30 days) — both tasks.
+	out2, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary default: %v", err)
+	}
+	row2 := out2.Summary[0]
+	if row2.TaskCount != 2 {
+		t.Errorf("expected 2 tasks with default window, got %d", row2.TaskCount)
+	}
+	if row2.CostCents != 60 {
+		t.Errorf("expected 60 cost cents, got %d", row2.CostCents)
+	}
+}
+
+func TestUsageSummaryTeamScopingDeniesOtherTeams(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamA, _ := seedTeam(t, tdb.DB, "backend", "dave")
+	teamB, _ := seedTeam(t, tdb.DB, "mobile", "eve")
+
+	now := time.Now().UTC()
+	insertTask(t, tdb.DB, "ta1", teamA, "build", "cron",
+		"https://github.com/a/repo.git", 100, 50, 0, 0, 0, 10, now)
+	insertTask(t, tdb.DB, "tb1", teamB, "deploy", "cron",
+		"https://github.com/b/repo.git", 200, 100, 0, 0, 0, 20, now)
+
+	// Team A token should only see team A.
+	out, err := svc.GetUsageSummary(ctxWithTeam(ctx, teamA), UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary: %v", err)
+	}
+	if len(out.Summary) != 1 {
+		t.Fatalf("team A: expected 1 group, got %d", len(out.Summary))
+	}
+	if out.Summary[0].TeamID != teamA {
+		t.Errorf("team A sees wrong team: %s", out.Summary[0].TeamID)
+	}
+	if out.Summary[0].CostCents != 10 {
+		t.Errorf("expected 10 cents for team A, got %d", out.Summary[0].CostCents)
+	}
+
+	// Admin sees both.
+	out2, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary admin: %v", err)
+	}
+	if len(out2.Summary) != 2 {
+		t.Fatalf("admin: expected 2 groups, got %d", len(out2.Summary))
+	}
+}
+
+func TestUsageSummaryRepoFiltering(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "ops", "frank")
+	now := time.Now().UTC()
+
+	insertTask(t, tdb.DB, "tr1", teamID, "lint", "cron",
+		"https://github.com/flatout-works/chetter.git", 100, 50, 0, 0, 0, 10, now)
+	insertTask(t, tdb.DB, "tr2", teamID, "test", "cron",
+		"https://github.com/other-org/other-repo.git", 200, 100, 0, 0, 0, 20, now)
+
+	out, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{Repo: "flatout-works/chetter"})
+	if err != nil {
+		t.Fatalf("GetUsageSummary with repo filter: %v", err)
+	}
+	if len(out.Summary) != 1 {
+		t.Fatalf("repo filter: expected 1 group, got %d", len(out.Summary))
+	}
+	row := out.Summary[0]
+	if row.Repo != "flatout-works/chetter" {
+		t.Errorf("expected repo flatout-works/chetter, got %s", row.Repo)
+	}
+	if row.CostCents != 10 {
+		t.Errorf("expected 10 cents, got %d", row.CostCents)
+	}
+}
+
+func TestUsageSummaryTriggerFiltering(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "qa", "grace")
+	now := time.Now().UTC()
+
+	insertTask(t, tdb.DB, "tq1", teamID, "nightly-build", "cron",
+		"https://github.com/owner/repo.git", 100, 50, 0, 0, 0, 10, now)
+	insertTask(t, tdb.DB, "tq2", teamID, "pr-review", "pr_review",
+		"https://github.com/owner/repo.git", 200, 100, 0, 0, 0, 20, now)
+
+	// Filter by trigger type.
+	out, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{TriggerType: "cron"})
+	if err != nil {
+		t.Fatalf("GetUsageSummary by trigger type: %v", err)
+	}
+	if len(out.Summary) != 1 {
+		t.Fatalf("trigger type cron: expected 1 group, got %d", len(out.Summary))
+	}
+	if out.Summary[0].TriggerType != "cron" {
+		t.Errorf("expected cron, got %s", out.Summary[0].TriggerType)
+	}
+
+	// Filter by trigger name.
+	out2, err := svc.GetUsageSummary(ctxWithAdmin(ctx), UsageSummaryInput{TriggerName: "pr-review"})
+	if err != nil {
+		t.Fatalf("GetUsageSummary by trigger name: %v", err)
+	}
+	if len(out2.Summary) != 1 {
+		t.Fatalf("trigger name pr-review: expected 1 group, got %d", len(out2.Summary))
+	}
+	if out2.Summary[0].TriggerName != "pr-review" {
+		t.Errorf("expected pr-review, got %s", out2.Summary[0].TriggerName)
+	}
+}
+
+func TestUsageSummaryMCPToolReturnsValidOutput(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	teamID, _ := seedTeam(t, tdb.DB, "sec", "heidi")
+	now := time.Now().UTC()
+	insertTask(t, tdb.DB, "tm1", teamID, "audit", "cron",
+		"https://github.com/owner/repo.git", 50, 25, 10, 5, 5, 8, now)
+
+	_, out, err := svc.usageSummaryTool(ctxWithAdmin(ctx), nil, UsageSummaryInput{})
+	if err != nil {
+		t.Fatalf("usageSummaryTool: %v", err)
+	}
+	if len(out.Summary) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(out.Summary))
+	}
+	row := out.Summary[0]
+	if row.TotalTokens != 95 { // 50+25+10+5+5
+		t.Errorf("total tokens: want 95, got %d", row.TotalTokens)
+	}
+	validateGeneratedOutputSchema(t, out)
+}
+
+// insertTask creates a task row directly for usage summary testing.
+func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, gitURL string,
+	inputTokens, outputTokens, cacheRead, cacheWrite, reasoning int64,
+	costCents int64, createdAt time.Time) {
+	t.Helper()
+
+	// Build a short random prompt for uniqueness.
+	prompt := "test prompt " + id
+	_, err := db.Exec(`
+		INSERT INTO chetter_tasks (
+			id, team_id, status, prompt, git_url, trigger_name, trigger_type,
+			total_input_tokens, total_output_tokens, total_cache_read_tokens,
+			total_cache_write_tokens, total_reasoning_tokens, cost_cents,
+			skills, env, timeout_sec, created_at, updated_at
+		) VALUES (?, ?, 'done', ?, ?, ?, ?,
+			?, ?, ?,
+			?, ?, ?,
+			'[]', '{}', 600, ?, ?)`,
+		id, teamID, prompt, gitURL, triggerName, triggerType,
+		inputTokens, outputTokens, cacheRead,
+		cacheWrite, reasoning, costCents,
+		createdAt, createdAt,
+	)
+	if err != nil {
+		t.Fatalf("insertTask %s: %v", id, err)
+	}
+}
