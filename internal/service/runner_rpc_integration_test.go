@@ -17,6 +17,9 @@ import (
 
 func newRPCTestService(t *testing.T) (*RunnerRPCService, *repository.Queries, *testdb.TestDB, func()) {
 	t.Helper()
+	if svcTestDB == nil {
+		t.Skip("database unavailable; skipping integration test")
+	}
 	tdb, cleanup := svcTestDB.NewTestDB(t)
 	tdb.Truncate(t)
 	q := repository.New(tdb.DB)

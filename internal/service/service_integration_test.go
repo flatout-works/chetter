@@ -22,16 +22,18 @@ var svcTestDB *testdb.PackageDB
 
 func TestMain(m *testing.M) {
 	svcTestDB = testdb.StartPackageDB(m)
-	if svcTestDB == nil {
-		os.Exit(0)
-	}
 	code := m.Run()
-	svcTestDB.Close()
+	if svcTestDB != nil {
+		svcTestDB.Close()
+	}
 	os.Exit(code)
 }
 
 func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	t.Helper()
+	if svcTestDB == nil {
+		t.Skip("database unavailable; skipping integration test")
+	}
 	tdb, cleanup := svcTestDB.NewTestDB(t)
 	tdb.Truncate(t)
 	cfg := config.Config{
