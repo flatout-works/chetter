@@ -49,3 +49,9 @@ type Harness interface {
 	// The runner rewrites MCP URLs in this file for Docker networking.
 	DockerConfigPath(wsDir string) string
 }
+
+// SessionContinuable is implemented by harnesses that can enqueue a follow-up
+// prompt while the original request is still being monitored.
+type SessionContinuable interface {
+	ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error
+}

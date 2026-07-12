@@ -63,6 +63,10 @@ func (oc *OpenCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret s
 	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
 }
 
+func (oc *OpenCode) ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error {
+	return continueSession(ctx, baseURL, sessionID, secret, req, wsDir)
+}
+
 func (oc *OpenCode) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
 	return abortSession(ctx, baseURL, sessionID, secret)
 }

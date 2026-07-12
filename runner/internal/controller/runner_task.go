@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	containerWorkspaceDir = "/workspace"
+	containerWorkspaceDir   = "/workspace"
+	containerCleanupTimeout = 30 * time.Second
+	sessionExportTimeout    = 30 * time.Second
 )
 
 func (r *Runner) runTask(req task.TaskRequest) {
@@ -180,6 +182,28 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID string) (*mcp.Ser
 	r.registerGitHubMCPTools(mcpServer, taskID)
 	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
+}
+
+func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
+	agentCtx, cancelAgent := context.WithCancel(ctx)
+	nudge := func(nudgeCtx context.Context) error {
+		continuable, ok := h.(harness.SessionContinuable)
+		if !ok {
+			return fmt.Errorf("harness %s does not support continuation", h.Name())
+		}
+		return continuable.ContinueSession(nudgeCtx, baseURL, sessionID, secret, req, wsDir)
+	}
+	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
+		r.publishStatus(req.TaskID, "running", message, nil)
+	})
+	go h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
+		watchdog.record(message)
+		r.publishStatus(req.TaskID, status, message, nil)
+	}, onToken)
+	return agentCtx, func() {
+		watchdog.stop()
+		cancelAgent()
+	}, watchdog
 }
 
 func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
@@ -495,12 +519,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	}
 	slog.Info("session", "taskID", req.TaskID, "sessionID", sid)
 
-	eventsCtx, stopEvents := context.WithCancel(ctx)
-	defer stopEvents()
 	var tokenUsage task.TokenUsage
-	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
-		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, func(usage task.TokenUsage) {
 		tokenUsage.InputTokens += usage.InputTokens
 		tokenUsage.OutputTokens += usage.OutputTokens
 		tokenUsage.CacheReadTokens += usage.CacheReadTokens
@@ -508,9 +528,13 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		tokenUsage.ReasoningTokens += usage.ReasoningTokens
 		tokenUsage.CostCents += usage.CostCents
 	})
+	defer stopWatching()
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
-	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	if watchdog.isStuck() {
+		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+	}
 	var sessionExport string
 	if sid != "" {
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
@@ -547,7 +571,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	const containerPort = 9999
 	containerName := "chetter-task-" + req.TaskID
 
-	exec.Command("docker", "rm", "-f", containerName).Run()
+	removeTaskContainer(containerName)
 
 	secret := h.ServerPassword()
 
@@ -653,7 +677,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			slog.Info("preserving container for checkpointed session", "taskID", req.TaskID, "container", containerName)
 			return
 		}
-		exec.Command("docker", "rm", "-f", containerName).Run()
+		removeTaskContainer(containerName)
 	}()
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
@@ -680,12 +704,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 
-	eventsCtx, stopEvents := context.WithCancel(ctx)
-	defer stopEvents()
 	var tokenUsage task.TokenUsage
-	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
-		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, func(usage task.TokenUsage) {
 		tokenUsage.InputTokens += usage.InputTokens
 		tokenUsage.OutputTokens += usage.OutputTokens
 		tokenUsage.CacheReadTokens += usage.CacheReadTokens
@@ -693,8 +713,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		tokenUsage.ReasoningTokens += usage.ReasoningTokens
 		tokenUsage.CostCents += usage.CostCents
 	})
+	defer stopWatching()
 
-	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	if watchdog.isStuck() {
+		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+	}
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
@@ -714,7 +738,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
 				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 			}
-			exec.Command("docker", "stop", containerName).Run()
+			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
@@ -729,7 +753,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
-		exec.Command("docker", "stop", containerName).Run()
+		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
@@ -779,8 +803,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	const containerPort = 9999
 	containerName := "chetter-task-" + req.TaskID
-	exec.Command("docker", "rm", "-f", containerName).Run()
-	defer exec.Command("docker", "rm", "-f", containerName).Run()
+	removeTaskContainer(containerName)
+	defer removeTaskContainer(containerName)
 
 	secret := h.ServerPassword()
 	gvisor := r.cfg.Execution.UseGVisor
@@ -887,12 +911,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
 
-	eventsCtx, stopEvents := context.WithCancel(ctx)
-	defer stopEvents()
 	var tokenUsage task.TokenUsage
-	go h.WatchEvents(eventsCtx, req.TaskID, baseURL, secret, func(status, message string) {
-		r.publishStatus(req.TaskID, status, message, nil)
-	}, func(usage task.TokenUsage) {
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, workspaceDir, func(usage task.TokenUsage) {
 		tokenUsage.InputTokens += usage.InputTokens
 		tokenUsage.OutputTokens += usage.OutputTokens
 		tokenUsage.CacheReadTokens += usage.CacheReadTokens
@@ -900,8 +920,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		tokenUsage.ReasoningTokens += usage.ReasoningTokens
 		tokenUsage.CostCents += usage.CostCents
 	})
+	defer stopWatching()
 
-	summary, err := h.SendPrompt(ctx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
+	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
+	if watchdog.isStuck() {
+		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+	}
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
@@ -921,7 +945,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
 				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 			}
-			exec.Command("docker", "stop", containerName).Run()
+			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
@@ -935,7 +959,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
-		exec.Command("docker", "stop", containerName).Run()
+		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
@@ -969,13 +993,43 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 }
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
-	if export, err := h.ReadSessionExport(wsDir, sid); err == nil {
-		return export
-	} else {
-		slog.Warn("session export failed", "taskID", taskID, "err", err)
-		r.publishEvent(taskID, fmt.Sprintf("session export: %v", err))
+	type result struct {
+		export string
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		export, err := h.ReadSessionExport(wsDir, sid)
+		done <- result{export: export, err: err}
+	}()
+	select {
+	case result := <-done:
+		if result.err == nil {
+			return result.export
+		}
+		slog.Warn("session export failed", "taskID", taskID, "err", result.err)
+		r.publishEvent(taskID, fmt.Sprintf("session export: %v", result.err))
+	case <-time.After(sessionExportTimeout):
+		slog.Warn("session export timed out", "taskID", taskID)
+		r.publishEvent(taskID, "session export timed out")
 	}
 	return ""
+}
+
+func stopTaskContainer(containerName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "docker", "stop", containerName).CombinedOutput(); err != nil {
+		slog.Warn("failed to stop task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	}
+}
+
+func removeTaskContainer(containerName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerName).CombinedOutput(); err != nil && ctx.Err() != nil {
+		slog.Warn("timed out removing task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	}
 }
 
 func shouldPreserveWorkspaceOnPromptError(errorCategory string) bool {
@@ -1127,8 +1181,8 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	}
 
 	containerName := "chetter-task-" + req.TaskID
-	exec.Command("docker", "rm", "-f", containerName).Run()
-	defer exec.Command("docker", "rm", "-f", containerName).Run()
+	removeTaskContainer(containerName)
+	defer removeTaskContainer(containerName)
 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""

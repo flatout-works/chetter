@@ -104,6 +104,25 @@ func createOpenCodeSession(ctx context.Context, baseURL, secret string) (string,
 }
 
 func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
+	payload := openCodePromptPayload(req, wsDir, promptWithSkillHints(req.Prompt, req.Skills))
+
+	if err := startAsyncPrompt(ctx, baseURL, sessionID, secret, payload); err != nil {
+		return "", err
+	}
+
+	if err := waitForSessionIdle(ctx, baseURL, sessionID, secret, timeout); err != nil {
+		return "", err
+	}
+
+	return fetchSessionSummary(ctx, baseURL, sessionID, secret)
+}
+
+func continueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error {
+	payload := openCodePromptPayload(req, wsDir, "Continue working on the current task now. Resume from the existing state and complete the requested work without waiting for more input.")
+	return startAsyncPrompt(ctx, baseURL, sessionID, secret, payload)
+}
+
+func openCodePromptPayload(req task.TaskRequest, wsDir, prompt string) []byte {
 	agentProvider, agentModel := agentModelFromConfig(wsDir, req.Agent)
 	defaultProvider := agentProvider
 	if defaultProvider == "" {
@@ -125,20 +144,11 @@ func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, r
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"parts": []map[string]any{
-			{"type": "text", "text": promptWithSkillHints(req.Prompt, req.Skills)},
+			{"type": "text", "text": prompt},
 		},
 		"model": model,
 	})
-
-	if err := startAsyncPrompt(ctx, baseURL, sessionID, secret, payload); err != nil {
-		return "", err
-	}
-
-	if err := waitForSessionIdle(ctx, baseURL, sessionID, secret, timeout); err != nil {
-		return "", err
-	}
-
-	return fetchSessionSummary(ctx, baseURL, sessionID, secret)
+	return payload
 }
 
 func startAsyncPrompt(ctx context.Context, baseURL, sessionID, secret string, payload []byte) error {
