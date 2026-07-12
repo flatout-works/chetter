@@ -40,8 +40,6 @@ func TestResolvedModelID(t *testing.T) {
 }
 
 func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
-	t.Setenv("PI_MCP_ADAPTER_PATH", "/opt/pi-extensions/pi-mcp-adapter")
-
 	wsDir := t.TempDir()
 	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", task.TaskRequest{}, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
@@ -49,8 +47,12 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 
 	assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "settings.json"))
 	projectSettings := assertJSONPath(t, filepath.Join(wsDir, ".pi", "settings.json"))
-	if _, ok := projectSettings["extensions"]; !ok {
+	extensions, ok := projectSettings["extensions"].([]any)
+	if !ok || len(extensions) == 0 {
 		t.Fatal("expected project settings to load pi-mcp-adapter extension")
+	}
+	if extensions[0] != "/opt/pi-extensions/node_modules/pi-mcp-adapter" {
+		t.Fatalf("expected default adapter path, got %v", extensions[0])
 	}
 
 	data, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))

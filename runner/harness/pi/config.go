@@ -119,11 +119,11 @@ func mcpAdapterPath() string {
 	if path := os.Getenv("PI_MCP_ADAPTER_PATH"); path != "" {
 		return path
 	}
-	const defaultPath = "/opt/pi-extensions/node_modules/pi-mcp-adapter"
-	if _, err := os.Stat(defaultPath); err == nil {
-		return defaultPath
-	}
-	return ""
+	// The adapter is installed in the agent container image (see
+	// runner/images/base/Dockerfile), not on the runner host. Always
+	// return the default path — the runner writes this into .pi/settings.json
+	// so Pi can load the extension when it starts inside the container.
+	return "/opt/pi-extensions/node_modules/pi-mcp-adapter"
 }
 
 func writeJSON(path string, v any, perm os.FileMode) error {
