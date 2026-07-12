@@ -62,14 +62,38 @@
   let activeRunners = $state<string[]>([]);
 
   let expandedProgress = new SvelteSet<string>();
+  let rawEventsLoaded = $state(false);
+  let rawEventsLoading = $state(false);
 
   function progressKey(entry: { time: string; index: number }) {
     return `${entry.time}:${entry.index}`;
   }
 
-  function toggleProgress(key: string) {
+  async function ensureRawEvents() {
+    if (rawEventsLoaded || rawEventsLoading) return;
+    rawEventsLoading = true;
+    try {
+      await loadTaskEvents(params.id, 100);
+      rawEventsLoaded = true;
+    } finally {
+      rawEventsLoading = false;
+    }
+  }
+
+  async function toggleProgress(key: string) {
     if (expandedProgress.has(key)) { expandedProgress.delete(key); }
-    else { expandedProgress.add(key); }
+    else {
+      await ensureRawEvents();
+      expandedProgress.add(key);
+    }
+  }
+
+  function entryRawEvents(time: string): TaskEvent[] {
+    if (events.length === 0) return [];
+    const entryTime = new Date(time).getTime();
+    return events
+      .filter(ev => Math.abs(new Date(ev.createdAt).getTime() - entryTime) < 10000)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
   // Events sorted chronologically, with index as tiebreaker for same-second timestamps.
@@ -82,85 +106,32 @@
       .map(x => x.e)
   );
 
-  // Build merged timeline: progress entries with their matching raw events.
-  // Unmatched raw events become standalone entries.
-  let mergedTimeline = $derived.by(() => {
-    if (progress.length === 0 && events.length === 0) return [];
-
-    const matchedEventIds = new Set<string>();
-
-    // Start with progress entries
-    const result: Array<{
-      type: "progress";
-      time: string;
-      status: string;
-      summary: string;
-      error: string;
-      rawEvents: typeof events;
-      index: number;
-    }> = progress.map((entry, i) => ({
-      type: "progress" as const,
-      time: entry.time,
-      status: entry.status,
-      summary: entry.summary,
-      error: entry.error,
-      rawEvents: [] as typeof events,
-      index: i,
-    }));
-
-    // If there are no progress entries, promote all raw events to standalone entries
-    if (result.length === 0) {
-      for (let i = 0; i < eventsChrono.length; i++) {
-        const ev = eventsChrono[i];
-        result.push({
-          type: "progress" as const,
+  // Timeline entries come directly from the distilled progress API.
+  // Raw events are loaded lazily only when a user expands a timeline entry.
+  // For harnesses that emit no structured events (Claude, Codex, Codewhale),
+  // fall back to showing raw events as standalone entries.
+  let timeline = $derived.by(() => {
+    if (progress.length > 0) {
+      return progress.map((entry, i) => ({
+        time: entry.time,
+        status: entry.status,
+        summary: entry.summary,
+        error: entry.error,
+        index: i,
+      }));
+    }
+    if (eventsChrono.length > 0) {
+      return eventsChrono
+        .map((ev, i) => ({
           time: ev.createdAt,
           status: ev.status,
           summary: ev.eventType || ev.status,
           error: "",
-          rawEvents: [ev],
           index: i,
-        });
-      }
-      return result.sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
+        }))
+        .sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
     }
-
-    // Attach raw events to the closest progress entry within 10 seconds
-    for (const ev of eventsChrono) {
-      let closest = 0;
-      let closestDiff = Infinity;
-      for (let i = 0; i < result.length; i++) {
-        const diff = Math.abs(new Date(ev.createdAt).getTime() - new Date(result[i].time).getTime());
-        if (diff < closestDiff) {
-          closestDiff = diff;
-          closest = i;
-        }
-      }
-      if (closestDiff < 10000) {
-        result[closest].rawEvents.push(ev);
-        matchedEventIds.add(ev.id);
-      }
-    }
-
-    // Any unmatched events become standalone entries at the end
-    if (matchedEventIds.size < eventsChrono.length) {
-      const unmatched = eventsChrono
-        .map((e, i) => ({ e, i }))
-        .filter(({ e }) => !matchedEventIds.has(e.id));
-      for (const { e: ev, i } of unmatched) {
-        result.push({
-          type: "progress" as const,
-          time: ev.createdAt,
-          status: ev.status,
-          summary: `[raw] ${ev.eventType || ev.status}`,
-          error: "",
-          rawEvents: [ev],
-          index: 100000 + i,
-        });
-      }
-    }
-
-    return result.sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
+    return [];
   });
 
   let duration = $derived(now && formatDuration(task?.startedAt, task?.endedAt));
@@ -266,8 +237,10 @@
     artifacts = [];
     if (unsub) { unsub(); unsub = null; }
     clearTaskDetail();
+    rawEventsLoaded = false;
+    rawEventsLoading = false;
+    expandedProgress.clear();
 
-    await loadTaskEvents(taskId, 100);
     await loadTaskProgress(taskId);
 
     try {
@@ -759,8 +732,8 @@
       </Card>
     {/if}
 
-    <!-- Merged Progress Timeline (with expandable raw event details) -->
-    {#if mergedTimeline.length > 0}
+    <!-- Progress Timeline -->
+    {#if timeline.length > 0}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <div class="flex items-center justify-between">
           <div>
@@ -776,8 +749,8 @@
         </div>
         <div class="mt-4 max-h-[34rem] overflow-y-auto rounded-lg border border-gray-100 p-4 dark:border-gray-700">
           <Timeline>
-            {#each mergedTimeline as entry, i (progressKey(entry))}
-              <TimelineItem title={entry.status === "done" ? "Completed successfully" : humanReadableStatus(entry.status, entry.summary)} date={formatTimeShort(entry.time)} isLast={i === mergedTimeline.length - 1}>
+            {#each timeline as entry, i (progressKey(entry))}
+              <TimelineItem title={entry.status === "done" ? "Completed successfully" : humanReadableStatus(entry.status, entry.summary)} date={formatTimeShort(entry.time)} isLast={i === timeline.length - 1}>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                   <StatusBadge status={entry.status} />
                   {#if entry.error}
@@ -797,25 +770,30 @@
                 {/if}
                 {#if expandedProgress.has(progressKey(entry))}
                   <div class="mt-3 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-900/50">
-                    {#if entry.error}
-                      <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
-                    {/if}
-                    {#if entry.rawEvents.length > 0}
-                      <div class="space-y-2 font-mono text-xs">
-                        {#each entry.rawEvents as ev (ev.id)}
-                          <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
-                            <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
-                              <span>{formatTimeShort(ev.createdAt)}</span>
-                              <span>{ev.eventType || ev.status}</span>
-                            </div>
-                            <pre class="max-h-96 overflow-auto whitespace-pre-wrap text-gray-600 dark:text-gray-400">{ev.payload || "—"}</pre>
-                          </div>
-                        {/each}
+                    {#if rawEventsLoading}
+                      <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                        <Spinner size="4" />
+                        <span class="text-xs">Loading raw events…</span>
                       </div>
                     {:else if entry.error}
                       <pre class="text-red-600 dark:text-red-400 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{entry.error}</pre>
                     {:else}
-                      <p class="text-xs text-gray-500 dark:text-gray-400">No raw events for this entry.</p>
+                      {@const raw = entryRawEvents(entry.time)}
+                      {#if raw.length > 0}
+                        <div class="space-y-2 font-mono text-xs">
+                          {#each raw as ev (ev.id)}
+                            <div class="rounded border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
+                              <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
+                                <span>{formatTimeShort(ev.createdAt)}</span>
+                                <span>{ev.eventType || ev.status}</span>
+                              </div>
+                              <pre class="max-h-96 overflow-auto whitespace-pre-wrap text-gray-600 dark:text-gray-400">{ev.payload || "—"}</pre>
+                            </div>
+                          {/each}
+                        </div>
+                      {:else}
+                        <p class="text-xs text-gray-500 dark:text-gray-400">No raw events for this entry.</p>
+                      {/if}
                     {/if}
                   </div>
                 {/if}
