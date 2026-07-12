@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-12
+
+### Added
+
+- `ExtendTask` ConnectRPC endpoint for extending deadlines of pending or running tasks by an arbitrary number of seconds. Available via web API, with audit event tracking (`task_timeout_extended`).
+
+### Fixed
+
+- Reaper now recovers from panics per-cycle instead of dying permanently: a single bad cycle (DB error, nil pointer) no longer kills the reaper goroutine. Panicked cycles are logged with stack traces and reaping continues on the next tick. A new `lastReapAt` field in `/api/server-info` enables operators to detect a stalled reaper.
+
+### Web UI
+
+- Task detail page shows full task configuration in a "Task Configuration" card: git URL, git ref, skills, pause reason, session expiry, and environment variables. Metadata stat cards now include Provider, Variant, Harness, and Session Mode.
+
 ## 2026-07-11
 
 ### Added
@@ -18,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - `docs/CONFIGURATION.md`: LiteLLM provider configuration section, Bedrock YAML example per-harness API transport block, and Provider Kinds reference table.
 - `docs/HARNESSES.md`: Codex section with pros, constraints, and when-to-use guidance; comparison table column; future candidates list updated.
 - `docs/FEATURES.md`, `README.md`, `docs/MANUAL.md`, `AGENTS.md` updated to list Codex alongside existing harnesses.
+- `website/technical.html` updated to list Codex alongside existing harnesses and describe provider kinds (`openai_compatible`, `native`, `aws_bedrock`) with per-harness API transport mapping.
 
 ## 2026-07-10
 
