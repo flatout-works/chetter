@@ -803,12 +803,6 @@ func (h *Handler) logAudit(params AuditEventParams) {
 	}
 }
 
-// isBotUser returns true if the given username is the Chetter GitHub App bot login.
-func (h *Handler) isBotUser(username string) bool {
-	appLogin, err := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
-	return err == nil && appLogin != "" && username == appLogin
-}
-
 // checkAuthorWriteAccess returns true if the user has write or admin access to
 // the repo. If the check fails or the user lacks access, it logs a message and
 // returns false so the caller can abort processing.
