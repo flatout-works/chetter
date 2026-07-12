@@ -266,22 +266,27 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 		return nil, fmt.Errorf("get events: %w", err)
 	}
 	var out []TaskProgressRecord
-	var lastStatus string
+	var lastStatus, lastSummary string
 	for _, ev := range events {
 		resp := parseJSON[store.TaskResponse](ev.Payload, "event:"+ev.ID+" payload")
 		if isProgressHeartbeat(resp.Summary) {
 			continue
 		}
-		entry := TaskProgressRecord{
+		summary := humanProgressSummary(resp.Summary)
+		if ev.Status == "running" && isNoiseSummary(summary) {
+			continue
+		}
+		if ev.Status == lastStatus && summary == lastSummary && resp.Error == "" {
+			continue
+		}
+		out = append(out, TaskProgressRecord{
 			Time:    ev.CreatedAt,
 			Status:  ev.Status,
-			Summary: humanProgressSummary(resp.Summary),
+			Summary: summary,
 			Error:   resp.Error,
-		}
-		if ev.Status != lastStatus || entry.Summary != "" || entry.Error != "" {
-			out = append(out, entry)
-			lastStatus = ev.Status
-		}
+		})
+		lastStatus = ev.Status
+		lastSummary = summary
 	}
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
@@ -291,6 +296,33 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 
 func isProgressHeartbeat(summary string) bool {
 	return strings.HasPrefix(strings.TrimSpace(summary), "opencode: server.heartbeat")
+}
+
+// isNoiseSummary reports whether a humanized progress summary conveys no
+// useful information and should be suppressed from the distilled timeline.
+func isNoiseSummary(summary string) bool {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return true
+	}
+	// Pi harness: text-delta fragments like "pi: .", "pi: the", "pi: :"
+	if strings.HasPrefix(summary, "pi:") {
+		detail := strings.TrimSpace(strings.TrimPrefix(summary, "pi:"))
+		if detail == "" {
+			return true
+		}
+		words := strings.Fields(detail)
+		if len(words) <= 1 && len(detail) <= 8 {
+			return true
+		}
+	}
+	// OpenCode: repetitive events that duplicate information already conveyed
+	// by more specific entries (tool calls, step finishes, replies, etc.)
+	switch summary {
+	case "Agent session updated", "Agent message updated", "Agent updated progress":
+		return true
+	}
+	return false
 }
 
 func humanProgressSummary(summary string) string {

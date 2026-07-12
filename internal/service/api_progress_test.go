@@ -57,3 +57,36 @@ func TestIsProgressHeartbeat(t *testing.T) {
 		t.Fatal("non-heartbeat event should not be hidden")
 	}
 }
+
+func TestIsNoiseSummary(t *testing.T) {
+	tests := []struct {
+		name    string
+		summary string
+		want    bool
+	}{
+		{"empty", "", true},
+		{"pi empty", "pi: ", true},
+		{"pi colon only", "pi:", true},
+		{"pi single char", "pi: .", true},
+		{"pi single word", "pi: the", true},
+		{"pi tool read", "pi: tool: read", false},
+		{"pi tool error", "pi: tool error: bash", false},
+		{"pi retrying", "pi: retrying: rate limit exceeded", false},
+		{"agent session updated", "Agent session updated", true},
+		{"agent message updated", "Agent message updated", true},
+		{"agent updated progress", "Agent updated progress", true},
+		{"agent is working", "Agent is working", false},
+		{"agent is waiting", "Agent is waiting", false},
+		{"connected", "Connected to the agent runtime", false},
+		{"running tool", "Running read on /workspace/foo.go", false},
+		{"finished step", "Finished tool call step (34,015 tokens)", false},
+		{"agent replied", "Agent replied: Done. PR #164", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isNoiseSummary(tc.summary); got != tc.want {
+				t.Fatalf("isNoiseSummary(%q) = %v, want %v", tc.summary, got, tc.want)
+			}
+		})
+	}
+}
