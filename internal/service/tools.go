@@ -84,6 +84,7 @@ type TaskToolRecord struct {
 	VariantID             string            `json:"variant_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
+	SubmissionSource      string            `json:"submission_source,omitempty"`
 	Skills                []string          `json:"skills,omitempty"`
 	Env                   map[string]string `json:"env,omitempty"`
 	TimeoutSec            int               `json:"timeout_sec"`
@@ -646,23 +647,24 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      in.TeamID,
-		TeamName:    in.TeamName,
-		Prompt:      in.Prompt,
-		GitURL:      in.GitURL,
-		GitRef:      in.GitRef,
-		AgentImage:  in.AgentImage,
-		Agent:       in.Agent,
-		ProviderID:  in.ProviderID,
-		ModelID:     in.ModelID,
-		VariantID:   in.VariantID,
-		Skills:      in.Skills,
-		Env:         in.Env,
-		Harness:     in.Harness,
-		TimeoutSec:  in.TimeoutSec,
-		SessionMode: in.SessionMode,
-		PauseReason: in.PauseReason,
-		TTLHours:    in.TTLHours,
+		TeamID:           in.TeamID,
+		TeamName:         in.TeamName,
+		Prompt:           in.Prompt,
+		GitURL:           in.GitURL,
+		GitRef:           in.GitRef,
+		AgentImage:       in.AgentImage,
+		Agent:            in.Agent,
+		ProviderID:       in.ProviderID,
+		ModelID:          in.ModelID,
+		VariantID:        in.VariantID,
+		Skills:           in.Skills,
+		Env:              in.Env,
+		Harness:          in.Harness,
+		TimeoutSec:       in.TimeoutSec,
+		SessionMode:      in.SessionMode,
+		PauseReason:      in.PauseReason,
+		TTLHours:         in.TTLHours,
+		SubmissionSource: "mcp",
 	})
 	if err != nil {
 		return nil, SubmitTaskOutput{}, fmt.Errorf("submit task: %w", err)
@@ -803,6 +805,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		VariantID:             task.VariantID,
 		TriggerName:           task.TriggerName,
 		TriggerType:           task.TriggerType,
+		SubmissionSource:      task.SubmissionSource,
 		Skills:                task.Skills,
 		Env:                   task.Env,
 		TimeoutSec:            task.TimeoutSec,
@@ -839,6 +842,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		VariantID:             task.VariantID.String,
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
+		SubmissionSource:      task.SubmissionSource,
 		Skills:                skills,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),

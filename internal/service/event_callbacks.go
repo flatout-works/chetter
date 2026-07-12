@@ -290,21 +290,22 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	env["CHETTER_EVENT_TASK_ID"] = event.TaskID
 	env["CHETTER_EVENT_CALLBACK"] = callback.Name
 	_, err = s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      event.TeamID,
-		Prompt:      prompt,
-		GitURL:      cfg.GitURL,
-		GitRef:      cfg.GitRef,
-		AgentImage:  cfg.AgentImage,
-		Agent:       cfg.Agent,
-		ProviderID:  cfg.ProviderID,
-		ModelID:     cfg.ModelID,
-		VariantID:   cfg.VariantID,
-		Harness:     cfg.Harness,
-		Skills:      cfg.Skills,
-		Env:         env,
-		TimeoutSec:  cfg.TimeoutSec,
-		TriggerName: callback.Name,
-		TriggerType: "event_callback",
+		TeamID:           event.TeamID,
+		Prompt:           prompt,
+		GitURL:           cfg.GitURL,
+		GitRef:           cfg.GitRef,
+		AgentImage:       cfg.AgentImage,
+		Agent:            cfg.Agent,
+		ProviderID:       cfg.ProviderID,
+		ModelID:          cfg.ModelID,
+		VariantID:        cfg.VariantID,
+		Harness:          cfg.Harness,
+		Skills:           cfg.Skills,
+		Env:              env,
+		TimeoutSec:       cfg.TimeoutSec,
+		TriggerName:      callback.Name,
+		TriggerType:      "event_callback",
+		SubmissionSource: "event_callback",
 	})
 	return err
 }

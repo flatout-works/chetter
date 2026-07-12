@@ -27,25 +27,26 @@ import (
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
-	TeamID      string
-	TeamName    string
-	Prompt      string
-	GitURL      string
-	GitRef      string
-	AgentImage  string
-	Agent       string
-	ProviderID  string
-	ModelID     string
-	VariantID   string
-	Harness     string
-	Skills      []string
-	Env         map[string]string
-	TimeoutSec  int
-	TriggerName string
-	TriggerType string
-	SessionMode string
-	PauseReason string
-	TTLHours    int
+	TeamID           string
+	TeamName         string
+	Prompt           string
+	GitURL           string
+	GitRef           string
+	AgentImage       string
+	Agent            string
+	ProviderID       string
+	ModelID          string
+	VariantID        string
+	Harness          string
+	Skills           []string
+	Env              map[string]string
+	TimeoutSec       int
+	TriggerName      string
+	TriggerType      string
+	SubmissionSource string
+	SessionMode      string
+	PauseReason      string
+	TTLHours         int
 }
 
 type AuditEventParams struct {
@@ -447,6 +448,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return store.TaskRecord{}, fmt.Errorf("generate session run id: %w", err)
 	}
 	now := time.Now().UTC()
+	submissionSource := in.SubmissionSource
+	if submissionSource == "" {
+		submissionSource = "manual"
+	}
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
@@ -497,6 +502,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
 			TriggerName:            nullString(in.TriggerName),
 			TriggerType:            nullString(in.TriggerType),
+			SubmissionSource:       submissionSource,
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
 			Env:                    env,
@@ -585,7 +591,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	} else {
 		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "task_submitted",
-			SourceType: "api",
+			SourceType: submissionSource,
 			TargetType: "task",
 			TargetID:   taskID,
 			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
@@ -630,17 +636,18 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	)
 
 	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     recoveryPrompt,
-		GitURL:     orig.GitUrl.String,
-		GitRef:     orig.GitRef.String,
-		AgentImage: orig.AgentImage.String,
-		Agent:      orig.Agent.String,
-		ProviderID: orig.ProviderID.String,
-		ModelID:    orig.ModelID.String,
-		VariantID:  orig.VariantID.String,
-		Skills:     skills,
-		Env:        env,
-		TimeoutSec: int(orig.TimeoutSec),
+		Prompt:           recoveryPrompt,
+		GitURL:           orig.GitUrl.String,
+		GitRef:           orig.GitRef.String,
+		AgentImage:       orig.AgentImage.String,
+		Agent:            orig.Agent.String,
+		ProviderID:       orig.ProviderID.String,
+		ModelID:          orig.ModelID.String,
+		VariantID:        orig.VariantID.String,
+		Skills:           skills,
+		Env:              env,
+		TimeoutSec:       int(orig.TimeoutSec),
+		SubmissionSource: "recovery",
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
@@ -742,6 +749,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
 			TriggerName:            sql.NullString{},
 			TriggerType:            sql.NullString{},
+			SubmissionSource:       "session_resume",
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
@@ -871,6 +879,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		CommitAuthorEmail:     task.CommitAuthorEmail.String,
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
+		SubmissionSource:      task.SubmissionSource,
 		Skills:                skills,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),
@@ -1268,23 +1277,24 @@ func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt 
 
 func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {
 	task, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:      teamID,
-		Prompt:      prompt,
-		GitURL:      gitURL,
-		GitRef:      gitRef,
-		AgentImage:  agentImage,
-		Agent:       agent,
-		ProviderID:  providerID,
-		ModelID:     modelID,
-		VariantID:   variantID,
-		Harness:     harness,
-		Skills:      skills,
-		TimeoutSec:  timeoutSec,
-		TriggerName: triggerName,
-		TriggerType: triggerType,
-		SessionMode: runtime.SessionMode,
-		PauseReason: runtime.PauseReason,
-		TTLHours:    runtime.TTLHours,
+		TeamID:           teamID,
+		Prompt:           prompt,
+		GitURL:           gitURL,
+		GitRef:           gitRef,
+		AgentImage:       agentImage,
+		Agent:            agent,
+		ProviderID:       providerID,
+		ModelID:          modelID,
+		VariantID:        variantID,
+		Harness:          harness,
+		Skills:           skills,
+		TimeoutSec:       timeoutSec,
+		TriggerName:      triggerName,
+		TriggerType:      triggerType,
+		SubmissionSource: "trigger",
+		SessionMode:      runtime.SessionMode,
+		PauseReason:      runtime.PauseReason,
+		TTLHours:         runtime.TTLHours,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
