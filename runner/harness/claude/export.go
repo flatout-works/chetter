@@ -35,16 +35,14 @@ func renderSessionFromDir(dir string) (string, error) {
 		return "", fmt.Errorf("read project dir: %w", err)
 	}
 
-	var jsonlDir string
+	// Claude Code may write JSONL files directly in the project directory or
+	// under a session subdirectory, depending on the harness version.
+	jsonlDir := dir
 	for _, sub := range subEntries {
 		if sub.IsDir() {
 			jsonlDir = dir + "/" + sub.Name()
 			break
 		}
-	}
-
-	if jsonlDir == "" {
-		return "", fmt.Errorf("no session subdirectory in %s", dir)
 	}
 
 	sessionEntries, err := os.ReadDir(jsonlDir)
