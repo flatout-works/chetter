@@ -12,7 +12,7 @@
   import { setTeamOptions, teamFilter } from "$lib/stores/filter.svelte";
   import { createClient } from "@connectrpc/connect";
   import { TaskService } from "$gen/proto/api/v1/api_pb";
-  import { getTransport } from "$lib/api/client";
+  import { getTransport, getToken } from "$lib/api/client";
   import Toast from "$lib/components/Toast.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import FilterBar from "$lib/components/FilterBar.svelte";
@@ -52,11 +52,27 @@
           const resp = await client.whoami({});
           const wTeams = resp.teams ?? [];
           whoamiTeams = wTeams.map((t) => ({ id: t.id || "", name: t.name || "" })).filter((t) => t.id);
-          whoamiRepos = resp.repos ?? [];
           if (whoamiTeams.length > 0) {
             setTeamOptions(whoamiTeams.map((t) => ({ id: t.id, name: t.name, selected: true })));
           }
         } catch { /* auth-dependent; ignore on transient fail */ }
+      })();
+    }
+  });
+
+  // After auth is established, fetch known repos
+  $effect(() => {
+    if ($auth.authenticated) {
+      (async () => {
+        try {
+          const token = getToken();
+          const res = await fetch("/api/v1/repos", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          whoamiRepos = data.repos ?? [];
+        } catch { /* ignore on transient fail */ }
       })();
     }
   });

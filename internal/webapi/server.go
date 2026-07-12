@@ -1,11 +1,14 @@
 package webapi
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 
 	"connectrpc.com/connect"
 	apiv1connect "github.com/flatout-works/chetter/gen/proto/api/v1/apiv1connect"
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/service"
 )
 
@@ -51,6 +54,9 @@ func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sq
 	if h.Arcane.svc.ArcaneIsConfigured() {
 		mux.Handle(apiv1connect.NewArcaneServiceHandler(h.Arcane, connect.WithInterceptors(interceptor)))
 	}
+
+	// Register the ListRepos endpoint with auth middleware.
+	mux.HandleFunc("/api/v1/repos", authMiddleware(adminToken, db, h.Admin.HandleListRepos))
 }
 
 // Ensure the handler types satisfy the generated interfaces.
@@ -65,4 +71,25 @@ var (
 	_ apiv1connect.CatalogServiceHandler = (*catalogHandler)(nil)
 )
 
+// authMiddleware wraps an http.HandlerFunc with bearer token validation,
+// mirroring the authInterceptor used by ConnectRPC handlers.
+func authMiddleware(adminToken string, db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := ""
+		v := r.Header.Get("Authorization")
+		const prefix = "Bearer "
+		if len(v) > len(prefix) && strings.HasPrefix(v, prefix) {
+			token = strings.TrimPrefix(v, prefix)
+		}
+		scope, ok := auth.ResolveToken(r.Context(), adminToken, db, token)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		ctx := auth.WithScope(r.Context(), scope)
+		next(w, r.WithContext(ctx))
+	}
+}
+
+var _ = context.Background
 var _ = http.StatusNotFound
