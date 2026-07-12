@@ -88,6 +88,7 @@ type TaskRecord struct {
 	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
+	SubmissionSource      string            `json:"submission_source,omitempty"`
 	Skills                []string          `json:"skills"`
 	Env                   map[string]string `json:"env"`
 	TimeoutSec            int               `json:"timeout_sec"`
@@ -480,6 +481,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
+		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
 		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER cost_cents"},
 		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},

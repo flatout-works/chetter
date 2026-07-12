@@ -191,6 +191,7 @@ type ChetterTask struct {
 	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
 	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
 	ErrorCategory          sql.NullString  `json:"error_category"`
+	SubmissionSource       string          `json:"submission_source"`
 	SearchText             sql.NullString  `json:"search_text"`
 }
 

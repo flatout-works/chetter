@@ -21,6 +21,7 @@ var schemaStatements = []string{
 		checkpoint_after_success BOOL NOT NULL DEFAULT false,
 		trigger_name VARCHAR(128) NULL,
 		trigger_type VARCHAR(32) NULL,
+		submission_source VARCHAR(32) NOT NULL DEFAULT 'manual',
 		claimed_at DATETIME(6) NULL,
 		lease_expires_at DATETIME(6) NULL,
 		attempt INT NOT NULL DEFAULT 0,
