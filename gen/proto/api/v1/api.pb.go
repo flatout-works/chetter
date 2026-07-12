@@ -107,32 +107,35 @@ func (x *TokenUsage) GetCostCents() int64 {
 }
 
 type Task struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	TeamId         string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Status         string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	Prompt         string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	GitUrl         string                 `protobuf:"bytes,5,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
-	GitRef         string                 `protobuf:"bytes,6,opt,name=git_ref,json=gitRef,proto3" json:"git_ref,omitempty"`
-	AgentImage     string                 `protobuf:"bytes,7,opt,name=agent_image,json=agentImage,proto3" json:"agent_image,omitempty"`
-	Agent          string                 `protobuf:"bytes,8,opt,name=agent,proto3" json:"agent,omitempty"`
-	ProviderId     string                 `protobuf:"bytes,9,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
-	ModelId        string                 `protobuf:"bytes,10,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	VariantId      string                 `protobuf:"bytes,11,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
-	Skills         []string               `protobuf:"bytes,12,rep,name=skills,proto3" json:"skills,omitempty"`
-	Env            map[string]string      `protobuf:"bytes,13,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	TimeoutSec     int32                  `protobuf:"varint,14,opt,name=timeout_sec,json=timeoutSec,proto3" json:"timeout_sec,omitempty"`
-	Summary        string                 `protobuf:"bytes,15,opt,name=summary,proto3" json:"summary,omitempty"`
-	Error          string                 `protobuf:"bytes,16,opt,name=error,proto3" json:"error,omitempty"`
-	CreatedAt      string                 `protobuf:"bytes,17,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt      string                 `protobuf:"bytes,18,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	StartedAt      *string                `protobuf:"bytes,19,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
-	EndedAt        *string                `protobuf:"bytes,20,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
-	ErrorCategory  string                 `protobuf:"bytes,21,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
-	AgentSessionId string                 `protobuf:"bytes,22,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	TokenUsage     *TokenUsage            `protobuf:"bytes,23,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TeamId           string                 `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	Status           string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	Prompt           string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	GitUrl           string                 `protobuf:"bytes,5,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
+	GitRef           string                 `protobuf:"bytes,6,opt,name=git_ref,json=gitRef,proto3" json:"git_ref,omitempty"`
+	AgentImage       string                 `protobuf:"bytes,7,opt,name=agent_image,json=agentImage,proto3" json:"agent_image,omitempty"`
+	Agent            string                 `protobuf:"bytes,8,opt,name=agent,proto3" json:"agent,omitempty"`
+	ProviderId       string                 `protobuf:"bytes,9,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	ModelId          string                 `protobuf:"bytes,10,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	VariantId        string                 `protobuf:"bytes,11,opt,name=variant_id,json=variantId,proto3" json:"variant_id,omitempty"`
+	Skills           []string               `protobuf:"bytes,12,rep,name=skills,proto3" json:"skills,omitempty"`
+	Env              map[string]string      `protobuf:"bytes,13,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	TimeoutSec       int32                  `protobuf:"varint,14,opt,name=timeout_sec,json=timeoutSec,proto3" json:"timeout_sec,omitempty"`
+	Summary          string                 `protobuf:"bytes,15,opt,name=summary,proto3" json:"summary,omitempty"`
+	Error            string                 `protobuf:"bytes,16,opt,name=error,proto3" json:"error,omitempty"`
+	CreatedAt        string                 `protobuf:"bytes,17,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt        string                 `protobuf:"bytes,18,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	StartedAt        *string                `protobuf:"bytes,19,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
+	EndedAt          *string                `protobuf:"bytes,20,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
+	ErrorCategory    string                 `protobuf:"bytes,21,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
+	AgentSessionId   string                 `protobuf:"bytes,22,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	TokenUsage       *TokenUsage            `protobuf:"bytes,23,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"`
+	TriggerName      string                 `protobuf:"bytes,24,opt,name=trigger_name,json=triggerName,proto3" json:"trigger_name,omitempty"`
+	TriggerType      string                 `protobuf:"bytes,25,opt,name=trigger_type,json=triggerType,proto3" json:"trigger_type,omitempty"`
+	SubmissionSource string                 `protobuf:"bytes,26,opt,name=submission_source,json=submissionSource,proto3" json:"submission_source,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Task) Reset() {
@@ -324,6 +327,27 @@ func (x *Task) GetTokenUsage() *TokenUsage {
 		return x.TokenUsage
 	}
 	return nil
+}
+
+func (x *Task) GetTriggerName() string {
+	if x != nil {
+		return x.TriggerName
+	}
+	return ""
+}
+
+func (x *Task) GetTriggerType() string {
+	if x != nil {
+		return x.TriggerType
+	}
+	return ""
+}
+
+func (x *Task) GetSubmissionSource() string {
+	if x != nil {
+		return x.SubmissionSource
+	}
+	return ""
 }
 
 type AgentSession struct {
@@ -6971,7 +6995,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\x91\x06\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\x84\a\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -7004,7 +7028,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eerror_category\x18\x15 \x01(\tR\rerrorCategory\x12(\n" +
 	"\x10agent_session_id\x18\x16 \x01(\tR\x0eagentSessionId\x123\n" +
 	"\vtoken_usage\x18\x17 \x01(\v2\x12.api.v1.TokenUsageR\n" +
-	"tokenUsage\x1a6\n" +
+	"tokenUsage\x12!\n" +
+	"\ftrigger_name\x18\x18 \x01(\tR\vtriggerName\x12!\n" +
+	"\ftrigger_type\x18\x19 \x01(\tR\vtriggerType\x12+\n" +
+	"\x11submission_source\x18\x1a \x01(\tR\x10submissionSource\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +

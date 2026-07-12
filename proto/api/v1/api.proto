@@ -41,6 +41,9 @@ message Task {
   string error_category = 21;
   string agent_session_id = 22;
   TokenUsage token_usage = 23;
+  string trigger_name = 24;
+  string trigger_type = 25;
+  string submission_source = 26;
 }
 
 message AgentSession {
