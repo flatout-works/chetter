@@ -315,10 +315,6 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 
 	// Gate fork and opened triggers on author write access.
 	if triggerAction == TriggerEventFork || triggerAction == TriggerEventOpened {
-		if h.isBotUser(ev.PullRequest.User.Login) {
-			slog.Debug("webhook: skipping bot-authored PR", "repo", repo, "pr", ev.Number)
-			return
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
