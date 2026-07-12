@@ -105,6 +105,21 @@
     return sortDirection === "asc" ? "↑" : "↓";
   }
 
+  function submissionSourceLabel(source: string): string {
+    switch (source) {
+      case "ui": return "Submitted via UI";
+      case "mcp": return "Submitted via MCP";
+      case "recovery": return "Recovery task";
+      case "session_resume": return "Session resume";
+      case "event_callback": return "Event callback";
+      default: return "Manually submitted";
+    }
+  }
+
+  function hasTriggerOrigin(task: typeof taskList[number]): boolean {
+    return !!task.triggerName && task.triggerType !== "event_callback";
+  }
+
   function applyFilter() {
     statusFilter.set(selectedStatus);
     refreshTasks(selectedStatus, 100, search.trim());
@@ -321,6 +336,7 @@
       <TableHeadCell onclick={() => toggleSort("model")} class="cursor-pointer select-none">
         Model {sortIcon("model")}
       </TableHeadCell>
+      <TableHeadCell>Origin</TableHeadCell>
       <TableHeadCell onclick={() => toggleSort("prompt")} class="cursor-pointer select-none">
         Prompt {sortIcon("prompt")}
       </TableHeadCell>
@@ -345,9 +361,20 @@
           <TableBodyCell>
             <StatusBadge status={task.status} />
           </TableBodyCell>
-          <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.agent || "—"}</span></TableBodyCell>
-          <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.modelId || "—"}</span></TableBodyCell>
-          <TableBodyCell class="max-w-md">
+           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.agent || "—"}</span></TableBodyCell>
+           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.modelId || "—"}</span></TableBodyCell>
+           <TableBodyCell>
+             {#if hasTriggerOrigin(task)}
+               <a href={resolve("/triggers/[name]", { name: task.triggerName })} class="text-blue-600 dark:text-blue-400 hover:underline text-sm">
+                 {task.triggerName}
+               </a>
+             {:else if task.triggerName}
+               <span class="text-gray-500 dark:text-gray-400 text-sm">Event callback: {task.triggerName}</span>
+             {:else}
+               <span class="text-gray-500 dark:text-gray-400 text-sm">{submissionSourceLabel(task.submissionSource)}</span>
+             {/if}
+           </TableBodyCell>
+           <TableBodyCell class="max-w-md">
             <span class="text-gray-500 dark:text-gray-400 truncate block">
               {task.prompt.slice(0, 60)}{task.prompt.length > 60 ? "…" : ""}
             </span>
@@ -358,7 +385,7 @@
         </TableBodyRow>
       {:else}
         <TableBodyRow>
-          <TableBodyCell colspan={8}>
+           <TableBodyCell colspan={9}>
             <div class="text-center text-gray-500 dark:text-gray-400 py-8">No tasks found</div>
           </TableBodyCell>
         </TableBodyRow>

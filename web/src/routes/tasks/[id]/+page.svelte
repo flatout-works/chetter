@@ -205,6 +205,21 @@
   );
   let sessionMode = $derived(taskSession ? (taskSession.resumeMode === "harness_session" ? "resumable" : "none") : "—");
 
+  function submissionSourceLabel(source: string): string {
+    switch (source) {
+      case "ui": return "Submitted via UI";
+      case "mcp": return "Submitted via MCP";
+      case "recovery": return "Recovery task";
+      case "session_resume": return "Session resume";
+      case "event_callback": return "Event callback";
+      default: return "Manually submitted";
+    }
+  }
+
+  function hasTriggerOrigin(task: Task): boolean {
+    return !!task.triggerName && task.triggerType !== "event_callback";
+  }
+
   let ghLink = $derived.by(() => {
     if (ghIssueUrl) return ghIssueUrl;
     if (ghRepo && ghIssueNum) return `https://github.com/${ghRepo}/issues/${ghIssueNum}`;
@@ -528,11 +543,26 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Harness</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{taskHarness || "default"}</p>
       </Card>
-      <Card size="md" shadow="sm" class="!p-4">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session Mode</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{sessionMode}</p>
-      </Card>
-      <Card size="md" shadow="sm" class="!p-4">
+       <Card size="md" shadow="sm" class="!p-4">
+         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session Mode</p>
+         <p class="text-sm font-medium text-gray-900 dark:text-white">{sessionMode}</p>
+       </Card>
+       <Card size="md" shadow="sm" class="!p-4">
+         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Origin</p>
+         {#if hasTriggerOrigin(task)}
+           <a href={resolve("/triggers/[name]", { name: task.triggerName })} class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate">
+             {task.triggerName}
+           </a>
+           {#if task.triggerType}
+             <p class="text-xs text-gray-500 dark:text-gray-400">{task.triggerType} trigger</p>
+           {/if}
+         {:else if task.triggerName}
+           <p class="text-sm font-medium text-gray-900 dark:text-white">Event callback: {task.triggerName}</p>
+         {:else}
+           <p class="text-sm font-medium text-gray-900 dark:text-white">{submissionSourceLabel(task.submissionSource)}</p>
+         {/if}
+       </Card>
+       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
       </Card>

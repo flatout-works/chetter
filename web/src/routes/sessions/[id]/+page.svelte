@@ -3,7 +3,7 @@
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, SessionRun } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, SessionRun, Task } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -26,8 +26,10 @@
   let resuming = $state(false);
 
   let runTokenUsages = $state<Map<string, { totalTokens: bigint; costCents: bigint }>>(new Map());
+  let runTasks = $state<Map<string, Task>>(new Map());
   let totalSessionTokens = $state<bigint>(0n);
   let totalSessionCost = $state<bigint>(0n);
+  let initialTask = $derived(runs.length > 0 ? runTasks.get(runs[0].taskId) : undefined);
 
   function fmtCost(cents: bigint): string {
     return `$${(Number(cents) / 100).toFixed(4)}`;
@@ -38,6 +40,17 @@
     if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
     if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
     return v.toString();
+  }
+
+  function submissionSourceLabel(source: string): string {
+    switch (source) {
+      case "ui": return "Submitted via UI";
+      case "mcp": return "Submitted via MCP";
+      case "recovery": return "Recovery task";
+      case "session_resume": return "Session resume";
+      case "event_callback": return "Event callback";
+      default: return "Manually submitted";
+    }
   }
 
   async function resume() {
@@ -77,9 +90,13 @@
         })
       );
       const m = new Map<string, { totalTokens: bigint; costCents: bigint }>();
+      const taskMap = new Map<string, Task>();
       let sessionTotal = 0n;
       let costTotal = 0n;
       taskResults.forEach((result) => {
+        if (result.status === "fulfilled" && result.value) {
+          taskMap.set(result.value.id, result.value);
+        }
         if (result.status === "fulfilled" && result.value?.tokenUsage) {
           const tu = result.value.tokenUsage;
           const total = (tu.inputTokens ?? 0n) + (tu.outputTokens ?? 0n) + (tu.reasoningTokens ?? 0n);
@@ -89,6 +106,7 @@
         }
       });
       runTokenUsages = m;
+      runTasks = taskMap;
       totalSessionTokens = sessionTotal;
       totalSessionCost = costTotal;
     } catch (e) {
@@ -147,6 +165,18 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Pinned Runner</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{session.pinnedRunnerId || "—"}</p>
       </Card>
+      <Card size="sm" shadow="sm" class="!p-4">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Origin</p>
+        {#if initialTask?.triggerName && initialTask.triggerType !== "event_callback"}
+          <a href={resolve("/triggers/[name]", { name: initialTask.triggerName })} class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate">
+            {initialTask.triggerName}
+          </a>
+        {:else if initialTask?.triggerName}
+          <p class="text-sm font-medium text-gray-900 dark:text-white">Event callback: {initialTask.triggerName}</p>
+        {:else}
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{submissionSourceLabel(initialTask?.submissionSource ?? "")}</p>
+        {/if}
+      </Card>
     </div>
 
     {#if session.pauseReason && (session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review")}
@@ -181,6 +211,7 @@
       <TableHead>
         <TableHeadCell>Run ID</TableHeadCell>
         <TableHeadCell>Task</TableHeadCell>
+        <TableHeadCell>Origin</TableHeadCell>
         <TableHeadCell>Status</TableHeadCell>
         <TableHeadCell>Tokens</TableHeadCell>
         <TableHeadCell>Summary</TableHeadCell>
@@ -188,12 +219,24 @@
       </TableHead>
       <TableBody>
         {#each runs as run (run.id)}
+          {@const runTask = runTasks.get(run.taskId)}
           <TableBodyRow>
             <TableBodyCell><span class="font-mono text-gray-700 dark:text-gray-300 text-xs">{run.id.slice(0, 20)}…</span></TableBodyCell>
             <TableBodyCell>
               <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
                 {run.taskId.slice(0, 20)}…
               </a>
+            </TableBodyCell>
+            <TableBodyCell>
+              {#if runTask?.triggerName && runTask.triggerType !== "event_callback"}
+                <a href={resolve("/triggers/[name]", { name: runTask.triggerName })} class="text-blue-600 dark:text-blue-400 hover:underline text-sm">
+                  {runTask.triggerName}
+                </a>
+              {:else if runTask?.triggerName}
+                <span class="text-gray-500 dark:text-gray-400 text-sm">Event callback: {runTask.triggerName}</span>
+              {:else}
+                <span class="text-gray-500 dark:text-gray-400 text-sm">{submissionSourceLabel(runTask?.submissionSource ?? "")}</span>
+              {/if}
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
             <TableBodyCell>
@@ -208,7 +251,7 @@
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={6}>
+            <TableBodyCell colspan={7}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No runs recorded</div>
             </TableBodyCell>
           </TableBodyRow>
