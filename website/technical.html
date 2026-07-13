@@ -45,7 +45,7 @@
       </section>
 
       <section class="section protocol-grid">
-        <article class="card protocol-card"><span>MCP</span><h3>AI-facing control surface</h3><p>Tasks, triggers, sessions, runner health, GitHub artifacts, definitions, and admin actions are exposed as schema-driven MCP tools.</p></article>
+        <article class="card protocol-card"><span>MCP</span><h3>AI-facing control surface</h3><p>Tasks, triggers, sessions, runner health, GitHub artifacts, definitions, aggregate cost and token summaries, and admin actions are exposed as schema-driven MCP tools.</p></article>
         <article class="card protocol-card"><span>ConnectRPC</span><h3>Runner protocol</h3><p>Runners use <code>RegisterRunner</code>, <code>Heartbeat</code>, <code>ClaimTask</code>, and <code>ReportTaskEvents</code>. Cancel and drain commands return on heartbeat responses.</p></article>
         <article class="card protocol-card"><span>Web UI</span><h3>Human operations</h3><p>The UI uses ConnectRPC to show tasks, triggers, runners, sessions, audit events, and artifacts. Task pages surface full configuration — provider, model, harness, session mode, git ref, skills, and environment — plus deadline extension and server-side team/repo filtering with URL state persistence.</p></article>
       </section>
@@ -70,7 +70,7 @@
         <article class="card detail-card"><span>Diagnostics</span><h3>Failures keep evidence</h3><p>Transport failures capture container state, HTTP probes, and log tails. Recoverable failures can preserve workspaces and session exports for follow-up tasks.</p></article>
         <article class="card detail-card"><span>Definitions</span><h3>Git-backed configuration</h3><p>Agent markdown, skills, triggers, task templates, and model catalogs can sync from Git every five minutes. Definitions are materialized and validated before use.</p></article>
         <article class="card detail-card"><span>Model catalog</span><h3>Provider details stay data-driven</h3><p>The catalog resolves provider id, model id, base URL, API key env var, provider kind (<code>openai_compatible</code>, <code>native</code>, <code>aws_bedrock</code>), and per-harness API transport before the task reaches a runner. One logical provider — a LiteLLM router, for example — can map to different wire protocols per harness (OpenAI completions, Anthropic messages, or Responses API) with no code changes.</p></article>
-        <article class="card detail-card"><span>Audit</span><h3>Full audit trail with identity</h3><p>Every server action is logged with event type, source, target, repo, token identity, and searchable detail. The web UI filters, toggles, and search the trail in real time.</p></article>
+        <article class="card detail-card"><span>Cost &amp; Audit</span><h3>Full audit trail with cost tracking</h3><p>Every server action is logged with event type, source, target, repo, token identity, and searchable detail. Aggregate token usage and cost summaries group by team, trigger, or repo across configurable time windows. The web UI filters, toggles, and searches the trail in real time.</p></article>
       </section>
 
       <section class="section">
@@ -87,6 +87,9 @@
   "git_url": "https://github.com/org/repo",
   "provider_id": "opencode",
   "model_id": "deepseek-v4-flash-free",
+  "submission_source": "cron",
+  "trigger_name": "nightly-docs-update",
+  "trigger_type": "cron",
   "agent_definition": "---\npermission:\n  edit: allow\n---\n...",
   "skill_definitions": { "skill-name": "tar.gz bytes" },
   "timeout_seconds": 7200,
