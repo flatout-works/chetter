@@ -1398,26 +1398,24 @@ type WhoamiOutput struct {
 	IsAdmin         bool
 	PrimaryTeamName string
 	Teams           []WhoamiTeamInfo
-	KnownRepos      []string
 }
 
 func (s *Service) Whoami(ctx context.Context) (WhoamiOutput, error) {
 	scope, ok := auth.GetScope(ctx)
-	knownRepos := s.loadKnownRepos(ctx)
 
 	if !ok {
-		return WhoamiOutput{IsAdmin: true, KnownRepos: knownRepos}, nil
+		return WhoamiOutput{IsAdmin: true}, nil
 	}
 	if scope.Admin {
 		allTeams, err := s.repo.ListTeams(ctx)
 		if err != nil {
-			return WhoamiOutput{IsAdmin: true, KnownRepos: knownRepos}, nil
+			return WhoamiOutput{IsAdmin: true}, nil
 		}
 		teams := make([]WhoamiTeamInfo, 0, len(allTeams))
 		for _, t := range allTeams {
 			teams = append(teams, WhoamiTeamInfo{ID: t.ID, Name: t.Name})
 		}
-		return WhoamiOutput{IsAdmin: true, Teams: teams, KnownRepos: knownRepos}, nil
+		return WhoamiOutput{IsAdmin: true, Teams: teams}, nil
 	}
 	teamIDs := scope.Teams()
 	teams := make([]WhoamiTeamInfo, 0, len(teamIDs))
@@ -1436,15 +1434,13 @@ func (s *Service) Whoami(ctx context.Context) (WhoamiOutput, error) {
 		IsAdmin:         false,
 		PrimaryTeamName: primaryName,
 		Teams:           teams,
-		KnownRepos:      knownRepos,
 	}, nil
 }
 
-func (s *Service) loadKnownRepos(ctx context.Context) []string {
+func (s *Service) ListRepos(ctx context.Context) ([]string, error) {
 	rows, err := s.rawDB.QueryContext(ctx, `SELECT repo FROM chetter_task_artifacts WHERE repo IS NOT NULL AND repo != '' GROUP BY repo ORDER BY repo`)
 	if err != nil {
-		slog.WarnContext(ctx, "failed to load known repos", "err", err)
-		return nil
+		return nil, fmt.Errorf("list repos: %w", err)
 	}
 	defer rows.Close()
 	var repos []string
@@ -1455,5 +1451,5 @@ func (s *Service) loadKnownRepos(ctx context.Context) []string {
 		}
 		repos = append(repos, r)
 	}
-	return repos
+	return repos, nil
 }

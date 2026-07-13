@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
@@ -348,7 +349,6 @@ func (h *taskHandler) Whoami(ctx context.Context, req *connect.Request[apiv1.Who
 		IsAdmin:         out.IsAdmin,
 		PrimaryTeamName: out.PrimaryTeamName,
 		Teams:           protoTeams,
-		Repos:           out.KnownRepos,
 	}), nil
 }
 
@@ -756,6 +756,26 @@ func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Reque
 		}
 	}
 	return connect.NewResponse(&apiv1.ListTaskArtifactsResponse{Artifacts: out}), nil
+}
+
+func (h *adminHandler) HandleListRepos(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	repos, err := h.svc.ListRepos(r.Context())
+	if err != nil {
+		slog.ErrorContext(r.Context(), "list repos failed", "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if repos == nil {
+		repos = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{"repos": repos}); err != nil {
+		slog.ErrorContext(r.Context(), "encode repos response", "err", err)
+	}
 }
 
 // --- ArcaneServiceHandler ---

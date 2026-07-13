@@ -356,7 +356,6 @@ message WhoamiResponse {
   bool is_admin = 1;
   string primary_team_name = 2;
   repeated WhoamiTeamInfo teams = 3;
-  repeated string repos = 4;
 }
 
 message WhoamiTeamInfo {
@@ -586,6 +585,7 @@ service AdminService {
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
   rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
   rpc ListTaskArtifacts(ListTaskArtifactsRequest) returns (ListTaskArtifactsResponse);
+  rpc ListRepos(ListReposRequest) returns (ListReposResponse);
 }
 
 message CreateTokenRequest {
@@ -681,6 +681,12 @@ message ListTaskArtifactsRequest {
 
 message ListTaskArtifactsResponse {
   repeated TaskArtifact artifacts = 1;
+}
+
+message ListReposRequest {}
+
+message ListReposResponse {
+  repeated string repos = 1;
 }
 
 // --- ArcaneService (conditionally registered) ---
