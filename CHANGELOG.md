@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-13
+
+### Added
+
+- `submission_source` column on tasks, stamped at all entry points (webhook, cron, API, MCP tools). Task origin (trigger name, trigger type, submission source) exposed in the Task proto and displayed in task list, task detail, and session views.
+
+### Fixed
+
+- Pi harness: always write pi-mcp-adapter extension path in settings, fixing extension loading inside the agent container
+- Claude Code harness: export direct project sessions instead of returning "no session subdirectory" error
+- Runner: progress watchdog detects and recovers stalled harness tasks that stop producing progress events while the server remains alive
+- Webhook: allow PR review dispatch on bot-authored PRs
+
+### Web UI
+
+- Task origin indicators (trigger name, trigger type, submission source) shown in task list, task detail, and session views
+- Raw events lazy-loaded behind a "Load raw events" button instead of always fetching, with simplified timeline rendering for improved performance
+- Timeline deduplication improved and noise entries (empty summaries, single-word Pi fragments) filtered server-side
+
 ## 2026-07-12
 
 ### Added
