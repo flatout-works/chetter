@@ -29,6 +29,7 @@ Task monitoring includes:
 - Latest activity via `chetter_task_latest_event`.
 - Markdown transcript via `chetter_task_export`.
 - Cancellation via `chetter_cancel_task` or admin queue clearing via `chetter_clear_queue`.
+- `trigger_name`, `trigger_type`, and `submission_source` tracked on every task, showing whether it was submitted manually, via the UI, via MCP, by a trigger, as a recovery task, as a session resume, or from an event callback.
 
 ## Agent Sessions
 
@@ -90,6 +91,7 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 - Task claiming uses `SELECT ... FOR UPDATE SKIP LOCKED`.
 - Claims have renewable leases.
 - The reaper reclaims expired leases and marks stale tasks terminal when retries are exhausted.
+- A per-task progress watchdog detects stalled harnesses: after 2 min of no agent progress (beyond heartbeats), sends a continuation prompt; after 5 min of no progress after the nudge, stops the task. Prevents silent hangs where the harness server is alive but the agent is stuck.
 - `chetter_runner_health` reports fleet-wide status and optional per-task heartbeat age.
 - `chetter_drain_runner` asks a runner to stop claiming new work, finish in-flight tasks, and exit for rollout.
 
@@ -174,7 +176,7 @@ Chetter has two listen addresses:
 
 The Compose deployment maps these to host ports `18088` and `18090` respectively.
 
-The web UI includes task views, trigger run history, and an admin artifact browser.
+The web UI includes task views, trigger run history, and an admin artifact browser. Tasks and sessions show an Origin column/card displaying the task's trigger name (linked), event callback name, or submission source label.
 
 ## Arcane Vulnerability Scanning
 

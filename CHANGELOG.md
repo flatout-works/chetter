@@ -7,14 +7,23 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - `ExtendTask` ConnectRPC endpoint for extending deadlines of pending or running tasks by an arbitrary number of seconds. Available via web API, with audit event tracking (`task_timeout_extended`).
+- `submission_source` column on `chetter_tasks` tracking how each task was submitted: `manual`, `mcp`, `ui`, `trigger`, `event_callback`, `recovery`, or `session_resume`. Stamped at all task entry points and exposed via the Task proto (`trigger_name`, `trigger_type`, `submission_source` fields 24-26).
 
 ### Fixed
 
 - Reaper now recovers from panics per-cycle instead of dying permanently: a single bad cycle (DB error, nil pointer) no longer kills the reaper goroutine. Panicked cycles are logged with stack traces and reaping continues on the next tick. A new `lastReapAt` field in `/api/server-info` enables operators to detect a stalled reaper.
+- Runner progress watchdog: detects stalled harness tasks (no agent progress for 2 min) and sends a continuation prompt; stops the task if the agent remains unresponsive for another 5 min after the nudge. Prevents silent hangs where heartbeats keep coming but the agent is stuck.
+- Runner recovers stalled OpenCode harness tasks via the new `SessionContinuable` interface (`ContinueSession`), which enqueues a continuation prompt without waiting for the session to complete.
+- Claude Code export now works with direct project sessions.
+- Pi harness always writes the pi-mcp-adapter extension path in settings, fixing extensions directory configuration.
+- Webhook handler: removed unused `chetter-bot-comment` helper function.
+- Progress timeline deduplication improved: noise entries (heartbeat-only events, redundant status transitions) are filtered from the progress output.
 
 ### Web UI
 
 - Task detail page shows full task configuration in a "Task Configuration" card: git URL, git ref, skills, pause reason, session expiry, and environment variables. Metadata stat cards now include Provider, Variant, Harness, and Session Mode.
+- Origin column/card on tasks list, task detail page, and session detail page. Shows a linked trigger name for cron/webhook-triggered tasks, "Event callback: name" for event callbacks, or a human-readable submission source label (Submitted via UI, Submitted via MCP, Recovery task, Session resume, Manually submitted) for other tasks.
+- Task timeline: raw events are now lazy-loaded, simplifying initial page render. Timeline rendering uses a more efficient data structure.
 
 ## 2026-07-11
 

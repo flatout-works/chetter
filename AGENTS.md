@@ -166,6 +166,7 @@ Before committing, verify:
 - **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
 - **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
 - **GitHub webhook** is optional. If `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, and `GITHUB_WEBHOOK_SECRET` are set, the webhook handler is registered.
+- **Progress watchdog** runs per-task in the runner (`progress_watchdog.go`). It distinguishes harness activity from runner heartbeats: after 2 minutes of no agent progress it sends a continuation prompt via the harness's `ContinueSession` method (OpenCode implements `SessionContinuable`); after 5 minutes post-nudge the task is force-stopped.
 - **Arcane tools** are conditionally registered only if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.
 - **Audit log** (`chetter_audit_log` table) records server-side events: webhook receipts, trigger matches, task submissions, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Queryable via `chetter_list_audit_events` MCP tool.
 - **Task artifacts** (`chetter_task_artifacts` table) tracks GitHub artifacts (issues, PRs, comments) created by tasks, discovered passively via the `Task: task_XXX` footer signature. Queryable via `chetter_list_task_artifacts` MCP tool.
