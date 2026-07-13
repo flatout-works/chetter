@@ -643,6 +643,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_trigger_runs", Description: "List trigger runs for the current team, optionally filtered by trigger name."}, svc.listTriggerRunsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_usage_summary", Description: "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data."}, svc.usageSummaryTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
@@ -1604,4 +1605,12 @@ func (s *Service) listTaskArtifactsTool(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, TaskArtifactsOutput{}, err
 	}
 	return nil, TaskArtifactsOutput{Artifacts: artifacts}, nil
+}
+
+func (s *Service) usageSummaryTool(ctx context.Context, _ *mcp.CallToolRequest, in UsageSummaryInput) (*mcp.CallToolResult, UsageSummaryOutput, error) {
+	out, err := s.GetUsageSummary(ctx, in)
+	if err != nil {
+		return nil, UsageSummaryOutput{}, fmt.Errorf("usage summary: %w", err)
+	}
+	return nil, out, nil
 }
