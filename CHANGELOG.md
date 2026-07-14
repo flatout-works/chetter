@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-14
+
+### Added
+
+- `chetter_usage_summary` MCP tool returning aggregated token usage and cost totals grouped by team, trigger (name/type), and repository, with time-window filtering (`since_hours`, `since`, `until`, default 30 days) and optional filters for team, trigger, and repo. Admin tokens see all teams; team-scoped tokens see only their data. Repository extraction handles both HTTPS and SSH git URL formats.
+
+### Changed
+
+- Whoami response no longer includes the `repos` field. A new `GET /api/v1/repos` endpoint (and `ListRepos` RPC in the AdminService proto) provides distinct repository names from `chetter_task_artifacts`. Web UI fetches repo options from the new endpoint instead of reading them from the Whoami response.
+
+### Documentation
+
+- Website updated to document task trigger provenance, aggregate cost/token summaries on the MCP tools page, and the `submission_source`, `trigger_name`, and `trigger_type` fields in the task envelope JSON.
+
 ## 2026-07-13
 
 ### Added
