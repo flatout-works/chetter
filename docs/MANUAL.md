@@ -390,6 +390,7 @@ MCP tools. Read-only `gh` commands remain available for inspection.
 | `chetter_get_model_catalog` | Read the active model catalog summary. |
 | `chetter_sync_definitions` | Admin manual sync of the definitions repo. |
 | `chetter_list_audit_events` | Admin audit log query. |
+| `chetter_usage_summary` | Aggregate token usage and cost totals grouped by team, trigger, and repository with time-window and filters. Admins see all teams; team tokens see only their data. |
 
 ### Conditional Arcane Tools
 

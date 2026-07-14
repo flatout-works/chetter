@@ -190,12 +190,13 @@ Severity filters: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN`.
 
 ## Audit And Observability
 
-Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync.
+Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Aggregate token usage and cost totals are available grouped by team, trigger, and repository.
 
 Tools:
 
 - `chetter_list_audit_events`
 - `chetter_list_task_artifacts`
+- `chetter_usage_summary`
 - `chetter_runner_health`
 
 Task events are kept separately in `chetter_task_events` and are exposed through task event/progress/latest tools.
