@@ -61,6 +61,7 @@
           <article class="card story-row"><span class="num">B</span><div><b>Renew cheaply</b><p>Heartbeats refresh leases for the runner's current task ids and return commands such as cancel or drain.</p></div></article>
           <article class="card story-row"><span class="num">C</span><div><b>Recover predictably</b><p>The reaper runs every 30 seconds. Expired leases are reclaimed to <code>pending</code> while attempts remain; otherwise they become <code>error</code> with a timeout category. Each cycle recovers from panics so one bad pass never kills the loop, and it stamps a <code>lastReapAt</code> health signal on <code>/api/server-info</code> so operators can spot a stalled reaper.</p></div></article>
           <article class="card story-row"><span class="num">D</span><div><b>Extend deadlines</b><p>Operators can add time to a pending or running task from the web UI. <code>ExtendTask</code> bumps <code>timeout_sec</code> in place and records a <code>task_timeout_extended</code> audit event — no restart or resubmission required.</p></div></article>
+          <article class="card story-row"><span class="num">E</span><div><b>Pause and resume</b><p>Tasks with <code>session_mode: resumable</code> create a checkpoint-backed session pinned to the runner that produced it. <code>chetter_resume_agent_session</code> queues a follow-up run that continues the same session instead of starting from scratch.</p></div></article>
         </div>
       </section>
 
