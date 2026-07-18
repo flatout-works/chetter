@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-17
+
+### Documentation
+
+- Homepage and technical page updated to surface pause/resume sessions as a feature card and a numbered step in the architecture walkthrough, respectively (#174).
+- Homepage provider kind terminology aligned across stat cards and feature cards to use the three canonical kinds (`openai_compatible`, `native`, `aws_bedrock`) with specific provider examples (#172, #173).
+
 ## 2026-07-14
 
 ### Added
