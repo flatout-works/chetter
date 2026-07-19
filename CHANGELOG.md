@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-18
+
+### Documentation
+
+- Homepage feature card uses full "Claude Code" harness name instead of "Claude" (#176).
+
 ## 2026-07-17
 
 ### Documentation
