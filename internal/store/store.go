@@ -471,6 +471,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"runner_image_digest", "ALTER TABLE chetter_tasks ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER opencode_session_id"},
 		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER runner_image_digest"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
+		{"git_identity_id", "ALTER TABLE chetter_tasks ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email"},
 		{"runner_id", "ALTER TABLE chetter_tasks ADD COLUMN runner_id VARCHAR(64) NULL AFTER commit_author_email"},
 		{"required_runner_id", "ALTER TABLE chetter_tasks ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER runner_id"},
 		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER required_runner_id"},
