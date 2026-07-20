@@ -160,7 +160,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 	svc := &Service{
 		cfg:         cfg,
 		store:       st,
-		repo:        repository.New(st.DB()),
+		repo:        repository.New(st.QueryDB()),
 		rawDB:       st.DB(),
 		dialect:     st.Dialect(),
 		cron:        cron.New(cron.WithParser(defaultCronParser), cron.WithLocation(time.UTC)),

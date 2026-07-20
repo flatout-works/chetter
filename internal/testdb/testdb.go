@@ -1,12 +1,12 @@
-// Package testdb spins up a real database instance (TiDB or MySQL) for
+// Package testdb spins up a real database instance (TiDB, MySQL, or PostgreSQL) for
 // integration tests.
 //
 // Tests use CHETTER_TEST_DSN to point at an existing database (e.g. a CI
 // service container). When that env var is unset, the package starts a
 // one-shot Docker container for the test run and tears it down on exit.
 //
-// Set CHETTER_TEST_DB_DIALECT to "mysql" to use a MySQL container instead of
-// the default TiDB container.
+// Set CHETTER_TEST_DB_DIALECT to "mysql" or "postgres" to use that container
+// instead of the default TiDB container.
 package testdb
 
 import (
@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,11 +30,12 @@ import (
 )
 
 const (
-	defaultTiDBImage  = "pingcap/tidb:v8.5.1"
-	defaultMySQLImage = "mysql:8.0"
-	connectTimeout    = 30 * time.Second
-	testMaxOpenConns  = 10
-	testMaxIdleConns  = 5
+	defaultTiDBImage     = "pingcap/tidb:v8.5.1"
+	defaultMySQLImage    = "mysql:8.0"
+	defaultPostgresImage = "postgres:16-alpine"
+	connectTimeout       = 30 * time.Second
+	testMaxOpenConns     = 10
+	testMaxIdleConns     = 5
 )
 
 // TestDB owns a connection to a real database instance plus the cleanup hooks
@@ -47,6 +49,9 @@ type TestDB struct {
 
 // Dialect returns the database dialect for this test database.
 func (tdb *TestDB) Dialect() store.Dialect { return tdb.dialect }
+
+// QueryDB returns a database handle suitable for sqlc-generated queries.
+func (tdb *TestDB) QueryDB() store.DBTX { return store.RebindDB(tdb.DB, tdb.dialect) }
 
 // NewForTesting prepares a fresh, isolated database on a TiDB instance. The
 // returned TestDB is ready to use and the cleanup func drops the database and
@@ -80,7 +85,7 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 		}
 	}
 
-	admin, err := sql.Open("mysql", dsn)
+	admin, err := sql.Open(driverName(dialect), dsn)
 	if err != nil {
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("open admin db: %v", err)
@@ -90,15 +95,15 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 	waitForReady(t, admin)
 
 	dbName := "chetter_test_" + randHex(6)
-	if _, err := admin.Exec("CREATE DATABASE `" + dbName + "`"); err != nil {
+	if err := createDatabase(admin, dbName, dialect); err != nil {
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("create test database: %v", err)
 	}
 
-	testDSN := replaceDBName(dsn, dbName)
-	db, err := sql.Open("mysql", testDSN)
+	testDSN := replaceDBName(dsn, dbName, dialect)
+	db, err := sql.Open(driverName(dialect), testDSN)
 	if err != nil {
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, dialect)
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("open test db: %v", err)
 	}
@@ -107,7 +112,7 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 	st, err := store.Open(testDSN, dialect)
 	if err != nil {
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, dialect)
 		_ = admin.Close()
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("open store for schema: %v", err)
@@ -115,7 +120,7 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 	if err := st.ApplySchema(context.Background()); err != nil {
 		_ = st.Close()
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, dialect)
 		_ = admin.Close()
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("apply schema: %v", err)
@@ -130,7 +135,7 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 	}
 	cleanup := func() {
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, dialect)
 		_ = admin.Close()
 		cleanupContainer(ownsContainer, containerName)
 	}
@@ -206,9 +211,13 @@ func isDockerUnavailable(err error) bool {
 	return !dockerCheckOK
 }
 
-func dropDatabase(db *sql.DB, name string) {
+func dropDatabase(db *sql.DB, name string, dialect store.Dialect) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if dialect == store.DialectPostgres {
+		_, _ = db.ExecContext(ctx, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
+		return
+	}
 	_, _ = db.ExecContext(ctx, "DROP DATABASE IF EXISTS `"+name+"`")
 }
 
@@ -219,7 +228,24 @@ func configureTestDB(db *sql.DB) {
 	db.SetConnMaxIdleTime(30 * time.Second)
 }
 
-func replaceDBName(dsn, dbName string) string {
+func createDatabase(db *sql.DB, name string, dialect store.Dialect) error {
+	if dialect == store.DialectPostgres {
+		_, err := db.Exec(`CREATE DATABASE "` + name + `"`)
+		return err
+	}
+	_, err := db.Exec("CREATE DATABASE `" + name + "`")
+	return err
+}
+
+func replaceDBName(dsn, dbName string, dialect store.Dialect) string {
+	if dialect == store.DialectPostgres {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return dsn
+		}
+		parsed.Path = "/" + dbName
+		return parsed.String()
+	}
 	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		// Fall back to naive string replacement.
@@ -276,6 +302,8 @@ func startDBContainer(ctx context.Context, name string, port int, dialect store.
 	if image == "" {
 		if dialect == store.DialectMySQL {
 			image = defaultMySQLImage
+		} else if dialect == store.DialectPostgres {
+			image = defaultPostgresImage
 		} else {
 			image = defaultTiDBImage
 		}
@@ -298,6 +326,14 @@ func startDBContainer(ctx context.Context, name string, port int, dialect store.
 			"--skip-log-bin",
 			"--performance-schema=OFF",
 			"--mysqlx=0",
+		}
+	} else if dialect == store.DialectPostgres {
+		args = []string{
+			"run", "--rm", "-d",
+			"--name", name,
+			"-p", fmt.Sprintf("%d:5432", port),
+			"-e", "POSTGRES_PASSWORD=postgres",
+			image,
 		}
 	} else {
 		args = []string{
@@ -326,6 +362,9 @@ func testDSN(dialect store.Dialect, port int) string {
 	if dialect == store.DialectMySQL {
 		return fmt.Sprintf("root:root@tcp(127.0.0.1:%d)/?parseTime=true&multiStatements=true", port)
 	}
+	if dialect == store.DialectPostgres {
+		return fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%d/postgres?sslmode=disable&timezone=UTC", port)
+	}
 	return fmt.Sprintf("root@tcp(127.0.0.1:%d)/?parseTime=true&multiStatements=true", port)
 }
 
@@ -333,6 +372,9 @@ func testDSN(dialect store.Dialect, port int) string {
 func localFallbackEnv(dialect store.Dialect) string {
 	if dialect == store.DialectMySQL {
 		return "CHETTER_TEST_LOCAL_MYSQL"
+	}
+	if dialect == store.DialectPostgres {
+		return "CHETTER_TEST_LOCAL_POSTGRES"
 	}
 	return "CHETTER_TEST_LOCAL_TIDB"
 }
@@ -358,6 +400,8 @@ func StartPackageDB(m *testing.M) *PackageDB {
 		dsn = "root@tcp(" + local + ")/?parseTime=true&multiStatements=true"
 		if dialect == store.DialectMySQL {
 			dsn = "root:root@tcp(" + local + ")/?parseTime=true&multiStatements=true"
+		} else if dialect == store.DialectPostgres {
+			dsn = "postgres://postgres:postgres@" + local + "/postgres?sslmode=disable&timezone=UTC"
 		}
 		return &PackageDB{adminDSN: dsn, dialect: dialect}
 	}
@@ -387,7 +431,7 @@ func (p *PackageDB) Close() {
 // AdminDB returns a connection to the database server for creating test databases.
 func (p *PackageDB) AdminDB(t testing.TB) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("mysql", p.adminDSN)
+	db, err := sql.Open(driverName(p.dialect), p.adminDSN)
 	if err != nil {
 		t.Fatalf("testdb: open admin db: %v", err)
 	}
@@ -404,15 +448,15 @@ func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 	admin := p.AdminDB(t)
 
 	dbName := "chetter_test_" + randHex(6)
-	if _, err := admin.Exec("CREATE DATABASE `" + dbName + "`"); err != nil {
+	if err := createDatabase(admin, dbName, p.dialect); err != nil {
 		_ = admin.Close()
 		t.Fatalf("testdb: create test database: %v", err)
 	}
 
-	testDSN := replaceDBName(p.adminDSN, dbName)
-	db, err := sql.Open("mysql", testDSN)
+	testDSN := replaceDBName(p.adminDSN, dbName, p.dialect)
+	db, err := sql.Open(driverName(p.dialect), testDSN)
 	if err != nil {
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, p.dialect)
 		_ = admin.Close()
 		t.Fatalf("testdb: open test db: %v", err)
 	}
@@ -421,14 +465,14 @@ func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 	st, err := store.Open(testDSN, p.dialect)
 	if err != nil {
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, p.dialect)
 		_ = admin.Close()
 		t.Fatalf("testdb: open store for schema: %v", err)
 	}
 	if err := st.ApplySchema(context.Background()); err != nil {
 		_ = st.Close()
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, p.dialect)
 		_ = admin.Close()
 		t.Fatalf("testdb: apply schema: %v", err)
 	}
@@ -436,9 +480,13 @@ func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 
 	cleanup := func() {
 		_ = db.Close()
-		dropDatabase(admin, dbName)
+		dropDatabase(admin, dbName, p.dialect)
 		_ = admin.Close()
 	}
 
 	return &TestDB{DB: db, DSN: testDSN, database: dbName, dialect: p.dialect}, cleanup
+}
+
+func driverName(dialect store.Dialect) string {
+	return store.DriverName(dialect)
 }

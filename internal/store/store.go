@@ -39,6 +39,8 @@ const (
 	DialectTiDB
 	// DialectMySQL is MySQL or a wire-compatible engine such as AWS Aurora MySQL.
 	DialectMySQL
+	// DialectPostgres is PostgreSQL.
+	DialectPostgres
 )
 
 func (d Dialect) String() string {
@@ -47,18 +49,22 @@ func (d Dialect) String() string {
 		return "tidb"
 	case DialectMySQL:
 		return "mysql"
+	case DialectPostgres:
+		return "postgres"
 	default:
 		return "unknown"
 	}
 }
 
-// ParseDialect converts a config string ("tidb", "mysql", or "") into a Dialect.
+// ParseDialect converts a config string ("tidb", "mysql", "postgres", or "") into a Dialect.
 func ParseDialect(s string) Dialect {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "tidb":
 		return DialectTiDB
 	case "mysql":
 		return DialectMySQL
+	case "postgres", "postgresql":
+		return DialectPostgres
 	default:
 		return DialectUnknown
 	}
@@ -195,12 +201,23 @@ type TriggerInput struct {
 // Open creates a database pool and applies conservative connection limits.
 // If dialect is DialectUnknown, the backend is auto-detected via SELECT VERSION().
 func Open(dsn string, dialect Dialect) (*Store, error) {
-	normalized := normalizeDSN(dsn)
-	if err := registerTiDBTLS(normalized); err != nil {
-		return nil, err
+	if dialect == DialectUnknown && isPostgresDSN(dsn) {
+		dialect = DialectPostgres
 	}
-	ensureDatabaseExists(normalized)
-	db, err := sql.Open("mysql", normalized)
+
+	driverName := DriverName(dialect)
+	openDSN := dsn
+	if dialect == DialectPostgres {
+		openDSN = normalizePostgresDSN(dsn)
+		ensurePostgresDatabaseExists(openDSN)
+	} else {
+		openDSN = normalizeDSN(dsn)
+		if err := registerTiDBTLS(openDSN); err != nil {
+			return nil, err
+		}
+		ensureDatabaseExists(openDSN)
+	}
+	db, err := sql.Open(driverName, openDSN)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
@@ -273,6 +290,11 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
+// QueryDB returns a database handle suitable for sqlc-generated queries. For
+// PostgreSQL it converts the legacy MySQL query syntax at the execution
+// boundary while preserving the generated Go model and parameter types.
+func (s *Store) QueryDB() DBTX { return RebindDB(s.db, s.dialect) }
+
 // Dialect returns the detected or configured database dialect.
 func (s *Store) Dialect() Dialect { return s.dialect }
 
@@ -281,6 +303,9 @@ func (s *Store) IsTiDB() bool { return s.dialect == DialectTiDB }
 
 // IsMySQL reports whether the backend is MySQL or a MySQL-compatible engine.
 func (s *Store) IsMySQL() bool { return s.dialect == DialectMySQL }
+
+// IsPostgres reports whether the backend is PostgreSQL.
+func (s *Store) IsPostgres() bool { return s.dialect == DialectPostgres }
 
 // detectDialect probes the database version string to determine the backend.
 // Defaults to DialectTiDB if the probe fails (preserving existing behaviour).
@@ -291,8 +316,11 @@ func (s *Store) detectDialect(ctx context.Context) {
 		s.dialect = DialectTiDB
 		return
 	}
-	if strings.Contains(strings.ToUpper(version), "TIDB") {
+	upperVersion := strings.ToUpper(version)
+	if strings.Contains(upperVersion, "TIDB") {
 		s.dialect = DialectTiDB
+	} else if strings.Contains(upperVersion, "POSTGRESQL") {
+		s.dialect = DialectPostgres
 	} else {
 		s.dialect = DialectMySQL
 	}
@@ -320,10 +348,13 @@ func (s *Store) Ping(ctx context.Context) error {
 
 // ApplySchema creates the chetter tables if they do not exist.
 func (s *Store) ApplySchema(ctx context.Context) error {
-	for _, stmt := range schemaStatements {
+	for _, stmt := range s.schemaStatements() {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
+	}
+	if s.IsPostgres() {
+		return nil
 	}
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
@@ -383,6 +414,13 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Store) schemaStatements() []string {
+	if s.IsPostgres() {
+		return postgresSchemaStatements
+	}
+	return schemaStatements
 }
 
 func (s *Store) ensureTeamAuthSchema(ctx context.Context) error {
@@ -967,7 +1005,7 @@ func (s *Store) backfillSearchText(ctx context.Context) error {
 // updated_at is refreshed on every heartbeat, which would prevent the reaper
 // from ever firing on tasks that keep heartbeating past their timeout.
 func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, error) {
-	result, err := s.db.ExecContext(ctx, `
+	query := `
 		UPDATE chetter_tasks
 		SET status = 'error',
 		    error = CONCAT('runner timeout: task ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
@@ -976,7 +1014,20 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 		    updated_at = ?
 		WHERE status = 'running'
 		  AND TIMESTAMPDIFF(SECOND, started_at, NOW()) > timeout_sec + ?
-	`, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))
+	`
+	if s.IsPostgres() {
+		query = `
+			UPDATE chetter_tasks
+			SET status = 'error',
+			    error = CONCAT('runner timeout: task ran for ', FLOOR(EXTRACT(EPOCH FROM NOW() - started_at))::int, ' seconds (timeout was ', timeout_sec, 's)'),
+			    error_category = 'timeout',
+			    ended_at = ?,
+			    updated_at = ?
+			WHERE status = 'running'
+			  AND EXTRACT(EPOCH FROM NOW() - started_at) > timeout_sec + ?
+		`
+	}
+	result, err := s.db.ExecContext(ctx, query, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))
 	if err != nil {
 		return 0, fmt.Errorf("reap stale tasks: %w", err)
 	}
@@ -1076,13 +1127,19 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		return health, fmt.Errorf("rows err after status count: %w", err)
 	}
 
-	runningRows, err := s.db.QueryContext(ctx, `
+	runningTaskAge := "TIMESTAMPDIFF(SECOND, updated_at, NOW())"
+	runnerAge := "TIMESTAMPDIFF(SECOND, last_seen_at, NOW())"
+	if s.IsPostgres() {
+		runningTaskAge = "FLOOR(EXTRACT(EPOCH FROM NOW() - updated_at))::int"
+		runnerAge = "FLOOR(EXTRACT(EPOCH FROM NOW() - last_seen_at))::int"
+	}
+	runningRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, prompt, summary, model_id, runner_image_digest, started_at,
-		       TIMESTAMPDIFF(SECOND, updated_at, NOW()) AS last_event_sec
+		       %s AS last_event_sec
 		FROM chetter_tasks
 		WHERE status = 'running'
 		ORDER BY started_at ASC
-	`)
+	`, runningTaskAge))
 	if err != nil {
 		return health, fmt.Errorf("query running tasks: %w", err)
 	}
@@ -1124,14 +1181,14 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 	}
 
 	runnerImageCounts := map[string]RunnerImageInfo{}
-	runnerRows, err := s.db.QueryContext(ctx, `
+	runnerRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id, status, image_ref, image_digest, version,
 		       max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
 		       first_seen_at, last_seen_at, started_at, metadata,
-		       TIMESTAMPDIFF(SECOND, last_seen_at, NOW()) AS last_seen_sec
+		       %s AS last_seen_sec
 		FROM chetter_runners
 		ORDER BY last_seen_at DESC
-	`)
+	`, runnerAge))
 	if err != nil {
 		return health, fmt.Errorf("query runners: %w", err)
 	}
@@ -1244,6 +1301,55 @@ func normalizeDSN(dsn string) string {
 		separator = "&"
 	}
 	return dsn + separator + "parseTime=true"
+}
+
+func isPostgresDSN(dsn string) bool {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "postgres" || parsed.Scheme == "postgresql"
+}
+
+func normalizePostgresDSN(dsn string) string {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return dsn
+	}
+	params := parsed.Query()
+	if params.Get("timezone") == "" && params.Get("TimeZone") == "" {
+		params.Set("timezone", "UTC")
+	}
+	parsed.RawQuery = params.Encode()
+	return parsed.String()
+}
+
+// ensurePostgresDatabaseExists best-effort creates the selected PostgreSQL
+// database. As with the MySQL implementation, operators may pre-create it or
+// intentionally use credentials that cannot create databases.
+func ensurePostgresDatabaseExists(dsn string) {
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return
+	}
+	dbName := strings.TrimPrefix(parsed.Path, "/")
+	if dbName == "" || !validDatabaseName(dbName) {
+		return
+	}
+	parsed.Path = "/postgres"
+	adminDB, err := sql.Open(DriverName(DialectPostgres), parsed.String())
+	if err != nil {
+		return
+	}
+	defer adminDB.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := adminDB.ExecContext(ctx, `CREATE DATABASE "`+strings.ReplaceAll(dbName, `"`, `""`)+`"`); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			slog.Warn("could not ensure postgres database exists; assuming it is pre-created",
+				"database", dbName, "error", err)
+		}
+	}
 }
 
 func registerTiDBTLS(dsn string) error {

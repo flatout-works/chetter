@@ -27,6 +27,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Check chetter
         run: make check
+      - name: Test PostgreSQL support
+        run: make test-postgres
 
   detect-changes:
     runs-on: ubuntu-latest

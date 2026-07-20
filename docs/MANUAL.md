@@ -56,7 +56,7 @@ cp .env.example .env
 docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d
 ```
 
-5. Or start with an external TiDB/MySQL database by setting `DATABASE_DSN` and omitting the local override:
+5. Or start with an external TiDB, MySQL, or PostgreSQL database by setting `DATABASE_DSN` and omitting the local override:
 
 ```bash
 docker compose --env-file .env -f deploy/compose.yaml up -d
@@ -81,9 +81,11 @@ The underlying server env vars are `HTTP_ADDR` and `WEB_ADDR`.
 
 ## Database Support
 
-Chetter supports [TiDB](https://www.pingcap.com/tidb/) and MySQL-compatible databases such as AWS Aurora MySQL. TiDB remains the preferred default because it speaks the MySQL wire protocol while adding capabilities Chetter's roadmap can use, including vector search for semantic task/event retrieval, HTAP via TiFlash for fleet analytics, and TiDB Cloud for zero-ops managed deployments.
+Chetter supports [TiDB](https://www.pingcap.com/tidb/), MySQL-compatible databases such as AWS Aurora MySQL, and PostgreSQL 16 or newer. TiDB remains the preferred default because it speaks the MySQL wire protocol while adding capabilities Chetter's roadmap can use, including vector search for semantic task/event retrieval, HTAP via TiFlash for fleet analytics, and TiDB Cloud for zero-ops managed deployments.
 
-Set `CHETTER_DB_DIALECT=mysql` for MySQL/Aurora, `CHETTER_DB_DIALECT=tidb` for TiDB, or leave it unset to auto-detect via `SELECT VERSION()`.
+Set `CHETTER_DB_DIALECT=mysql` for MySQL/Aurora, `CHETTER_DB_DIALECT=tidb` for TiDB, or `CHETTER_DB_DIALECT=postgres` for PostgreSQL. A `postgres://` or `postgresql://` `DATABASE_DSN` is auto-detected when the dialect is unset.
+
+Use a PostgreSQL URL such as `postgres://chetter:password@db.example:5432/chetter?sslmode=require`. PostgreSQL uses the native `pgx` driver. Chetter creates a missing database when the connecting role has `CREATE DATABASE`; otherwise, pre-create it before starting Chetter.
 
 > **Local vs. real TiDB.** The bundled database in `deploy/compose.local.yaml` runs TiDB's single-container `unistore` *test* engine — convenient for local dev (it serves Chetter's plain MySQL-protocol workload), but it has no TiFlash, so vector search and HTAP do not run on it. Connect to a real TiDB via `DATABASE_DSN` for those features and for production.
 
@@ -117,8 +119,8 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `WEB_ADDR` | No | `:8090` | Web UI and ConnectRPC API listen address. |
 | `MCP_AUTH_TOKEN` | Yes | empty | Server admin bearer token. Empty and `change-me*` values are rejected. |
 | `CHETTER_RUNNER_RPC_TOKEN` | Yes | empty | Dedicated runner ConnectRPC token. Empty and `change-me*` values are rejected. |
-| `DATABASE_DSN` | Yes for binary | empty | TiDB or MySQL DSN. Compose local override can provide bundled TiDB. |
-| `CHETTER_DB_DIALECT` | No | auto-detect | Optional database dialect override: `tidb` or `mysql`. |
+| `DATABASE_DSN` | Yes for binary | empty | TiDB/MySQL DSN or PostgreSQL URL. Compose local override can provide bundled TiDB. |
+| `CHETTER_DB_DIALECT` | No | auto-detect | Optional database dialect override: `tidb`, `mysql`, or `postgres`. |
 | `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-agent-base:latest` | Default agent dev container image used when task or trigger config omits `agent_image`. |
 | `AGENT_IMAGE_PREFIX` | No | empty | Registry/namespace prefix prepended to unqualified `agent_image` values. For chetter-config images, set `ghcr.io/flatout-works` so `chetter-agent:golang` resolves to `ghcr.io/flatout-works/chetter-agent:golang`. Fully qualified image refs are left unchanged. |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |

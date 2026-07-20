@@ -1,4 +1,4 @@
-.PHONY: generate tools build web-build web-check test vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-agent-base docker-build-runner
+.PHONY: generate tools build web-build web-check test test-postgres vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-agent-base docker-build-runner
 
 MCP_IMAGE ?= ghcr.io/flatout-works/chetter-mcp:local
 AGENT_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-agent-base:local
@@ -59,6 +59,9 @@ migrate-create:
 
 test:
 	go test ./...
+
+test-postgres:
+	CHETTER_TEST_DB_DIALECT=postgres go test ./...
 
 vet:
 	go vet ./...

@@ -264,7 +264,7 @@ func TestRenewAndReclaimLeases(t *testing.T) {
 	}
 
 	got, _ := q.GetTaskByID(ctx, "task-1")
-	if got.LeaseExpiresAt.Time != now.Add(60*time.Second).Truncate(time.Second) {
+	if !got.LeaseExpiresAt.Time.Equal(now.Add(60 * time.Second).Truncate(time.Second)) {
 		t.Errorf("lease not renewed, got %v", got.LeaseExpiresAt.Time)
 	}
 

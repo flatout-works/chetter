@@ -9,6 +9,7 @@ import (
 
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const txMaxAttempts = 3
@@ -55,6 +56,13 @@ func isRetryableTxError(err error) bool {
 	if errors.As(err, &mysqlErr) {
 		switch mysqlErr.Number {
 		case 1205, 1213, 8028, 9007:
+			return true
+		}
+	}
+	var postgresErr *pgconn.PgError
+	if errors.As(err, &postgresErr) {
+		switch postgresErr.Code {
+		case "40001", "40P01", "55P03":
 			return true
 		}
 	}
