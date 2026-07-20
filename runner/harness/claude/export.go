@@ -79,23 +79,47 @@ func renderSessionFromDir(dir string) (string, error) {
 		switch typ {
 		case "assistant":
 			content, _ := ev["message"].(map[string]any)
-			if content != nil {
-				if text, ok := content["text"].(string); ok && text != "" {
-					sb.WriteString(text)
-					sb.WriteString("\n\n")
-				}
+			if text := claudeMessageText(content); text != "" {
+				sb.WriteString(text)
+				sb.WriteString("\n\n")
 			}
 		case "user":
 			msg, _ := ev["message"].(map[string]any)
-			if msg != nil {
-				if text, ok := msg["text"].(string); ok && text != "" {
-					fmt.Fprintf(&sb, "> %s\n\n", text)
-				}
+			if text := claudeMessageText(msg); text != "" {
+				fmt.Fprintf(&sb, "> %s\n\n", text)
 			}
 		}
 	}
 
 	return sb.String(), scanner.Err()
+}
+
+func claudeMessageText(message map[string]any) string {
+	if message == nil {
+		return ""
+	}
+	if text, _ := message["text"].(string); text != "" {
+		return text
+	}
+	switch content := message["content"].(type) {
+	case string:
+		return content
+	case []any:
+		var text strings.Builder
+		for _, item := range content {
+			block, _ := item.(map[string]any)
+			if block == nil {
+				continue
+			}
+			value, _ := block["text"].(string)
+			if value == "" {
+				continue
+			}
+			text.WriteString(value)
+		}
+		return text.String()
+	}
+	return ""
 }
 
 func latestJSONLFile(dir string, entries []os.DirEntry) string {
