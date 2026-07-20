@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,23 @@ func TestWithAuthAcceptsRunnerSecret(t *testing.T) {
 	handler(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusNoContent)
+	}
+}
+
+func TestProgressEventPayloadUsesNestedStreamEvent(t *testing.T) {
+	payload, err := json.Marshal(progressEventPayload(map[string]any{
+		"type": "stream_event",
+		"event": map[string]any{
+			"content_block": map[string]any{
+				"name": "Bash",
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	if string(payload) != `{"content_block":{"name":"Bash"}}` {
+		t.Fatalf("payload = %s", payload)
 	}
 }
 

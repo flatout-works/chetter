@@ -533,7 +533,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+		err = fmt.Errorf("stuck harness: no progress")
 	}
 	var sessionExport string
 	if sid != "" {
@@ -717,7 +717,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+		err = fmt.Errorf("stuck harness: no progress")
 	}
 	var sessionExport string
 	if err != nil {
@@ -924,7 +924,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress after continuation prompt")
+		err = fmt.Errorf("stuck harness: no progress")
 	}
 	var sessionExport string
 	if err != nil {

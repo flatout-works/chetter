@@ -35,30 +35,25 @@ func renderSessionFromDir(dir string) (string, error) {
 		return "", fmt.Errorf("read project dir: %w", err)
 	}
 
-	// Claude Code may write JSONL files directly in the project directory or
-	// under a session subdirectory, depending on the harness version.
-	jsonlDir := dir
-	for _, sub := range subEntries {
-		if sub.IsDir() {
-			jsonlDir = dir + "/" + sub.Name()
-			break
-		}
-	}
-
-	sessionEntries, err := os.ReadDir(jsonlDir)
-	if err != nil {
-		return "", fmt.Errorf("read session dir: %w", err)
-	}
-
-	var latestFile string
-	for _, se := range sessionEntries {
-		if !se.IsDir() && strings.HasSuffix(se.Name(), ".jsonl") {
-			latestFile = jsonlDir + "/" + se.Name()
+	latestFile := latestJSONLFile(dir, subEntries)
+	if latestFile == "" {
+		for _, sub := range subEntries {
+			if !sub.IsDir() {
+				continue
+			}
+			entries, err := os.ReadDir(dir + "/" + sub.Name())
+			if err != nil {
+				continue
+			}
+			if candidate := latestJSONLFile(dir+"/"+sub.Name(), entries); candidate != "" {
+				latestFile = candidate
+				break
+			}
 		}
 	}
 
 	if latestFile == "" {
-		return "", fmt.Errorf("no session JSONL files in %s", jsonlDir)
+		return "", fmt.Errorf("no session JSONL files in %s", dir)
 	}
 
 	f, err := os.Open(latestFile)
@@ -101,4 +96,14 @@ func renderSessionFromDir(dir string) (string, error) {
 	}
 
 	return sb.String(), scanner.Err()
+}
+
+func latestJSONLFile(dir string, entries []os.DirEntry) string {
+	var latest string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jsonl") {
+			latest = dir + "/" + entry.Name()
+		}
+	}
+	return latest
 }

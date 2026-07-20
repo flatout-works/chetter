@@ -98,11 +98,15 @@ func (w *progressWatchdog) check(now time.Time) (nudge, fail bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.nudgedAt.IsZero() {
-		if now.Sub(w.lastProgress) >= harnessProgressNudgeAfter {
+		elapsed := now.Sub(w.lastProgress)
+		if elapsed < harnessProgressNudgeAfter {
+			return false, false
+		}
+		if w.nudge != nil {
 			w.nudgedAt = now
 			return true, false
 		}
-		return false, false
+		return false, elapsed >= harnessProgressFailAfter
 	}
 	return false, now.Sub(w.nudgedAt) >= harnessProgressFailAfter
 }
