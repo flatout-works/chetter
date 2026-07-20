@@ -767,6 +767,20 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	}
 }
 
+func TestShouldPullAgentImage(t *testing.T) {
+	for _, tc := range []struct {
+		image string
+		want  bool
+	}{
+		{image: "ghcr.io/flatout-works/chetter-agent:golang", want: true},
+		{image: "chetter-agent:golang", want: false},
+	} {
+		if got := shouldPullAgentImage(tc.image); got != tc.want {
+			t.Errorf("shouldPullAgentImage(%q) = %v, want %v", tc.image, got, tc.want)
+		}
+	}
+}
+
 func TestHarnessBaseURLUsesDockerGatewayForGVisor(t *testing.T) {
 	t.Setenv("RUNNER_DOCKER_GATEWAY_IP", "172.21.0.1")
 	got := harnessBaseURL("127.0.0.1", 34133, true, "chetter_default")

@@ -659,6 +659,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
 	}
+	if shouldPullAgentImage(req.AgentImage) {
+		dockerArgs = append(dockerArgs, "--pull=always")
+	}
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, serveArgs...)
 
@@ -887,6 +890,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
+	}
+	if shouldPullAgentImage(req.AgentImage) {
+		dockerArgs = append(dockerArgs, "--pull=always")
 	}
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, serveArgs...)
@@ -1260,9 +1266,16 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 
+	if shouldPullAgentImage(req.AgentImage) {
+		dockerArgs = append(dockerArgs, "--pull=always")
+	}
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, command[1:]...)
 	return dockerArgs
+}
+
+func shouldPullAgentImage(image string) bool {
+	return strings.HasPrefix(image, "ghcr.io/")
 }
 
 func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.Harness, cmd *exec.Cmd) {
