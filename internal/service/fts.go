@@ -75,7 +75,7 @@ func teamInClause(teamIDs []string) (string, []any) {
 func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.ChetterTask, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	query := `SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	query := `SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, git_identity_id, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args := append([]any{status, status}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
@@ -145,7 +145,7 @@ func (s *Service) scanTasks(ctx context.Context, query string, args []any) ([]re
 		if err := rows.Scan(
 			&i.ID, &i.Status, &i.Prompt, &i.GitUrl, &i.GitRef, &i.AgentImage, &i.Agent,
 			&i.ProviderID, &i.ModelID, &i.VariantID, &i.OpencodeSessionID, &i.RunnerImageDigest,
-			&i.CommitAuthorName, &i.CommitAuthorEmail, &i.RunnerID, &i.ClaimedAt, &i.LeaseExpiresAt,
+			&i.CommitAuthorName, &i.CommitAuthorEmail, &i.GitIdentityID, &i.RunnerID, &i.ClaimedAt, &i.LeaseExpiresAt,
 			&i.Attempt, &i.Skills, &i.Env, &i.TimeoutSec, &i.Summary, &i.Error,
 			&i.TotalInputTokens, &i.TotalOutputTokens, &i.TotalCacheReadTokens, &i.TotalCacheWriteTokens,
 			&i.TotalReasoningTokens, &i.CostCents, &i.CreatedAt, &i.UpdatedAt, &i.LastEventAt,

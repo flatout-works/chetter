@@ -16,6 +16,7 @@ var schemaStatements = []string{
 		runner_image_digest VARCHAR(255) NULL,
 		commit_author_name VARCHAR(128) NULL,
 		commit_author_email VARCHAR(255) NULL,
+		git_identity_id VARCHAR(64) NULL,
 		runner_id VARCHAR(64) NULL,
 		required_runner_id VARCHAR(64) NULL,
 		checkpoint_after_success BOOL NOT NULL DEFAULT false,
@@ -225,6 +226,20 @@ var schemaStatements = []string{
 		PRIMARY KEY (id),
 		UNIQUE KEY uq_teams_name (name),
 		UNIQUE KEY uq_teams_okta_group_id (okta_group_id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS git_identities (
+		id VARCHAR(64) NOT NULL,
+		team_id VARCHAR(64) NOT NULL DEFAULT '',
+		name VARCHAR(128) NOT NULL,
+		git_author_name VARCHAR(128) NOT NULL,
+		git_author_email VARCHAR(255) NOT NULL,
+		credential_type VARCHAR(32) NOT NULL DEFAULT 'github_app',
+		is_default BOOL NOT NULL DEFAULT false,
+		created_at DATETIME(6) NOT NULL,
+		updated_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (id),
+		UNIQUE KEY uq_git_identities_team_name (team_id, name),
+		KEY idx_git_identities_team (team_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS users (
 		id VARCHAR(64) NOT NULL,

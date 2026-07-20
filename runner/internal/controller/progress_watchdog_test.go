@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -25,7 +26,11 @@ func TestIsHarnessProgress(t *testing.T) {
 func TestProgressWatchdogNudgesThenFails(t *testing.T) {
 	start := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
 	now := start
-	w := &progressWatchdog{now: func() time.Time { return now }, lastProgress: start}
+	w := &progressWatchdog{
+		now:          func() time.Time { return now },
+		lastProgress: start,
+		nudge:        func(context.Context) error { return nil },
+	}
 
 	nudge, fail := w.check(start.Add(harnessProgressNudgeAfter))
 	if !nudge || fail {
@@ -42,5 +47,20 @@ func TestProgressWatchdogNudgesThenFails(t *testing.T) {
 	nudge, fail = w.check(now.Add(harnessProgressNudgeAfter))
 	if !nudge || fail {
 		t.Fatalf("progress after nudge should reset watchdog, got nudge:%v fail:%v", nudge, fail)
+	}
+}
+
+func TestProgressWatchdogFailsWithoutNudge(t *testing.T) {
+	start := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	w := &progressWatchdog{lastProgress: start}
+
+	nudge, fail := w.check(start.Add(harnessProgressNudgeAfter))
+	if nudge || fail {
+		t.Fatalf("first silent interval = nudge:%v fail:%v, want neither", nudge, fail)
+	}
+
+	nudge, fail = w.check(start.Add(harnessProgressFailAfter))
+	if nudge || !fail {
+		t.Fatalf("no-nudge timeout = nudge:%v fail:%v, want fail only", nudge, fail)
 	}
 }

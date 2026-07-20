@@ -373,7 +373,7 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 		parsed := parseStreamEvent(ev)
 		s.recordStreamEvent(ev)
 		if parsed != "" {
-			data, _ := json.Marshal(ev)
+			data, _ := json.Marshal(progressEventPayload(ev))
 			select {
 			case s.events <- event{Type: parsed, Data: data}:
 			case <-ctx.Done():
@@ -399,6 +399,15 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 		default:
 		}
 	}
+}
+
+func progressEventPayload(ev map[string]any) any {
+	if typ, _ := ev["type"].(string); typ == "stream_event" {
+		if nested, ok := ev["event"].(map[string]any); ok {
+			return nested
+		}
+	}
+	return ev
 }
 
 func (s *session) waitForCommand(ctx context.Context) {

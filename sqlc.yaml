@@ -16,6 +16,7 @@ sql:
             go_type:
               import: "encoding/json"
               type: "RawMessage"
+              pointer: true
           - db_type: "json"
             nullable: false
             go_type:

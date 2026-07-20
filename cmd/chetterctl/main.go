@@ -47,12 +47,82 @@ func run() error {
 			return nil
 		}
 		return tokenCmd(args, serverURL, token)
+	case "identity":
+		if len(args) < 1 {
+			printIdentityUsage()
+			return nil
+		}
+		return identityCmd(args, serverURL, token)
 	case "help", "-h", "--help":
 		printUsage()
 		return nil
 	default:
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
+}
+
+func identityCmd(args []string, serverURL, token string) error {
+	sub := args[0]
+	fs := flag.NewFlagSet("identity "+sub, flag.ExitOnError)
+	server := fs.String("server", serverURL, "Chetter web API URL (or set CHETTER_API_URL)")
+	tok := fs.String("token", token, "Admin API token (or set CHETTER_TOKEN)")
+	team := fs.String("team", "", "Owning team name; omit for a global identity")
+	name := fs.String("name", "", "Identity reference")
+	authorName := fs.String("git-author-name", "", "Git commit author name")
+	authorEmail := fs.String("git-author-email", "", "Git commit author email")
+	credentialType := fs.String("credential-type", "github_app", "Credential provider")
+	_ = fs.Parse(args[1:])
+	if *server == "" || *tok == "" {
+		return fmt.Errorf("--server and --token (or CHETTER_API_URL and CHETTER_TOKEN) are required")
+	}
+	client := newAdminClient(*server, *tok)
+	switch sub {
+	case "create":
+		if *name == "" || *authorName == "" || *authorEmail == "" {
+			return fmt.Errorf("--name, --git-author-name, and --git-author-email are required")
+		}
+		resp, err := client.CreateGitIdentity(context.Background(), connect.NewRequest(&apiv1.CreateGitIdentityRequest{TeamName: *team, Name: *name, GitAuthorName: *authorName, GitAuthorEmail: *authorEmail, CredentialType: *credentialType}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
+	case "list":
+		resp, err := client.ListGitIdentities(context.Background(), connect.NewRequest(&apiv1.ListGitIdentitiesRequest{}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
+	case "update":
+		if *name == "" || *authorName == "" || *authorEmail == "" {
+			return fmt.Errorf("--name, --git-author-name, and --git-author-email are required")
+		}
+		resp, err := client.UpdateGitIdentity(context.Background(), connect.NewRequest(&apiv1.UpdateGitIdentityRequest{TeamName: *team, Name: *name, GitAuthorName: *authorName, GitAuthorEmail: *authorEmail, CredentialType: *credentialType}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
+	case "delete":
+		if *name == "" {
+			return fmt.Errorf("--name is required")
+		}
+		resp, err := client.DeleteGitIdentity(context.Background(), connect.NewRequest(&apiv1.DeleteGitIdentityRequest{TeamName: *team, Name: *name}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
+	case "set-default":
+		if *name == "" {
+			return fmt.Errorf("--name is required")
+		}
+		resp, err := client.SetGitIdentityDefault(context.Background(), connect.NewRequest(&apiv1.SetGitIdentityDefaultRequest{TeamName: *team, Name: *name}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
+	default:
+		printIdentityUsage()
+	}
+	return nil
 }
 
 func tokenCmd(args []string, serverURL, token string) error {
@@ -214,6 +284,11 @@ Usage:
   chetterctl token create --team <team> --user <user> --name <name>
   chetterctl token list
   chetterctl token delete --name <name>
+  chetterctl identity create --name <name> --git-author-name <name> --git-author-email <email>
+  chetterctl identity list
+  chetterctl identity update --name <name> --git-author-name <name> --git-author-email <email>
+  chetterctl identity delete --name <name>
+	  chetterctl identity set-default --name <name>
 
 Environment:
   CHETTER_WEB_URL      Web UI URL for chetterctl web (default: http://localhost:8090)
@@ -234,6 +309,19 @@ Usage:
 Options:
   --server  Web API URL (or CHETTER_API_URL)
   --token   Admin API token (or CHETTER_TOKEN)`)
+}
+
+func printIdentityUsage() {
+	fmt.Println(`chetterctl identity - Manage Git identities
+
+Usage:
+  chetterctl identity create [--team <name>] --name <identity> --git-author-name <name> --git-author-email <email>
+  chetterctl identity list
+  chetterctl identity update [--team <name>] --name <identity> --git-author-name <name> --git-author-email <email>
+  chetterctl identity delete [--team <name>] --name <identity>
+	  chetterctl identity set-default [--team <name>] --name <identity>
+
+Identities contain only attribution metadata. GitHub App credentials remain server-managed.`)
 }
 
 type stringSlice []string

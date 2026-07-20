@@ -82,6 +82,7 @@ type TaskToolRecord struct {
 	ProviderID            string            `json:"provider_id,omitempty"`
 	ModelID               string            `json:"model_id,omitempty"`
 	VariantID             string            `json:"variant_id,omitempty"`
+	GitIdentityID         string            `json:"git_identity_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	SubmissionSource      string            `json:"submission_source,omitempty"`
@@ -626,6 +627,11 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_token", Description: "Create a new API token for a team and user. Admin only."}, svc.createTokenTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tokens", Description: "List all API tokens with user and team info. Admin only."}, svc.listTokensTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_token", Description: "Delete an API token by name. Admin only."}, svc.deleteTokenTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_git_identity", Description: "Create a managed Git author identity. Credentials remain server-managed."}, svc.createGitIdentityTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_git_identities", Description: "List managed Git author identities."}, svc.listGitIdentitiesTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_git_identity", Description: "Update a managed Git author identity."}, svc.updateGitIdentityTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_git_identity", Description: "Delete an unused managed Git author identity."}, svc.deleteGitIdentityTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_set_git_identity_default", Description: "Set the team or global default managed Git identity."}, svc.setGitIdentityDefaultTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only."}, svc.createTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and triggers. Admin only."}, svc.deleteTeamTool)
@@ -804,6 +810,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		ProviderID:            task.ProviderID,
 		ModelID:               task.ModelID,
 		VariantID:             task.VariantID,
+		GitIdentityID:         task.GitIdentityID,
 		TriggerName:           task.TriggerName,
 		TriggerType:           task.TriggerType,
 		SubmissionSource:      task.SubmissionSource,
@@ -841,6 +848,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		ProviderID:            task.ProviderID.String,
 		ModelID:               task.ModelID.String,
 		VariantID:             task.VariantID.String,
+		GitIdentityID:         task.GitIdentityID.String,
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
 		SubmissionSource:      task.SubmissionSource,
@@ -1288,6 +1296,84 @@ func (s *Service) deleteTokenTool(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, DeleteTokenOutput{}, err
 	}
 	return nil, DeleteTokenOutput{Deleted: true}, nil
+}
+
+type CreateGitIdentityInput struct {
+	TeamID         string `json:"team_id,omitempty" jsonschema:"Owning team ID; empty creates a global identity for admins"`
+	TeamName       string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Name           string `json:"name" jsonschema:"Stable lowercase identity reference used by agent definitions"`
+	GitAuthorName  string `json:"git_author_name" jsonschema:"Git commit author and committer name"`
+	GitAuthorEmail string `json:"git_author_email" jsonschema:"Git commit author and committer email"`
+	CredentialType string `json:"credential_type,omitempty" jsonschema:"Credential provider; github_app is currently supported"`
+}
+
+type UpdateGitIdentityInput = CreateGitIdentityInput
+
+type GitIdentityOutput struct {
+	Identity GitIdentityRecord `json:"identity"`
+}
+
+type ListGitIdentitiesOutput struct {
+	Identities []GitIdentityRecord `json:"identities"`
+}
+
+type DeleteGitIdentityInput struct {
+	TeamID   string `json:"team_id,omitempty" jsonschema:"Owning team ID; empty selects a global identity for admins"`
+	TeamName string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Name     string `json:"name" jsonschema:"Identity reference to delete"`
+}
+
+type DeleteGitIdentityOutput struct {
+	Deleted bool `json:"deleted"`
+}
+
+type SetGitIdentityDefaultInput struct {
+	TeamID   string `json:"team_id,omitempty" jsonschema:"Owning team ID; empty selects a global identity for admins"`
+	TeamName string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Name     string `json:"name" jsonschema:"Identity reference to use for agent-less tasks"`
+}
+
+func gitIdentityInput(in CreateGitIdentityInput) GitIdentityInput {
+	return GitIdentityInput(in)
+}
+
+func (s *Service) createGitIdentityTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateGitIdentityInput) (*mcp.CallToolResult, GitIdentityOutput, error) {
+	record, err := s.CreateGitIdentity(ctx, gitIdentityInput(in))
+	if err != nil {
+		return nil, GitIdentityOutput{}, err
+	}
+	return nil, GitIdentityOutput{Identity: record}, nil
+}
+
+func (s *Service) listGitIdentitiesTool(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ListGitIdentitiesOutput, error) {
+	records, err := s.ListGitIdentities(ctx)
+	if err != nil {
+		return nil, ListGitIdentitiesOutput{}, err
+	}
+	return nil, ListGitIdentitiesOutput{Identities: records}, nil
+}
+
+func (s *Service) updateGitIdentityTool(ctx context.Context, _ *mcp.CallToolRequest, in UpdateGitIdentityInput) (*mcp.CallToolResult, GitIdentityOutput, error) {
+	record, err := s.UpdateGitIdentity(ctx, gitIdentityInput(in))
+	if err != nil {
+		return nil, GitIdentityOutput{}, err
+	}
+	return nil, GitIdentityOutput{Identity: record}, nil
+}
+
+func (s *Service) deleteGitIdentityTool(ctx context.Context, _ *mcp.CallToolRequest, in DeleteGitIdentityInput) (*mcp.CallToolResult, DeleteGitIdentityOutput, error) {
+	if err := s.DeleteGitIdentity(ctx, in.TeamID, in.TeamName, in.Name); err != nil {
+		return nil, DeleteGitIdentityOutput{}, err
+	}
+	return nil, DeleteGitIdentityOutput{Deleted: true}, nil
+}
+
+func (s *Service) setGitIdentityDefaultTool(ctx context.Context, _ *mcp.CallToolRequest, in SetGitIdentityDefaultInput) (*mcp.CallToolResult, GitIdentityOutput, error) {
+	record, err := s.SetDefaultGitIdentity(ctx, in.TeamID, in.TeamName, in.Name)
+	if err != nil {
+		return nil, GitIdentityOutput{}, err
+	}
+	return nil, GitIdentityOutput{Identity: record}, nil
 }
 
 // --- Team Management Tool Handlers ---

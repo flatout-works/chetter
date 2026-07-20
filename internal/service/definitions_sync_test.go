@@ -167,7 +167,7 @@ providers:
     models:
       - id: test-model
 `)
-	writeRepoFile(t, dir, "agents/pr-reviewer.md", "# PR reviewer\n")
+	writeRepoFile(t, dir, "agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
 	writeRepoFile(t, dir, "skills/chetter/SKILL.md", "# Chetter skill\n")
 	writeRepoFile(t, dir, "triggers/nightly.yaml", "name: nightly\n")
 	writeRepoFile(t, dir, "task-templates/improve.md", "Improve this\n")
@@ -196,9 +196,9 @@ providers:
     models:
       - id: test-model
 `)
-	writeRepoFile(t, dir, "global/agents/global-reviewer.md", "# Global reviewer\n")
+	writeRepoFile(t, dir, "global/agents/global-reviewer.md", "---\nidentity: primary-bot\n---\n# Global reviewer\n")
 	writeRepoFile(t, dir, "groups/engineering/triggers/team-nightly.yaml", "name: team-nightly\n")
-	writeRepoFile(t, dir, "repos/acme/app/agents/repo-reviewer.md", "# Repo reviewer\n")
+	writeRepoFile(t, dir, "repos/acme/app/agents/repo-reviewer.md", "---\nidentity: primary-bot\n---\n# Repo reviewer\n")
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "scoped definitions")
 	return dir

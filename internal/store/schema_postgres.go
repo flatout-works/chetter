@@ -20,6 +20,11 @@ func postgresSchema() []string {
 		fields := make([]string, 0, len(lines)-2)
 		for _, line := range lines[1 : len(lines)-1] {
 			field := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), ","))
+			if table == "chetter_tasks" && strings.HasPrefix(field, "git_identity_id ") {
+				// Keep SELECT * column order aligned with the PostgreSQL migration,
+				// which adds this column after the original baseline table.
+				continue
+			}
 			switch {
 			case strings.HasPrefix(field, "FULLTEXT INDEX "):
 				// PostgreSQL full-text indexes are added below as GIN expression indexes.
@@ -44,6 +49,7 @@ func postgresSchema() []string {
 		statements = append(statements, header+"\n\t"+strings.Join(fields, ",\n\t")+"\n)")
 	}
 	statements = append(statements, indexes...)
+	statements = append(statements, "ALTER TABLE chetter_tasks ADD COLUMN IF NOT EXISTS git_identity_id VARCHAR(64) NULL")
 	statements = append(statements,
 		"CREATE INDEX IF NOT EXISTS idx_tasks_search ON chetter_tasks USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
 		"CREATE INDEX IF NOT EXISTS idx_sessions_search ON chetter_agent_sessions USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",

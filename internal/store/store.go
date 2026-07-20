@@ -92,6 +92,7 @@ type TaskRecord struct {
 	RunnerImageDigest     string            `json:"runner_image_digest,omitempty"`
 	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
 	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
+	GitIdentityID         string            `json:"git_identity_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	SubmissionSource      string            `json:"submission_source,omitempty"`
@@ -354,6 +355,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureGitIdentityColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTriggerMetadataColumns(ctx); err != nil {
 		return err
 	}
@@ -503,6 +507,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"runner_image_digest", "ALTER TABLE chetter_tasks ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER opencode_session_id"},
 		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER runner_image_digest"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
+		{"git_identity_id", "ALTER TABLE chetter_tasks ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email"},
 		{"runner_id", "ALTER TABLE chetter_tasks ADD COLUMN runner_id VARCHAR(64) NULL AFTER commit_author_email"},
 		{"required_runner_id", "ALTER TABLE chetter_tasks ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER runner_id"},
 		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER required_runner_id"},
@@ -534,6 +539,20 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
 		}
+	}
+	return nil
+}
+
+func (s *Store) ensureGitIdentityColumns(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "git_identities", "is_default")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE git_identities ADD COLUMN is_default BOOL NOT NULL DEFAULT false AFTER credential_type"); err != nil {
+		return fmt.Errorf("add git_identities.is_default: %w", err)
 	}
 	return nil
 }

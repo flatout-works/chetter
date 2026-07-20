@@ -44,6 +44,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		TriggerName:      t.TriggerName,
 		TriggerType:      t.TriggerType,
 		SubmissionSource: t.SubmissionSource,
+		GitIdentityId:    t.GitIdentityID,
 		TokenUsage: &apiv1.TokenUsage{
 			InputTokens:      t.TotalInputTokens,
 			OutputTokens:     t.TotalOutputTokens,
@@ -587,6 +588,20 @@ type adminHandler struct {
 	svc *service.Service
 }
 
+func protoGitIdentity(identity service.GitIdentityRecord) *apiv1.GitIdentity {
+	return &apiv1.GitIdentity{
+		Id:             identity.ID,
+		TeamId:         identity.TeamID,
+		Name:           identity.Name,
+		GitAuthorName:  identity.GitAuthorName,
+		GitAuthorEmail: identity.GitAuthorEmail,
+		CredentialType: identity.CredentialType,
+		IsDefault:      identity.IsDefault,
+		CreatedAt:      identity.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      identity.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
 func (h *adminHandler) CreateToken(ctx context.Context, req *connect.Request[apiv1.CreateTokenRequest]) (*connect.Response[apiv1.CreateTokenResponse], error) {
 	teamNames := req.Msg.TeamNames
 	if len(teamNames) == 0 && req.Msg.TeamName != "" {
@@ -756,6 +771,57 @@ func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Reque
 		}
 	}
 	return connect.NewResponse(&apiv1.ListTaskArtifactsResponse{Artifacts: out}), nil
+}
+
+func (h *adminHandler) ListRepos(ctx context.Context, _ *connect.Request[apiv1.ListReposRequest]) (*connect.Response[apiv1.ListReposResponse], error) {
+	repos, err := h.svc.ListRepos(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.ListReposResponse{Repos: repos}), nil
+}
+
+func (h *adminHandler) CreateGitIdentity(ctx context.Context, req *connect.Request[apiv1.CreateGitIdentityRequest]) (*connect.Response[apiv1.CreateGitIdentityResponse], error) {
+	record, err := h.svc.CreateGitIdentity(ctx, service.GitIdentityInput{TeamID: req.Msg.TeamId, TeamName: req.Msg.TeamName, Name: req.Msg.Name, GitAuthorName: req.Msg.GitAuthorName, GitAuthorEmail: req.Msg.GitAuthorEmail, CredentialType: req.Msg.CredentialType})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&apiv1.CreateGitIdentityResponse{Identity: protoGitIdentity(record)}), nil
+}
+
+func (h *adminHandler) ListGitIdentities(ctx context.Context, _ *connect.Request[apiv1.ListGitIdentitiesRequest]) (*connect.Response[apiv1.ListGitIdentitiesResponse], error) {
+	records, err := h.svc.ListGitIdentities(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	identities := make([]*apiv1.GitIdentity, len(records))
+	for i, record := range records {
+		identities[i] = protoGitIdentity(record)
+	}
+	return connect.NewResponse(&apiv1.ListGitIdentitiesResponse{Identities: identities}), nil
+}
+
+func (h *adminHandler) UpdateGitIdentity(ctx context.Context, req *connect.Request[apiv1.UpdateGitIdentityRequest]) (*connect.Response[apiv1.UpdateGitIdentityResponse], error) {
+	record, err := h.svc.UpdateGitIdentity(ctx, service.GitIdentityInput{TeamID: req.Msg.TeamId, TeamName: req.Msg.TeamName, Name: req.Msg.Name, GitAuthorName: req.Msg.GitAuthorName, GitAuthorEmail: req.Msg.GitAuthorEmail, CredentialType: req.Msg.CredentialType})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&apiv1.UpdateGitIdentityResponse{Identity: protoGitIdentity(record)}), nil
+}
+
+func (h *adminHandler) DeleteGitIdentity(ctx context.Context, req *connect.Request[apiv1.DeleteGitIdentityRequest]) (*connect.Response[apiv1.DeleteGitIdentityResponse], error) {
+	if err := h.svc.DeleteGitIdentity(ctx, req.Msg.TeamId, req.Msg.TeamName, req.Msg.Name); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&apiv1.DeleteGitIdentityResponse{Deleted: true}), nil
+}
+
+func (h *adminHandler) SetGitIdentityDefault(ctx context.Context, req *connect.Request[apiv1.SetGitIdentityDefaultRequest]) (*connect.Response[apiv1.SetGitIdentityDefaultResponse], error) {
+	record, err := h.svc.SetDefaultGitIdentity(ctx, req.Msg.TeamId, req.Msg.TeamName, req.Msg.Name)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&apiv1.SetGitIdentityDefaultResponse{Identity: protoGitIdentity(record)}), nil
 }
 
 func (h *adminHandler) HandleListRepos(w http.ResponseWriter, r *http.Request) {

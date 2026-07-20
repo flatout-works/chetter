@@ -1083,6 +1083,9 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
 		Harness:                harness,
+		GitIdentityId:          task.GitIdentityID.String,
+		GitAuthorName:          task.CommitAuthorName.String,
+		GitAuthorEmail:         task.CommitAuthorEmail.String,
 	}
 }
 
