@@ -631,6 +631,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_git_identities", Description: "List managed Git author identities."}, svc.listGitIdentitiesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_git_identity", Description: "Update a managed Git author identity."}, svc.updateGitIdentityTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_git_identity", Description: "Delete an unused managed Git author identity."}, svc.deleteGitIdentityTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_set_git_identity_default", Description: "Set the team or global default managed Git identity."}, svc.setGitIdentityDefaultTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only."}, svc.createTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and triggers. Admin only."}, svc.deleteTeamTool)
@@ -1326,6 +1327,12 @@ type DeleteGitIdentityOutput struct {
 	Deleted bool `json:"deleted"`
 }
 
+type SetGitIdentityDefaultInput struct {
+	TeamID   string `json:"team_id,omitempty" jsonschema:"Owning team ID; empty selects a global identity for admins"`
+	TeamName string `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Name     string `json:"name" jsonschema:"Identity reference to use for agent-less tasks"`
+}
+
 func gitIdentityInput(in CreateGitIdentityInput) GitIdentityInput {
 	return GitIdentityInput(in)
 }
@@ -1359,6 +1366,14 @@ func (s *Service) deleteGitIdentityTool(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, DeleteGitIdentityOutput{}, err
 	}
 	return nil, DeleteGitIdentityOutput{Deleted: true}, nil
+}
+
+func (s *Service) setGitIdentityDefaultTool(ctx context.Context, _ *mcp.CallToolRequest, in SetGitIdentityDefaultInput) (*mcp.CallToolResult, GitIdentityOutput, error) {
+	record, err := s.SetDefaultGitIdentity(ctx, in.TeamID, in.TeamName, in.Name)
+	if err != nil {
+		return nil, GitIdentityOutput{}, err
+	}
+	return nil, GitIdentityOutput{Identity: record}, nil
 }
 
 // --- Team Management Tool Handlers ---

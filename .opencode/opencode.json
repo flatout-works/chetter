@@ -55,7 +55,7 @@
     },
     "chetter-identities": {
       "description": "List Chetter managed Git identities.",
-      "template": "Run chetter_list_git_identities. Summarize each identity reference, its Git author name and email, team scope, and credential provider. Never request or expose credentials; identities only contain attribution metadata."
+      "template": "Run chetter_list_git_identities. Summarize each identity reference, its Git author name and email, team scope, credential provider, and which identity is the default. Use chetter_set_git_identity_default when the user asks to change the default. Never request or expose credentials; identities only contain attribution metadata."
     }
   },
   "mcp": {

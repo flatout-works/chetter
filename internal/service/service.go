@@ -432,9 +432,14 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, err
 	}
-	gitIdentity := GitIdentityRecord{GitAuthorName: "Chetter", GitAuthorEmail: "chetter@chetter.flatout.works"}
+	var gitIdentity GitIdentityRecord
 	if strings.TrimSpace(in.Agent) != "" {
 		gitIdentity, err = s.resolveTaskGitIdentity(ctx, in.Agent, teamID, in.GitURL)
+		if err != nil {
+			return store.TaskRecord{}, err
+		}
+	} else {
+		gitIdentity, err = s.defaultGitIdentity(ctx, teamID)
 		if err != nil {
 			return store.TaskRecord{}, err
 		}
@@ -733,7 +738,10 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 
 	now := time.Now().UTC()
 	teamID := session.TeamID.String
-	gitIdentity := GitIdentityRecord{GitAuthorName: "Chetter", GitAuthorEmail: "chetter@chetter.flatout.works"}
+	gitIdentity, err := s.defaultGitIdentity(ctx, teamID)
+	if err != nil {
+		return ResumeAgentSessionOutput{}, err
+	}
 	if session.Agent.Valid && strings.TrimSpace(session.Agent.String) != "" {
 		gitIdentity, err = s.resolveTaskGitIdentity(ctx, session.Agent.String, teamID, session.GitUrl.String)
 		if err != nil {

@@ -329,6 +329,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureGitIdentityColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTriggerMetadataColumns(ctx); err != nil {
 		return err
 	}
@@ -503,6 +506,20 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
 		}
+	}
+	return nil
+}
+
+func (s *Store) ensureGitIdentityColumns(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "git_identities", "is_default")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE git_identities ADD COLUMN is_default BOOL NOT NULL DEFAULT false AFTER credential_type"); err != nil {
+		return fmt.Errorf("add git_identities.is_default: %w", err)
 	}
 	return nil
 }

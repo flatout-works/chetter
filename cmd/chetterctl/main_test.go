@@ -108,6 +108,13 @@ func (s *testAdminService) DeleteGitIdentity(context.Context, *connect.Request[a
 	return connect.NewResponse(&apiv1.DeleteGitIdentityResponse{Deleted: true}), nil
 }
 
+func (s *testAdminService) SetGitIdentityDefault(_ context.Context, req *connect.Request[apiv1.SetGitIdentityDefaultRequest]) (*connect.Response[apiv1.SetGitIdentityDefaultResponse], error) {
+	if req.Msg.Name != "primary-bot" {
+		s.t.Fatalf("SetGitIdentityDefault request = %+v", req.Msg)
+	}
+	return connect.NewResponse(&apiv1.SetGitIdentityDefaultResponse{Identity: &apiv1.GitIdentity{Name: req.Msg.Name, IsDefault: true}}), nil
+}
+
 func TestTokenCreate(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
@@ -131,6 +138,15 @@ func TestIdentityCreate(t *testing.T) {
 	err := identityCmd([]string{"create", "--server", srv.URL, "--token", "test-token", "--name", "primary-bot", "--git-author-name", "Chetter Bot", "--git-author-email", "bot@example.com"}, "", "")
 	if err != nil {
 		t.Fatalf("identityCmd create: %v", err)
+	}
+}
+
+func TestIdentitySetDefault(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+	err := identityCmd([]string{"set-default", "--server", srv.URL, "--token", "test-token", "--name", "primary-bot"}, "", "")
+	if err != nil {
+		t.Fatalf("identityCmd set-default: %v", err)
 	}
 }
 
