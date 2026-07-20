@@ -52,6 +52,31 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	}
 }
 
+func TestSubmitTaskResolvesAgentGitIdentity(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	identity, err := svc.CreateGitIdentity(ctx, GitIdentityInput{
+		Name:           "release-bot",
+		GitAuthorName:  "Release Bot",
+		GitAuthorEmail: "release-bot@example.com",
+	})
+	if err != nil {
+		t.Fatalf("create Git identity: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := tdb.DB.Exec(`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES (?, ?, 'agent', 'release', 'global', ?, ?, ?, ?, true, ?, ?)`, "def_release", "src_test", "agents/release.md", "test", strings.Repeat("1", 64), "---\nidentity: release-bot\n---\n# Release agent\n", now, now); err != nil {
+		t.Fatalf("seed agent definition: %v", err)
+	}
+	record, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "prepare release", AgentImage: "runner:latest", Agent: "release"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if record.GitIdentityID != identity.ID || record.CommitAuthorName != "Release Bot" || record.CommitAuthorEmail != "release-bot@example.com" {
+		t.Fatalf("task identity = %+v, want %q / Release Bot", record, identity.ID)
+	}
+}
+
 func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

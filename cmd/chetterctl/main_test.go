@@ -85,6 +85,29 @@ func (s *testAdminService) ListTaskArtifacts(context.Context, *connect.Request[a
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }
 
+func (s *testAdminService) ListRepos(context.Context, *connect.Request[apiv1.ListReposRequest]) (*connect.Response[apiv1.ListReposResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) CreateGitIdentity(_ context.Context, req *connect.Request[apiv1.CreateGitIdentityRequest]) (*connect.Response[apiv1.CreateGitIdentityResponse], error) {
+	if req.Msg.Name != "primary-bot" || req.Msg.GitAuthorEmail != "bot@example.com" {
+		s.t.Fatalf("CreateGitIdentity request = %+v", req.Msg)
+	}
+	return connect.NewResponse(&apiv1.CreateGitIdentityResponse{Identity: &apiv1.GitIdentity{Name: req.Msg.Name}}), nil
+}
+
+func (s *testAdminService) ListGitIdentities(context.Context, *connect.Request[apiv1.ListGitIdentitiesRequest]) (*connect.Response[apiv1.ListGitIdentitiesResponse], error) {
+	return connect.NewResponse(&apiv1.ListGitIdentitiesResponse{Identities: []*apiv1.GitIdentity{{Name: "primary-bot"}}}), nil
+}
+
+func (s *testAdminService) UpdateGitIdentity(context.Context, *connect.Request[apiv1.UpdateGitIdentityRequest]) (*connect.Response[apiv1.UpdateGitIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) DeleteGitIdentity(context.Context, *connect.Request[apiv1.DeleteGitIdentityRequest]) (*connect.Response[apiv1.DeleteGitIdentityResponse], error) {
+	return connect.NewResponse(&apiv1.DeleteGitIdentityResponse{Deleted: true}), nil
+}
+
 func TestTokenCreate(t *testing.T) {
 	srv := newTestServer(t)
 	defer srv.Close()
@@ -99,6 +122,15 @@ func TestTokenCreate(t *testing.T) {
 	}, "", "")
 	if err != nil {
 		t.Fatalf("tokenCmd create: %v", err)
+	}
+}
+
+func TestIdentityCreate(t *testing.T) {
+	srv := newTestServer(t)
+	defer srv.Close()
+	err := identityCmd([]string{"create", "--server", srv.URL, "--token", "test-token", "--name", "primary-bot", "--git-author-name", "Chetter Bot", "--git-author-email", "bot@example.com"}, "", "")
+	if err != nil {
+		t.Fatalf("identityCmd create: %v", err)
 	}
 }
 

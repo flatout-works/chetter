@@ -53,7 +53,6 @@ func TestWebAPISubmitGetAndCancelTask(t *testing.T) {
 
 	submitted, err := tasks.SubmitTask(context.Background(), connect.NewRequest(&apiv1.SubmitTaskRequest{
 		Prompt: "web api integration task",
-		Agent:  "opencode",
 	}))
 	if err != nil {
 		t.Fatalf("SubmitTask: %v", err)

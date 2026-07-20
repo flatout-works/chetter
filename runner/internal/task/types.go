@@ -31,23 +31,26 @@ type TaskRequest struct {
 	MaxMemoryMB            int               `json:"max_memory_mb"`
 	MaxCPU                 int               `json:"max_cpu"`
 	Env                    map[string]string `json:"env,omitempty"`
-	CheckpointAfterSuccess  bool              `json:"checkpoint_after_success,omitempty"`
-	ResumeCheckpointPath    string            `json:"resume_checkpoint_path,omitempty"`
-	ResumeWorkspacePath     string            `json:"resume_workspace_path,omitempty"`
+	CheckpointAfterSuccess bool              `json:"checkpoint_after_success,omitempty"`
+	ResumeCheckpointPath   string            `json:"resume_checkpoint_path,omitempty"`
+	ResumeWorkspacePath    string            `json:"resume_workspace_path,omitempty"`
 	ResumeHarnessSessionID string            `json:"resume_harness_session_id,omitempty"`
 	AgentDefinition        string            `json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
 	ExtraFiles             map[string][]byte `json:"extra_files,omitempty"`
+	GitIdentityID          string            `json:"git_identity_id,omitempty"`
+	GitAuthorName          string            `json:"git_author_name,omitempty"`
+	GitAuthorEmail         string            `json:"git_author_email,omitempty"`
 }
 
 // TokenUsage tracks cumulative token consumption for a task.
 type TokenUsage struct {
-	InputTokens     int64 `json:"input_tokens"`
-	OutputTokens    int64 `json:"output_tokens"`
-	CacheReadTokens int64 `json:"cache_read_tokens"`
+	InputTokens      int64 `json:"input_tokens"`
+	OutputTokens     int64 `json:"output_tokens"`
+	CacheReadTokens  int64 `json:"cache_read_tokens"`
 	CacheWriteTokens int64 `json:"cache_write_tokens"`
-	ReasoningTokens int64 `json:"reasoning_tokens"`
-	CostCents       int64 `json:"cost_cents"`
+	ReasoningTokens  int64 `json:"reasoning_tokens"`
+	CostCents        int64 `json:"cost_cents"`
 }
 
 // TaskResponse carries a task status event reported back to the control plane.

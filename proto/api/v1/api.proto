@@ -44,6 +44,7 @@ message Task {
   string trigger_name = 24;
   string trigger_type = 25;
   string submission_source = 26;
+  string git_identity_id = 27;
 }
 
 message AgentSession {
@@ -586,6 +587,10 @@ service AdminService {
   rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
   rpc ListTaskArtifacts(ListTaskArtifactsRequest) returns (ListTaskArtifactsResponse);
   rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+  rpc CreateGitIdentity(CreateGitIdentityRequest) returns (CreateGitIdentityResponse);
+  rpc ListGitIdentities(ListGitIdentitiesRequest) returns (ListGitIdentitiesResponse);
+  rpc UpdateGitIdentity(UpdateGitIdentityRequest) returns (UpdateGitIdentityResponse);
+  rpc DeleteGitIdentity(DeleteGitIdentityRequest) returns (DeleteGitIdentityResponse);
 }
 
 message CreateTokenRequest {
@@ -687,6 +692,59 @@ message ListReposRequest {}
 
 message ListReposResponse {
   repeated string repos = 1;
+}
+
+message GitIdentity {
+  string id = 1;
+  string team_id = 2;
+  string name = 3;
+  string git_author_name = 4;
+  string git_author_email = 5;
+  string credential_type = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message CreateGitIdentityRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+  string git_author_name = 4 [(buf.validate.field).string.min_len = 1];
+  string git_author_email = 5 [(buf.validate.field).string.email = true];
+  string credential_type = 6;
+}
+
+message CreateGitIdentityResponse {
+  GitIdentity identity = 1;
+}
+
+message ListGitIdentitiesRequest {}
+
+message ListGitIdentitiesResponse {
+  repeated GitIdentity identities = 1;
+}
+
+message UpdateGitIdentityRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+  string git_author_name = 4 [(buf.validate.field).string.min_len = 1];
+  string git_author_email = 5 [(buf.validate.field).string.email = true];
+  string credential_type = 6;
+}
+
+message UpdateGitIdentityResponse {
+  GitIdentity identity = 1;
+}
+
+message DeleteGitIdentityRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteGitIdentityResponse {
+  bool deleted = 1;
 }
 
 // --- ArcaneService (conditionally registered) ---

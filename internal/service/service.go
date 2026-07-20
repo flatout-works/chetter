@@ -428,6 +428,17 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
+	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
+	gitIdentity := GitIdentityRecord{GitAuthorName: "Chetter", GitAuthorEmail: "chetter@chetter.flatout.works"}
+	if strings.TrimSpace(in.Agent) != "" {
+		gitIdentity, err = s.resolveTaskGitIdentity(ctx, in.Agent, teamID, in.GitURL)
+		if err != nil {
+			return store.TaskRecord{}, err
+		}
+	}
 	taskID, err := randomID("task")
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
@@ -464,10 +475,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
-	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
-	if err != nil {
-		return store.TaskRecord{}, err
-	}
 	resumeMode := "none"
 	pauseReason := ""
 	var expiresAt sql.NullTime
@@ -498,8 +505,9 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			ProviderID:             nullString(in.ProviderID),
 			ModelID:                nullString(in.ModelID),
 			VariantID:              nullString(in.VariantID),
-			CommitAuthorName:       sql.NullString{String: "Chetter", Valid: true},
-			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+			CommitAuthorName:       sql.NullString{String: gitIdentity.GitAuthorName, Valid: true},
+			CommitAuthorEmail:      sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true},
+			GitIdentityID:          nullString(gitIdentity.ID),
 			TriggerName:            nullString(in.TriggerName),
 			TriggerType:            nullString(in.TriggerType),
 			SubmissionSource:       submissionSource,
@@ -724,7 +732,14 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	now := time.Now().UTC()
-	teamID := teamIDFromContext(ctx)
+	teamID := session.TeamID.String
+	gitIdentity := GitIdentityRecord{GitAuthorName: "Chetter", GitAuthorEmail: "chetter@chetter.flatout.works"}
+	if session.Agent.Valid && strings.TrimSpace(session.Agent.String) != "" {
+		gitIdentity, err = s.resolveTaskGitIdentity(ctx, session.Agent.String, teamID, session.GitUrl.String)
+		if err != nil {
+			return ResumeAgentSessionOutput{}, err
+		}
+	}
 	if timeoutSec == 0 {
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
@@ -745,8 +760,9 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			ProviderID:             session.ProviderID,
 			ModelID:                session.ModelID,
 			VariantID:              session.VariantID,
-			CommitAuthorName:       sql.NullString{String: "Chetter", Valid: true},
-			CommitAuthorEmail:      sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+			CommitAuthorName:       sql.NullString{String: gitIdentity.GitAuthorName, Valid: true},
+			CommitAuthorEmail:      sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true},
+			GitIdentityID:          nullString(gitIdentity.ID),
 			TriggerName:            sql.NullString{},
 			TriggerType:            sql.NullString{},
 			SubmissionSource:       "session_resume",
@@ -877,6 +893,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		RunnerImageDigest:     task.RunnerImageDigest.String,
 		CommitAuthorName:      task.CommitAuthorName.String,
 		CommitAuthorEmail:     task.CommitAuthorEmail.String,
+		GitIdentityID:         task.GitIdentityID.String,
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,
 		SubmissionSource:      task.SubmissionSource,
@@ -1402,18 +1419,6 @@ func randomID(prefix string) (string, error) {
 		return "", fmt.Errorf("generate id: %w", err)
 	}
 	return prefix + "_" + hex.EncodeToString(raw[:]), nil
-}
-
-func teamIDFromContext(ctx context.Context) string {
-	scope, ok := auth.GetScope(ctx)
-	if !ok || scope.Admin {
-		return ""
-	}
-	teams := scope.Teams()
-	if len(teams) == 1 {
-		return teams[0]
-	}
-	return ""
 }
 
 func (s *Service) resolveOwnerTeamID(ctx context.Context, requestedID, requestedName string) (string, error) {

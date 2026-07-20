@@ -86,6 +86,7 @@ type TaskRecord struct {
 	RunnerImageDigest     string            `json:"runner_image_digest,omitempty"`
 	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
 	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
+	GitIdentityID         string            `json:"git_identity_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	SubmissionSource      string            `json:"submission_source,omitempty"`

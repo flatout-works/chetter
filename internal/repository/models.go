@@ -193,6 +193,7 @@ type ChetterTask struct {
 	ErrorCategory          sql.NullString  `json:"error_category"`
 	SubmissionSource       string          `json:"submission_source"`
 	SearchText             sql.NullString  `json:"search_text"`
+	GitIdentityID          sql.NullString  `json:"git_identity_id"`
 }
 
 type ChetterTaskArtifact struct {
@@ -318,6 +319,17 @@ type DefinitionSyncRun struct {
 	StartedAt        time.Time      `json:"started_at"`
 	EndedAt          time.Time      `json:"ended_at"`
 	CreatedAt        time.Time      `json:"created_at"`
+}
+
+type GitIdentity struct {
+	ID             string    `json:"id"`
+	TeamID         string    `json:"team_id"`
+	Name           string    `json:"name"`
+	GitAuthorName  string    `json:"git_author_name"`
+	GitAuthorEmail string    `json:"git_author_email"`
+	CredentialType string    `json:"credential_type"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type Team struct {

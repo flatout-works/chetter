@@ -368,13 +368,17 @@ type agentFrontmatter struct {
 	Provider    any            `yaml:"provider"`
 	Model       any            `yaml:"model"`
 	Mode        any            `yaml:"mode"`
+	Identity    any            `yaml:"identity"`
 	Permission  map[string]any `yaml:"permission"`
 }
 
 func ValidateAgentDefinition(content string) error {
 	frontmatter, ok, err := extractYAMLFrontmatter(content)
-	if err != nil || !ok {
+	if err != nil {
 		return err
+	}
+	if !ok {
+		return fmt.Errorf("agent definitions require YAML frontmatter with an identity")
 	}
 	var raw map[string]any
 	if err := yaml.Unmarshal([]byte(frontmatter), &raw); err != nil {
@@ -392,6 +396,7 @@ func ValidateAgentDefinition(content string) error {
 		{"provider", fm.Provider},
 		{"model", fm.Model},
 		{"mode", fm.Mode},
+		{"identity", fm.Identity},
 	} {
 		if field.value == nil {
 			continue
@@ -399,6 +404,10 @@ func ValidateAgentDefinition(content string) error {
 		if _, ok := field.value.(string); !ok {
 			return fmt.Errorf("frontmatter field %q must be a string", field.name)
 		}
+	}
+	identity, ok := fm.Identity.(string)
+	if !ok || strings.TrimSpace(identity) == "" {
+		return fmt.Errorf("frontmatter field %q is required", "identity")
 	}
 	if _, ok := raw["permission"]; ok {
 		if fm.Permission == nil {
@@ -411,6 +420,24 @@ func ValidateAgentDefinition(content string) error {
 		}
 	}
 	return nil
+}
+
+// AgentIdentityName returns the managed Git identity reference declared by an
+// agent definition. Validation is kept here so every definition consumer
+// applies the same policy.
+func AgentIdentityName(content string) (string, error) {
+	if err := ValidateAgentDefinition(content); err != nil {
+		return "", err
+	}
+	frontmatter, _, err := extractYAMLFrontmatter(content)
+	if err != nil {
+		return "", err
+	}
+	var fm agentFrontmatter
+	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		return "", fmt.Errorf("parse frontmatter fields: %w", err)
+	}
+	return strings.TrimSpace(fm.Identity.(string)), nil
 }
 
 func extractYAMLFrontmatter(content string) (string, bool, error) {

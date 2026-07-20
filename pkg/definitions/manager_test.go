@@ -9,7 +9,7 @@ import (
 
 func TestScanDefinitions(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "agents/pr-reviewer.md", "# PR reviewer\n")
+	writeFile(t, root, "agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
 	writeFile(t, root, "skills/chetter/SKILL.md", "# Chetter skill\n")
 	writeFile(t, root, "skills/flat.md", "# Flat skill\n")
 	writeFile(t, root, "triggers/nightly.yaml", "name: nightly\n")
@@ -54,6 +54,7 @@ func TestValidateAgentDefinitionFrontmatter(t *testing.T) {
 description: Reviews pull requests.
 model: synthetic/hf:zai-org/GLM-5.2
 mode: primary
+identity: primary-bot
 permission:
   edit: allow
 ---
@@ -63,8 +64,8 @@ permission:
 	if err := ValidateAgentDefinition(valid); err != nil {
 		t.Fatalf("valid agent frontmatter failed: %v", err)
 	}
-	if err := ValidateAgentDefinition("# Plain markdown\n"); err != nil {
-		t.Fatalf("plain markdown should be accepted: %v", err)
+	if err := ValidateAgentDefinition("# Plain markdown\n"); err == nil {
+		t.Fatal("plain markdown without an identity should be rejected")
 	}
 	invalid := `---
 description:
