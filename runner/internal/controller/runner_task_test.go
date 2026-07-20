@@ -50,6 +50,29 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	}
 }
 
+func TestGitCloneCredentialDirLeavesWorkspaceEmpty(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "task", "workspace")
+	if err := os.MkdirAll(workspace, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	credentialDir := gitCloneCredentialDir(workspace)
+	if credentialDir == workspace {
+		t.Fatal("clone credential directory must be outside the workspace")
+	}
+	if err := writeGitAskpass(credentialDir); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("workspace must remain empty before clone, found %v", entries)
+	}
+}
+
 func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "runner-key")
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")

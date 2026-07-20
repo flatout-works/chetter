@@ -97,6 +97,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	gitURL := req.GitURL
 	if req.GitURL != "" {
 		slog.Info("cloning", "taskID", req.TaskID, "url", req.GitURL)
+		credentialDir := gitCloneCredentialDir(wsDir)
 		if err := os.RemoveAll(wsDir); err != nil {
 			slog.Warn("removing stale workspace", "taskID", req.TaskID, "err", err)
 		}
@@ -104,7 +105,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", err.Error(), nil)
 			return
 		}
-		if err := writeGitAskpass(wsDir); err != nil {
+		if err := writeGitAskpass(credentialDir); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("prepare Git credentials: %v", err), nil)
 			return
 		}
@@ -117,7 +118,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
 		cloneCmd.Dir = wsDir
-		cloneCmd.Env = append(os.Environ(), gitCredentialEnv(wsDir)...)
+		cloneCmd.Env = append(os.Environ(), gitCredentialEnv(credentialDir)...)
 		if r.cfg.Git.SSHKeyPath != "" {
 			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
@@ -294,6 +295,10 @@ func writeGitAskpass(workspace string) error {
 		return fmt.Errorf("write Git askpass helper: %w", err)
 	}
 	return nil
+}
+
+func gitCloneCredentialDir(workspace string) string {
+	return filepath.Dir(workspace)
 }
 
 func gitCredentialEnv(workspace string) []string {
