@@ -50,6 +50,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 				"Write",
 			},
 			"deny": []string{
+				"AskUserQuestion",
 				"Bash(docker:*)",
 				"Bash(systemctl:*)",
 				"Bash(pkill:*)",

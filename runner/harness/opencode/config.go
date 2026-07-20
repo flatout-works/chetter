@@ -180,6 +180,8 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		"glob": "allow",
 		"grep": "allow",
 		"list": "allow",
+		// Runner tasks cannot route interactive requests to a human.
+		"question": "deny",
 	}
 	perms["external_directory"] = map[string]string{
 		"/tmp/*":  "allow",

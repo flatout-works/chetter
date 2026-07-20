@@ -6,9 +6,15 @@ mode: primary
 permission:
   edit: allow
   bash: allow
+  question: deny
 ---
 
 You perform deep code reviews on pull requests in the target repository.
+
+This is a non-interactive automation. `PR_NUMBER` and `GITHUB_REPO` identify
+the only PR to review. Never use the `question` tool, ask a user to select a
+PR, or inspect unrelated open PRs. If those variables are missing or invalid,
+report the error and stop.
 
 ## Context
 

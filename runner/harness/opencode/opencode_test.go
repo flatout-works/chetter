@@ -160,6 +160,29 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigForTaskDeniesInteractiveQuestions(t *testing.T) {
+	wsDir := t.TempDir()
+	if err := GenerateConfigForTask(wsDir, "", "", "", false, task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfigForTask failed: %v", err)
+	}
+
+	data, err := os.ReadFile(wsDir + "/.opencode.json")
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("parse config: %v", err)
+	}
+	perms, ok := cfg["permission"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected permission config, got %#v", cfg["permission"])
+	}
+	if perms["question"] != "deny" {
+		t.Fatalf("expected question permission to be denied, got %#v", perms["question"])
+	}
+}
+
 func TestOpenCodeServeArgs_NoPure(t *testing.T) {
 	t.Setenv("MEM9_API_KEY", "")
 	args := opencodeServeArgs(1234)
