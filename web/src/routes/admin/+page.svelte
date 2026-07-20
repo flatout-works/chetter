@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { createClient } from "@connectrpc/connect";
   import { AdminService } from "$gen/proto/api/v1/api_pb";
-  import type { TokenInfo, TeamInfo, UserInfo } from "$gen/proto/api/v1/api_pb";
+  import type { GitIdentity, TokenInfo, TeamInfo, UserInfo } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
@@ -11,6 +11,7 @@
   let tokens = $state<TokenInfo[]>([]);
   let teams = $state<TeamInfo[]>([]);
   let users = $state<UserInfo[]>([]);
+  let identities = $state<GitIdentity[]>([]);
   let loading = $state(true);
   let showTokenForm = $state(false);
   let showTeamForm = $state(false);
@@ -19,19 +20,26 @@
   let newTokenName = $state("");
   let createdToken = $state<string | null>(null);
   let newTeamName = $state("");
+  let showIdentityForm = $state(false);
+  let newIdentityTeam = $state("");
+  let newIdentityName = $state("");
+  let newGitAuthorName = $state("");
+  let newGitAuthorEmail = $state("");
   let actionError = $state<string | null>(null);
 
   async function load() {
     try {
       const client = createClient(AdminService, getTransport());
-      const [tokenResp, teamResp, userResp] = await Promise.all([
+      const [tokenResp, teamResp, userResp, identityResp] = await Promise.all([
         client.listTokens({}),
         client.listTeams({}),
         client.listUsers({}),
+        client.listGitIdentities({}),
       ]);
       tokens = tokenResp.tokens ?? [];
       teams = teamResp.teams ?? [];
       users = userResp.users ?? [];
+      identities = identityResp.identities ?? [];
     } catch (e) {
       console.error(e);
     } finally {
@@ -119,6 +127,49 @@
       console.error(e);
     }
   }
+
+  async function createIdentity() {
+    actionError = null;
+    try {
+      const client = createClient(AdminService, getTransport());
+      await client.createGitIdentity({
+        teamName: newIdentityTeam.trim(),
+        name: newIdentityName.trim(),
+        gitAuthorName: newGitAuthorName.trim(),
+        gitAuthorEmail: newGitAuthorEmail.trim(),
+        credentialType: "github_app",
+      });
+      addToast(`Git identity "${newIdentityName.trim()}" created`, "success");
+      showIdentityForm = false;
+      newIdentityTeam = "";
+      newIdentityName = "";
+      newGitAuthorName = "";
+      newGitAuthorEmail = "";
+      await load();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to create Git identity.";
+      addToast(actionError, "error");
+    }
+  }
+
+  async function deleteIdentity(identity: GitIdentity) {
+    const ok = await confirm({
+      title: "Delete Git Identity",
+      message: `Delete Git identity "${identity.name}"? Identities referenced by tasks cannot be deleted.`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    actionError = null;
+    try {
+      const client = createClient(AdminService, getTransport());
+      await client.deleteGitIdentity({ teamId: identity.teamId, name: identity.name });
+      addToast(`Git identity "${identity.name}" deleted`, "success");
+      await load();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to delete Git identity.";
+      addToast(actionError, "error");
+    }
+  }
 </script>
 
 <svelte:head>
@@ -203,6 +254,41 @@
             </div>
           {:else}
             <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No teams</p>
+          {/each}
+        </div>
+      </Card>
+
+      <Card shadow="sm">
+        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h2 class="font-semibold text-gray-900 dark:text-white">Git Identities</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Credentials stay server-managed through the GitHub App.</p>
+          </div>
+          <Button color="alternative" size="xs" onclick={() => showIdentityForm = !showIdentityForm}>
+            {showIdentityForm ? "Cancel" : "+ New"}
+          </Button>
+        </div>
+        {#if showIdentityForm}
+          <div class="p-4 border-b border-gray-200 dark:border-gray-700 space-y-2">
+            <Input bind:value={newIdentityName} placeholder="Identity reference, e.g. primary-bot" />
+            <Input bind:value={newGitAuthorName} placeholder="Git author name" />
+            <Input type="email" bind:value={newGitAuthorEmail} placeholder="Git author email" />
+            <Input bind:value={newIdentityTeam} placeholder="Team name (optional; global when empty)" />
+            <Button color="blue" class="w-full" size="xs" onclick={createIdentity}>Create Identity</Button>
+          </div>
+        {/if}
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+          {#each identities as identity (identity.id)}
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{identity.name}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{identity.gitAuthorName} &lt;{identity.gitAuthorEmail}&gt;</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{identity.teamId ? `Team: ${identity.teamId}` : "Global"}</p>
+              </div>
+              <Button color="red" size="xs" outline onclick={() => deleteIdentity(identity)}>Delete</Button>
+            </div>
+          {:else}
+            <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No Git identities</p>
           {/each}
         </div>
       </Card>

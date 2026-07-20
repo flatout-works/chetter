@@ -80,7 +80,10 @@ message Task {
   map<string, bytes> skill_definitions = 24;
   map<string, bytes> extra_files = 26;
   string provider_api = 27;
-  bool provider_auth_header = 28;
+	bool provider_auth_header = 28;
+	string git_identity_id = 29;
+	string git_author_name = 30;
+	string git_author_email = 31;
 }
 
 message ClaimTaskResponse {

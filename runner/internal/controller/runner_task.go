@@ -104,6 +104,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", err.Error(), nil)
 			return
 		}
+		if err := writeGitAskpass(wsDir); err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("prepare Git credentials: %v", err), nil)
+			return
+		}
 		if r.cfg.Git.PAT != "" && strings.HasPrefix(req.GitURL, "https://") {
 			gitURL = injectPATIntoURL(req.GitURL, r.cfg.Git.PAT)
 		}
@@ -113,8 +117,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
 		cloneCmd.Dir = wsDir
+		cloneCmd.Env = append(os.Environ(), gitCredentialEnv(wsDir)...)
 		if r.cfg.Git.SSHKeyPath != "" {
-			cloneCmd.Env = append(os.Environ(), "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
+			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
 		if out, err := cloneCmd.CombinedOutput(); err != nil {
 			slog.Error("clone error", "taskID", req.TaskID, "err", err, "output", string(out))
@@ -122,6 +127,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishActivityEvent("repo", "Git Clone Failed", fmt.Sprintf("Failed to clone %s", req.GitURL), "failed", fmt.Sprintf("%v\n%s", err, string(out)), time.Since(session.StartedAt).Milliseconds())
 			return
 		}
+	}
+	if err := prepareGitWorkspace(ctx, wsDir, req); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
+		return
 	}
 
 	isLocal := r.executionMode() == "local"
@@ -243,6 +252,55 @@ func addRunnerOwnedEnv(env map[string]string) {
 			env[key] = value
 		}
 	}
+}
+
+const gitAskpassFilename = ".chetter-git-askpass"
+
+func prepareGitWorkspace(ctx context.Context, workspace string, req task.TaskRequest) error {
+	if req.GitAuthorName == "" || req.GitAuthorEmail == "" {
+		return fmt.Errorf("task has no resolved Git identity")
+	}
+	if err := writeGitAskpass(workspace); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".git")); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect Git workspace: %w", err)
+	}
+	for _, args := range [][]string{{"config", "--local", "user.name", req.GitAuthorName}, {"config", "--local", "user.email", req.GitAuthorEmail}} {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = workspace
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+func gitIdentityEnv(req task.TaskRequest, workspace string) []string {
+	env := []string{
+		"GIT_AUTHOR_NAME=" + req.GitAuthorName,
+		"GIT_AUTHOR_EMAIL=" + req.GitAuthorEmail,
+		"GIT_COMMITTER_NAME=" + req.GitAuthorName,
+		"GIT_COMMITTER_EMAIL=" + req.GitAuthorEmail,
+	}
+	return append(env, gitCredentialEnv(workspace)...)
+}
+
+func writeGitAskpass(workspace string) error {
+	if err := os.WriteFile(filepath.Join(workspace, gitAskpassFilename), []byte("#!/bin/sh\ncase \"$1\" in\n  *Username*) printf '%s\\n' x-access-token ;;\n  *) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\nesac\n"), 0700); err != nil {
+		return fmt.Errorf("write Git askpass helper: %w", err)
+	}
+	return nil
+}
+
+func gitCredentialEnv(workspace string) []string {
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		return nil
+	}
+	return []string{"GIT_ASKPASS=" + filepath.Join(workspace, gitAskpassFilename), "GIT_TERMINAL_PROMPT=0"}
 }
 
 func providerCredentialEnv(req task.TaskRequest) []string {
@@ -436,11 +494,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	env = appendRunnerOwnedEnv(env)
+	env = append(env, gitIdentityEnv(req, session.WorkspaceDir)...)
 	env = append(env,
-		"GIT_AUTHOR_NAME=Chetter Runner",
-		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
-		"GIT_COMMITTER_NAME=Chetter Runner",
-		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
@@ -618,6 +673,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+		dockerArgs = append(dockerArgs, "-e", value)
+	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	} else {
@@ -775,6 +833,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	session.WorkspaceDir = workspaceDir
+	if err := prepareGitWorkspace(ctx, workspaceDir, req); err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
+		return
+	}
 
 	sid := req.ResumeHarnessSessionID
 	if sid == "" {
@@ -852,6 +914,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+		dockerArgs = append(dockerArgs, "-e", value)
+	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
 	} else {
@@ -1233,6 +1298,9 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
+	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+		dockerArgs = append(dockerArgs, "-e", value)
+	}
 	if gvisor {
 		dockerArgs = append(dockerArgs,
 			"-e", "HOME="+containerWorkspaceDir,
@@ -1426,11 +1494,8 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	env = appendRunnerOwnedEnv(env)
+	env = append(env, gitIdentityEnv(req, wsDir)...)
 	env = append(env,
-		"GIT_AUTHOR_NAME=Chetter Runner",
-		"GIT_AUTHOR_EMAIL=chetter@chetter.flatout.works",
-		"GIT_COMMITTER_NAME=Chetter Runner",
-		"GIT_COMMITTER_EMAIL=chetter@chetter.flatout.works",
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,

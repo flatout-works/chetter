@@ -4,11 +4,16 @@
   "title": "Chetter agent definition frontmatter",
   "type": "object",
   "additionalProperties": true,
+  "required": ["identity"],
   "properties": {
     "description": { "type": "string" },
     "provider": { "type": "string" },
     "model": { "type": "string" },
     "mode": { "type": "string" },
+    "identity": {
+      "type": "string",
+      "description": "Server-managed Git identity reference. Credentials never belong in this file."
+    },
     "permission": {
       "type": "object",
       "additionalProperties": { "type": "string" }

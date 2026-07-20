@@ -132,6 +132,20 @@ const (
 	// AdminServiceListTaskArtifactsProcedure is the fully-qualified name of the AdminService's
 	// ListTaskArtifacts RPC.
 	AdminServiceListTaskArtifactsProcedure = "/api.v1.AdminService/ListTaskArtifacts"
+	// AdminServiceListReposProcedure is the fully-qualified name of the AdminService's ListRepos RPC.
+	AdminServiceListReposProcedure = "/api.v1.AdminService/ListRepos"
+	// AdminServiceCreateGitIdentityProcedure is the fully-qualified name of the AdminService's
+	// CreateGitIdentity RPC.
+	AdminServiceCreateGitIdentityProcedure = "/api.v1.AdminService/CreateGitIdentity"
+	// AdminServiceListGitIdentitiesProcedure is the fully-qualified name of the AdminService's
+	// ListGitIdentities RPC.
+	AdminServiceListGitIdentitiesProcedure = "/api.v1.AdminService/ListGitIdentities"
+	// AdminServiceUpdateGitIdentityProcedure is the fully-qualified name of the AdminService's
+	// UpdateGitIdentity RPC.
+	AdminServiceUpdateGitIdentityProcedure = "/api.v1.AdminService/UpdateGitIdentity"
+	// AdminServiceDeleteGitIdentityProcedure is the fully-qualified name of the AdminService's
+	// DeleteGitIdentity RPC.
+	AdminServiceDeleteGitIdentityProcedure = "/api.v1.AdminService/DeleteGitIdentity"
 	// ArcaneServiceGetScannerStatusProcedure is the fully-qualified name of the ArcaneService's
 	// GetScannerStatus RPC.
 	ArcaneServiceGetScannerStatusProcedure = "/api.v1.ArcaneService/GetScannerStatus"
@@ -1007,6 +1021,11 @@ type AdminServiceClient interface {
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	ListTaskArtifacts(context.Context, *connect.Request[v1.ListTaskArtifactsRequest]) (*connect.Response[v1.ListTaskArtifactsResponse], error)
+	ListRepos(context.Context, *connect.Request[v1.ListReposRequest]) (*connect.Response[v1.ListReposResponse], error)
+	CreateGitIdentity(context.Context, *connect.Request[v1.CreateGitIdentityRequest]) (*connect.Response[v1.CreateGitIdentityResponse], error)
+	ListGitIdentities(context.Context, *connect.Request[v1.ListGitIdentitiesRequest]) (*connect.Response[v1.ListGitIdentitiesResponse], error)
+	UpdateGitIdentity(context.Context, *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error)
+	DeleteGitIdentity(context.Context, *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error)
 }
 
 // NewAdminServiceClient constructs a client for the api.v1.AdminService service. By default, it
@@ -1074,6 +1093,36 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("ListTaskArtifacts")),
 			connect.WithClientOptions(opts...),
 		),
+		listRepos: connect.NewClient[v1.ListReposRequest, v1.ListReposResponse](
+			httpClient,
+			baseURL+AdminServiceListReposProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListRepos")),
+			connect.WithClientOptions(opts...),
+		),
+		createGitIdentity: connect.NewClient[v1.CreateGitIdentityRequest, v1.CreateGitIdentityResponse](
+			httpClient,
+			baseURL+AdminServiceCreateGitIdentityProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("CreateGitIdentity")),
+			connect.WithClientOptions(opts...),
+		),
+		listGitIdentities: connect.NewClient[v1.ListGitIdentitiesRequest, v1.ListGitIdentitiesResponse](
+			httpClient,
+			baseURL+AdminServiceListGitIdentitiesProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListGitIdentities")),
+			connect.WithClientOptions(opts...),
+		),
+		updateGitIdentity: connect.NewClient[v1.UpdateGitIdentityRequest, v1.UpdateGitIdentityResponse](
+			httpClient,
+			baseURL+AdminServiceUpdateGitIdentityProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("UpdateGitIdentity")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteGitIdentity: connect.NewClient[v1.DeleteGitIdentityRequest, v1.DeleteGitIdentityResponse](
+			httpClient,
+			baseURL+AdminServiceDeleteGitIdentityProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("DeleteGitIdentity")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1088,6 +1137,11 @@ type adminServiceClient struct {
 	listUsers         *connect.Client[v1.ListUsersRequest, v1.ListUsersResponse]
 	listAuditEvents   *connect.Client[v1.ListAuditEventsRequest, v1.ListAuditEventsResponse]
 	listTaskArtifacts *connect.Client[v1.ListTaskArtifactsRequest, v1.ListTaskArtifactsResponse]
+	listRepos         *connect.Client[v1.ListReposRequest, v1.ListReposResponse]
+	createGitIdentity *connect.Client[v1.CreateGitIdentityRequest, v1.CreateGitIdentityResponse]
+	listGitIdentities *connect.Client[v1.ListGitIdentitiesRequest, v1.ListGitIdentitiesResponse]
+	updateGitIdentity *connect.Client[v1.UpdateGitIdentityRequest, v1.UpdateGitIdentityResponse]
+	deleteGitIdentity *connect.Client[v1.DeleteGitIdentityRequest, v1.DeleteGitIdentityResponse]
 }
 
 // CreateToken calls api.v1.AdminService.CreateToken.
@@ -1135,6 +1189,31 @@ func (c *adminServiceClient) ListTaskArtifacts(ctx context.Context, req *connect
 	return c.listTaskArtifacts.CallUnary(ctx, req)
 }
 
+// ListRepos calls api.v1.AdminService.ListRepos.
+func (c *adminServiceClient) ListRepos(ctx context.Context, req *connect.Request[v1.ListReposRequest]) (*connect.Response[v1.ListReposResponse], error) {
+	return c.listRepos.CallUnary(ctx, req)
+}
+
+// CreateGitIdentity calls api.v1.AdminService.CreateGitIdentity.
+func (c *adminServiceClient) CreateGitIdentity(ctx context.Context, req *connect.Request[v1.CreateGitIdentityRequest]) (*connect.Response[v1.CreateGitIdentityResponse], error) {
+	return c.createGitIdentity.CallUnary(ctx, req)
+}
+
+// ListGitIdentities calls api.v1.AdminService.ListGitIdentities.
+func (c *adminServiceClient) ListGitIdentities(ctx context.Context, req *connect.Request[v1.ListGitIdentitiesRequest]) (*connect.Response[v1.ListGitIdentitiesResponse], error) {
+	return c.listGitIdentities.CallUnary(ctx, req)
+}
+
+// UpdateGitIdentity calls api.v1.AdminService.UpdateGitIdentity.
+func (c *adminServiceClient) UpdateGitIdentity(ctx context.Context, req *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error) {
+	return c.updateGitIdentity.CallUnary(ctx, req)
+}
+
+// DeleteGitIdentity calls api.v1.AdminService.DeleteGitIdentity.
+func (c *adminServiceClient) DeleteGitIdentity(ctx context.Context, req *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error) {
+	return c.deleteGitIdentity.CallUnary(ctx, req)
+}
+
 // AdminServiceHandler is an implementation of the api.v1.AdminService service.
 type AdminServiceHandler interface {
 	CreateToken(context.Context, *connect.Request[v1.CreateTokenRequest]) (*connect.Response[v1.CreateTokenResponse], error)
@@ -1146,6 +1225,11 @@ type AdminServiceHandler interface {
 	ListUsers(context.Context, *connect.Request[v1.ListUsersRequest]) (*connect.Response[v1.ListUsersResponse], error)
 	ListAuditEvents(context.Context, *connect.Request[v1.ListAuditEventsRequest]) (*connect.Response[v1.ListAuditEventsResponse], error)
 	ListTaskArtifacts(context.Context, *connect.Request[v1.ListTaskArtifactsRequest]) (*connect.Response[v1.ListTaskArtifactsResponse], error)
+	ListRepos(context.Context, *connect.Request[v1.ListReposRequest]) (*connect.Response[v1.ListReposResponse], error)
+	CreateGitIdentity(context.Context, *connect.Request[v1.CreateGitIdentityRequest]) (*connect.Response[v1.CreateGitIdentityResponse], error)
+	ListGitIdentities(context.Context, *connect.Request[v1.ListGitIdentitiesRequest]) (*connect.Response[v1.ListGitIdentitiesResponse], error)
+	UpdateGitIdentity(context.Context, *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error)
+	DeleteGitIdentity(context.Context, *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error)
 }
 
 // NewAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1209,6 +1293,36 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("ListTaskArtifacts")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListReposHandler := connect.NewUnaryHandler(
+		AdminServiceListReposProcedure,
+		svc.ListRepos,
+		connect.WithSchema(adminServiceMethods.ByName("ListRepos")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceCreateGitIdentityHandler := connect.NewUnaryHandler(
+		AdminServiceCreateGitIdentityProcedure,
+		svc.CreateGitIdentity,
+		connect.WithSchema(adminServiceMethods.ByName("CreateGitIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceListGitIdentitiesHandler := connect.NewUnaryHandler(
+		AdminServiceListGitIdentitiesProcedure,
+		svc.ListGitIdentities,
+		connect.WithSchema(adminServiceMethods.ByName("ListGitIdentities")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceUpdateGitIdentityHandler := connect.NewUnaryHandler(
+		AdminServiceUpdateGitIdentityProcedure,
+		svc.UpdateGitIdentity,
+		connect.WithSchema(adminServiceMethods.ByName("UpdateGitIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceDeleteGitIdentityHandler := connect.NewUnaryHandler(
+		AdminServiceDeleteGitIdentityProcedure,
+		svc.DeleteGitIdentity,
+		connect.WithSchema(adminServiceMethods.ByName("DeleteGitIdentity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.v1.AdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AdminServiceCreateTokenProcedure:
@@ -1229,6 +1343,16 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListAuditEventsHandler.ServeHTTP(w, r)
 		case AdminServiceListTaskArtifactsProcedure:
 			adminServiceListTaskArtifactsHandler.ServeHTTP(w, r)
+		case AdminServiceListReposProcedure:
+			adminServiceListReposHandler.ServeHTTP(w, r)
+		case AdminServiceCreateGitIdentityProcedure:
+			adminServiceCreateGitIdentityHandler.ServeHTTP(w, r)
+		case AdminServiceListGitIdentitiesProcedure:
+			adminServiceListGitIdentitiesHandler.ServeHTTP(w, r)
+		case AdminServiceUpdateGitIdentityProcedure:
+			adminServiceUpdateGitIdentityHandler.ServeHTTP(w, r)
+		case AdminServiceDeleteGitIdentityProcedure:
+			adminServiceDeleteGitIdentityHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1272,6 +1396,26 @@ func (UnimplementedAdminServiceHandler) ListAuditEvents(context.Context, *connec
 
 func (UnimplementedAdminServiceHandler) ListTaskArtifacts(context.Context, *connect.Request[v1.ListTaskArtifactsRequest]) (*connect.Response[v1.ListTaskArtifactsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.ListTaskArtifacts is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListRepos(context.Context, *connect.Request[v1.ListReposRequest]) (*connect.Response[v1.ListReposResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.ListRepos is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) CreateGitIdentity(context.Context, *connect.Request[v1.CreateGitIdentityRequest]) (*connect.Response[v1.CreateGitIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.CreateGitIdentity is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListGitIdentities(context.Context, *connect.Request[v1.ListGitIdentitiesRequest]) (*connect.Response[v1.ListGitIdentitiesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.ListGitIdentities is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) UpdateGitIdentity(context.Context, *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.UpdateGitIdentity is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) DeleteGitIdentity(context.Context, *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.DeleteGitIdentity is not implemented"))
 }
 
 // ArcaneServiceClient is a client for the api.v1.ArcaneService service.

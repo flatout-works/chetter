@@ -138,6 +138,9 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		AgentDefinition:        t.AgentDefinition,
 		SkillDefinitions:       t.SkillDefinitions,
 		ExtraFiles:             t.ExtraFiles,
+		GitIdentityID:          t.GitIdentityId,
+		GitAuthorName:          t.GitAuthorName,
+		GitAuthorEmail:         t.GitAuthorEmail,
 	}
 }
 
@@ -168,12 +171,12 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		WorkspacePath:     resp.WorkspacePath,
 		ErrorCategory:     resp.ErrorCategory,
 		TokenUsage: &runnerv1.TokenUsage{
-			InputTokens:     resp.TokenUsage.InputTokens,
-			OutputTokens:    resp.TokenUsage.OutputTokens,
-			CacheReadTokens: resp.TokenUsage.CacheReadTokens,
+			InputTokens:      resp.TokenUsage.InputTokens,
+			OutputTokens:     resp.TokenUsage.OutputTokens,
+			CacheReadTokens:  resp.TokenUsage.CacheReadTokens,
 			CacheWriteTokens: resp.TokenUsage.CacheWriteTokens,
-			ReasoningTokens: resp.TokenUsage.ReasoningTokens,
-			CostCents:       resp.TokenUsage.CostCents,
+			ReasoningTokens:  resp.TokenUsage.ReasoningTokens,
+			CostCents:        resp.TokenUsage.CostCents,
 		},
 	}
 	report := func(ctx context.Context) error {
