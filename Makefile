@@ -20,6 +20,7 @@ generate: tools
 	$(BUF) dep update
 	$(BUF) generate
 	$(SQLC) generate
+	go generate ./internal/data
 
 tools: $(BUF) $(SQLC)
 

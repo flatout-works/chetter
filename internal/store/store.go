@@ -290,11 +290,6 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-// QueryDB returns a database handle suitable for sqlc-generated queries. For
-// PostgreSQL it converts the legacy MySQL query syntax at the execution
-// boundary while preserving the generated Go model and parameter types.
-func (s *Store) QueryDB() DBTX { return RebindDB(s.db, s.dialect) }
-
 // Dialect returns the detected or configured database dialect.
 func (s *Store) Dialect() Dialect { return s.dialect }
 
@@ -1021,10 +1016,10 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 			SET status = 'error',
 			    error = CONCAT('runner timeout: task ran for ', FLOOR(EXTRACT(EPOCH FROM NOW() - started_at))::int, ' seconds (timeout was ', timeout_sec, 's)'),
 			    error_category = 'timeout',
-			    ended_at = ?,
-			    updated_at = ?
+			    ended_at = $1,
+			    updated_at = $2
 			WHERE status = 'running'
-			  AND EXTRACT(EPOCH FROM NOW() - started_at) > timeout_sec + ?
+			  AND EXTRACT(EPOCH FROM NOW() - started_at) > timeout_sec + $3
 		`
 	}
 	result, err := s.db.ExecContext(ctx, query, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))

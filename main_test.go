@@ -12,6 +12,7 @@ import (
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
@@ -178,7 +179,7 @@ func seedTokenInDB(t *testing.T, st *store.Store) (teamID, rawToken string) {
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	q := repository.New(st.DB())
+	q := data.New(st.DB(), st.Dialect())
 
 	teamID = "team_integration_test"
 	if err := q.CreateTeam(ctx, repository.CreateTeamParams{

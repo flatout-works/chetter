@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"strings"
 )
 
 // ResolveToken validates a raw bearer token against the admin token
@@ -26,19 +27,30 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(hash[:])
 	var tokenID, tokenName, fallbackTeamID sql.NullString
-	err := db.QueryRowContext(ctx, `
+	tokenQuery := `
 		SELECT t.id, t.name, u.team_id
 		FROM api_tokens t
 		JOIN users u ON u.id = t.user_id
-		WHERE t.token_hash = ?`, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
+		WHERE t.token_hash = ?`
+	err := db.QueryRowContext(ctx, tokenQuery, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
+	if err != nil {
+		// api_token_teams is not part of the generated repository surface. Use
+		// PostgreSQL placeholders for this small authentication lookup instead
+		// of relying on a driver-level SQL rewriter.
+		err = db.QueryRowContext(ctx, strings.Replace(tokenQuery, "?", "$1", 1), tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
+	}
 	if err != nil {
 		return Scope{}
 	}
-	rows, err := db.QueryContext(ctx, `
+	teamQuery := `
 		SELECT team_id
 		FROM api_token_teams
 		WHERE token_id = ?
-		ORDER BY team_id ASC`, tokenID.String)
+		ORDER BY team_id ASC`
+	rows, err := db.QueryContext(ctx, teamQuery, tokenID.String)
+	if err != nil {
+		rows, err = db.QueryContext(ctx, strings.Replace(teamQuery, "?", "$1", 1), tokenID.String)
+	}
 	if err != nil {
 		return Scope{TokenID: tokenID.String, TokenName: tokenName.String, TeamID: fallbackTeamID.String, TeamIDs: []string{fallbackTeamID.String}}
 	}

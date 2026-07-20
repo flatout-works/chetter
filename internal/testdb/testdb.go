@@ -50,9 +50,6 @@ type TestDB struct {
 // Dialect returns the database dialect for this test database.
 func (tdb *TestDB) Dialect() store.Dialect { return tdb.dialect }
 
-// QueryDB returns a database handle suitable for sqlc-generated queries.
-func (tdb *TestDB) QueryDB() store.DBTX { return store.RebindDB(tdb.DB, tdb.dialect) }
-
 // NewForTesting prepares a fresh, isolated database on a TiDB instance. The
 // returned TestDB is ready to use and the cleanup func drops the database and
 // tears down the Docker container when one was started.
