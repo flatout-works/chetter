@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
 )
 
@@ -23,6 +24,9 @@ func TestMain(m *testing.M) {
 
 func newRepo(t *testing.T) (*Queries, func()) {
 	t.Helper()
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL generated repository tests; PostgreSQL is tested through internal/data")
+	}
 	tdb, cleanup := repoTestDB.NewTestDB(t)
 	q := New(tdb.DB)
 	return q, func() { tdb.Truncate(t); cleanup() }
@@ -264,7 +268,7 @@ func TestRenewAndReclaimLeases(t *testing.T) {
 	}
 
 	got, _ := q.GetTaskByID(ctx, "task-1")
-	if got.LeaseExpiresAt.Time != now.Add(60*time.Second).Truncate(time.Second) {
+	if !got.LeaseExpiresAt.Time.Equal(now.Add(60 * time.Second).Truncate(time.Second)) {
 		t.Errorf("lease not renewed, got %v", got.LeaseExpiresAt.Time)
 	}
 

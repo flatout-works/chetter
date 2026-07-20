@@ -10,5 +10,8 @@ func (q *Queries) DB() *sql.DB {
 	if db, ok := q.db.(*sql.DB); ok {
 		return db
 	}
+	if db, ok := q.db.(interface{ DB() *sql.DB }); ok {
+		return db.DB()
+	}
 	return nil
 }

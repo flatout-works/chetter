@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/store"
 )
 
 // UsageSummaryInput is the input for chetter_usage_summary.
@@ -37,29 +39,29 @@ type UsageSummaryOutput struct {
 
 // UsageWindow describes the effective time window and filters applied.
 type UsageWindow struct {
-	Since    string  `json:"since,omitempty"`
-	Until    string  `json:"until,omitempty"`
-	GroupBy  string  `json:"group_by,omitempty"`
-	Filters  string  `json:"filters,omitempty"`
-	RowCount int     `json:"row_count"`
+	Since    string   `json:"since,omitempty"`
+	Until    string   `json:"until,omitempty"`
+	GroupBy  string   `json:"group_by,omitempty"`
+	Filters  string   `json:"filters,omitempty"`
+	RowCount int      `json:"row_count"`
 	TeamIDs  []string `json:"team_ids,omitempty"`
 }
 
 // UsageSummaryRow is one aggregated row in the usage summary.
 type UsageSummaryRow struct {
-	TeamID               string `json:"team_id,omitempty"`
-	TeamName             string `json:"team_name,omitempty"`
-	TriggerName          string `json:"trigger_name,omitempty"`
-	TriggerType          string `json:"trigger_type,omitempty"`
-	Repo                 string `json:"repo,omitempty"`
-	TaskCount            int64  `json:"task_count"`
-	TotalInputTokens     int64  `json:"total_input_tokens"`
-	TotalOutputTokens    int64  `json:"total_output_tokens"`
-	TotalCacheReadTokens int64  `json:"total_cache_read_tokens"`
+	TeamID                string `json:"team_id,omitempty"`
+	TeamName              string `json:"team_name,omitempty"`
+	TriggerName           string `json:"trigger_name,omitempty"`
+	TriggerType           string `json:"trigger_type,omitempty"`
+	Repo                  string `json:"repo,omitempty"`
+	TaskCount             int64  `json:"task_count"`
+	TotalInputTokens      int64  `json:"total_input_tokens"`
+	TotalOutputTokens     int64  `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64  `json:"total_cache_read_tokens"`
 	TotalCacheWriteTokens int64  `json:"total_cache_write_tokens"`
-	TotalReasoningTokens int64  `json:"total_reasoning_tokens"`
-	TotalTokens          int64  `json:"total_tokens"`
-	CostCents            int64  `json:"cost_cents"`
+	TotalReasoningTokens  int64  `json:"total_reasoning_tokens"`
+	TotalTokens           int64  `json:"total_tokens"`
+	CostCents             int64  `json:"cost_cents"`
 }
 
 // repoFromGitURL extracts an owner/repo string from a git URL.
@@ -133,19 +135,19 @@ func (s *Service) GetUsageSummary(ctx context.Context, in UsageSummaryInput) (Us
 	out := make([]UsageSummaryRow, 0, len(rows))
 	for _, r := range rows {
 		row := UsageSummaryRow{
-			TeamID:               r.TeamID,
-			TeamName:             teamNames[r.TeamID],
-			TriggerName:          r.TriggerName,
-			TriggerType:          r.TriggerType,
-			Repo:                 repoFromGitURL(r.GitURL),
-			TaskCount:            r.TaskCount,
-			TotalInputTokens:     r.TotalInputTokens,
-			TotalOutputTokens:    r.TotalOutputTokens,
-			TotalCacheReadTokens: r.TotalCacheReadTokens,
+			TeamID:                r.TeamID,
+			TeamName:              teamNames[r.TeamID],
+			TriggerName:           r.TriggerName,
+			TriggerType:           r.TriggerType,
+			Repo:                  repoFromGitURL(r.GitURL),
+			TaskCount:             r.TaskCount,
+			TotalInputTokens:      r.TotalInputTokens,
+			TotalOutputTokens:     r.TotalOutputTokens,
+			TotalCacheReadTokens:  r.TotalCacheReadTokens,
 			TotalCacheWriteTokens: r.TotalCacheWriteTokens,
-			TotalReasoningTokens: r.TotalReasoningTokens,
-			TotalTokens:          r.TotalInputTokens + r.TotalOutputTokens + r.TotalCacheReadTokens + r.TotalCacheWriteTokens + r.TotalReasoningTokens,
-			CostCents:            r.CostCents,
+			TotalReasoningTokens:  r.TotalReasoningTokens,
+			TotalTokens:           r.TotalInputTokens + r.TotalOutputTokens + r.TotalCacheReadTokens + r.TotalCacheWriteTokens + r.TotalReasoningTokens,
+			CostCents:             r.CostCents,
 		}
 		out = append(out, row)
 	}
@@ -181,17 +183,17 @@ func (s *Service) GetUsageSummary(ctx context.Context, in UsageSummaryInput) (Us
 
 // usageSummaryRow is an internal row from the aggregation query.
 type usageSummaryRow struct {
-	TeamID               string
-	TriggerName          string
-	TriggerType          string
-	GitURL               string
-	TaskCount            int64
-	TotalInputTokens     int64
-	TotalOutputTokens    int64
-	TotalCacheReadTokens int64
+	TeamID                string
+	TriggerName           string
+	TriggerType           string
+	GitURL                string
+	TaskCount             int64
+	TotalInputTokens      int64
+	TotalOutputTokens     int64
+	TotalCacheReadTokens  int64
 	TotalCacheWriteTokens int64
-	TotalReasoningTokens int64
-	CostCents            int64
+	TotalReasoningTokens  int64
+	CostCents             int64
 }
 
 // queryUsageSummary executes the aggregation query.
@@ -220,14 +222,20 @@ func (s *Service) queryUsageSummary(
 
 	var conditions []string
 	var args []any
+	placeholder := func() string {
+		if s.dialect == store.DialectPostgres {
+			return "$" + strconv.Itoa(len(args)+1)
+		}
+		return "?"
+	}
 
 	// Time window.
 	if !since.IsZero() {
-		conditions = append(conditions, "t.created_at >= ?")
+		conditions = append(conditions, "t.created_at >= "+placeholder())
 		args = append(args, since)
 	}
 	if !until.IsZero() {
-		conditions = append(conditions, "t.created_at < ?")
+		conditions = append(conditions, "t.created_at < "+placeholder())
 		args = append(args, until)
 	}
 
@@ -235,7 +243,7 @@ func (s *Service) queryUsageSummary(
 	if len(teamIDs) > 0 {
 		placeholders := make([]string, len(teamIDs))
 		for i, id := range teamIDs {
-			placeholders[i] = "?"
+			placeholders[i] = placeholder()
 			args = append(args, id)
 		}
 		conditions = append(conditions, "t.team_id IN ("+strings.Join(placeholders, ",")+")")
@@ -247,21 +255,21 @@ func (s *Service) queryUsageSummary(
 		if err != nil {
 			return nil, fmt.Errorf("lookup team %q: %w", teamName, err)
 		}
-		conditions = append(conditions, "t.team_id = ?")
+		conditions = append(conditions, "t.team_id = "+placeholder())
 		args = append(args, team.ID)
 	}
 
 	// Optional filters.
 	if triggerName != "" {
-		conditions = append(conditions, "t.trigger_name = ?")
+		conditions = append(conditions, "t.trigger_name = "+placeholder())
 		args = append(args, triggerName)
 	}
 	if triggerType != "" {
-		conditions = append(conditions, "t.trigger_type = ?")
+		conditions = append(conditions, "t.trigger_type = "+placeholder())
 		args = append(args, triggerType)
 	}
 	if repo != "" {
-		conditions = append(conditions, "LOWER(COALESCE(t.git_url, '')) LIKE ?")
+		conditions = append(conditions, "LOWER(COALESCE(t.git_url, '')) LIKE "+placeholder())
 		args = append(args, "%"+strings.ToLower(repo)+"%")
 	}
 

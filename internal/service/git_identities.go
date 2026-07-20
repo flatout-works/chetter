@@ -50,9 +50,9 @@ func (s *Service) CreateGitIdentity(ctx context.Context, in GitIdentityInput) (G
 		return GitIdentityRecord{}, fmt.Errorf("generate Git identity id: %w", err)
 	}
 	now := time.Now().UTC()
-	_, err = s.rawDB.ExecContext(ctx, `INSERT INTO git_identities
-        (id, team_id, name, git_author_name, git_author_email, credential_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, teamID, in.Name, in.GitAuthorName, in.GitAuthorEmail, normalizedCredentialType(in.CredentialType), now, now)
+	_, err = s.rawDB.ExecContext(ctx, sqlQuery(s.dialect, `INSERT INTO git_identities
+         (id, team_id, name, git_author_name, git_author_email, credential_type, created_at, updated_at)
+	         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`), id, teamID, in.Name, in.GitAuthorName, in.GitAuthorEmail, normalizedCredentialType(in.CredentialType), now, now)
 	if err != nil {
 		return GitIdentityRecord{}, fmt.Errorf("insert Git identity: %w", err)
 	}
@@ -80,6 +80,7 @@ func (s *Service) ListGitIdentities(ctx context.Context) ([]GitIdentityRecord, e
 		}
 	}
 	query += " ORDER BY team_id, name"
+	query = sqlQuery(s.dialect, query)
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list Git identities: %w", err)
@@ -110,10 +111,10 @@ func (s *Service) SetDefaultGitIdentity(ctx context.Context, teamID, teamName, n
 		return GitIdentityRecord{}, fmt.Errorf("begin Git identity default transaction: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE git_identities SET is_default=false, updated_at=? WHERE team_id=?`, time.Now().UTC(), resolvedTeamID); err != nil {
+	if _, err := tx.ExecContext(ctx, sqlQuery(s.dialect, `UPDATE git_identities SET is_default=false, updated_at=? WHERE team_id=?`), time.Now().UTC(), resolvedTeamID); err != nil {
 		return GitIdentityRecord{}, fmt.Errorf("clear Git identity default: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE git_identities SET is_default=true, updated_at=? WHERE id=?`, time.Now().UTC(), record.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, sqlQuery(s.dialect, `UPDATE git_identities SET is_default=true, updated_at=? WHERE id=?`), time.Now().UTC(), record.ID); err != nil {
 		return GitIdentityRecord{}, fmt.Errorf("set Git identity default: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -141,7 +142,7 @@ func (s *Service) UpdateGitIdentity(ctx context.Context, in GitIdentityInput) (G
 	if err != nil {
 		return GitIdentityRecord{}, err
 	}
-	result, err := s.rawDB.ExecContext(ctx, `UPDATE git_identities SET git_author_name=?, git_author_email=?, credential_type=?, updated_at=? WHERE team_id=? AND name=?`, in.GitAuthorName, in.GitAuthorEmail, normalizedCredentialType(in.CredentialType), time.Now().UTC(), teamID, in.Name)
+	result, err := s.rawDB.ExecContext(ctx, sqlQuery(s.dialect, `UPDATE git_identities SET git_author_name=?, git_author_email=?, credential_type=?, updated_at=? WHERE team_id=? AND name=?`), in.GitAuthorName, in.GitAuthorEmail, normalizedCredentialType(in.CredentialType), time.Now().UTC(), teamID, in.Name)
 	if err != nil {
 		return GitIdentityRecord{}, fmt.Errorf("update Git identity: %w", err)
 	}
@@ -166,13 +167,13 @@ func (s *Service) DeleteGitIdentity(ctx context.Context, teamID, teamName, name 
 		return err
 	}
 	var references int
-	if err := s.rawDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM chetter_tasks WHERE git_identity_id=?`, record.ID).Scan(&references); err != nil {
+	if err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, `SELECT COUNT(*) FROM chetter_tasks WHERE git_identity_id=?`), record.ID).Scan(&references); err != nil {
 		return fmt.Errorf("check Git identity usage: %w", err)
 	}
 	if references > 0 {
 		return fmt.Errorf("git identity %q is used by %d task(s)", name, references)
 	}
-	result, err := s.rawDB.ExecContext(ctx, `DELETE FROM git_identities WHERE id=?`, record.ID)
+	result, err := s.rawDB.ExecContext(ctx, sqlQuery(s.dialect, `DELETE FROM git_identities WHERE id=?`), record.ID)
 	if err != nil {
 		return fmt.Errorf("delete Git identity: %w", err)
 	}
@@ -189,11 +190,11 @@ func (s *Service) resolveTaskGitIdentity(ctx context.Context, agent, teamID, git
 	}
 	repo := repoNameFromGitURL(gitURL)
 	var content string
-	err := s.rawDB.QueryRowContext(ctx, `SELECT content FROM definitions
-        WHERE definition_type='agent' AND name=? AND active=true
-          AND (scope='global' OR (scope='team' AND team_id=?) OR (scope='repo' AND repo=?))
-        ORDER BY CASE WHEN scope='repo' AND repo=? THEN 3 WHEN scope='team' AND team_id=? THEN 2 ELSE 1 END DESC, updated_at DESC
-        LIMIT 1`, agent, teamID, repo, repo, teamID).Scan(&content)
+	err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, `SELECT content FROM definitions
+         WHERE definition_type='agent' AND name=? AND active=true
+         AND (scope='global' OR (scope='team' AND team_id=?) OR (scope='repo' AND repo=?))
+         ORDER BY CASE WHEN scope='repo' AND repo=? THEN 3 WHEN scope='team' AND team_id=? THEN 2 ELSE 1 END DESC, updated_at DESC
+	         LIMIT 1`), agent, teamID, repo, repo, teamID).Scan(&content)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return GitIdentityRecord{}, fmt.Errorf("active agent definition %q not found for this team or repository", agent)
@@ -214,6 +215,7 @@ func (s *Service) defaultGitIdentity(ctx context.Context, teamID string) (GitIde
 		query = `SELECT id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at FROM git_identities WHERE is_default=true AND team_id IN (?, '') ORDER BY CASE WHEN team_id=? THEN 0 ELSE 1 END LIMIT 1`
 		args = []any{teamID, teamID}
 	}
+	query = sqlQuery(s.dialect, query)
 	var record GitIdentityRecord
 	err := s.rawDB.QueryRowContext(ctx, query, args...).Scan(&record.ID, &record.TeamID, &record.Name, &record.GitAuthorName, &record.GitAuthorEmail, &record.CredentialType, &record.IsDefault, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {
@@ -235,6 +237,7 @@ func (s *Service) gitIdentityByName(ctx context.Context, teamID, name string, al
 		query = `SELECT id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at FROM git_identities WHERE name=? AND team_id IN (?, '') ORDER BY CASE WHEN team_id=? THEN 0 ELSE 1 END LIMIT 1`
 		args = []any{name, teamID, teamID}
 	}
+	query = sqlQuery(s.dialect, query)
 	var record GitIdentityRecord
 	err := s.rawDB.QueryRowContext(ctx, query, args...).Scan(&record.ID, &record.TeamID, &record.Name, &record.GitAuthorName, &record.GitAuthorEmail, &record.CredentialType, &record.IsDefault, &record.CreatedAt, &record.UpdatedAt)
 	if err != nil {

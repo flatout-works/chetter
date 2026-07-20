@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/flatout-works/chetter/internal/repository"
@@ -388,20 +389,30 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 		  AND (created_at >= ? OR ? IS NULL)` + excludeClause + `
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?`
+	if s.dialect == store.DialectPostgres {
+		query = strings.Replace(query, "created_at >= ? OR ? IS NULL", "created_at >= COALESCE(?, '-infinity'::timestamptz)", 1)
+		query = strings.Replace(query, "LIMIT ? OFFSET ?", "LIMIT "+strconv.Itoa(int(limit))+" OFFSET "+strconv.Itoa(int(offset)), 1)
+	}
 
 	args := []any{
 		filter.EventType, filter.EventType,
-		nullString(filter.SourceType), filter.SourceType,
-		nullString(filter.SourceID), filter.SourceID,
-		nullString(filter.TargetType), filter.TargetType,
-		nullString(filter.TargetID), filter.TargetID,
-		nullString(filter.Repo), filter.Repo,
-		sinceTime, sinceTime,
+		filter.SourceType, filter.SourceType,
+		filter.SourceID, filter.SourceID,
+		filter.TargetType, filter.TargetType,
+		filter.TargetID, filter.TargetID,
+		filter.Repo, filter.Repo,
+	}
+	if s.dialect == store.DialectPostgres {
+		args = append(args, sinceTime)
+	} else {
+		args = append(args, sinceTime, sinceTime)
 	}
 	for _, t := range filter.ExcludeTypes {
 		args = append(args, t)
 	}
-	args = append(args, limit, offset)
+	if s.dialect != store.DialectPostgres {
+		args = append(args, limit, offset)
+	}
 
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {

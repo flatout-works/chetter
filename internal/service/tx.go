@@ -7,13 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/store"
 	"github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const txMaxAttempts = 3
 
-func withTxRetry(ctx context.Context, db *sql.DB, fn func(*repository.Queries) error) error {
+func withTxRetry(ctx context.Context, db *sql.DB, dialect store.Dialect, fn func(data.Repository) error) error {
 	var lastErr error
 	for attempt := 0; attempt < txMaxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -25,7 +27,7 @@ func withTxRetry(ctx context.Context, db *sql.DB, fn func(*repository.Queries) e
 			return err
 		}
 
-		err = fn(repository.New(tx))
+		err = fn(data.NewTx(tx, dialect))
 		if err != nil {
 			_ = tx.Rollback()
 			if isRetryableTxError(err) && attempt < txMaxAttempts-1 {
@@ -55,6 +57,13 @@ func isRetryableTxError(err error) bool {
 	if errors.As(err, &mysqlErr) {
 		switch mysqlErr.Number {
 		case 1205, 1213, 8028, 9007:
+			return true
+		}
+	}
+	var postgresErr *pgconn.PgError
+	if errors.As(err, &postgresErr) {
+		switch postgresErr.Code {
+		case "40001", "40P01", "55P03":
 			return true
 		}
 	}

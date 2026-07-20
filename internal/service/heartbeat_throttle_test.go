@@ -96,8 +96,9 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	}
 
 	// Count running event rows — should be exactly 1 (throttled)
-	rows, err := tdb.DB.QueryContext(ctx,
+	rows, err := tdb.DB.QueryContext(ctx, testQuery(tdb.Dialect(),
 		`SELECT COUNT(*) FROM chetter_task_events WHERE task_id = ? AND status = 'running'`,
+		`SELECT COUNT(*) FROM chetter_task_events WHERE task_id = $1 AND status = 'running'`),
 		"task_hb1")
 	if err != nil {
 		t.Fatalf("query: %v", err)
@@ -171,4 +172,3 @@ func TestNonHeartbeatEventsAlwaysStored(t *testing.T) {
 		t.Errorf("expected 2 non-heartbeat event rows, got %d", len(events))
 	}
 }
-

@@ -13,6 +13,7 @@ import (
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
@@ -46,7 +47,9 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	now := time.Now().UTC()
-	if _, err := tdb.DB.Exec(`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`, "gid_primary", now, now); err != nil {
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`,
+		`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES ($1, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, $2, $3)`), "gid_primary", now, now); err != nil {
 		cleanup()
 		t.Fatalf("seed default Git identity: %v", err)
 	}
@@ -54,6 +57,37 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	return svc, tdb, func() {
 		_ = st.Close()
 		cleanup()
+	}
+}
+
+func TestPostgresRepositoryUsesNativeQueries(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	if tdb.Dialect() != store.DialectPostgres {
+		t.Skip("PostgreSQL-specific repository selection")
+	}
+	if _, ok := svc.repo.(*data.Queries); !ok {
+		t.Fatalf("PostgreSQL repository = %T, want *data.Queries", svc.repo)
+	}
+
+	ctx := context.Background()
+	_, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "native PostgreSQL search", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	// SearchTasks uses PostgreSQL ILIKE; this succeeds only through repositorypostgres.
+	rows, err := svc.repo.SearchTasks(ctx, repository.SearchTasksParams{
+		TeamFilter:        nullString(""),
+		StatusFilter:      "",
+		TriggerNameFilter: nullString(""),
+		Search:            "POSTGRESQL",
+		Limit:             10,
+	})
+	if err != nil {
+		t.Fatalf("SearchTasks: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("SearchTasks returned %d rows, want 1", len(rows))
 	}
 }
 
@@ -102,7 +136,10 @@ func TestSubmitTaskResolvesAgentGitIdentity(t *testing.T) {
 		t.Fatalf("create Git identity: %v", err)
 	}
 	now := time.Now().UTC()
-	if _, err := tdb.DB.Exec(`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES (?, ?, 'agent', 'release', 'global', ?, ?, ?, ?, true, ?, ?)`, "def_release", "src_test", "agents/release.md", "test", strings.Repeat("1", 64), "---\nidentity: release-bot\n---\n# Release agent\n", now, now); err != nil {
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES (?, ?, 'agent', 'release', 'global', ?, ?, ?, ?, true, ?, ?)`,
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES ($1, $2, 'agent', 'release', 'global', $3, $4, $5, $6, true, $7, $8)`,
+	), "def_release", "src_test", "agents/release.md", "test", strings.Repeat("1", 64), "---\nidentity: release-bot\n---\n# Release agent\n", now, now); err != nil {
 		t.Fatalf("seed agent definition: %v", err)
 	}
 	record, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "prepare release", AgentImage: "runner:latest", Agent: "release"})
@@ -144,7 +181,7 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 
 	// Verify via direct repo query
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	row, err := q.GetTaskByID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get task: %v", err)
@@ -210,7 +247,7 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
 	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -229,7 +266,7 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 		t.Fatalf("report terminal event: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get session run: %v", err)
@@ -267,7 +304,7 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	task, err := q.GetTaskByID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get task: %v", err)
@@ -294,7 +331,7 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		t.Fatalf("pause_reason = %s, want waiting_for_pr_feedback", session.PauseReason.String)
 	}
 
-	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
 	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
@@ -344,8 +381,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	q := repository.New(tdb.DB)
-	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
 
 	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:      "create a PR",
@@ -629,8 +666,8 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	q := repository.New(tdb.DB)
-	rpc := NewRunnerRPCService(repository.New(tdb.DB), tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
 
 	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:      "create a PR",
@@ -733,7 +770,7 @@ func TestServiceCancelTaskMarksRunningAsCancelled(t *testing.T) {
 
 	// Claim the task
 	now := time.Now().UTC()
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
 		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
 		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
@@ -795,7 +832,7 @@ func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
 		t.Errorf("expected 2 cancelled, got %d", cancelled)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	for _, id := range []string{rec1.ID, rec2.ID} {
 		row, err := q.GetTaskByID(ctx, id)
 		if err != nil {
@@ -837,7 +874,7 @@ func TestServiceCreateTriggerPersistsAndActivates(t *testing.T) {
 		t.Error("next_run_at should be set after activation")
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	row, err := q.GetTriggerByName(ctx, "hourly-check")
 	if err != nil {
 		t.Fatalf("get trigger: %v", err)
@@ -872,7 +909,7 @@ func TestRunTriggerNowStampsTaskAttribution(t *testing.T) {
 		t.Fatalf("returned task missing trigger attribution: %+v", task)
 	}
 
-	row, err := repository.New(tdb.DB).GetTaskByID(ctx, task.ID)
+	row, err := data.New(tdb.DB, tdb.Dialect()).GetTaskByID(ctx, task.ID)
 	if err != nil {
 		t.Fatalf("GetTaskByID: %v", err)
 	}
@@ -955,7 +992,7 @@ func TestServiceListTriggersReturnsEnabled(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 
-	q := repository.New(svc.repo.DB())
+	q := svc.repo
 	enabled, err := q.ListEnabledTriggers(ctx)
 	if err != nil {
 		t.Fatalf("list enabled: %v", err)
@@ -1040,7 +1077,7 @@ func TestServiceDeleteTriggerRemovesRow(t *testing.T) {
 	if err := svc.DeleteTrigger(ctx, "doomed"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	q := repository.New(svc.repo.DB())
+	q := svc.repo
 	if _, err := q.GetTriggerByName(ctx, "doomed"); err == nil {
 		t.Error("expected trigger to be gone")
 	}
@@ -1083,7 +1120,7 @@ func TestServiceGetLatestEvent(t *testing.T) {
 	now := time.Now().UTC()
 	ev1, _ := json.Marshal(map[string]any{"task_id": rec.ID, "status": "running", "summary": "starting"})
 	ev2, _ := json.Marshal(map[string]any{"task_id": rec.ID, "status": "done", "summary": "finished"})
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
 		ID: "ev_1", TaskID: rec.ID, Subject: "x", Status: "running",
 		Payload: ev1, CreatedAt: now.Add(-1 * time.Minute),
@@ -1114,7 +1151,7 @@ func TestServiceGetLatestEvent(t *testing.T) {
 func seedTeam(t *testing.T, db *sql.DB, teamName, userName string) (teamID, userID string) {
 	t.Helper()
 	ctx := context.Background()
-	q := repository.New(db)
+	q := data.New(db, store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")))
 	now := time.Now().UTC()
 
 	teamID, err := randomID("team")
@@ -1170,7 +1207,7 @@ func TestSubmitTaskWithTeamContextStampsTeamID(t *testing.T) {
 		t.Errorf("expected team_id=%s, got %s", teamID, rec.TeamID)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	row, err := q.GetTaskByID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get task: %v", err)
@@ -1195,7 +1232,7 @@ func TestSubmitTaskWithoutTeamContextIsNull(t *testing.T) {
 		t.Errorf("expected empty team_id, got %s", rec.TeamID)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	row, err := q.GetTaskByID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get task: %v", err)
@@ -1223,7 +1260,7 @@ func TestListTasksByTeamScopesCorrectly(t *testing.T) {
 		t.Fatalf("submit b1: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 
 	aTasks, err := q.ListTasksByStatusAndTeam(ctx, repository.ListTasksByStatusAndTeamParams{
 		TeamID:       sql.NullString{String: teamA, Valid: true},
@@ -1318,8 +1355,8 @@ func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
 		t.Fatalf("submit team A task: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
-	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET session_export = ? WHERE id = ?", "team A transcript", taskA.ID); err != nil {
+	q := data.New(tdb.DB, tdb.Dialect())
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET session_export = ? WHERE id = ?", "UPDATE chetter_tasks SET session_export = $1 WHERE id = $2"), "team A transcript", taskA.ID); err != nil {
 		t.Fatalf("set session export: %v", err)
 	}
 	payload, _ := json.Marshal(map[string]any{"task_id": taskA.ID, "status": "running", "summary": "private"})
@@ -1398,7 +1435,7 @@ func TestUnscopedToolsRequireAdmin(t *testing.T) {
 		t.Fatalf("submit task: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	now := time.Now().UTC()
 	if err := q.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
 		ID: "artifact_admin_only", TaskID: task.ID, ArtifactType: "pr", Repo: "flatout-works/chetter",
@@ -1463,7 +1500,7 @@ func TestCreateTriggerWithTeamContextStampsTeamID(t *testing.T) {
 		t.Errorf("expected team_id=%s, got %s", teamID, rec.TeamID)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	row, err := q.GetTriggerByName(ctx, "hourly-check")
 	if err != nil {
 		t.Fatalf("get trigger: %v", err)
@@ -1494,7 +1531,7 @@ func TestListTriggersByTeamScopesCorrectly(t *testing.T) {
 		t.Fatalf("create trigger b: %v", err)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 
 	aTriggers, err := q.ListTriggersByTeam(ctx, sql.NullString{String: teamA, Valid: true})
 	if err != nil {
@@ -1538,7 +1575,7 @@ func TestCreateTokenCreatesTeamUserAndToken(t *testing.T) {
 		t.Error("expected non-empty token")
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 
 	team, err := q.GetTeamByName(ctx, "engineering")
 	if err != nil {
@@ -1569,7 +1606,7 @@ func TestCreateTokenWithMultipleTeams(t *testing.T) {
 		t.Fatalf("expected two team ids, got %#v", out.TeamIDs)
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	tokens, err := q.ListTokens(ctx)
 	if err != nil {
 		t.Fatalf("list tokens: %v", err)
@@ -1630,7 +1667,7 @@ func TestDeleteTokenRemovesRow(t *testing.T) {
 		t.Error("expected Deleted=true")
 	}
 
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 	tokens, err := q.ListTokens(ctx)
 	if err != nil {
 		t.Fatalf("list tokens: %v", err)
@@ -1932,7 +1969,7 @@ func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, 
 
 	// Build a short random prompt for uniqueness.
 	prompt := "test prompt " + id
-	_, err := db.Exec(`
+	query := `
 		INSERT INTO chetter_tasks (
 			id, team_id, status, prompt, git_url, trigger_name, trigger_type,
 			total_input_tokens, total_output_tokens, total_cache_read_tokens,
@@ -1941,7 +1978,20 @@ func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, 
 		) VALUES (?, ?, 'done', ?, ?, ?, ?,
 			?, ?, ?,
 			?, ?, ?,
-			'[]', '{}', 600, ?, ?)`,
+			'[]', '{}', 600, ?, ?)`
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		query = `
+			INSERT INTO chetter_tasks (
+				id, team_id, status, prompt, git_url, trigger_name, trigger_type,
+				total_input_tokens, total_output_tokens, total_cache_read_tokens,
+				total_cache_write_tokens, total_reasoning_tokens, cost_cents,
+				skills, env, timeout_sec, created_at, updated_at
+			) VALUES ($1, $2, 'done', $3, $4, $5, $6,
+				$7, $8, $9,
+				$10, $11, $12,
+				'[]', '{}', 600, $13, $14)`
+	}
+	_, err := db.Exec(query,
 		id, teamID, prompt, gitURL, triggerName, triggerType,
 		inputTokens, outputTokens, cacheRead,
 		cacheWrite, reasoning, costCents,
@@ -1950,4 +2000,11 @@ func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, 
 	if err != nil {
 		t.Fatalf("insertTask %s: %v", id, err)
 	}
+}
+
+func testQuery(dialect store.Dialect, mysql, postgres string) string {
+	if dialect == store.DialectPostgres {
+		return postgres
+	}
+	return mysql
 }

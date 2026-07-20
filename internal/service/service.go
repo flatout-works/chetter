@@ -18,6 +18,7 @@ import (
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webhook"
@@ -97,7 +98,7 @@ var defaultCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron
 type Service struct {
 	cfg            config.Config
 	store          *store.Store
-	repo           *repository.Queries
+	repo           data.Repository
 	rawDB          *sql.DB
 	dialect        store.Dialect
 	arcane         *ArcaneClient
@@ -160,7 +161,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 	svc := &Service{
 		cfg:         cfg,
 		store:       st,
-		repo:        repository.New(st.DB()),
+		repo:        data.New(st.DB(), st.Dialect()),
 		rawDB:       st.DB(),
 		dialect:     st.Dialect(),
 		cron:        cron.New(cron.WithParser(defaultCronParser), cron.WithLocation(time.UTC)),
@@ -497,7 +498,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		}
 	}
 	var task repository.ChetterTask
-	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                     taskID,
@@ -756,7 +757,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
-	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                     taskID,
 			TeamID:                 nullString(teamID),

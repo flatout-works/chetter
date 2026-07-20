@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 )
@@ -94,7 +95,7 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 			StatusFilter:      status,
 			TriggerNameFilter: sql.NullString{},
 			Limit:             clamped,
-			Offset:             clampedOffset,
+			Offset:            clampedOffset,
 		})
 	} else {
 		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
@@ -644,7 +645,7 @@ func (s *Service) batchSessionRunCounts(ctx context.Context, sessionIDs []string
 	for i, v := range sessionIDs {
 		args[i] = v
 	}
-	query := "SELECT agent_session_id, COUNT(*) FROM chetter_session_runs WHERE agent_session_id IN (?" + strings.Repeat(",?", len(sessionIDs)-1) + ") GROUP BY agent_session_id"
+	query := "SELECT agent_session_id, COUNT(*) FROM chetter_session_runs WHERE agent_session_id IN (" + strings.Join(sqlPlaceholders(s.dialect, len(sessionIDs)), ",") + ") GROUP BY agent_session_id"
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.ErrorContext(ctx, "batch session run counts", "err", err)
@@ -883,7 +884,7 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 	}
 
 	teams := make([]repository.Team, 0, len(teamNames))
-	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		for _, teamName := range teamNames {
 			team, err := q.GetTeamByName(ctx, teamName)
 			if err != nil {

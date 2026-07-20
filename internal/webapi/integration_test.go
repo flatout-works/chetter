@@ -353,7 +353,10 @@ func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	now := time.Now().UTC()
-	if _, err := tdb.DB.Exec(`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`, "gid_primary", now, now); err != nil {
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`,
+		`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES ($1, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, $2, $3)`,
+	), "gid_primary", now, now); err != nil {
 		_ = st.Close()
 		cleanupDB()
 		t.Fatalf("seed default Git identity: %v", err)
@@ -369,4 +372,11 @@ func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 		_ = st.Close()
 		cleanupDB()
 	}
+}
+
+func testQuery(dialect store.Dialect, mysql, postgres string) string {
+	if dialect == store.DialectPostgres {
+		return postgres
+	}
+	return mysql
 }

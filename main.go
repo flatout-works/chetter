@@ -17,7 +17,7 @@ import (
 	"github.com/flatout-works/chetter/gen/proto/runner/v1/runnerv1connect"
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
-	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webapi"
@@ -89,7 +89,7 @@ func run() error {
 		svc.SetGitHubClient(gh)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(repository.New(st.DB()), st.DB()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc)
+	runnerSvc := service.NewRunnerRPCService(data.New(st.DB(), st.Dialect()), st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)

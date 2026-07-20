@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
@@ -314,7 +315,7 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 			UpdatedAt: now,
 		}
 	}
-	if err := withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	if err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		if yamlText != "" {
 			if err := q.DeactivateModelCatalogs(ctx, now); err != nil {
 				return err

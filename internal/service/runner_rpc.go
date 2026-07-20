@@ -17,7 +17,9 @@ import (
 	"connectrpc.com/connect"
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -33,8 +35,9 @@ var errNoClaimableTask = errors.New("no claimable task")
 var errTaskNotClaimed = errors.New("task is not claimed by runner")
 
 type RunnerRPCService struct {
-	db            *repository.Queries
+	db            data.Repository
 	rawDB         *sql.DB
+	dialect       store.Dialect
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	eventBus      TaskEventPublisher
@@ -66,8 +69,12 @@ type TaskEventCallbackContext struct {
 	CreatedAt     time.Time
 }
 
-func NewRunnerRPCService(db *repository.Queries, rawDB *sql.DB) *RunnerRPCService {
-	return &RunnerRPCService{db: db, rawDB: rawDB}
+func NewRunnerRPCService(db data.Repository, rawDB *sql.DB, dialects ...store.Dialect) *RunnerRPCService {
+	dialect := store.DialectMySQL
+	if len(dialects) > 0 {
+		dialect = dialects[0]
+	}
+	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect}
 }
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
@@ -240,8 +247,9 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 	}
 	if task.Agent != "" {
 		var content string
+		placeholder := sqlPlaceholders(s.dialect, 1)[0]
 		err := s.rawDB.QueryRowContext(ctx,
-			`SELECT content FROM definitions WHERE definition_type='agent' AND name=? AND active=true ORDER BY updated_at DESC LIMIT 1`,
+			`SELECT content FROM definitions WHERE definition_type='agent' AND name=`+placeholder+` AND active=true ORDER BY updated_at DESC LIMIT 1`,
 			task.Agent,
 		).Scan(&content)
 		if err == nil {
@@ -257,8 +265,7 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 }
 
 func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
-	placeholders := strings.Repeat(",?", len(skillNames))[1:]
-	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + placeholders + `) AND active=true`
+	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + strings.Join(sqlPlaceholders(s.dialect, len(skillNames)), ",") + `) AND active=true`
 	args := make([]any, len(skillNames))
 	for i, n := range skillNames {
 		args[i] = n
@@ -490,9 +497,8 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	}
 
 	args := make([]any, 0, len(taskIDs))
-	placeholders := make([]string, 0, len(taskIDs))
+	placeholders := sqlPlaceholders(s.dialect, len(taskIDs))
 	for _, id := range taskIDs {
-		placeholders = append(placeholders, "?")
 		args = append(args, id)
 	}
 
@@ -639,7 +645,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	if err != nil {
 		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
 	}
-	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		task, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoClaimableTask
@@ -791,7 +797,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		RunnerID:              sql.NullString{String: runnerID, Valid: true},
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
-	err = withTxRetry(ctx, s.rawDB, func(q *repository.Queries) error {
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		rows, err := q.UpdateTaskFromRunnerEvent(ctx, updateParams)
 		if err != nil {
 			return err

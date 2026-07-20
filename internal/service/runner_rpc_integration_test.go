@@ -10,23 +10,24 @@ import (
 
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/testdb"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
-func newRPCTestService(t *testing.T) (*RunnerRPCService, *repository.Queries, *testdb.TestDB, func()) {
+func newRPCTestService(t *testing.T) (*RunnerRPCService, data.Repository, *testdb.TestDB, func()) {
 	t.Helper()
 	if svcTestDB == nil {
 		t.Skip("database unavailable; skipping integration test")
 	}
 	tdb, cleanup := svcTestDB.NewTestDB(t)
 	tdb.Truncate(t)
-	q := repository.New(tdb.DB)
-	return NewRunnerRPCService(q, tdb.DB), q, tdb, cleanup
+	q := data.New(tdb.DB, tdb.Dialect())
+	return NewRunnerRPCService(q, tdb.DB, tdb.Dialect()), q, tdb, cleanup
 }
 
-func insertPendingTask(t *testing.T, q *repository.Queries, id, prompt, agentImage string) {
+func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage string) {
 	t.Helper()
 	now := time.Now().UTC()
 	if err := q.InsertTask(context.Background(), repository.InsertTaskParams{
@@ -111,7 +112,7 @@ func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_pinned", "resume work", "runner:latest")
-	if _, err := tdb.DB.ExecContext(ctx, "UPDATE chetter_tasks SET required_runner_id = ? WHERE id = ?", "runner_pinned", "task_pinned"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_tasks SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "task_pinned"); err != nil {
 		t.Fatalf("pin task: %v", err)
 	}
 
@@ -454,7 +455,7 @@ func TestReapAndFailLeaveReclaimedTaskPending(t *testing.T) {
 	defer cleanup()
 	tdb.Truncate(t)
 	ctx := context.Background()
-	q := repository.New(tdb.DB)
+	q := data.New(tdb.DB, tdb.Dialect())
 
 	// Insert a running task with an expired lease
 	now := time.Now().UTC()
