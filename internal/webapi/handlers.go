@@ -596,6 +596,7 @@ func protoGitIdentity(identity service.GitIdentityRecord) *apiv1.GitIdentity {
 		GitAuthorName:  identity.GitAuthorName,
 		GitAuthorEmail: identity.GitAuthorEmail,
 		CredentialType: identity.CredentialType,
+		IsDefault:      identity.IsDefault,
 		CreatedAt:      identity.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      identity.UpdatedAt.Format(time.RFC3339),
 	}
@@ -813,6 +814,14 @@ func (h *adminHandler) DeleteGitIdentity(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewResponse(&apiv1.DeleteGitIdentityResponse{Deleted: true}), nil
+}
+
+func (h *adminHandler) SetGitIdentityDefault(ctx context.Context, req *connect.Request[apiv1.SetGitIdentityDefaultRequest]) (*connect.Response[apiv1.SetGitIdentityDefaultResponse], error) {
+	record, err := h.svc.SetDefaultGitIdentity(ctx, req.Msg.TeamId, req.Msg.TeamName, req.Msg.Name)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&apiv1.SetGitIdentityDefaultResponse{Identity: protoGitIdentity(record)}), nil
 }
 
 func (h *adminHandler) HandleListRepos(w http.ResponseWriter, r *http.Request) {

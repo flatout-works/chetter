@@ -591,6 +591,7 @@ service AdminService {
   rpc ListGitIdentities(ListGitIdentitiesRequest) returns (ListGitIdentitiesResponse);
   rpc UpdateGitIdentity(UpdateGitIdentityRequest) returns (UpdateGitIdentityResponse);
   rpc DeleteGitIdentity(DeleteGitIdentityRequest) returns (DeleteGitIdentityResponse);
+  rpc SetGitIdentityDefault(SetGitIdentityDefaultRequest) returns (SetGitIdentityDefaultResponse);
 }
 
 message CreateTokenRequest {
@@ -703,6 +704,7 @@ message GitIdentity {
   string credential_type = 6;
   string created_at = 7;
   string updated_at = 8;
+  bool is_default = 9;
 }
 
 message CreateGitIdentityRequest {
@@ -745,6 +747,16 @@ message DeleteGitIdentityRequest {
 
 message DeleteGitIdentityResponse {
   bool deleted = 1;
+}
+
+message SetGitIdentityDefaultRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message SetGitIdentityDefaultResponse {
+  GitIdentity identity = 1;
 }
 
 // --- ArcaneService (conditionally registered) ---

@@ -234,6 +234,7 @@ var schemaStatements = []string{
 		git_author_name VARCHAR(128) NOT NULL,
 		git_author_email VARCHAR(255) NOT NULL,
 		credential_type VARCHAR(32) NOT NULL DEFAULT 'github_app',
+		is_default BOOL NOT NULL DEFAULT false,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),

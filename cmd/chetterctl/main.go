@@ -110,6 +110,15 @@ func identityCmd(args []string, serverURL, token string) error {
 			return err
 		}
 		printProtoJSON(resp.Msg)
+	case "set-default":
+		if *name == "" {
+			return fmt.Errorf("--name is required")
+		}
+		resp, err := client.SetGitIdentityDefault(context.Background(), connect.NewRequest(&apiv1.SetGitIdentityDefaultRequest{TeamName: *team, Name: *name}))
+		if err != nil {
+			return err
+		}
+		printProtoJSON(resp.Msg)
 	default:
 		printIdentityUsage()
 	}
@@ -279,6 +288,7 @@ Usage:
   chetterctl identity list
   chetterctl identity update --name <name> --git-author-name <name> --git-author-email <email>
   chetterctl identity delete --name <name>
+	  chetterctl identity set-default --name <name>
 
 Environment:
   CHETTER_WEB_URL      Web UI URL for chetterctl web (default: http://localhost:8090)
@@ -309,6 +319,7 @@ Usage:
   chetterctl identity list
   chetterctl identity update [--team <name>] --name <identity> --git-author-name <name> --git-author-email <email>
   chetterctl identity delete [--team <name>] --name <identity>
+	  chetterctl identity set-default [--team <name>] --name <identity>
 
 Identities contain only attribution metadata. GitHub App credentials remain server-managed.`)
 }

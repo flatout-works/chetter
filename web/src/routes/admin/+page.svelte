@@ -6,7 +6,7 @@
   import { getTransport } from "$lib/api/client";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
-  import { Alert, Button, Card, Input, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, Spinner } from "flowbite-svelte";
 
   let tokens = $state<TokenInfo[]>([]);
   let teams = $state<TeamInfo[]>([]);
@@ -170,6 +170,19 @@
       addToast(actionError, "error");
     }
   }
+
+  async function setDefaultIdentity(identity: GitIdentity) {
+    actionError = null;
+    try {
+      const client = createClient(AdminService, getTransport());
+      await client.setGitIdentityDefault({ teamId: identity.teamId, name: identity.name });
+      addToast(`Git identity "${identity.name}" is now the default`, "success");
+      await load();
+    } catch (e) {
+      actionError = e instanceof Error ? e.message : "Failed to set the default Git identity.";
+      addToast(actionError, "error");
+    }
+  }
 </script>
 
 <svelte:head>
@@ -281,11 +294,21 @@
           {#each identities as identity (identity.id)}
             <div class="px-4 py-3 flex items-center justify-between gap-3">
               <div class="min-w-0">
-                <p class="text-sm font-medium text-gray-900 dark:text-white">{identity.name}</p>
+                <div class="flex items-center gap-2">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{identity.name}</p>
+                  {#if identity.isDefault}
+                    <Badge color="blue" size="small">Default</Badge>
+                  {/if}
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{identity.gitAuthorName} &lt;{identity.gitAuthorEmail}&gt;</p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{identity.teamId ? `Team: ${identity.teamId}` : "Global"}</p>
               </div>
-              <Button color="red" size="xs" outline onclick={() => deleteIdentity(identity)}>Delete</Button>
+              <div class="flex gap-2">
+                {#if !identity.isDefault}
+                  <Button color="alternative" size="xs" onclick={() => setDefaultIdentity(identity)}>Set Default</Button>
+                {/if}
+                <Button color="red" size="xs" outline onclick={() => deleteIdentity(identity)}>Delete</Button>
+              </div>
             </div>
           {:else}
             <p class="px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No Git identities</p>

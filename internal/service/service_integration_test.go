@@ -45,10 +45,47 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 		cleanup()
 		t.Fatalf("store.Open: %v", err)
 	}
+	now := time.Now().UTC()
+	if _, err := tdb.DB.Exec(`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`, "gid_primary", now, now); err != nil {
+		cleanup()
+		t.Fatalf("seed default Git identity: %v", err)
+	}
 	svc := New(cfg, st)
 	return svc, tdb, func() {
 		_ = st.Close()
 		cleanup()
+	}
+}
+
+func TestSubmitTaskUsesDefaultGitIdentity(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	record, err := svc.SubmitTask(context.Background(), SubmitTaskRequest{Prompt: "agent-less task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if record.CommitAuthorName != "Primary Bot" || record.CommitAuthorEmail != "primary-bot@example.com" || record.GitIdentityID == "" {
+		t.Fatalf("default task identity = %+v", record)
+	}
+}
+
+func TestSetDefaultGitIdentityOverridesGlobalDefault(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	identity, err := svc.CreateGitIdentity(ctx, GitIdentityInput{Name: "release-bot", GitAuthorName: "Release Bot", GitAuthorEmail: "release-bot@example.com"})
+	if err != nil {
+		t.Fatalf("create Git identity: %v", err)
+	}
+	if _, err := svc.SetDefaultGitIdentity(ctx, "", "", identity.Name); err != nil {
+		t.Fatalf("set default Git identity: %v", err)
+	}
+	record, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "agent-less task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if record.GitIdentityID != identity.ID || record.CommitAuthorName != "Release Bot" {
+		t.Fatalf("default task identity = %+v", record)
 	}
 }
 

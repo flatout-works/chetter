@@ -352,6 +352,12 @@ func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 		cleanupDB()
 		t.Fatalf("store.Open: %v", err)
 	}
+	now := time.Now().UTC()
+	if _, err := tdb.DB.Exec(`INSERT INTO git_identities (id, team_id, name, git_author_name, git_author_email, credential_type, is_default, created_at, updated_at) VALUES (?, '', 'primary-bot', 'Primary Bot', 'primary-bot@example.com', 'github_app', true, ?, ?)`, "gid_primary", now, now); err != nil {
+		_ = st.Close()
+		cleanupDB()
+		t.Fatalf("seed default Git identity: %v", err)
+	}
 	svc := service.New(cfg, st)
 	bus := NewEventBus()
 	mux := http.NewServeMux()

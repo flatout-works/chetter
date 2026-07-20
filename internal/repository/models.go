@@ -330,6 +330,7 @@ type GitIdentity struct {
 	CredentialType string    `json:"credential_type"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	IsDefault      bool      `json:"is_default"`
 }
 
 type Team struct {
