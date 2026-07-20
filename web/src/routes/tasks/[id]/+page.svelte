@@ -112,13 +112,15 @@
   // fall back to showing raw events as standalone entries.
   let timeline = $derived.by(() => {
     if (progress.length > 0) {
-      return progress.map((entry, i) => ({
-        time: entry.time,
-        status: entry.status,
-        summary: entry.summary,
-        error: entry.error,
-        index: i,
-      }));
+      return progress
+        .map((entry, i) => ({
+          time: entry.time,
+          status: entry.status,
+          summary: entry.summary,
+          error: entry.error,
+          index: i,
+        }))
+        .sort((a, b) => b.time.localeCompare(a.time) || b.index - a.index);
     }
     if (eventsChrono.length > 0) {
       return eventsChrono
