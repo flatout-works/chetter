@@ -20,6 +20,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +29,7 @@ import (
 
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/go-sql-driver/mysql"
+	"github.com/pressly/goose/v3"
 )
 
 const (
@@ -106,23 +109,13 @@ func NewForTesting(t *testing.T) (*TestDB, func()) {
 	}
 	configureTestDB(db)
 
-	st, err := store.Open(testDSN, dialect)
-	if err != nil {
-		_ = db.Close()
-		dropDatabase(admin, dbName, dialect)
-		_ = admin.Close()
-		cleanupContainer(ownsContainer, containerName)
-		t.Fatalf("open store for schema: %v", err)
-	}
-	if err := st.ApplySchema(context.Background()); err != nil {
-		_ = st.Close()
+	if err := applyTestSchema(context.Background(), db, testDSN, dialect); err != nil {
 		_ = db.Close()
 		dropDatabase(admin, dbName, dialect)
 		_ = admin.Close()
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("apply schema: %v", err)
 	}
-	_ = st.Close()
 
 	tdb := &TestDB{
 		DB:       db,
@@ -459,21 +452,12 @@ func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 	}
 	configureTestDB(db)
 
-	st, err := store.Open(testDSN, p.dialect)
-	if err != nil {
-		_ = db.Close()
-		dropDatabase(admin, dbName, p.dialect)
-		_ = admin.Close()
-		t.Fatalf("testdb: open store for schema: %v", err)
-	}
-	if err := st.ApplySchema(context.Background()); err != nil {
-		_ = st.Close()
+	if err := applyTestSchema(context.Background(), db, testDSN, p.dialect); err != nil {
 		_ = db.Close()
 		dropDatabase(admin, dbName, p.dialect)
 		_ = admin.Close()
 		t.Fatalf("testdb: apply schema: %v", err)
 	}
-	_ = st.Close()
 
 	cleanup := func() {
 		_ = db.Close()
@@ -486,4 +470,27 @@ func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 
 func driverName(dialect store.Dialect) string {
 	return store.DriverName(dialect)
+}
+
+func applyTestSchema(ctx context.Context, db *sql.DB, dsn string, dialect store.Dialect) error {
+	if dialect == store.DialectPostgres {
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("set postgres goose dialect: %w", err)
+		}
+		if err := goose.UpContext(ctx, db, postgresMigrationsDir()); err != nil {
+			return fmt.Errorf("apply postgres migrations: %w", err)
+		}
+		return nil
+	}
+	st, err := store.Open(dsn, dialect)
+	if err != nil {
+		return fmt.Errorf("open store for schema: %w", err)
+	}
+	defer st.Close()
+	return st.ApplySchema(ctx)
+}
+
+func postgresMigrationsDir() string {
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../db/postgres/migrations"))
 }
