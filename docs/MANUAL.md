@@ -13,7 +13,7 @@ AI client / web UI
       |
       | MCP / HTTP
       v
-Chetter server + TiDB/MySQL
+Chetter server + TiDB/MySQL/PostgreSQL
       |
       | ConnectRPC claim, heartbeat, events
       v

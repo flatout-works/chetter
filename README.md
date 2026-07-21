@@ -49,7 +49,7 @@ See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and oper
 | `main.go` | Server entry point |
 | `internal/` | Config, store, service, webhook, web UI |
 | `cmd/` | `chetterctl` token management CLI |
-| `db/` | Migrations and sqlc queries |
+| `db/` | Migrations and sqlc query files (TiDB/MySQL under `db/migrations/`, PostgreSQL under `db/postgres/`) |
 | `proto/` | ConnectRPC service definitions (server ↔ runner) |
 | `runner/` | Containerized runner harness |
 | `web/` | SvelteKit web UI (Flowbite-Svelte) |

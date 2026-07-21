@@ -8,7 +8,7 @@ Repo-local guidance for OpenCode sessions working on Chetter.
 - **Runner** (`runner/`): The containerized agent harness. Separate Go module with its own `go.mod` and `Makefile`.
 - **Agent Base Image** (`runner/images/base/`): Harness CLIs (opencode, claude-code, codewhale, pi, codex), Node, gh, git, and shared runtime tools. Stack-specific variants inherit from this and live in chetter-config.
 - **CLI** (`cmd/chetterctl/`): Token management CLI.
-- **DB** (`db/`): Goose migrations and sqlc query files.
+- **DB** (`db/`): Goose migrations and sqlc query files (TiDB/MySQL under `db/migrations/`, PostgreSQL under `db/postgres/`).
 - **Proto** (`proto/`): ConnectRPC service between server and runner.
 
 Two binaries: `chetter` (server) and `chetterctl` (token CLI).
@@ -44,13 +44,15 @@ make docker-build-runner         # build runner daemon image (tight, no harnesse
 ## Testing
 
 - Unit tests: `go test ./internal/config/`, `go test ./internal/store/` — fast, no DB.
-- Integration tests: `go test ./internal/service/` — require a **real database** (TiDB or MySQL). The test harness (`internal/testdb`) auto-spins a Docker container if `CHETTER_TEST_DSN` is not set.
+- Integration tests: `go test ./internal/service/` — require a **real database** (TiDB, MySQL, or PostgreSQL). The test harness (`internal/testdb`) auto-spins a Docker container if `CHETTER_TEST_DSN` is not set.
 - To skip integration tests: `go test ./internal/config/ ./internal/store/`
 - To run with an existing TiDB: `CHETTER_TEST_DSN="root@tcp(127.0.0.1:4000)/?parseTime=true" go test ./...`
 - To run with an existing MySQL: `CHETTER_TEST_DSN="root:root@tcp(127.0.0.1:3306)/?parseTime=true" CHETTER_TEST_DB_DIALECT=mysql go test ./...`
+- To run with an existing PostgreSQL: `CHETTER_TEST_DSN="postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable" CHETTER_TEST_DB_DIALECT=postgres go test ./...`
 - To spin up a MySQL test container: `CHETTER_TEST_DB_DIALECT=mysql go test ./internal/service/...`
-- `CHETTER_TEST_LOCAL_TIDB` (host:port) is also supported as a fallback for TiDB. For MySQL, use `CHETTER_TEST_LOCAL_MYSQL`.
-- `CHETTER_TEST_DB_IMAGE` overrides the Docker image for either dialect.
+- To spin up a PostgreSQL test container: `CHETTER_TEST_DB_DIALECT=postgres go test ./internal/service/...`
+- `CHETTER_TEST_LOCAL_TIDB` (host:port) for TiDB, `CHETTER_TEST_LOCAL_MYSQL` for MySQL, or `CHETTER_TEST_LOCAL_POSTGRES` for PostgreSQL.
+- `CHETTER_TEST_DB_IMAGE` overrides the Docker image for all dialects.
 **CI note:** If Docker is unavailable, integration tests skip automatically with a message. Do not treat skips as failures.
 
 ## CI/CD
@@ -80,13 +82,13 @@ Reference example Dockerfiles are in `runner/images/examples/`.
 **Two sources of truth for schema:**
 
 1. **`internal/store/schema.go`** — `schemaStatements` + `ensureTaskMetadataColumns` / `ensureScheduleMetadataColumns` / `ensureRunnerMetadataColumns`. These run on every server startup via `ApplySchema()`. They provide **zero-downtime auto-migration** for new columns.
-2. **`db/migrations/*.sql`** — Used by Goose for explicit migrations and by **sqlc** to infer the schema for Go code generation.
+2. **`db/migrations/*.sql`** — Used by Goose for explicit migrations and by **sqlc** to infer the schema for Go code generation. PostgreSQL uses `db/postgres/migrations/` and `db/postgres/queries/`.
 
 **When adding a column:**
 1. Add it to the `CREATE TABLE` in `schema.go`.
 2. Add an `ensure*Columns` entry in `store.go` so existing deployments auto-migrate.
 3. Create a Goose migration in `db/migrations/` if the change needs to be tracked.
-4. Update the `.sql` query files in `db/queries/`.
+4. Update the `.sql` query files in `db/queries/` (or `db/postgres/queries/` for PostgreSQL).
 5. Run `make generate` to regenerate sqlc models.
 
 **Important:** sqlc reads all Goose migration files to build its schema. Migration `002_drop_nats_columns.sql` drops columns (`listen_subject`, `result_subject`) that no longer exist in the base `CREATE TABLE`. This would break sqlc **unless** those columns are also present in `001_create_chetter_core.sql` (they were added retroactively for sqlc compatibility).
@@ -161,7 +163,7 @@ Before committing, verify:
 
 ## Key Architecture Notes
 
-- **Database support**: Chetter runs on both TiDB and MySQL (including AWS Aurora MySQL). The dialect is auto-detected on startup or can be set explicitly via `CHETTER_DB_DIALECT`. The only dialect-specific feature is Full-Text Search: TiDB uses `FTS_MATCH_WORD` with `WITH PARSER MULTILINGUAL`; MySQL uses `MATCH ... AGAINST ... IN BOOLEAN MODE` with `WITH PARSER ngram`. Both fall back to `LIKE` if the FULLTEXT index is unavailable.
+- **Database support**: Chetter runs on TiDB, MySQL (including AWS Aurora MySQL), and PostgreSQL 16+. The dialect is auto-detected on startup or can be set explicitly via `CHETTER_DB_DIALECT`. The only dialect-specific feature is Full-Text Search: TiDB uses `FTS_MATCH_WORD` with `WITH PARSER MULTILINGUAL`; MySQL uses `MATCH ... AGAINST ... IN BOOLEAN MODE` with `WITH PARSER ngram`. Both fall back to `LIKE` if the FULLTEXT index is unavailable.
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.
 - **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
 - **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
@@ -178,8 +180,8 @@ Before committing, verify:
 Config is loaded from env vars in `internal/config/config.go`.
 
 Key env vars for local dev:
-- `DATABASE_DSN` — Database connection string (TiDB or MySQL).
-- `CHETTER_DB_DIALECT` — Override database dialect: `"tidb"` or `"mysql"`. If unset, auto-detected via `SELECT VERSION()`.
+- `DATABASE_DSN` — Database connection string (TiDB, MySQL, or PostgreSQL).
+- `CHETTER_DB_DIALECT` — Override database dialect: `"tidb"`, `"mysql"`, or `"postgres"`. If unset, auto-detected via `SELECT VERSION()` (TiDB/MySQL) or `postgres://`/`postgresql://` DSN prefix (PostgreSQL).
 - `CHETTER_MCP_AUTH_TOKEN` — Admin bearer token.
 - `DEFAULT_AGENT_IMAGE` — Default runner image.
 - `DEFAULT_TASK_TIMEOUT_SEC` — Task timeout (default 600).
@@ -188,7 +190,7 @@ Key env vars for local dev:
 ## Gotchas
 
 - `make generate` installs `buf` and `sqlc` into `bin/`. The first run may take a minute to download.
-- `internal/repository/` is **generated by sqlc** — do not edit by hand.
+- `internal/repository/` (TiDB/MySQL) and `internal/repositorypostgres/` (PostgreSQL) are **generated by sqlc** — do not edit by hand. The `internal/data/` package selects the correct repository at runtime based on dialect.
 - `gen/` is **generated by buf** — do not edit by hand.
 - The root `test` target does **not** run runner tests. Use `make check` for full coverage.
 - When adding MCP tools, update both `internal/service/tools.go` (Go handler) and the `.opencode/opencode.json` (client-side commands).
