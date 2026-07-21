@@ -20,6 +20,7 @@ import (
 	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
 )
 
@@ -155,6 +156,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			mcpEndpointNames := parseJSON[[]string](task.McpEndpoints, "task:"+task.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {
 				delete(protoTask.Env, "__recover_from")
@@ -171,7 +173,11 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			s.resolveTaskModel(ctx, protoTask)
-			s.resolveTaskDefinitions(ctx, protoTask)
+			agentEndpointNames := s.resolveTaskDefinitions(ctx, protoTask)
+			mcpEndpointNames = normalizeMcpEndpointNames(append(mcpEndpointNames, agentEndpointNames...))
+			if len(mcpEndpointNames) > 0 {
+				protoTask.McpEndpoints = s.resolveMcpEndpoints(ctx, mcpEndpointNames, task.TeamID.String)
+			}
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{Task: protoTask}), nil
 		}
 		if !errors.Is(err, errNoClaimableTask) {
@@ -241,9 +247,10 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderAuthHeader = resolved.ProviderAuthHeader
 }
 
-func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) {
+func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) []string {
+	var agentEndpointNames []string
 	if task == nil {
-		return
+		return agentEndpointNames
 	}
 	if task.Agent != "" {
 		var content string
@@ -254,6 +261,9 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 		).Scan(&content)
 		if err == nil {
 			task.AgentDefinition = content
+			if names, parseErr := definitions.AgentMcpEndpoints(content); parseErr == nil && len(names) > 0 {
+				agentEndpointNames = names
+			}
 		}
 	}
 	if len(task.Skills) > 0 {
@@ -262,6 +272,33 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 			task.SkillDefinitions = skillDefs
 		}
 	}
+	return agentEndpointNames
+}
+
+func (s *RunnerRPCService) resolveMcpEndpoints(ctx context.Context, names []string, teamID string) []*runnerv1.MCPEndpoint {
+	endpoints, err := loadMcpEndpoints(ctx, s.rawDB, s.dialect, names, teamID)
+	if err != nil {
+		slog.Warn("resolve mcp endpoints", "endpoints", names, "err", err)
+		out := make([]*runnerv1.MCPEndpoint, 0, len(names))
+		for _, name := range normalizeMcpEndpointNames(names) {
+			out = append(out, &runnerv1.MCPEndpoint{Name: name})
+		}
+		return out
+	}
+	out := make([]*runnerv1.MCPEndpoint, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		resolved := &runnerv1.MCPEndpoint{
+			Name:      endpoint.Name,
+			Transport: endpoint.Transport,
+			Url:       endpoint.URL,
+			Headers:   endpoint.Headers,
+		}
+		if endpoint.Auth != nil {
+			resolved.BearerTokenEnv = endpoint.Auth.TokenEnv
+		}
+		out = append(out, resolved)
+	}
+	return out
 }
 
 func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
