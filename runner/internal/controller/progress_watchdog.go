@@ -27,17 +27,19 @@ type progressWatchdog struct {
 	nudge        func(context.Context) error
 	report       func(string)
 	cancel       context.CancelFunc
+	isIdle       func() bool
 	done         chan struct{}
 	stopOnce     sync.Once
 }
 
-func startProgressWatchdog(ctx context.Context, cancel context.CancelFunc, nudge func(context.Context) error, report func(string)) *progressWatchdog {
+func startProgressWatchdog(ctx context.Context, cancel context.CancelFunc, nudge func(context.Context) error, report func(string), isIdle func() bool) *progressWatchdog {
 	watchdog := &progressWatchdog{
 		now:          time.Now,
 		lastProgress: time.Now(),
 		nudge:        nudge,
 		report:       report,
 		cancel:       cancel,
+		isIdle:       isIdle,
 		done:         make(chan struct{}),
 	}
 	go watchdog.run(ctx)
@@ -97,6 +99,9 @@ func (w *progressWatchdog) run(ctx context.Context) {
 func (w *progressWatchdog) check(now time.Time) (nudge, fail bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.isIdle != nil && w.isIdle() {
+		return false, false
+	}
 	if w.nudgedAt.IsZero() {
 		elapsed := now.Sub(w.lastProgress)
 		if elapsed < harnessProgressNudgeAfter {

@@ -55,3 +55,11 @@ type Harness interface {
 type SessionContinuable interface {
 	ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error
 }
+
+// CompletionAwareHarness is implemented by harnesses whose WatchEvents can
+// detect session completion via SSE events and signal it to the
+// polling-based completion detection in SendPrompt. This breaks the
+// single-point-of-failure in poll-only completion detection.
+type CompletionAwareHarness interface {
+	SetCompletionContext(sessionID string, idleCh <-chan struct{}, onIdle func())
+}

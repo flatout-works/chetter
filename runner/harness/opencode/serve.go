@@ -103,14 +103,14 @@ func createOpenCodeSession(ctx context.Context, baseURL, secret string) (string,
 	return result.ID, nil
 }
 
-func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
+func sendPromptAndWait(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration, idleCh <-chan struct{}) (string, error) {
 	payload := openCodePromptPayload(req, wsDir, promptWithSkillHints(req.Prompt, req.Skills))
 
 	if err := startAsyncPrompt(ctx, baseURL, sessionID, secret, payload); err != nil {
 		return "", err
 	}
 
-	if err := waitForSessionIdle(ctx, baseURL, sessionID, secret, timeout); err != nil {
+	if err := waitForSessionIdle(ctx, baseURL, sessionID, secret, timeout, idleCh); err != nil {
 		return "", err
 	}
 
@@ -194,25 +194,43 @@ func startAsyncPrompt(ctx context.Context, baseURL, sessionID, secret string, pa
 	return lastErr
 }
 
-func waitForSessionIdle(ctx context.Context, baseURL, sessionID, secret string, timeout time.Duration) error {
+const (
+	maxConsecutivePollErrors = 5
+)
+
+func waitForSessionIdle(ctx context.Context, baseURL, sessionID, secret string, timeout time.Duration, idleCh <-chan struct{}) error {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	consecutiveErrors := 0
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-idleCh:
+			slog.Info("session idle signal received from SSE events", "sessionID", sessionID)
+			return nil
 		case <-ticker.C:
 			if time.Now().After(deadline) {
 				return fmt.Errorf("session %s did not finish within %v", sessionID, timeout)
 			}
 			status, err := getSessionStatus(ctx, baseURL, sessionID, secret)
 			if err != nil {
-				slog.Warn("failed to poll session status", "sessionID", sessionID, "err", err)
+				consecutiveErrors++
+				slog.Warn("failed to poll session status", "sessionID", sessionID, "err", err, "consecutive", consecutiveErrors)
+				if consecutiveErrors >= maxConsecutivePollErrors {
+					slog.Info("treating session as idle after consecutive poll errors", "sessionID", sessionID, "errors", consecutiveErrors)
+					return nil
+				}
 				continue
 			}
-			if status == "idle" {
+			consecutiveErrors = 0
+			if status == "idle" || status == "completed" || status == "finished" || status == "done" {
+				if status != "idle" {
+					slog.Info("session status indicates completion", "sessionID", sessionID, "status", status)
+				}
 				return nil
 			}
 		}
@@ -325,7 +343,7 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 		return "", fmt.Errorf("POST /prompt_async /export: status %d: %s", resp.StatusCode, string(body))
 	}
 
-	if err := waitForSessionIdle(exportCtx, baseURL, sessionID, secret, 25*time.Second); err != nil {
+	if err := waitForSessionIdle(exportCtx, baseURL, sessionID, secret, 25*time.Second, nil); err != nil {
 		return "", fmt.Errorf("export wait: %w", err)
 	}
 

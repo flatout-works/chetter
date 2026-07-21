@@ -3,12 +3,18 @@ package opencode
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-type OpenCode struct{}
+type OpenCode struct {
+	mu     sync.Mutex
+	sessID string
+	idleCh <-chan struct{}
+	onIdle func()
+}
 
 func New() *OpenCode {
 	return &OpenCode{}
@@ -60,7 +66,10 @@ func (oc *OpenCode) CreateSession(ctx context.Context, baseURL, secret string) (
 }
 
 func (oc *OpenCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
-	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout)
+	oc.mu.Lock()
+	idleCh := oc.idleCh
+	oc.mu.Unlock()
+	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout, idleCh)
 }
 
 func (oc *OpenCode) ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error {
@@ -76,7 +85,11 @@ func (oc *OpenCode) ExportSession(ctx context.Context, baseURL, sessionID, secre
 }
 
 func (oc *OpenCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
-	watchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn)
+	oc.mu.Lock()
+	sessionID := oc.sessID
+	onIdle := oc.onIdle
+	oc.mu.Unlock()
+	watchEvents(ctx, taskID, baseURL, secret, publishFn, tokenFn, sessionID, onIdle)
 }
 
 func (oc *OpenCode) PipeOutput(taskID, stream string, reader io.Reader) {
@@ -93,4 +106,12 @@ func (oc *OpenCode) ResolvedModelID(req task.TaskRequest) string {
 
 func (oc *OpenCode) DockerConfigPath(wsDir string) string {
 	return wsDir + "/.opencode.json"
+}
+
+func (oc *OpenCode) SetCompletionContext(sessionID string, idleCh <-chan struct{}, onIdle func()) {
+	oc.mu.Lock()
+	defer oc.mu.Unlock()
+	oc.sessID = sessionID
+	oc.idleCh = idleCh
+	oc.onIdle = onIdle
 }
