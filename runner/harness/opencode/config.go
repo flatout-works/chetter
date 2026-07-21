@@ -17,6 +17,57 @@ import (
 
 const defaultMem9PluginSpec = "@mem9/opencode"
 
+// chetterMCPAllowedTools lists the Chetter MCP server tools that agents are
+// permitted to call when the chetter MCP server is injected.  This excludes
+// admin-only operations (trigger/token/team/user management, sync, event
+// callbacks, runner drain, queue clear) to limit blast radius.
+var chetterMCPAllowedTools = []string{
+	// Task lifecycle — read
+	"chetter_task_status",
+	"chetter_list_tasks",
+	"chetter_task_events",
+	"chetter_task_progress",
+	"chetter_task_latest_event",
+	"chetter_task_export",
+	"chetter_list_task_artifacts",
+	// Task lifecycle — write
+	"chetter_submit_task",
+	"chetter_recover_task",
+	"chetter_resume_agent_session",
+	// Agent sessions
+	"chetter_list_agent_sessions",
+	"chetter_agent_session_status",
+	// Fleet
+	"chetter_runner_health",
+	// Triggers — read
+	"chetter_list_triggers",
+	"chetter_list_trigger_runs",
+	// Definitions — read
+	"chetter_get_model_catalog",
+	"chetter_list_definition_sources",
+	"chetter_get_definition_source",
+	"chetter_list_definitions",
+	"chetter_get_definition",
+	"chetter_list_definition_proposals",
+	"chetter_get_definition_proposal",
+	// Definitions — write
+	"chetter_create_definition_proposal",
+	// GitHub artifacts
+	"chetter_create_issue",
+	"chetter_issue_comment",
+	"chetter_create_pr",
+	"chetter_pr_review",
+	// Audit & usage
+	"chetter_list_audit_events",
+	"chetter_usage_summary",
+	// Arcane vulnerability scanning
+	"chetter_arcane_scanner_status",
+	"chetter_arcane_environment_summary",
+	"chetter_arcane_list_images",
+	"chetter_arcane_image_summary",
+	"chetter_arcane_list_vulnerabilities",
+}
+
 func mem9Enabled() bool {
 	return strings.TrimSpace(os.Getenv("MEM9_API_KEY")) != ""
 }
@@ -193,6 +244,12 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		perms["mcp__runner-bridge__chetter_issue_comment"] = "allow"
 		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
 		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
+	}
+
+	if chetterMCPURL != "" {
+		for _, tool := range chetterMCPAllowedTools {
+			perms["mcp__chetter__"+tool] = "allow"
+		}
 	}
 
 	cfg["permission"] = perms

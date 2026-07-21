@@ -290,6 +290,25 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 	if headers["Authorization"] != "Bearer test-token" {
 		t.Errorf("unexpected auth header: %v", headers["Authorization"])
 	}
+
+	// Verify chetter MCP tool permissions are injected.
+	perms, ok := parsed["permission"].(map[string]any)
+	if !ok {
+		t.Fatal("expected 'permission' key in config")
+	}
+	if v := perms["mcp__chetter__chetter_list_tasks"]; v != "allow" {
+		t.Errorf("expected mcp__chetter__chetter_list_tasks permission 'allow', got %v", v)
+	}
+	if v := perms["mcp__chetter__chetter_task_export"]; v != "allow" {
+		t.Errorf("expected mcp__chetter__chetter_task_export permission 'allow', got %v", v)
+	}
+	if v := perms["mcp__chetter__chetter_create_definition_proposal"]; v != "allow" {
+		t.Errorf("expected mcp__chetter__chetter_create_definition_proposal permission 'allow', got %v", v)
+	}
+	// Admin-only tools should NOT be present.
+	if _, ok := perms["mcp__chetter__chetter_delete_token"]; ok {
+		t.Error("admin-only tool chetter_delete_token should not be in permissions")
+	}
 }
 
 func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {

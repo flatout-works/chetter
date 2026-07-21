@@ -160,8 +160,12 @@ func (r *Runner) Start(ctx context.Context) error {
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {
-				allowed = append(allowed, u.Host)
-				slog.Info("added chetter MCP domain to proxy allowlist", "host", u.Host)
+				allowHost := u.Hostname()
+				if allowHost == "" {
+					allowHost = u.Host
+				}
+				allowed = append(allowed, allowHost)
+				slog.Info("added chetter MCP domain to proxy allowlist", "host", allowHost)
 			}
 		}
 		// Allow dev containers to reach the runner's own MCP server via HTTP_PROXY.

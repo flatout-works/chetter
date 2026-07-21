@@ -715,8 +715,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	}
 
@@ -956,8 +956,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	}
 	for k, v := range h.Env("/workspace", secret, req) {
@@ -1334,8 +1334,8 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 			"-e", "http_proxy=http://"+runnerIP+":18080",
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
-			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp",
+			"-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local",
+			"-e", "no_proxy=localhost,127.0.0.1,0.0.0.0,.local",
 		)
 	} else {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
