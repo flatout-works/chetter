@@ -42,7 +42,7 @@ func loadMcpEndpoints(ctx context.Context, db *sql.DB, dialect store.Dialect, re
 	}
 
 	namePlaceholders := strings.Repeat(",?", len(names))[1:]
-	query := `SELECT name, content FROM definitions
+	query := `SELECT name, scope, content FROM definitions
 		WHERE definition_type = 'mcp_endpoint'
 		  AND active = true
 		  AND name IN (` + namePlaceholders + `)`
@@ -64,14 +64,15 @@ func loadMcpEndpoints(ctx context.Context, db *sql.DB, dialect store.Dialect, re
 	}
 	defer rows.Close()
 
-	byName := make(map[string]definitions.MCPEndpointDef, len(names))
+	type resolvedEndpoint struct {
+		scope    string
+		endpoint definitions.MCPEndpointDef
+	}
+	byName := make(map[string]resolvedEndpoint, len(names))
 	for rows.Next() {
-		var name, content string
-		if err := rows.Scan(&name, &content); err != nil {
+		var name, scope, content string
+		if err := rows.Scan(&name, &scope, &content); err != nil {
 			return nil, fmt.Errorf("scan mcp endpoint: %w", err)
-		}
-		if _, exists := byName[name]; exists {
-			return nil, fmt.Errorf("multiple active MCP endpoints named %q", name)
 		}
 		endpoint, err := definitions.ParseMCPEndpointYAML(content)
 		if err != nil {
@@ -80,7 +81,17 @@ func loadMcpEndpoints(ctx context.Context, db *sql.DB, dialect store.Dialect, re
 		if endpoint.Name != name {
 			return nil, fmt.Errorf("mcp endpoint %q contains mismatched name %q", name, endpoint.Name)
 		}
-		byName[name] = endpoint
+		if previous, exists := byName[name]; exists {
+			if previous.scope == "team" && scope == "global" {
+				continue
+			}
+			if previous.scope == "global" && scope == "team" {
+				byName[name] = resolvedEndpoint{scope: scope, endpoint: endpoint}
+				continue
+			}
+			return nil, fmt.Errorf("multiple active MCP endpoints named %q in scope %s", name, scope)
+		}
+		byName[name] = resolvedEndpoint{scope: scope, endpoint: endpoint}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read mcp endpoints: %w", err)
@@ -89,12 +100,12 @@ func loadMcpEndpoints(ctx context.Context, db *sql.DB, dialect store.Dialect, re
 	missing := make([]string, 0)
 	out := make([]definitions.MCPEndpointDef, 0, len(names))
 	for _, name := range names {
-		endpoint, ok := byName[name]
+		resolved, ok := byName[name]
 		if !ok {
 			missing = append(missing, name)
 			continue
 		}
-		out = append(out, endpoint)
+		out = append(out, resolved.endpoint)
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)

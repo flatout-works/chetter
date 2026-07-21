@@ -384,25 +384,25 @@ func ValidateDefinitionContent(definitionType, path, content string) error {
 			return fmt.Errorf("validate trigger definition %s: %w", path, err)
 		}
 	case DefinitionTypeMCPEndpoint:
-		profile, err := ParseMCPEndpointYAML(content)
+		endpoint, err := ParseMCPEndpointYAML(content)
 		if err != nil {
 			return fmt.Errorf("validate mcp endpoint definition %s: %w", path, err)
 		}
-		if profile.Name != stemName(path) {
-			return fmt.Errorf("validate mcp endpoint definition %s: endpoint name %q must match file name %q", path, profile.Name, stemName(path))
+		if endpoint.Name != stemName(path) {
+			return fmt.Errorf("validate mcp endpoint definition %s: endpoint name %q must match file name %q", path, endpoint.Name, stemName(path))
 		}
 	}
 	return nil
 }
 
 type agentFrontmatter struct {
-	Description any            `yaml:"description"`
-	Provider    any            `yaml:"provider"`
-	Model       any            `yaml:"model"`
-	Mode        any            `yaml:"mode"`
-	Identity    any            `yaml:"identity"`
-	McpEndpoints any           `yaml:"mcp_endpoints"`
-	Permission  map[string]any `yaml:"permission"`
+	Description  any            `yaml:"description"`
+	Provider     any            `yaml:"provider"`
+	Model        any            `yaml:"model"`
+	Mode         any            `yaml:"mode"`
+	Identity     any            `yaml:"identity"`
+	McpEndpoints any            `yaml:"mcp_endpoints"`
+	Permission   map[string]any `yaml:"permission"`
 }
 
 func ValidateAgentDefinition(content string) error {
@@ -748,11 +748,11 @@ type rawMCPEndpointAuthYAML struct {
 }
 
 type rawMCPEndpointYAML struct {
-	Name      string                   `yaml:"name"`
-	Transport string                   `yaml:"transport"`
-	URL       string                   `yaml:"url"`
-	Headers   map[string]string        `yaml:"headers"`
-	Auth      *rawMCPEndpointAuthYAML  `yaml:"auth"`
+	Name      string                  `yaml:"name"`
+	Transport string                  `yaml:"transport"`
+	URL       string                  `yaml:"url"`
+	Headers   map[string]string       `yaml:"headers"`
+	Auth      *rawMCPEndpointAuthYAML `yaml:"auth"`
 }
 
 func ParseMCPEndpointYAML(content string) (MCPEndpointDef, error) {

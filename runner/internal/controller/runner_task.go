@@ -369,7 +369,7 @@ func isManagedEnv(key string, req task.TaskRequest) bool {
 func validateEndpointTokenEnvironment(endpoints []task.MCPEndpoint) error {
 	for _, key := range endpointTokenEnvKeys(endpoints) {
 		if isHarnessControlEnv(key) {
-			return fmt.Errorf("runner environment variable %s is reserved by a harness", key)
+			return fmt.Errorf("MCP endpoint bearer_token_env %s conflicts with a reserved harness environment variable", key)
 		}
 		if value, ok := os.LookupEnv(key); !ok || value == "" {
 			return fmt.Errorf("runner environment variable %s is required", key)
