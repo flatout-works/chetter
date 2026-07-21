@@ -194,6 +194,7 @@ type ChetterTask struct {
 	SubmissionSource       string          `json:"submission_source"`
 	SearchText             sql.NullString  `json:"search_text"`
 	GitIdentityID          sql.NullString  `json:"git_identity_id"`
+	McpEndpoints           json.RawMessage `json:"mcp_endpoints"`
 }
 
 type ChetterTaskArtifact struct {

@@ -194,6 +194,7 @@ type ChetterTask struct {
 	TotalReasoningTokens   int64           `json:"total_reasoning_tokens"`
 	CostCents              int64           `json:"cost_cents"`
 	GitIdentityID          sql.NullString  `json:"git_identity_id"`
+	McpEndpoints           json.RawMessage `json:"mcp_endpoints"`
 }
 
 type ChetterTaskArtifact struct {

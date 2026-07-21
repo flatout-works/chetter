@@ -45,6 +45,7 @@ message Task {
   string trigger_type = 25;
   string submission_source = 26;
   string git_identity_id = 27;
+  repeated string mcp_endpoints = 28;
 }
 
 message AgentSession {
@@ -281,6 +282,7 @@ message SubmitTaskRequest {
   string session_mode = 13;
   string pause_reason = 14;
   int32 ttl_hours = 15;
+  repeated string mcp_endpoints = 16;
 }
 
 message SubmitTaskResponse {

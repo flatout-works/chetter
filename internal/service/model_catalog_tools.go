@@ -73,7 +73,7 @@ type SyncDefinitionSourceOutput struct {
 }
 
 type ListDefinitionsInput struct {
-	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template, mcp_endpoint"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Optional definition source ID filter"`
 }
 
@@ -82,7 +82,7 @@ type ListDefinitionsOutput struct {
 }
 
 type GetDefinitionInput struct {
-	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template"`
+	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template, mcp_endpoint"`
 	Name           string `json:"name" jsonschema:"Definition name"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
 	Scope          string `json:"scope,omitempty" jsonschema:"Optional scope filter: global, team, repo. If omitted, returns the highest-priority match."`
