@@ -130,7 +130,7 @@ Host-side command and deployment tools such as `workspace_bash`, `git_*`, `fetch
 Chetter supports:
 
 - Admin token auth for global access.
-- Team tokens stored hashed in TiDB.
+- Team tokens stored hashed in the configured database.
 - Automatic `team_id` stamping for tasks, triggers, schedule runs, and sessions.
 - Team-scoped reads for non-admin tokens.
 

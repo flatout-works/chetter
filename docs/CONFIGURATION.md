@@ -5,7 +5,7 @@ triggers, and reusable task templates are configuration that benefit from pull
 request review, diffs, rollback, blame, and branch-based experimentation.
 
 The recommended model is Git as the authoritative definition registry, with
-TiDB as the parsed runtime index and historical cache.
+the database as the parsed runtime index and historical cache.
 
 ## Goals
 
@@ -16,11 +16,11 @@ TiDB as the parsed runtime index and historical cache.
 - Let agents analyze previous task exports and propose improvements as pull
   requests instead of silently changing production behavior.
 - Keep runtime lookups fast and resilient by materializing definitions into
-  TiDB after validation.
+  the database after validation.
 
 ## Non-Goals
 
-- Do not make TiDB the only source of truth for definitions.
+- Do not make the database the only source of truth for definitions.
 - Do not require every task run to fetch live files from Git.
 - Do not allow meta-improvement agents to bypass review for agent or skill
   definition changes.
@@ -71,7 +71,7 @@ global: agents/pr-reviewer.md
 
 ## Runtime Model
 
-Git is authoritative. TiDB stores a validated, parsed, active view for runtime
+Git is authoritative. The database stores a validated, parsed, active view for runtime
 lookup and historical analysis.
 
 Suggested tables:
@@ -138,7 +138,7 @@ Human or outside changes:
 1. Open PR against the definitions repo.
 2. Review and merge.
 3. Chetter detects the new commit through periodic sync, a manual sync, or a webhook.
-4. Chetter validates and materializes definitions into TiDB.
+4. Chetter validates and materializes definitions into the database.
 5. Future tasks use the new definitions.
 ```
 
@@ -204,7 +204,7 @@ triggers. These tools make the model explicit and usable from any MCP client.
 ## Model Catalog
 
 Chetter keeps provider and model definitions in a generic YAML catalog that
-lives in a Git definitions repo. The server syncs it into TiDB and resolves
+lives in a Git definitions repo. The server syncs it into the database and resolves
 the harness-specific provider/model before a runner receives a task.
 
 Runners do not receive or parse the full catalog. Claimed tasks contain the
