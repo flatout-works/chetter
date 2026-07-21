@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 func TestGenerateConfigDeniesInteractiveQuestions(t *testing.T) {
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "", "", "", false); err != nil {
+	if err := GenerateConfig(wsDir, "", "", "", task.TaskRequest{}, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 

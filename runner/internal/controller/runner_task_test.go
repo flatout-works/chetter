@@ -113,12 +113,18 @@ func TestProviderCredentialEnvUnsetVarReturnsNil(t *testing.T) {
 }
 
 func TestManagedEnvRejectsTaskProviderCredential(t *testing.T) {
-	req := task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"}
+	req := task.TaskRequest{
+		ProviderAPIKeyEnv: "LITELLM_API_KEY",
+		McpEndpoints:      []task.MCPEndpoint{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}},
+	}
 	if !isManagedEnv("LITELLM_API_KEY", req) {
 		t.Fatal("catalog-selected provider credential should be runner-managed")
 	}
 	if !isManagedEnv("OPENAI_API_KEY", req) {
 		t.Fatal("existing runner credential should remain runner-managed")
+	}
+	if !isManagedEnv("CONTEXT_MCP_TOKEN", req) {
+		t.Fatal("MCP endpoint token should be runner-managed")
 	}
 	if isManagedEnv("CUSTOM_ENV", req) {
 		t.Fatal("unrelated task environment should be allowed")
@@ -737,6 +743,30 @@ func TestProtoTaskToRequest_EmptyHarness(t *testing.T) {
 	})
 	if req.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", req.Harness)
+	}
+}
+
+func TestProtoTaskToRequest_MapsMcpEndpoints(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{McpEndpoints: []*runnerv1.MCPEndpoint{{
+		Name: "context", Url: "https://mcp.example.com/mcp", BearerTokenEnv: "CONTEXT_MCP_TOKEN",
+	}}})
+	if len(req.McpEndpoints) != 1 || req.McpEndpoints[0].BearerTokenEnv != "CONTEXT_MCP_TOKEN" {
+		t.Fatalf("unexpected MCP endpoints: %#v", req.McpEndpoints)
+	}
+}
+
+func TestValidateEndpointTokenEnvironment(t *testing.T) {
+	endpoints := []task.MCPEndpoint{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}}
+	t.Setenv("CONTEXT_MCP_TOKEN", "")
+	if err := validateEndpointTokenEnvironment(endpoints); err == nil {
+		t.Fatal("expected missing endpoint token environment to fail")
+	}
+	t.Setenv("CONTEXT_MCP_TOKEN", "runner-secret")
+	if err := validateEndpointTokenEnvironment(endpoints); err != nil {
+		t.Fatalf("expected configured endpoint token environment: %v", err)
+	}
+	if err := validateEndpointTokenEnvironment([]task.MCPEndpoint{{BearerTokenEnv: "DEEPSEEK_MCP_CONFIG"}}); err == nil {
+		t.Fatal("expected harness control environment to be rejected")
 	}
 }
 

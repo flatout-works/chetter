@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -224,6 +225,17 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		slog.Info("injected chetter MCP into opencode config", "url", chetterMCPURL)
 	}
 
+	if len(req.McpEndpoints) > 0 {
+		mcpServers, _ := cfg["mcp"].(map[string]any)
+		if mcpServers == nil {
+			mcpServers = make(map[string]any)
+			cfg["mcp"] = mcpServers
+		}
+		if err := mcpconfig.AddOpenCodeServers(mcpServers, req.McpEndpoints); err != nil {
+			return err
+		}
+	}
+
 	perms := map[string]any{
 		"bash": "allow",
 		"read": "allow",
@@ -250,6 +262,10 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		for _, tool := range chetterMCPAllowedTools {
 			perms["mcp__chetter__"+tool] = "allow"
 		}
+	}
+
+	for _, endpoint := range req.McpEndpoints {
+		perms["mcp__"+endpoint.Name+"__*"] = "allow"
 	}
 
 	cfg["permission"] = perms

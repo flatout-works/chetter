@@ -65,6 +65,13 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	h := r.harnessFor(req.Harness)
 
+	if err := validateEndpointTokenEnvironment(req.McpEndpoints); err != nil {
+		message := fmt.Sprintf("prepare MCP endpoints: %v", err)
+		r.publishStatusForRequest(req, "error", message, nil)
+		r.publishActivityEvent("agent", "Task Failed", message, "failed", message, time.Since(session.StartedAt).Milliseconds())
+		return
+	}
+
 	if req.ResumeWorkspacePath != "" {
 		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
 		if err != nil {
@@ -161,7 +168,11 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	mcpURL := runnerMCPURL(r, mcpServer)
 
 	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
-		slog.Warn("harness config warning", "taskID", req.TaskID, "err", err)
+		message := fmt.Sprintf("generate harness config: %v", err)
+		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
+		r.publishStatusForRequest(req, "error", message, nil)
+		r.publishActivityEvent("agent", "Task Failed", message, "failed", message, time.Since(session.StartedAt).Milliseconds())
+		return
 	}
 
 	if req.AgentImage == "" {
@@ -344,7 +355,82 @@ func isManagedEnv(key string, req task.TaskRequest) bool {
 		return true
 	}
 	credKey := strings.TrimSpace(req.ProviderAPIKeyEnv)
-	return credKey != "" && key == credKey
+	if credKey != "" && key == credKey {
+		return true
+	}
+	for _, endpointKey := range endpointTokenEnvKeys(req.McpEndpoints) {
+		if key == endpointKey {
+			return true
+		}
+	}
+	return false
+}
+
+func validateEndpointTokenEnvironment(endpoints []task.MCPEndpoint) error {
+	for _, key := range endpointTokenEnvKeys(endpoints) {
+		if isHarnessControlEnv(key) {
+			return fmt.Errorf("runner environment variable %s is reserved by a harness", key)
+		}
+		if value, ok := os.LookupEnv(key); !ok || value == "" {
+			return fmt.Errorf("runner environment variable %s is required", key)
+		}
+	}
+	return nil
+}
+
+func endpointTokenEnvKeys(endpoints []task.MCPEndpoint) []string {
+	keys := make([]string, 0, len(endpoints))
+	seen := make(map[string]struct{}, len(endpoints))
+	for _, endpoint := range endpoints {
+		key := strings.TrimSpace(endpoint.BearerTokenEnv)
+		if key == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func isHarnessControlEnv(key string) bool {
+	switch key {
+	case "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_ATTRIBUTION_HEADER", "CLAUDE_SERVE_PROXY_TOKEN",
+		"CODEWHALE_CONFIG_DIR", "CODEWHALE_OFFLINE", "CODEWHALE_RUNTIME_TOKEN", "CODEWHALE_PROVIDER", "CODEWHALE_MODEL", "DEEPSEEK_MCP_CONFIG",
+		"OPENCODE_CONFIG", "OPENCODE_SERVER_PASSWORD",
+		"PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR", "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendDockerManagedEnvironment(args []string, req task.TaskRequest) []string {
+	endpointKeys := endpointTokenEnvKeys(req.McpEndpoints)
+	selected := make(map[string]struct{}, len(endpointKeys))
+	for _, key := range endpointKeys {
+		selected[key] = struct{}{}
+	}
+	for _, key := range runnerOwnedEnvKeys() {
+		if _, isEndpointToken := selected[key]; isEndpointToken {
+			continue
+		}
+		if value := os.Getenv(key); value != "" {
+			args = append(args, "-e", key+"="+value)
+		}
+	}
+	providerKey := strings.TrimSpace(req.ProviderAPIKeyEnv)
+	if _, isEndpointToken := selected[providerKey]; providerKey != "" && !isEndpointToken && !isRunnerOwnedEnv(providerKey) {
+		if value := os.Getenv(providerKey); value != "" {
+			args = append(args, "-e", providerKey+"="+value)
+		}
+	}
+	for _, key := range endpointKeys {
+		args = append(args, "-e", key)
+	}
+	return args
 }
 
 func runnerOwnedEnvKeys() []string {
@@ -730,14 +816,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
-	for _, value := range providerCredentialEnv(req) {
-		dockerArgs = append(dockerArgs, "-e", value)
-	}
+	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
@@ -969,14 +1048,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
-	for _, value := range providerCredentialEnv(req) {
-		dockerArgs = append(dockerArgs, "-e", value)
-	}
+	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
@@ -1350,14 +1422,7 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	for _, key := range runnerOwnedEnvKeys() {
-		if val := os.Getenv(key); val != "" {
-			dockerArgs = append(dockerArgs, "-e", key+"="+val)
-		}
-	}
-	for _, value := range providerCredentialEnv(req) {
-		dockerArgs = append(dockerArgs, "-e", value)
-	}
+	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
 
 	if shouldPullAgentImage(req.AgentImage) {
 		dockerArgs = append(dockerArgs, "--pull=always")

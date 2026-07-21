@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -68,6 +69,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			}
 		}
 		mcpServers["chetter"] = server
+	}
+	if len(req.McpEndpoints) > 0 {
+		if err := mcpconfig.AddPiServers(mcpServers, req.McpEndpoints); err != nil {
+			return err
+		}
 	}
 	if len(mcpServers) > 0 {
 		mcpConfig := map[string]any{

@@ -23,12 +23,12 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	awsRegion := strings.TrimSpace(req.Env["__chetter_aws_region"])
 
 	if providerKind == "aws_bedrock" {
-		return generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken)
+		return generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 	}
-	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken)
+	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 }
 
-func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken string) error {
+func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
@@ -48,10 +48,11 @@ func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, che
 	b.WriteString("wire_api = \"responses\"\n\n")
 	writeMCPServer(&b, "runner-bridge", runnerMCPURL, "")
 	writeMCPServer(&b, "chetter", chetterMCPURL, chetterMCPToken)
+	writeEndpointMCPServers(&b, endpoints)
 	return os.WriteFile(codexDir+"/config.toml", []byte(b.String()), 0600)
 }
 
-func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken string) error {
+func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
 	if baseURL == "" {
 		baseURL = "https://bedrock-runtime.us-east-1.amazonaws.com"
 	}
@@ -75,6 +76,7 @@ func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsR
 	b.WriteByte('\n')
 	writeMCPServer(&b, "runner-bridge", runnerMCPURL, "")
 	writeMCPServer(&b, "chetter", chetterMCPURL, chetterMCPToken)
+	writeEndpointMCPServers(&b, endpoints)
 	return os.WriteFile(codexDir+"/config.toml", []byte(b.String()), 0600)
 }
 
@@ -89,6 +91,23 @@ func writeMCPServer(b *strings.Builder, name, url, token string) {
 		fmt.Fprintf(b, "http_headers = { Authorization = %s }\n", tomlString("Bearer "+token))
 	}
 	b.WriteByte('\n')
+}
+
+func writeEndpointMCPServers(b *strings.Builder, endpoints []task.MCPEndpoint) {
+	for _, endpoint := range endpoints {
+		if strings.TrimSpace(endpoint.URL) == "" {
+			continue
+		}
+		fmt.Fprintf(b, "[mcp_servers.%s]\n", endpoint.Name)
+		fmt.Fprintf(b, "url = %s\n", tomlString(endpoint.URL))
+		b.WriteString("default_tools_approval_mode = \"approve\"\n")
+		if endpoint.BearerTokenEnv != "" {
+			if token := os.Getenv(endpoint.BearerTokenEnv); token != "" {
+				fmt.Fprintf(b, "http_headers = { Authorization = %s }\n", tomlString("Bearer "+token))
+			}
+		}
+		b.WriteByte('\n')
+	}
 }
 
 func tomlString(value string) string { return strconv.Quote(value) }

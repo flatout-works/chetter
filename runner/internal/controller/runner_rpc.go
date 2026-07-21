@@ -110,7 +110,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 	if timeoutSec == 0 {
 		timeoutSec = defaultTaskTimeoutSec
 	}
-	return task.TaskRequest{
+	req := task.TaskRequest{
 		TaskID:                 t.TaskId,
 		AgentImage:             t.AgentImage,
 		Prompt:                 t.Prompt,
@@ -142,6 +142,19 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		GitAuthorName:          t.GitAuthorName,
 		GitAuthorEmail:         t.GitAuthorEmail,
 	}
+	for _, endpoint := range t.McpEndpoints {
+		if endpoint == nil {
+			continue
+		}
+		req.McpEndpoints = append(req.McpEndpoints, task.MCPEndpoint{
+			Name:           endpoint.Name,
+			Transport:      endpoint.Transport,
+			URL:            endpoint.Url,
+			Headers:        endpoint.Headers,
+			BearerTokenEnv: endpoint.BearerTokenEnv,
+		})
+	}
+	return req
 }
 
 func (r *Runner) reportTaskResponse(resp task.TaskResponse) {
