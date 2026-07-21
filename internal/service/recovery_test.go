@@ -10,19 +10,20 @@ import (
 )
 
 func TestRecoveryTaskRequestPreservesExecutionConfiguration(t *testing.T) {
+	mcpEndpoints := json.RawMessage(`["context"]`)
 	original := repository.ChetterTask{
-		TeamID:      sql.NullString{String: "team_1", Valid: true},
-		GitUrl:      sql.NullString{String: "https://github.com/acme/repo", Valid: true},
-		GitRef:      sql.NullString{String: "feature", Valid: true},
-		AgentImage:  sql.NullString{String: "agent:latest", Valid: true},
-		Agent:       sql.NullString{String: "reviewer", Valid: true},
-		ProviderID:  sql.NullString{String: "synthetic", Valid: true},
-		ModelID:     sql.NullString{String: "model", Valid: true},
-		VariantID:   sql.NullString{String: "high", Valid: true},
-		Skills:      json.RawMessage(`["go","review"]`),
-		McpEndpoints: json.RawMessage(`["context"]`),
-		Env:         json.RawMessage(`{"__chetter_harness":"pi","SAFE":"value"}`),
-		TimeoutSec:  900,
+		TeamID:       sql.NullString{String: "team_1", Valid: true},
+		GitUrl:       sql.NullString{String: "https://github.com/acme/repo", Valid: true},
+		GitRef:       sql.NullString{String: "feature", Valid: true},
+		AgentImage:   sql.NullString{String: "agent:latest", Valid: true},
+		Agent:        sql.NullString{String: "reviewer", Valid: true},
+		ProviderID:   sql.NullString{String: "synthetic", Valid: true},
+		ModelID:      sql.NullString{String: "model", Valid: true},
+		VariantID:    sql.NullString{String: "high", Valid: true},
+		Skills:       json.RawMessage(`["go","review"]`),
+		McpEndpoints: &mcpEndpoints,
+		Env:          json.RawMessage(`{"__chetter_harness":"pi","SAFE":"value"}`),
+		TimeoutSec:   900,
 	}
 
 	req := recoveryTaskRequest(original, "task_original", "recovery prompt")

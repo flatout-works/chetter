@@ -156,7 +156,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
-			mcpEndpointNames := parseJSON[[]string](task.McpEndpoints, "task:"+task.ID+" mcp_endpoints")
+			mcpEndpointNames := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {
 				delete(protoTask.Env, "__recover_from")

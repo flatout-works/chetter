@@ -533,7 +533,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			SubmissionSource:       submissionSource,
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
-			McpEndpoints:           mcpEndpoints,
+			McpEndpoints:           nullableJSON(mcpEndpoints),
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
@@ -706,7 +706,7 @@ func recoveryTaskRequest(orig repository.ChetterTask, taskID, prompt string) Sub
 		VariantID:        orig.VariantID.String,
 		Harness:          harness,
 		Skills:           parseJSON[[]string](orig.Skills, "task:"+taskID+" skills"),
-		McpEndpoints:     parseJSON[[]string](orig.McpEndpoints, "task:"+taskID+" mcp_endpoints"),
+		McpEndpoints:     parseJSON[[]string](optionalJSON(orig.McpEndpoints), "task:"+taskID+" mcp_endpoints"),
 		Env:              env,
 		TimeoutSec:       int(orig.TimeoutSec),
 		SubmissionSource: "recovery",
@@ -813,7 +813,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
-			McpEndpoints:           mcpEndpoints,
+			McpEndpoints:           nullableJSON(mcpEndpoints),
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
@@ -914,7 +914,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
-	mcpEndpoints := parseJSON[[]string](task.McpEndpoints, "task:"+task.ID+" mcp_endpoints")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
@@ -944,7 +944,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		TriggerType:           task.TriggerType.String,
 		SubmissionSource:      task.SubmissionSource,
 		Skills:                skills,
-		McpEndpoints:           mcpEndpoints,
+		McpEndpoints:          mcpEndpoints,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,

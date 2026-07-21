@@ -273,31 +273,31 @@ VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL,
 `
 
 type InsertTaskParams struct {
-	ID                     string          `json:"id"`
-	TeamID                 sql.NullString  `json:"team_id"`
-	Prompt                 string          `json:"prompt"`
-	GitUrl                 sql.NullString  `json:"git_url"`
-	GitRef                 sql.NullString  `json:"git_ref"`
-	AgentImage             sql.NullString  `json:"agent_image"`
-	Agent                  sql.NullString  `json:"agent"`
-	ProviderID             sql.NullString  `json:"provider_id"`
-	ModelID                sql.NullString  `json:"model_id"`
-	VariantID              sql.NullString  `json:"variant_id"`
-	CommitAuthorName       sql.NullString  `json:"commit_author_name"`
-	CommitAuthorEmail      sql.NullString  `json:"commit_author_email"`
-	GitIdentityID          sql.NullString  `json:"git_identity_id"`
-	TriggerName            sql.NullString  `json:"trigger_name"`
-	TriggerType            sql.NullString  `json:"trigger_type"`
-	SubmissionSource       string          `json:"submission_source"`
-	CheckpointAfterSuccess bool            `json:"checkpoint_after_success"`
-	RequiredRunnerID       sql.NullString  `json:"required_runner_id"`
-	Skills                 json.RawMessage `json:"skills"`
-	McpEndpoints           json.RawMessage `json:"mcp_endpoints"`
-	Env                    json.RawMessage `json:"env"`
-	TimeoutSec             int32           `json:"timeout_sec"`
-	SearchText             sql.NullString  `json:"search_text"`
-	CreatedAt              time.Time       `json:"created_at"`
-	UpdatedAt              time.Time       `json:"updated_at"`
+	ID                     string           `json:"id"`
+	TeamID                 sql.NullString   `json:"team_id"`
+	Prompt                 string           `json:"prompt"`
+	GitUrl                 sql.NullString   `json:"git_url"`
+	GitRef                 sql.NullString   `json:"git_ref"`
+	AgentImage             sql.NullString   `json:"agent_image"`
+	Agent                  sql.NullString   `json:"agent"`
+	ProviderID             sql.NullString   `json:"provider_id"`
+	ModelID                sql.NullString   `json:"model_id"`
+	VariantID              sql.NullString   `json:"variant_id"`
+	CommitAuthorName       sql.NullString   `json:"commit_author_name"`
+	CommitAuthorEmail      sql.NullString   `json:"commit_author_email"`
+	GitIdentityID          sql.NullString   `json:"git_identity_id"`
+	TriggerName            sql.NullString   `json:"trigger_name"`
+	TriggerType            sql.NullString   `json:"trigger_type"`
+	SubmissionSource       string           `json:"submission_source"`
+	CheckpointAfterSuccess bool             `json:"checkpoint_after_success"`
+	RequiredRunnerID       sql.NullString   `json:"required_runner_id"`
+	Skills                 json.RawMessage  `json:"skills"`
+	McpEndpoints           *json.RawMessage `json:"mcp_endpoints"`
+	Env                    json.RawMessage  `json:"env"`
+	TimeoutSec             int32            `json:"timeout_sec"`
+	SearchText             sql.NullString   `json:"search_text"`
+	CreatedAt              time.Time        `json:"created_at"`
+	UpdatedAt              time.Time        `json:"updated_at"`
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {

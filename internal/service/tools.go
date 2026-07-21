@@ -16,24 +16,24 @@ import (
 
 // SubmitTaskInput is the input for chetter_submit_task.
 type SubmitTaskInput struct {
-	TeamID      string            `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
-	TeamName    string            `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
-	Prompt      string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
-	GitURL      string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
-	GitRef      string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
-	AgentImage  string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
-	Agent       string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
-	ProviderID  string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
-	ModelID     string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
-	VariantID   string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
-	Skills      []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
+	TeamID       string            `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
+	TeamName     string            `json:"team_name,omitempty" jsonschema:"Owning team name; alternative to team_id"`
+	Prompt       string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
+	GitURL       string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
+	GitRef       string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	AgentImage   string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
+	Agent        string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
+	ProviderID   string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
+	ModelID      string            `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
+	VariantID    string            `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
+	Skills       []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	McpEndpoints []string          `json:"mcp_endpoints,omitempty" jsonschema:"Global or team-scoped MCP endpoint names to mount"`
-	Env         map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
-	Harness     string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
-	TimeoutSec  int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
-	SessionMode string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
-	PauseReason string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
-	TTLHours    int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	Env          map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
+	Harness      string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
+	TimeoutSec   int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
+	SessionMode  string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
+	PauseReason  string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
+	TTLHours     int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 }
 
 // SubmitTaskOutput is the output for chetter_submit_task.
@@ -839,7 +839,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 
 func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
-	mcpEndpoints := parseJSON[[]string](task.McpEndpoints, "task:"+task.ID+" mcp_endpoints")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	return TaskToolRecord{
 		ID:                    task.ID,
@@ -1185,6 +1185,18 @@ func parseJSON[T any](raw json.RawMessage, context string) T {
 		slog.Warn("failed to parse JSON", "context", context, "err", err)
 	}
 	return result
+}
+
+func optionalJSON(raw *json.RawMessage) json.RawMessage {
+	if raw == nil {
+		return nil
+	}
+	return *raw
+}
+
+func nullableJSON(raw []byte) *json.RawMessage {
+	value := json.RawMessage(raw)
+	return &value
 }
 
 func mustMarshalJSON[T any](v T) []byte {
