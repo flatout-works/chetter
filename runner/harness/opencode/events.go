@@ -32,7 +32,7 @@ func pipeOutput(taskID, stream string, r io.Reader) {
 	}
 }
 
-func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), sessionID string, onIdle func()) {
 	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/event", nil)
 	if err != nil {
 		slog.Warn("opencode event request failed", "taskID", taskID, "err", err)
@@ -97,18 +97,28 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 						tokenFn(*usage)
 					}
 				}
-				switch typeName {
-				case "message.part.delta":
-					if text := extractOpenCodeDeltaText(props); text != "" {
-						textBuf.WriteString(text)
-						flush(false)
-					}
-				case "error", "session.error", "session.status":
-					detail := summarizeEvent(raw)
-					if detail != "" {
-						flush(true)
-						publishFn("running", "opencode: "+detail)
-					}
+			switch typeName {
+			case "message.part.delta":
+				if text := extractOpenCodeDeltaText(props); text != "" {
+					textBuf.WriteString(text)
+					flush(false)
+				}
+			case "session.status":
+				if onIdle != nil && isSessionIdleStatus(props, sessionID) {
+					slog.Info("session.status idle event received", "taskID", taskID, "sessionID", sessionID)
+					onIdle()
+				}
+				detail := summarizeEvent(raw)
+				if detail != "" {
+					flush(true)
+					publishFn("running", "opencode: "+detail)
+				}
+			case "error", "session.error":
+				detail := summarizeEvent(raw)
+				if detail != "" {
+					flush(true)
+					publishFn("running", "opencode: "+detail)
+				}
 				default:
 					detail := summarizeEvent(raw)
 					if detail != "" {
@@ -257,4 +267,34 @@ func floatToInt64(v any) int64 {
 	default:
 		return 0
 	}
+}
+
+// isSessionIdleStatus checks whether a session.status SSE event indicates the
+// session has transitioned to an idle/complete state. It handles several
+// possible property layouts defensively.
+func isSessionIdleStatus(props map[string]any, sessionID string) bool {
+	if props == nil {
+		return false
+	}
+	id, _ := props["sessionID"].(string)
+	if id == "" {
+		id, _ = props["id"].(string)
+	}
+	if id != "" && id != sessionID {
+		return false
+	}
+	statusType, _ := props["type"].(string)
+	if statusType == "" {
+		if status, ok := props["status"].(map[string]any); ok {
+			statusType, _ = status["type"].(string)
+		}
+	}
+	if statusType == "" {
+		statusType, _ = props["status"].(string)
+	}
+	switch statusType {
+	case "idle", "completed", "finished", "done":
+		return true
+	}
+	return false
 }

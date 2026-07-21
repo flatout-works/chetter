@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
@@ -196,6 +197,25 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID string) (*mcp.Ser
 
 func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
 	agentCtx, cancelAgent := context.WithCancel(ctx)
+
+	idleCh := make(chan struct{})
+	var idleOnce sync.Once
+	onIdle := func() {
+		idleOnce.Do(func() { close(idleCh) })
+	}
+	isIdle := func() bool {
+		select {
+		case <-idleCh:
+			return true
+		default:
+			return false
+		}
+	}
+
+	if aware, ok := h.(harness.CompletionAwareHarness); ok {
+		aware.SetCompletionContext(sessionID, idleCh, onIdle)
+	}
+
 	nudge := func(nudgeCtx context.Context) error {
 		continuable, ok := h.(harness.SessionContinuable)
 		if !ok {
@@ -205,7 +225,7 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, re
 	}
 	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
 		r.publishStatus(req.TaskID, "running", message, nil)
-	})
+	}, isIdle)
 	go h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		watchdog.record(message)
 		r.publishStatus(req.TaskID, status, message, nil)
