@@ -613,10 +613,15 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		if t.AgentImage != "" {
 			rc.AgentImage = t.AgentImage
 		}
-		if t.GitURL != "" {
+		// For PR review triggers, do not let the trigger's git_url/git_ref
+		// override the PR's head branch. The trigger's git_url and git_ref
+		// are for cron-style triggers that clone a fixed repo; PR reviews
+		// must always check out the PR's actual head branch so the agent
+		// sees the PR's code, not main.
+		if t.GitURL != "" && t.TriggerType != "pr_review" {
 			rc.HeadCloneURL = t.GitURL
 		}
-		if t.GitRef != "" {
+		if t.GitRef != "" && t.TriggerType != "pr_review" {
 			rc.HeadRef = t.GitRef
 		}
 		if len(t.Skills) > 0 {
