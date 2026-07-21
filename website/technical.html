@@ -37,8 +37,8 @@
           <p>This split keeps the control plane understandable and lets you scale execution by adding runner containers or Kubernetes workloads.</p>
         </div>
         <div class="map">
-          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, model catalog, definitions sync, audit log, and embedded SvelteKit UI.</p></article>
-          <article class="card"><small>Database</small><h3>TiDB / MySQL</h3><p>Stores tasks, leases, events, triggers, sessions, checkpoints, runners, teams, API tokens, definitions, audit events, artifacts, and searchable text.</p></article>
+          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, managed Git identities, model catalog, definitions sync, audit log, and embedded SvelteKit UI.</p></article>
+          <article class="card"><small>Database</small><h3>TiDB, MySQL &amp; PostgreSQL</h3><p>Stores tasks, leases, events, triggers, sessions, checkpoints, runners, teams, API tokens, git identities, definitions, audit events, artifacts, and searchable text.</p></article>
           <article class="card"><small>Runner</small><h3>Harness controller</h3><p>Claims work, prepares a workspace, starts the chosen harness, supervises timeouts, streams events, and cleans up containers and workspaces.</p></article>
           <article class="card"><small>Agent image</small><h3>Project runtime</h3><p>Language/tooling images inherit from the agent base and run OpenCode, Claude Code, Codex, Pi, or CodeWhale against the mounted workspace.</p></article>
         </div>
@@ -93,6 +93,8 @@
   "trigger_type": "cron",
   "agent_definition": "---\npermission:\n  edit: allow\n---\n...",
   "skill_definitions": { "skill-name": "tar.gz bytes" },
+  "git_author_name": "Chetter Agent",
+  "git_author_email": "agent@chetter.dev",
   "timeout_seconds": 7200,
   "attempt": 1
 }</code></pre>
