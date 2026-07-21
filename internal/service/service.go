@@ -40,6 +40,7 @@ type SubmitTaskRequest struct {
 	VariantID        string
 	Harness          string
 	Skills           []string
+	McpEndpoints     []string
 	Env              map[string]string
 	TimeoutSec       int
 	TriggerName      string
@@ -473,6 +474,19 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	endpointNames := normalizeMcpEndpointNames(in.McpEndpoints)
+	if len(endpointNames) > 0 {
+		if in.SessionMode == "resumable" {
+			return store.TaskRecord{}, fmt.Errorf("mcp_endpoints cannot be attached to resumable tasks")
+		}
+		if _, err := loadMcpEndpoints(ctx, s.rawDB, s.dialect, endpointNames, teamID); err != nil {
+			return store.TaskRecord{}, err
+		}
+	}
+	mcpEndpoints, err := json.Marshal(endpointNames)
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("marshal mcp_endpoints: %w", err)
+	}
 	taskEnv := sanitizeTaskEnv(in.Env)
 	if in.Harness != "" {
 		taskEnv["__chetter_harness"] = in.Harness
@@ -519,6 +533,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			SubmissionSource:       submissionSource,
 			CheckpointAfterSuccess: checkpointAfterSuccess,
 			Skills:                 skills,
+			McpEndpoints:           nullableJSON(mcpEndpoints),
 			Env:                    env,
 			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
@@ -638,11 +653,9 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	}
 
 	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
+	_ = skills
 	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
-	if env == nil {
-		env = map[string]string{}
-	}
-	env["__recover_from"] = taskID
+	_ = env
 
 	recoveryFileName := fmt.Sprintf("chetter_recovery_%s.md", taskID)
 	recoveryPrompt := fmt.Sprintf(
@@ -653,20 +666,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		recoveryFileName, orig.Prompt,
 	)
 
-	submitted, err := s.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:           recoveryPrompt,
-		GitURL:           orig.GitUrl.String,
-		GitRef:           orig.GitRef.String,
-		AgentImage:       orig.AgentImage.String,
-		Agent:            orig.Agent.String,
-		ProviderID:       orig.ProviderID.String,
-		ModelID:          orig.ModelID.String,
-		VariantID:        orig.VariantID.String,
-		Skills:           skills,
-		Env:              env,
-		TimeoutSec:       int(orig.TimeoutSec),
-		SubmissionSource: "recovery",
-	})
+	submitted, err := s.SubmitTask(ctx, recoveryTaskRequest(orig, taskID, recoveryPrompt))
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
 	}
@@ -681,6 +681,36 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	})
 
 	return s.GetTask(ctx, submitted.ID)
+}
+
+// recoveryTaskRequest preserves execution dependencies while starting a new
+// one-off task, so trigger and resumable-session lifecycle state is not copied.
+func recoveryTaskRequest(orig repository.ChetterTask, taskID, prompt string) SubmitTaskRequest {
+	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
+	if env == nil {
+		env = map[string]string{}
+	}
+	harness := env["__chetter_harness"]
+	delete(env, "__chetter_harness")
+	env["__recover_from"] = taskID
+
+	return SubmitTaskRequest{
+		TeamID:           orig.TeamID.String,
+		Prompt:           prompt,
+		GitURL:           orig.GitUrl.String,
+		GitRef:           orig.GitRef.String,
+		AgentImage:       orig.AgentImage.String,
+		Agent:            orig.Agent.String,
+		ProviderID:       orig.ProviderID.String,
+		ModelID:          orig.ModelID.String,
+		VariantID:        orig.VariantID.String,
+		Harness:          harness,
+		Skills:           parseJSON[[]string](orig.Skills, "task:"+taskID+" skills"),
+		McpEndpoints:     parseJSON[[]string](optionalJSON(orig.McpEndpoints), "task:"+taskID+" mcp_endpoints"),
+		Env:              env,
+		TimeoutSec:       int(orig.TimeoutSec),
+		SubmissionSource: "recovery",
+	}
 }
 
 // ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
@@ -758,6 +788,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	skills := mustMarshalJSON([]string{})
+	mcpEndpoints := mustMarshalJSON([]string{})
 	env := mustMarshalJSON(map[string]string{})
 
 	var task repository.ChetterTask
@@ -782,6 +813,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CheckpointAfterSuccess: true,
 			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			Skills:                 skills,
+			McpEndpoints:           nullableJSON(mcpEndpoints),
 			Env:                    env,
 			TimeoutSec:             int32(timeoutSec),
 			CreatedAt:              now,
@@ -882,6 +914,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 
 func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	var startedAt, endedAt *time.Time
 	if task.StartedAt.Valid {
@@ -911,6 +944,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		TriggerType:           task.TriggerType.String,
 		SubmissionSource:      task.SubmissionSource,
 		Skills:                skills,
+		McpEndpoints:          mcpEndpoints,
 		Env:                   env,
 		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,

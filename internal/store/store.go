@@ -97,6 +97,7 @@ type TaskRecord struct {
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	SubmissionSource      string            `json:"submission_source,omitempty"`
 	Skills                []string          `json:"skills"`
+	McpEndpoints          []string          `json:"mcp_endpoints"`
 	Env                   map[string]string `json:"env"`
 	TimeoutSec            int               `json:"timeout_sec"`
 	Summary               string            `json:"summary,omitempty"`
@@ -527,6 +528,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
 		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
 		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
+		{"mcp_endpoints", "ALTER TABLE chetter_tasks ADD COLUMN mcp_endpoints JSON NULL AFTER skills"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)

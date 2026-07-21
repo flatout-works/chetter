@@ -26,6 +26,7 @@ type TaskRequest struct {
 	ProviderAuthHeader     bool              `json:"provider_auth_header,omitempty"`
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
+	McpEndpoints           []MCPEndpoint     `json:"mcp_endpoints,omitempty"`
 	Harness                string            `json:"harness,omitempty"`
 	TimeoutSec             int               `json:"timeout_sec"`
 	MaxMemoryMB            int               `json:"max_memory_mb"`
@@ -41,6 +42,15 @@ type TaskRequest struct {
 	GitIdentityID          string            `json:"git_identity_id,omitempty"`
 	GitAuthorName          string            `json:"git_author_name,omitempty"`
 	GitAuthorEmail         string            `json:"git_author_email,omitempty"`
+}
+
+// MCPEndpoint describes a remote MCP server the agent should connect to.
+type MCPEndpoint struct {
+	Name           string            `json:"name"`
+	Transport      string            `json:"transport"`
+	URL            string            `json:"url"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	BearerTokenEnv string            `json:"bearer_token_env,omitempty"`
 }
 
 // TokenUsage tracks cumulative token consumption for a task.

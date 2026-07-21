@@ -159,7 +159,8 @@ Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by
 | `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
 | Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
 | Definitions repo `triggers/*.yaml` and scoped trigger paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
-| Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Plain Markdown without frontmatter is accepted. |
+| Definitions repo `mcp-endpoints/*.yaml` and scoped endpoint paths | `schemas/mcp-endpoint.schema.json` | Definitions sync parses with strict known-field checks and endpoint semantic validation. Bearer token values stay in runner environment variables. |
+| Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Frontmatter may include `mcp_endpoints`. Plain Markdown without frontmatter is accepted. |
 
 Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
 
@@ -241,10 +242,13 @@ chetter_mcp:
 model-catalog.yaml
 agents/...
 triggers/...
+mcp-endpoints/...
 global/agents/...
 global/triggers/...
+global/mcp-endpoints/...
 groups/<team-name>/agents/...
 groups/<team-name>/triggers/...
+groups/<team-name>/mcp-endpoints/...
 repos/<owner>/<repo>/agents/...
 repos/<owner>/<repo>/triggers/...
 ```
@@ -257,7 +261,8 @@ Supported YAML formats are:
 |---|---|---|
 | `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
 | `triggers/*.yaml` | `name` | Also supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
-| `agents/*.md` | `identity` | Also supported under scoped directories. YAML frontmatter must reference a server-managed Git identity by name; it may also include `description`, `provider`, `model`, `mode`, and `permission`. The Markdown body is the agent prompt. Identity credentials are never stored in the definitions repository. |
+| `mcp-endpoints/*.yaml` | `name`, `url` | Global or team-scoped HTTP or SSE endpoint. `auth.token_env` names a variable configured on every runner; static `headers` are persisted and must not contain secrets. |
+| `agents/*.md` | `identity` | Also supported under scoped directories. YAML frontmatter must reference a server-managed Git identity by name; it may also include `description`, `provider`, `model`, `mode`, `mcp_endpoints`, and `permission`. The Markdown body is the agent prompt. Identity credentials are never stored in the definitions repository. |
 
 ### Managed Git Identities
 
@@ -288,6 +293,86 @@ You are a focused implementation agent.
 ```
 
 Use `chetterctl identity set-default --team <team-name> --name <identity>` to set a team default. Admins can also create identities and select their defaults in the **Admin > Git Identities** UI or through the corresponding MCP tools. A task fails clearly when neither an agent identity nor an applicable default identity exists.
+
+### MCP Endpoints
+
+MCP endpoints let tasks connect to remote HTTP or SSE MCP servers during execution. An endpoint definition stores the URL, transport, optional non-secret static headers, and the name of a runner environment variable that holds the bearer token. The token value itself is never stored in the definitions repo, the task database, or the runner RPC payload — only the variable name travels through the system, and the runner imports the value at task time.
+
+Endpoint definitions are YAML files under `mcp-endpoints/` in the config repo:
+
+```text
+mcp-endpoints/context.yaml          # global endpoint
+global/mcp-endpoints/shared.yaml     # also global (explicit scope dir)
+groups/engineering/mcp-endpoints/team-only.yaml  # team-scoped
+```
+
+Endpoint name must match the file stem (e.g. `context.yaml` must define `name: context`). Names must start with a letter or number and contain only letters, numbers, dot, underscore, or dash. The names `runner-bridge` and `chetter` are reserved.
+
+Example endpoint definition:
+
+```yaml
+name: context
+transport: http
+url: https://mcp.example.com/mcp
+headers:
+  X-Tenant: engineering
+auth:
+  type: bearer
+  token_env: CONTEXT_MCP_TOKEN
+```
+
+Set `CONTEXT_MCP_TOKEN` on each runner deployment. Bearer authentication is represented by this variable name, never its value, in definitions, task data, and runner RPC. The runner imports the value into the selected task environment and passes it to the harness; the value does not appear in Docker arguments.
+
+For SSE transport, set `transport: sse`. Static `headers` are persisted verbatim and must not contain secrets; configure bearer authorization exclusively via `auth.token_env`.
+
+#### Scoping
+
+MCP endpoints support global and team scope:
+
+- **Global** endpoints (under `mcp-endpoints/` or `global/mcp-endpoints/`) are available to all tasks.
+- **Team** endpoints (under `groups/<team-name>/mcp-endpoints/`) are available only to tasks owned by that team.
+
+At claim time the server resolves requested endpoint names from both global and the task's team scope. If a name exists in both scopes, the team-scoped definition takes precedence.
+
+#### Attaching endpoints to tasks
+
+Attach endpoints to a task at submit time:
+
+```json
+{
+  "prompt": "Use the context MCP tools to inspect the service.",
+  "agent_image": "chetter-agent:golang",
+  "harness": "opencode",
+  "mcp_endpoints": ["context"]
+}
+```
+
+MCP endpoints cannot be attached to resumable tasks. The runner validates that each selected `token_env` variable is set in the runner environment before starting the agent; a missing variable fails the task with a clear error message. Task-provided environment variables with the same name as a selected token env are rejected — the runner-owned value always wins.
+
+#### Agent-declared endpoints
+
+Agent definitions can declare MCP endpoints in their YAML frontmatter:
+
+```markdown
+---
+identity: primary-bot
+mcp_endpoints:
+  - context
+  - github
+---
+
+You are a code review agent that uses context and GitHub MCP tools.
+```
+
+At claim time, the server reads the agent definition's frontmatter and merges the declared endpoint names with any task-level `mcp_endpoints`. This means an agent that depends on specific MCP tools will always have them available without the submitter needing to remember every endpoint name.
+
+#### Recovery
+
+`chetter_recover_task` preserves `mcp_endpoints` from the original task, so a recovered task has the same MCP tools available as the original.
+
+#### Local mode
+
+In local (non-Docker) execution, all runner environment variables are visible to every task process. MCP endpoint tokens from other teams are visible in local mode. Use Docker/gVisor mode for multi-team isolation. Local mode is intended for single-trust development environments only.
 
 Example trigger definition:
 
@@ -323,6 +408,17 @@ Example input:
   "agent_image": "chetter-agent:golang",
   "harness": "opencode",
   "timeout_sec": 1800
+}
+```
+
+An admin can attach MCP endpoints to a task:
+
+```json
+{
+  "prompt": "Use the context MCP tools to inspect the service.",
+  "agent_image": "chetter-agent:golang",
+  "harness": "opencode",
+  "mcp_endpoints": ["context"]
 }
 ```
 

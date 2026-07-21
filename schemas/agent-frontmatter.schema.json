@@ -14,6 +14,11 @@
       "type": "string",
       "description": "Server-managed Git identity reference. Credentials never belong in this file."
     },
+    "mcp_endpoints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "MCP endpoint names to mount for tasks using this agent."
+    },
     "permission": {
       "type": "object",
       "additionalProperties": { "type": "string" }

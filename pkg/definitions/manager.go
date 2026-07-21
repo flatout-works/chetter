@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,7 @@ const (
 	DefinitionTypeSkill        = "skill"
 	DefinitionTypeTrigger      = "trigger"
 	DefinitionTypeTaskTemplate = "task_template"
+	DefinitionTypeMCPEndpoint  = "mcp_endpoint"
 	DefinitionScopeGlobal      = "global"
 	DefinitionScopeTeam        = "team"
 	DefinitionScopeRepo        = "repo"
@@ -231,16 +233,38 @@ func (m *Manager) definitionRoots() ([]definitionRoot, error) {
 
 func (m *Manager) scanDefinitionsRoot(root definitionRoot, seen map[string]struct{}) ([]Definition, error) {
 	var out []Definition
-	patterns := []struct {
+	if root.scope == DefinitionScopeRepo {
+		for _, pattern := range []string{filepath.Join("mcp-endpoints", "*.yaml"), filepath.Join("mcp-endpoints", "*.yml")} {
+			matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, pattern))
+			if err != nil {
+				return nil, fmt.Errorf("scan scoped MCP endpoints: %w", err)
+			}
+			if len(matches) > 0 {
+				rel, relErr := filepath.Rel(m.cacheDir, matches[0])
+				if relErr != nil {
+					rel = matches[0]
+				}
+				return nil, fmt.Errorf("MCP endpoints are global or team scoped; repo-scoped endpoint %s is not supported", filepath.ToSlash(rel))
+			}
+		}
+	}
+	type definitionPattern struct {
 		definitionType string
 		pattern        string
 		nameFunc       func(string) string
-	}{
+	}
+	patterns := []definitionPattern{
 		{DefinitionTypeAgent, filepath.Join("agents", "*.md"), stemName},
 		{DefinitionTypeSkill, filepath.Join("skills", "*.md"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yaml"), stemName},
 		{DefinitionTypeTrigger, filepath.Join("triggers", "*.yml"), stemName},
 		{DefinitionTypeTaskTemplate, filepath.Join("task-templates", "*.md"), stemName},
+	}
+	if root.scope == DefinitionScopeGlobal || root.scope == DefinitionScopeTeam {
+		patterns = append(patterns,
+			definitionPattern{DefinitionTypeMCPEndpoint, filepath.Join("mcp-endpoints", "*.yaml"), stemName},
+			definitionPattern{DefinitionTypeMCPEndpoint, filepath.Join("mcp-endpoints", "*.yml"), stemName},
+		)
 	}
 	for _, p := range patterns {
 		matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, p.pattern))
@@ -359,17 +383,26 @@ func ValidateDefinitionContent(definitionType, path, content string) error {
 		if _, err := ParseTriggerYAML(content); err != nil {
 			return fmt.Errorf("validate trigger definition %s: %w", path, err)
 		}
+	case DefinitionTypeMCPEndpoint:
+		endpoint, err := ParseMCPEndpointYAML(content)
+		if err != nil {
+			return fmt.Errorf("validate mcp endpoint definition %s: %w", path, err)
+		}
+		if endpoint.Name != stemName(path) {
+			return fmt.Errorf("validate mcp endpoint definition %s: endpoint name %q must match file name %q", path, endpoint.Name, stemName(path))
+		}
 	}
 	return nil
 }
 
 type agentFrontmatter struct {
-	Description any            `yaml:"description"`
-	Provider    any            `yaml:"provider"`
-	Model       any            `yaml:"model"`
-	Mode        any            `yaml:"mode"`
-	Identity    any            `yaml:"identity"`
-	Permission  map[string]any `yaml:"permission"`
+	Description  any            `yaml:"description"`
+	Provider     any            `yaml:"provider"`
+	Model        any            `yaml:"model"`
+	Mode         any            `yaml:"mode"`
+	Identity     any            `yaml:"identity"`
+	McpEndpoints any            `yaml:"mcp_endpoints"`
+	Permission   map[string]any `yaml:"permission"`
 }
 
 func ValidateAgentDefinition(content string) error {
@@ -419,6 +452,19 @@ func ValidateAgentDefinition(content string) error {
 			}
 		}
 	}
+	if fm.McpEndpoints != nil {
+		switch v := fm.McpEndpoints.(type) {
+		case []any:
+			for _, item := range v {
+				if _, ok := item.(string); !ok {
+					return fmt.Errorf("frontmatter field %q must be a list of strings", "mcp_endpoints")
+				}
+			}
+		case []string:
+		default:
+			return fmt.Errorf("frontmatter field %q must be a list of strings", "mcp_endpoints")
+		}
+	}
 	return nil
 }
 
@@ -438,6 +484,39 @@ func AgentIdentityName(content string) (string, error) {
 		return "", fmt.Errorf("parse frontmatter fields: %w", err)
 	}
 	return strings.TrimSpace(fm.Identity.(string)), nil
+}
+
+// AgentMcpEndpoints returns the MCP endpoint names declared by an agent
+// definition's frontmatter. Returns nil if the agent declares no endpoints.
+func AgentMcpEndpoints(content string) ([]string, error) {
+	if err := ValidateAgentDefinition(content); err != nil {
+		return nil, err
+	}
+	frontmatter, _, err := extractYAMLFrontmatter(content)
+	if err != nil {
+		return nil, err
+	}
+	var fm agentFrontmatter
+	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		return nil, fmt.Errorf("parse frontmatter fields: %w", err)
+	}
+	if fm.McpEndpoints == nil {
+		return nil, nil
+	}
+	switch v := fm.McpEndpoints.(type) {
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out, nil
+	case []string:
+		return v, nil
+	default:
+		return nil, nil
+	}
 }
 
 func extractYAMLFrontmatter(content string) (string, bool, error) {
@@ -648,4 +727,141 @@ func isSupportedHarness(harness string) bool {
 	default:
 		return false
 	}
+}
+
+type MCPEndpointAuth struct {
+	Type     string `json:"type"`
+	TokenEnv string `json:"token_env"`
+}
+
+type MCPEndpointDef struct {
+	Name      string            `json:"name"`
+	Transport string            `json:"transport"`
+	URL       string            `json:"url"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Auth      *MCPEndpointAuth  `json:"auth,omitempty"`
+}
+
+type rawMCPEndpointAuthYAML struct {
+	Type     string `yaml:"type"`
+	TokenEnv string `yaml:"token_env"`
+}
+
+type rawMCPEndpointYAML struct {
+	Name      string                  `yaml:"name"`
+	Transport string                  `yaml:"transport"`
+	URL       string                  `yaml:"url"`
+	Headers   map[string]string       `yaml:"headers"`
+	Auth      *rawMCPEndpointAuthYAML `yaml:"auth"`
+}
+
+func ParseMCPEndpointYAML(content string) (MCPEndpointDef, error) {
+	var raw rawMCPEndpointYAML
+	dec := yaml.NewDecoder(bytes.NewReader([]byte(content)))
+	dec.KnownFields(true)
+	if err := dec.Decode(&raw); err != nil {
+		return MCPEndpointDef{}, fmt.Errorf("parse mcp endpoint yaml: %w", err)
+	}
+
+	name := strings.TrimSpace(raw.Name)
+	if !validMCPEndpointName(name) {
+		return MCPEndpointDef{}, fmt.Errorf("mcp endpoint name must start with a letter or number, contain only letters, numbers, dot, underscore, or dash, and be at most 128 characters")
+	}
+	if reservedMCPEndpointName(name) {
+		return MCPEndpointDef{}, fmt.Errorf("mcp endpoint name %q is reserved", name)
+	}
+
+	rawURL := strings.TrimSpace(raw.URL)
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q url must be an absolute http or https URL", name)
+	}
+	if parsedURL.User != nil {
+		return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q url must not contain credentials", name)
+	}
+	transport := strings.ToLower(strings.TrimSpace(raw.Transport))
+	if transport == "" {
+		transport = "http"
+	}
+	if transport != "http" && transport != "sse" {
+		return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q transport must be http or sse", name)
+	}
+
+	headers := make(map[string]string, len(raw.Headers))
+	seenHeaders := make(map[string]string, len(raw.Headers))
+	for key, value := range raw.Headers {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q headers must have non-empty names and values", name)
+		}
+		lookup := strings.ToLower(key)
+		if lookup == "authorization" {
+			return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q must configure bearer authorization with auth.token_env", name)
+		}
+		if previous, ok := seenHeaders[lookup]; ok {
+			return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q has duplicate headers %q and %q", name, previous, key)
+		}
+		seenHeaders[lookup] = key
+		headers[key] = value
+	}
+
+	var auth *MCPEndpointAuth
+	if raw.Auth != nil {
+		authType := strings.ToLower(strings.TrimSpace(raw.Auth.Type))
+		if authType != "bearer" {
+			return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q auth.type must be bearer", name)
+		}
+		tokenEnv := strings.TrimSpace(raw.Auth.TokenEnv)
+		if !validEnvName(tokenEnv) {
+			return MCPEndpointDef{}, fmt.Errorf("mcp endpoint %q auth.token_env must be a valid environment variable name", name)
+		}
+		auth = &MCPEndpointAuth{Type: authType, TokenEnv: tokenEnv}
+	}
+
+	return MCPEndpointDef{
+		Name:      name,
+		Transport: transport,
+		URL:       rawURL,
+		Headers:   headers,
+		Auth:      auth,
+	}, nil
+}
+
+func validMCPEndpointName(name string) bool {
+	if name == "" || len(name) > 128 || !asciiAlphaNumeric(name[0]) {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func asciiAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9'
+}
+
+func reservedMCPEndpointName(name string) bool {
+	return strings.EqualFold(name, "runner-bridge") || strings.EqualFold(name, "chetter")
+}
+
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }

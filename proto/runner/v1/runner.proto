@@ -81,9 +81,18 @@ message Task {
   map<string, bytes> extra_files = 26;
   string provider_api = 27;
 	bool provider_auth_header = 28;
-	string git_identity_id = 29;
-	string git_author_name = 30;
-	string git_author_email = 31;
+  string git_identity_id = 29;
+  string git_author_name = 30;
+  string git_author_email = 31;
+  repeated MCPEndpoint mcp_endpoints = 32;
+}
+
+message MCPEndpoint {
+  string name = 1;
+  string transport = 2;
+  string url = 3;
+  map<string, string> headers = 4;
+  string bearer_token_env = 5;
 }
 
 message ClaimTaskResponse {

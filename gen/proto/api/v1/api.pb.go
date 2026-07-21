@@ -135,6 +135,7 @@ type Task struct {
 	TriggerType      string                 `protobuf:"bytes,25,opt,name=trigger_type,json=triggerType,proto3" json:"trigger_type,omitempty"`
 	SubmissionSource string                 `protobuf:"bytes,26,opt,name=submission_source,json=submissionSource,proto3" json:"submission_source,omitempty"`
 	GitIdentityId    string                 `protobuf:"bytes,27,opt,name=git_identity_id,json=gitIdentityId,proto3" json:"git_identity_id,omitempty"`
+	McpEndpoints     []string               `protobuf:"bytes,28,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -356,6 +357,13 @@ func (x *Task) GetGitIdentityId() string {
 		return x.GitIdentityId
 	}
 	return ""
+}
+
+func (x *Task) GetMcpEndpoints() []string {
+	if x != nil {
+		return x.McpEndpoints
+	}
+	return nil
 }
 
 type AgentSession struct {
@@ -2179,6 +2187,7 @@ type SubmitTaskRequest struct {
 	SessionMode   string                 `protobuf:"bytes,13,opt,name=session_mode,json=sessionMode,proto3" json:"session_mode,omitempty"`
 	PauseReason   string                 `protobuf:"bytes,14,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,15,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
+	McpEndpoints  []string               `protobuf:"bytes,16,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2316,6 +2325,13 @@ func (x *SubmitTaskRequest) GetTtlHours() int32 {
 		return x.TtlHours
 	}
 	return 0
+}
+
+func (x *SubmitTaskRequest) GetMcpEndpoints() []string {
+	if x != nil {
+		return x.McpEndpoints
+	}
+	return nil
 }
 
 type SubmitTaskResponse struct {
@@ -7727,7 +7743,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xac\a\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xd1\a\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -7764,7 +7780,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\ftrigger_name\x18\x18 \x01(\tR\vtriggerName\x12!\n" +
 	"\ftrigger_type\x18\x19 \x01(\tR\vtriggerType\x12+\n" +
 	"\x11submission_source\x18\x1a \x01(\tR\x10submissionSource\x12&\n" +
-	"\x0fgit_identity_id\x18\x1b \x01(\tR\rgitIdentityId\x1a6\n" +
+	"\x0fgit_identity_id\x18\x1b \x01(\tR\rgitIdentityId\x12#\n" +
+	"\rmcp_endpoints\x18\x1c \x03(\tR\fmcpEndpoints\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
@@ -8004,7 +8021,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\x12#\n" +
 	"\rdiscovered_at\x18\f \x01(\tR\fdiscoveredAt\x12)\n" +
-	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\"\x9c\x04\n" +
+	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\"\xc1\x04\n" +
 	"\x11SubmitTaskRequest\x12\x1f\n" +
 	"\x06prompt\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06prompt\x12\x17\n" +
 	"\agit_url\x18\x02 \x01(\tR\x06gitUrl\x12\x17\n" +
@@ -8025,7 +8042,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"timeoutSec\x12!\n" +
 	"\fsession_mode\x18\r \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x0e \x01(\tR\vpauseReason\x12\x1b\n" +
-	"\tttl_hours\x18\x0f \x01(\x05R\bttlHours\x1a6\n" +
+	"\tttl_hours\x18\x0f \x01(\x05R\bttlHours\x12#\n" +
+	"\rmcp_endpoints\x18\x10 \x03(\tR\fmcpEndpoints\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
