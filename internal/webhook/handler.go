@@ -313,12 +313,16 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 		return
 	}
 
-	// Gate fork and opened triggers on author write access.
+	// Gate fork and opened triggers on author write access. Skip the gate
+	// for the Chetter App's own bot login — its PRs are trusted and should
+	// proceed to trigger matching without a noisy author-gate denial.
 	if triggerAction == TriggerEventFork || triggerAction == TriggerEventOpened {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
-			return
+		if !h.isOwnBotLogin(ev.PullRequest.User.Login) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
+				return
+			}
 		}
 	}
 
@@ -461,8 +465,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	// Bot-comment filtering: skip comments from the Chetter App itself unless
 	// the trigger explicitly allows bot comments. Do this before the author
 	// write-access gate to avoid noisy audit-log entries for the bot.
-	appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
-	isBotComment := appLogin != "" && ev.Comment.User.Login == appLogin
+	isBotComment := h.isOwnBotLogin(ev.Comment.User.Login)
 	if isBotComment {
 		var botMatch []ReviewTrigger
 		for _, t := range matching {
@@ -801,6 +804,17 @@ func (h *Handler) logAudit(params AuditEventParams) {
 	if err := h.audit.LogAuditEvent(asyncCtx(10*time.Second), params); err != nil {
 		slog.Warn("webhook: log audit event", "err", err, "event_type", params.EventType)
 	}
+}
+
+// isOwnBotLogin returns true if the given username is the Chetter GitHub App's
+// own bot login (e.g. "chetterbot[bot]"). The app login is cached on first
+// call via GetAppLogin. Used to skip the author write-access gate for the
+// app's own PRs and comments, which are trusted and would otherwise produce
+// noisy webhook_author_gate_denied audit entries (the collaborators API does
+// not grant "write" to App bots — they get permissions through the installation).
+func (h *Handler) isOwnBotLogin(username string) bool {
+	appLogin, err := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
+	return err == nil && appLogin != "" && username == appLogin
 }
 
 // checkAuthorWriteAccess returns true if the user has write or admin access to
