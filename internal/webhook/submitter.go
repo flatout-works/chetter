@@ -68,11 +68,21 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	prompt := review.Prompt
 	if prompt == "" {
 		prompt = reviewPromptTemplate
-		prompt = replaceAll(prompt, "{{REPO}}", review.Repo)
-		prompt = replaceAll(prompt, "{{PR_NUMBER}}", fmt.Sprintf("%d", review.PRNumber))
-		prompt = replaceAll(prompt, "{{BASE_REF}}", review.BaseRef)
-		prompt = replaceAll(prompt, "{{HEAD_REF}}", review.HeadRef)
-		prompt = replaceAll(prompt, "{{TRIGGER}}", review.Trigger)
+	}
+	// Always substitute PR context variables, even when a custom trigger
+	// prompt is used. This ensures the agent knows which PR to review
+	// and has the repo/branch context regardless of the prompt source.
+	prompt = replaceAll(prompt, "{{REPO}}", review.Repo)
+	prompt = replaceAll(prompt, "{{PR_NUMBER}}", fmt.Sprintf("%d", review.PRNumber))
+	prompt = replaceAll(prompt, "{{BASE_REF}}", review.BaseRef)
+	prompt = replaceAll(prompt, "{{HEAD_REF}}", review.HeadRef)
+	prompt = replaceAll(prompt, "{{TRIGGER}}", review.Trigger)
+
+	// When a custom trigger prompt is used (not the built-in template),
+	// append the PR context block and review procedure so the agent always
+	// has the structured review instructions.
+	if review.Prompt != "" && review.Prompt != reviewPromptTemplate {
+		prompt = prompt + "\n\n" + prReviewContextBlock(review)
 	}
 
 	agentImage := review.AgentImage
@@ -191,4 +201,51 @@ Do not push directly to main. Do not merge PRs. Only review and post comments.
 // replaceAll is a simple string replacement helper.
 func replaceAll(s, old, new string) string {
 	return strings.ReplaceAll(s, old, new)
+}
+
+// prReviewContextBlock returns the PR context and review procedure that is
+// appended to custom trigger prompts. This ensures every PR review agent
+// receives the repo, PR number, review instructions, and posting guidance
+// regardless of what custom prompt the trigger configured.
+func prReviewContextBlock(review ReviewContext) string {
+	return fmt.Sprintf(`## PR Context
+
+- Repository: %s
+- PR number: %d
+- Base ref: %s
+- Head ref: %s
+- Trigger: %s
+
+Environment variables available to you:
+- PR_NUMBER — the PR to review
+- GITHUB_TOKEN — GitHub App installation token with PR read/write
+- GITHUB_REPO — repository (e.g., my-org/my-repo)
+- CHETTER_TASK_ID — Chetter task identifier
+
+## Procedure
+
+### 1. Understand the PR
+
+Read the PR description, linked issues, and commit messages:
+`+"```bash\n"+`gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,files,commits
+`+"```\n\n"+`Understand the intent before reviewing details.
+
+### 2. Review Changed Files
+
+List the changed files:
+`+"```bash\n"+`gh pr diff $PR_NUMBER --name-only
+`+"```\n\n"+`For each changed file:
+- Read the full file (not just the diff) to understand surrounding context
+- Check for correctness, security, performance, error handling, naming, concurrency, dead code, and test coverage
+
+### 3. Post Review
+
+Post a structured review using `+"`chetter_pr_review`"+` with `+"`task_id=$CHETTER_TASK_ID`"+`, `+"`repo=$GITHUB_REPO`"+`, and `+"`pr_number=$PR_NUMBER`"+`. Do not use `+"`gh pr review`"+` and do not manually add the Chetter footer; the tool adds the canonical footer and records audit/artifact metadata.
+
+The review body must include:
+- Overall assessment (approve / request-changes / comment)
+- Summary of findings grouped by category
+- Specific line-level suggestions where applicable
+Do not push directly to main. Do not merge PRs. Only review and post comments.
+`, review.Repo, review.PRNumber, review.BaseRef, review.HeadRef, review.Trigger)
 }

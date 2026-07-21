@@ -318,8 +318,18 @@ func TestBuildReviewTaskRequest_TriggerOverridesPromptAndImage(t *testing.T) {
 	}
 	req := buildReviewTaskRequest(review)
 
-	if req.Prompt != "Custom trigger-supplied prompt" {
-		t.Errorf("Prompt = %q, want trigger-supplied prompt", req.Prompt)
+	if !strings.HasPrefix(req.Prompt, "Custom trigger-supplied prompt") {
+		t.Errorf("Prompt = %q, want trigger-supplied prompt as prefix", req.Prompt)
+	}
+	// Custom prompts now get the PR context block appended.
+	if !strings.Contains(req.Prompt, "PR number: 9") {
+		t.Errorf("Prompt should contain PR context block with PR number 9, got: %q", req.Prompt)
+	}
+	if !strings.Contains(req.Prompt, "flatout-works/chetter") {
+		t.Errorf("Prompt should contain repo name, got: %q", req.Prompt)
+	}
+	if !strings.Contains(req.Prompt, "gh pr diff") {
+		t.Errorf("Prompt should contain review procedure with gh pr diff, got: %q", req.Prompt)
 	}
 	if req.AgentImage != "ghcr.io/custom/runner:v1" {
 		t.Errorf("AgentImage = %q, want trigger-supplied image", req.AgentImage)
@@ -367,5 +377,41 @@ func TestBuildReviewTaskRequest_FallsBackToTemplateWhenNoPrompt(t *testing.T) {
 	}
 	if req.AgentImage == "" {
 		t.Error("AgentImage should fall back to the default runner image")
+	}
+}
+
+// TestBuildReviewTaskRequest_CustomPromptGetsContextBlock verifies that a
+// custom trigger prompt still receives the PR context and review procedure,
+// so the agent knows which PR to review and how to post the review.
+func TestBuildReviewTaskRequest_CustomPromptGetsContextBlock(t *testing.T) {
+	review := ReviewContext{
+		Trigger:      "opened",
+		Repo:         "flatout-works/chetter",
+		PRNumber:     190,
+		BaseRef:      "main",
+		HeadRef:      "fix/runner-completion-detection",
+		HeadCloneURL: "https://github.com/flatout-works/chetter.git",
+		GitHubToken:  "t",
+		Prompt:       "You are doing a PR review for an opened PR.",
+		Agent:        "pr-reviewer",
+		ProviderID:   "opencode",
+		ModelID:      "deepseek-v4-flash-free",
+		TimeoutSec:   3600,
+	}
+	req := buildReviewTaskRequest(review)
+
+	if !strings.HasPrefix(req.Prompt, "You are doing a PR review for an opened PR.") {
+		t.Fatalf("Prompt should start with the custom trigger prompt, got: %q", req.Prompt[:80])
+	}
+	for _, want := range []string{
+		"PR number: 190",
+		"flatout-works/chetter",
+		"fix/runner-completion-detection",
+		"gh pr diff $PR_NUMBER",
+		"chetter_pr_review",
+	} {
+		if !strings.Contains(req.Prompt, want) {
+			t.Errorf("Prompt should contain %q, got prompt with %d chars", want, len(req.Prompt))
+		}
 	}
 }
