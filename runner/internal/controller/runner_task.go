@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -510,6 +511,34 @@ func gvisorHostAliases() []string {
 	return aliases
 }
 
+// chetterMCPHostAlias resolves the chetter MCP server hostname (e.g.
+// "chetter-mcp") to its Docker network IP and returns Docker --add-host
+// args so gVisor containers can reach it.  gVisor uses 8.8.8.8 DNS which
+// cannot resolve Docker service names; the static /etc/hosts entry
+// bypasses DNS entirely.
+func chetterMCPHostAlias(chetterMCPURL string) []string {
+	if chetterMCPURL == "" {
+		return nil
+	}
+	u, err := url.Parse(chetterMCPURL)
+	if err != nil || u.Hostname() == "" {
+		return nil
+	}
+	host := u.Hostname()
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		slog.Warn("resolve chetter MCP host for gVisor", "host", host, "err", err)
+		return nil
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			slog.Info("resolved chetter MCP host for gVisor", "host", host, "ip", v4.String())
+			return []string{"--add-host", host + ":" + v4.String()}
+		}
+	}
+	return nil
+}
+
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
 	env := os.Environ()
 	for k, v := range req.Env {
@@ -674,6 +703,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+		dockerArgs = append(dockerArgs, chetterMCPHostAlias(r.cfg.ChetterMCP.URL)...)
 	}
 	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
 		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
@@ -915,6 +945,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+		dockerArgs = append(dockerArgs, chetterMCPHostAlias(r.cfg.ChetterMCP.URL)...)
 	}
 	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
 		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
@@ -1288,7 +1319,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
+	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP, r.cfg.ChetterMCP.URL)
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -1297,7 +1328,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
+func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP, chetterMCPURL string) []string {
 	dockerArgs := []string{
 		"run", "--rm", "-i",
 		"--entrypoint", command[0],
@@ -1307,6 +1338,7 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
 		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+		dockerArgs = append(dockerArgs, chetterMCPHostAlias(chetterMCPURL)...)
 	}
 	dockerArgs = append(dockerArgs,
 		"-v", hostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
