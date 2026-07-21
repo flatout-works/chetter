@@ -135,6 +135,12 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 	if rows == 0 {
 		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
 	}
+	if err := s.repo.UpdateTriggerRunStatusByTask(ctx, repository.UpdateTriggerRunStatusByTaskParams{
+		Status: "cancelled",
+		TaskID: taskID,
+	}); err != nil {
+		slog.Warn("failed to update trigger run status on cancel", "task_id", taskID, "err", err)
+	}
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "task_cancelled",
 		SourceType: "api",

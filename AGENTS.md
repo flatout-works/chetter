@@ -85,13 +85,54 @@ Reference example Dockerfiles are in `runner/images/examples/`.
 2. **`db/migrations/*.sql`** — Used by Goose for explicit migrations and by **sqlc** to infer the schema for Go code generation. PostgreSQL uses `db/postgres/migrations/` and `db/postgres/queries/`.
 
 **When adding a column:**
-1. Add it to the `CREATE TABLE` in `schema.go`.
-2. Add an `ensure*Columns` entry in `store.go` so existing deployments auto-migrate.
-3. Create a Goose migration in `db/migrations/` if the change needs to be tracked.
-4. Update the `.sql` query files in `db/queries/` (or `db/postgres/queries/` for PostgreSQL).
-5. Run `make generate` to regenerate sqlc models.
+1. Add it to the `CREATE TABLE` in `schema.go` (MySQL/TiDB DDL).
+2. Add the same column to `internal/store/schema_postgres.go` if PostgreSQL needs a different type or syntax.
+3. Add an `ensure*Columns` entry in `store.go` so existing MySQL/TiDB deployments auto-migrate.
+4. Add a matching `ensure*Columns` entry for PostgreSQL in the same file if the auto-migration differs.
+5. Create a Goose migration in `db/migrations/` (MySQL) and `db/postgres/migrations/` (PostgreSQL) if the change needs to be tracked.
+6. Update the `.sql` query files in **both** `db/queries/` and `db/postgres/queries/`.
+7. Run `make generate` to regenerate sqlc models for both dialects.
 
-**Important:** sqlc reads all Goose migration files to build its schema. Migration `002_drop_nats_columns.sql` drops columns (`listen_subject`, `result_subject`) that no longer exist in the base `CREATE TABLE`. This would break sqlc **unless** those columns are also present in `001_create_chetter_core.sql` (they were added retroactively for sqlc compatibility).
+### Adding or Modifying SQL Queries (Dual-Dialect Workflow)
+
+Chetter supports TiDB/MySQL and PostgreSQL. **Every query must exist in both dialect files** with dialect-appropriate syntax. sqlc generates two separate Go packages from these files:
+
+| Dialect | Query file | Generated package | Placeholder style |
+|---|---|---|---|
+| MySQL/TiDB | `db/queries/*.sql` | `internal/repository/` | `?` |
+| PostgreSQL | `db/postgres/queries/*.sql` | `internal/repositorypostgres/` | `$1`, `$2` |
+
+The `internal/data/` package is a facade that selects the correct generated package at runtime based on the detected dialect. When you add a new query, you must also regenerate the facade:
+
+```bash
+make generate                          # runs sqlc for both dialects
+cd internal/data && go run ./cmd/genfacade   # regenerates the facade methods
+```
+
+**Dialect-specific syntax differences to watch for:**
+
+| Feature | MySQL/TiDB | PostgreSQL |
+|---|---|---|
+| Upsert | `INSERT ... ON DUPLICATE KEY UPDATE col = VALUES(col)` | `INSERT ... ON CONFLICT (...) DO UPDATE SET col = EXCLUDED.col` |
+| Ignore dups | `INSERT IGNORE INTO ...` | `INSERT ... ON CONFLICT (...) DO NOTHING` |
+| Named params | `sqlc.arg(name)` | `sqlc.arg(name)` |
+| Slice params | `sqlc.slice(names)` | `sqlc.slice(names)` or `ANY(sqlc.arg(names)::type[])` |
+| LIMIT/OFFSET | `LIMIT ? OFFSET ?` | `LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset)` |
+| JSON access | `config->>'$.key'` | `config->>'key'` |
+
+**Checklist for a new query:**
+1. Add the query to `db/queries/yourfile.sql` with MySQL syntax.
+2. Add the same-named query to `db/postgres/queries/yourfile.sql` with PostgreSQL syntax.
+3. Run `make generate`.
+4. Run `cd internal/data && go run ./cmd/genfacade` to add the facade method.
+5. Verify the method appears in `internal/data/queries_gen.go`.
+6. Build and test: `go build ./... && go test ./internal/config/ ./internal/store/`.
+
+**Common mistakes:**
+- Forgetting the PostgreSQL query file — the build will fail because the facade method calls a missing PostgreSQL function.
+- Using `INSERT IGNORE` in the PostgreSQL file — use `ON CONFLICT ... DO NOTHING` instead.
+- Using `VALUES(col)` in the PostgreSQL file — use `EXCLUDED.col` instead.
+- Forgetting to regenerate the facade after adding a query — the new method won't be callable through the `data.Repository` interface.
 
 ## Auth Model
 

@@ -111,7 +111,7 @@ UPDATE chetter_triggers SET last_run_at = $1, updated_at = $2 WHERE id = $3;
 -- name: InsertTriggerRun :exec
 INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (trigger_id, task_id) DO NOTHING;
+ON CONFLICT (trigger_id, task_id) DO UPDATE SET status = EXCLUDED.status;
 
 -- name: ListTriggerRunsByTeam :many
 SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
@@ -136,3 +136,8 @@ JOIN chetter_triggers s ON s.id = sr.trigger_id
 WHERE sr.trigger_id = $1
 ORDER BY sr.created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: UpdateTriggerRunStatusByTask :exec
+UPDATE chetter_trigger_runs
+SET status = $1
+WHERE task_id = $2;

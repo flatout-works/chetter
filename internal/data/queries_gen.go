@@ -139,6 +139,7 @@ type Repository interface {
 	UpdateTaskFromRunnerEvent(ctx context.Context, arg repository.UpdateTaskFromRunnerEventParams) (int64, error)
 	UpdateTaskSearchText(ctx context.Context, id string) error
 	UpdateTrigger(ctx context.Context, arg repository.UpdateTriggerParams) error
+	UpdateTriggerRunStatusByTask(ctx context.Context, arg repository.UpdateTriggerRunStatusByTaskParams) error
 	UpsertDefinition(ctx context.Context, arg repository.UpsertDefinitionParams) error
 	UpsertDefinitionSource(ctx context.Context, arg repository.UpsertDefinitionSourceParams) error
 	UpsertRunnerHeartbeat(ctx context.Context, arg repository.UpsertRunnerHeartbeatParams) error
@@ -714,6 +715,10 @@ func (q *Queries) UpdateTaskSearchText(ctx context.Context, id string) error {
 
 func (q *Queries) UpdateTrigger(ctx context.Context, arg repository.UpdateTriggerParams) error {
 	return q.postgres.UpdateTrigger(ctx, convert[repositorypostgres.UpdateTriggerParams](arg))
+}
+
+func (q *Queries) UpdateTriggerRunStatusByTask(ctx context.Context, arg repository.UpdateTriggerRunStatusByTaskParams) error {
+	return q.postgres.UpdateTriggerRunStatusByTask(ctx, convert[repositorypostgres.UpdateTriggerRunStatusByTaskParams](arg))
 }
 
 func (q *Queries) UpsertDefinition(ctx context.Context, arg repository.UpsertDefinitionParams) error {

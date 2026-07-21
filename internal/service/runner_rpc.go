@@ -808,6 +808,14 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		if err := q.UpdateTaskSearchText(ctx, event.TaskId); err != nil {
 			slog.DebugContext(ctx, "update task search_text", "task_id", event.TaskId, "err", err)
 		}
+		if status != "running" && status != "pending" {
+			if err := q.UpdateTriggerRunStatusByTask(ctx, repository.UpdateTriggerRunStatusByTaskParams{
+				Status: status,
+				TaskID: event.TaskId,
+			}); err != nil {
+				slog.DebugContext(ctx, "update trigger run status", "task_id", event.TaskId, "status", status, "err", err)
+			}
+		}
 		if terminalRunStatus, terminalSessionStatus, ok := sessionTerminalStatuses(status); ok {
 			startedAt := parseOptionalTime(event.StartedAt)
 			endedAt := parseOptionalTime(event.EndedAt)

@@ -573,9 +573,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "session_run_id", runID)
 	if in.TriggerName != "" {
 		trigger, err := s.repo.GetTriggerByName(ctx, in.TriggerName)
-		if err == nil {
+		if err != nil {
+			slog.Warn("failed to lookup trigger for run recording", "trigger", in.TriggerName, "task", taskID, "err", err)
+		} else {
 			runID, err := randomID("run")
-			if err == nil {
+			if err != nil {
+				slog.Warn("failed to generate trigger run ID", "trigger", in.TriggerName, "task", taskID, "err", err)
+			} else {
 				if err := s.repo.InsertTriggerRun(ctx, repository.InsertTriggerRunParams{
 					ID:          runID,
 					TriggerID:   trigger.ID,

@@ -113,8 +113,9 @@ SET last_run_at = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: InsertTriggerRun :exec
-INSERT IGNORE INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE status = VALUES(status);
 
 -- name: ListTriggerRunsByTeam :many
 SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
@@ -139,3 +140,8 @@ JOIN chetter_triggers s ON s.id = sr.trigger_id
 WHERE sr.trigger_id = ?
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?;
+
+-- name: UpdateTriggerRunStatusByTask :exec
+UPDATE chetter_trigger_runs
+SET status = ?
+WHERE task_id = ?;

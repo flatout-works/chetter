@@ -161,8 +161,9 @@ func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTri
 }
 
 const insertTriggerRun = `-- name: InsertTriggerRun :exec
-INSERT IGNORE INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
+INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE status = VALUES(status)
 `
 
 type InsertTriggerRunParams struct {
@@ -957,6 +958,22 @@ func (q *Queries) UpdateTrigger(ctx context.Context, arg UpdateTriggerParams) er
 		arg.UpdatedAt,
 		arg.OldName,
 	)
+	return err
+}
+
+const updateTriggerRunStatusByTask = `-- name: UpdateTriggerRunStatusByTask :exec
+UPDATE chetter_trigger_runs
+SET status = ?
+WHERE task_id = ?
+`
+
+type UpdateTriggerRunStatusByTaskParams struct {
+	Status string `json:"status"`
+	TaskID string `json:"task_id"`
+}
+
+func (q *Queries) UpdateTriggerRunStatusByTask(ctx context.Context, arg UpdateTriggerRunStatusByTaskParams) error {
+	_, err := q.db.ExecContext(ctx, updateTriggerRunStatusByTask, arg.Status, arg.TaskID)
 	return err
 }
 
