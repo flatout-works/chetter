@@ -113,6 +113,44 @@ type Harness interface {
 - `SupportsRpc()` / `RpcCommand()` remain for Pi's RPC mode (will be removed
   when Pi gets its own serve-proxy).
 
+## Task MCP Endpoints
+
+MCP endpoints let tasks connect to remote HTTP or SSE MCP servers. Each endpoint is defined as a YAML file in the config repo (see [MCP Endpoints](MANUAL.md#mcp-endpoints) in the manual). At claim time the server resolves endpoint names to full definitions and sends them to the runner; the runner validates the bearer-token environment variable, prevents task env from overriding it, and imports it into the task container with `-e NAME` (bare name, no `=value`) so the value never appears in Docker arguments.
+
+### Harness bearer token reference syntax
+
+Each harness uses its native environment-variable reference syntax for the Authorization header:
+
+| Harness | Bearer environment reference | Config format |
+|---|---|---|
+| OpenCode | `Bearer {env:NAME}` | `.opencode.json` `mcp` map |
+| Claude Code | `Bearer ${NAME}` | `.mcp.json` `mcpServers` map |
+| CodeWhale | `bearer_token_env_var: NAME` | `.codewhale/mcp.json` `servers` map |
+| Pi | Native `bearerTokenEnv: NAME` | `.mcp.json` `mcpServers` map |
+| Codex | `Bearer ${NAME}` | `.codex/config.toml` `[mcp_servers.NAME]` |
+
+CodeWhale and Pi use native fields (`bearer_token_env_var` / `bearerTokenEnv`) instead of header interpolation. OpenCode and Claude Code use their respective env-reference syntaxes in the `Authorization` header value.
+
+### How endpoints are resolved
+
+1. **Submit time**: the task stores endpoint names (e.g. `["context"]`) as JSON in the `mcp_endpoints` column. The server validates that each name resolves to an active endpoint definition in the task's scope (global + team).
+2. **Agent frontmatter**: if the task's agent definition declares `mcp_endpoints` in frontmatter, those names are merged with the task-level names at claim time.
+3. **Claim time**: the server loads the full endpoint definitions (URL, transport, headers, `bearer_token_env`) and sends them via the runner protobuf. The token value is never sent — only the environment-variable name.
+4. **Runner startup**: the runner validates that each `bearer_token_env` variable is set in the runner environment, rejects task env overrides for those keys, and imports the values into the Docker container.
+5. **Harness config generation**: the harness config writer (`runner/harness/mcpconfig`) generates native MCP server entries for each endpoint. HTTP profiles produce `type: "http"` (or no type for CodeWhale); SSE profiles produce `type: "sse"` or `transport: "sse"` depending on the harness.
+
+Chetter does not proxy remote MCP traffic, translate HTTP/SSE, or reimplement MCP sessions. Harnesses connect directly to the configured remote endpoint.
+
+### Scoping and isolation
+
+MCP endpoints support global and team scope. Team-scoped endpoints are only available to tasks owned by that team. In Docker/gVisor mode, only the selected task's endpoint tokens are imported into the container, so a shared runner cannot see other teams' tokens.
+
+**Local mode is single-trust:** in local (non-Docker) execution, all runner environment variables are visible to every task process. MCP endpoint tokens from other teams are visible in local mode. Use Docker/gVisor mode for multi-team isolation. Local mode is intended for single-trust development environments only.
+
+### Pinned harness versions
+
+The agent base image pins `codewhale@0.8.67` and `pi-mcp-adapter@2.11.0` because the MCP endpoint implementation relies on those verified config contracts (`bearer_token_env_var` for CodeWhale, `bearerTokenEnv` for Pi).
+
 ## Execution Models
 
 Two dispatch paths exist in `runner_task.go`:

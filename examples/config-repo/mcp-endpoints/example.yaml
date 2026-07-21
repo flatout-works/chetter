@@ -1,0 +1,8 @@
+name: example
+transport: http
+url: https://mcp.example.com/mcp
+headers:
+  X-Tenant: engineering
+auth:
+  type: bearer
+  token_env: EXAMPLE_MCP_TOKEN
