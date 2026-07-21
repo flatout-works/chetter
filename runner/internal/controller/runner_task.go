@@ -672,7 +672,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"--name", containerName,
 	}
 	if gvisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--runtime", "runsc")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
 	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
@@ -913,7 +913,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"--name", containerName,
 	}
 	if gvisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--runtime", "runsc")
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
 	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
@@ -1304,7 +1304,7 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 		"--name", containerName,
 	}
 	if gvisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc", "--dns", "8.8.8.8", "--dns", "8.8.4.4")
+		dockerArgs = append(dockerArgs, "--runtime", "runsc")
 		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
