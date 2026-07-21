@@ -4,6 +4,69 @@ The Chetter runner drives AI coding agents inside containers. Each agent CLI is
 wrapped by a **harness** - a Go strategy object that knows how to configure,
 start, and communicate with that specific agent.
 
+## Completion Detection
+
+Each harness has a different way of knowing when an agent has finished. This is
+the most fragile part of the runner — a missed completion signal causes the task
+to hang until timeout.
+
+### How Each Harness Detects Completion
+
+| Harness | Mechanism | Vulnerable to livelock? |
+|---------|-----------|--------------------------|
+| **OpenCode** | Polls `/session/status` for idle + SSE `session.status` idle signal + heuristic fallbacks | Was — fixed |
+| **Claude Code** | Synchronous HTTP response from `POST /session/{id}/message` | No |
+| **Codex** | Synchronous HTTP response from `POST /session/{id}/message` | No |
+| **CodeWhale** | Polls turn status via `GET /v1/threads/{id}/events` until `turn.completed` | No (no continuation prompts) |
+| **Pi** | Event-based: `agent_end` event from JSONL stream | No |
+
+### OpenCode Completion (multi-layered)
+
+OpenCode is the only harness that uses **async prompt + status polling**, which
+makes it the only harness vulnerable to completion detection failure. The fix
+adds three layers of detection:
+
+1. **SSE-based idle signal (primary)**: `WatchEvents` parses `session.status` SSE
+   events. When the session transitions to idle/complete, it closes an `idleCh`
+   that `waitForSessionIdle` also waits on — immediate notification without
+   relying on the poll endpoint.
+
+2. **Heuristic completion fallback**: Accepts multiple idle-like status values
+   (`"idle"`, `"completed"`, `"finished"`, `"done"`). After 5 consecutive poll
+   errors (~10s), treats the session as complete since the server may have
+   cleaned it up.
+
+3. **Watchdog livelock prevention**: The progress watchdog checks `isIdle()`
+   before sending continuation prompts. If the session is already idle, it
+   neither nudges nor fails — this breaks the livelock where continuation
+   prompts kept the agent alive after it had finished.
+
+The `CompletionAwareHarness` interface (implemented only by OpenCode) wires
+the SSE idle signal to the poll-based completion detection. Harnesses that use
+synchronous `SendPrompt` (Claude, Codex) or event-based completion (Pi) do not
+need this interface.
+
+### The Livelock Bug (Fixed)
+
+Before the fix, if `/session/status` never reported `"idle"` — due to a status
+field mismatch, persistent HTTP errors, or the async prompt handler not
+updating session status — `waitForSessionIdle` blocked indefinitely. The
+progress watchdog then sent continuation prompts every 2 minutes, and the
+agent's responses reset the watchdog timer, creating a livelock that prevented
+both natural timeout and completion detection. The task would burn tokens for
+~16 minutes until the context deadline expired.
+
+See task `task_dcdb6b26` for a real-world example: the agent completed its work,
+created a PR, but the runner never detected completion.
+
+### CodeWhale (milder variant)
+
+CodeWhale also uses poll-based completion (`waitForTurnCompletion`), but does
+**not** implement `SessionContinuable`. If the poll endpoint fails, the task
+times out without livelock — no continuation prompts are sent. This is less
+severe than the OpenCode bug but would benefit from similar SSE-based fallback
+hardening in the future.
+
 ## Harness Interface
 
 All harnesses implement `harness.Harness` in `runner/harness/harness.go`:
