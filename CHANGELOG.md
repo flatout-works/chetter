@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-21
+
+### Added
+
+- PostgreSQL runtime support as a first-class database backend alongside TiDB/MySQL, with dialect-aware query routing, dedicated schema migrations and sqlc queries (`db/postgres/`), and a native repository facade (`internal/data/`) that selects the correct generated repository at runtime.
+- Managed agent Git identities with CRUD MCP tools (`chetter_create_git_identity`, `chetter_list_git_identities`, `chetter_update_git_identity`, `chetter_delete_git_identity`, `chetter_set_git_identity_default`), web UI admin page, and runner injection of the resolved identity into task containers (#180).
+- Default Git identity fallback for agent-less tasks, settable via `chetter_set_git_identity_default` MCP tool (#182).
+
+### Fixed
+
+- Web UI: task timeline entries now sorted by timestamp descending with an index tiebreaker, fixing out-of-order display on the task detail page.
+- Runner: interactive agent prompts (`AskUserQuestion`/`question`) denied in both OpenCode and Claude Code harnesses, preventing automated tasks from blocking on human input.
+- Runner: Git clone credentials no longer written inside the workspace directory, keeping the workspace empty before clone.
+- Server: auto-migrates the `git_identity_id` column on `chetter_tasks` for zero-downtime compatibility with existing deployments (#181).
+- Runner: remote agent images from `ghcr.io/` are refreshed on every container start via `--pull=always`.
+- Claude Code harness: JSONL session exports now handle content blocks (array format) in addition to plain text fields, producing complete markdown transcripts.
+- Claude Code harness: session export finds JSONL files in both the project root and session subdirectories; progress watchdog nudges correctly without a nudge callback; stuck-harness detection no longer requires a nudge function.
+
+### Documentation
+
+- New `CHETTER.md` explaining Chetter agent workloads, execution model, and architecture.
+- Bot identity setup guide added to `docs/MANUAL.md` (#186).
+
 ## 2026-07-18
 
 ### Documentation
