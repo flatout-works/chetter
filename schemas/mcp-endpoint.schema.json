@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flatout-works/chetter/main/schemas/mcp-endpoint.schema.json",
+  "title": "Chetter MCP endpoint definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "url"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["http", "sse"]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "headers": {
+      "type": "object",
+      "description": "Non-secret static headers persisted with the endpoint. Configure bearer authorization with auth.token_env.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "Bearer authentication supplied by a runner environment variable.",
+      "additionalProperties": false,
+      "required": ["type", "token_env"],
+      "properties": {
+        "type": { "const": "bearer" },
+        "token_env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      }
+    }
+  }
+}
