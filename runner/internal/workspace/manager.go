@@ -33,14 +33,9 @@ func (m *Manager) Create(taskID, executionID string) (string, error) {
 	parent := filepath.Join(m.Root, taskID, executionID)
 	dir := filepath.Join(parent, "workspace")
 
-	// Remove any stale workspace
-	if err := os.RemoveAll(dir); err != nil {
-		return "", fmt.Errorf("remove stale workspace: %w", err)
-	}
 	if err := os.RemoveAll(parent); err != nil {
 		return "", fmt.Errorf("remove stale execution directory: %w", err)
 	}
-
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", fmt.Errorf("mkdir workspace: %w", err)
 	}
@@ -65,25 +60,30 @@ func (m *Manager) Destroy(taskID, executionID string) error {
 		return err
 	}
 	dir := filepath.Join(m.Root, taskID, executionID)
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err == nil {
-			_ = os.Chmod(path, 0750)
+	if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := os.Chmod(path, 0750); err != nil {
+			return err
 		}
 		return nil
-	})
+	}); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("make workspace writable: %w", err)
+	}
 	if err := os.RemoveAll(dir); err != nil {
-		return err
+		return fmt.Errorf("remove workspace: %w", err)
 	}
 	parent := filepath.Dir(dir)
 	if err := os.Remove(parent); err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTEMPTY) {
-		return err
+		return fmt.Errorf("remove execution directory: %w", err)
 	}
 	return nil
 }
 
 func validateWorkspaceID(taskID, executionID string) error {
 	for name, value := range map[string]string{"task_id": taskID, "execution_id": executionID} {
-		if value == "" || value == "." || value == ".." || strings.ContainsAny(value, `/\\`) {
+		if value == "" || value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
 			return fmt.Errorf("invalid %s %q", name, value)
 		}
 	}

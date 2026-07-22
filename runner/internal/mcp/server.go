@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	mcplib "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -22,6 +23,7 @@ type Server struct {
 	sdkServer *mcplib.Server
 	httpSrv   *http.Server
 	addr      string
+	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 }
 
@@ -53,7 +55,9 @@ func NewServer() (*Server, error) {
 
 	httpSrv := &http.Server{Handler: mux}
 	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr}
-	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return context.WithoutCancel(context.Background()) }
+	serverCtx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return serverCtx }
 
 	s.wg.Add(1)
 	go func() {
@@ -79,7 +83,10 @@ func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 
 // Close shuts down the HTTP server.
 func (s *Server) Close() error {
-	if err := s.httpSrv.Shutdown(context.Background()); err != nil {
+	s.cancel()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
 	s.wg.Wait()

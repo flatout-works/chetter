@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/elazarl/goproxy"
 )
@@ -19,7 +20,7 @@ type TransparentProxy struct {
 	BlockedDomains []string
 	Server         *goproxy.ProxyHttpServer
 	httpServer     *http.Server
-	listener       net.Listener
+	wg             sync.WaitGroup
 }
 
 // NewProxy creates a transparent HTTP proxy.
@@ -72,19 +73,27 @@ func (p *TransparentProxy) isAllowed(host string) bool {
 // Start begins listening.
 func (p *TransparentProxy) Start() error {
 	slog.Info("starting", "component", "proxy", "addr", p.Addr)
-	var err error
-	p.listener, err = net.Listen("tcp", p.Addr)
+	listener, err := net.Listen("tcp", p.Addr)
 	if err != nil {
 		return err
 	}
 	p.httpServer = &http.Server{Handler: p.Server, Addr: p.Addr}
-	return p.httpServer.Serve(p.listener)
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		if err := p.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+			slog.Warn("proxy stopped", "err", err)
+		}
+	}()
+	return nil
 }
 
 // Stop shuts down the proxy server.
 func (p *TransparentProxy) Stop() error {
 	if p.httpServer != nil {
-		return p.httpServer.Close()
+		err := p.httpServer.Close()
+		p.wg.Wait()
+		return err
 	}
 	return nil
 }
