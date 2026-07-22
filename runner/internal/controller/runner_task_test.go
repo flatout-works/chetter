@@ -900,7 +900,7 @@ func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
 
 func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
-	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp")
+	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp", "")
 	if err != nil {
 		t.Fatalf("new relay: %v", err)
 	}
@@ -920,13 +920,19 @@ func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	if got, want := runner.taskChetterMCPURL(), "http://172.21.0.3:"+port+"/mcp"; got != want {
 		t.Fatalf("task Chetter MCP URL = %q, want %q", got, want)
 	}
+	if got := runner.taskChetterMCPToken(); got != "" {
+		t.Fatalf("task Chetter MCP token = %q, want empty relay-managed token", got)
+	}
 }
 
 func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
 	t.Setenv("RUNNER_LOCAL", "true")
-	runner := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp"}}}
+	runner := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp", AuthToken: "local-token"}}}
 	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
 		t.Fatalf("task Chetter MCP URL = %q", got)
+	}
+	if got := runner.taskChetterMCPToken(); got != "local-token" {
+		t.Fatalf("task Chetter MCP token = %q", got)
 	}
 }
 

@@ -167,7 +167,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -273,6 +273,13 @@ func (r *Runner) taskChetterMCPURL() string {
 		return ""
 	}
 	return "http://" + hostIP(runcNetwork()) + ":" + port + "/mcp"
+}
+
+func (r *Runner) taskChetterMCPToken() string {
+	if r.executionMode() == "local" || r.mcpRelay == nil {
+		return r.cfg.ChetterMCP.AuthToken
+	}
+	return ""
 }
 
 func hostWorkspaceDir(containerPath string) string {

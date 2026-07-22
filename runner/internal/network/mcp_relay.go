@@ -16,13 +16,14 @@ import (
 type MCPRelay struct {
 	listenAddr string
 	target     *url.URL
+	authToken  string
 	server     *http.Server
 	listener   net.Listener
 	mu         sync.Mutex
 }
 
 // NewMCPRelay creates a relay for targetURL.
-func NewMCPRelay(listenAddr, targetURL string) (*MCPRelay, error) {
+func NewMCPRelay(listenAddr, targetURL, authToken string) (*MCPRelay, error) {
 	target, err := url.Parse(targetURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse relay target: %w", err)
@@ -33,7 +34,7 @@ func NewMCPRelay(listenAddr, targetURL string) (*MCPRelay, error) {
 	if target.Host == "" {
 		return nil, fmt.Errorf("relay target host is required")
 	}
-	return &MCPRelay{listenAddr: listenAddr, target: target}, nil
+	return &MCPRelay{listenAddr: listenAddr, target: target, authToken: authToken}, nil
 }
 
 // Start begins serving the relay endpoint.
@@ -53,6 +54,9 @@ func (r *MCPRelay) Start() error {
 			req.Out.URL.RawPath = r.target.EscapedPath()
 			req.Out.URL.RawQuery = r.target.RawQuery
 			req.Out.Host = r.target.Host
+			if r.authToken != "" {
+				req.Out.Header.Set("Authorization", "Bearer "+r.authToken)
+			}
 		},
 	}
 	mux := http.NewServeMux()
