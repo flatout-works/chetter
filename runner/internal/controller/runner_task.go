@@ -28,10 +28,7 @@ const (
 )
 
 func executionKey(req task.TaskRequest) string {
-	if req.ExecutionID != "" {
-		return req.ExecutionID
-	}
-	return req.TaskID
+	return req.ExecutionID
 }
 
 func containerNameForRequest(req task.TaskRequest) string {
@@ -48,6 +45,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			panic(rec)
 		}
 	}()
+	if req.ExecutionID == "" {
+		r.publishStatusForRequest(req, "error", "execution_id is required", nil)
+		return
+	}
 
 	parent := r.runCtx
 	if parent == nil {
@@ -780,6 +781,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"--label", "chetter.runner_id=" + r.runnerID,
 		"--label", "chetter.task_id=" + req.TaskID,
 		"--label", "chetter.execution_id=" + executionKey(req),
+		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
+		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
@@ -1023,6 +1026,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"--label", "chetter.runner_id=" + r.runnerID,
 		"--label", "chetter.task_id=" + req.TaskID,
 		"--label", "chetter.execution_id=" + executionKey(req),
+		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
+		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
@@ -1414,6 +1419,8 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		"--label", "chetter.runner_id=" + runnerID,
 		"--label", "chetter.task_id=" + req.TaskID,
 		"--label", "chetter.execution_id=" + executionKey(req),
+		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
+		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")

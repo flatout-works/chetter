@@ -143,20 +143,25 @@ func (r *Runner) publishRunnerHeartbeatRPC(status string) {
 	for _, command := range cmd.Msg.Commands {
 		switch command.Type {
 		case "cancel":
-			r.cancelTask(command.TaskId, command.ExecutionId, command.Reason)
+			r.cancelTask(command.TaskId, command.AgentSessionId, command.UserPromptId, command.ExecutionId, command.Reason)
 		case "drain":
 			r.startDrain()
 		}
 	}
 }
 
-func (r *Runner) cancelTask(taskID, executionID, reason string) {
+func (r *Runner) cancelTask(taskID, agentSessionID, userPromptID, executionID, reason string) {
 	r.mu.Lock()
 	if _, seen := r.cancelledTasks[executionID]; seen {
 		r.mu.Unlock()
 		return
 	}
 	session, ok := r.tasks[executionID]
+	if ok && (session.Request.TaskID != taskID || session.Request.AgentSessionID != agentSessionID || session.Request.UserPromptID != userPromptID) {
+		r.mu.Unlock()
+		slog.Warn("ignoring cancellation with mismatched execution hierarchy", "taskID", taskID, "agentSessionID", agentSessionID, "userPromptID", userPromptID, "executionID", executionID)
+		return
+	}
 	if ok {
 		r.cancelledTasks[executionID] = struct{}{}
 	}
@@ -169,7 +174,6 @@ func (r *Runner) cancelTask(taskID, executionID, reason string) {
 	}
 	slog.Info("cancelling task", "taskID", taskID, "executionID", executionID, "reason", reason)
 	session.Cancel()
-	r.publishStatusForRequest(session.Request, "cancelled", reason, nil)
 }
 
 func (r *Runner) startDrain() {

@@ -82,7 +82,8 @@ WHERE prompt.id = attempt.user_prompt_id
   AND attempt.status IN ('pending', 'running');
 
 -- name: ListExecutionAttemptsForHeartbeat :many
-SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error, prompt.task_id
+SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error,
+       prompt.task_id, prompt.agent_session_id, prompt.id AS user_prompt_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = ANY(sqlc.arg(execution_ids)::text[])

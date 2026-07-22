@@ -49,6 +49,8 @@ message RunnerCommand {
   string task_id = 2;
   string reason = 3;
   string execution_id = 4;
+  string agent_session_id = 5;
+  string user_prompt_id = 6;
 }
 
 message HeartbeatResponse {
@@ -94,9 +96,9 @@ message Task {
   string git_author_name = 30;
   string git_author_email = 31;
   repeated MCPEndpoint mcp_endpoints = 32;
-  string execution_id = 33;
-  string agent_session_id = 34;
-  string user_prompt_id = 35;
+  string execution_id = 33 [(buf.validate.field).string.min_len = 1];
+  string agent_session_id = 34 [(buf.validate.field).string.min_len = 1];
+  string user_prompt_id = 35 [(buf.validate.field).string.min_len = 1];
 }
 
 message MCPEndpoint {
@@ -139,7 +141,7 @@ message TaskEvent {
   string workspace_path = 16;
   string error_category = 17;
   TokenUsage token_usage = 18;
-  string execution_id = 19;
+  string execution_id = 19 [(buf.validate.field).string.min_len = 1];
   string agent_session_id = 20 [(buf.validate.field).string.min_len = 1];
   string user_prompt_id = 21 [(buf.validate.field).string.min_len = 1];
 }
@@ -152,12 +154,24 @@ message ReportTaskEventsRequest {
 message ReportTaskEventsResponse {}
 
 message PruneWorkspacesRequest {
+  reserved "task_ids";
   string runner_id = 1 [(buf.validate.field).string.min_len = 1];
-  repeated string task_ids = 2;
+  repeated WorkspaceCandidate candidates = 2;
 }
 
 message PruneWorkspacesResponse {
-  repeated string safe_to_delete = 1;
+  repeated WorkspaceKey safe_to_delete = 1;
+}
+
+message WorkspaceCandidate {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string execution_id = 2 [(buf.validate.field).string.min_len = 1];
+  string workspace_path = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message WorkspaceKey {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string execution_id = 2 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubCreateIssueRequest {

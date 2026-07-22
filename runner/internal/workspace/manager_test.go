@@ -150,3 +150,19 @@ func TestDestroyNonexistent(t *testing.T) {
 		t.Fatalf("Destroy nonexistent: %v", err)
 	}
 }
+
+func TestWorkspaceIDsRejectTraversal(t *testing.T) {
+	m := NewManager(t.TempDir())
+	for _, tc := range []struct{ taskID, executionID string }{
+		{"../task", "exec_1"},
+		{"task_1", "../exec"},
+		{"task_1", ""},
+	} {
+		if _, err := m.Create(tc.taskID, tc.executionID); err == nil {
+			t.Fatalf("Create(%q, %q) accepted invalid IDs", tc.taskID, tc.executionID)
+		}
+		if err := m.Destroy(tc.taskID, tc.executionID); err == nil {
+			t.Fatalf("Destroy(%q, %q) accepted invalid IDs", tc.taskID, tc.executionID)
+		}
+	}
+}

@@ -68,10 +68,12 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	_, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_hb",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:      "task_hb1",
-			ExecutionId: "exec_task_hb1",
-			Status:      "running",
-			Summary:     "opencode: server.heartbeat",
+			TaskId:         "task_hb1",
+			ExecutionId:    "exec_task_hb1",
+			AgentSessionId: "sess_task_hb1",
+			UserPromptId:   "prompt_task_hb1",
+			Status:         "running",
+			Summary:        "opencode: server.heartbeat",
 		}},
 	}))
 	if err != nil {
@@ -82,10 +84,12 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_hb",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:      "task_hb1",
-			ExecutionId: "exec_task_hb1",
-			Status:      "running",
-			Summary:     "opencode: server.heartbeat",
+			TaskId:         "task_hb1",
+			ExecutionId:    "exec_task_hb1",
+			AgentSessionId: "sess_task_hb1",
+			UserPromptId:   "prompt_task_hb1",
+			Status:         "running",
+			Summary:        "opencode: server.heartbeat",
 		}},
 	}))
 	if err != nil {
@@ -144,10 +148,12 @@ func TestNonHeartbeatEventsAlwaysStored(t *testing.T) {
 		_, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 			RunnerId: "runner_nh",
 			Events: []*runnerv1.TaskEvent{{
-				TaskId:      "task_nonhb",
-				ExecutionId: "exec_task_nonhb",
-				Status:      "running",
-				Summary:     `opencode: session.status {"status":"busy"}`,
+				TaskId:         "task_nonhb",
+				ExecutionId:    "exec_task_nonhb",
+				AgentSessionId: "sess_task_nonhb",
+				UserPromptId:   "prompt_task_nonhb",
+				Status:         "running",
+				Summary:        `opencode: session.status {"status":"busy"}`,
 			}},
 		}))
 		if err != nil {

@@ -461,7 +461,8 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 }
 
 const listExecutionAttemptsForHeartbeat = `-- name: ListExecutionAttemptsForHeartbeat :many
-SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error, prompt.task_id
+SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error,
+       prompt.task_id, prompt.agent_session_id, prompt.id AS user_prompt_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = ANY($1::text[])
@@ -478,6 +479,8 @@ type ListExecutionAttemptsForHeartbeatRow struct {
 	Status             string         `json:"status"`
 	Error              sql.NullString `json:"error"`
 	TaskID             string         `json:"task_id"`
+	AgentSessionID     string         `json:"agent_session_id"`
+	UserPromptID       string         `json:"user_prompt_id"`
 }
 
 func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg ListExecutionAttemptsForHeartbeatParams) ([]ListExecutionAttemptsForHeartbeatRow, error) {
@@ -494,6 +497,8 @@ func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg Lis
 			&i.Status,
 			&i.Error,
 			&i.TaskID,
+			&i.AgentSessionID,
+			&i.UserPromptID,
 		); err != nil {
 			return nil, err
 		}

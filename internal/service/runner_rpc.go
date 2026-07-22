@@ -532,46 +532,40 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	if req.Msg.RunnerId == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
-	taskIDs := req.Msg.TaskIds
-	if len(taskIDs) == 0 {
+	if len(req.Msg.Candidates) == 0 {
 		return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{}), nil
 	}
-
-	args := make([]any, 0, len(taskIDs))
-	placeholders := sqlPlaceholders(s.dialect, len(taskIDs))
-	for _, id := range taskIDs {
-		args = append(args, id)
-	}
-
-	query := `SELECT DISTINCT t.id
-		FROM chetter_tasks t
-		LEFT JOIN chetter_user_prompts sr ON sr.task_id = t.id
-		LEFT JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id AND s.status IN ('paused', 'recoverable', 'paused_waiting_review')
-		WHERE t.id IN (` + strings.Join(placeholders, ",") + `)
-		  AND (t.status IN ('running', 'pending') OR s.id IS NOT NULL)`
-
-	rows, err := s.rawDB.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	defer rows.Close()
-
-	protected := make(map[string]bool, len(taskIDs))
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			continue
+	query := sqlQuery(s.dialect, `SELECT CASE WHEN
+		EXISTS (
+			SELECT 1 FROM chetter_execution_attempts attempt
+			JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+			WHERE attempt.id = ? AND prompt.task_id = ? AND attempt.runner_id = ? AND attempt.status = 'running'
+		) OR EXISTS (
+			SELECT 1 FROM chetter_agent_sessions session
+			WHERE session.task_id = ? AND session.workspace_path = ?
+			  AND session.status IN ('running', 'resuming', 'paused', 'recoverable', 'paused_waiting_review')
+			  AND (session.pinned_runner_id IS NULL OR session.pinned_runner_id = '' OR session.pinned_runner_id = ?)
+		) OR EXISTS (
+			SELECT 1 FROM chetter_agent_session_checkpoints checkpoint
+			JOIN chetter_agent_sessions session ON session.id = checkpoint.agent_session_id
+			WHERE session.task_id = ? AND checkpoint.workspace_path = ? AND checkpoint.runner_id = ?
+			  AND checkpoint.status = 'ready'
+		) THEN 1 ELSE 0 END`)
+	safe := make([]*runnerv1.WorkspaceKey, 0, len(req.Msg.Candidates))
+	for _, candidate := range req.Msg.Candidates {
+		if candidate == nil || candidate.TaskId == "" || candidate.ExecutionId == "" || candidate.WorkspacePath == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workspace candidate task_id, execution_id, and workspace_path are required"))
 		}
-		protected[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-
-	safe := make([]string, 0, len(taskIDs))
-	for _, id := range taskIDs {
-		if !protected[id] {
-			safe = append(safe, id)
+		var protected int
+		if err := s.rawDB.QueryRowContext(ctx, query,
+			candidate.ExecutionId, candidate.TaskId, req.Msg.RunnerId,
+			candidate.TaskId, candidate.WorkspacePath, req.Msg.RunnerId,
+			candidate.TaskId, candidate.WorkspacePath, req.Msg.RunnerId,
+		).Scan(&protected); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		if protected == 0 {
+			safe = append(safe, &runnerv1.WorkspaceKey{TaskId: candidate.TaskId, ExecutionId: candidate.ExecutionId})
 		}
 	}
 	return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{SafeToDelete: safe}), nil
@@ -642,11 +636,14 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 		statusByID[row.ExecutionAttemptID] = row
 	}
 	for _, execution := range info.CurrentExecutions {
-		taskID := execution.TaskId
 		executionID := execution.ExecutionId
 		row, ok := statusByID[executionID]
 		if !ok {
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: taskID, ExecutionId: executionID, Reason: "execution attempt is no longer owned by this runner"})
+			commands = append(commands, executionCancelCommand(execution, "execution attempt is no longer owned by this runner"))
+			continue
+		}
+		if row.TaskID != execution.TaskId || row.AgentSessionID != execution.AgentSessionId || row.UserPromptID != execution.UserPromptId {
+			commands = append(commands, executionCancelCommand(execution, "execution hierarchy does not match the claimed attempt"))
 			continue
 		}
 		switch row.Status {
@@ -655,9 +652,9 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 			if reason == "" {
 				reason = "cancelled by operator"
 			}
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: reason})
+			commands = append(commands, executionAttemptCancelCommand(row, reason))
 		case "lost":
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "lease reclaimed; please stop"})
+			commands = append(commands, executionAttemptCancelCommand(row, "lease reclaimed; please stop"))
 		case "running":
 			renewed, err := s.db.RenewExecutionAttemptLease(ctx, repository.RenewExecutionAttemptLeaseParams{
 				LeaseExpiresAt: lease,
@@ -670,14 +667,28 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 				return nil, connect.NewError(connect.CodeInternal, err)
 			}
 			if renewed == 0 {
-				commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "execution attempt is no longer running"})
+				commands = append(commands, executionAttemptCancelCommand(row, "execution attempt is no longer running"))
 				continue
 			}
 		default:
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "execution attempt is no longer running"})
+			commands = append(commands, executionAttemptCancelCommand(row, "execution attempt is no longer running"))
 		}
 	}
 	return commands, nil
+}
+
+func executionCancelCommand(execution *runnerv1.RunningExecution, reason string) *runnerv1.RunnerCommand {
+	return &runnerv1.RunnerCommand{
+		Type: "cancel", TaskId: execution.TaskId, AgentSessionId: execution.AgentSessionId,
+		UserPromptId: execution.UserPromptId, ExecutionId: execution.ExecutionId, Reason: reason,
+	}
+}
+
+func executionAttemptCancelCommand(row repository.ListExecutionAttemptsForHeartbeatRow, reason string) *runnerv1.RunnerCommand {
+	return &runnerv1.RunnerCommand{
+		Type: "cancel", TaskId: row.TaskID, AgentSessionId: row.AgentSessionID,
+		UserPromptId: row.UserPromptID, ExecutionId: row.ExecutionAttemptID, Reason: reason,
+	}
 }
 
 type claimedExecution struct {
@@ -879,6 +890,10 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		ownership, err := q.GetExecutionAttemptContext(ctx, event.ExecutionId)
+		if err != nil || ownership.TaskID != event.TaskId || ownership.AgentSessionID != event.AgentSessionId || ownership.UserPromptID != event.UserPromptId {
+			return errTaskNotClaimed
+		}
 		attemptRows, err := q.UpdateExecutionAttemptFromRunnerEvent(ctx, repository.UpdateExecutionAttemptFromRunnerEventParams{
 			Status:                attemptStatus,
 			Summary:               nullString(event.Summary),
@@ -978,7 +993,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						sessionStatus = ""
 					case terminalSessionStatus == "completed" && session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "":
 						chkID, _ := randomID("chk")
-						containerName := "chetter-task-" + event.TaskId
+						containerName := "chetter-task-" + event.TaskId + "-" + event.ExecutionId
 						if err := q.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
 							ID:             chkID,
 							AgentSessionID: session.ID,

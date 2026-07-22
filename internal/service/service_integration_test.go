@@ -598,11 +598,13 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_recovery",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:        task.ID,
-			ExecutionId:   claim.Msg.Task.ExecutionId,
-			Status:        "error",
-			Error:         "agent stopped",
-			SessionExport: "previous transcript",
+			TaskId:         task.ID,
+			ExecutionId:    claim.Msg.Task.ExecutionId,
+			AgentSessionId: claim.Msg.Task.AgentSessionId,
+			UserPromptId:   claim.Msg.Task.UserPromptId,
+			Status:         "error",
+			Error:          "agent stopped",
+			SessionExport:  "previous transcript",
 		}},
 	})); err != nil {
 		t.Fatalf("report failure: %v", err)
@@ -719,6 +721,8 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			AgentSessionId:    claim.Msg.Task.AgentSessionId,
+			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
 			Summary:           "created PR",
 			EndedAt:           endedAt,
@@ -819,6 +823,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claimResp.Msg.Task.ExecutionId,
+			AgentSessionId:    claimResp.Msg.Task.AgentSessionId,
+			UserPromptId:      claimResp.Msg.Task.UserPromptId,
 			Status:            "done",
 			Summary:           "created PR #1",
 			EndedAt:           endedAt,
@@ -902,6 +908,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            resumeOut.Task.ID,
 			ExecutionId:       resumeClaim.Msg.Task.ExecutionId,
+			AgentSessionId:    resumeClaim.Msg.Task.AgentSessionId,
+			UserPromptId:      resumeClaim.Msg.Task.UserPromptId,
 			Status:            "done",
 			Summary:           "addressed feedback",
 			EndedAt:           endedAt2,
@@ -938,6 +946,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec3.ID,
 				ExecutionId:       rec3Claim.Msg.Task.ExecutionId,
+				AgentSessionId:    rec3Claim.Msg.Task.AgentSessionId,
+				UserPromptId:      rec3Claim.Msg.Task.UserPromptId,
 				Status:            "error",
 				Error:             "prompt failed: context deadline exceeded",
 				ErrorCategory:     "timeout",
@@ -994,6 +1004,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            resume3.Task.ID,
 				ExecutionId:       claim3.Msg.Task.ExecutionId,
+				AgentSessionId:    claim3.Msg.Task.AgentSessionId,
+				UserPromptId:      claim3.Msg.Task.UserPromptId,
 				Status:            "done",
 				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
 				OpencodeSessionId: "oc_sid_timeout",
@@ -1022,6 +1034,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec2.ID,
 				ExecutionId:       rec2Claim.Msg.Task.ExecutionId,
+				AgentSessionId:    rec2Claim.Msg.Task.AgentSessionId,
+				UserPromptId:      rec2Claim.Msg.Task.UserPromptId,
 				Status:            "done",
 				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
 				OpencodeSessionId: "oc_sid_xyz",
@@ -1089,6 +1103,8 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			AgentSessionId:    claim.Msg.Task.AgentSessionId,
+			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
 			EndedAt:           now.Format(time.RFC3339Nano),
 			OpencodeSessionId: "oc_sid_gone",

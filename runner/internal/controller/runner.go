@@ -367,47 +367,68 @@ func (r *Runner) pruneOrphanedWorkspaces(ctx context.Context) error {
 		return fmt.Errorf("read workspace root: %w", err)
 	}
 
-	taskIDs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "task_") {
+	candidates := make([]*runnerv1.WorkspaceCandidate, 0)
+	for _, taskEntry := range entries {
+		if !taskEntry.IsDir() || !strings.HasPrefix(taskEntry.Name(), "task_") {
 			continue
 		}
-		taskIDs = append(taskIDs, entry.Name())
+		executions, err := os.ReadDir(filepath.Join(root, taskEntry.Name()))
+		if err != nil {
+			return fmt.Errorf("read task workspace %s: %w", taskEntry.Name(), err)
+		}
+		for _, executionEntry := range executions {
+			if !executionEntry.IsDir() || !strings.HasPrefix(executionEntry.Name(), "exec_") {
+				continue
+			}
+			candidates = append(candidates, &runnerv1.WorkspaceCandidate{
+				TaskId: taskEntry.Name(), ExecutionId: executionEntry.Name(),
+				WorkspacePath: filepath.Join(root, taskEntry.Name(), executionEntry.Name(), "workspace"),
+			})
+		}
 	}
-	if len(taskIDs) == 0 {
+	if len(candidates) == 0 {
 		return nil
 	}
 
-	slog.Info("checking orphaned workspace directories", "count", len(taskIDs), "root", root)
+	slog.Info("checking orphaned execution workspaces", "count", len(candidates), "root", root)
 	resp, err := r.rpcClient.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
-		RunnerId: r.runnerID,
-		TaskIds:  taskIDs,
+		RunnerId: r.runnerID, Candidates: candidates,
 	}))
 	if err != nil {
 		return fmt.Errorf("prune workspaces rpc: %w", err)
 	}
 
 	safeToDelete := make(map[string]bool, len(resp.Msg.SafeToDelete))
-	for _, id := range resp.Msg.SafeToDelete {
-		safeToDelete[id] = true
+	for _, key := range resp.Msg.SafeToDelete {
+		if key != nil {
+			safeToDelete[key.TaskId+"\x00"+key.ExecutionId] = true
+		}
 	}
 
 	deleted := 0
 	skipped := 0
-	for _, taskID := range taskIDs {
-		if !safeToDelete[taskID] {
+	for _, candidate := range candidates {
+		key := candidate.TaskId + "\x00" + candidate.ExecutionId
+		if !safeToDelete[key] {
 			skipped++
 			continue
 		}
-		dir := filepath.Join(root, taskID)
-		if err := r.wsManager.DestroyTask(taskID); err != nil {
-			slog.Warn("failed to prune workspace", "taskID", taskID, "dir", dir, "err", err)
+		r.mu.Lock()
+		_, active := r.tasks[candidate.ExecutionId]
+		r.mu.Unlock()
+		if active {
+			skipped++
+			continue
+		}
+		dir := filepath.Join(root, candidate.TaskId, candidate.ExecutionId)
+		if err := r.wsManager.Destroy(candidate.TaskId, candidate.ExecutionId); err != nil {
+			slog.Warn("failed to prune workspace", "taskID", candidate.TaskId, "executionID", candidate.ExecutionId, "dir", dir, "err", err)
 			continue
 		}
 		deleted++
 	}
 
-	slog.Info("workspace prune complete", "deleted", deleted, "skipped", skipped, "total", len(taskIDs))
+	slog.Info("workspace prune complete", "deleted", deleted, "skipped", skipped, "total", len(candidates))
 	return nil
 }
 
