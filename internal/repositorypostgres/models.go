@@ -276,20 +276,21 @@ type ChetterTriggerRun struct {
 }
 
 type ChetterUserPrompt struct {
-	ID               string         `json:"id"`
-	AgentSessionID   string         `json:"agent_session_id"`
-	TaskID           string         `json:"task_id"`
-	Status           string         `json:"status"`
-	Prompt           string         `json:"prompt"`
-	RequiredRunnerID sql.NullString `json:"required_runner_id"`
-	Summary          sql.NullString `json:"summary"`
-	Error            sql.NullString `json:"error"`
-	SessionExport    sql.NullString `json:"session_export"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	StartedAt        sql.NullTime   `json:"started_at"`
-	EndedAt          sql.NullTime   `json:"ended_at"`
-	Sequence         int32          `json:"sequence"`
+	ID                 string         `json:"id"`
+	AgentSessionID     string         `json:"agent_session_id"`
+	TaskID             string         `json:"task_id"`
+	Status             string         `json:"status"`
+	Prompt             string         `json:"prompt"`
+	RequiredRunnerID   sql.NullString `json:"required_runner_id"`
+	Summary            sql.NullString `json:"summary"`
+	Error              sql.NullString `json:"error"`
+	SessionExport      sql.NullString `json:"session_export"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	StartedAt          sql.NullTime   `json:"started_at"`
+	EndedAt            sql.NullTime   `json:"ended_at"`
+	Sequence           int32          `json:"sequence"`
+	SourceUserPromptID sql.NullString `json:"source_user_prompt_id"`
 }
 
 type Definition struct {

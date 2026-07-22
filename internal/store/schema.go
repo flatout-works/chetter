@@ -99,6 +99,7 @@ var schemaStatements = []string{
 		sequence INT NOT NULL DEFAULT 1,
 		status VARCHAR(32) NOT NULL,
 		prompt TEXT NOT NULL,
+		source_user_prompt_id VARCHAR(64) NULL,
 		required_runner_id VARCHAR(64) NULL,
 		summary TEXT NULL,
 		error TEXT NULL,
@@ -110,6 +111,7 @@ var schemaStatements = []string{
 		PRIMARY KEY (id),
 		UNIQUE KEY uq_user_prompts_session_sequence (agent_session_id, sequence),
 		KEY idx_user_prompts_task_sequence (task_id, sequence),
+		KEY idx_user_prompts_source (source_user_prompt_id),
 		KEY idx_user_prompts_session_created (agent_session_id, created_at),
 		KEY idx_user_prompts_status_created (status, created_at),
 		KEY idx_user_prompts_required_runner (required_runner_id, status)

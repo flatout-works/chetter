@@ -121,19 +121,20 @@ func protoSession(s service.AgentSessionRecord) *apiv1.AgentSession {
 
 func protoPrompt(r service.UserPromptRecord) *apiv1.UserPrompt {
 	return &apiv1.UserPrompt{
-		Id:               r.ID,
-		AgentSessionId:   r.AgentSessionID,
-		TaskId:           r.TaskID,
-		Status:           r.Status,
-		RequiredRunnerId: r.RequiredRunnerID,
-		Summary:          r.Summary,
-		Error:            r.Error,
-		Prompt:           r.Prompt,
-		Sequence:         r.Sequence,
-		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:        r.UpdatedAt.Format(time.RFC3339),
-		StartedAt:        optTimeStr(r.StartedAt),
-		EndedAt:          optTimeStr(r.EndedAt),
+		Id:                 r.ID,
+		AgentSessionId:     r.AgentSessionID,
+		TaskId:             r.TaskID,
+		Status:             r.Status,
+		RequiredRunnerId:   r.RequiredRunnerID,
+		Summary:            r.Summary,
+		Error:              r.Error,
+		Prompt:             r.Prompt,
+		Sequence:           r.Sequence,
+		SourceUserPromptId: r.SourceUserPromptID,
+		CreatedAt:          r.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:          r.UpdatedAt.Format(time.RFC3339),
+		StartedAt:          optTimeStr(r.StartedAt),
+		EndedAt:            optTimeStr(r.EndedAt),
 	}
 }
 

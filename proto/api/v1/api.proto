@@ -89,6 +89,7 @@ message UserPrompt {
   optional string ended_at = 11;
   string prompt = 12;
   int32 sequence = 13;
+  string source_user_prompt_id = 14;
 }
 
 message Trigger {

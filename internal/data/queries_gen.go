@@ -71,6 +71,7 @@ type Repository interface {
 	GetTriggerByID(ctx context.Context, id string) (repository.ChetterTrigger, error)
 	GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error)
 	GetUserByID(ctx context.Context, id string) (repository.User, error)
+	GetUserPromptByID(ctx context.Context, id string) (repository.ChetterUserPrompt, error)
 	GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error)
 	InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error
 	InsertAgentSessionCheckpoint(ctx context.Context, arg repository.InsertAgentSessionCheckpointParams) error
@@ -405,6 +406,11 @@ func (q *Queries) GetTriggerByName(ctx context.Context, name string) (repository
 func (q *Queries) GetUserByID(ctx context.Context, id string) (repository.User, error) {
 	value, err := q.postgres.GetUserByID(ctx, convert[string](id))
 	return convert[repository.User](value), err
+}
+
+func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (repository.ChetterUserPrompt, error) {
+	value, err := q.postgres.GetUserPromptByID(ctx, convert[string](id))
+	return convert[repository.ChetterUserPrompt](value), err
 }
 
 func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error) {

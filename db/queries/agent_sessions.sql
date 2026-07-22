@@ -103,8 +103,11 @@ WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
 
 -- name: InsertUserPrompt :exec
 INSERT INTO chetter_user_prompts
-    (id, agent_session_id, task_id, sequence, status, prompt, required_runner_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, agent_session_id, task_id, sequence, status, prompt, source_user_prompt_id, required_runner_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: GetUserPromptByID :one
+SELECT * FROM chetter_user_prompts WHERE id = ?;
 
 -- name: GetUserPromptByTaskID :one
 SELECT prompt.* FROM chetter_user_prompts prompt

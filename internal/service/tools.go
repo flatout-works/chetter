@@ -557,19 +557,20 @@ type AgentSessionRecord struct {
 }
 
 type UserPromptRecord struct {
-	ID               string     `json:"id"`
-	AgentSessionID   string     `json:"agent_session_id"`
-	TaskID           string     `json:"task_id"`
-	Sequence         int32      `json:"sequence"`
-	Status           string     `json:"status"`
-	RequiredRunnerID string     `json:"required_runner_id,omitempty"`
-	Summary          string     `json:"summary,omitempty"`
-	Error            string     `json:"error,omitempty"`
-	Prompt           string     `json:"prompt,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	StartedAt        *time.Time `json:"started_at,omitempty"`
-	EndedAt          *time.Time `json:"ended_at,omitempty"`
+	ID                 string     `json:"id"`
+	AgentSessionID     string     `json:"agent_session_id"`
+	TaskID             string     `json:"task_id"`
+	Sequence           int32      `json:"sequence"`
+	SourceUserPromptID string     `json:"source_user_prompt_id,omitempty"`
+	Status             string     `json:"status"`
+	RequiredRunnerID   string     `json:"required_runner_id,omitempty"`
+	Summary            string     `json:"summary,omitempty"`
+	Error              string     `json:"error,omitempty"`
+	Prompt             string     `json:"prompt,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	EndedAt            *time.Time `json:"ended_at,omitempty"`
 }
 
 type ListAgentSessionsOutput struct {
@@ -620,7 +621,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_cancel_task", Description: "Cancel a single chetter task by ID. Only works for pending or running tasks."}, svc.cancelTaskTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_drain_runner", Description: "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically."}, svc.drainRunnerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a failed task by creating a new task with the previous session export as a workspace file."}, svc.taskRecoverTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a terminal task in a fresh agent session using the previous session export."}, svc.taskRecoverTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_issue", Description: "Create a GitHub issue with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_issue_comment", Description: "Create a GitHub issue or PR comment with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueCommentTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_pr", Description: "Create a GitHub pull request with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubPRTool)
@@ -787,19 +788,20 @@ func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionReco
 
 func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
 	return UserPromptRecord{
-		ID:               run.ID,
-		AgentSessionID:   run.AgentSessionID,
-		TaskID:           run.TaskID,
-		Sequence:         run.Sequence,
-		Status:           run.Status,
-		RequiredRunnerID: run.RequiredRunnerID.String,
-		Summary:          run.Summary.String,
-		Error:            run.Error.String,
-		Prompt:           run.Prompt,
-		CreatedAt:        run.CreatedAt,
-		UpdatedAt:        run.UpdatedAt,
-		StartedAt:        nullTimePtr(run.StartedAt),
-		EndedAt:          nullTimePtr(run.EndedAt),
+		ID:                 run.ID,
+		AgentSessionID:     run.AgentSessionID,
+		TaskID:             run.TaskID,
+		Sequence:           run.Sequence,
+		SourceUserPromptID: run.SourceUserPromptID.String,
+		Status:             run.Status,
+		RequiredRunnerID:   run.RequiredRunnerID.String,
+		Summary:            run.Summary.String,
+		Error:              run.Error.String,
+		Prompt:             run.Prompt,
+		CreatedAt:          run.CreatedAt,
+		UpdatedAt:          run.UpdatedAt,
+		StartedAt:          nullTimePtr(run.StartedAt),
+		EndedAt:            nullTimePtr(run.EndedAt),
 	}
 }
 

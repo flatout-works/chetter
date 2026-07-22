@@ -409,7 +409,7 @@ func (s *Service) reapExpiredLeases() {
 			}
 			restartSummary := fmt.Sprintf("Started agent session %s after %s was abandoned", newSessionID, oldSession.ID)
 			restartPayload := mustMarshalJSON(map[string]any{
-				"task_id":             task.ID,
+				"task_id":              task.ID,
 				"old_agent_session_id": oldSession.ID,
 				"new_agent_session_id": newSessionID,
 				"old_user_prompt_id":   oldPrompt.ID,
@@ -816,9 +816,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	return repoTaskToStoreRecord(task), nil
 }
 
-// RecoverTask creates a new task from a failed task's configuration, including
-// the previous session export as a recovery file so the agent can pick up where
-// it left off.
+// RecoverTask starts a fresh agent session under an existing terminal task.
 func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
 	orig, err := s.taskForToolAccess(ctx, taskID)
 	if err != nil {
@@ -827,19 +825,6 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	if orig.Status != "error" && orig.Status != "done" && orig.Status != "cancelled" {
 		return TaskToolRecord{}, fmt.Errorf("task %s is %s, not a terminal state", taskID, orig.Status)
 	}
-	exportContent := ""
-	if orig.SessionExport.Valid {
-		exportContent = strings.ReplaceAll(orig.SessionExport.String, "\\n", "\n")
-	}
-	if exportContent == "" {
-		return TaskToolRecord{}, fmt.Errorf("no session export available for task %s", taskID)
-	}
-
-	skills := parseJSON[[]string](orig.Skills, "task:"+taskID+" skills")
-	_ = skills
-	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
-	_ = env
-
 	recoveryFileName := fmt.Sprintf("chetter_recovery_%s.md", taskID)
 	recoveryPrompt := fmt.Sprintf(
 		"The file %s in the workspace is the complete transcript of a previous session that attempted this work but did not succeed. "+
@@ -849,9 +834,136 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		recoveryFileName, orig.Prompt,
 	)
 
-	submitted, err := s.SubmitTask(ctx, recoveryTaskRequest(orig, taskID, recoveryPrompt))
+	now := time.Now().UTC()
+	newSessionID, err := randomID("sess")
 	if err != nil {
-		return TaskToolRecord{}, fmt.Errorf("submit recovery task: %w", err)
+		return TaskToolRecord{}, fmt.Errorf("generate recovery session id: %w", err)
+	}
+	newPromptID, err := randomID("prompt")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate recovery prompt id: %w", err)
+	}
+	recoveryEventID, err := randomID("evt")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate recovery event id: %w", err)
+	}
+	var recoveryEvent TaskEventCallbackContext
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		oldSession, err := q.GetAgentSessionByTaskID(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("get recovery source session: %w", err)
+		}
+		oldPrompt, err := q.GetUserPromptByTaskID(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("get recovery source prompt: %w", err)
+		}
+		if !oldPrompt.SessionExport.Valid || strings.TrimSpace(oldPrompt.SessionExport.String) == "" {
+			return fmt.Errorf("no session export available for task %s", taskID)
+		}
+		sequence, err := q.GetNextAgentSessionSequence(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("get recovery session sequence: %w", err)
+		}
+		checkpointAfterSuccess := oldSession.ResumeMode != "none"
+		rows, err := q.RequeueTaskForPrompt(ctx, repository.RequeueTaskForPromptParams{
+			CheckpointAfterSuccess: checkpointAfterSuccess,
+			TimeoutSec:             orig.TimeoutSec,
+			UpdatedAt:              now,
+			ID:                     taskID,
+		})
+		if err != nil {
+			return fmt.Errorf("requeue recovery task: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("task %s is not in a terminal state", taskID)
+		}
+		var expiresAt sql.NullTime
+		if checkpointAfterSuccess {
+			expiresAt = sql.NullTime{Time: now.Add(72 * time.Hour), Valid: true}
+		}
+		sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+oldSession.Agent.String+" "+oldSession.ModelID.String+" "+oldSession.GitUrl.String), " ")
+		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
+			ID:          newSessionID,
+			TaskID:      taskID,
+			Sequence:    sequence,
+			TeamID:      oldSession.TeamID,
+			Status:      "running",
+			ResumeMode:  oldSession.ResumeMode,
+			PauseReason: oldSession.PauseReason,
+			ExpiresAt:   expiresAt,
+			GitUrl:      oldSession.GitUrl,
+			GitRef:      oldSession.GitRef,
+			AgentImage:  oldSession.AgentImage,
+			Agent:       oldSession.Agent,
+			ProviderID:  oldSession.ProviderID,
+			ModelID:     oldSession.ModelID,
+			VariantID:   oldSession.VariantID,
+			SearchText:  nullString(sessionSearchText),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}); err != nil {
+			return fmt.Errorf("insert recovery session: %w", err)
+		}
+		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
+			ID:                 newPromptID,
+			AgentSessionID:     newSessionID,
+			TaskID:             taskID,
+			Sequence:           1,
+			Status:             "pending",
+			Prompt:             recoveryPrompt,
+			SourceUserPromptID: nullString(oldPrompt.ID),
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		}); err != nil {
+			return fmt.Errorf("insert recovery prompt: %w", err)
+		}
+		recoverySummary := fmt.Sprintf("Started recovery session %s from %s", newSessionID, oldSession.ID)
+		recoveryPayload := mustMarshalJSON(map[string]any{
+			"task_id":              taskID,
+			"old_agent_session_id": oldSession.ID,
+			"new_agent_session_id": newSessionID,
+			"old_user_prompt_id":   oldPrompt.ID,
+			"new_user_prompt_id":   newPromptID,
+			"reason":               "explicit_recovery",
+			"status":               "pending",
+			"summary":              recoverySummary,
+		})
+		recoveryEvent = TaskEventCallbackContext{
+			ID:        recoveryEventID,
+			TaskID:    taskID,
+			TeamID:    orig.TeamID.String,
+			Subject:   fmt.Sprintf("control.recovery.%s", taskID),
+			Status:    "pending",
+			EventType: "task.session_restarted",
+			Summary:   recoverySummary,
+			Payload:   recoveryPayload,
+			CreatedAt: now,
+		}
+		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+			ID:        recoveryEvent.ID,
+			TaskID:    recoveryEvent.TaskID,
+			Subject:   recoveryEvent.Subject,
+			Status:    recoveryEvent.Status,
+			EventType: recoveryEvent.EventType,
+			Payload:   recoveryPayload,
+			CreatedAt: recoveryEvent.CreatedAt,
+		}); err != nil {
+			return fmt.Errorf("insert recovery event: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return TaskToolRecord{}, err
+	}
+	if s.runnerRPC != nil && s.runnerRPC.eventBus != nil {
+		s.runnerRPC.eventBus.PublishTaskEvent(recoveryEvent.TaskID, recoveryEvent.ID, recoveryEvent.Status, recoveryEvent.EventType, recoveryEvent.Summary, string(recoveryEvent.Payload), recoveryEvent.CreatedAt.Format(time.RFC3339))
+	}
+	if s.runnerRPC != nil && s.runnerRPC.callbacks != nil {
+		go func(event TaskEventCallbackContext) {
+			callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+			defer cancel()
+			s.runnerRPC.callbacks.DispatchTaskEventCallbacks(callbackCtx, event)
+		}(recoveryEvent)
 	}
 
 	s.auditAsync(ctx, AuditEventParams{
@@ -859,44 +971,14 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		SourceType: "task",
 		SourceID:   taskID,
 		TargetType: "task",
-		TargetID:   submitted.ID,
-		Detail:     fmt.Sprintf("recovery task created from %s", taskID),
+		TargetID:   taskID,
+		Detail:     fmt.Sprintf("recovery session %s created for task %s", newSessionID, taskID),
 	})
 
-	return s.GetTask(ctx, submitted.ID)
+	return s.GetTask(ctx, taskID)
 }
 
-// recoveryTaskRequest preserves execution dependencies while starting a new
-// one-off task, so trigger and resumable-session lifecycle state is not copied.
-func recoveryTaskRequest(orig repository.ChetterTask, taskID, prompt string) SubmitTaskRequest {
-	env := parseJSON[map[string]string](orig.Env, "task:"+taskID+" env")
-	if env == nil {
-		env = map[string]string{}
-	}
-	harness := env["__chetter_harness"]
-	delete(env, "__chetter_harness")
-	env["__recover_from"] = taskID
-
-	return SubmitTaskRequest{
-		TeamID:           orig.TeamID.String,
-		Prompt:           prompt,
-		GitURL:           orig.GitUrl.String,
-		GitRef:           orig.GitRef.String,
-		AgentImage:       orig.AgentImage.String,
-		Agent:            orig.Agent.String,
-		ProviderID:       orig.ProviderID.String,
-		ModelID:          orig.ModelID.String,
-		VariantID:        orig.VariantID.String,
-		Harness:          harness,
-		Skills:           parseJSON[[]string](orig.Skills, "task:"+taskID+" skills"),
-		McpEndpoints:     parseJSON[[]string](optionalJSON(orig.McpEndpoints), "task:"+taskID+" mcp_endpoints"),
-		Env:              env,
-		TimeoutSec:       int(orig.TimeoutSec),
-		SubmissionSource: "recovery",
-	}
-}
-
-// ResumeAgentSession creates a follow-up run for a paused or recoverable agent session.
+// ResumeAgentSession creates a follow-up prompt for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
 	if err != nil {
@@ -966,10 +1048,11 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			return fmt.Errorf("get next prompt sequence: %w", err)
 		}
 		rows, err := q.RequeueTaskForPrompt(ctx, repository.RequeueTaskForPromptParams{
-			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
-			TimeoutSec:       int32(timeoutSec),
-			UpdatedAt:        now,
-			ID:               taskID,
+			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
+			CheckpointAfterSuccess: true,
+			TimeoutSec:             int32(timeoutSec),
+			UpdatedAt:              now,
+			ID:                     taskID,
 		})
 		if err != nil {
 			return fmt.Errorf("requeue task: %w", err)

@@ -595,22 +595,23 @@ func (x *AgentSession) GetSequence() int32 {
 }
 
 type UserPrompt struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	AgentSessionId   string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	TaskId           string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	Status           string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	RequiredRunnerId string                 `protobuf:"bytes,5,opt,name=required_runner_id,json=requiredRunnerId,proto3" json:"required_runner_id,omitempty"`
-	Summary          string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
-	Error            string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
-	CreatedAt        string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt        string                 `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	StartedAt        *string                `protobuf:"bytes,10,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
-	EndedAt          *string                `protobuf:"bytes,11,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
-	Prompt           string                 `protobuf:"bytes,12,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	Sequence         int32                  `protobuf:"varint,13,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AgentSessionId     string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	TaskId             string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Status             string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	RequiredRunnerId   string                 `protobuf:"bytes,5,opt,name=required_runner_id,json=requiredRunnerId,proto3" json:"required_runner_id,omitempty"`
+	Summary            string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	Error              string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	CreatedAt          string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          string                 `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	StartedAt          *string                `protobuf:"bytes,10,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
+	EndedAt            *string                `protobuf:"bytes,11,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
+	Prompt             string                 `protobuf:"bytes,12,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Sequence           int32                  `protobuf:"varint,13,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	SourceUserPromptId string                 `protobuf:"bytes,14,opt,name=source_user_prompt_id,json=sourceUserPromptId,proto3" json:"source_user_prompt_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UserPrompt) Reset() {
@@ -732,6 +733,13 @@ func (x *UserPrompt) GetSequence() int32 {
 		return x.Sequence
 	}
 	return 0
+}
+
+func (x *UserPrompt) GetSourceUserPromptId() string {
+	if x != nil {
+		return x.SourceUserPromptId
+	}
+	return ""
 }
 
 type Trigger struct {
@@ -7878,7 +7886,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\bsequence\x18\x17 \x01(\x05R\bsequenceB\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
-	"\v_expires_at\"\xa7\x03\n" +
+	"\v_expires_at\"\xda\x03\n" +
 	"\n" +
 	"UserPrompt\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
@@ -7897,7 +7905,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	" \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
 	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01\x12\x16\n" +
 	"\x06prompt\x18\f \x01(\tR\x06prompt\x12\x1a\n" +
-	"\bsequence\x18\r \x01(\x05R\bsequenceB\r\n" +
+	"\bsequence\x18\r \x01(\x05R\bsequence\x121\n" +
+	"\x15source_user_prompt_id\x18\x0e \x01(\tR\x12sourceUserPromptIdB\r\n" +
 	"\v_started_atB\v\n" +
 	"\t_ended_at\"\x81\a\n" +
 	"\aTrigger\x12\x0e\n" +

@@ -846,7 +846,7 @@ SET status = 'pending',
     runner_id = NULL,
     execution_id = '',
     required_runner_id = $1,
-    checkpoint_after_success = true,
+    checkpoint_after_success = $5,
     claimed_at = NULL,
     lease_expires_at = NULL,
     attempt = 0,
@@ -863,10 +863,11 @@ WHERE id = $4
 `
 
 type RequeueTaskForPromptParams struct {
-	RequiredRunnerID sql.NullString `json:"required_runner_id"`
-	TimeoutSec       int32          `json:"timeout_sec"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	ID               string         `json:"id"`
+	RequiredRunnerID       sql.NullString `json:"required_runner_id"`
+	TimeoutSec             int32          `json:"timeout_sec"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	ID                     string         `json:"id"`
+	CheckpointAfterSuccess bool           `json:"checkpoint_after_success"`
 }
 
 func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPromptParams) (int64, error) {
@@ -875,6 +876,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 		arg.TimeoutSec,
 		arg.UpdatedAt,
 		arg.ID,
+		arg.CheckpointAfterSuccess,
 	)
 	if err != nil {
 		return 0, err

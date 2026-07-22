@@ -495,6 +495,93 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	}
 }
 
+func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "finish recovery work", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_recovery", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_recovery",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:        task.ID,
+			ExecutionId:   claim.Msg.Task.ExecutionId,
+			Status:        "error",
+			Error:         "agent stopped",
+			SessionExport: "previous transcript",
+		}},
+	})); err != nil {
+		t.Fatalf("report failure: %v", err)
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	oldPrompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get old prompt: %v", err)
+	}
+	oldSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get old session: %v", err)
+	}
+	recovered, err := svc.RecoverTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	if recovered.ID != task.ID {
+		t.Fatalf("recovered task ID = %s, want stable %s", recovered.ID, task.ID)
+	}
+	newSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get recovery session: %v", err)
+	}
+	if newSession.ID == oldSession.ID || newSession.Sequence != 2 {
+		t.Fatalf("recovery session = %s/%d, want new ID/2", newSession.ID, newSession.Sequence)
+	}
+	newPrompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get recovery prompt: %v", err)
+	}
+	if newPrompt.AgentSessionID != newSession.ID || newPrompt.SourceUserPromptID.String != oldPrompt.ID {
+		t.Fatalf("recovery prompt = %+v, want source %s in session %s", newPrompt, oldPrompt.ID, newSession.ID)
+	}
+	events, err := q.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: task.ID, Limit: 20})
+	if err != nil {
+		t.Fatalf("list recovery events: %v", err)
+	}
+	foundRestart := false
+	for _, event := range events {
+		if event.EventType != "task.session_restarted" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("unmarshal recovery event: %v", err)
+		}
+		if payload["reason"] == "explicit_recovery" && payload["new_agent_session_id"] == newSession.ID {
+			foundRestart = true
+		}
+	}
+	if !foundRestart {
+		t.Fatalf("explicit recovery restart event missing from %+v", events)
+	}
+	recoveryClaim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_recovery_2", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim recovery: %v", err)
+	}
+	fileName := "chetter_recovery_" + task.ID + ".md"
+	if string(recoveryClaim.Msg.Task.ExtraFiles[fileName]) != "previous transcript" {
+		t.Fatalf("recovery file %q = %q", fileName, recoveryClaim.Msg.Task.ExtraFiles[fileName])
+	}
+}
+
 func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
