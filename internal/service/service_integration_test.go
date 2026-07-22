@@ -162,8 +162,10 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 		t.Fatalf("SubmitTask: %v", err)
 	}
 	now := time.Now().UTC()
+	executionID := "exec_reclaim"
 	if rows, err := svc.repo.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
 		RunnerID:       sql.NullString{String: "runner_reclaim", Valid: true},
+		ExecutionID:    executionID,
 		ClaimedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Second), Valid: true},
 		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
@@ -175,6 +177,23 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	} else if rows != 1 {
 		t.Fatalf("MarkTaskClaimed rows = %d", rows)
 	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+	if err := svc.repo.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
+		ID:             executionID,
+		UserPromptID:   prompt.ID,
+		Sequence:       1,
+		RunnerID:       nullString("runner_reclaim"),
+		ClaimedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Second), Valid: true},
+		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+		CreatedAt:      now.Add(-time.Minute),
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("InsertExecutionAttempt: %v", err)
+	}
 
 	svc.reapExpiredLeases()
 
@@ -184,6 +203,13 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	}
 	if reclaimed.Status != "pending" {
 		t.Fatalf("task status = %q, want pending", reclaimed.Status)
+	}
+	attempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
+	if err != nil {
+		t.Fatalf("GetExecutionAttemptByID: %v", err)
+	}
+	if attempt.Status != "lost" || !attempt.EndedAt.Valid {
+		t.Fatalf("attempt status/ended_at = %s/%v, want lost/set", attempt.Status, attempt.EndedAt.Valid)
 	}
 	events, err := svc.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: task.ID, Limit: 10})
 	if err != nil {
@@ -388,6 +414,13 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	}
 	if run.Summary.String != "finished" {
 		t.Fatalf("user prompt summary = %q", run.Summary.String)
+	}
+	attempt, err := q.GetExecutionAttemptByID(ctx, claim.Msg.Task.ExecutionId)
+	if err != nil {
+		t.Fatalf("get execution attempt: %v", err)
+	}
+	if attempt.UserPromptID != run.ID || attempt.Sequence != 1 || attempt.Status != "succeeded" {
+		t.Fatalf("execution attempt = %+v, want prompt %s sequence 1 succeeded", attempt, run.ID)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {

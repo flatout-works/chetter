@@ -104,6 +104,34 @@ type ChetterEventCallback struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
+type ChetterExecutionAttempt struct {
+	ID                    string         `json:"id"`
+	UserPromptID          string         `json:"user_prompt_id"`
+	Sequence              int32          `json:"sequence"`
+	Status                string         `json:"status"`
+	RunnerID              sql.NullString `json:"runner_id"`
+	RequiredRunnerID      sql.NullString `json:"required_runner_id"`
+	ClaimedAt             sql.NullTime   `json:"claimed_at"`
+	LeaseExpiresAt        sql.NullTime   `json:"lease_expires_at"`
+	StartedAt             sql.NullTime   `json:"started_at"`
+	EndedAt               sql.NullTime   `json:"ended_at"`
+	WorkspacePath         sql.NullString `json:"workspace_path"`
+	ContainerName         sql.NullString `json:"container_name"`
+	HarnessExecutionID    sql.NullString `json:"harness_execution_id"`
+	Summary               sql.NullString `json:"summary"`
+	Error                 sql.NullString `json:"error"`
+	ErrorCategory         sql.NullString `json:"error_category"`
+	SessionExport         sql.NullString `json:"session_export"`
+	TotalInputTokens      int64          `json:"total_input_tokens"`
+	TotalOutputTokens     int64          `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64          `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64          `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64          `json:"total_reasoning_tokens"`
+	CostCents             int64          `json:"cost_cents"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
+}
+
 type ChetterModelCatalog struct {
 	ID        string         `json:"id"`
 	Name      string         `json:"name"`

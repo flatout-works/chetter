@@ -665,13 +665,25 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 		case "pending":
 			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: "lease reclaimed; please stop"})
 		case "running":
-			if _, err := s.db.RenewTaskLease(ctx, repository.RenewTaskLeaseParams{
+			renewed, err := s.db.RenewTaskLease(ctx, repository.RenewTaskLeaseParams{
 				LeaseExpiresAt: lease,
 				UpdatedAt:      now,
 				LastEventAt:    sql.NullTime{Time: now, Valid: true},
 				ID:             row.ID,
 				RunnerID:       sql.NullString{String: info.RunnerId, Valid: true},
 				ExecutionID:    executionID,
+			})
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
+			if renewed == 0 {
+				continue
+			}
+			if _, err := s.db.RenewExecutionAttemptLease(ctx, repository.RenewExecutionAttemptLeaseParams{
+				LeaseExpiresAt: lease,
+				UpdatedAt:      now,
+				ID:             executionID,
+				RunnerID:       nullString(info.RunnerId),
 			}); err != nil {
 				return nil, connect.NewError(connect.CodeInternal, err)
 			}
@@ -721,6 +733,26 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}
 		if rows == 0 {
 			return errNoClaimableTask
+		}
+		prompt, promptErr := q.GetUserPromptByTaskID(ctx, task.ID)
+		if promptErr != nil && !errors.Is(promptErr, sql.ErrNoRows) {
+			return promptErr
+		}
+		if promptErr == nil {
+			if err := q.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
+				ID:               executionID,
+				UserPromptID:     prompt.ID,
+				Sequence:         task.Attempt + 1,
+				RunnerID:         nullString(runnerID),
+				RequiredRunnerID: task.RequiredRunnerID,
+				ClaimedAt:        sql.NullTime{Time: now, Valid: true},
+				LeaseExpiresAt:   sql.NullTime{Time: now.Add(lease), Valid: true},
+				StartedAt:        sql.NullTime{Time: now, Valid: true},
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			}); err != nil {
+				return err
+			}
 		}
 		if _, err := q.MarkUserPromptRunningByTask(ctx, repository.MarkUserPromptRunningByTaskParams{
 			StartedAt: sql.NullTime{Time: now, Valid: true},
@@ -817,6 +849,11 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	isHeartbeat := status == "running" && isHeartbeatSummary(event.Summary)
 	eventType := taskEventType(status, errorCategory, isHeartbeat)
 	lease := sql.NullTime{Time: now.Add(defaultTaskLeaseSec * time.Second), Valid: status == "running"}
+	attemptStatus := executionAttemptStatus(status)
+	attemptEndedAt := parseOptionalTime(event.EndedAt)
+	if attemptStatus != "running" && !attemptEndedAt.Valid {
+		attemptEndedAt = sql.NullTime{Time: now, Valid: true}
+	}
 	eventInsert := repository.InsertTaskEventParams{
 		ID:        eventID,
 		TaskID:    event.TaskId,
@@ -860,6 +897,29 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		}
 		if rows == 0 {
 			return errTaskNotClaimed
+		}
+		if _, err := q.UpdateExecutionAttemptFromRunnerEvent(ctx, repository.UpdateExecutionAttemptFromRunnerEventParams{
+			Status:                attemptStatus,
+			Summary:               nullString(event.Summary),
+			Error:                 nullString(event.Error),
+			ErrorCategory:         errorCategory,
+			SessionExport:         nullString(event.SessionExport),
+			LeaseExpiresAt:        lease,
+			StartedAt:             parseOptionalTime(event.StartedAt),
+			EndedAt:               attemptEndedAt,
+			WorkspacePath:         event.WorkspacePath,
+			HarnessExecutionID:    event.OpencodeSessionId,
+			TotalInputTokens:      tokenUsageInputTokens(event.TokenUsage),
+			TotalOutputTokens:     tokenUsageOutputTokens(event.TokenUsage),
+			TotalCacheReadTokens:  tokenUsageCacheReadTokens(event.TokenUsage),
+			TotalCacheWriteTokens: tokenUsageCacheWriteTokens(event.TokenUsage),
+			TotalReasoningTokens:  tokenUsageReasoningTokens(event.TokenUsage),
+			CostCents:             tokenUsageCostCents(event.TokenUsage),
+			UpdatedAt:             now,
+			ID:                    event.ExecutionId,
+			RunnerID:              nullString(runnerID),
+		}); err != nil {
+			return err
 		}
 		if err := q.UpdateTaskSearchText(ctx, event.TaskId); err != nil {
 			slog.DebugContext(ctx, "update task search_text", "task_id", event.TaskId, "err", err)
@@ -1014,6 +1074,19 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		}
 	}
 	return nil
+}
+
+func executionAttemptStatus(taskStatus string) string {
+	switch taskStatus {
+	case "done", "completed":
+		return "succeeded"
+	case "error":
+		return "failed"
+	case "cancelled":
+		return "cancelled"
+	default:
+		return "running"
+	}
 }
 
 func sessionTerminalStatuses(taskStatus string) (runStatus, sessionStatus string, ok bool) {

@@ -53,6 +53,7 @@ type Repository interface {
 	GetDefinitionSourceByName(ctx context.Context, name string) (repository.DefinitionSource, error)
 	GetEventCallbackByID(ctx context.Context, id string) (repository.ChetterEventCallback, error)
 	GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.ChetterEventCallback, error)
+	GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error)
 	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error)
 	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSessionCheckpoint, error)
 	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error)
@@ -74,6 +75,7 @@ type Repository interface {
 	InsertDefinitionChangeProposal(ctx context.Context, arg repository.InsertDefinitionChangeProposalParams) error
 	InsertDefinitionSyncRun(ctx context.Context, arg repository.InsertDefinitionSyncRunParams) error
 	InsertEventCallback(ctx context.Context, arg repository.InsertEventCallbackParams) error
+	InsertExecutionAttempt(ctx context.Context, arg repository.InsertExecutionAttemptParams) error
 	InsertModelCatalog(ctx context.Context, arg repository.InsertModelCatalogParams) error
 	InsertTask(ctx context.Context, arg repository.InsertTaskParams) error
 	InsertTaskArtifact(ctx context.Context, arg repository.InsertTaskArtifactParams) error
@@ -119,6 +121,7 @@ type Repository interface {
 	MarkAgentSessionResuming(ctx context.Context, arg repository.MarkAgentSessionResumingParams) (int64, error)
 	MarkAgentSessionTerminalByTask(ctx context.Context, arg repository.MarkAgentSessionTerminalByTaskParams) (int64, error)
 	MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error
+	MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error)
 	MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error)
 	MarkTaskClaimed(ctx context.Context, arg repository.MarkTaskClaimedParams) (int64, error)
 	MarkUserPromptRunningByTask(ctx context.Context, arg repository.MarkUserPromptRunningByTaskParams) (int64, error)
@@ -127,6 +130,7 @@ type Repository interface {
 	ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, error)
 	ReapStaleUserPrompts(ctx context.Context) (int64, error)
 	ReclaimExpiredLeases(ctx context.Context, arg repository.ReclaimExpiredLeasesParams) (int64, error)
+	RenewExecutionAttemptLease(ctx context.Context, arg repository.RenewExecutionAttemptLeaseParams) (int64, error)
 	RenewRunningTaskLeases(ctx context.Context, arg repository.RenewRunningTaskLeasesParams) (int64, error)
 	RenewTaskLease(ctx context.Context, arg repository.RenewTaskLeaseParams) (int64, error)
 	RequeueTaskForPrompt(ctx context.Context, arg repository.RequeueTaskForPromptParams) (int64, error)
@@ -140,6 +144,7 @@ type Repository interface {
 	SetTriggerNextRun(ctx context.Context, arg repository.SetTriggerNextRunParams) error
 	UpdateDefinitionChangeProposalStatus(ctx context.Context, arg repository.UpdateDefinitionChangeProposalStatusParams) error
 	UpdateEventCallback(ctx context.Context, arg repository.UpdateEventCallbackParams) (int64, error)
+	UpdateExecutionAttemptFromRunnerEvent(ctx context.Context, arg repository.UpdateExecutionAttemptFromRunnerEventParams) (int64, error)
 	UpdateTaskFromRunnerEvent(ctx context.Context, arg repository.UpdateTaskFromRunnerEventParams) (int64, error)
 	UpdateTaskSearchText(ctx context.Context, id string) error
 	UpdateTrigger(ctx context.Context, arg repository.UpdateTriggerParams) error
@@ -309,6 +314,11 @@ func (q *Queries) GetEventCallbackByName(ctx context.Context, arg repository.Get
 	return convert[repository.ChetterEventCallback](value), err
 }
 
+func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error) {
+	value, err := q.postgres.GetExecutionAttemptByID(ctx, convert[string](id))
+	return convert[repository.ChetterExecutionAttempt](value), err
+}
+
 func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error) {
 	value, err := q.postgres.GetLatestAgentSessionCheckpoint(ctx, convert[string](agentSessionID))
 	return convert[repository.ChetterAgentSessionCheckpoint](value), err
@@ -406,6 +416,10 @@ func (q *Queries) InsertDefinitionSyncRun(ctx context.Context, arg repository.In
 
 func (q *Queries) InsertEventCallback(ctx context.Context, arg repository.InsertEventCallbackParams) error {
 	return q.postgres.InsertEventCallback(ctx, convert[repositorypostgres.InsertEventCallbackParams](arg))
+}
+
+func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg repository.InsertExecutionAttemptParams) error {
+	return q.postgres.InsertExecutionAttempt(ctx, convert[repositorypostgres.InsertExecutionAttemptParams](arg))
 }
 
 func (q *Queries) InsertModelCatalog(ctx context.Context, arg repository.InsertModelCatalogParams) error {
@@ -626,6 +640,11 @@ func (q *Queries) MarkDefinitionSourceSynced(ctx context.Context, arg repository
 	return q.postgres.MarkDefinitionSourceSynced(ctx, convert[repositorypostgres.MarkDefinitionSourceSyncedParams](arg))
 }
 
+func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error) {
+	value, err := q.postgres.MarkExecutionAttemptLost(ctx, convert[repositorypostgres.MarkExecutionAttemptLostParams](arg))
+	return convert[int64](value), err
+}
+
 func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error) {
 	value, err := q.postgres.MarkResumingSessionsFailedForUnavailableRunner(ctx, convert[time.Time](updatedAt))
 	return convert[int64](value), err
@@ -663,6 +682,11 @@ func (q *Queries) ReapStaleUserPrompts(ctx context.Context) (int64, error) {
 
 func (q *Queries) ReclaimExpiredLeases(ctx context.Context, arg repository.ReclaimExpiredLeasesParams) (int64, error) {
 	value, err := q.postgres.ReclaimExpiredLeases(ctx, convert[repositorypostgres.ReclaimExpiredLeasesParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg repository.RenewExecutionAttemptLeaseParams) (int64, error) {
+	value, err := q.postgres.RenewExecutionAttemptLease(ctx, convert[repositorypostgres.RenewExecutionAttemptLeaseParams](arg))
 	return convert[int64](value), err
 }
 
@@ -725,6 +749,11 @@ func (q *Queries) UpdateDefinitionChangeProposalStatus(ctx context.Context, arg 
 
 func (q *Queries) UpdateEventCallback(ctx context.Context, arg repository.UpdateEventCallbackParams) (int64, error) {
 	value, err := q.postgres.UpdateEventCallback(ctx, convert[repositorypostgres.UpdateEventCallbackParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) UpdateExecutionAttemptFromRunnerEvent(ctx context.Context, arg repository.UpdateExecutionAttemptFromRunnerEventParams) (int64, error) {
+	value, err := q.postgres.UpdateExecutionAttemptFromRunnerEvent(ctx, convert[repositorypostgres.UpdateExecutionAttemptFromRunnerEventParams](arg))
 	return convert[int64](value), err
 }
 

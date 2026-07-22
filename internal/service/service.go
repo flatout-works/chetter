@@ -286,6 +286,14 @@ func (s *Service) reapExpiredLeases() {
 			return err
 		}
 		for _, task := range candidates {
+			if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
+				Error:     nullString(fmt.Sprintf("runner lease expired after attempt %d", task.Attempt)),
+				EndedAt:   sql.NullTime{Time: now, Valid: true},
+				UpdatedAt: now,
+				ID:        task.ExecutionID,
+			}); err != nil {
+				return err
+			}
 			eventID, err := randomID("evt")
 			if err != nil {
 				return err
