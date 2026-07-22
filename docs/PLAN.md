@@ -111,9 +111,9 @@ Chetter's biggest product gap is that agents are still mostly one-shot. OpenHand
 
 Current foundation:
 
-- `agent_sessions`, `session_runs`, and checkpoint metadata tables exist.
+- `agent_sessions`, `user_prompts`, `execution_attempts`, and checkpoint metadata tables exist.
 - `session_mode`, `pause_reason`, and `ttl_hours` are accepted on task and trigger submission.
-- `required_runner_id` supports same-runner resume affinity.
+- ExecutionAttempt `required_runner_id` supports same-runner resume affinity.
 - `chetter_list_agent_sessions`, `chetter_agent_session_status`, and `chetter_resume_agent_session` are registered.
 - GitHub artifact tools and `chetter_task_artifacts` provide server-side ownership records.
 
@@ -122,7 +122,7 @@ Next deliverables:
 - Document the current manual resumable-session workflow.
 - Verify gVisor checkpoint creation and restore end-to-end in Docker mode.
 - Add checkpoint garbage collection for expired sessions.
-- Extend GitHub artifact footers and artifact tracking to include `Session:` and `Run:` where possible.
+- Keep four-ID artifact attribution (`Task:`, `Session:`, `Prompt:`, and `Execution:`) consistent across direct tools and webhooks.
 - Add webhook-driven resume when PR review feedback arrives on a Chetter-owned PR.
 - Add web UI pages for sessions, runs, checkpoints, and resume actions.
 - Add operational safeguards for pinned-runner offline cases, expired sessions, and failed restores.
@@ -466,7 +466,7 @@ Target: configuration as code for automation.
 
 - Sync agents, skills, triggers, and task templates from Git.
 - Add definition read tools.
-- Store definition hashes on tasks and session runs.
+- Store definition hashes on tasks and agent sessions.
 - Add agent-authored definition change PR workflow.
 
 ### Milestone 5: Execution Backend Separation
@@ -486,6 +486,6 @@ See P5 above for the detailed phase breakdown.
 
 - Should `SCHEDULES.md` and `REVIEWS.md` stay separate, or should they become sections of `AUTOMATION.md`?
 - Should definitions repo sync replace DB trigger edits entirely, or should DB edits remain as explicit operational overrides?
-- Should session artifacts require updated footers for ownership, or can ownership be inferred from server-side artifact creation records only?
+- How long should attempt-level artifact contribution history be retained?
 - How strict should skill and agent frontmatter validation be during definitions sync?
 - Should Pi and Claude Code get stronger isolation by running inside per-task Docker containers, or should OpenCode remain the only gVisor-isolated harness for now?

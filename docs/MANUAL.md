@@ -142,6 +142,10 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `CHETTER_RUNNER_AUTH_TOKEN` | Runner config token env. Compose fills this from `CHETTER_RUNNER_RPC_TOKEN` for current runner fallback compatibility. |
 | `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
 | `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `CHETTER_TASK_ID` | Protected durable Task identifier injected for the current execution. |
+| `CHETTER_AGENT_SESSION_ID` | Protected AgentSession identifier injected for the current execution. |
+| `CHETTER_USER_PROMPT_ID` | Protected UserPrompt identifier injected for the current execution. |
+| `CHETTER_EXECUTION_ID` | Protected immutable ExecutionAttempt identifier used for attribution and fencing. |
 | `USE_GVISOR` | Enables Docker `runsc` execution and checkpoint support when `true`. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
@@ -332,7 +336,11 @@ MCP endpoints support global and team scope:
 - **Global** endpoints (under `mcp-endpoints/` or `global/mcp-endpoints/`) are available to all tasks.
 - **Team** endpoints (under `groups/<team-name>/mcp-endpoints/`) are available only to tasks owned by that team.
 
-At claim time the server resolves requested endpoint names from both global and the task's team scope. If a name exists in both scopes, the team-scoped definition takes precedence.
+At submission time the server resolves requested endpoint names from both global
+and the task's team scope and stores them in the AgentSession configuration
+snapshot. If a name exists in both scopes, the team-scoped definition takes
+precedence. Claiming resolves the stored names to current endpoint connection
+details without persisting bearer token values.
 
 #### Attaching endpoints to tasks
 
@@ -364,11 +372,16 @@ mcp_endpoints:
 You are a code review agent that uses context and GitHub MCP tools.
 ```
 
-At claim time, the server reads the agent definition's frontmatter and merges the declared endpoint names with any task-level `mcp_endpoints`. This means an agent that depends on specific MCP tools will always have them available without the submitter needing to remember every endpoint name.
+At submission time, the server reads the agent definition's frontmatter and
+merges the declared endpoint names with explicitly requested `mcp_endpoints` in
+the AgentSession snapshot. This means an agent that depends on specific MCP
+tools will always have them available without the submitter needing to remember
+every endpoint name.
 
 #### Recovery
 
-`chetter_recover_task` preserves `mcp_endpoints` from the original task, so a recovered task has the same MCP tools available as the original.
+`chetter_recover_task` creates a fresh AgentSession under the same Task and
+copies the previous session's configuration snapshot, including `mcp_endpoints`.
 
 #### Local mode
 

@@ -1,5 +1,7 @@
 # Task and Agent Session Model Refactor
 
+Status: **Completed**
+
 ## Goal
 
 Make the persisted model match the product concepts:
@@ -39,7 +41,7 @@ pursuing the objective.
 
 One coherent agent conversation and workspace lineage. It owns the harness
 session identity, resume policy, retained workspace/checkpoint, agent/model
-configuration, and attempt-level outcome.
+configuration, and session-level outcome.
 
 A task can have multiple agent sessions when work is restarted from scratch.
 
@@ -149,7 +151,7 @@ of this table.
 
 ### `chetter_agent_sessions`
 
-Add:
+Owns:
 
 - `task_id` (required).
 - `sequence` (unique within task).
@@ -159,7 +161,7 @@ Add:
 
 ### `chetter_user_prompts`
 
-Replace the public role of `chetter_session_runs` with:
+Replaces the former public role of `chetter_session_runs` and owns:
 
 - `agent_session_id` (required).
 - `sequence` (unique within session).
@@ -169,7 +171,7 @@ Replace the public role of `chetter_session_runs` with:
 
 ### `chetter_execution_attempts`
 
-Add:
+Owns:
 
 - `user_prompt_id`, sequence, immutable lease token/generation.
 - Runner and required runner IDs.
@@ -300,9 +302,9 @@ runner mutation. Reject stale reports and cleanup operations.
 5. Remove the old session-run pages, fields, and handlers in the same cutover.
 6. Update lifecycle and paused-session documentation.
 
-## Delivery Slices
+## Delivered Slices
 
-Keep each pull request deployable:
+The refactor was delivered in focused commits:
 
 1. **Observability:** explicit reclaim event, attempt number in events/API, and
    paginated timeline with `Load older`.
@@ -314,9 +316,8 @@ Keep each pull request deployable:
 5. **Lifecycle migration:** recover/reclaim/resume adopt the target semantics.
 6. **UI/API cutover:** grouped task history and terminology changes.
 
-The first slice should not wait for the full model migration. It gives operators
-accurate reclaim visibility and complete timeline pagination while the deeper
-refactor proceeds.
+All six slices are complete. Server, runner, web API, generated repositories,
+and both database dialects now use the hierarchy directly.
 
 ## Verification
 
@@ -338,13 +339,13 @@ Run root and runner checks independently (`make check` in each Go module), web
 checks, Buf generation/lint, sqlc generation, facade generation, and dialect
 integration tests.
 
-## Decisions Still Required
+## Final Decisions
 
-1. Whether a failed session with a recoverable transcript leaves Task status
-   `in_progress` or introduces an explicit `needs_recovery` task status.
-2. Whether UserPrompt exports store a transcript delta or a full cumulative
-   conversation snapshot.
-3. Whether a cold restart replays only the stable objective or includes the last
-   failed prompt and recovered transcript by default.
-4. Whether true gVisor process checkpoints remain a supported roadmap item or
-   the product standardizes on retained workspace plus harness-session resume.
+1. Recoverability is represented on AgentSession; Task remains the aggregate
+   objective rather than acquiring another execution-specific status.
+2. ExecutionAttempt owns exports and diagnostics for the execution that produced
+   them; UserPrompt exposes their aggregate outcome.
+3. Cold restart creates a new AgentSession and UserPrompt under the same Task,
+   with explicit recovery context when an export is available.
+4. Harness-session resume and gVisor checkpoint resume remain distinct modes.
+   Both require verifiable retained state and a pinned ExecutionAttempt.

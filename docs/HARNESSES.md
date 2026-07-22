@@ -133,8 +133,8 @@ CodeWhale and Pi use native fields (`bearer_token_env_var` / `bearerTokenEnv`) i
 
 ### How endpoints are resolved
 
-1. **Submit time**: the task stores endpoint names (e.g. `["context"]`) as JSON in the `mcp_endpoints` column. The server validates that each name resolves to an active endpoint definition in the task's scope (global + team).
-2. **Agent frontmatter**: if the task's agent definition declares `mcp_endpoints` in frontmatter, those names are merged with the task-level names at claim time.
+1. **Submit time**: the AgentSession configuration snapshot stores endpoint names (e.g. `["context"]`) as JSON in `mcp_endpoints`. The server validates that each name resolves to an active endpoint definition in the task's scope (global + team).
+2. **Agent frontmatter**: if the selected agent definition declares `mcp_endpoints` in frontmatter, those names are merged into the AgentSession snapshot.
 3. **Claim time**: the server loads the full endpoint definitions (URL, transport, headers, `bearer_token_env`) and sends them via the runner protobuf. The token value is never sent — only the environment-variable name.
 4. **Runner startup**: the runner validates that each `bearer_token_env` variable is set in the runner environment, rejects task env overrides for those keys, and imports the values into the Docker container.
 5. **Harness config generation**: the harness config writer (`runner/harness/mcpconfig`) generates native MCP server entries for each endpoint. HTTP profiles produce `type: "http"` (or no type for CodeWhale); SSE profiles produce `type: "sse"` or `transport: "sse"` depending on the harness.
@@ -196,9 +196,9 @@ The `harness` field is optional. When omitted or empty, the runner's
 `execution.harness` config is used as the default.
 
 **How it flows:**
-- Server receives `harness` in the MCP input -> embeds it as
-  `__chetter_harness` in the task's env JSON
-- Runner claims task -> proto `Task.Harness` field -> `harnessFor(req.Harness)`
+- Server receives `harness` in the MCP input and stores it in the AgentSession
+  configuration snapshot.
+- Runner claims an ExecutionAttempt -> proto `Task.Harness` field -> `harnessFor(req.Harness)`
   selects the right harness strategy
 - Each task picks its harness independently; concurrent tasks can use different
   harnesses on the same runner
