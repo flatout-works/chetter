@@ -41,15 +41,16 @@ The most specific definition wins when names collide.
 Example layout:
 
 ```text
-agents/
-  pr-reviewer.md
-  issue-triage.md
-skills/
-  chetter/SKILL.md
-triggers/
-  nightly-docs.yaml
-task-templates/
-  improve-agent.md
+global/
+  agents/
+    pr-reviewer.md
+    issue-triage.md
+  skills/
+    chetter/SKILL.md
+  triggers/
+    nightly-docs.yaml
+  task-templates/
+    improve-agent.md
 ```
 
 Example scope mapping:
@@ -64,9 +65,9 @@ When a task for `github.com/acme/my-service` references `agent: pr-reviewer`,
 Chetter resolves it as:
 
 ```text
-repo:   .chetter/agents/pr-reviewer.md
-team:   agents/pr-reviewer.md
-global: agents/pr-reviewer.md
+repo:   repos/acme/my-service/agents/pr-reviewer.md
+team:   groups/acme/agents/pr-reviewer.md
+global: global/agents/pr-reviewer.md
 ```
 
 ## Runtime Model
@@ -95,14 +96,16 @@ Implemented registry tables:
 Supported indexed paths:
 
 ```text
-agents/*.md
-skills/*.md
-skills/*/SKILL.md
-triggers/*.yaml
-triggers/*.yml
-mcp-endpoints/*.yaml
-mcp-endpoints/*.yml
-task-templates/*.md
+global/agents/*.md
+global/skills/*.md
+global/skills/*/SKILL.md
+global/triggers/*.yaml
+global/triggers/*.yml
+global/mcp-endpoints/*.yaml
+global/mcp-endpoints/*.yml
+global/task-templates/*.md
+groups/<team-name>/{agents,skills,triggers,mcp-endpoints,task-templates}/...
+repos/<owner>/<repo>/{agents,skills,triggers,task-templates}/...
 ```
 
 The runtime DB should store enough information to answer:

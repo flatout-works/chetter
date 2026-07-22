@@ -156,7 +156,7 @@ Next deliverables:
 
 The target model is to keep images stable and inject changing behavior from the Git-backed definitions repo at task time:
 
-1. `chetter_sync_definitions` syncs `model-catalog.yaml`, `triggers/*.yaml`, `agents/*.md`, `skills/**/SKILL.md`, and `task-templates/*.md` from the config repo into the database.
+1. `chetter_sync_definitions` syncs root `model-catalog.yaml` plus scoped triggers, agents, skills, MCP endpoints, and task templates from `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/` into the database.
 2. When a runner claims a task, it asks the server for the resolved definitions for that task, considering global/team/repo scope.
 3. Before starting the harness, the runner writes those definitions into the task workspace, for example `.opencode/agent/*.md` and `.opencode/skill/*/SKILL.md`.
 4. The harness starts with workspace config paths, so injected definitions take precedence over image-baked fallback definitions.
@@ -166,7 +166,7 @@ Trigger ownership should remain explicit:
 
 | Trigger source | Behavior |
 |---|---|
-| Git-managed triggers | Created or updated from `triggers/*.yaml` in the definitions repo. Manual DB edits are overwritten on the next sync. If removed from Git, they should be disabled rather than deleted. |
+| Git-managed triggers | Created or updated from scoped `triggers/*.yaml` paths in the definitions repo. Manual DB edits are overwritten on the next sync. If removed from Git, they should be disabled rather than deleted. |
 | Dynamic MCP-created triggers | Created through `chetter_create_trigger` or the web/API. They are not modified by Git sync unless explicitly adopted. |
 | Conflicts | If Git sync would create a trigger with the same name as a dynamic trigger, sync should fail with a clear conflict rather than silently taking ownership. |
 

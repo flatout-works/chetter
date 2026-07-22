@@ -9,11 +9,11 @@ import (
 
 func TestScanDefinitions(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
-	writeFile(t, root, "skills/chetter/SKILL.md", "# Chetter skill\n")
-	writeFile(t, root, "skills/flat.md", "# Flat skill\n")
-	writeFile(t, root, "triggers/nightly.yaml", "name: nightly\n")
-	writeFile(t, root, "task-templates/improve.md", "Improve this\n")
+	writeFile(t, root, "global/agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
+	writeFile(t, root, "global/skills/chetter/SKILL.md", "# Chetter skill\n")
+	writeFile(t, root, "global/skills/flat.md", "# Flat skill\n")
+	writeFile(t, root, "global/triggers/nightly.yaml", "name: nightly\n")
+	writeFile(t, root, "global/task-templates/improve.md", "Improve this\n")
 
 	m := New("", "", root)
 	defs, err := m.ScanDefinitions()
@@ -23,11 +23,11 @@ func TestScanDefinitions(t *testing.T) {
 	if len(defs) != 5 {
 		t.Fatalf("expected 5 definitions, got %d: %#v", len(defs), defs)
 	}
-	assertDefinition(t, defs, DefinitionTypeAgent, "pr-reviewer", "agents/pr-reviewer.md")
-	assertDefinition(t, defs, DefinitionTypeSkill, "chetter", "skills/chetter/SKILL.md")
-	assertDefinition(t, defs, DefinitionTypeSkill, "flat", "skills/flat.md")
-	assertDefinition(t, defs, DefinitionTypeTrigger, "nightly", "triggers/nightly.yaml")
-	assertDefinition(t, defs, DefinitionTypeTaskTemplate, "improve", "task-templates/improve.md")
+	assertDefinition(t, defs, DefinitionTypeAgent, "pr-reviewer", "global/agents/pr-reviewer.md")
+	assertDefinition(t, defs, DefinitionTypeSkill, "chetter", "global/skills/chetter/SKILL.md")
+	assertDefinition(t, defs, DefinitionTypeSkill, "flat", "global/skills/flat.md")
+	assertDefinition(t, defs, DefinitionTypeTrigger, "nightly", "global/triggers/nightly.yaml")
+	assertDefinition(t, defs, DefinitionTypeTaskTemplate, "improve", "global/task-templates/improve.md")
 	for _, def := range defs {
 		if def.ContentHash == "" {
 			t.Fatalf("definition %s/%s has empty hash", def.Type, def.Name)
@@ -37,15 +37,32 @@ func TestScanDefinitions(t *testing.T) {
 
 func TestScanDefinitionsRejectsInvalidTriggerYAML(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "triggers/bad.yaml", "name: bad\nunknown: true\n")
+	writeFile(t, root, "global/triggers/bad.yaml", "name: bad\nunknown: true\n")
 
 	m := New("", "", root)
 	_, err := m.ScanDefinitions()
 	if err == nil {
 		t.Fatal("expected invalid trigger yaml to fail")
 	}
-	if !strings.Contains(err.Error(), "triggers/bad.yaml") || !strings.Contains(err.Error(), "field unknown not found") {
+	if !strings.Contains(err.Error(), "global/triggers/bad.yaml") || !strings.Contains(err.Error(), "field unknown not found") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestScanDefinitionsIgnoresRootDefinitionDirectories(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "agents/ignored.md", "---\nidentity: primary-bot\n---\n# Ignored\n")
+	writeFile(t, root, "skills/ignored/SKILL.md", "# Ignored\n")
+	writeFile(t, root, "triggers/ignored.yaml", "name: ignored\n")
+	writeFile(t, root, "mcp-endpoints/ignored.yaml", "name: ignored\nurl: https://mcp.example.com\n")
+	writeFile(t, root, "task-templates/ignored.md", "Ignored\n")
+
+	defs, err := New("", "", root).ScanDefinitions()
+	if err != nil {
+		t.Fatalf("scan definitions: %v", err)
+	}
+	if len(defs) != 0 {
+		t.Fatalf("root definition directories should be ignored, got %#v", defs)
 	}
 }
 
@@ -138,7 +155,7 @@ func assertDefinition(t *testing.T, defs []Definition, definitionType, name, pat
 
 func TestScanDefinitionsIncludesGlobalAndTeamMcpEndpoints(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "mcp-endpoints/global-ep.yaml", "name: global-ep\nurl: https://mcp.example.com/global\n")
+	writeFile(t, root, "global/mcp-endpoints/global-ep.yaml", "name: global-ep\nurl: https://mcp.example.com/global\n")
 	writeFile(t, root, "global/mcp-endpoints/global2.yml", "name: global2\nurl: https://mcp.example.com/global2\n")
 	writeFile(t, root, "groups/engineering/mcp-endpoints/team-ep.yaml", "name: team-ep\nurl: https://mcp.example.com/team\n")
 
@@ -146,7 +163,7 @@ func TestScanDefinitionsIncludesGlobalAndTeamMcpEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan definitions: %v", err)
 	}
-	assertDefinition(t, defs, DefinitionTypeMCPEndpoint, "global-ep", "mcp-endpoints/global-ep.yaml")
+	assertDefinition(t, defs, DefinitionTypeMCPEndpoint, "global-ep", "global/mcp-endpoints/global-ep.yaml")
 	assertDefinition(t, defs, DefinitionTypeMCPEndpoint, "global2", "global/mcp-endpoints/global2.yml")
 	assertDefinition(t, defs, DefinitionTypeMCPEndpoint, "team-ep", "groups/engineering/mcp-endpoints/team-ep.yaml")
 	for _, def := range defs {
@@ -168,7 +185,7 @@ func TestScanDefinitionsRejectsRepoScopedMcpEndpoints(t *testing.T) {
 
 func TestScanDefinitionsRejectsMcpEndpointNameMismatch(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, "mcp-endpoints/file-name.yaml", "name: other-name\nurl: https://mcp.example.com\n")
+	writeFile(t, root, "global/mcp-endpoints/file-name.yaml", "name: other-name\nurl: https://mcp.example.com\n")
 
 	_, err := New("", "", root).ScanDefinitions()
 	if err == nil || !strings.Contains(err.Error(), `endpoint name "other-name" must match file name "file-name"`) {

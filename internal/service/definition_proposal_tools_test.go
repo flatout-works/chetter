@@ -36,7 +36,7 @@ func TestDefinitionProposalListAndGetTools(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	files, _ := json.Marshal([]DefinitionProposalFile{{Path: "agents/task-improver.md"}})
+	files, _ := json.Marshal([]DefinitionProposalFile{{Path: "global/agents/task-improver.md"}})
 	if err := svc.repo.InsertDefinitionChangeProposal(ctx, repository.InsertDefinitionChangeProposalParams{
 		ID:         "dprop_test",
 		SourceID:   defaultDefinitionSourceID,

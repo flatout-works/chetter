@@ -142,8 +142,8 @@ To propose durable definition changes, use `chetter_create_definition_proposal` 
 
 ### Adding a New Cron Trigger
 
-1. Copy an existing trigger YAML from `examples/config-repo/triggers/` as a starting point.
-2. Edit it with your repo details and prompt, then add it to your config repo's `triggers/` directory.
+1. Copy an existing trigger YAML from `examples/config-repo/global/triggers/` as a starting point.
+2. Edit it with your repo details and prompt, then add it to the appropriate scoped `triggers/` directory.
 3. Sync definitions to activate it:
    ```
    Use chetter_sync_definitions to reload triggers from the definitions repo
@@ -184,7 +184,7 @@ Each trigger supports these fields:
 
 To change a trigger's cron expression, prompt, model, or other fields:
 
-1. Edit the `triggers/*.yaml` file in your config repo directly.
+1. Edit the scoped `triggers/*.yaml` file in your config repo directly.
 2. Sync definitions to apply changes:
    ```
    Use chetter_sync_definitions to reload triggers
@@ -211,8 +211,8 @@ Remove the corresponding YAML file from your repo if it is no longer part of you
 
 The recommended pattern is to store trigger YAMLs in your config repo (set via `DEFINITIONS_REPO`). When you set up your project:
 
-1. Create a `triggers/` directory in your config repo.
-2. Copy the samples from Chetter's `examples/config-repo/triggers/` as starting points.
+1. Create a `global/triggers/` directory in your config repo, or use the applicable team/repository scope.
+2. Copy the samples from Chetter's `examples/config-repo/global/triggers/` as starting points.
 3. Customize for your project (repo URL, agent image, prompt details).
 4. Apply each trigger with `chetter_create_trigger`, or update with `chetter_update_trigger`.
 
@@ -225,7 +225,7 @@ This way your triggers are version-controlled alongside your code and can be rev
 - Tell tasks to create branches and PRs rather than pushing to the default branch
 - Use `timeout_sec` appropriate for the work (e.g., 600 for quick checks, 3600 for code changes)
 - Chetter clones from Git; tasks cannot access uncommitted local changes
-- For recurring schedules, check `triggers/*.yaml` into your config repo
+- For recurring schedules, check scoped `triggers/*.yaml` definitions into your config repo
 
 ## Model Selection
 

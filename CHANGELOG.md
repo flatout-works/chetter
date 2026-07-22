@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from `mcp-endpoints/*.yaml` in the definitions repo, with agent frontmatter declarations and JSON schema validation.
+- MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from scoped `mcp-endpoints/*.yaml` paths in the definitions repo, with agent frontmatter declarations and JSON schema validation.
 - MCP endpoints wired through service, RPC, and web API: endpoints loaded at submit and claim time with scope filtering, merged with agent-declared endpoints from frontmatter, and delivered to runners in the task proto.
 - Runner MCP endpoint support: bearer-token environments validated and protected from task overrides, injected into containers without embedding values in arguments. Native MCP configuration generated for OpenCode, Claude Code, CodeWhale, Pi, and Codex harnesses.
 - Chetter MCP tools allowlist in gVisor task containers: 32 read/management Chetter MCP tools explicitly permitted for agents when the Chetter MCP server is injected; admin-only tools excluded to limit blast radius.

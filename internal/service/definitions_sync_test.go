@@ -84,7 +84,7 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get definition tool: %v", err)
 	}
-	if defOut.Definition.Path != "skills/chetter/SKILL.md" {
+	if defOut.Definition.Path != "global/skills/chetter/SKILL.md" {
 		t.Fatalf("unexpected definition output: %#v", defOut)
 	}
 
@@ -167,10 +167,10 @@ providers:
     models:
       - id: test-model
 `)
-	writeRepoFile(t, dir, "agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
-	writeRepoFile(t, dir, "skills/chetter/SKILL.md", "# Chetter skill\n")
-	writeRepoFile(t, dir, "triggers/nightly.yaml", "name: nightly\n")
-	writeRepoFile(t, dir, "task-templates/improve.md", "Improve this\n")
+	writeRepoFile(t, dir, "global/agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
+	writeRepoFile(t, dir, "global/skills/chetter/SKILL.md", "# Chetter skill\n")
+	writeRepoFile(t, dir, "global/triggers/nightly.yaml", "name: nightly\n")
+	writeRepoFile(t, dir, "global/task-templates/improve.md", "Improve this\n")
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "initial definitions")
 	return dir

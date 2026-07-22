@@ -4,7 +4,7 @@
 # Customize before enabling:
 #   git_url  - your repository URL
 #   git_ref  - branch to work from (usually main)
-#   agent    - agent to use (defined in agents/*.md)
+#   agent    - agent to use (defined in global/agents/*.md)
 #   skills   - skills to load (defined in skills/*/)
 #   prompt   - adjust the task description
 

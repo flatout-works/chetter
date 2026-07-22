@@ -1,6 +1,6 @@
 # Task template: code improvements
 
-This file in `task-templates/*.md` defines a reusable task prompt template.
+This file in `global/task-templates/*.md` defines a global reusable task prompt template.
 
 Perform a focused improvement pass on the target repository:
 

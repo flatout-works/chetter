@@ -188,7 +188,7 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 }
 
 func (m *Manager) definitionRoots() ([]definitionRoot, error) {
-	roots := []definitionRoot{{scope: DefinitionScopeGlobal}}
+	var roots []definitionRoot
 	if isDir(filepath.Join(m.cacheDir, "global")) {
 		roots = append(roots, definitionRoot{path: "global", scope: DefinitionScopeGlobal})
 	}

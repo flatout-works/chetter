@@ -101,7 +101,7 @@ Only provided fields are changed. The trigger is re-registered in the cron runne
 
 ## Production Schedules
 
-Trigger definitions live as YAML files in the config repo's `triggers/` directory (set via `DEFINITIONS_REPO`). They are auto-synced into the database on startup and on `chetter_sync_definitions`. See [CONFIGURATION.md](CONFIGURATION.md) for the full architecture.
+Trigger definitions live as YAML files under `global/triggers/`, `groups/<team-name>/triggers/`, or `repos/<owner>/<repo>/triggers/` in the config repo set via `DEFINITIONS_REPO`. They are auto-synced into the database on startup and on `chetter_sync_definitions`. See [CONFIGURATION.md](CONFIGURATION.md) for the full architecture.
 
 ### Included Schedules
 
