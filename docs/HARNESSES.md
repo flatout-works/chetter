@@ -15,10 +15,10 @@ to hang until timeout.
 | Harness | Mechanism | Vulnerable to livelock? |
 |---------|-----------|--------------------------|
 | **OpenCode** | Polls `/session/status` for idle + SSE `session.status` idle signal + heuristic fallbacks | Was — fixed |
-| **Claude Code** | Synchronous HTTP response from `POST /session/{id}/message` | No |
-| **Codex** | Synchronous HTTP response from `POST /session/{id}/message` | No |
-| **CodeWhale** | Polls turn status via `GET /v1/threads/{id}/events` until `turn.completed` | No (no continuation prompts) |
-| **Pi** | Event-based: `agent_end` event from JSONL stream | No |
+| **Claude Code** | Synchronous HTTP response + successful terminal SSE result | No |
+| **Codex** | Synchronous HTTP response + non-lossy terminal SSE signal | No |
+| **CodeWhale** | Watches `GET /v1/threads/{id}/events` until `turn.completed`, with cursor reconnect | No (no continuation prompts) |
+| **Pi** | `agent_settled`/`agent_end` events + guarded final-assistant EOF fallback | No |
 
 ### OpenCode Completion (multi-layered)
 
@@ -41,10 +41,9 @@ adds three layers of detection:
    neither nudges nor fails — this breaks the livelock where continuation
    prompts kept the agent alive after it had finished.
 
-The `CompletionAwareHarness` interface (implemented only by OpenCode) wires
-the SSE idle signal to the poll-based completion detection. Harnesses that use
-synchronous `SendPrompt` (Claude, Codex) or event-based completion (Pi) do not
-need this interface.
+The `CompletionAwareHarness` interface is implemented by OpenCode, Claude Code,
+and Codex. It makes their terminal SSE signals independent of the primary HTTP
+completion path, so a completed turn can survive a lost or hanging response.
 
 ### The Livelock Bug (Fixed)
 
@@ -59,13 +58,13 @@ both natural timeout and completion detection. The task would burn tokens for
 See task `task_dcdb6b26` for a real-world example: the agent completed its work,
 created a PR, but the runner never detected completion.
 
-### CodeWhale (milder variant)
+### CodeWhale
 
-CodeWhale also uses poll-based completion (`waitForTurnCompletion`), but does
-**not** implement `SessionContinuable`. If the poll endpoint fails, the task
-times out without livelock — no continuation prompts are sent. This is less
-severe than the OpenCode bug but would benefit from similar SSE-based fallback
-hardening in the future.
+CodeWhale waits for `turn.completed` on the thread SSE stream and does **not**
+implement `SessionContinuable`. The waiter reconnects with the last observed
+sequence cursor, deduplicates replayed events, and accepts only an explicit
+`completed` terminal status. Exhausted reconnects fail clearly rather than
+silently reporting success.
 
 ## Harness Interface
 

@@ -117,7 +117,9 @@ func (w *progressWatchdog) check(now time.Time) (nudge, fail bool) {
 			w.nudgeCount++
 			return true, false
 		}
-		return false, elapsed >= harnessProgressFailAfter
+		// A harness that cannot continue owns its completion timeout. Do not
+		// terminate legitimate long-running work based only on quiet output.
+		return false, false
 	}
 	return false, now.Sub(w.nudgedAt) >= harnessProgressFailAfter
 }

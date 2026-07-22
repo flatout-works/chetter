@@ -81,7 +81,17 @@ func (oc *OpenCode) SendPrompt(ctx context.Context, baseURL, sessionID, secret s
 	oc.mu.Lock()
 	idleCh := oc.idleCh
 	oc.mu.Unlock()
-	return sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout, idleCh)
+	summary, err := sendPromptAndWait(ctx, baseURL, sessionID, secret, req, wsDir, timeout, idleCh)
+	if err != nil || idleCh == nil {
+		return summary, err
+	}
+	select {
+	case <-idleCh:
+	case <-time.After(2 * time.Second):
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return summary, nil
 }
 
 func (oc *OpenCode) ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error {

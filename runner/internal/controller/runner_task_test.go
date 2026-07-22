@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +51,21 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
+	}
+}
+
+func TestTokenUsageAccumulatorConcurrentAdds(t *testing.T) {
+	var usage tokenUsageAccumulator
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			usage.add(task.TokenUsage{InputTokens: 2, OutputTokens: 1, CacheReadTokens: 3, CostCents: 1})
+		})
+	}
+	wg.Wait()
+	got := usage.snapshot()
+	if got.InputTokens != 200 || got.OutputTokens != 100 || got.CacheReadTokens != 300 || got.CostCents != 100 {
+		t.Fatalf("usage = %+v", got)
 	}
 }
 
@@ -652,6 +669,100 @@ func TestSelectHarnessByName_Pi(t *testing.T) {
 	}
 	if !h.SupportsRpc() {
 		t.Fatal("pi should support RPC")
+	}
+}
+
+func TestPiRPCCompletionLifecycle(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []map[string]any
+		want   bool
+	}{
+		{name: "agent end", events: []map[string]any{{"type": "agent_end", "willRetry": false}}, want: true},
+		{name: "agent settled", events: []map[string]any{{"type": "agent_settled"}}, want: true},
+		{name: "agent end retry", events: []map[string]any{{"type": "agent_end", "willRetry": true}}, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+			r := &Runner{}
+			for _, event := range tc.events {
+				if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, event, state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if state.terminal != tc.want {
+				t.Fatalf("terminal = %v, want %v", state.terminal, tc.want)
+			}
+		})
+	}
+}
+
+func TestPiRPCMissingTerminalEOFFallback(t *testing.T) {
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+	r := &Runner{}
+	messageEnd := map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "stop"},
+	}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, messageEnd, state); err != nil {
+		t.Fatal(err)
+	}
+	if !state.completeOnEOF() {
+		t.Fatal("final assistant response should permit clean EOF completion")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "tool_execution_start", "toolCallId": "tool-1"}, state)
+	if state.completeOnEOF() {
+		t.Fatal("active tool must prevent EOF completion")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "tool_execution_end", "toolCallId": "tool-1"}, state)
+	if !state.completeOnEOF() {
+		t.Fatal("completed tool should restore EOF completion eligibility")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "toolUse"},
+	}, state)
+	if state.completeOnEOF() {
+		t.Fatal("assistant tool-use response must not be treated as final")
+	}
+}
+
+func TestPiRPCCancellationStatus(t *testing.T) {
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	status, message := rpcCancellationStatus(cancelled, "pi")
+	if status != "cancelled" || message != "pi cancelled" {
+		t.Fatalf("cancellation = %q %q", status, message)
+	}
+	timedOut, timeoutCancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer timeoutCancel()
+	<-timedOut.Done()
+	status, message = rpcCancellationStatus(timedOut, "pi")
+	if status != "error" || message != "pi timed out" {
+		t.Fatalf("timeout = %q %q", status, message)
+	}
+}
+
+func TestPiRPCCleanupExportsBeforeAbort(t *testing.T) {
+	wsDir := t.TempDir()
+	lines := make(chan rpcLine, 2)
+	lines <- rpcLine{data: []byte(`{"id":"messages","type":"response","success":true,"data":{"messages":[{"role":"assistant","content":"finished"}]}}`)}
+	lines <- rpcLine{data: []byte(`{"id":"abort","type":"response","success":true}`)}
+	close(lines)
+	var commands bytes.Buffer
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+	export := r.cleanupRPCSession(task.TaskRequest{}, wsDir, &commands, lines, state)
+	if !strings.Contains(export, "finished") {
+		t.Fatalf("export = %q", export)
+	}
+	written := commands.String()
+	if strings.Index(written, `"id":"messages"`) >= strings.Index(written, `"id":"abort"`) {
+		t.Fatalf("commands out of order: %s", written)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, ".pi", "session-export.md")); err != nil {
+		t.Fatalf("session export missing: %v", err)
 	}
 }
 

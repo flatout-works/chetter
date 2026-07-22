@@ -10,17 +10,20 @@ import (
 )
 
 type CodeWhale struct {
-	mu            sync.Mutex
-	turnByID      map[string]string
-	sessionExport map[string]string
-	publishFn     func(status, message string)
-	tokenFn       func(usage task.TokenUsage)
+	mu             sync.Mutex
+	turnByID       map[string]string
+	sessionExport  map[string]string
+	publishFn      func(status, message string)
+	tokenFn        func(usage task.TokenUsage)
+	callbacksReady chan struct{}
+	callbacksOnce  sync.Once
 }
 
 func New() *CodeWhale {
 	return &CodeWhale{
-		turnByID:      make(map[string]string),
-		sessionExport: make(map[string]string),
+		turnByID:       make(map[string]string),
+		sessionExport:  make(map[string]string),
+		callbacksReady: make(chan struct{}),
 	}
 }
 
@@ -119,15 +122,26 @@ func (cw *CodeWhale) turnID(sessionID string) string {
 
 func (cw *CodeWhale) setCallbacks(publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 	cw.mu.Lock()
-	defer cw.mu.Unlock()
 	cw.publishFn = publishFn
 	cw.tokenFn = tokenFn
+	cw.mu.Unlock()
+	cw.callbacksOnce.Do(func() { close(cw.callbacksReady) })
 }
 
 func (cw *CodeWhale) callbacks() (func(status, message string), func(usage task.TokenUsage)) {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 	return cw.publishFn, cw.tokenFn
+}
+
+func (cw *CodeWhale) waitForCallbacks(ctx context.Context) (func(status, message string), func(usage task.TokenUsage), error) {
+	select {
+	case <-cw.callbacksReady:
+		publishFn, tokenFn := cw.callbacks()
+		return publishFn, tokenFn, nil
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
 }
 
 func (cw *CodeWhale) setSessionExport(sessionID, export string) {

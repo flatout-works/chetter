@@ -63,6 +63,13 @@ type tokenUsage struct {
 	ReasoningTokens int64 `json:"reasoning_tokens"`
 }
 
+type terminalEvent struct {
+	Status  string     `json:"status"`
+	Summary string     `json:"summary,omitempty"`
+	Error   string     `json:"error,omitempty"`
+	Usage   tokenUsage `json:"usage"`
+}
+
 type appServer struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
@@ -246,6 +253,29 @@ func (a *appServer) readLoop(reader io.Reader) {
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Warn("Codex App Server output", "err", err)
+		a.fail(fmt.Errorf("codex app server output: %w", err))
+		return
+	}
+	a.fail(io.EOF)
+}
+
+func (a *appServer) fail(cause error) {
+	message := "codex app server exited: " + cause.Error()
+	a.mu.Lock()
+	a.stdin = nil
+	pending := a.pending
+	a.pending = make(map[string]chan rpcMessage)
+	sessions := make([]*session, 0, len(a.sessions))
+	for _, s := range a.sessions {
+		sessions = append(sessions, s)
+	}
+	a.mu.Unlock()
+
+	for _, responseCh := range pending {
+		responseCh <- rpcMessage{Error: &rpcError{Code: -32001, Message: message}}
+	}
+	for _, s := range sessions {
+		s.fail(message)
 	}
 }
 
@@ -333,7 +363,6 @@ func (a *appServer) completeTurn(s *session, params json.RawMessage) {
 		}
 	}
 	writeSessionExport(s)
-	s.publish(sseEvent{Type: "done", Data: "{}"})
 	close(s.done)
 }
 
@@ -388,6 +417,18 @@ func (s *session) publish(event sseEvent) {
 	default:
 		slog.Warn("dropping slow Codex event consumer", "session", s.id, "type", event.Type)
 	}
+}
+
+func (s *session) fail(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.completed {
+		return
+	}
+	s.completed = true
+	s.runErr = message
+	writeSessionExport(s)
+	close(s.done)
 }
 
 func (s *session) begin(prompt string) {
@@ -580,13 +621,39 @@ func (srv *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-s.done:
+			// Drain queued progress before the authoritative terminal snapshot.
+			for {
+				select {
+				case event := <-s.events:
+					_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, event.Data)
+					flusher.Flush()
+				default:
+					data, _ := json.Marshal(codexTerminalEvent(s))
+					_, _ = fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+					flusher.Flush()
+					return
+				}
+			}
 		case event := <-s.events:
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, event.Data)
 			flusher.Flush()
-			if event.Type == "done" {
-				return
-			}
 		}
+	}
+}
+
+func codexTerminalEvent(s *session) terminalEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status := "completed"
+	if s.runErr != "" {
+		status = "failed"
+	}
+	return terminalEvent{
+		Status:  status,
+		Summary: s.summary.String(),
+		Error:   s.runErr,
+		Usage:   s.lastUsage,
 	}
 }
 
