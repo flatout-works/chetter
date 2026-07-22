@@ -79,6 +79,13 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	if len(defsOut.Definitions) != 1 || defsOut.Definitions[0].Name != "pr-reviewer" || defsOut.Definitions[0].Content == "" {
 		t.Fatalf("unexpected definitions tool output: %#v", defsOut)
 	}
+	agents, err := svc.ListAgentDefinitions(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("list agent definitions: %v", err)
+	}
+	if len(agents) != 1 || agents[0].Name != "pr-reviewer" {
+		t.Fatalf("unexpected agent definitions: %#v", agents)
+	}
 
 	_, defOut, err := svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeSkill, Name: "chetter"})
 	if err != nil {

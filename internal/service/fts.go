@@ -72,18 +72,18 @@ func teamInClause(teamIDs []string) (string, []any) {
 
 // listTasksRaw queries tasks with team and repo filtering applied before
 // LIMIT/OFFSET, avoiding the client-side pagination bug.
-func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	query := `SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, git_identity_id, runner_id, claimed_at, lease_expires_at, attempt, skills, mcp_endpoints, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args := append([]any{status, status}, teamArgs...)
+	query := `SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, git_identity_id, runner_id, claimed_at, lease_expires_at, attempt, skills, mcp_endpoints, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text FROM chetter_tasks WHERE (? = '' OR status = ?) AND (? = '' OR agent = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	args := append([]any{status, status, agent, agent}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
 	return s.scanTasks(ctx, query, args)
 }
 
 // searchTasksRaw queries tasks with team, repo, and FTS search filtering.
-func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, status, search string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, status, search, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -93,13 +93,13 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 	var query string
 	var args []any
 	if s.dialect == store.DialectMySQL {
-		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		args = append([]any{status, status}, teamArgs...)
+		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?) AND (? = '' OR agent = ?)` + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, search, limit, offset)
 	} else {
-		query = fmt.Sprintf(`SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY created_at DESC LIMIT ? OFFSET ?`, teamClause, repoClause, safe)
-		args = append([]any{status, status}, teamArgs...)
+		query = fmt.Sprintf(`SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?) AND (? = '' OR agent = ?)%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY created_at DESC LIMIT ? OFFSET ?`, teamClause, repoClause, safe)
+		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, limit, offset)
 	}
@@ -107,7 +107,7 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 	if err != nil {
 		slog.DebugContext(ctx, "raw FTS search tasks failed, falling back", "err", err)
 		// Fall back to non-FTS raw query
-		return s.listTasksRaw(ctx, teamIDs, repos, status, limit, offset)
+		return s.listTasksRaw(ctx, teamIDs, repos, status, agent, limit, offset)
 	}
 	defer rows.Close()
 	var ids []string
@@ -246,7 +246,7 @@ func (s *Service) scanAgentSessions(ctx context.Context, query string, args []an
 // searchTasksFTS attempts a real full-text search. On TiDB it uses
 // FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
 // If the FTS index is unavailable it falls back to the sqlc LIKE query.
-func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -258,19 +258,21 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 			SELECT id FROM chetter_tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
+			  AND (? = '' OR agent = ?)
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
 			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`
-		args = []any{teamFilter, teamFilter, status, status, search, limit, offset}
+		args = []any{teamFilter, teamFilter, status, status, agent, agent, search, limit, offset}
 	} else {
 		query = fmt.Sprintf(`
 			SELECT id FROM chetter_tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
+			  AND (? = '' OR agent = ?)
 			  AND FTS_MATCH_WORD(search_text, '%s')
 			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`, safe)
-		args = []any{teamFilter, teamFilter, status, status, limit, offset}
+		args = []any{teamFilter, teamFilter, status, status, agent, agent, limit, offset}
 	}
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -278,6 +280,7 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 		return s.repo.SearchTasks(ctx, repository.SearchTasksParams{
 			TeamFilter:   teamFilter,
 			StatusFilter: status,
+			AgentFilter:  sql.NullString{String: agent, Valid: true},
 			Search:       search,
 			Limit:        limit,
 			Offset:       offset,

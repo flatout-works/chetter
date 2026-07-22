@@ -397,6 +397,7 @@ const listTasksByStatus = `-- name: ListTasksByStatus :many
 SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, claimed_at, lease_expires_at, attempt, skills, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text, git_identity_id, mcp_endpoints FROM chetter_tasks
 WHERE (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (COALESCE(?, '') = '' OR agent = ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -404,6 +405,7 @@ LIMIT ? OFFSET ?
 type ListTasksByStatusParams struct {
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
+	AgentFilter       sql.NullString `json:"agent_filter"`
 	Limit             int32          `json:"limit"`
 	Offset            int32          `json:"offset"`
 }
@@ -414,6 +416,8 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
+		arg.AgentFilter,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -490,6 +494,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE team_id = ?
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (COALESCE(?, '') = '' OR agent = ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -498,6 +503,7 @@ type ListTasksByStatusAndTeamParams struct {
 	TeamID            sql.NullString `json:"team_id"`
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
+	AgentFilter       sql.NullString `json:"agent_filter"`
 	Limit             int32          `json:"limit"`
 	Offset            int32          `json:"offset"`
 }
@@ -509,6 +515,8 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
+		arg.AgentFilter,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -585,6 +593,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (COALESCE(?, '') = '' OR agent = ?)
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -593,6 +602,7 @@ type ListTasksByStatusAndTeamsParams struct {
 	TeamIds           []sql.NullString `json:"team_ids"`
 	StatusFilter      string           `json:"status_filter"`
 	TriggerNameFilter sql.NullString   `json:"trigger_name_filter"`
+	AgentFilter       sql.NullString   `json:"agent_filter"`
 	Limit             int32            `json:"limit"`
 	Offset            int32            `json:"offset"`
 }
@@ -612,6 +622,8 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 	queryParams = append(queryParams, arg.StatusFilter)
 	queryParams = append(queryParams, arg.TriggerNameFilter)
 	queryParams = append(queryParams, arg.TriggerNameFilter)
+	queryParams = append(queryParams, arg.AgentFilter)
+	queryParams = append(queryParams, arg.AgentFilter)
 	queryParams = append(queryParams, arg.Limit)
 	queryParams = append(queryParams, arg.Offset)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
@@ -826,6 +838,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE (? = '' OR team_id = ?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (COALESCE(?, '') = '' OR agent = ?)
   AND (search_text LIKE CONCAT('%', ?, '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
@@ -835,6 +848,7 @@ type SearchTasksParams struct {
 	TeamFilter        sql.NullString `json:"team_filter"`
 	StatusFilter      string         `json:"status_filter"`
 	TriggerNameFilter sql.NullString `json:"trigger_name_filter"`
+	AgentFilter       sql.NullString `json:"agent_filter"`
 	Search            interface{}    `json:"search"`
 	Limit             int32          `json:"limit"`
 	Offset            int32          `json:"offset"`
@@ -848,6 +862,8 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
+		arg.AgentFilter,
 		arg.Search,
 		arg.Limit,
 		arg.Offset,
@@ -925,6 +941,7 @@ SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, mo
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
+  AND (COALESCE(?, '') = '' OR agent = ?)
   AND (search_text LIKE CONCAT('%', ?, '%'))
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
@@ -934,6 +951,7 @@ type SearchTasksByTeamsParams struct {
 	TeamIds           []sql.NullString `json:"team_ids"`
 	StatusFilter      string           `json:"status_filter"`
 	TriggerNameFilter sql.NullString   `json:"trigger_name_filter"`
+	AgentFilter       sql.NullString   `json:"agent_filter"`
 	Search            interface{}      `json:"search"`
 	Limit             int32            `json:"limit"`
 	Offset            int32            `json:"offset"`
@@ -954,6 +972,8 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 	queryParams = append(queryParams, arg.StatusFilter)
 	queryParams = append(queryParams, arg.TriggerNameFilter)
 	queryParams = append(queryParams, arg.TriggerNameFilter)
+	queryParams = append(queryParams, arg.AgentFilter)
+	queryParams = append(queryParams, arg.AgentFilter)
 	queryParams = append(queryParams, arg.Search)
 	queryParams = append(queryParams, arg.Limit)
 	queryParams = append(queryParams, arg.Offset)

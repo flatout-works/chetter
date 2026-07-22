@@ -45,7 +45,7 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
-func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search string, uiTeamIDs, uiRepos []string) ([]TaskToolRecord, error) {
+func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search, agent string, uiTeamIDs, uiRepos []string) ([]TaskToolRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
@@ -69,9 +69,9 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	// When repo filtering is needed, use raw queries to apply both team and repo
 	// filters before LIMIT/OFFSET (avoids client-side pagination bug).
 	if hasRepos && search != "" {
-		tasks, err = s.searchTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, search, clamped, clampedOffset)
+		tasks, err = s.searchTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, search, agent, clamped, clampedOffset)
 	} else if hasRepos {
-		tasks, err = s.listTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, clamped, clampedOffset)
+		tasks, err = s.listTasksRaw(ctx, effectiveTeamIDs, uiRepos, status, agent, clamped, clampedOffset)
 	} else if search != "" {
 		if len(effectiveTeamIDs) > 0 {
 			if len(effectiveTeamIDs) > 1 {
@@ -79,27 +79,30 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 					TeamIds:           nullStringSlice(effectiveTeamIDs),
 					StatusFilter:      status,
 					TriggerNameFilter: sql.NullString{},
+					AgentFilter:       sql.NullString{String: agent, Valid: true},
 					Search:            search,
 					Limit:             clamped,
 					Offset:            clampedOffset,
 				})
 			} else {
-				tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: effectiveTeamIDs[0], Valid: true}, status, search, clamped, clampedOffset)
+				tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: effectiveTeamIDs[0], Valid: true}, status, search, agent, clamped, clampedOffset)
 			}
 		} else {
-			tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: "", Valid: true}, status, search, clamped, clampedOffset)
+			tasks, err = s.searchTasksFTS(ctx, sql.NullString{String: "", Valid: true}, status, search, agent, clamped, clampedOffset)
 		}
 	} else if len(effectiveTeamIDs) > 0 {
 		tasks, err = s.repo.ListTasksByStatusAndTeams(ctx, repository.ListTasksByStatusAndTeamsParams{
 			TeamIds:           nullStringSlice(effectiveTeamIDs),
 			StatusFilter:      status,
 			TriggerNameFilter: sql.NullString{},
+			AgentFilter:       sql.NullString{String: agent, Valid: true},
 			Limit:             clamped,
 			Offset:            clampedOffset,
 		})
 	} else {
 		tasks, err = s.repo.ListTasksByStatus(ctx, repository.ListTasksByStatusParams{
 			StatusFilter: status,
+			AgentFilter:  sql.NullString{String: agent, Valid: true},
 			Limit:        clamped,
 			Offset:       clampedOffset,
 		})

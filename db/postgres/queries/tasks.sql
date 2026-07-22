@@ -10,6 +10,7 @@ SELECT * FROM chetter_tasks WHERE id = $1;
 SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.narg(trigger_name_filter), '') = '' OR trigger_name = sqlc.narg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR agent = sqlc.arg(agent_filter))
 ORDER BY created_at DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
@@ -18,6 +19,7 @@ SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(team_filter) = '' OR team_id = sqlc.arg(team_filter))
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.narg(trigger_name_filter), '') = '' OR trigger_name = sqlc.narg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR agent = sqlc.arg(agent_filter))
   AND search_text ILIKE '%' || sqlc.arg(search) || '%'
 ORDER BY created_at DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
@@ -151,6 +153,7 @@ SELECT * FROM chetter_tasks
 WHERE team_id = sqlc.arg(team_id)
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.narg(trigger_name_filter), '') = '' OR trigger_name = sqlc.narg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR agent = sqlc.arg(agent_filter))
 ORDER BY created_at DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
@@ -159,6 +162,7 @@ SELECT * FROM chetter_tasks
 WHERE team_id = ANY(sqlc.arg(team_ids)::text[])
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.narg(trigger_name_filter), '') = '' OR trigger_name = sqlc.narg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR agent = sqlc.arg(agent_filter))
 ORDER BY created_at DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
@@ -167,6 +171,7 @@ SELECT * FROM chetter_tasks
 WHERE team_id = ANY(sqlc.arg(team_ids)::text[])
   AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
   AND (COALESCE(sqlc.narg(trigger_name_filter), '') = '' OR trigger_name = sqlc.narg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR agent = sqlc.arg(agent_filter))
   AND search_text ILIKE '%' || sqlc.arg(search) || '%'
 ORDER BY created_at DESC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);

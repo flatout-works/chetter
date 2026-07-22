@@ -707,7 +707,7 @@ func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
-	tasks, err := s.ListTasks(ctx, in.Status, in.Limit, 0, in.Search, nil, nil)
+	tasks, err := s.ListTasks(ctx, in.Status, in.Limit, 0, in.Search, "", nil, nil)
 	if err != nil {
 		return nil, ListTasksOutput{}, err
 	}

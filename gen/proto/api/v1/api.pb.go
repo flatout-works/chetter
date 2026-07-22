@@ -2474,6 +2474,7 @@ type ListTasksRequest struct {
 	Search        string                 `protobuf:"bytes,4,opt,name=search,proto3" json:"search,omitempty"`
 	TeamIds       []string               `protobuf:"bytes,5,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
 	Repos         []string               `protobuf:"bytes,6,rep,name=repos,proto3" json:"repos,omitempty"`
+	Agent         string                 `protobuf:"bytes,7,opt,name=agent,proto3" json:"agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2548,6 +2549,13 @@ func (x *ListTasksRequest) GetRepos() []string {
 		return x.Repos
 	}
 	return nil
+}
+
+func (x *ListTasksRequest) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
 }
 
 type ListTasksResponse struct {
@@ -7730,6 +7738,266 @@ func (x *GetModelCatalogResponse) GetProviders() []*CatalogProvider {
 	return nil
 }
 
+type ListAgentDefinitionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TeamIds       []string               `protobuf:"bytes,1,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
+	Repos         []string               `protobuf:"bytes,2,rep,name=repos,proto3" json:"repos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentDefinitionsRequest) Reset() {
+	*x = ListAgentDefinitionsRequest{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[113]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentDefinitionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentDefinitionsRequest) ProtoMessage() {}
+
+func (x *ListAgentDefinitionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[113]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentDefinitionsRequest.ProtoReflect.Descriptor instead.
+func (*ListAgentDefinitionsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{113}
+}
+
+func (x *ListAgentDefinitionsRequest) GetTeamIds() []string {
+	if x != nil {
+		return x.TeamIds
+	}
+	return nil
+}
+
+func (x *ListAgentDefinitionsRequest) GetRepos() []string {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
+}
+
+type AgentDefinition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Identity      string                 `protobuf:"bytes,4,opt,name=identity,proto3" json:"identity,omitempty"`
+	Provider      string                 `protobuf:"bytes,5,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model         string                 `protobuf:"bytes,6,opt,name=model,proto3" json:"model,omitempty"`
+	Mode          string                 `protobuf:"bytes,7,opt,name=mode,proto3" json:"mode,omitempty"`
+	McpEndpoints  []string               `protobuf:"bytes,8,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
+	Scope         string                 `protobuf:"bytes,9,opt,name=scope,proto3" json:"scope,omitempty"`
+	TeamId        string                 `protobuf:"bytes,10,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	Repo          string                 `protobuf:"bytes,11,opt,name=repo,proto3" json:"repo,omitempty"`
+	SourceId      string                 `protobuf:"bytes,12,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Path          string                 `protobuf:"bytes,13,opt,name=path,proto3" json:"path,omitempty"`
+	SourceCommit  string                 `protobuf:"bytes,14,opt,name=source_commit,json=sourceCommit,proto3" json:"source_commit,omitempty"`
+	Content       string                 `protobuf:"bytes,15,opt,name=content,proto3" json:"content,omitempty"`
+	UpdatedAt     string                 `protobuf:"bytes,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentDefinition) Reset() {
+	*x = AgentDefinition{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[114]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentDefinition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentDefinition) ProtoMessage() {}
+
+func (x *AgentDefinition) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[114]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentDefinition.ProtoReflect.Descriptor instead.
+func (*AgentDefinition) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{114}
+}
+
+func (x *AgentDefinition) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetIdentity() string {
+	if x != nil {
+		return x.Identity
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetMcpEndpoints() []string {
+	if x != nil {
+		return x.McpEndpoints
+	}
+	return nil
+}
+
+func (x *AgentDefinition) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetSourceCommit() string {
+	if x != nil {
+		return x.SourceCommit
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type ListAgentDefinitionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agents        []*AgentDefinition     `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentDefinitionsResponse) Reset() {
+	*x = ListAgentDefinitionsResponse{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[115]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentDefinitionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentDefinitionsResponse) ProtoMessage() {}
+
+func (x *ListAgentDefinitionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[115]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentDefinitionsResponse.ProtoReflect.Descriptor instead.
+func (*ListAgentDefinitionsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{115}
+}
+
+func (x *ListAgentDefinitionsResponse) GetAgents() []*AgentDefinition {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
 var File_proto_api_v1_api_proto protoreflect.FileDescriptor
 
 const file_proto_api_v1_api_proto_rawDesc = "" +
@@ -8052,14 +8320,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0eGetTaskRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"3\n" +
 	"\x0fGetTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"\xa1\x01\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"\xb7\x01\n" +
 	"\x10ListTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\x12\x16\n" +
 	"\x06search\x18\x04 \x01(\tR\x06search\x12\x19\n" +
 	"\bteam_ids\x18\x05 \x03(\tR\ateamIds\x12\x14\n" +
-	"\x05repos\x18\x06 \x03(\tR\x05repos\"7\n" +
+	"\x05repos\x18\x06 \x03(\tR\x05repos\x12\x14\n" +
+	"\x05agent\x18\a \x01(\tR\x05agent\"7\n" +
 	"\x11ListTasksResponse\x12\"\n" +
 	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\"c\n" +
 	"\x11ExtendTaskRequest\x12 \n" +
@@ -8418,7 +8687,31 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x10default_provider\x18\x01 \x01(\tR\x0fdefaultProvider\x12#\n" +
 	"\rdefault_model\x18\x02 \x01(\tR\fdefaultModel\x129\n" +
 	"\bdefaults\x18\x03 \x03(\v2\x1d.api.v1.CatalogHarnessDefaultR\bdefaults\x125\n" +
-	"\tproviders\x18\x04 \x03(\v2\x17.api.v1.CatalogProviderR\tproviders2\xb5\x05\n" +
+	"\tproviders\x18\x04 \x03(\v2\x17.api.v1.CatalogProviderR\tproviders\"N\n" +
+	"\x1bListAgentDefinitionsRequest\x12\x19\n" +
+	"\bteam_ids\x18\x01 \x03(\tR\ateamIds\x12\x14\n" +
+	"\x05repos\x18\x02 \x03(\tR\x05repos\"\xb0\x03\n" +
+	"\x0fAgentDefinition\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1a\n" +
+	"\bidentity\x18\x04 \x01(\tR\bidentity\x12\x1a\n" +
+	"\bprovider\x18\x05 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\x06 \x01(\tR\x05model\x12\x12\n" +
+	"\x04mode\x18\a \x01(\tR\x04mode\x12#\n" +
+	"\rmcp_endpoints\x18\b \x03(\tR\fmcpEndpoints\x12\x14\n" +
+	"\x05scope\x18\t \x01(\tR\x05scope\x12\x17\n" +
+	"\ateam_id\x18\n" +
+	" \x01(\tR\x06teamId\x12\x12\n" +
+	"\x04repo\x18\v \x01(\tR\x04repo\x12\x1b\n" +
+	"\tsource_id\x18\f \x01(\tR\bsourceId\x12\x12\n" +
+	"\x04path\x18\r \x01(\tR\x04path\x12#\n" +
+	"\rsource_commit\x18\x0e \x01(\tR\fsourceCommit\x12\x18\n" +
+	"\acontent\x18\x0f \x01(\tR\acontent\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\x10 \x01(\tR\tupdatedAt\"O\n" +
+	"\x1cListAgentDefinitionsResponse\x12/\n" +
+	"\x06agents\x18\x01 \x03(\v2\x17.api.v1.AgentDefinitionR\x06agents2\xb5\x05\n" +
 	"\vTaskService\x12C\n" +
 	"\n" +
 	"SubmitTask\x12\x19.api.v1.SubmitTaskRequest\x1a\x1a.api.v1.SubmitTaskResponse\x12:\n" +
@@ -8480,9 +8773,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"ListImages\x12\x1f.api.v1.ArcaneListImagesRequest\x1a .api.v1.ArcaneListImagesResponse\x12X\n" +
 	"\x0fGetImageSummary\x12!.api.v1.ArcaneImageSummaryRequest\x1a\".api.v1.ArcaneImageSummaryResponse\x12j\n" +
-	"\x13ListVulnerabilities\x12(.api.v1.ArcaneListVulnerabilitiesRequest\x1a).api.v1.ArcaneListVulnerabilitiesResponse2d\n" +
+	"\x13ListVulnerabilities\x12(.api.v1.ArcaneListVulnerabilitiesRequest\x1a).api.v1.ArcaneListVulnerabilitiesResponse2\xc7\x01\n" +
 	"\x0eCatalogService\x12R\n" +
-	"\x0fGetModelCatalog\x12\x1e.api.v1.GetModelCatalogRequest\x1a\x1f.api.v1.GetModelCatalogResponseB\x88\x01\n" +
+	"\x0fGetModelCatalog\x12\x1e.api.v1.GetModelCatalogRequest\x1a\x1f.api.v1.GetModelCatalogResponse\x12a\n" +
+	"\x14ListAgentDefinitions\x12#.api.v1.ListAgentDefinitionsRequest\x1a$.api.v1.ListAgentDefinitionsResponseB\x88\x01\n" +
 	"\n" +
 	"com.api.v1B\bApiProtoP\x01Z7github.com/flatout-works/chetter/gen/proto/api/v1;apiv1\xa2\x02\x03AXX\xaa\x02\x06Api.V1\xca\x02\x06Api\\V1\xe2\x02\x12Api\\V1\\GPBMetadata\xea\x02\aApi::V1b\x06proto3"
 
@@ -8498,7 +8792,7 @@ func file_proto_api_v1_api_proto_rawDescGZIP() []byte {
 	return file_proto_api_v1_api_proto_rawDescData
 }
 
-var file_proto_api_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 115)
+var file_proto_api_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 118)
 var file_proto_api_v1_api_proto_goTypes = []any{
 	(*TokenUsage)(nil),                        // 0: api.v1.TokenUsage
 	(*Task)(nil),                              // 1: api.v1.Task
@@ -8613,16 +8907,19 @@ var file_proto_api_v1_api_proto_goTypes = []any{
 	(*CatalogProvider)(nil),                   // 110: api.v1.CatalogProvider
 	(*CatalogHarnessDefault)(nil),             // 111: api.v1.CatalogHarnessDefault
 	(*GetModelCatalogResponse)(nil),           // 112: api.v1.GetModelCatalogResponse
-	nil,                                       // 113: api.v1.Task.EnvEntry
-	nil,                                       // 114: api.v1.SubmitTaskRequest.EnvEntry
+	(*ListAgentDefinitionsRequest)(nil),       // 113: api.v1.ListAgentDefinitionsRequest
+	(*AgentDefinition)(nil),                   // 114: api.v1.AgentDefinition
+	(*ListAgentDefinitionsResponse)(nil),      // 115: api.v1.ListAgentDefinitionsResponse
+	nil,                                       // 116: api.v1.Task.EnvEntry
+	nil,                                       // 117: api.v1.SubmitTaskRequest.EnvEntry
 }
 var file_proto_api_v1_api_proto_depIdxs = []int32{
-	113, // 0: api.v1.Task.env:type_name -> api.v1.Task.EnvEntry
+	116, // 0: api.v1.Task.env:type_name -> api.v1.Task.EnvEntry
 	0,   // 1: api.v1.Task.token_usage:type_name -> api.v1.TokenUsage
 	9,   // 2: api.v1.RunnerFleetHealth.runner_images:type_name -> api.v1.RunnerImageInfo
 	10,  // 3: api.v1.RunnerFleetHealth.runners:type_name -> api.v1.RunnerInfo
 	11,  // 4: api.v1.RunnerFleetHealth.running_task_infos:type_name -> api.v1.RunningTaskInfo
-	114, // 5: api.v1.SubmitTaskRequest.env:type_name -> api.v1.SubmitTaskRequest.EnvEntry
+	117, // 5: api.v1.SubmitTaskRequest.env:type_name -> api.v1.SubmitTaskRequest.EnvEntry
 	1,   // 6: api.v1.SubmitTaskResponse.task:type_name -> api.v1.Task
 	1,   // 7: api.v1.GetTaskResponse.task:type_name -> api.v1.Task
 	1,   // 8: api.v1.ListTasksResponse.tasks:type_name -> api.v1.Task
@@ -8661,101 +8958,104 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	107, // 41: api.v1.ArcaneListVulnerabilitiesResponse.vulnerabilities:type_name -> api.v1.Vulnerability
 	111, // 42: api.v1.GetModelCatalogResponse.defaults:type_name -> api.v1.CatalogHarnessDefault
 	110, // 43: api.v1.GetModelCatalogResponse.providers:type_name -> api.v1.CatalogProvider
-	17,  // 44: api.v1.TaskService.SubmitTask:input_type -> api.v1.SubmitTaskRequest
-	19,  // 45: api.v1.TaskService.GetTask:input_type -> api.v1.GetTaskRequest
-	21,  // 46: api.v1.TaskService.ListTasks:input_type -> api.v1.ListTasksRequest
-	23,  // 47: api.v1.TaskService.ExtendTask:input_type -> api.v1.ExtendTaskRequest
-	25,  // 48: api.v1.TaskService.CancelTask:input_type -> api.v1.CancelTaskRequest
-	27,  // 49: api.v1.TaskService.ExportTask:input_type -> api.v1.ExportTaskRequest
-	29,  // 50: api.v1.TaskService.RecoverTask:input_type -> api.v1.RecoverTaskRequest
-	31,  // 51: api.v1.TaskService.ClearQueue:input_type -> api.v1.ClearQueueRequest
-	36,  // 52: api.v1.TaskService.SubscribeTaskEvents:input_type -> api.v1.SubscribeTaskEventsRequest
-	33,  // 53: api.v1.TaskService.Whoami:input_type -> api.v1.WhoamiRequest
-	37,  // 54: api.v1.EventService.GetTaskEvents:input_type -> api.v1.GetTaskEventsRequest
-	39,  // 55: api.v1.EventService.GetTaskProgress:input_type -> api.v1.GetTaskProgressRequest
-	41,  // 56: api.v1.EventService.GetLatestTaskEvent:input_type -> api.v1.GetLatestTaskEventRequest
-	43,  // 57: api.v1.SessionService.ListSessions:input_type -> api.v1.ListSessionsRequest
-	45,  // 58: api.v1.SessionService.GetSession:input_type -> api.v1.GetSessionRequest
-	47,  // 59: api.v1.SessionService.ResumeSession:input_type -> api.v1.ResumeSessionRequest
-	49,  // 60: api.v1.TriggerService.CreateTrigger:input_type -> api.v1.CreateTriggerRequest
-	51,  // 61: api.v1.TriggerService.UpdateTrigger:input_type -> api.v1.UpdateTriggerRequest
-	53,  // 62: api.v1.TriggerService.ListTriggers:input_type -> api.v1.ListTriggersRequest
-	55,  // 63: api.v1.TriggerService.DeleteTrigger:input_type -> api.v1.DeleteTriggerRequest
-	57,  // 64: api.v1.TriggerService.RunTrigger:input_type -> api.v1.RunTriggerRequest
-	59,  // 65: api.v1.TriggerService.ListTriggerRuns:input_type -> api.v1.ListTriggerRunsRequest
-	61,  // 66: api.v1.FleetService.GetRunnerHealth:input_type -> api.v1.GetRunnerHealthRequest
-	63,  // 67: api.v1.FleetService.SubscribeFleetUpdates:input_type -> api.v1.SubscribeFleetUpdatesRequest
-	65,  // 68: api.v1.AdminService.CreateToken:input_type -> api.v1.CreateTokenRequest
-	67,  // 69: api.v1.AdminService.ListTokens:input_type -> api.v1.ListTokensRequest
-	69,  // 70: api.v1.AdminService.DeleteToken:input_type -> api.v1.DeleteTokenRequest
-	71,  // 71: api.v1.AdminService.CreateTeam:input_type -> api.v1.CreateTeamRequest
-	73,  // 72: api.v1.AdminService.ListTeams:input_type -> api.v1.ListTeamsRequest
-	75,  // 73: api.v1.AdminService.DeleteTeam:input_type -> api.v1.DeleteTeamRequest
-	77,  // 74: api.v1.AdminService.ListUsers:input_type -> api.v1.ListUsersRequest
-	79,  // 75: api.v1.AdminService.ListAuditEvents:input_type -> api.v1.ListAuditEventsRequest
-	81,  // 76: api.v1.AdminService.ListTaskArtifacts:input_type -> api.v1.ListTaskArtifactsRequest
-	83,  // 77: api.v1.AdminService.ListRepos:input_type -> api.v1.ListReposRequest
-	86,  // 78: api.v1.AdminService.CreateGitIdentity:input_type -> api.v1.CreateGitIdentityRequest
-	88,  // 79: api.v1.AdminService.ListGitIdentities:input_type -> api.v1.ListGitIdentitiesRequest
-	90,  // 80: api.v1.AdminService.UpdateGitIdentity:input_type -> api.v1.UpdateGitIdentityRequest
-	92,  // 81: api.v1.AdminService.DeleteGitIdentity:input_type -> api.v1.DeleteGitIdentityRequest
-	94,  // 82: api.v1.AdminService.SetGitIdentityDefault:input_type -> api.v1.SetGitIdentityDefaultRequest
-	96,  // 83: api.v1.ArcaneService.GetScannerStatus:input_type -> api.v1.ArcaneScannerStatusRequest
-	98,  // 84: api.v1.ArcaneService.GetEnvironmentSummary:input_type -> api.v1.ArcaneEnvironmentSummaryRequest
-	101, // 85: api.v1.ArcaneService.ListImages:input_type -> api.v1.ArcaneListImagesRequest
-	104, // 86: api.v1.ArcaneService.GetImageSummary:input_type -> api.v1.ArcaneImageSummaryRequest
-	106, // 87: api.v1.ArcaneService.ListVulnerabilities:input_type -> api.v1.ArcaneListVulnerabilitiesRequest
-	109, // 88: api.v1.CatalogService.GetModelCatalog:input_type -> api.v1.GetModelCatalogRequest
-	18,  // 89: api.v1.TaskService.SubmitTask:output_type -> api.v1.SubmitTaskResponse
-	20,  // 90: api.v1.TaskService.GetTask:output_type -> api.v1.GetTaskResponse
-	22,  // 91: api.v1.TaskService.ListTasks:output_type -> api.v1.ListTasksResponse
-	24,  // 92: api.v1.TaskService.ExtendTask:output_type -> api.v1.ExtendTaskResponse
-	26,  // 93: api.v1.TaskService.CancelTask:output_type -> api.v1.CancelTaskResponse
-	28,  // 94: api.v1.TaskService.ExportTask:output_type -> api.v1.ExportTaskResponse
-	30,  // 95: api.v1.TaskService.RecoverTask:output_type -> api.v1.RecoverTaskResponse
-	32,  // 96: api.v1.TaskService.ClearQueue:output_type -> api.v1.ClearQueueResponse
-	5,   // 97: api.v1.TaskService.SubscribeTaskEvents:output_type -> api.v1.TaskEvent
-	34,  // 98: api.v1.TaskService.Whoami:output_type -> api.v1.WhoamiResponse
-	38,  // 99: api.v1.EventService.GetTaskEvents:output_type -> api.v1.GetTaskEventsResponse
-	40,  // 100: api.v1.EventService.GetTaskProgress:output_type -> api.v1.GetTaskProgressResponse
-	42,  // 101: api.v1.EventService.GetLatestTaskEvent:output_type -> api.v1.GetLatestTaskEventResponse
-	44,  // 102: api.v1.SessionService.ListSessions:output_type -> api.v1.ListSessionsResponse
-	46,  // 103: api.v1.SessionService.GetSession:output_type -> api.v1.GetSessionResponse
-	48,  // 104: api.v1.SessionService.ResumeSession:output_type -> api.v1.ResumeSessionResponse
-	50,  // 105: api.v1.TriggerService.CreateTrigger:output_type -> api.v1.CreateTriggerResponse
-	52,  // 106: api.v1.TriggerService.UpdateTrigger:output_type -> api.v1.UpdateTriggerResponse
-	54,  // 107: api.v1.TriggerService.ListTriggers:output_type -> api.v1.ListTriggersResponse
-	56,  // 108: api.v1.TriggerService.DeleteTrigger:output_type -> api.v1.DeleteTriggerResponse
-	58,  // 109: api.v1.TriggerService.RunTrigger:output_type -> api.v1.RunTriggerResponse
-	60,  // 110: api.v1.TriggerService.ListTriggerRuns:output_type -> api.v1.ListTriggerRunsResponse
-	62,  // 111: api.v1.FleetService.GetRunnerHealth:output_type -> api.v1.GetRunnerHealthResponse
-	64,  // 112: api.v1.FleetService.SubscribeFleetUpdates:output_type -> api.v1.FleetUpdate
-	66,  // 113: api.v1.AdminService.CreateToken:output_type -> api.v1.CreateTokenResponse
-	68,  // 114: api.v1.AdminService.ListTokens:output_type -> api.v1.ListTokensResponse
-	70,  // 115: api.v1.AdminService.DeleteToken:output_type -> api.v1.DeleteTokenResponse
-	72,  // 116: api.v1.AdminService.CreateTeam:output_type -> api.v1.CreateTeamResponse
-	74,  // 117: api.v1.AdminService.ListTeams:output_type -> api.v1.ListTeamsResponse
-	76,  // 118: api.v1.AdminService.DeleteTeam:output_type -> api.v1.DeleteTeamResponse
-	78,  // 119: api.v1.AdminService.ListUsers:output_type -> api.v1.ListUsersResponse
-	80,  // 120: api.v1.AdminService.ListAuditEvents:output_type -> api.v1.ListAuditEventsResponse
-	82,  // 121: api.v1.AdminService.ListTaskArtifacts:output_type -> api.v1.ListTaskArtifactsResponse
-	84,  // 122: api.v1.AdminService.ListRepos:output_type -> api.v1.ListReposResponse
-	87,  // 123: api.v1.AdminService.CreateGitIdentity:output_type -> api.v1.CreateGitIdentityResponse
-	89,  // 124: api.v1.AdminService.ListGitIdentities:output_type -> api.v1.ListGitIdentitiesResponse
-	91,  // 125: api.v1.AdminService.UpdateGitIdentity:output_type -> api.v1.UpdateGitIdentityResponse
-	93,  // 126: api.v1.AdminService.DeleteGitIdentity:output_type -> api.v1.DeleteGitIdentityResponse
-	95,  // 127: api.v1.AdminService.SetGitIdentityDefault:output_type -> api.v1.SetGitIdentityDefaultResponse
-	97,  // 128: api.v1.ArcaneService.GetScannerStatus:output_type -> api.v1.ArcaneScannerStatusResponse
-	100, // 129: api.v1.ArcaneService.GetEnvironmentSummary:output_type -> api.v1.ArcaneEnvironmentSummaryResponse
-	103, // 130: api.v1.ArcaneService.ListImages:output_type -> api.v1.ArcaneListImagesResponse
-	105, // 131: api.v1.ArcaneService.GetImageSummary:output_type -> api.v1.ArcaneImageSummaryResponse
-	108, // 132: api.v1.ArcaneService.ListVulnerabilities:output_type -> api.v1.ArcaneListVulnerabilitiesResponse
-	112, // 133: api.v1.CatalogService.GetModelCatalog:output_type -> api.v1.GetModelCatalogResponse
-	89,  // [89:134] is the sub-list for method output_type
-	44,  // [44:89] is the sub-list for method input_type
-	44,  // [44:44] is the sub-list for extension type_name
-	44,  // [44:44] is the sub-list for extension extendee
-	0,   // [0:44] is the sub-list for field type_name
+	114, // 44: api.v1.ListAgentDefinitionsResponse.agents:type_name -> api.v1.AgentDefinition
+	17,  // 45: api.v1.TaskService.SubmitTask:input_type -> api.v1.SubmitTaskRequest
+	19,  // 46: api.v1.TaskService.GetTask:input_type -> api.v1.GetTaskRequest
+	21,  // 47: api.v1.TaskService.ListTasks:input_type -> api.v1.ListTasksRequest
+	23,  // 48: api.v1.TaskService.ExtendTask:input_type -> api.v1.ExtendTaskRequest
+	25,  // 49: api.v1.TaskService.CancelTask:input_type -> api.v1.CancelTaskRequest
+	27,  // 50: api.v1.TaskService.ExportTask:input_type -> api.v1.ExportTaskRequest
+	29,  // 51: api.v1.TaskService.RecoverTask:input_type -> api.v1.RecoverTaskRequest
+	31,  // 52: api.v1.TaskService.ClearQueue:input_type -> api.v1.ClearQueueRequest
+	36,  // 53: api.v1.TaskService.SubscribeTaskEvents:input_type -> api.v1.SubscribeTaskEventsRequest
+	33,  // 54: api.v1.TaskService.Whoami:input_type -> api.v1.WhoamiRequest
+	37,  // 55: api.v1.EventService.GetTaskEvents:input_type -> api.v1.GetTaskEventsRequest
+	39,  // 56: api.v1.EventService.GetTaskProgress:input_type -> api.v1.GetTaskProgressRequest
+	41,  // 57: api.v1.EventService.GetLatestTaskEvent:input_type -> api.v1.GetLatestTaskEventRequest
+	43,  // 58: api.v1.SessionService.ListSessions:input_type -> api.v1.ListSessionsRequest
+	45,  // 59: api.v1.SessionService.GetSession:input_type -> api.v1.GetSessionRequest
+	47,  // 60: api.v1.SessionService.ResumeSession:input_type -> api.v1.ResumeSessionRequest
+	49,  // 61: api.v1.TriggerService.CreateTrigger:input_type -> api.v1.CreateTriggerRequest
+	51,  // 62: api.v1.TriggerService.UpdateTrigger:input_type -> api.v1.UpdateTriggerRequest
+	53,  // 63: api.v1.TriggerService.ListTriggers:input_type -> api.v1.ListTriggersRequest
+	55,  // 64: api.v1.TriggerService.DeleteTrigger:input_type -> api.v1.DeleteTriggerRequest
+	57,  // 65: api.v1.TriggerService.RunTrigger:input_type -> api.v1.RunTriggerRequest
+	59,  // 66: api.v1.TriggerService.ListTriggerRuns:input_type -> api.v1.ListTriggerRunsRequest
+	61,  // 67: api.v1.FleetService.GetRunnerHealth:input_type -> api.v1.GetRunnerHealthRequest
+	63,  // 68: api.v1.FleetService.SubscribeFleetUpdates:input_type -> api.v1.SubscribeFleetUpdatesRequest
+	65,  // 69: api.v1.AdminService.CreateToken:input_type -> api.v1.CreateTokenRequest
+	67,  // 70: api.v1.AdminService.ListTokens:input_type -> api.v1.ListTokensRequest
+	69,  // 71: api.v1.AdminService.DeleteToken:input_type -> api.v1.DeleteTokenRequest
+	71,  // 72: api.v1.AdminService.CreateTeam:input_type -> api.v1.CreateTeamRequest
+	73,  // 73: api.v1.AdminService.ListTeams:input_type -> api.v1.ListTeamsRequest
+	75,  // 74: api.v1.AdminService.DeleteTeam:input_type -> api.v1.DeleteTeamRequest
+	77,  // 75: api.v1.AdminService.ListUsers:input_type -> api.v1.ListUsersRequest
+	79,  // 76: api.v1.AdminService.ListAuditEvents:input_type -> api.v1.ListAuditEventsRequest
+	81,  // 77: api.v1.AdminService.ListTaskArtifacts:input_type -> api.v1.ListTaskArtifactsRequest
+	83,  // 78: api.v1.AdminService.ListRepos:input_type -> api.v1.ListReposRequest
+	86,  // 79: api.v1.AdminService.CreateGitIdentity:input_type -> api.v1.CreateGitIdentityRequest
+	88,  // 80: api.v1.AdminService.ListGitIdentities:input_type -> api.v1.ListGitIdentitiesRequest
+	90,  // 81: api.v1.AdminService.UpdateGitIdentity:input_type -> api.v1.UpdateGitIdentityRequest
+	92,  // 82: api.v1.AdminService.DeleteGitIdentity:input_type -> api.v1.DeleteGitIdentityRequest
+	94,  // 83: api.v1.AdminService.SetGitIdentityDefault:input_type -> api.v1.SetGitIdentityDefaultRequest
+	96,  // 84: api.v1.ArcaneService.GetScannerStatus:input_type -> api.v1.ArcaneScannerStatusRequest
+	98,  // 85: api.v1.ArcaneService.GetEnvironmentSummary:input_type -> api.v1.ArcaneEnvironmentSummaryRequest
+	101, // 86: api.v1.ArcaneService.ListImages:input_type -> api.v1.ArcaneListImagesRequest
+	104, // 87: api.v1.ArcaneService.GetImageSummary:input_type -> api.v1.ArcaneImageSummaryRequest
+	106, // 88: api.v1.ArcaneService.ListVulnerabilities:input_type -> api.v1.ArcaneListVulnerabilitiesRequest
+	109, // 89: api.v1.CatalogService.GetModelCatalog:input_type -> api.v1.GetModelCatalogRequest
+	113, // 90: api.v1.CatalogService.ListAgentDefinitions:input_type -> api.v1.ListAgentDefinitionsRequest
+	18,  // 91: api.v1.TaskService.SubmitTask:output_type -> api.v1.SubmitTaskResponse
+	20,  // 92: api.v1.TaskService.GetTask:output_type -> api.v1.GetTaskResponse
+	22,  // 93: api.v1.TaskService.ListTasks:output_type -> api.v1.ListTasksResponse
+	24,  // 94: api.v1.TaskService.ExtendTask:output_type -> api.v1.ExtendTaskResponse
+	26,  // 95: api.v1.TaskService.CancelTask:output_type -> api.v1.CancelTaskResponse
+	28,  // 96: api.v1.TaskService.ExportTask:output_type -> api.v1.ExportTaskResponse
+	30,  // 97: api.v1.TaskService.RecoverTask:output_type -> api.v1.RecoverTaskResponse
+	32,  // 98: api.v1.TaskService.ClearQueue:output_type -> api.v1.ClearQueueResponse
+	5,   // 99: api.v1.TaskService.SubscribeTaskEvents:output_type -> api.v1.TaskEvent
+	34,  // 100: api.v1.TaskService.Whoami:output_type -> api.v1.WhoamiResponse
+	38,  // 101: api.v1.EventService.GetTaskEvents:output_type -> api.v1.GetTaskEventsResponse
+	40,  // 102: api.v1.EventService.GetTaskProgress:output_type -> api.v1.GetTaskProgressResponse
+	42,  // 103: api.v1.EventService.GetLatestTaskEvent:output_type -> api.v1.GetLatestTaskEventResponse
+	44,  // 104: api.v1.SessionService.ListSessions:output_type -> api.v1.ListSessionsResponse
+	46,  // 105: api.v1.SessionService.GetSession:output_type -> api.v1.GetSessionResponse
+	48,  // 106: api.v1.SessionService.ResumeSession:output_type -> api.v1.ResumeSessionResponse
+	50,  // 107: api.v1.TriggerService.CreateTrigger:output_type -> api.v1.CreateTriggerResponse
+	52,  // 108: api.v1.TriggerService.UpdateTrigger:output_type -> api.v1.UpdateTriggerResponse
+	54,  // 109: api.v1.TriggerService.ListTriggers:output_type -> api.v1.ListTriggersResponse
+	56,  // 110: api.v1.TriggerService.DeleteTrigger:output_type -> api.v1.DeleteTriggerResponse
+	58,  // 111: api.v1.TriggerService.RunTrigger:output_type -> api.v1.RunTriggerResponse
+	60,  // 112: api.v1.TriggerService.ListTriggerRuns:output_type -> api.v1.ListTriggerRunsResponse
+	62,  // 113: api.v1.FleetService.GetRunnerHealth:output_type -> api.v1.GetRunnerHealthResponse
+	64,  // 114: api.v1.FleetService.SubscribeFleetUpdates:output_type -> api.v1.FleetUpdate
+	66,  // 115: api.v1.AdminService.CreateToken:output_type -> api.v1.CreateTokenResponse
+	68,  // 116: api.v1.AdminService.ListTokens:output_type -> api.v1.ListTokensResponse
+	70,  // 117: api.v1.AdminService.DeleteToken:output_type -> api.v1.DeleteTokenResponse
+	72,  // 118: api.v1.AdminService.CreateTeam:output_type -> api.v1.CreateTeamResponse
+	74,  // 119: api.v1.AdminService.ListTeams:output_type -> api.v1.ListTeamsResponse
+	76,  // 120: api.v1.AdminService.DeleteTeam:output_type -> api.v1.DeleteTeamResponse
+	78,  // 121: api.v1.AdminService.ListUsers:output_type -> api.v1.ListUsersResponse
+	80,  // 122: api.v1.AdminService.ListAuditEvents:output_type -> api.v1.ListAuditEventsResponse
+	82,  // 123: api.v1.AdminService.ListTaskArtifacts:output_type -> api.v1.ListTaskArtifactsResponse
+	84,  // 124: api.v1.AdminService.ListRepos:output_type -> api.v1.ListReposResponse
+	87,  // 125: api.v1.AdminService.CreateGitIdentity:output_type -> api.v1.CreateGitIdentityResponse
+	89,  // 126: api.v1.AdminService.ListGitIdentities:output_type -> api.v1.ListGitIdentitiesResponse
+	91,  // 127: api.v1.AdminService.UpdateGitIdentity:output_type -> api.v1.UpdateGitIdentityResponse
+	93,  // 128: api.v1.AdminService.DeleteGitIdentity:output_type -> api.v1.DeleteGitIdentityResponse
+	95,  // 129: api.v1.AdminService.SetGitIdentityDefault:output_type -> api.v1.SetGitIdentityDefaultResponse
+	97,  // 130: api.v1.ArcaneService.GetScannerStatus:output_type -> api.v1.ArcaneScannerStatusResponse
+	100, // 131: api.v1.ArcaneService.GetEnvironmentSummary:output_type -> api.v1.ArcaneEnvironmentSummaryResponse
+	103, // 132: api.v1.ArcaneService.ListImages:output_type -> api.v1.ArcaneListImagesResponse
+	105, // 133: api.v1.ArcaneService.GetImageSummary:output_type -> api.v1.ArcaneImageSummaryResponse
+	108, // 134: api.v1.ArcaneService.ListVulnerabilities:output_type -> api.v1.ArcaneListVulnerabilitiesResponse
+	112, // 135: api.v1.CatalogService.GetModelCatalog:output_type -> api.v1.GetModelCatalogResponse
+	115, // 136: api.v1.CatalogService.ListAgentDefinitions:output_type -> api.v1.ListAgentDefinitionsResponse
+	91,  // [91:137] is the sub-list for method output_type
+	45,  // [45:91] is the sub-list for method input_type
+	45,  // [45:45] is the sub-list for extension type_name
+	45,  // [45:45] is the sub-list for extension extendee
+	0,   // [0:45] is the sub-list for field type_name
 }
 
 func init() { file_proto_api_v1_api_proto_init() }
@@ -8774,7 +9074,7 @@ func file_proto_api_v1_api_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_api_v1_api_proto_rawDesc), len(file_proto_api_v1_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   115,
+			NumMessages:   118,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

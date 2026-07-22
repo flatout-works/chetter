@@ -94,6 +94,20 @@ description:
 	}
 }
 
+func TestParseAgentMetadata(t *testing.T) {
+	content := "---\ndescription: Reviews pull requests\nidentity: reviewer-bot\nprovider: openai\nmodel: gpt-5\nmode: primary\nmcp_endpoints:\n  - github\n---\n# Reviewer\n"
+	metadata, err := ParseAgentMetadata(content)
+	if err != nil {
+		t.Fatalf("parse agent metadata: %v", err)
+	}
+	if metadata.Description != "Reviews pull requests" || metadata.Identity != "reviewer-bot" || metadata.Provider != "openai" || metadata.Model != "gpt-5" || metadata.Mode != "primary" {
+		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
+	if len(metadata.McpEndpoints) != 1 || metadata.McpEndpoints[0] != "github" {
+		t.Fatalf("unexpected MCP endpoints: %#v", metadata.McpEndpoints)
+	}
+}
+
 func TestParseTriggerYAMLCopiesTopLevelRuntimeConfig(t *testing.T) {
 	trigger, err := ParseTriggerYAML(`name: issue-handler
 trigger_type: issue

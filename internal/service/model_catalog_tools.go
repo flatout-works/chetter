@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -122,6 +123,52 @@ type DefinitionToolRecord struct {
 	Active         bool      `json:"active"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// ListAgentDefinitions returns active agent definitions visible in the current scope.
+func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos []string) ([]DefinitionToolRecord, error) {
+	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
+		Column1:        definitions.DefinitionTypeAgent,
+		DefinitionType: definitions.DefinitionTypeAgent,
+		Column3:        "",
+		SourceID:       "",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list agent definitions: %w", err)
+	}
+
+	scope, scoped := auth.GetScope(ctx)
+	allowedTeams := uiTeamIDs
+	if scoped && !scope.Admin {
+		allowedTeams = scope.Teams()
+		if len(uiTeamIDs) > 0 {
+			allowedTeams = intersectStrings(allowedTeams, uiTeamIDs)
+		}
+	}
+	teamSet := stringSet(allowedTeams)
+	repoSet := stringSet(uiRepos)
+	out := make([]DefinitionToolRecord, 0, len(defs))
+	for _, def := range defs {
+		if def.Scope == definitionScopeTeam && len(teamSet) > 0 && (!def.TeamID.Valid || !teamSet[def.TeamID.String]) {
+			continue
+		}
+		if def.Scope == definitionScopeTeam && scoped && !scope.Admin && len(teamSet) == 0 {
+			continue
+		}
+		if def.Scope == definitionScopeRepo && len(repoSet) > 0 && (!def.Repo.Valid || !repoSet[def.Repo.String]) {
+			continue
+		}
+		out = append(out, definitionToolRecord(def))
+	}
+	return out, nil
+}
+
+func stringSet(values []string) map[string]bool {
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
 }
 
 const (
