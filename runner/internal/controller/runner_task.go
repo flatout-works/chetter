@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -182,7 +183,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -242,24 +243,53 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, re
 		aware.SetCompletionContext(sessionID, idleCh, onIdle)
 	}
 
-	nudge := func(nudgeCtx context.Context) error {
-		continuable, ok := h.(harness.SessionContinuable)
-		if !ok {
-			return fmt.Errorf("harness %s does not support continuation", h.Name())
+	var nudge func(context.Context) error
+	if continuable, ok := h.(harness.SessionContinuable); ok {
+		nudge = func(nudgeCtx context.Context) error {
+			return continuable.ContinueSession(nudgeCtx, baseURL, sessionID, secret, req, wsDir)
 		}
-		return continuable.ContinueSession(nudgeCtx, baseURL, sessionID, secret, req, wsDir)
 	}
 	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
 		r.publishStatusForRequest(req, "running", message, nil)
 	}, isIdle)
-	go h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
-		watchdog.record(message)
-		r.publishStatusForRequest(req, status, message, nil)
-	}, onToken)
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
+			watchdog.record(message)
+			r.publishStatusForRequest(req, status, message, nil)
+		}, onToken)
+	}()
+	var stopOnce sync.Once
 	return agentCtx, func() {
-		watchdog.stop()
-		cancelAgent()
+		stopOnce.Do(func() {
+			watchdog.stop()
+			cancelAgent()
+			<-watchDone
+		})
 	}, watchdog
+}
+
+type tokenUsageAccumulator struct {
+	mu    sync.Mutex
+	usage task.TokenUsage
+}
+
+func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.usage.InputTokens += usage.InputTokens
+	a.usage.OutputTokens += usage.OutputTokens
+	a.usage.CacheReadTokens += usage.CacheReadTokens
+	a.usage.CacheWriteTokens += usage.CacheWriteTokens
+	a.usage.ReasoningTokens += usage.ReasoningTokens
+	a.usage.CostCents += usage.CostCents
+}
+
+func (a *tokenUsageAccumulator) snapshot() task.TokenUsage {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.usage
 }
 
 func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
@@ -273,6 +303,28 @@ func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
 	// via the shared Docker network.
 	runnerIP := hostIP(runcNetwork())
 	return "http://" + runnerIP + ":" + port + "/mcp"
+}
+
+func (r *Runner) taskChetterMCPURL() string {
+	if r.cfg.ChetterMCP.URL == "" {
+		return ""
+	}
+	if r.executionMode() == "local" || r.mcpRelay == nil {
+		return r.cfg.ChetterMCP.URL
+	}
+	_, port, err := net.SplitHostPort(r.mcpRelay.Addr())
+	if err != nil || port == "" {
+		slog.Error("invalid Chetter MCP relay address", "addr", r.mcpRelay.Addr(), "err", err)
+		return ""
+	}
+	return "http://" + hostIP(runcNetwork()) + ":" + port + "/mcp"
+}
+
+func (r *Runner) taskChetterMCPToken() string {
+	if r.executionMode() == "local" || r.mcpRelay == nil {
+		return r.cfg.ChetterMCP.AuthToken
+	}
+	return ""
 }
 
 func hostWorkspaceDir(containerPath string) string {
@@ -414,7 +466,7 @@ func isHarnessControlEnv(key string) bool {
 	switch key {
 	case "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_ATTRIBUTION_HEADER", "CLAUDE_SERVE_PROXY_TOKEN",
 		"CODEWHALE_CONFIG_DIR", "CODEWHALE_OFFLINE", "CODEWHALE_RUNTIME_TOKEN", "CODEWHALE_PROVIDER", "CODEWHALE_MODEL", "DEEPSEEK_MCP_CONFIG",
-		"OPENCODE_CONFIG", "OPENCODE_SERVER_PASSWORD",
+		"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_SERVER_PASSWORD",
 		"PI_CODING_AGENT_DIR", "PI_CODING_AGENT_SESSION_DIR", "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY":
 		return true
 	default:
@@ -707,19 +759,13 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	}
 	slog.Info("session", "taskID", req.TaskID, "sessionID", sid)
 
-	var tokenUsage task.TokenUsage
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
-	})
+	var tokenUsage tokenUsageAccumulator
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, tokenUsage.add)
 	defer stopWatching()
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	stopWatching()
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
@@ -728,12 +774,12 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, tokenUsage)
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport, task.TokenUsage{})
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport, tokenUsage.snapshot())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -901,18 +947,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 
-	var tokenUsage task.TokenUsage
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
-	})
+	var tokenUsage tokenUsageAccumulator
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, tokenUsage.add)
 	defer stopWatching()
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
+	stopWatching()
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
@@ -938,7 +978,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -953,7 +993,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -1121,18 +1161,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
 
-	var tokenUsage task.TokenUsage
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, workspaceDir, func(usage task.TokenUsage) {
-		tokenUsage.InputTokens += usage.InputTokens
-		tokenUsage.OutputTokens += usage.OutputTokens
-		tokenUsage.CacheReadTokens += usage.CacheReadTokens
-		tokenUsage.CacheWriteTokens += usage.CacheWriteTokens
-		tokenUsage.ReasoningTokens += usage.ReasoningTokens
-		tokenUsage.CostCents += usage.CostCents
-	})
+	var tokenUsage tokenUsageAccumulator
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, workspaceDir, tokenUsage.add)
 	defer stopWatching()
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
+	stopWatching()
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
@@ -1158,7 +1192,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage)
+		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -1173,7 +1207,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage)
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker resume)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -1348,12 +1382,20 @@ func taskPromptTimeout(timeoutSec int) time.Duration {
 }
 
 type rpcAgentState struct {
-	summary       strings.Builder
-	lastDetail    string
-	lastPublished time.Time
-	sessionID     string
-	terminal      bool
-	errorMessage  string
+	summary         strings.Builder
+	lastDetail      string
+	lastPublished   time.Time
+	sessionID       string
+	terminal        bool
+	errorMessage    string
+	finalAssistant  bool
+	retrying        bool
+	activeTools     map[string]struct{}
+	activeToolCount int
+}
+
+func (s *rpcAgentState) completeOnEOF() bool {
+	return s.finalAssistant && !s.retrying && s.activeToolCount == 0 && s.errorMessage == ""
 }
 
 func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
@@ -1372,7 +1414,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	slog.Info("starting RPC harness", "taskID", req.TaskID, "harness", name, "args", args)
 	r.publishStatusForRequest(req, "running", "Starting agent (RPC mode)...", nil)
 
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
@@ -1407,7 +1449,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
 
-	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+	cmd := exec.Command("docker", dockerArgs...)
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
@@ -1521,16 +1563,23 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		}
 	}()
 
-	reader := bufio.NewReader(stdout)
-	state := &rpcAgentState{lastPublished: time.Now()}
+	lineCtx, stopLines := context.WithCancel(context.Background())
+	defer stopLines()
+	lines := streamRPCLines(lineCtx, stdout)
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
 
 	readyCmd := map[string]any{"id": "ready", "type": "get_state"}
 	if err := writeRPCCommand(stdin, readyCmd); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("write ready probe: %v", err), nil)
 		return
 	}
-	readyResp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "ready", state)
+	readyResp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "ready", state)
 	if err != nil {
+		if ctx.Err() != nil {
+			status, message := rpcCancellationStatus(ctx, name)
+			r.publishStatusForRequest(req, status, message, nil)
+			return
+		}
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s ready: %v", name, err), nil)
 		return
 	}
@@ -1542,30 +1591,29 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("write prompt: %v", err), nil, state.sessionID, "", task.TokenUsage{})
 		return
 	}
-	if _, err := r.waitForRPCResponse(ctx, req, reader, stdin, "prompt", state); err != nil {
+	if _, err := r.waitForRPCResponse(ctx, req, lines, stdin, "prompt", state); err != nil {
+		if ctx.Err() != nil {
+			sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
+			status, message := rpcCancellationStatus(ctx, name)
+			r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+			return
+		}
 		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s prompt: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
 		return
 	}
 
 	for !state.terminal {
-		line, err := readRPCLine(ctx, reader)
+		line, err := readRPCLine(ctx, lines)
 		if err != nil {
 			if ctx.Err() != nil {
-				var sessionExport string
-				msgCtx, msgCancel := context.WithTimeout(context.Background(), 10*time.Second)
-				messagesCmd := map[string]any{"id": "messages", "type": "get_messages"}
-				if err := writeRPCCommand(stdin, messagesCmd); err == nil {
-					if resp, err := r.waitForRPCResponse(msgCtx, req, reader, stdin, "messages", state); err == nil {
-						sessionExport = renderRPCMessages(resp)
-						if err := writeRPCSessionExport(session.WorkspaceDir, sessionExport); err != nil {
-							slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
-						}
-					}
-				}
-				msgCancel()
-				r.abortRPC(ctx, req, stdin, reader, state)
-				r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s timed out", name), nil, state.sessionID, sessionExport, task.TokenUsage{})
+				sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
+				status, message := rpcCancellationStatus(ctx, name)
+				r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 				return
+			}
+			if errors.Is(err, io.EOF) && state.completeOnEOF() {
+				state.terminal = true
+				break
 			}
 			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
 			return
@@ -1579,7 +1627,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	resultText := strings.TrimSpace(state.summary.String())
 	resultCmd := map[string]any{"id": "result", "type": "get_last_assistant_text"}
 	if err := writeRPCCommand(stdin, resultCmd); err == nil {
-		if resp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "result", state); err == nil {
+		if resp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "result", state); err == nil {
 			if text := rpcLastAssistantText(resp); text != "" {
 				resultText = text
 			}
@@ -1593,7 +1641,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	var sessionExport string
 	messagesCmd := map[string]any{"id": "messages", "type": "get_messages"}
 	if err := writeRPCCommand(stdin, messagesCmd); err == nil {
-		if resp, err := r.waitForRPCResponse(ctx, req, reader, stdin, "messages", state); err == nil {
+		if resp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "messages", state); err == nil {
 			sessionExport = renderRPCMessages(resp)
 			if err := writeRPCSessionExport(session.WorkspaceDir, sessionExport); err != nil {
 				slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
@@ -1605,14 +1653,25 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	} else {
 		r.publishEvent(req.TaskID, fmt.Sprintf("%s messages write: %v", name, err))
 	}
-
-	_ = stdin.Close()
-	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, err), nil, state.sessionID, sessionExport, task.TokenUsage{})
-		exited = true
+	if ctx.Err() != nil {
+		sessionExport = r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
+		status, message := rpcCancellationStatus(ctx, name)
+		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 		return
 	}
+
+	_ = stdin.Close()
+	waitErr := waitForRPCProcess(ctx, cmd)
 	exited = true
+	if ctx.Err() != nil {
+		status, message := rpcCancellationStatus(ctx, name)
+		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+		return
+	}
+	if waitErr != nil {
+		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, waitErr), nil, state.sessionID, sessionExport, task.TokenUsage{})
+		return
+	}
 
 	if state.errorMessage != "" {
 		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport, task.TokenUsage{})
@@ -1667,20 +1726,55 @@ func writeRPCCommand(w io.Writer, cmd map[string]any) error {
 	return err
 }
 
-func readRPCLine(ctx context.Context, reader *bufio.Reader) ([]byte, error) {
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	return []byte(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")), nil
+type rpcLine struct {
+	data []byte
+	err  error
 }
 
-func (r *Runner) waitForRPCResponse(ctx context.Context, req task.TaskRequest, reader *bufio.Reader, stdin io.Writer, id string, state *rpcAgentState) (map[string]any, error) {
+func streamRPCLines(ctx context.Context, reader io.Reader) <-chan rpcLine {
+	lines := make(chan rpcLine)
+	go func() {
+		defer close(lines)
+		send := func(line rpcLine) bool {
+			select {
+			case lines <- line:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+		br := bufio.NewReader(reader)
+		for {
+			line, err := br.ReadString('\n')
+			if len(line) > 0 {
+				if !send(rpcLine{data: []byte(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"))}) {
+					return
+				}
+			}
+			if err != nil {
+				send(rpcLine{err: err})
+				return
+			}
+		}
+	}()
+	return lines
+}
+
+func readRPCLine(ctx context.Context, lines <-chan rpcLine) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case line, ok := <-lines:
+		if !ok {
+			return nil, io.EOF
+		}
+		return line.data, line.err
+	}
+}
+
+func (r *Runner) waitForRPCResponse(ctx context.Context, req task.TaskRequest, lines <-chan rpcLine, stdin io.Writer, id string, state *rpcAgentState) (map[string]any, error) {
 	for {
-		line, err := readRPCLine(ctx, reader)
+		line, err := readRPCLine(ctx, lines)
 		if err != nil {
 			return nil, err
 		}
@@ -1728,23 +1822,53 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 				if reason, _ := ame["reason"].(string); reason != "" {
 					state.errorMessage = reason
 				}
+			case "done":
+				reason, _ := ame["reason"].(string)
+				state.finalAssistant = reason == "stop" || reason == "length"
+			}
+		}
+	case "message_end":
+		if message, ok := ev["message"].(map[string]any); ok {
+			role, _ := message["role"].(string)
+			stopReason, _ := message["stopReason"].(string)
+			if role == "assistant" {
+				state.finalAssistant = stopReason == "stop" || stopReason == "length"
 			}
 		}
 	case "tool_execution_start":
+		if id, _ := ev["toolCallId"].(string); id != "" {
+			if _, exists := state.activeTools[id]; !exists {
+				state.activeTools[id] = struct{}{}
+				state.activeToolCount++
+			}
+		} else {
+			state.activeToolCount++
+		}
 		if toolName, _ := ev["toolName"].(string); toolName != "" {
 			state.lastDetail = "tool: " + toolName
 		}
 	case "tool_execution_end":
+		if id, _ := ev["toolCallId"].(string); id != "" {
+			if _, exists := state.activeTools[id]; exists {
+				delete(state.activeTools, id)
+				state.activeToolCount--
+			}
+		} else if state.activeToolCount > 0 {
+			state.activeToolCount--
+		}
 		if isError, _ := ev["isError"].(bool); isError {
 			if toolName, _ := ev["toolName"].(string); toolName != "" {
 				state.lastDetail = "tool error: " + toolName
 			}
 		}
 	case "auto_retry_start":
+		state.retrying = true
+		state.finalAssistant = false
 		if msg, _ := ev["errorMessage"].(string); msg != "" {
 			state.lastDetail = "retrying: " + msg
 		}
 	case "auto_retry_end":
+		state.retrying = false
 		if success, _ := ev["success"].(bool); !success {
 			if msg, _ := ev["finalError"].(string); msg != "" {
 				state.errorMessage = msg
@@ -1759,9 +1883,14 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 			return writeRPCCommand(stdin, resp)
 		}
 	case "agent_end":
-		if willRetry, _ := ev["willRetry"].(bool); !willRetry {
+		willRetry, _ := ev["willRetry"].(bool)
+		state.retrying = willRetry
+		if !willRetry {
 			state.terminal = true
 		}
+	case "agent_settled":
+		state.retrying = false
+		state.terminal = true
 	}
 	if time.Since(state.lastPublished) >= 3*time.Second && state.lastDetail != "" {
 		r.publishEvent(req.TaskID, "pi: "+state.lastDetail)
@@ -1784,9 +1913,49 @@ func rpcUIResponse(ev map[string]any) map[string]any {
 	}
 }
 
-func (r *Runner) abortRPC(ctx context.Context, req task.TaskRequest, stdin io.Writer, reader *bufio.Reader, state *rpcAgentState) {
+func (r *Runner) abortRPC(ctx context.Context, req task.TaskRequest, stdin io.Writer, lines <-chan rpcLine, state *rpcAgentState) {
 	_ = writeRPCCommand(stdin, map[string]any{"id": "abort", "type": "abort"})
-	_, _ = r.waitForRPCResponse(ctx, req, reader, stdin, "abort", state)
+	_, _ = r.waitForRPCResponse(ctx, req, lines, stdin, "abort", state)
+}
+
+func (r *Runner) cleanupRPCSession(req task.TaskRequest, wsDir string, stdin io.Writer, lines <-chan rpcLine, state *rpcAgentState) string {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var sessionExport string
+	if err := writeRPCCommand(stdin, map[string]any{"id": "messages", "type": "get_messages"}); err == nil {
+		if resp, err := r.waitForRPCResponse(cleanupCtx, req, lines, stdin, "messages", state); err == nil {
+			sessionExport = renderRPCMessages(resp)
+			if err := writeRPCSessionExport(wsDir, sessionExport); err != nil {
+				slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
+			}
+		}
+	}
+	abortCtx, abortCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer abortCancel()
+	r.abortRPC(abortCtx, req, stdin, lines, state)
+	return sessionExport
+}
+
+func rpcCancellationStatus(ctx context.Context, name string) (string, string) {
+	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+		return "error", fmt.Sprintf("%s timed out", name)
+	}
+	return "cancelled", fmt.Sprintf("%s cancelled", name)
+}
+
+func waitForRPCProcess(ctx context.Context, cmd *exec.Cmd) error {
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+		return ctx.Err()
+	}
 }
 
 func rpcPrompt(req task.TaskRequest) string {

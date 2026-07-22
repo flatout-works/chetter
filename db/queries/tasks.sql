@@ -20,18 +20,26 @@ WHERE id = sqlc.arg(id)
 
 -- name: ListTasksByStatus :many
 SELECT * FROM chetter_tasks
-WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-ORDER BY created_at DESC
+WHERE (sqlc.arg(status_filter) = '' OR chetter_tasks.status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR chetter_tasks.trigger_name = sqlc.arg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = sqlc.arg(agent_filter)
+  ))
+ORDER BY chetter_tasks.created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: SearchTasks :many
 SELECT * FROM chetter_tasks
-WHERE (sqlc.arg(team_filter) = '' OR team_id = sqlc.arg(team_filter))
-  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
-ORDER BY created_at DESC
+WHERE (sqlc.arg(team_filter) = '' OR chetter_tasks.team_id = sqlc.arg(team_filter))
+  AND (sqlc.arg(status_filter) = '' OR chetter_tasks.status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR chetter_tasks.trigger_name = sqlc.arg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = sqlc.arg(agent_filter)
+  ))
+  AND (chetter_tasks.search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
+ORDER BY chetter_tasks.created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: MarkTaskRunning :execrows
@@ -92,27 +100,39 @@ LIMIT 1;
 
 -- name: ListTasksByStatusAndTeam :many
 SELECT * FROM chetter_tasks
-WHERE team_id = sqlc.arg(team_id)
-  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-ORDER BY created_at DESC
+WHERE chetter_tasks.team_id = sqlc.arg(team_id)
+  AND (sqlc.arg(status_filter) = '' OR chetter_tasks.status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR chetter_tasks.trigger_name = sqlc.arg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = sqlc.arg(agent_filter)
+  ))
+ORDER BY chetter_tasks.created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: ListTasksByStatusAndTeams :many
 SELECT * FROM chetter_tasks
-WHERE team_id IN (sqlc.slice(team_ids))
-  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-ORDER BY created_at DESC
+WHERE chetter_tasks.team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR chetter_tasks.status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR chetter_tasks.trigger_name = sqlc.arg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = sqlc.arg(agent_filter)
+  ))
+ORDER BY chetter_tasks.created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: SearchTasksByTeams :many
 SELECT * FROM chetter_tasks
-WHERE team_id IN (sqlc.slice(team_ids))
-  AND (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))
-  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR trigger_name = sqlc.arg(trigger_name_filter))
-  AND (search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
-ORDER BY created_at DESC
+WHERE chetter_tasks.team_id IN (sqlc.slice(team_ids))
+  AND (sqlc.arg(status_filter) = '' OR chetter_tasks.status = sqlc.arg(status_filter))
+  AND (COALESCE(sqlc.arg(trigger_name_filter), '') = '' OR chetter_tasks.trigger_name = sqlc.arg(trigger_name_filter))
+  AND (COALESCE(sqlc.arg(agent_filter), '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = sqlc.arg(agent_filter)
+  ))
+  AND (chetter_tasks.search_text LIKE CONCAT('%', sqlc.arg(search), '%'))
+ORDER BY chetter_tasks.created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: UpdateTaskSearchText :exec

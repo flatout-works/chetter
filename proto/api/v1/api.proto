@@ -341,6 +341,7 @@ message ListTasksRequest {
   string search = 4;
   repeated string team_ids = 5;
   repeated string repos = 6;
+  string agent = 7;
 }
 
 message ListTasksResponse {
@@ -895,6 +896,7 @@ message ArcaneListVulnerabilitiesResponse {
 
 service CatalogService {
   rpc GetModelCatalog(GetModelCatalogRequest) returns (GetModelCatalogResponse);
+  rpc ListAgentDefinitions(ListAgentDefinitionsRequest) returns (ListAgentDefinitionsResponse);
 }
 
 message GetModelCatalogRequest {}
@@ -919,4 +921,32 @@ message GetModelCatalogResponse {
   string default_model = 2;
   repeated CatalogHarnessDefault defaults = 3;
   repeated CatalogProvider providers = 4;
+}
+
+message ListAgentDefinitionsRequest {
+  repeated string team_ids = 1;
+  repeated string repos = 2;
+}
+
+message AgentDefinition {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string identity = 4;
+  string provider = 5;
+  string model = 6;
+  string mode = 7;
+  repeated string mcp_endpoints = 8;
+  string scope = 9;
+  string team_id = 10;
+  string repo = 11;
+  string source_id = 12;
+  string path = 13;
+  string source_commit = 14;
+  string content = 15;
+  string updated_at = 16;
+}
+
+message ListAgentDefinitionsResponse {
+  repeated AgentDefinition agents = 1;
 }

@@ -5,58 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 func readSessionExport(wsDir, sessionID string) (string, error) {
-	entries, err := os.ReadDir(wsDir + "/.claude/projects")
-	if err != nil {
-		return "", fmt.Errorf("read projects dir: %w", err)
-	}
-
-	var latestDir string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			latestDir = entry.Name()
+	nativeID := sessionID
+	mappingPath := filepath.Join(wsDir, ".claude", "chetter-sessions", sessionID+".json")
+	if data, err := os.ReadFile(mappingPath); err == nil {
+		var mapping struct {
+			NativeSessionID string `json:"native_session_id"`
 		}
-	}
-
-	if latestDir == "" {
-		return "", fmt.Errorf("no Claude project directories found")
-	}
-
-	projectPath := wsDir + "/.claude/projects/" + latestDir
-	return renderSessionFromDir(projectPath)
-}
-
-func renderSessionFromDir(dir string) (string, error) {
-	subEntries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", fmt.Errorf("read project dir: %w", err)
-	}
-
-	latestFile := latestJSONLFile(dir, subEntries)
-	if latestFile == "" {
-		for _, sub := range subEntries {
-			if !sub.IsDir() {
-				continue
-			}
-			entries, err := os.ReadDir(dir + "/" + sub.Name())
-			if err != nil {
-				continue
-			}
-			if candidate := latestJSONLFile(dir+"/"+sub.Name(), entries); candidate != "" {
-				latestFile = candidate
-				break
-			}
+		if err := json.Unmarshal(data, &mapping); err != nil {
+			return "", fmt.Errorf("decode Claude session mapping: %w", err)
 		}
+		if mapping.NativeSessionID == "" {
+			return "", fmt.Errorf("claude session mapping has no native session ID")
+		}
+		nativeID = mapping.NativeSessionID
 	}
 
-	if latestFile == "" {
-		return "", fmt.Errorf("no session JSONL files in %s", dir)
+	transcript, err := findTranscript(filepath.Join(wsDir, ".claude", "projects"), nativeID)
+	if err != nil {
+		return "", err
 	}
-
-	f, err := os.Open(latestFile)
+	f, err := os.Open(transcript)
 	if err != nil {
 		return "", err
 	}
@@ -94,6 +67,43 @@ func renderSessionFromDir(dir string) (string, error) {
 	return sb.String(), scanner.Err()
 }
 
+func findTranscript(projectsDir, sessionID string) (string, error) {
+	if sessionID == "" || filepath.Base(sessionID) != sessionID {
+		return "", fmt.Errorf("invalid Claude session ID")
+	}
+	want := sessionID + ".jsonl"
+	var exact string
+	var transcripts []string
+	err := filepath.WalkDir(projectsDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+			return nil
+		}
+		transcripts = append(transcripts, path)
+		if entry.Name() == want {
+			if exact != "" {
+				return fmt.Errorf("multiple transcripts found for Claude session %s", sessionID)
+			}
+			exact = path
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("find Claude session transcript: %w", err)
+	}
+	if exact != "" {
+		return exact, nil
+	}
+	// Older workspaces predate durable proxy/native mappings. A sole
+	// transcript is unambiguous; multiple transcripts must never be guessed.
+	if len(transcripts) == 1 {
+		return transcripts[0], nil
+	}
+	return "", fmt.Errorf("no unique transcript found for Claude session %s", sessionID)
+}
+
 func claudeMessageText(message map[string]any) string {
 	if message == nil {
 		return ""
@@ -120,14 +130,4 @@ func claudeMessageText(message map[string]any) string {
 		return text.String()
 	}
 	return ""
-}
-
-func latestJSONLFile(dir string, entries []os.DirEntry) string {
-	var latest string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jsonl") {
-			latest = dir + "/" + entry.Name()
-		}
-	}
-	return latest
 }

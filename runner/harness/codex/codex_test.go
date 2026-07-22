@@ -1,9 +1,15 @@
 package codex
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -39,6 +45,80 @@ func TestGenerateConfig(t *testing.T) {
 		if !strings.Contains(config, want) {
 			t.Fatalf("config missing %q:\n%s", want, config)
 		}
+	}
+}
+
+func TestWatchEventsSignalsDone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "event: done\ndata: {\"status\":\"completed\",\"summary\":\"finished\"}\n\n")
+	}))
+	defer srv.Close()
+	completed := make(chan struct{})
+	watchEvents(context.Background(), "task", srv.URL, "", func(string, string) {}, nil, func(summary string, err error) {
+		if err != nil || summary != "finished" {
+			t.Errorf("completion = %q, %v", summary, err)
+		}
+		close(completed)
+	})
+	select {
+	case <-completed:
+	default:
+		t.Fatal("done SSE did not signal completion")
+	}
+}
+
+func TestSendPromptRecoversFromLostHTTPResponseViaCompletion(t *testing.T) {
+	idle := make(chan struct{})
+	var once sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		once.Do(func() { close(idle) })
+		<-time.After(time.Second)
+	}))
+	defer srv.Close()
+	summary, err := sendPrompt(context.Background(), srv.URL, "session", "", task.TaskRequest{Prompt: "work"}, 2*time.Second, idle, func() (string, error, bool) {
+		return "finished", nil, true
+	})
+	if err != nil || summary != "finished" {
+		t.Fatalf("sendPrompt = %q, %v", summary, err)
+	}
+}
+
+func TestSendPromptWaitsForTerminalEventAfterHTTPResponse(t *testing.T) {
+	idle := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"summary":"http summary"}`)
+	}))
+	defer srv.Close()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		close(idle)
+	}()
+	started := time.Now()
+	summary, err := sendPrompt(context.Background(), srv.URL, "session", "", task.TaskRequest{Prompt: "work"}, 2*time.Second, idle, func() (string, error, bool) {
+		return "terminal summary", nil, true
+	})
+	if err != nil || summary != "http summary" {
+		t.Fatalf("sendPrompt = %q, %v", summary, err)
+	}
+	if time.Since(started) < 40*time.Millisecond {
+		t.Fatal("SendPrompt returned before terminal usage could be delivered")
+	}
+}
+
+func TestWatchEventsPropagatesTerminalFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "event: done\ndata: {\"status\":\"failed\",\"error\":\"app server exited\"}\n\n")
+	}))
+	defer srv.Close()
+	var terminalErr error
+	watchEvents(context.Background(), "task", srv.URL, "", func(string, string) {}, nil, func(_ string, err error) {
+		terminalErr = err
+	})
+	if terminalErr == nil || !strings.Contains(terminalErr.Error(), "app server exited") {
+		t.Fatalf("terminal error = %v", terminalErr)
 	}
 }
 

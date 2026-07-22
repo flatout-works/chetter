@@ -167,6 +167,9 @@ const (
 	// CatalogServiceGetModelCatalogProcedure is the fully-qualified name of the CatalogService's
 	// GetModelCatalog RPC.
 	CatalogServiceGetModelCatalogProcedure = "/api.v1.CatalogService/GetModelCatalog"
+	// CatalogServiceListAgentDefinitionsProcedure is the fully-qualified name of the CatalogService's
+	// ListAgentDefinitions RPC.
+	CatalogServiceListAgentDefinitionsProcedure = "/api.v1.CatalogService/ListAgentDefinitions"
 )
 
 // TaskServiceClient is a client for the api.v1.TaskService service.
@@ -1624,6 +1627,7 @@ func (UnimplementedArcaneServiceHandler) ListVulnerabilities(context.Context, *c
 // CatalogServiceClient is a client for the api.v1.CatalogService service.
 type CatalogServiceClient interface {
 	GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error)
+	ListAgentDefinitions(context.Context, *connect.Request[v1.ListAgentDefinitionsRequest]) (*connect.Response[v1.ListAgentDefinitionsResponse], error)
 }
 
 // NewCatalogServiceClient constructs a client for the api.v1.CatalogService service. By default, it
@@ -1643,12 +1647,19 @@ func NewCatalogServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(catalogServiceMethods.ByName("GetModelCatalog")),
 			connect.WithClientOptions(opts...),
 		),
+		listAgentDefinitions: connect.NewClient[v1.ListAgentDefinitionsRequest, v1.ListAgentDefinitionsResponse](
+			httpClient,
+			baseURL+CatalogServiceListAgentDefinitionsProcedure,
+			connect.WithSchema(catalogServiceMethods.ByName("ListAgentDefinitions")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // catalogServiceClient implements CatalogServiceClient.
 type catalogServiceClient struct {
-	getModelCatalog *connect.Client[v1.GetModelCatalogRequest, v1.GetModelCatalogResponse]
+	getModelCatalog      *connect.Client[v1.GetModelCatalogRequest, v1.GetModelCatalogResponse]
+	listAgentDefinitions *connect.Client[v1.ListAgentDefinitionsRequest, v1.ListAgentDefinitionsResponse]
 }
 
 // GetModelCatalog calls api.v1.CatalogService.GetModelCatalog.
@@ -1656,9 +1667,15 @@ func (c *catalogServiceClient) GetModelCatalog(ctx context.Context, req *connect
 	return c.getModelCatalog.CallUnary(ctx, req)
 }
 
+// ListAgentDefinitions calls api.v1.CatalogService.ListAgentDefinitions.
+func (c *catalogServiceClient) ListAgentDefinitions(ctx context.Context, req *connect.Request[v1.ListAgentDefinitionsRequest]) (*connect.Response[v1.ListAgentDefinitionsResponse], error) {
+	return c.listAgentDefinitions.CallUnary(ctx, req)
+}
+
 // CatalogServiceHandler is an implementation of the api.v1.CatalogService service.
 type CatalogServiceHandler interface {
 	GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error)
+	ListAgentDefinitions(context.Context, *connect.Request[v1.ListAgentDefinitionsRequest]) (*connect.Response[v1.ListAgentDefinitionsResponse], error)
 }
 
 // NewCatalogServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1674,10 +1691,18 @@ func NewCatalogServiceHandler(svc CatalogServiceHandler, opts ...connect.Handler
 		connect.WithSchema(catalogServiceMethods.ByName("GetModelCatalog")),
 		connect.WithHandlerOptions(opts...),
 	)
+	catalogServiceListAgentDefinitionsHandler := connect.NewUnaryHandler(
+		CatalogServiceListAgentDefinitionsProcedure,
+		svc.ListAgentDefinitions,
+		connect.WithSchema(catalogServiceMethods.ByName("ListAgentDefinitions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.v1.CatalogService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CatalogServiceGetModelCatalogProcedure:
 			catalogServiceGetModelCatalogHandler.ServeHTTP(w, r)
+		case CatalogServiceListAgentDefinitionsProcedure:
+			catalogServiceListAgentDefinitionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1689,4 +1714,8 @@ type UnimplementedCatalogServiceHandler struct{}
 
 func (UnimplementedCatalogServiceHandler) GetModelCatalog(context.Context, *connect.Request[v1.GetModelCatalogRequest]) (*connect.Response[v1.GetModelCatalogResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.CatalogService.GetModelCatalog is not implemented"))
+}
+
+func (UnimplementedCatalogServiceHandler) ListAgentDefinitions(context.Context, *connect.Request[v1.ListAgentDefinitionsRequest]) (*connect.Response[v1.ListAgentDefinitionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.CatalogService.ListAgentDefinitions is not implemented"))
 }

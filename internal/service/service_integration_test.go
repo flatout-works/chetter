@@ -476,7 +476,7 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	if !session.StartedAt.Valid || session.EndedAt.Valid {
 		t.Errorf("active agent session lifecycle = started %v ended %v", session.StartedAt, session.EndedAt)
 	}
-	tasks, err := svc.ListTasks(ctx, "", 20, 0, "", nil, nil)
+	tasks, err := svc.ListTasks(ctx, "", 20, 0, "", "", nil, nil)
 	if err != nil || len(tasks) != 1 || tasks[0].AgentSessionID != session.ID {
 		t.Fatalf("task list latest session projection = %+v, err %v", tasks, err)
 	}
@@ -1515,6 +1515,48 @@ func TestServiceListTasksToolRecords(t *testing.T) {
 	}
 }
 
+func TestServiceListTasksFiltersByAgent(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := svc.CreateGitIdentity(ctx, GitIdentityInput{
+		Name:           "release-bot",
+		GitAuthorName:  "Release Bot",
+		GitAuthorEmail: "release-bot@example.com",
+	}); err != nil {
+		t.Fatalf("create Git identity: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES (?, ?, 'agent', 'release', 'global', ?, ?, ?, ?, true, ?, ?)`,
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES ($1, $2, 'agent', 'release', 'global', $3, $4, $5, $6, true, $7, $8)`,
+	), "def_release_filter", "src_test", "agents/release.md", "test", strings.Repeat("2", 64), "---\nidentity: release-bot\n---\n# Release agent\n", now, now); err != nil {
+		t.Fatalf("seed agent definition: %v", err)
+	}
+	for _, input := range []SubmitTaskRequest{
+		{Prompt: "release one", AgentImage: "runner:latest", Agent: "release"},
+		{Prompt: "unassigned", AgentImage: "runner:latest"},
+		{Prompt: "release two", AgentImage: "runner:latest", Agent: "release"},
+	} {
+		if _, err := svc.SubmitTask(ctx, input); err != nil {
+			t.Fatalf("submit task: %v", err)
+		}
+	}
+
+	tasks, err := svc.ListTasks(ctx, "", 10, 0, "", "release", nil, nil)
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("expected 2 release tasks, got %d", len(tasks))
+	}
+	for _, task := range tasks {
+		if task.Agent != "release" {
+			t.Fatalf("unexpected agent %q", task.Agent)
+		}
+	}
+}
+
 func TestServiceGetLatestEvent(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -1733,7 +1775,7 @@ func TestMultiTeamTokenListsUnionAndRequiresSubmitOwner(t *testing.T) {
 		t.Fatal("expected submit for out-of-scope team to fail")
 	}
 
-	tasks, err := svc.ListTasks(multiCtx, "", 20, 0, "", nil, nil)
+	tasks, err := svc.ListTasks(multiCtx, "", 20, 0, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("list tasks: %v", err)
 	}

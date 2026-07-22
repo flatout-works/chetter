@@ -1,245 +1,126 @@
 ---
 name: chetter
-description: Use Chetter to submit, track, and manage remote agent tasks: runner health, task status, schedules, and cancellation. Triggers on chetter-related workflow requests, slash commands (/chetter-*), task management, and fleet health checks.
+description: Use Chetter to submit, track, recover, and manage remote agent tasks, sessions, triggers, definitions, fleet health, and task-created GitHub artifacts.
 ---
 
 # Chetter Remote Development Runner Fleet
 
-Chetter is a self-hosted MCP server for running autonomous AI development agents. It gives your AI tooling a way to submit software development work to a fleet of containerized runners.
+Chetter is a self-hosted MCP control plane for running autonomous development agents in isolated task containers.
 
-- **MCP endpoint:** `https://some.ip.name/mcp` (hosted) or your own instance
-- **Source repo:** `https://github.com/flatout-works/chetter`
+- Source: `https://github.com/flatout-works/chetter`
+- Hosted MCP endpoint: `https://some.ip.name/mcp`, or the endpoint for your own instance
 
-## Invocation Rule: When the User Addresses "Chetter"
+## Delegate Requests Addressed to Chetter
 
-If the user directs an instruction at Chetter (for example, messages that start with "Chetter, ...", "Hey Chetter, ...", or any sentence clearly addressed to Chetter), **do not solve the request yourself**. Treat it as a request to delegate the work to the Chetter runner fleet.
+When a user clearly addresses an instruction to "Chetter", delegate it to the runner fleet instead of performing it locally.
 
-1. Rephrase the user's instruction into a clear, self-contained task prompt.
-2. Determine the target repository and branch (`git_url` and `git_ref`). If the user did not specify them, use the current repository context or ask for them.
-3. Submit the task with `chetter_submit_task`.
-4. Tell the user the resulting task ID so they can track it.
+1. Turn the request into a self-contained task prompt with the desired outcome, repository, constraints, verification, and whether edits or GitHub artifacts are allowed.
+2. Determine `git_url` and `git_ref` from the request or current repository context. Ask only when the target is genuinely ambiguous.
+3. Submit with `chetter_submit_task`.
+4. Return the task ID and, when useful, offer to track it with `chetter_task_progress` or `chetter_task_status`.
 
-For example, if the user says "Chetter, can you create an issue about xxx", do **not** call `gh issue create` yourself. Submit a Chetter task whose prompt instructs the remote agent to create the issue, including the desired title, body, and repository details.
+Use an agent image containing the selected harness, such as `ghcr.io/flatout-works/chetter-agent-base:main` or `ghcr.io/flatout-works/chetter-agent:golang`. Never use `chetter-runner`: it is the fleet daemon image and does not contain the harness CLIs needed by tasks. Omit `agent_image` when the Chetter instance has a suitable default.
 
-For `agent_image`, use an **agent** image that bundles the harness CLIs (e.g. `ghcr.io/flatout-works/chetter-agent-base`, or a stack variant such as `ghcr.io/flatout-works/chetter-agent:golang`) if none is specified. Do **not** use `chetter-runner` — that is the tight runner daemon image with no harnesses, and tasks will fail with "no assistant response". If the request implies a schedule or recurring task, use the schedule tools instead.
+For recurring work, create or change a Chetter `cron` trigger. Do not use a local machine scheduler as a substitute.
 
-## Available MCP Tools
+## Tool Contexts
 
-All tools are prefixed `chetter_` and available via the `chetter` MCP server.
+### Control-plane clients
 
-### Fleet Health
-| Tool | Purpose |
-|---|---|---|
-| `chetter_runner_health` | Runner fleet health, running/stale tasks, image versions, and latest task event age |
-| `chetter_list_tasks` | List recent tasks, optional `status` and `trigger_name` filters |
-| `chetter_list_triggers` | List triggers (cron schedules and PR review configs) |
+Interactive MCP clients may expose the full Chetter API, subject to token scope and optional server integrations. Major tool groups are:
 
-### Task Lifecycle
-| Tool | Purpose |
+| Area | Tools |
 |---|---|
-| `chetter_submit_task` | Submit a new task to the fleet |
-| `chetter_task_status` | Get current status and result for a task |
-| `chetter_task_progress` | Get distilled progress timeline |
-| `chetter_task_events` | Get full event history |
-| `chetter_task_latest_event` | Get most recent event |
-| `chetter_cancel_task` | Cancel a pending or running task |
-| `chetter_clear_queue` | Clear queued task messages (admin only; requires confirm) |
+| Tasks | `chetter_submit_task`, `chetter_list_tasks`, `chetter_task_status`, `chetter_task_progress`, `chetter_task_events`, `chetter_task_latest_event`, `chetter_task_export`, `chetter_cancel_task`, `chetter_recover_task` |
+| Sessions | `chetter_list_agent_sessions`, `chetter_agent_session_status`, `chetter_resume_agent_session` |
+| Fleet | `chetter_runner_health`, `chetter_drain_runner`, `chetter_clear_queue` |
+| Triggers | `chetter_create_trigger`, `chetter_update_trigger`, `chetter_list_triggers`, `chetter_delete_trigger`, `chetter_run_trigger`, `chetter_list_trigger_runs` |
+| Event callbacks | `chetter_create_event_callback`, `chetter_update_event_callback`, `chetter_list_event_callbacks`, `chetter_delete_event_callback` |
+| Definitions | `chetter_list_definition_sources`, `chetter_get_definition_source`, `chetter_sync_definition_source`, `chetter_sync_definitions`, `chetter_list_definitions`, `chetter_get_definition`, `chetter_create_definition_proposal`, `chetter_list_definition_proposals`, `chetter_get_definition_proposal` |
+| Git identities | `chetter_create_git_identity`, `chetter_list_git_identities`, `chetter_update_git_identity`, `chetter_delete_git_identity`, `chetter_set_git_identity_default` |
+| Administration | `chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token`, `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team`, `chetter_list_users` |
+| Observability | `chetter_list_audit_events`, `chetter_list_task_artifacts`, `chetter_usage_summary`, `chetter_get_model_catalog` |
 
-### Tokens
-| Tool | Purpose |
-|---|---|---|
-| `chetter_create_token` | Create a new API token for a team and user (admin only) |
-| `chetter_list_tokens` | List all API tokens with user and team info (admin only) |
-| `chetter_delete_token` | Delete an API token by name (admin only) |
+Arcane image-scanning tools are present only when the server has Arcane configured: `chetter_arcane_scanner_status`, `chetter_arcane_environment_summary`, `chetter_arcane_list_images`, `chetter_arcane_image_summary`, and `chetter_arcane_list_vulnerabilities`.
 
-### Triggers
-| Tool | Purpose |
-|---|---|
-| `chetter_create_trigger` | Create a trigger (cron schedule or PR review) |
-| `chetter_update_trigger` | Update a trigger by name |
-| `chetter_list_triggers` | List triggers, optionally by type |
-| `chetter_delete_trigger` | Delete a trigger by name |
-| `chetter_run_trigger` | Run a cron trigger immediately |
+Admin-only or unavailable tools may not be visible to team-scoped clients. Use the tools actually exposed by the current MCP connection.
 
-### Definitions
-| Tool | Purpose |
-|---|---|
-| `chetter_get_model_catalog` | Get the active model/provider catalog |
-| `chetter_sync_definitions` | Sync the configured definitions repo and reload indexed configs (admin only) |
-| `chetter_list_definition_sources` | List Git-backed definition sources |
-| `chetter_get_definition_source` | Get a definition source by ID or name |
-| `chetter_sync_definition_source` | Sync a definition source (admin only) |
-| `chetter_list_definitions` | List active materialized definitions, optionally by type/source |
-| `chetter_get_definition` | Get a materialized definition by type and name |
-| `chetter_create_definition_proposal` | Create a PR proposing definition file changes |
-| `chetter_list_definition_proposals` | List definition change proposals created by Chetter |
-| `chetter_get_definition_proposal` | Get proposal details and live PR status when available |
+### Agents running inside tasks
 
-### Arcane (Vulnerability Scanning, Optional)
-| Tool | Purpose |
-|---|---|
-| `chetter_arcane_list_images` | List Docker images in an Arcane environment |
-| `chetter_arcane_image_summary` | Vulnerability summary for a specific image |
-| `chetter_arcane_environment_summary` | Aggregated vulnerability counts across all images |
-| `chetter_arcane_list_vulnerabilities` | Detailed vulnerability list with filtering |
-| `chetter_arcane_scanner_status` | Scanner availability and version |
+OpenCode task agents receive a restricted subset of the remote Chetter tools. They can inspect tasks, sessions, fleet health, triggers, definitions, audit/usage data, and Arcane data; submit/recover/resume tasks; and create definition proposals. They cannot administer teams, tokens, identities, triggers, callbacks, the queue, or runners.
 
-## Common Workflows
+Task agents receive these artifact tools only through the runner bridge, with task context injected automatically:
 
-### Check Fleet Status
-Use `/chetter-status` or ask:
-```
-Tell me about the ongoing tasks
-```
-The agent will call `chetter_list_tasks` and `chetter_runner_health` to show what's running, what's done, what's stale, and what failed.
+- `chetter_create_issue`
+- `chetter_issue_comment`
+- `chetter_create_pr`
+- `chetter_pr_review`
 
-Tasks created by cron triggers, PR reviews, or issue webhooks are stamped with `trigger_name` and `trigger_type` attribution. You can filter by trigger:
-```
-Show me all tasks from the nightly-docs-update trigger
-```
-The agent will use `chetter_list_tasks` with `trigger_name="nightly-docs-update"`.
+Use these tools instead of `gh issue create`, `gh issue comment`, `gh pr create`, or `gh pr review`. They add the canonical Chetter signature and record artifact/audit metadata. Standard harness file tools handle workspace reads and edits; the runner bridge does not provide `workspace_*` tools.
 
-### Submit a Task
-Use `/chetter-submit` or ask explicitly. When submitting, specify:
-- `git_url`: your repository URL
-- `git_ref`: usually `main`
-- `agent_image`: your **agent** image (must contain the harness CLIs), such as `ghcr.io/your-org/chetter-agent:golang` or `ghcr.io/flatout-works/chetter-agent-base`. Do not use the `chetter-runner` daemon image here.
+## Submit Tasks
+
+Useful `chetter_submit_task` fields include:
+
 - `prompt`: clear, scoped instructions
-- Optional: `agent`, `provider_id`, `model_id`, `variant_id`, `skills`, `timeout_sec`
+- `git_url`, `git_ref`: committed Git state to clone
+- `agent_image`: optional agent image override, never the runner daemon image
+- `harness`: `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`
+- `agent`, `provider_id`, `model_id`, `variant_id`
+- `skills`, `mcp_endpoints`: names resolved from applicable Git-backed definitions
+- `env`: non-secret environment values only
+- `timeout_sec`
+- `session_mode: resumable`, `pause_reason`, `ttl_hours`: retain an eligible gVisor task container for follow-up work
 
-### Track a Task
-```
-Show progress for task task_<id>
-Show the latest event for task task_<id>
-```
+Chetter clones committed Git state. It cannot see local uncommitted changes. Put all required context in the prompt or repository, and never put secrets in prompts or `env`.
 
-### Diagnose Stale Tasks
-A running task is stale in fleet health when `last_event_sec > 600`. Check its events and progress to understand what step it is stuck on. Consider canceling and resubmitting.
+## Track, Recover, and Resume
 
-### Manage Triggers
-Triggers (cron schedules and PR review configs) are managed as YAML files in the definitions repo set via `DEFINITIONS_REPO`. Chetter syncs them automatically; use `chetter_sync_definitions` to trigger a manual resync.
+- Use `chetter_task_progress` for a concise timeline and `chetter_task_events` for full diagnostics.
+- Use `chetter_task_export` to inspect a completed task transcript.
+- Use `chetter_recover_task` after a failed task when a fresh task should receive the previous session export as workspace context.
+- Use `chetter_resume_agent_session` only for paused or recoverable sessions. Resumable sessions require gVisor and expire according to their TTL.
+- Use `chetter_runner_health` to distinguish task failures from stale runners or old heartbeats.
 
-```
-Use chetter_create_trigger with trigger_type=cron to create a trigger from definitions in your config repo
-```
+## Triggers
 
-### Inspect Definitions
-Definitions are indexed from the configured `DEFINITIONS_REPO` into TiDB. To inspect the current registry:
-```
-List definition sources and show active agent definitions
-```
-The agent will call `chetter_list_definition_sources` and `chetter_list_definitions` with `definition_type="agent"`.
+Supported trigger types are:
 
-To refresh the configured source:
-```
-Sync the default definition source
-```
-The agent will use `chetter_sync_definition_source`; admin access is required.
+- `cron`: requires `cron_expr`
+- `pr_review`: requires `repo`; `event` can narrow webhook actions
+- `issue`: requires `repo`; supports `event` and `match_labels`
 
-To propose durable definition changes, use `chetter_create_definition_proposal` with complete replacement file contents. The tool creates a branch, writes the files, opens a GitHub pull request, and records the proposal. Use `chetter_list_definition_proposals` and `chetter_get_definition_proposal` to track review status.
+Trigger run configuration can include the same harness, model, image, skills, timeout, and resumable-session fields as task submission.
 
-## Working with Triggers
+Git-backed trigger definitions are the durable source of truth. Store them under the applicable scope:
 
-### Adding a New Cron Trigger
+- `global/triggers/*.yaml`
+- `groups/<team>/triggers/*.yaml`
+- `repos/<owner>/<repo>/triggers/*.yaml`
 
-1. Copy an existing trigger YAML from `examples/config-repo/triggers/` as a starting point.
-2. Edit it with your repo details and prompt, then add it to your config repo's `triggers/` directory.
-3. Sync definitions to activate it:
-   ```
-   Use chetter_sync_definitions to reload triggers from the definitions repo
-   ```
+After merging changes, call `chetter_sync_definition_source` (or the legacy default-source `chetter_sync_definitions`) to materialize them. Trigger names must be unique across the instance; scope does not namespace the trigger table. Use direct create/update/delete tools for explicit operational changes, not as a replacement for reviewed definition files.
 
-### Adding a New PR Review Trigger
+## Definitions
 
-PR review triggers watch a GitHub repository for new pull requests:
+Chetter materializes these Git-backed definition types: `agent`, `skill`, `trigger`, `task_template`, and `mcp_endpoint`. Definitions resolve by global, team, and repository scope, with the most specific applicable definition winning.
 
-```
-Use chetter_create_trigger to create a pr_review trigger for flatout-works/chetter
-with agent=pr-reviewer, model=opencode/minimax-m3, and prompt "You are performing a deep code review..."
-```
+Use `chetter_create_definition_proposal` for durable changes from a task agent. It accepts complete replacement file contents, creates a branch and pull request, and records the proposal. Track it with `chetter_list_definition_proposals` and `chetter_get_definition_proposal`.
 
-### Customizing a Trigger
+Agents that declare an `identity` require a matching server-managed Git identity. MCP endpoints and skills referenced by a task or agent must exist in an applicable scope; missing skill definitions are not useful hints and should be removed or added properly.
 
-Each trigger supports these fields:
+## Event Callbacks
 
-| Field | Required | Description |
-|---|---|---|
-| `name` | yes | Unique trigger name (slug) |
-| `trigger_type` | yes | `cron` or `pr_review` |
-| `enabled` | no | `true` to activate, `false` to pause (default `true`) |
-| `cron_expr` | for `cron` | Five-field cron or `@hourly`, `@daily` |
-| `repo` | for `pr_review` | Repository to watch (e.g. `flatout-works/chetter`) |
-| `prompt` | yes | Task prompt run on each trigger fire |
-| `git_url` | no | Repository URL to clone |
-| `git_ref` | no | Branch/tag/commit (default main) |
-| `agent_image` | no | Runner image override |
-| `agent` | no | OpenCode agent to use |
-| `provider_id` | no | LLM provider for model selection |
-| `model_id` | no | Model ID |
-| `variant_id` | no | Model variant |
-| `skills` | no | List of skill names to load |
-| `timeout_sec` | no | Task timeout in seconds |
+Event callbacks react to task event patterns such as `task.completed`, `task.failed.*`, or `task.failed.model_error`. Supported actions are `create_task`, `webhook`, and `slack`. Callback action configuration is JSON. Keep webhook credentials in server-managed configuration, never in definition files or task prompts.
 
-### Tweaking an Existing Trigger
+## Safety
 
-To change a trigger's cron expression, prompt, model, or other fields:
-
-1. Edit the `triggers/*.yaml` file in your config repo directly.
-2. Sync definitions to apply changes:
-   ```
-   Use chetter_sync_definitions to reload triggers
-   ```
-
-### Pausing a Trigger
-Set `enabled: false` in the YAML and sync, or:
-```
-Use chetter_update_trigger to disable nightly-issue-fixer
-```
-
-### Running a Cron Trigger Manually
-```
-Use chetter_run_trigger to run the nightly-changelog-update trigger now
-```
-
-### Deleting a Trigger
-```
-Use chetter_delete_trigger to delete nightly-docs-update
-```
-Remove the corresponding YAML file from your repo if it is no longer part of your desired trigger set.
-
-### Keeping Triggers in Your Repo
-
-The recommended pattern is to store trigger YAMLs in your config repo (set via `DEFINITIONS_REPO`). When you set up your project:
-
-1. Create a `triggers/` directory in your config repo.
-2. Copy the samples from Chetter's `examples/config-repo/triggers/` as starting points.
-3. Customize for your project (repo URL, agent image, prompt details).
-4. Apply each trigger with `chetter_create_trigger`, or update with `chetter_update_trigger`.
-
-This way your triggers are version-controlled alongside your code and can be reviewed in PRs.
-
-## Safety Rules
-
-- Never send secrets (API keys, tokens, passwords) in task prompts or env vars
-- Task prompts must explicitly state whether file edits and PR creation are allowed
-- Tell tasks to create branches and PRs rather than pushing to the default branch
-- Use `timeout_sec` appropriate for the work (e.g., 600 for quick checks, 3600 for code changes)
-- Chetter clones from Git; tasks cannot access uncommitted local changes
-- For recurring schedules, check `triggers/*.yaml` into your config repo
+- State whether edits, commits, pushes, issues, comments, reviews, or pull requests are allowed.
+- Prefer a branch and reviewed PR over direct pushes to a default branch.
+- Do not submit secrets in prompts or task `env`.
+- Check for an existing issue or PR before scheduled automation creates another.
+- Use realistic timeouts: about 600 seconds for quick inspection and 3600 or more for implementation.
+- Treat Arcane, GitHub App, managed identities, and resumable sessions as optional deployment capabilities; handle their absence explicitly.
 
 ## Model Selection
 
-The provider/model catalog is loaded from a Git definitions repo (`DEFINITIONS_REPO` env var) on server startup and refreshed with `chetter_sync_definitions`. The catalog file `model-catalog.yaml` is generic across harnesses and defines per-harness defaults for OpenCode, Claude Code, Pi, and future harnesses. Catalog entries should reference secret environment variable names (for example `api_key_env: SYNTHETIC_API_KEY`), not secret values. If no definitions repo is configured, Chetter uses a built-in default catalog.
-
-View the current catalog with `chetter_get_model_catalog`.
-
-Common model choices for different task types:
-
-| Task type | Suggested model | Notes |
-|---|---|---|
-| Docs/changelog | synthetic/kimi-k2.6 | Fast, cheap, good at summarizing |
-| PR reviews | opencode/minimax-m3 | Thorough, structured output |
-| Code quality / fixes | opencode/deepseek-v4-pro | Good at Go code analysis |
-| Bugfixes | deepseek/deepseek-chat | Budget-friendly for simple fixes |
-
-Prefer reliable, cost-effective models for scheduled maintenance tasks. Reserve large/expensive models for complex implementation work.
+Use `chetter_get_model_catalog` as the authority for available providers, models, harness defaults, and variants. Do not hard-code model recommendations in automation guidance: the catalog changes independently and explicit trigger/task selections override defaults.

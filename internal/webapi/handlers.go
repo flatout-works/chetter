@@ -13,6 +13,7 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/pkg/definitions"
 )
 
 // --- Conversion helpers ---
@@ -313,7 +314,7 @@ func (h *taskHandler) GetTask(ctx context.Context, req *connect.Request[apiv1.Ge
 }
 
 func (h *taskHandler) ListTasks(ctx context.Context, req *connect.Request[apiv1.ListTasksRequest]) (*connect.Response[apiv1.ListTasksResponse], error) {
-	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search, req.Msg.TeamIds, req.Msg.Repos)
+	tasks, err := h.svc.ListTasks(ctx, req.Msg.Status, int(req.Msg.Limit), int(req.Msg.Offset), req.Msg.Search, req.Msg.Agent, req.Msg.TeamIds, req.Msg.Repos)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -1080,4 +1081,38 @@ func (h *catalogHandler) GetModelCatalog(ctx context.Context, _ *connect.Request
 		Defaults:        defaults,
 		Providers:       providers,
 	}), nil
+}
+
+func (h *catalogHandler) ListAgentDefinitions(ctx context.Context, req *connect.Request[apiv1.ListAgentDefinitionsRequest]) (*connect.Response[apiv1.ListAgentDefinitionsResponse], error) {
+	defs, err := h.svc.ListAgentDefinitions(ctx, req.Msg.TeamIds, req.Msg.Repos)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	agents := make([]*apiv1.AgentDefinition, 0, len(defs))
+	for _, def := range defs {
+		metadata, err := definitions.ParseAgentMetadata(def.Content)
+		if err != nil {
+			slog.WarnContext(ctx, "parse agent definition metadata", "name", def.Name, "err", err)
+			continue
+		}
+		agents = append(agents, &apiv1.AgentDefinition{
+			Id:           def.ID,
+			Name:         def.Name,
+			Description:  metadata.Description,
+			Identity:     metadata.Identity,
+			Provider:     metadata.Provider,
+			Model:        metadata.Model,
+			Mode:         metadata.Mode,
+			McpEndpoints: metadata.McpEndpoints,
+			Scope:        def.Scope,
+			TeamId:       def.TeamID,
+			Repo:         def.Repo,
+			SourceId:     def.SourceID,
+			Path:         def.Path,
+			SourceCommit: def.SourceCommit,
+			Content:      def.Content,
+			UpdatedAt:    def.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+	return connect.NewResponse(&apiv1.ListAgentDefinitionsResponse{Agents: agents}), nil
 }

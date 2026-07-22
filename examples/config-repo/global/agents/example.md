@@ -4,7 +4,7 @@ identity: primary-bot
 
 # Example Agent
 
-This file in `agents/*.md` defines an agent that can be referenced when submitting tasks or configuring triggers. Set `agent: example` to use it.
+This file in `global/agents/*.md` defines an agent that can be referenced when submitting tasks or configuring triggers. Set `agent: example` to use it.
 
 ## Role
 

@@ -79,12 +79,19 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	if len(defsOut.Definitions) != 1 || defsOut.Definitions[0].Name != "pr-reviewer" || defsOut.Definitions[0].Content == "" {
 		t.Fatalf("unexpected definitions tool output: %#v", defsOut)
 	}
+	agents, err := svc.ListAgentDefinitions(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("list agent definitions: %v", err)
+	}
+	if len(agents) != 1 || agents[0].Name != "pr-reviewer" {
+		t.Fatalf("unexpected agent definitions: %#v", agents)
+	}
 
 	_, defOut, err := svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeSkill, Name: "chetter"})
 	if err != nil {
 		t.Fatalf("get definition tool: %v", err)
 	}
-	if defOut.Definition.Path != "skills/chetter/SKILL.md" {
+	if defOut.Definition.Path != "global/skills/chetter/SKILL.md" {
 		t.Fatalf("unexpected definition output: %#v", defOut)
 	}
 
@@ -167,10 +174,10 @@ providers:
     models:
       - id: test-model
 `)
-	writeRepoFile(t, dir, "agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
-	writeRepoFile(t, dir, "skills/chetter/SKILL.md", "# Chetter skill\n")
-	writeRepoFile(t, dir, "triggers/nightly.yaml", "name: nightly\n")
-	writeRepoFile(t, dir, "task-templates/improve.md", "Improve this\n")
+	writeRepoFile(t, dir, "global/agents/pr-reviewer.md", "---\nidentity: primary-bot\n---\n# PR reviewer\n")
+	writeRepoFile(t, dir, "global/skills/chetter/SKILL.md", "# Chetter skill\n")
+	writeRepoFile(t, dir, "global/triggers/nightly.yaml", "name: nightly\n")
+	writeRepoFile(t, dir, "global/task-templates/improve.md", "Improve this\n")
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "initial definitions")
 	return dir

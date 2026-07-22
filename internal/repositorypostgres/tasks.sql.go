@@ -191,15 +191,20 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
 SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
-WHERE ($1 = '' OR status = $1)
-  AND (COALESCE($2, '') = '' OR trigger_name = $2)
-ORDER BY created_at DESC
-LIMIT $4 OFFSET $3
+WHERE ($1 = '' OR chetter_tasks.status = $1)
+  AND (COALESCE($2, '') = '' OR chetter_tasks.trigger_name = $2)
+  AND (COALESCE($3, '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = $3
+  ))
+ORDER BY chetter_tasks.created_at DESC
+LIMIT $5 OFFSET $4
 `
 
 type ListTasksByStatusParams struct {
 	StatusFilter      interface{} `json:"status_filter"`
 	TriggerNameFilter interface{} `json:"trigger_name_filter"`
+	AgentFilter       interface{} `json:"agent_filter"`
 	PageOffset        int32       `json:"page_offset"`
 	PageLimit         int32       `json:"page_limit"`
 }
@@ -208,6 +213,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 	rows, err := q.db.QueryContext(ctx, listTasksByStatus,
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -252,17 +258,22 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
 SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
-WHERE team_id = $1
-  AND ($2 = '' OR status = $2)
-  AND (COALESCE($3, '') = '' OR trigger_name = $3)
-ORDER BY created_at DESC
-LIMIT $5 OFFSET $4
+WHERE chetter_tasks.team_id = $1
+  AND ($2 = '' OR chetter_tasks.status = $2)
+  AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
+  AND (COALESCE($4, '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = $4
+  ))
+ORDER BY chetter_tasks.created_at DESC
+LIMIT $6 OFFSET $5
 `
 
 type ListTasksByStatusAndTeamParams struct {
 	TeamID            sql.NullString `json:"team_id"`
 	StatusFilter      interface{}    `json:"status_filter"`
 	TriggerNameFilter interface{}    `json:"trigger_name_filter"`
+	AgentFilter       interface{}    `json:"agent_filter"`
 	PageOffset        int32          `json:"page_offset"`
 	PageLimit         int32          `json:"page_limit"`
 }
@@ -272,6 +283,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 		arg.TeamID,
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -316,17 +328,22 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
 SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
-WHERE team_id = ANY($1::text[])
-  AND ($2 = '' OR status = $2)
-  AND (COALESCE($3, '') = '' OR trigger_name = $3)
-ORDER BY created_at DESC
-LIMIT $5 OFFSET $4
+WHERE chetter_tasks.team_id = ANY($1::text[])
+  AND ($2 = '' OR chetter_tasks.status = $2)
+  AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
+  AND (COALESCE($4, '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = $4
+  ))
+ORDER BY chetter_tasks.created_at DESC
+LIMIT $6 OFFSET $5
 `
 
 type ListTasksByStatusAndTeamsParams struct {
 	TeamIds           []string    `json:"team_ids"`
 	StatusFilter      interface{} `json:"status_filter"`
 	TriggerNameFilter interface{} `json:"trigger_name_filter"`
+	AgentFilter       interface{} `json:"agent_filter"`
 	PageOffset        int32       `json:"page_offset"`
 	PageLimit         int32       `json:"page_limit"`
 }
@@ -336,6 +353,7 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 		pq.Array(arg.TeamIds),
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -425,18 +443,23 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 
 const searchTasks = `-- name: SearchTasks :many
 SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
-WHERE ($1 = '' OR team_id = $1)
-  AND ($2 = '' OR status = $2)
-  AND (COALESCE($3, '') = '' OR trigger_name = $3)
-  AND search_text ILIKE '%' || $4 || '%'
-ORDER BY created_at DESC
-LIMIT $6 OFFSET $5
+WHERE ($1 = '' OR chetter_tasks.team_id = $1)
+  AND ($2 = '' OR chetter_tasks.status = $2)
+  AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
+  AND (COALESCE($4, '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = $4
+  ))
+  AND chetter_tasks.search_text ILIKE '%' || $5 || '%'
+ORDER BY chetter_tasks.created_at DESC
+LIMIT $7 OFFSET $6
 `
 
 type SearchTasksParams struct {
 	TeamFilter        interface{}    `json:"team_filter"`
 	StatusFilter      interface{}    `json:"status_filter"`
 	TriggerNameFilter interface{}    `json:"trigger_name_filter"`
+	AgentFilter       interface{}    `json:"agent_filter"`
 	Search            sql.NullString `json:"search"`
 	PageOffset        int32          `json:"page_offset"`
 	PageLimit         int32          `json:"page_limit"`
@@ -447,6 +470,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 		arg.TeamFilter,
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
 		arg.Search,
 		arg.PageOffset,
 		arg.PageLimit,
@@ -492,18 +516,23 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
 SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
-WHERE team_id = ANY($1::text[])
-  AND ($2 = '' OR status = $2)
-  AND (COALESCE($3, '') = '' OR trigger_name = $3)
-  AND search_text ILIKE '%' || $4 || '%'
-ORDER BY created_at DESC
-LIMIT $6 OFFSET $5
+WHERE chetter_tasks.team_id = ANY($1::text[])
+  AND ($2 = '' OR chetter_tasks.status = $2)
+  AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
+  AND (COALESCE($4, '') = '' OR EXISTS (
+      SELECT 1 FROM chetter_agent_sessions session
+      WHERE session.task_id = chetter_tasks.id AND session.agent = $4
+  ))
+  AND chetter_tasks.search_text ILIKE '%' || $5 || '%'
+ORDER BY chetter_tasks.created_at DESC
+LIMIT $7 OFFSET $6
 `
 
 type SearchTasksByTeamsParams struct {
 	TeamIds           []string       `json:"team_ids"`
 	StatusFilter      interface{}    `json:"status_filter"`
 	TriggerNameFilter interface{}    `json:"trigger_name_filter"`
+	AgentFilter       interface{}    `json:"agent_filter"`
 	Search            sql.NullString `json:"search"`
 	PageOffset        int32          `json:"page_offset"`
 	PageLimit         int32          `json:"page_limit"`
@@ -514,6 +543,7 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 		pq.Array(arg.TeamIds),
 		arg.StatusFilter,
 		arg.TriggerNameFilter,
+		arg.AgentFilter,
 		arg.Search,
 		arg.PageOffset,
 		arg.PageLimit,

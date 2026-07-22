@@ -162,9 +162,9 @@ Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by
 |---|---|---|
 | `runner/runner.yaml`, `runner/runner.docker.yaml` | `schemas/runner.schema.json` | Runner startup parses with strict known-field checks. |
 | Definitions repo `model-catalog.yaml` | `schemas/model-catalog.schema.json` | Definitions sync parses with strict known-field checks and catalog semantic validation. |
-| Definitions repo `triggers/*.yaml` and scoped trigger paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
-| Definitions repo `mcp-endpoints/*.yaml` and scoped endpoint paths | `schemas/mcp-endpoint.schema.json` | Definitions sync parses with strict known-field checks and endpoint semantic validation. Bearer token values stay in runner environment variables. |
-| Agent definition frontmatter in `agents/*.md` and scoped agent paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Frontmatter may include `mcp_endpoints`. Plain Markdown without frontmatter is accepted. |
+| Definitions repo scoped `triggers/*.yaml` paths | `schemas/trigger.schema.json` | Definitions sync parses with strict known-field checks and trigger semantic validation. |
+| Definitions repo scoped `mcp-endpoints/*.yaml` paths | `schemas/mcp-endpoint.schema.json` | Definitions sync parses with strict known-field checks and endpoint semantic validation. Bearer token values stay in runner environment variables. |
+| Agent definition frontmatter in scoped `agents/*.md` paths | `schemas/agent-frontmatter.schema.json` | Definitions sync validates optional YAML frontmatter when present. Frontmatter may include `mcp_endpoints`. Plain Markdown without frontmatter is accepted. |
 
 Validation errors fail the definitions sync before new definitions are materialized. Trigger definition errors include the path, for example `triggers/nightly.yaml: unknown trigger_type "..."`.
 
@@ -240,33 +240,35 @@ chetter_mcp:
 
 ### Definitions Repo YAML
 
-`DEFINITIONS_REPO` points at a Git repo with runtime configuration. Definitions can live at the repo root for legacy global scope, or under explicit scope directories:
+`DEFINITIONS_REPO` points at a Git repo with runtime configuration. Definitions must live under explicit scope directories:
 
 ```text
 model-catalog.yaml
-agents/...
-triggers/...
-mcp-endpoints/...
 global/agents/...
+global/skills/...
 global/triggers/...
 global/mcp-endpoints/...
+global/task-templates/...
 groups/<team-name>/agents/...
+groups/<team-name>/skills/...
 groups/<team-name>/triggers/...
 groups/<team-name>/mcp-endpoints/...
 repos/<owner>/<repo>/agents/...
+repos/<owner>/<repo>/skills/...
 repos/<owner>/<repo>/triggers/...
+repos/<owner>/<repo>/task-templates/...
 ```
 
-Root-level `agents/`, `skills/`, `triggers/`, and `task-templates/` are treated as global definitions. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned.
+`global/...` definitions are global. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned. Root-level definition directories are ignored; only `model-catalog.yaml` remains at the repository root.
 
 Supported YAML formats are:
 
 | Path | Required fields | Notes |
 |---|---|---|
 | `model-catalog.yaml` | `version`, `default_provider`, `default_model`, `providers` | `providers` is a mapping keyed by provider ID. Secret values are not allowed; use env var names such as `api_key_env: DEEPSEEK_API_KEY`. |
-| `triggers/*.yaml` | `name` | Also supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
-| `mcp-endpoints/*.yaml` | `name`, `url` | Global or team-scoped HTTP or SSE endpoint. `auth.token_env` names a variable configured on every runner; static `headers` are persisted and must not contain secrets. |
-| `agents/*.md` | `identity` | Also supported under scoped directories. YAML frontmatter must reference a server-managed Git identity by name; it may also include `description`, `provider`, `model`, `mode`, `mcp_endpoints`, and `permission`. The Markdown body is the agent prompt. Identity credentials are never stored in the definitions repository. |
+| `<scope>/triggers/*.yaml` | `name` | Supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/`. `trigger_type` defaults to `cron`; supported values are `cron`, `pr_review`, and `issue`. `repo`, `event`, `match_labels`, `session_mode`, `pause_reason`, and `ttl_hours` are copied into `trigger_config` during sync. |
+| `global/mcp-endpoints/*.yaml`, `groups/<team-name>/mcp-endpoints/*.yaml` | `name`, `url` | Global or team-scoped HTTP or SSE endpoint. `auth.token_env` names a variable configured on every runner; static `headers` are persisted and must not contain secrets. |
+| `<scope>/agents/*.md` | `identity` | Supported under global, team, and repository scopes. YAML frontmatter must reference a server-managed Git identity by name; it may also include `description`, `provider`, `model`, `mode`, `mcp_endpoints`, and `permission`. The Markdown body is the agent prompt. Identity credentials are never stored in the definitions repository. |
 
 ### Managed Git Identities
 
@@ -302,11 +304,10 @@ Use `chetterctl identity set-default --team <team-name> --name <identity>` to se
 
 MCP endpoints let tasks connect to remote HTTP or SSE MCP servers during execution. An endpoint definition stores the URL, transport, optional non-secret static headers, and the name of a runner environment variable that holds the bearer token. The token value itself is never stored in the definitions repo, the task database, or the runner RPC payload — only the variable name travels through the system, and the runner imports the value at task time.
 
-Endpoint definitions are YAML files under `mcp-endpoints/` in the config repo:
+Endpoint definitions are YAML files under a global or team scope in the config repo:
 
 ```text
-mcp-endpoints/context.yaml          # global endpoint
-global/mcp-endpoints/shared.yaml     # also global (explicit scope dir)
+global/mcp-endpoints/context.yaml    # global endpoint
 groups/engineering/mcp-endpoints/team-only.yaml  # team-scoped
 ```
 
@@ -333,7 +334,7 @@ For SSE transport, set `transport: sse`. Static `headers` are persisted verbatim
 
 MCP endpoints support global and team scope:
 
-- **Global** endpoints (under `mcp-endpoints/` or `global/mcp-endpoints/`) are available to all tasks.
+- **Global** endpoints under `global/mcp-endpoints/` are available to all tasks.
 - **Team** endpoints (under `groups/<team-name>/mcp-endpoints/`) are available only to tasks owned by that team.
 
 At submission time the server resolves requested endpoint names from both global
@@ -491,27 +492,20 @@ For a resumable session:
 | `chetter_runner_health` | Fleet diagnostics and heartbeat ages. |
 | `chetter_drain_runner` | Ask a runner to stop claiming new work and exit after current work. |
 
-### GitHub Artifacts
+### GitHub Artifact Observability
 
 | Tool | Purpose |
 |---|---|
-| `chetter_create_issue` | Create a GitHub issue with Chetter footer and audit/artifact records. |
-| `chetter_issue_comment` | Create an issue or PR comment with Chetter footer. |
-| `chetter_create_pr` | Create a GitHub PR with Chetter footer. |
-| `chetter_pr_review` | Create a GitHub PR review with Chetter footer. |
 | `chetter_list_task_artifacts` | Admin-only artifact browser/filter. |
 
 ### Runner Bridge MCP Tools (Agent-Side)
 
-These tools run inside the runner, exposed over a Unix socket to the agent harness
-via `mcp-bridge`. They give agents controlled access to the workspace filesystem and
-GitHub write operations with automatic audit logging and Chetter signatures.
+These tools are exposed by a runner-local MCP endpoint. They give task agents
+controlled GitHub write operations with automatic task attribution, audit logging,
+and Chetter signatures. They are not exposed by the control-plane MCP server.
 
 | Tool | Purpose |
 |---|---|
-| `workspace_read_file` | Read a file from `/workspace` (paths relative to workspace root). |
-| `workspace_write_file` | Write or overwrite a file in `/workspace`. |
-| `workspace_list_directory` | List files and directories relative to `/workspace`. |
 | `chetter_create_issue` | Create a GitHub issue with a canonical Chetter signature and artifact/audit records. `task_id` is auto-injected by the runner. |
 | `chetter_issue_comment` | Comment on a GitHub issue or PR with Chetter signature and artifact/audit records. |
 | `chetter_create_pr` | Create a GitHub pull request with Chetter signature and artifact/audit records. |
@@ -771,7 +765,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
-`gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+`gh` read commands remain available for inspection. GitHub writes from task agents must use the runner-bridge tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
 
 ### Harness Interface Support Matrix
 

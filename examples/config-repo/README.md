@@ -6,11 +6,12 @@ Example git repository for Chetter runtime configuration. The MCP server reads f
 
 ```
 ├── model-catalog.yaml      # AI model/provider registry
-├── agents/                 # Agent definitions (*.md)
-├── skills/                 # Skill definitions (SKILL.md)
-├── triggers/               # Trigger definitions (*.yaml)
-├── mcp-endpoints/          # MCP endpoint definitions (*.yaml)
-└── task-templates/         # Reusable task templates (*.md)
+└── global/
+    ├── agents/             # Global agent definitions (*.md)
+    ├── skills/             # Global skill definitions (SKILL.md)
+    ├── triggers/           # Global trigger definitions (*.yaml)
+    ├── mcp-endpoints/      # Global MCP endpoint definitions (*.yaml)
+    └── task-templates/     # Global reusable task templates (*.md)
 ```
 
 ## How it works
@@ -29,9 +30,9 @@ Copy or reference the schemas from the Chetter repo when editing definitions:
 | File | Schema |
 |---|---|
 | `model-catalog.yaml` | `schemas/model-catalog.schema.json` |
-| `triggers/*.yaml` | `schemas/trigger.schema.json` |
-| `mcp-endpoints/*.yaml` | `schemas/mcp-endpoint.schema.json` |
-| Agent YAML frontmatter in `agents/*.md` | `schemas/agent-frontmatter.schema.json` |
+| `global/triggers/*.yaml` | `schemas/trigger.schema.json` |
+| `global/mcp-endpoints/*.yaml` | `schemas/mcp-endpoint.schema.json` |
+| Agent YAML frontmatter in `global/agents/*.md` | `schemas/agent-frontmatter.schema.json` |
 
 Chetter validates these files during definitions sync and rejects the sync if a definition is malformed.
 

@@ -1,6 +1,6 @@
 # Example Skill
 
-This file in `skills/<name>/SKILL.md` defines a skill that provides specialized instructions for the agent. Reference it by skill name when submitting tasks.
+This file in `global/skills/<name>/SKILL.md` defines a global skill that provides specialized instructions for the agent. Reference it by skill name when submitting tasks.
 
 ## When to use this skill
 

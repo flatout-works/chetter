@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +22,8 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
+	"github.com/flatout-works/chetter/runner/internal/config"
+	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -52,6 +56,21 @@ func TestRunnerOwnedEnv(t *testing.T) {
 	}
 	if isRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
+	}
+}
+
+func TestTokenUsageAccumulatorConcurrentAdds(t *testing.T) {
+	var usage tokenUsageAccumulator
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			usage.add(task.TokenUsage{InputTokens: 2, OutputTokens: 1, CacheReadTokens: 3, CostCents: 1})
+		})
+	}
+	wg.Wait()
+	got := usage.snapshot()
+	if got.InputTokens != 200 || got.OutputTokens != 100 || got.CacheReadTokens != 300 || got.CostCents != 100 {
+		t.Fatalf("usage = %+v", got)
 	}
 }
 
@@ -293,6 +312,9 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 	}
 	if chetter["enabled"] != true {
 		t.Errorf("expected chetter MCP enabled, got %v", chetter["enabled"])
+	}
+	if chetter["oauth"] != false {
+		t.Errorf("expected chetter MCP OAuth disabled, got %v", chetter["oauth"])
 	}
 	headers, ok := chetter["headers"].(map[string]any)
 	if !ok {
@@ -655,6 +677,100 @@ func TestSelectHarnessByName_Pi(t *testing.T) {
 	}
 }
 
+func TestPiRPCCompletionLifecycle(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []map[string]any
+		want   bool
+	}{
+		{name: "agent end", events: []map[string]any{{"type": "agent_end", "willRetry": false}}, want: true},
+		{name: "agent settled", events: []map[string]any{{"type": "agent_settled"}}, want: true},
+		{name: "agent end retry", events: []map[string]any{{"type": "agent_end", "willRetry": true}}, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+			r := &Runner{}
+			for _, event := range tc.events {
+				if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, event, state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if state.terminal != tc.want {
+				t.Fatalf("terminal = %v, want %v", state.terminal, tc.want)
+			}
+		})
+	}
+}
+
+func TestPiRPCMissingTerminalEOFFallback(t *testing.T) {
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+	r := &Runner{}
+	messageEnd := map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "stop"},
+	}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, messageEnd, state); err != nil {
+		t.Fatal(err)
+	}
+	if !state.completeOnEOF() {
+		t.Fatal("final assistant response should permit clean EOF completion")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "tool_execution_start", "toolCallId": "tool-1"}, state)
+	if state.completeOnEOF() {
+		t.Fatal("active tool must prevent EOF completion")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "tool_execution_end", "toolCallId": "tool-1"}, state)
+	if !state.completeOnEOF() {
+		t.Fatal("completed tool should restore EOF completion eligibility")
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "toolUse"},
+	}, state)
+	if state.completeOnEOF() {
+		t.Fatal("assistant tool-use response must not be treated as final")
+	}
+}
+
+func TestPiRPCCancellationStatus(t *testing.T) {
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	status, message := rpcCancellationStatus(cancelled, "pi")
+	if status != "cancelled" || message != "pi cancelled" {
+		t.Fatalf("cancellation = %q %q", status, message)
+	}
+	timedOut, timeoutCancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer timeoutCancel()
+	<-timedOut.Done()
+	status, message = rpcCancellationStatus(timedOut, "pi")
+	if status != "error" || message != "pi timed out" {
+		t.Fatalf("timeout = %q %q", status, message)
+	}
+}
+
+func TestPiRPCCleanupExportsBeforeAbort(t *testing.T) {
+	wsDir := t.TempDir()
+	lines := make(chan rpcLine, 2)
+	lines <- rpcLine{data: []byte(`{"id":"messages","type":"response","success":true,"data":{"messages":[{"role":"assistant","content":"finished"}]}}`)}
+	lines <- rpcLine{data: []byte(`{"id":"abort","type":"response","success":true}`)}
+	close(lines)
+	var commands bytes.Buffer
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+	export := r.cleanupRPCSession(task.TaskRequest{}, wsDir, &commands, lines, state)
+	if !strings.Contains(export, "finished") {
+		t.Fatalf("export = %q", export)
+	}
+	written := commands.String()
+	if strings.Index(written, `"id":"messages"`) >= strings.Index(written, `"id":"abort"`) {
+		t.Fatalf("commands out of order: %s", written)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, ".pi", "session-export.md")); err != nil {
+		t.Fatalf("session export missing: %v", err)
+	}
+}
+
 func TestSelectHarnessByName_Claude(t *testing.T) {
 	h := selectHarnessByName("claude-code")
 	if h.Name() != "claude" {
@@ -900,6 +1016,50 @@ func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
 	got := gvisorNoProxy()
 	if got != "localhost,127.0.0.1,0.0.0.0,.local" {
 		t.Fatalf("unexpected no_proxy value: %q", got)
+	}
+}
+
+func TestOpenCodeConfigContentIsHarnessControlled(t *testing.T) {
+	if !isHarnessControlEnv("OPENCODE_CONFIG_CONTENT") {
+		t.Fatal("OPENCODE_CONFIG_CONTENT must be protected from task environment overrides")
+	}
+}
+
+func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
+	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
+	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp", "")
+	if err != nil {
+		t.Fatalf("new relay: %v", err)
+	}
+	if err := relay.Start(); err != nil {
+		t.Fatalf("start relay: %v", err)
+	}
+	t.Cleanup(func() { _ = relay.Stop() })
+
+	runner := &Runner{
+		cfg:      &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp"}},
+		mcpRelay: relay,
+	}
+	_, port, err := net.SplitHostPort(relay.Addr())
+	if err != nil {
+		t.Fatalf("split relay address: %v", err)
+	}
+	if got, want := runner.taskChetterMCPURL(), "http://172.21.0.3:"+port+"/mcp"; got != want {
+		t.Fatalf("task Chetter MCP URL = %q, want %q", got, want)
+	}
+	if got := runner.taskChetterMCPToken(); got != "" {
+		t.Fatalf("task Chetter MCP token = %q, want empty relay-managed token", got)
+	}
+}
+
+func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
+	t.Setenv("RUNNER_LOCAL", "true")
+	runner := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp", AuthToken: "local-token"}}}
+	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
+		t.Fatalf("task Chetter MCP URL = %q", got)
+	}
+	if got := runner.taskChetterMCPToken(); got != "local-token" {
+		t.Fatalf("task Chetter MCP token = %q", got)
 	}
 }
 

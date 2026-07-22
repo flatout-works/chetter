@@ -44,6 +44,54 @@ func TestGeneratePassword(t *testing.T) {
 	}
 }
 
+func TestGenerateConfigUsesFinalChetterMCPOverride(t *testing.T) {
+	h := New()
+	wsDir := t.TempDir()
+	if err := h.GenerateConfig(wsDir, "http://runner.test/mcp", "http://relay.test/mcp", "", task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	env := h.Env(wsDir, "server-password", task.TaskRequest{})
+	content, ok := env["OPENCODE_CONFIG_CONTENT"]
+	if !ok {
+		t.Fatal("expected OPENCODE_CONFIG_CONTENT override")
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(content), &cfg); err != nil {
+		t.Fatalf("parse override: %v", err)
+	}
+	mcp := cfg["mcp"].(map[string]any)
+	chetter := mcp["chetter"].(map[string]any)
+	if chetter["url"] != "http://relay.test/mcp" {
+		t.Fatalf("override URL = %v", chetter["url"])
+	}
+	if chetter["oauth"] != false {
+		t.Fatalf("override oauth = %v, want false", chetter["oauth"])
+	}
+	if _, ok := chetter["headers"]; ok {
+		t.Fatal("relay override must not contain an Authorization header")
+	}
+}
+
+func TestGenerateConfigFinalChetterMCPOverrideIncludesLocalToken(t *testing.T) {
+	h := New()
+	wsDir := t.TempDir()
+	if err := h.GenerateConfig(wsDir, "", "http://local.test/mcp", "local-token", task.TaskRequest{}, true); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(h.Env(wsDir, "", task.TaskRequest{})["OPENCODE_CONFIG_CONTENT"]), &cfg); err != nil {
+		t.Fatalf("parse override: %v", err)
+	}
+	chetter := cfg["mcp"].(map[string]any)["chetter"].(map[string]any)
+	headers := chetter["headers"].(map[string]any)
+	if headers["Authorization"] != "Bearer local-token" {
+		t.Fatalf("unexpected local Authorization header: %v", headers["Authorization"])
+	}
+}
+
 func TestModelFlag_FullConfig(t *testing.T) {
 	env := map[string]string{
 		"LLM_PROVIDER":    "devpass",

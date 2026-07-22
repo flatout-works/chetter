@@ -188,7 +188,7 @@ func (m *Manager) ScanDefinitions() ([]Definition, error) {
 }
 
 func (m *Manager) definitionRoots() ([]definitionRoot, error) {
-	roots := []definitionRoot{{scope: DefinitionScopeGlobal}}
+	var roots []definitionRoot
 	if isDir(filepath.Join(m.cacheDir, "global")) {
 		roots = append(roots, definitionRoot{path: "global", scope: DefinitionScopeGlobal})
 	}
@@ -403,6 +403,47 @@ type agentFrontmatter struct {
 	Identity     any            `yaml:"identity"`
 	McpEndpoints any            `yaml:"mcp_endpoints"`
 	Permission   map[string]any `yaml:"permission"`
+}
+
+// AgentMetadata contains the user-facing fields from an agent definition.
+type AgentMetadata struct {
+	Description  string
+	Provider     string
+	Model        string
+	Mode         string
+	Identity     string
+	McpEndpoints []string
+}
+
+// ParseAgentMetadata validates an agent definition and returns its frontmatter.
+func ParseAgentMetadata(content string) (AgentMetadata, error) {
+	if err := ValidateAgentDefinition(content); err != nil {
+		return AgentMetadata{}, err
+	}
+	frontmatter, _, err := extractYAMLFrontmatter(content)
+	if err != nil {
+		return AgentMetadata{}, err
+	}
+	var fm agentFrontmatter
+	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		return AgentMetadata{}, fmt.Errorf("parse frontmatter fields: %w", err)
+	}
+	metadata := AgentMetadata{
+		Description: strings.TrimSpace(stringValue(fm.Description)),
+		Provider:    strings.TrimSpace(stringValue(fm.Provider)),
+		Model:       strings.TrimSpace(stringValue(fm.Model)),
+		Mode:        strings.TrimSpace(stringValue(fm.Mode)),
+		Identity:    strings.TrimSpace(stringValue(fm.Identity)),
+	}
+	if endpoints, err := AgentMcpEndpoints(content); err == nil {
+		metadata.McpEndpoints = endpoints
+	}
+	return metadata, nil
+}
+
+func stringValue(value any) string {
+	valueString, _ := value.(string)
+	return valueString
 }
 
 func ValidateAgentDefinition(content string) error {

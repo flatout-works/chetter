@@ -97,7 +97,7 @@ func createSession(ctx context.Context, baseURL, secret string) (string, error) 
 	return result.SessionID, nil
 }
 
-func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, timeout time.Duration) (string, error) {
+func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, timeout time.Duration, idleCh <-chan struct{}, completion func() (string, error, bool)) (string, error) {
 	payload, _ := json.Marshal(map[string]any{
 		"prompt": promptWithSkillHints(req.Prompt, req.Skills),
 		"model":  codexModel(req),
@@ -105,7 +105,9 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 		"agent":  req.Agent,
 	})
 	httpClient := &http.Client{Timeout: timeout}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/session/"+sessionID+"/message", bytes.NewReader(payload))
+	requestCtx, cancelRequest := context.WithCancel(ctx)
+	defer cancelRequest()
+	httpReq, err := http.NewRequestWithContext(requestCtx, http.MethodPost, baseURL+"/session/"+sessionID+"/message", bytes.NewReader(payload))
 	if err != nil {
 		return "", err
 	}
@@ -113,9 +115,41 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 	if secret != "" {
 		httpReq.Header.Set("Authorization", basicAuthHeader(secret))
 	}
-	resp, err := httpClient.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("POST /message: %w", err)
+	type responseResult struct {
+		resp *http.Response
+		err  error
+	}
+	resultCh := make(chan responseResult, 1)
+	go func() {
+		resp, err := httpClient.Do(httpReq)
+		resultCh <- responseResult{resp: resp, err: err}
+	}()
+	var resp *http.Response
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			if completion != nil {
+				if summary, terminalErr, ok := completion(); ok {
+					return summary, terminalErr
+				}
+			}
+			return "", fmt.Errorf("POST /message: %w", result.err)
+		}
+		resp = result.resp
+	case <-idleCh:
+		if completion != nil {
+			if summary, terminalErr, ok := completion(); ok {
+				return summary, terminalErr
+			}
+		}
+		return "", fmt.Errorf("codex completion signal had no terminal result")
+	case <-ctx.Done():
+		if completion != nil {
+			if summary, terminalErr, ok := completion(); ok {
+				return summary, terminalErr
+			}
+		}
+		return "", ctx.Err()
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -128,7 +162,26 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", fmt.Errorf("decode prompt response: %w", err)
 	}
+	if idleCh != nil && !channelClosed(idleCh) {
+		timer := time.NewTimer(2 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-idleCh:
+		case <-timer.C:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 	return result.Summary, nil
+}
+
+func channelClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 func abortSession(ctx context.Context, baseURL, sessionID, secret string) error {
@@ -165,7 +218,7 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 	return string(body), err
 }
 
-func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
+func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), onComplete func(summary string, err error)) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/event", nil)
 	if err != nil {
 		return
@@ -182,6 +235,7 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 	reader := bufio.NewReader(resp.Body)
 	var eventType string
 	var data strings.Builder
+	var observedUsage task.TokenUsage
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -189,7 +243,34 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		}
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
-			if eventType == "codex.delta" && data.Len() > 0 {
+			if eventType == "done" {
+				var terminal struct {
+					Status  string          `json:"status"`
+					Summary string          `json:"summary"`
+					Error   string          `json:"error"`
+					Usage   task.TokenUsage `json:"usage"`
+				}
+				if err := json.Unmarshal([]byte(data.String()), &terminal); err != nil {
+					if onComplete != nil {
+						onComplete("", fmt.Errorf("decode codex terminal event: %w", err))
+					}
+					return
+				}
+				if tokenFn != nil {
+					remaining := subtractUsage(terminal.Usage, observedUsage)
+					if remaining != (task.TokenUsage{}) {
+						tokenFn(remaining)
+					}
+				}
+				var terminalErr error
+				if terminal.Status != "completed" {
+					terminalErr = fmt.Errorf("turn %s: %s", terminal.Status, terminal.Error)
+				}
+				if onComplete != nil {
+					onComplete(terminal.Summary, terminalErr)
+				}
+				return
+			} else if eventType == "codex.delta" && data.Len() > 0 {
 				publishFn("running", "codex: "+data.String())
 			} else if eventType == "codex.activity" && data.Len() > 0 {
 				publishFn("running", "codex: "+data.String())
@@ -197,6 +278,7 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 				var usage task.TokenUsage
 				if json.Unmarshal([]byte(data.String()), &usage) == nil {
 					tokenFn(usage)
+					observedUsage = addUsage(observedUsage, usage)
 				}
 			}
 			eventType = ""
@@ -211,6 +293,27 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 			}
 			data.WriteString(strings.TrimPrefix(line, "data: "))
 		}
+	}
+}
+
+func addUsage(total, delta task.TokenUsage) task.TokenUsage {
+	total.InputTokens += delta.InputTokens
+	total.OutputTokens += delta.OutputTokens
+	total.CacheReadTokens += delta.CacheReadTokens
+	total.CacheWriteTokens += delta.CacheWriteTokens
+	total.ReasoningTokens += delta.ReasoningTokens
+	total.CostCents += delta.CostCents
+	return total
+}
+
+func subtractUsage(total, observed task.TokenUsage) task.TokenUsage {
+	return task.TokenUsage{
+		InputTokens:      max(total.InputTokens-observed.InputTokens, 0),
+		OutputTokens:     max(total.OutputTokens-observed.OutputTokens, 0),
+		CacheReadTokens:  max(total.CacheReadTokens-observed.CacheReadTokens, 0),
+		CacheWriteTokens: max(total.CacheWriteTokens-observed.CacheWriteTokens, 0),
+		ReasoningTokens:  max(total.ReasoningTokens-observed.ReasoningTokens, 0),
+		CostCents:        max(total.CostCents-observed.CostCents, 0),
 	}
 }
 
