@@ -1743,7 +1743,11 @@ func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
 	}
 
 	q := data.New(tdb.DB, tdb.Dialect())
-	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET session_export = ? WHERE id = ?", "UPDATE chetter_tasks SET session_export = $1 WHERE id = $2"), "team A transcript", taskA.ID); err != nil {
+	prompt, err := q.GetUserPromptByTaskID(ctx, taskA.ID)
+	if err != nil {
+		t.Fatalf("get task prompt: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_user_prompts SET session_export = ? WHERE id = ?", "UPDATE chetter_user_prompts SET session_export = $1 WHERE id = $2"), "team A transcript", prompt.ID); err != nil {
 		t.Fatalf("set session export: %v", err)
 	}
 	payload, _ := json.Marshal(map[string]any{"task_id": taskA.ID, "status": "running", "summary": "private"})

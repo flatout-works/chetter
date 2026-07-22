@@ -176,7 +176,6 @@ type ChetterTask struct {
 	ProviderID             sql.NullString   `json:"provider_id"`
 	ModelID                sql.NullString   `json:"model_id"`
 	VariantID              sql.NullString   `json:"variant_id"`
-	OpencodeSessionID      sql.NullString   `json:"opencode_session_id"`
 	CommitAuthorName       sql.NullString   `json:"commit_author_name"`
 	CommitAuthorEmail      sql.NullString   `json:"commit_author_email"`
 	Skills                 json.RawMessage  `json:"skills"`
@@ -193,7 +192,6 @@ type ChetterTask struct {
 	UpdatedAt              time.Time        `json:"updated_at"`
 	EndedAt                sql.NullTime     `json:"ended_at"`
 	TeamID                 sql.NullString   `json:"team_id"`
-	SessionExport          sql.NullString   `json:"session_export"`
 	TriggerName            sql.NullString   `json:"trigger_name"`
 	TriggerType            sql.NullString   `json:"trigger_type"`
 	MaxAttempts            int32            `json:"max_attempts"`

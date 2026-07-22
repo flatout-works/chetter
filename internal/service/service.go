@@ -1246,7 +1246,6 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		ProviderID:            task.ProviderID.String,
 		ModelID:               task.ModelID.String,
 		VariantID:             task.VariantID.String,
-		OpenCodeSessionID:     task.OpencodeSessionID.String,
 		CommitAuthorName:      task.CommitAuthorName.String,
 		CommitAuthorEmail:     task.CommitAuthorEmail.String,
 		GitIdentityID:         task.GitIdentityID.String,

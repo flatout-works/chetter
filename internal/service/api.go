@@ -40,14 +40,17 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 
 // ExportTask returns the session export (markdown transcript) for a task.
 func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error) {
-	task, err := s.taskForToolAccess(ctx, taskID)
-	if err != nil {
+	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
 		return "", err
 	}
-	if !task.SessionExport.Valid {
+	prompt, err := s.repo.GetUserPromptByTaskID(ctx, taskID)
+	if err != nil {
+		return "", fmt.Errorf("get latest prompt for task %s: %w", taskID, err)
+	}
+	if !prompt.SessionExport.Valid {
 		return "", fmt.Errorf("no session export available for task %s", taskID)
 	}
-	return strings.ReplaceAll(task.SessionExport.String, "\\n", "\n"), nil
+	return strings.ReplaceAll(prompt.SessionExport.String, "\\n", "\n"), nil
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.

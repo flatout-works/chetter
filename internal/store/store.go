@@ -402,9 +402,6 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTriggerRunTeamIDColumn(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureSessionExportColumn(ctx); err != nil {
-		return err
-	}
 	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
 		return err
 	}
@@ -508,8 +505,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"provider_id", "ALTER TABLE chetter_tasks ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent_image"},
 		{"model_id", "ALTER TABLE chetter_tasks ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
 		{"variant_id", "ALTER TABLE chetter_tasks ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
-		{"opencode_session_id", "ALTER TABLE chetter_tasks ADD COLUMN opencode_session_id VARCHAR(128) NULL AFTER variant_id"},
-		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER opencode_session_id"},
+		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER variant_id"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
 		{"git_identity_id", "ALTER TABLE chetter_tasks ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email"},
 		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER git_identity_id"},
@@ -857,21 +853,6 @@ func (s *Store) ensureTriggerRunTeamIDColumn(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) ensureSessionExportColumn(ctx context.Context) error {
-	exists, err := s.columnExists(ctx, "chetter_tasks", "session_export")
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD COLUMN session_export MEDIUMTEXT NULL AFTER error")
-	if err != nil {
-		return fmt.Errorf("add chetter_tasks.session_export: %w", err)
-	}
-	return nil
-}
-
 func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 	columns := []struct {
 		name string
@@ -922,7 +903,7 @@ func (s *Store) ensureTokenColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER session_export"},
+		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER error_category"},
 		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},
 		{"total_cache_read_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_read_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_output_tokens"},
 		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
@@ -988,7 +969,7 @@ func (s *Store) ensureSearchTextColumns(ctx context.Context) error {
 		table string
 		ddl   string
 	}{
-		{"chetter_tasks", "ALTER TABLE chetter_tasks ADD COLUMN search_text TEXT NULL AFTER session_export"},
+		{"chetter_tasks", "ALTER TABLE chetter_tasks ADD COLUMN search_text TEXT NULL AFTER error_category"},
 		{"chetter_agent_sessions", "ALTER TABLE chetter_agent_sessions ADD COLUMN search_text TEXT NULL AFTER error"},
 		{"chetter_audit_log", "ALTER TABLE chetter_audit_log ADD COLUMN search_text TEXT NULL AFTER detail"},
 		{"chetter_task_artifacts", "ALTER TABLE chetter_task_artifacts ADD COLUMN search_text TEXT NULL AFTER discovery_source"},
