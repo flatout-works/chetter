@@ -702,22 +702,36 @@
     {/if}
 
     <!-- User Prompt Chain -->
-    {#if userPrompts.length > 1}
+    {#if userPrompts.length > 0}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">User Prompts</h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">This task is part of a resumed session. Each follow-up creates a new user prompt.</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Conversation prompts and their runner execution attempts.</p>
         <div class="space-y-1">
           {#each userPrompts as prompt (prompt.id)}
-            <div class="flex items-center gap-3 px-3 py-2 rounded {prompt.id === userPrompts[userPrompts.length - 1].id ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : 'bg-gray-50 dark:bg-gray-800/50'}">
-              <StatusBadge status={prompt.status} />
-              <span class="text-sm font-mono text-gray-700 dark:text-gray-300">Prompt {prompt.sequence}</span>
-              {#if prompt.prompt}
-                <span class="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate">{prompt.prompt}</span>
-              {/if}
-              {#if prompt.id === userPrompts[userPrompts.length - 1].id}
-                <Badge color="blue">current</Badge>
-              {:else if prompt.id === userPrompts[0].id}
-                <span class="text-xs text-gray-400">initial</span>
+            <div class="rounded px-3 py-2 {prompt.id === userPrompts[userPrompts.length - 1].id ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : 'bg-gray-50 dark:bg-gray-800/50'}">
+              <div class="flex items-center gap-3">
+                <StatusBadge status={prompt.status} />
+                <span class="text-sm font-mono text-gray-700 dark:text-gray-300">Prompt {prompt.sequence}</span>
+                {#if prompt.prompt}
+                  <span class="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate">{prompt.prompt}</span>
+                {/if}
+                {#if prompt.id === userPrompts[userPrompts.length - 1].id}
+                  <Badge color="blue">current</Badge>
+                {:else if prompt.id === userPrompts[0].id}
+                  <span class="text-xs text-gray-400">initial</span>
+                {/if}
+              </div>
+              {#if prompt.attempts.length > 0}
+                <div class="mt-2 ml-6 space-y-1 border-l border-gray-200 pl-3 dark:border-gray-700">
+                  {#each prompt.attempts as attempt (attempt.id)}
+                    <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <StatusBadge status={attempt.status} />
+                      <span class="font-mono">Attempt {attempt.sequence}</span>
+                      {#if attempt.runnerId}<span>on {attempt.runnerId}</span>{/if}
+                      {#if attempt.error}<span class="truncate text-red-600 dark:text-red-400">{attempt.error}</span>{/if}
+                    </div>
+                  {/each}
+                </div>
               {/if}
             </div>
           {/each}

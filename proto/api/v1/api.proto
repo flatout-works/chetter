@@ -90,6 +90,29 @@ message UserPrompt {
   string prompt = 12;
   int32 sequence = 13;
   string source_user_prompt_id = 14;
+  repeated ExecutionAttempt attempts = 15;
+}
+
+message ExecutionAttempt {
+  string id = 1;
+  string user_prompt_id = 2;
+  int32 sequence = 3;
+  string status = 4;
+  string runner_id = 5;
+  string required_runner_id = 6;
+  optional string claimed_at = 7;
+  optional string lease_expires_at = 8;
+  optional string started_at = 9;
+  optional string ended_at = 10;
+  string workspace_path = 11;
+  string container_name = 12;
+  string harness_execution_id = 13;
+  string summary = 14;
+  string error = 15;
+  string error_category = 16;
+  TokenUsage token_usage = 17;
+  string created_at = 18;
+  string updated_at = 19;
 }
 
 message Trigger {

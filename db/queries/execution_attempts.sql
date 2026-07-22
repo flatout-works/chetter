@@ -6,6 +6,11 @@ VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?);
 -- name: GetExecutionAttemptByID :one
 SELECT * FROM chetter_execution_attempts WHERE id = ?;
 
+-- name: ListExecutionAttemptsByPrompt :many
+SELECT * FROM chetter_execution_attempts
+WHERE user_prompt_id = ?
+ORDER BY sequence ASC, created_at ASC;
+
 -- name: GetNextExecutionAttemptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
 FROM chetter_execution_attempts

@@ -211,6 +211,7 @@
         <TableHeadCell>Task</TableHeadCell>
         <TableHeadCell>Origin</TableHeadCell>
         <TableHeadCell>Status</TableHeadCell>
+        <TableHeadCell>Attempts</TableHeadCell>
         <TableHeadCell>Summary</TableHeadCell>
         <TableHeadCell>Started</TableHeadCell>
       </TableHead>
@@ -236,12 +237,25 @@
               {/if}
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={prompt.status} /></TableBodyCell>
+            <TableBodyCell>
+              <div class="space-y-1">
+                {#each prompt.attempts as attempt (attempt.id)}
+                  <div class="flex items-center gap-2 whitespace-nowrap">
+                    <StatusBadge status={attempt.status} />
+                    <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{attempt.sequence}</span>
+                    {#if attempt.runnerId}<span class="text-xs text-gray-400">{attempt.runnerId}</span>{/if}
+                  </div>
+                {:else}
+                  <span class="text-xs text-gray-400">Not claimed</span>
+                {/each}
+              </div>
+            </TableBodyCell>
             <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{prompt.summary || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(prompt.startedAt || "")}</span></TableBodyCell>
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={6}>
+            <TableBodyCell colspan={7}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No prompts recorded</div>
             </TableBodyCell>
           </TableBodyRow>

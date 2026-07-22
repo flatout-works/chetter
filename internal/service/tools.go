@@ -557,20 +557,48 @@ type AgentSessionRecord struct {
 }
 
 type UserPromptRecord struct {
-	ID                 string     `json:"id"`
-	AgentSessionID     string     `json:"agent_session_id"`
-	TaskID             string     `json:"task_id"`
-	Sequence           int32      `json:"sequence"`
-	SourceUserPromptID string     `json:"source_user_prompt_id,omitempty"`
-	Status             string     `json:"status"`
-	RequiredRunnerID   string     `json:"required_runner_id,omitempty"`
-	Summary            string     `json:"summary,omitempty"`
-	Error              string     `json:"error,omitempty"`
-	Prompt             string     `json:"prompt,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	StartedAt          *time.Time `json:"started_at,omitempty"`
-	EndedAt            *time.Time `json:"ended_at,omitempty"`
+	ID                 string                   `json:"id"`
+	AgentSessionID     string                   `json:"agent_session_id"`
+	TaskID             string                   `json:"task_id"`
+	Sequence           int32                    `json:"sequence"`
+	SourceUserPromptID string                   `json:"source_user_prompt_id,omitempty"`
+	Status             string                   `json:"status"`
+	RequiredRunnerID   string                   `json:"required_runner_id,omitempty"`
+	Summary            string                   `json:"summary,omitempty"`
+	Error              string                   `json:"error,omitempty"`
+	Prompt             string                   `json:"prompt,omitempty"`
+	CreatedAt          time.Time                `json:"created_at"`
+	UpdatedAt          time.Time                `json:"updated_at"`
+	StartedAt          *time.Time               `json:"started_at,omitempty"`
+	EndedAt            *time.Time               `json:"ended_at,omitempty"`
+	Attempts           []ExecutionAttemptRecord `json:"attempts"`
+}
+
+type ExecutionAttemptRecord struct {
+	ID                    string     `json:"id"`
+	UserPromptID          string     `json:"user_prompt_id"`
+	Sequence              int32      `json:"sequence"`
+	Status                string     `json:"status"`
+	RunnerID              string     `json:"runner_id,omitempty"`
+	RequiredRunnerID      string     `json:"required_runner_id,omitempty"`
+	ClaimedAt             *time.Time `json:"claimed_at,omitempty"`
+	LeaseExpiresAt        *time.Time `json:"lease_expires_at,omitempty"`
+	StartedAt             *time.Time `json:"started_at,omitempty"`
+	EndedAt               *time.Time `json:"ended_at,omitempty"`
+	WorkspacePath         string     `json:"workspace_path,omitempty"`
+	ContainerName         string     `json:"container_name,omitempty"`
+	HarnessExecutionID    string     `json:"harness_execution_id,omitempty"`
+	Summary               string     `json:"summary,omitempty"`
+	Error                 string     `json:"error,omitempty"`
+	ErrorCategory         string     `json:"error_category,omitempty"`
+	TotalInputTokens      int64      `json:"total_input_tokens"`
+	TotalOutputTokens     int64      `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64      `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64      `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64      `json:"total_reasoning_tokens"`
+	CostCents             int64      `json:"cost_cents"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type ListAgentSessionsOutput struct {
@@ -802,6 +830,23 @@ func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
 		UpdatedAt:          run.UpdatedAt,
 		StartedAt:          nullTimePtr(run.StartedAt),
 		EndedAt:            nullTimePtr(run.EndedAt),
+		Attempts:           []ExecutionAttemptRecord{},
+	}
+}
+
+func executionAttemptRecord(attempt repository.ChetterExecutionAttempt) ExecutionAttemptRecord {
+	return ExecutionAttemptRecord{
+		ID: attempt.ID, UserPromptID: attempt.UserPromptID, Sequence: attempt.Sequence, Status: attempt.Status,
+		RunnerID: attempt.RunnerID.String, RequiredRunnerID: attempt.RequiredRunnerID.String,
+		ClaimedAt: nullTimePtr(attempt.ClaimedAt), LeaseExpiresAt: nullTimePtr(attempt.LeaseExpiresAt),
+		StartedAt: nullTimePtr(attempt.StartedAt), EndedAt: nullTimePtr(attempt.EndedAt),
+		WorkspacePath: attempt.WorkspacePath.String, ContainerName: attempt.ContainerName.String,
+		HarnessExecutionID: attempt.HarnessExecutionID.String, Summary: attempt.Summary.String,
+		Error: attempt.Error.String, ErrorCategory: attempt.ErrorCategory.String,
+		TotalInputTokens: attempt.TotalInputTokens, TotalOutputTokens: attempt.TotalOutputTokens,
+		TotalCacheReadTokens: attempt.TotalCacheReadTokens, TotalCacheWriteTokens: attempt.TotalCacheWriteTokens,
+		TotalReasoningTokens: attempt.TotalReasoningTokens, CostCents: attempt.CostCents,
+		CreatedAt: attempt.CreatedAt, UpdatedAt: attempt.UpdatedAt,
 	}
 }
 

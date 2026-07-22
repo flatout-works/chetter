@@ -483,6 +483,13 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	if attempt.UserPromptID != run.ID || attempt.Sequence != 1 || attempt.Status != "succeeded" {
 		t.Fatalf("execution attempt = %+v, want prompt %s sequence 1 succeeded", attempt, run.ID)
 	}
+	_, prompts, err := svc.GetAgentSession(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get session hierarchy: %v", err)
+	}
+	if len(prompts) != 1 || len(prompts[0].Attempts) != 1 || prompts[0].Attempts[0].ID != attempt.ID {
+		t.Fatalf("session prompt attempts = %+v, want attempt %s", prompts, attempt.ID)
+	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
 		t.Fatalf("get agent session: %v", err)

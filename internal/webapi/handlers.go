@@ -120,6 +120,10 @@ func protoSession(s service.AgentSessionRecord) *apiv1.AgentSession {
 }
 
 func protoPrompt(r service.UserPromptRecord) *apiv1.UserPrompt {
+	attempts := make([]*apiv1.ExecutionAttempt, len(r.Attempts))
+	for i, attempt := range r.Attempts {
+		attempts[i] = protoExecutionAttempt(attempt)
+	}
 	return &apiv1.UserPrompt{
 		Id:                 r.ID,
 		AgentSessionId:     r.AgentSessionID,
@@ -131,10 +135,26 @@ func protoPrompt(r service.UserPromptRecord) *apiv1.UserPrompt {
 		Prompt:             r.Prompt,
 		Sequence:           r.Sequence,
 		SourceUserPromptId: r.SourceUserPromptID,
+		Attempts:           attempts,
 		CreatedAt:          r.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:          r.UpdatedAt.Format(time.RFC3339),
 		StartedAt:          optTimeStr(r.StartedAt),
 		EndedAt:            optTimeStr(r.EndedAt),
+	}
+}
+
+func protoExecutionAttempt(a service.ExecutionAttemptRecord) *apiv1.ExecutionAttempt {
+	return &apiv1.ExecutionAttempt{
+		Id: a.ID, UserPromptId: a.UserPromptID, Sequence: a.Sequence, Status: a.Status,
+		RunnerId: a.RunnerID, RequiredRunnerId: a.RequiredRunnerID,
+		ClaimedAt: optTimeStr(a.ClaimedAt), LeaseExpiresAt: optTimeStr(a.LeaseExpiresAt),
+		StartedAt: optTimeStr(a.StartedAt), EndedAt: optTimeStr(a.EndedAt),
+		WorkspacePath: a.WorkspacePath, ContainerName: a.ContainerName,
+		HarnessExecutionId: a.HarnessExecutionID, Summary: a.Summary, Error: a.Error,
+		ErrorCategory: a.ErrorCategory, CreatedAt: a.CreatedAt.Format(time.RFC3339), UpdatedAt: a.UpdatedAt.Format(time.RFC3339),
+		TokenUsage: &apiv1.TokenUsage{InputTokens: a.TotalInputTokens, OutputTokens: a.TotalOutputTokens,
+			CacheReadTokens: a.TotalCacheReadTokens, CacheWriteTokens: a.TotalCacheWriteTokens,
+			ReasoningTokens: a.TotalReasoningTokens, CostCents: a.CostCents},
 	}
 }
 

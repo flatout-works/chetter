@@ -102,6 +102,7 @@ type Repository interface {
 	ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]repository.ChetterTrigger, error)
 	ListEventCallbacks(ctx context.Context, arg repository.ListEventCallbacksParams) ([]repository.ChetterEventCallback, error)
 	ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.ChetterEventCallback, error)
+	ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ChetterExecutionAttempt, error)
 	ListHeartbeatTasks(ctx context.Context, arg repository.ListHeartbeatTasksParams) ([]repository.ListHeartbeatTasksRow, error)
 	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ChetterRunner, error)
 	ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error)
@@ -548,6 +549,11 @@ func (q *Queries) ListEventCallbacks(ctx context.Context, arg repository.ListEve
 func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.ChetterEventCallback, error) {
 	value, err := q.postgres.ListEventCallbacksByTeams(ctx, convert[repositorypostgres.ListEventCallbacksByTeamsParams](arg))
 	return convert[[]repository.ChetterEventCallback](value), err
+}
+
+func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ChetterExecutionAttempt, error) {
+	value, err := q.postgres.ListExecutionAttemptsByPrompt(ctx, convert[string](userPromptID))
+	return convert[[]repository.ChetterExecutionAttempt](value), err
 }
 
 func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg repository.ListHeartbeatTasksParams) ([]repository.ListHeartbeatTasksRow, error) {

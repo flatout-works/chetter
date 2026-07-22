@@ -671,7 +671,15 @@ func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentS
 	}
 	outRuns := make([]UserPromptRecord, 0, len(runs))
 	for _, run := range runs {
-		outRuns = append(outRuns, userPromptRecord(run))
+		record := userPromptRecord(run)
+		attempts, err := s.repo.ListExecutionAttemptsByPrompt(ctx, run.ID)
+		if err != nil {
+			return AgentSessionRecord{}, nil, fmt.Errorf("list execution attempts: %w", err)
+		}
+		for _, attempt := range attempts {
+			record.Attempts = append(record.Attempts, executionAttemptRecord(attempt))
+		}
+		outRuns = append(outRuns, record)
 	}
 	return agentSessionRecord(session), outRuns, nil
 }

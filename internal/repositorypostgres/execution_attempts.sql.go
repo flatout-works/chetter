@@ -96,6 +96,61 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg InsertExecutio
 	return err
 }
 
+const listExecutionAttemptsByPrompt = `-- name: ListExecutionAttemptsByPrompt :many
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at FROM chetter_execution_attempts
+WHERE user_prompt_id = $1
+ORDER BY sequence ASC, created_at ASC
+`
+
+func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]ChetterExecutionAttempt, error) {
+	rows, err := q.db.QueryContext(ctx, listExecutionAttemptsByPrompt, userPromptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterExecutionAttempt{}
+	for rows.Next() {
+		var i ChetterExecutionAttempt
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserPromptID,
+			&i.Sequence,
+			&i.Status,
+			&i.RunnerID,
+			&i.RequiredRunnerID,
+			&i.ClaimedAt,
+			&i.LeaseExpiresAt,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.WorkspacePath,
+			&i.ContainerName,
+			&i.HarnessExecutionID,
+			&i.Summary,
+			&i.Error,
+			&i.ErrorCategory,
+			&i.SessionExport,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalReasoningTokens,
+			&i.CostCents,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markExecutionAttemptLost = `-- name: MarkExecutionAttemptLost :execrows
 UPDATE chetter_execution_attempts
 SET status = 'lost', error = $1, ended_at = $2, updated_at = $3
