@@ -88,6 +88,7 @@ type TaskRecord struct {
 	ProviderID            string            `json:"provider_id,omitempty"`
 	ModelID               string            `json:"model_id,omitempty"`
 	VariantID             string            `json:"variant_id,omitempty"`
+	ExecutionID           string            `json:"execution_id,omitempty"`
 	OpenCodeSessionID     string            `json:"opencode_session_id,omitempty"`
 	RunnerImageDigest     string            `json:"runner_image_digest,omitempty"`
 	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
@@ -515,6 +516,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"claimed_at", "ALTER TABLE chetter_tasks ADD COLUMN claimed_at DATETIME(6) NULL AFTER runner_id"},
 		{"lease_expires_at", "ALTER TABLE chetter_tasks ADD COLUMN lease_expires_at DATETIME(6) NULL AFTER claimed_at"},
 		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
+		{"execution_id", "ALTER TABLE chetter_tasks ADD COLUMN execution_id VARCHAR(64) NOT NULL DEFAULT '' AFTER attempt"},
 		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
 		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
@@ -1265,10 +1267,18 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 
 func currentTaskIDsFromMetadata(data []byte) []string {
 	var meta struct {
-		CurrentTaskIDs []string `json:"current_task_ids"`
+		CurrentTaskIDs    []string `json:"current_task_ids"`
+		CurrentExecutions []struct {
+			TaskID string `json:"task_id"`
+		} `json:"current_executions"`
 	}
 	if len(data) == 0 || json.Unmarshal(data, &meta) != nil {
 		return []string{}
+	}
+	if len(meta.CurrentTaskIDs) == 0 {
+		for _, execution := range meta.CurrentExecutions {
+			meta.CurrentTaskIDs = append(meta.CurrentTaskIDs, execution.TaskID)
+		}
 	}
 	return nonNilStrings(meta.CurrentTaskIDs)
 }

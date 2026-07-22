@@ -27,6 +27,18 @@ const (
 	sessionExportTimeout    = 30 * time.Second
 )
 
+func executionKey(req task.TaskRequest) string {
+	if req.ExecutionID != "" {
+		return req.ExecutionID
+	}
+	return req.TaskID
+}
+
+func containerNameForRequest(req task.TaskRequest) string {
+	key := executionKey(req)
+	return "chetter-task-" + req.TaskID + "-" + key
+}
+
 func (r *Runner) runTask(req task.TaskRequest) {
 	defer func() { <-r.sem }()
 	defer func() {
@@ -45,18 +57,20 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer cancel()
 
 	session := &task.TaskSession{
-		TaskID:    req.TaskID,
-		Request:   req,
-		Cancel:    cancel,
-		StartedAt: time.Now(),
+		TaskID:      req.TaskID,
+		ExecutionID: req.ExecutionID,
+		Request:     req,
+		Cancel:      cancel,
+		StartedAt:   time.Now(),
 	}
 	r.mu.Lock()
-	r.tasks[req.TaskID] = session
+	key := executionKey(req)
+	r.tasks[key] = session
 	r.totalStarted++
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
-		delete(r.tasks, req.TaskID)
+		delete(r.tasks, key)
 		r.mu.Unlock()
 	}()
 
@@ -84,7 +98,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		return
 	}
 
-	wsDir, err := r.wsManager.Create(req.TaskID)
+	wsDir, err := r.wsManager.Create(req.TaskID, executionKey(req))
 	if err != nil {
 		r.publishStatusForRequest(req, "error", err.Error(), nil)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Workspace creation failed: %v", err), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
@@ -97,7 +111,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			slog.Info("preserving workspace for checkpointed session", "taskID", req.TaskID, "workspace", session.WorkspaceDir)
 			return
 		}
-		if err := r.wsManager.Destroy(req.TaskID); err != nil {
+		if err := r.wsManager.Destroy(req.TaskID, key); err != nil {
 			slog.Warn("cleanup error", "taskID", req.TaskID, "err", err)
 		}
 	}()
@@ -235,11 +249,11 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, re
 		return continuable.ContinueSession(nudgeCtx, baseURL, sessionID, secret, req, wsDir)
 	}
 	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
-		r.publishStatus(req.TaskID, "running", message, nil)
+		r.publishStatusForRequest(req, "running", message, nil)
 	}, isIdle)
 	go h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
 		watchdog.record(message)
-		r.publishStatus(req.TaskID, status, message, nil)
+		r.publishStatusForRequest(req, status, message, nil)
 	}, onToken)
 	return agentCtx, func() {
 		watchdog.stop()
@@ -735,7 +749,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	ln.Close()
 
 	const containerPort = 9999
-	containerName := "chetter-task-" + req.TaskID
+	containerName := containerNameForRequest(req)
 
 	removeTaskContainer(containerName)
 
@@ -756,6 +770,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"run", "-d",
 		"--entrypoint", entrypoint,
 		"--name", containerName,
+		"--label", "chetter.runner_id=" + r.runnerID,
+		"--label", "chetter.task_id=" + req.TaskID,
+		"--label", "chetter.execution_id=" + executionKey(req),
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
@@ -973,7 +990,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	ln.Close()
 
 	const containerPort = 9999
-	containerName := "chetter-task-" + req.TaskID
+	containerName := containerNameForRequest(req)
 	removeTaskContainer(containerName)
 	defer removeTaskContainer(containerName)
 
@@ -993,6 +1010,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"run", "-d",
 		"--entrypoint", entrypoint,
 		"--name", containerName,
+		"--label", "chetter.runner_id=" + r.runnerID,
+		"--label", "chetter.task_id=" + req.TaskID,
+		"--label", "chetter.execution_id=" + executionKey(req),
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
@@ -1352,7 +1372,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		return
 	}
 
-	containerName := "chetter-task-" + req.TaskID
+	containerName := containerNameForRequest(req)
 	removeTaskContainer(containerName)
 	defer removeTaskContainer(containerName)
 
@@ -1364,7 +1384,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
+	dockerArgs := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -1373,11 +1393,14 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
+func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
 	dockerArgs := []string{
 		"run", "--rm", "-i",
 		"--entrypoint", command[0],
 		"--name", containerName,
+		"--label", "chetter.runner_id=" + runnerID,
+		"--label", "chetter.task_id=" + req.TaskID,
+		"--label", "chetter.execution_id=" + executionKey(req),
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")

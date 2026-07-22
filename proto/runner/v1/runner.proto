@@ -24,6 +24,12 @@ message RunnerInfo {
   bool gvisor_enabled = 15;
   bool checkpoint_restore = 16;
   string runsc_version = 17;
+  repeated RunningExecution current_executions = 18;
+}
+
+message RunningExecution {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string execution_id = 2 [(buf.validate.field).string.min_len = 1];
 }
 
 message RegisterRunnerRequest {
@@ -40,6 +46,7 @@ message RunnerCommand {
   string type = 1;
   string task_id = 2;
   string reason = 3;
+  string execution_id = 4;
 }
 
 message HeartbeatResponse {
@@ -85,6 +92,7 @@ message Task {
   string git_author_name = 30;
   string git_author_email = 31;
   repeated MCPEndpoint mcp_endpoints = 32;
+  string execution_id = 33;
 }
 
 message MCPEndpoint {
@@ -127,6 +135,7 @@ message TaskEvent {
   string workspace_path = 16;
   string error_category = 17;
   TokenUsage token_usage = 18;
+  string execution_id = 19;
 }
 
 message ReportTaskEventsRequest {

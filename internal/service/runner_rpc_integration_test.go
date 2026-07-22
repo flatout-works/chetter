@@ -92,6 +92,71 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	}
 }
 
+func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
+	svc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_fenced", "do work", "runner:latest")
+
+	first, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_1", WaitSeconds: 0, LeaseSeconds: 60,
+	}))
+	if err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	firstExecution := first.Msg.Task.ExecutionId
+	if firstExecution == "" {
+		t.Fatal("first claim did not receive an execution ID")
+	}
+
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_tasks SET lease_expires_at = ? WHERE id = ?",
+		"UPDATE chetter_tasks SET lease_expires_at = $1 WHERE id = $2"),
+		time.Now().UTC().Add(-time.Second), "task_fenced"); err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+	if _, err := q.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
+		UpdatedAt:      time.Now().UTC(),
+		LeaseExpiresAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
+	}); err != nil {
+		t.Fatalf("reclaim: %v", err)
+	}
+
+	second, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_2", WaitSeconds: 0, LeaseSeconds: 60,
+	}))
+	if err != nil {
+		t.Fatalf("second claim: %v", err)
+	}
+	secondExecution := second.Msg.Task.ExecutionId
+	if secondExecution == "" || secondExecution == firstExecution {
+		t.Fatalf("second execution ID = %q, first = %q", secondExecution, firstExecution)
+	}
+
+	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:      "task_fenced",
+			ExecutionId: firstExecution,
+			Status:      "done",
+		}},
+	}))
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Fatalf("stale report error = %v, want fenced execution failure", err)
+	}
+
+	if _, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_2",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:      "task_fenced",
+			ExecutionId: secondExecution,
+			Status:      "done",
+		}},
+	})); err != nil {
+		t.Fatalf("current report: %v", err)
+	}
+}
+
 func TestRPCClaimTaskNoPendingReturnsEmpty(t *testing.T) {
 	svc, _, _, cleanup := newRPCTestService(t)
 	defer cleanup()
@@ -232,9 +297,9 @@ func TestRPCHeartbeatReturnsCancelCommandForCancelledTask(t *testing.T) {
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
-			RunnerId:       "runner_1",
-			Status:         "active",
-			CurrentTaskIds: []string{"task_cancel_me"},
+			RunnerId:          "runner_1",
+			Status:            "active",
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_cancel_me"}},
 		},
 	}))
 	if err != nil {
@@ -254,9 +319,9 @@ func TestRPCHeartbeatNoTasksReturnsEmptyCommands(t *testing.T) {
 	defer cleanup()
 	resp, err := svc.Heartbeat(context.Background(), connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
-			RunnerId:       "runner_1",
-			Status:         "active",
-			CurrentTaskIds: nil,
+			RunnerId:          "runner_1",
+			Status:            "active",
+			CurrentExecutions: nil,
 		},
 	}))
 	if err != nil {
@@ -298,9 +363,9 @@ func TestRPCHeartbeatMixedTasksOnlyReturnsCancelled(t *testing.T) {
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
-			RunnerId:       "runner_1",
-			Status:         "active",
-			CurrentTaskIds: []string{"task_running", "task_to_cancel"},
+			RunnerId:          "runner_1",
+			Status:            "active",
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_running"}, {TaskId: "task_to_cancel"}},
 		},
 	}))
 	if err != nil {
@@ -554,9 +619,9 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
-			RunnerId:       "runner_1",
-			Status:         "active",
-			CurrentTaskIds: []string{"task_a", "task_b"},
+			RunnerId:          "runner_1",
+			Status:            "active",
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_a"}, {TaskId: "task_b"}},
 		},
 	}))
 	if err != nil {
@@ -604,9 +669,9 @@ func TestRPCHeartbeatCancelsReclaimedTask(t *testing.T) {
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
-			RunnerId:       "runner_1",
-			Status:         "active",
-			CurrentTaskIds: []string{"task_reclaim"},
+			RunnerId:          "runner_1",
+			Status:            "active",
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_reclaim"}},
 		},
 	}))
 	if err != nil {

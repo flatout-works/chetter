@@ -294,6 +294,7 @@ func (s *Service) reapExpiredLeases() {
 			payload := mustMarshalJSON(map[string]any{
 				"task_id":          task.ID,
 				"runner_id":        task.RunnerID.String,
+				"execution_id":     task.ExecutionID,
 				"attempt":          task.Attempt,
 				"lease_expires_at": task.LeaseExpiresAt.Time,
 				"status":           "pending",
@@ -995,6 +996,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		ProviderID:            task.ProviderID.String,
 		ModelID:               task.ModelID.String,
 		VariantID:             task.VariantID.String,
+		ExecutionID:           task.ExecutionID,
 		OpenCodeSessionID:     task.OpencodeSessionID.String,
 		RunnerImageDigest:     task.RunnerImageDigest.String,
 		CommitAuthorName:      task.CommitAuthorName.String,

@@ -136,6 +136,7 @@ type Task struct {
 	SubmissionSource string                 `protobuf:"bytes,26,opt,name=submission_source,json=submissionSource,proto3" json:"submission_source,omitempty"`
 	GitIdentityId    string                 `protobuf:"bytes,27,opt,name=git_identity_id,json=gitIdentityId,proto3" json:"git_identity_id,omitempty"`
 	McpEndpoints     []string               `protobuf:"bytes,28,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
+	ExecutionId      string                 `protobuf:"bytes,29,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -364,6 +365,13 @@ func (x *Task) GetMcpEndpoints() []string {
 		return x.McpEndpoints
 	}
 	return nil
+}
+
+func (x *Task) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
 }
 
 type AgentSession struct {
@@ -955,6 +963,7 @@ type TaskEvent struct {
 	Payload       string                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	EventType     string                 `protobuf:"bytes,7,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1034,6 +1043,13 @@ func (x *TaskEvent) GetCreatedAt() string {
 func (x *TaskEvent) GetEventType() string {
 	if x != nil {
 		return x.EventType
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
 	}
 	return ""
 }
@@ -7759,7 +7775,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xd1\a\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xf4\a\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -7797,7 +7813,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\ftrigger_type\x18\x19 \x01(\tR\vtriggerType\x12+\n" +
 	"\x11submission_source\x18\x1a \x01(\tR\x10submissionSource\x12&\n" +
 	"\x0fgit_identity_id\x18\x1b \x01(\tR\rgitIdentityId\x12#\n" +
-	"\rmcp_endpoints\x18\x1c \x03(\tR\fmcpEndpoints\x1a6\n" +
+	"\rmcp_endpoints\x18\x1c \x03(\tR\fmcpEndpoints\x12!\n" +
+	"\fexecution_id\x18\x1d \x01(\tR\vexecutionId\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
@@ -7897,7 +7914,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"_source_idB\x12\n" +
 	"\x10_source_repo_urlB\x10\n" +
 	"\x0e_source_branchB\x0e\n" +
-	"\f_source_path\"\xbe\x01\n" +
+	"\f_source_path\"\xe1\x01\n" +
 	"\tTaskEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +
@@ -7907,7 +7924,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\a \x01(\tR\teventType\"o\n" +
+	"event_type\x18\a \x01(\tR\teventType\x12!\n" +
+	"\fexecution_id\x18\b \x01(\tR\vexecutionId\"o\n" +
 	"\x11TaskProgressEntry\x12\x12\n" +
 	"\x04time\x18\x01 \x01(\tR\x04time\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +

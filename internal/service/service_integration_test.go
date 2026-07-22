@@ -358,7 +358,8 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
-	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1}))
+	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
 	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
@@ -366,6 +367,7 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
+			ExecutionId:       claim.Msg.Task.ExecutionId,
 			Status:            "done",
 			Summary:           "finished",
 			OpencodeSessionId: "opencode-session-1",
@@ -442,7 +444,8 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	}
 
 	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
-	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1})); err != nil {
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1", WaitSeconds: 1}))
+	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
 	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
@@ -450,6 +453,7 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
+			ExecutionId:       claim.Msg.Task.ExecutionId,
 			Status:            "done",
 			Summary:           "created PR",
 			EndedAt:           endedAt,
@@ -549,6 +553,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
+			ExecutionId:       claimResp.Msg.Task.ExecutionId,
 			Status:            "done",
 			Summary:           "created PR #1",
 			EndedAt:           endedAt,
@@ -628,6 +633,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            resumeOut.Task.ID,
+			ExecutionId:       resumeClaim.Msg.Task.ExecutionId,
 			Status:            "done",
 			Summary:           "addressed feedback",
 			EndedAt:           endedAt2,
@@ -653,15 +659,17 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("submit recoverable task: %v", err)
 		}
-		if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		rec3Claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 			RunnerId: "runner_1", WaitSeconds: 1,
-		})); err != nil {
+		}))
+		if err != nil {
 			t.Fatalf("claim recoverable task: %v", err)
 		}
 		if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 			RunnerId: "runner_1",
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec3.ID,
+				ExecutionId:       rec3Claim.Msg.Task.ExecutionId,
 				Status:            "error",
 				Error:             "prompt failed: context deadline exceeded",
 				ErrorCategory:     "timeout",
@@ -717,6 +725,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			RunnerId: "runner_1",
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            resume3.Task.ID,
+				ExecutionId:       claim3.Msg.Task.ExecutionId,
 				Status:            "done",
 				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
 				OpencodeSessionId: "oc_sid_timeout",
@@ -734,15 +743,17 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("submit second task: %v", err)
 		}
-		if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		rec2Claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 			RunnerId: "runner_1", WaitSeconds: 1,
-		})); err != nil {
+		}))
+		if err != nil {
 			t.Fatalf("claim second task: %v", err)
 		}
 		if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 			RunnerId: "runner_1",
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec2.ID,
+				ExecutionId:       rec2Claim.Msg.Task.ExecutionId,
 				Status:            "done",
 				EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
 				OpencodeSessionId: "oc_sid_xyz",
@@ -787,9 +798,10 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	if _, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId: "runner_gone", WaitSeconds: 0,
-	})); err != nil {
+	}))
+	if err != nil {
 		t.Fatalf("claim: %v", err)
 	}
 	now := time.Now().UTC()
@@ -808,6 +820,7 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 		RunnerId: "runner_gone",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
+			ExecutionId:       claim.Msg.Task.ExecutionId,
 			Status:            "done",
 			EndedAt:           now.Format(time.RFC3339Nano),
 			OpencodeSessionId: "oc_sid_gone",

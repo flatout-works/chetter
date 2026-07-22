@@ -205,4 +205,11 @@ func TestCurrentTaskIDsFromMetadata(t *testing.T) {
 			t.Errorf("expected empty, got %v", got)
 		}
 	})
+	t.Run("derives task ids from executions", func(t *testing.T) {
+		data := []byte(`{"current_executions":[{"task_id":"task_1","execution_id":"exec_1"}]}`)
+		got := currentTaskIDsFromMetadata(data)
+		if len(got) != 1 || got[0] != "task_1" {
+			t.Errorf("expected [task_1], got %v", got)
+		}
+	})
 }

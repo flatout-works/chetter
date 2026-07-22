@@ -554,11 +554,17 @@
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent Image</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
       </Card>
-      <Card size="md" shadow="sm" class="!p-4">
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
-      </Card>
-      <Card size="md" shadow="sm" class="!p-4">
+       <Card size="md" shadow="sm" class="!p-4">
+         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>
+         <p class="text-sm font-medium text-gray-900 dark:text-white">{task.timeoutSec}s</p>
+       </Card>
+       {#if task.executionId}
+         <Card size="md" shadow="sm" class="!p-4">
+           <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Current Execution</p>
+           <p class="text-sm font-mono font-medium text-gray-900 dark:text-white truncate" title={task.executionId}>{task.executionId}</p>
+         </Card>
+       {/if}
+       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</p>
         <p class="text-sm font-medium text-gray-900 dark:text-white">{duration}</p>
       </Card>
@@ -801,6 +807,9 @@
                               <div class="mb-1 flex flex-wrap gap-2 text-gray-400">
                                 <span>{formatTimeShort(ev.createdAt)}</span>
                                 <span>{ev.eventType || ev.status}</span>
+                                {#if ev.executionId}
+                                  <span>{ev.executionId}</span>
+                                {/if}
                               </div>
                               <pre class="max-h-96 overflow-auto whitespace-pre-wrap text-gray-600 dark:text-gray-400">{ev.payload || "—"}</pre>
                             </div>

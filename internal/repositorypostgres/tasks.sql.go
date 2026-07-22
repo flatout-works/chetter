@@ -124,7 +124,7 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const getClaimableTaskForUpdate = `-- name: GetClaimableTaskForUpdate :one
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE status = 'pending'
   AND (required_runner_id IS NULL OR required_runner_id = '' OR required_runner_id = $1)
 ORDER BY created_at ASC
@@ -182,6 +182,7 @@ func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.Nu
 		&i.CostCents,
 		&i.GitIdentityID,
 		&i.McpEndpoints,
+		&i.ExecutionID,
 	)
 	return i, err
 }
@@ -209,7 +210,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks WHERE id = $1
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks WHERE id = $1
 `
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, error) {
@@ -262,6 +263,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.CostCents,
 		&i.GitIdentityID,
 		&i.McpEndpoints,
+		&i.ExecutionID,
 	)
 	return i, err
 }
@@ -332,25 +334,22 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listHeartbeatTasks = `-- name: ListHeartbeatTasks :many
-SELECT id, status, runner_id, error FROM chetter_tasks
+SELECT id, status, runner_id, execution_id, error FROM chetter_tasks
 WHERE id = ANY($1::text[])
-  AND (
-    runner_id = $2
-    OR status = 'cancelled'
-    OR (status = 'pending' AND runner_id IS NULL)
-  )
+  AND $2 = $2
 `
 
 type ListHeartbeatTasksParams struct {
-	Ids      []string       `json:"ids"`
-	RunnerID sql.NullString `json:"runner_id"`
+	Ids      []string    `json:"ids"`
+	RunnerID interface{} `json:"runner_id"`
 }
 
 type ListHeartbeatTasksRow struct {
-	ID       string         `json:"id"`
-	Status   string         `json:"status"`
-	RunnerID sql.NullString `json:"runner_id"`
-	Error    sql.NullString `json:"error"`
+	ID          string         `json:"id"`
+	Status      string         `json:"status"`
+	RunnerID    sql.NullString `json:"runner_id"`
+	ExecutionID string         `json:"execution_id"`
+	Error       sql.NullString `json:"error"`
 }
 
 func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasksParams) ([]ListHeartbeatTasksRow, error) {
@@ -366,6 +365,7 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 			&i.ID,
 			&i.Status,
 			&i.RunnerID,
+			&i.ExecutionID,
 			&i.Error,
 		); err != nil {
 			return nil, err
@@ -382,7 +382,7 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 }
 
 const listReclaimableExpiredLeases = `-- name: ListReclaimableExpiredLeases :many
-SELECT id, team_id, runner_id, attempt, lease_expires_at
+SELECT id, team_id, runner_id, execution_id, attempt, lease_expires_at
 FROM chetter_tasks
 WHERE status = 'running'
   AND lease_expires_at IS NOT NULL
@@ -396,6 +396,7 @@ type ListReclaimableExpiredLeasesRow struct {
 	ID             string         `json:"id"`
 	TeamID         sql.NullString `json:"team_id"`
 	RunnerID       sql.NullString `json:"runner_id"`
+	ExecutionID    string         `json:"execution_id"`
 	Attempt        int32          `json:"attempt"`
 	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
 }
@@ -413,6 +414,7 @@ func (q *Queries) ListReclaimableExpiredLeases(ctx context.Context, leaseExpires
 			&i.ID,
 			&i.TeamID,
 			&i.RunnerID,
+			&i.ExecutionID,
 			&i.Attempt,
 			&i.LeaseExpiresAt,
 		); err != nil {
@@ -430,7 +432,7 @@ func (q *Queries) ListReclaimableExpiredLeases(ctx context.Context, leaseExpires
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE ($1 = '' OR status = $1)
   AND (COALESCE($2, '') = '' OR trigger_name = $2)
 ORDER BY created_at DESC
@@ -505,6 +507,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.CostCents,
 			&i.GitIdentityID,
 			&i.McpEndpoints,
+			&i.ExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -520,7 +523,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE team_id = $1
   AND ($2 = '' OR status = $2)
   AND (COALESCE($3, '') = '' OR trigger_name = $3)
@@ -598,6 +601,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.CostCents,
 			&i.GitIdentityID,
 			&i.McpEndpoints,
+			&i.ExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -613,7 +617,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE team_id = ANY($1::text[])
   AND ($2 = '' OR status = $2)
   AND (COALESCE($3, '') = '' OR trigger_name = $3)
@@ -691,6 +695,7 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.CostCents,
 			&i.GitIdentityID,
 			&i.McpEndpoints,
+			&i.ExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -709,6 +714,7 @@ const markTaskClaimed = `-- name: MarkTaskClaimed :execrows
 UPDATE chetter_tasks
 SET status = 'running',
     runner_id = $1,
+    execution_id = $8,
     claimed_at = $2,
     lease_expires_at = $3,
     started_at = COALESCE(started_at, $4),
@@ -726,6 +732,7 @@ type MarkTaskClaimedParams struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 	LastEventAt    sql.NullTime   `json:"last_event_at"`
 	ID             string         `json:"id"`
+	ExecutionID    string         `json:"execution_id"`
 }
 
 func (q *Queries) MarkTaskClaimed(ctx context.Context, arg MarkTaskClaimedParams) (int64, error) {
@@ -737,6 +744,7 @@ func (q *Queries) MarkTaskClaimed(ctx context.Context, arg MarkTaskClaimedParams
 		arg.UpdatedAt,
 		arg.LastEventAt,
 		arg.ID,
+		arg.ExecutionID,
 	)
 	if err != nil {
 		return 0, err
@@ -804,7 +812,7 @@ func (q *Queries) RenewRunningTaskLeases(ctx context.Context, arg RenewRunningTa
 const renewTaskLease = `-- name: RenewTaskLease :execrows
 UPDATE chetter_tasks
 SET lease_expires_at = $1, updated_at = $2, last_event_at = $3
-WHERE id = $4 AND runner_id = $5 AND status = 'running'
+WHERE id = $4 AND runner_id = $5 AND execution_id = $6 AND status = 'running'
 `
 
 type RenewTaskLeaseParams struct {
@@ -813,6 +821,7 @@ type RenewTaskLeaseParams struct {
 	LastEventAt    sql.NullTime   `json:"last_event_at"`
 	ID             string         `json:"id"`
 	RunnerID       sql.NullString `json:"runner_id"`
+	ExecutionID    string         `json:"execution_id"`
 }
 
 func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) (int64, error) {
@@ -822,6 +831,7 @@ func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) 
 		arg.LastEventAt,
 		arg.ID,
 		arg.RunnerID,
+		arg.ExecutionID,
 	)
 	if err != nil {
 		return 0, err
@@ -830,7 +840,7 @@ func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) 
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE ($1 = '' OR team_id = $1)
   AND ($2 = '' OR status = $2)
   AND (COALESCE($3, '') = '' OR trigger_name = $3)
@@ -911,6 +921,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 			&i.CostCents,
 			&i.GitIdentityID,
 			&i.McpEndpoints,
+			&i.ExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -926,7 +937,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE team_id = ANY($1::text[])
   AND ($2 = '' OR status = $2)
   AND (COALESCE($3, '') = '' OR trigger_name = $3)
@@ -1007,6 +1018,7 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.CostCents,
 			&i.GitIdentityID,
 			&i.McpEndpoints,
+			&i.ExecutionID,
 		); err != nil {
 			return nil, err
 		}
@@ -1046,6 +1058,7 @@ SET status = $10,
     cost_cents = cost_cents + COALESCE($22, 0)
 WHERE id = $9
   AND runner_id = $23
+  AND execution_id = $24
   AND (status = 'running' OR status = $10)
 `
 
@@ -1073,6 +1086,7 @@ type UpdateTaskFromRunnerEventParams struct {
 	TotalReasoningTokens  sql.NullInt64  `json:"total_reasoning_tokens"`
 	CostCents             sql.NullInt64  `json:"cost_cents"`
 	RunnerID              sql.NullString `json:"runner_id"`
+	ExecutionID           string         `json:"execution_id"`
 }
 
 func (q *Queries) UpdateTaskFromRunnerEvent(ctx context.Context, arg UpdateTaskFromRunnerEventParams) (int64, error) {
@@ -1100,6 +1114,7 @@ func (q *Queries) UpdateTaskFromRunnerEvent(ctx context.Context, arg UpdateTaskF
 		arg.TotalReasoningTokens,
 		arg.CostCents,
 		arg.RunnerID,
+		arg.ExecutionID,
 	)
 	if err != nil {
 		return 0, err

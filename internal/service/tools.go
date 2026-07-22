@@ -83,6 +83,7 @@ type TaskToolRecord struct {
 	ProviderID            string            `json:"provider_id,omitempty"`
 	ModelID               string            `json:"model_id,omitempty"`
 	VariantID             string            `json:"variant_id,omitempty"`
+	ExecutionID           string            `json:"execution_id,omitempty"`
 	GitIdentityID         string            `json:"git_identity_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
@@ -288,13 +289,14 @@ type TaskEventsOutput struct {
 
 // TaskEventRecord is a single persisted runner event.
 type TaskEventRecord struct {
-	ID        string    `json:"id"`
-	TaskID    string    `json:"task_id,omitempty"`
-	Subject   string    `json:"subject"`
-	Status    string    `json:"status"`
-	EventType string    `json:"event_type"`
-	Payload   string    `json:"payload"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	TaskID      string    `json:"task_id,omitempty"`
+	Subject     string    `json:"subject"`
+	Status      string    `json:"status"`
+	EventType   string    `json:"event_type"`
+	ExecutionID string    `json:"execution_id,omitempty"`
+	Payload     string    `json:"payload"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // TaskProgressInput is the input for chetter_task_progress.
@@ -855,6 +857,7 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		ProviderID:            task.ProviderID.String,
 		ModelID:               task.ModelID.String,
 		VariantID:             task.VariantID.String,
+		ExecutionID:           task.ExecutionID,
 		GitIdentityID:         task.GitIdentityID.String,
 		TriggerName:           task.TriggerName.String,
 		TriggerType:           task.TriggerType.String,

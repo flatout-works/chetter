@@ -136,7 +136,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		// When a runner is restarted, the defer in runDockerAgent that runs
 		// "docker rm -f" never executes, leaving containers behind.
 		slog.Info("cleaning up orphaned task containers")
-		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--format", "{{.Names}}").Output()
+		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--filter", "label=chetter.runner_id="+r.runnerID, "--format", "{{.Names}}").Output()
 		if err != nil {
 			slog.Warn("failed to list docker containers", "err", err)
 		} else {
@@ -209,22 +209,12 @@ func (r *Runner) Start(ctx context.Context) error {
 	return r.startConnectRPC(ctx)
 }
 
-func (r *Runner) publishStatus(taskID, status, message string, artifacts []string) {
-	resp := task.TaskResponse{
-		TaskID:    taskID,
-		Status:    status,
-		Artifacts: artifacts,
-	}
-	r.decorateTaskResponse(&resp, nil, "")
-	r.finishStatusResponse(&resp, status, message)
-	r.publishTaskResponse(resp)
-}
-
 func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message string, artifacts []string) {
 	resp := task.TaskResponse{
-		TaskID:    req.TaskID,
-		Status:    status,
-		Artifacts: artifacts,
+		TaskID:      req.TaskID,
+		ExecutionID: req.ExecutionID,
+		Status:      status,
+		Artifacts:   artifacts,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, "")
 	r.finishStatusResponse(&resp, status, message)
@@ -327,8 +317,8 @@ func (r *Runner) decorateTaskResponseForRequest(resp *task.TaskResponse, req tas
 func (r *Runner) publishActivityEvent(category, action, description, status, details string, durationMs int64) {
 }
 
-func (r *Runner) recordTerminalStatus(taskID, status string) {
-	if taskID == "" || (status != "done" && status != "error" && status != "cancelled") {
+func (r *Runner) recordTerminalStatus(executionID, status string) {
+	if executionID == "" || (status != "done" && status != "error" && status != "cancelled") {
 		return
 	}
 	r.mu.Lock()
@@ -336,10 +326,10 @@ func (r *Runner) recordTerminalStatus(taskID, status string) {
 	if r.terminalTasks == nil {
 		r.terminalTasks = make(map[string]struct{})
 	}
-	if _, ok := r.terminalTasks[taskID]; ok {
+	if _, ok := r.terminalTasks[executionID]; ok {
 		return
 	}
-	r.terminalTasks[taskID] = struct{}{}
+	r.terminalTasks[executionID] = struct{}{}
 	if status == "done" {
 		r.totalCompleted++
 		return
@@ -406,7 +396,7 @@ func (r *Runner) pruneOrphanedWorkspaces(ctx context.Context) error {
 			continue
 		}
 		dir := filepath.Join(root, taskID)
-		if err := r.wsManager.Destroy(taskID); err != nil {
+		if err := r.wsManager.DestroyTask(taskID); err != nil {
 			slog.Warn("failed to prune workspace", "taskID", taskID, "dir", dir, "err", err)
 			continue
 		}

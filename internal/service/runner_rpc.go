@@ -621,14 +621,14 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 			commands = append(commands, &runnerv1.RunnerCommand{Type: "drain"})
 		}
 	}
-	if info == nil || len(info.CurrentTaskIds) == 0 {
+	if info == nil || len(info.CurrentExecutions) == 0 {
 		return commands, nil
 	}
 	now := time.Now().UTC()
 	lease := sql.NullTime{Time: now.Add(defaultTaskLeaseSec * time.Second), Valid: true}
 	rows, err := s.db.ListHeartbeatTasks(ctx, repository.ListHeartbeatTasksParams{
 		RunnerID: sql.NullString{String: info.RunnerId, Valid: true},
-		Ids:      info.CurrentTaskIds,
+		Ids:      runningExecutionTaskIDs(info.CurrentExecutions),
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -637,10 +637,15 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 	for _, row := range rows {
 		statusByID[row.ID] = row
 	}
-	runningIDs := make([]string, 0, len(statusByID))
-	for _, taskID := range info.CurrentTaskIds {
+	for _, execution := range info.CurrentExecutions {
+		taskID := execution.TaskId
+		executionID := execution.ExecutionId
 		row, ok := statusByID[taskID]
 		if !ok {
+			continue
+		}
+		if row.ExecutionID != executionID {
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: "execution superseded by a newer claim"})
 			continue
 		}
 		switch row.Status {
@@ -649,22 +654,20 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 			if reason == "" {
 				reason = "cancelled by operator"
 			}
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, Reason: reason})
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: reason})
 		case "pending":
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, Reason: "lease reclaimed; please stop"})
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: "lease reclaimed; please stop"})
 		case "running":
-			runningIDs = append(runningIDs, row.ID)
-		}
-	}
-	if len(runningIDs) > 0 {
-		if _, err := s.db.RenewRunningTaskLeases(ctx, repository.RenewRunningTaskLeasesParams{
-			LeaseExpiresAt: lease,
-			UpdatedAt:      now,
-			LastEventAt:    sql.NullTime{Time: now, Valid: true},
-			RunnerID:       sql.NullString{String: info.RunnerId, Valid: true},
-			Ids:            runningIDs,
-		}); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+			if _, err := s.db.RenewTaskLease(ctx, repository.RenewTaskLeaseParams{
+				LeaseExpiresAt: lease,
+				UpdatedAt:      now,
+				LastEventAt:    sql.NullTime{Time: now, Valid: true},
+				ID:             row.ID,
+				RunnerID:       sql.NullString{String: info.RunnerId, Valid: true},
+				ExecutionID:    executionID,
+			}); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
 		}
 	}
 	return commands, nil
@@ -678,7 +681,11 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	var eventID string
 	var eventPayload json.RawMessage
 	var eventCreatedAt time.Time
-	eventID, err := randomID("evt")
+	executionID, err := randomID("exec")
+	if err != nil {
+		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
+	}
+	eventID, err = randomID("evt")
 	if err != nil {
 		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
 	}
@@ -694,6 +701,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		eventCreatedAt = now
 		rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
 			RunnerID:       nullString(runnerID),
+			ExecutionID:    executionID,
 			ClaimedAt:      sql.NullTime{Time: now, Valid: true},
 			LeaseExpiresAt: sql.NullTime{Time: now.Add(lease), Valid: true},
 			StartedAt:      sql.NullTime{Time: now, Valid: true},
@@ -716,6 +724,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}
 		task.Status = "running"
 		task.RunnerID = nullString(runnerID)
+		task.ExecutionID = executionID
 		task.ClaimedAt = sql.NullTime{Time: now, Valid: true}
 		task.LeaseExpiresAt = sql.NullTime{Time: now.Add(lease), Valid: true}
 		task.StartedAt = sql.NullTime{Time: now, Valid: true}
@@ -723,11 +732,12 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		task.LastEventAt = sql.NullTime{Time: now, Valid: true}
 		task.Attempt++
 		eventPayload = mustMarshalJSON(map[string]any{
-			"task_id":   task.ID,
-			"runner_id": runnerID,
-			"attempt":   task.Attempt,
-			"status":    "running",
-			"summary":   fmt.Sprintf("Task claimed by runner for attempt %d", task.Attempt),
+			"task_id":      task.ID,
+			"runner_id":    runnerID,
+			"execution_id": executionID,
+			"attempt":      task.Attempt,
+			"status":       "running",
+			"summary":      fmt.Sprintf("Task claimed by runner for attempt %d", task.Attempt),
 		})
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
 			ID:        eventID,
@@ -833,6 +843,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		CostCents:             tokenUsageCostCents(event.TokenUsage),
 		ID:                    event.TaskId,
 		RunnerID:              sql.NullString{String: runnerID, Valid: true},
+		ExecutionID:           event.ExecutionId,
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
@@ -1111,6 +1122,7 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	delete(env, "__chetter_harness")
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
+		ExecutionId:            task.ExecutionID,
 		AgentImage:             task.AgentImage.String,
 		Prompt:                 task.Prompt,
 		GitUrl:                 task.GitUrl.String,
@@ -1133,6 +1145,16 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 		GitAuthorName:          task.CommitAuthorName.String,
 		GitAuthorEmail:         task.CommitAuthorEmail.String,
 	}
+}
+
+func runningExecutionTaskIDs(values []*runnerv1.RunningExecution) []string {
+	keys := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != nil && value.TaskId != "" {
+			keys = append(keys, value.TaskId)
+		}
+	}
+	return keys
 }
 
 func nullString(value string) sql.NullString {

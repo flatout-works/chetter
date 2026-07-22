@@ -3,14 +3,16 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-// Manager creates, cleans up, and destroys per-task workspace directories
+// Manager creates, cleans up, and destroys per-execution workspace directories
 // under Root. It also computes socket paths staying within Unix path limits.
 type Manager struct {
 	Root string
@@ -21,18 +23,18 @@ func NewManager(root string) *Manager {
 	return &Manager{Root: root}
 }
 
-// Create prepares a workspace directory for a task.
-// If a stale directory exists it is removed first.
-func (m *Manager) Create(taskID string) (string, error) {
-	parent := filepath.Join(m.Root, taskID)
+// Create prepares a workspace directory for one execution of a task.
+// If a stale execution directory exists it is removed first.
+func (m *Manager) Create(taskID, executionID string) (string, error) {
+	parent := filepath.Join(m.Root, taskID, executionID)
 	dir := filepath.Join(parent, "workspace")
 
 	// Remove any stale workspace
 	if err := os.RemoveAll(dir); err != nil {
-		// Best-effort; continue to try re-creating
+		return "", fmt.Errorf("remove stale workspace: %w", err)
 	}
 	if err := os.RemoveAll(parent); err != nil {
-		// Best-effort
+		return "", fmt.Errorf("remove stale execution directory: %w", err)
 	}
 
 	if err := os.MkdirAll(dir, 0750); err != nil {
@@ -54,7 +56,26 @@ func (m *Manager) SocketPath(taskID string) string {
 
 // Destroy removes a workspace and its socket.
 // It chmods everything writable first because git hooks are read-only.
-func (m *Manager) Destroy(taskID string) error {
+func (m *Manager) Destroy(taskID, executionID string) error {
+	dir := filepath.Join(m.Root, taskID, executionID)
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err == nil {
+			_ = os.Chmod(path, 0750)
+		}
+		return nil
+	})
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	parent := filepath.Dir(dir)
+	if err := os.Remove(parent); err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTEMPTY) {
+		return err
+	}
+	return nil
+}
+
+// DestroyTask removes all execution workspaces for a task during pruning.
+func (m *Manager) DestroyTask(taskID string) error {
 	dir := filepath.Join(m.Root, taskID)
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err == nil {

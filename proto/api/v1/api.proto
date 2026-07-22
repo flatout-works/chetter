@@ -46,6 +46,7 @@ message Task {
   string submission_source = 26;
   string git_identity_id = 27;
   repeated string mcp_endpoints = 28;
+  string execution_id = 29;
 }
 
 message AgentSession {
@@ -124,6 +125,7 @@ message TaskEvent {
   string payload = 5;
   string created_at = 6;
   string event_type = 7;
+  string execution_id = 8;
 }
 
 message TaskProgressEntry {

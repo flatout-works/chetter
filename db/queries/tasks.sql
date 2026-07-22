@@ -35,6 +35,7 @@ FOR UPDATE SKIP LOCKED;
 UPDATE chetter_tasks
 SET status = 'running',
     runner_id = ?,
+    execution_id = sqlc.arg(execution_id),
     claimed_at = ?,
     lease_expires_at = ?,
     started_at = COALESCE(started_at, ?),
@@ -68,6 +69,7 @@ SET status = sqlc.arg(status),
     cost_cents = cost_cents + COALESCE(sqlc.arg(cost_cents), 0)
 WHERE id = ?
   AND runner_id = sqlc.arg(runner_id)
+  AND execution_id = sqlc.arg(execution_id)
   AND (status = 'running' OR status = sqlc.arg(status));
 
 -- name: RenewTaskLease :execrows
@@ -77,16 +79,13 @@ SET lease_expires_at = ?,
     last_event_at = ?
 WHERE id = ?
   AND runner_id = sqlc.arg(runner_id)
+  AND execution_id = sqlc.arg(execution_id)
   AND status = 'running';
 
 -- name: ListHeartbeatTasks :many
-SELECT id, status, runner_id, error FROM chetter_tasks
+SELECT id, status, runner_id, execution_id, error FROM chetter_tasks
 WHERE id IN (sqlc.slice(ids))
-  AND (
-    runner_id = sqlc.arg(runner_id)
-    OR status = 'cancelled'
-    OR (status = 'pending' AND runner_id IS NULL)
-  );
+  AND sqlc.arg(runner_id) = sqlc.arg(runner_id);
 
 -- name: RenewRunningTaskLeases :execrows
 UPDATE chetter_tasks
@@ -111,7 +110,7 @@ WHERE status = 'running'
   AND attempt < max_attempts;
 
 -- name: ListReclaimableExpiredLeases :many
-SELECT id, team_id, runner_id, attempt, lease_expires_at
+SELECT id, team_id, runner_id, execution_id, attempt, lease_expires_at
 FROM chetter_tasks
 WHERE status = 'running'
   AND lease_expires_at IS NOT NULL

@@ -26,6 +26,7 @@ var schemaStatements = []string{
 		claimed_at DATETIME(6) NULL,
 		lease_expires_at DATETIME(6) NULL,
 		attempt INT NOT NULL DEFAULT 0,
+		execution_id VARCHAR(64) NOT NULL DEFAULT '',
 		max_attempts INT NOT NULL DEFAULT 3,
 		skills JSON NOT NULL,
 		mcp_endpoints JSON NULL,

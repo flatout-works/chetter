@@ -800,7 +800,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"LITELLM_API_KEY": "task-key",
 		},
 	}
-	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
 
 	entrypointIdx := indexOf(args, "--entrypoint")
 	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
@@ -842,7 +842,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
-	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1")
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1")
 
 	if !hasAdjacentArgs(args, "--dns", "172.21.0.1") {
 		t.Fatalf("expected runner DNS in args: %v", args)

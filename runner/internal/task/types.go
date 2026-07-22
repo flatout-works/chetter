@@ -11,6 +11,7 @@ import (
 // TaskRequest is a task claimed from the control plane to spawn a new agent session.
 type TaskRequest struct {
 	TaskID                 string            `json:"task_id"`
+	ExecutionID            string            `json:"execution_id"`
 	AgentImage             string            `json:"agent_image"`
 	Prompt                 string            `json:"prompt,omitempty"`
 	Command                []string          `json:"command,omitempty"`
@@ -66,6 +67,7 @@ type TokenUsage struct {
 // TaskResponse carries a task status event reported back to the control plane.
 type TaskResponse struct {
 	TaskID            string     `json:"task_id"`
+	ExecutionID       string     `json:"execution_id,omitempty"`
 	Status            string     `json:"status"`
 	Summary           string     `json:"summary,omitempty"`
 	Error             string     `json:"error,omitempty"`
@@ -87,6 +89,7 @@ type TaskResponse struct {
 // TaskSession represents one running task inside the runner.
 type TaskSession struct {
 	TaskID            string
+	ExecutionID       string
 	Request           TaskRequest
 	WorkspaceDir      string
 	PreserveWorkspace bool

@@ -86,9 +86,9 @@ func (r *Runner) publishRunnerHeartbeat(status string) {
 
 func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	r.mu.Lock()
-	taskIDs := make([]string, 0, len(r.tasks))
-	for taskID := range r.tasks {
-		taskIDs = append(taskIDs, taskID)
+	currentExecutions := make([]*runnerv1.RunningExecution, 0, len(r.tasks))
+	for executionID, session := range r.tasks {
+		currentExecutions = append(currentExecutions, &runnerv1.RunningExecution{TaskId: session.TaskID, ExecutionId: executionID})
 	}
 	totalStarted := r.totalStarted
 	totalCompleted := r.totalCompleted
@@ -115,12 +115,12 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		ImageDigest:       firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
 		Version:           firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
 		MaxConcurrent:     int32(maxConcurrent),
-		RunningTasks:      int32(len(taskIDs)),
+		RunningTasks:      int32(len(currentExecutions)),
 		AvailableSlots:    int32(availableSlots),
 		TotalStarted:      totalStarted,
 		TotalCompleted:    totalCompleted,
 		TotalErrors:       totalErrors,
-		CurrentTaskIds:    taskIDs,
+		CurrentExecutions: currentExecutions,
 		ExecutionMode:     r.executionMode(),
 		StartedAt:         formatProtoTime(r.startedAt),
 		GvisorEnabled:     gvisorEnabled,
@@ -140,22 +140,22 @@ func (r *Runner) publishRunnerHeartbeatRPC(status string) {
 	for _, command := range cmd.Msg.Commands {
 		switch command.Type {
 		case "cancel":
-			r.cancelTask(command.TaskId, command.Reason)
+			r.cancelTask(command.TaskId, command.ExecutionId, command.Reason)
 		case "drain":
 			r.startDrain()
 		}
 	}
 }
 
-func (r *Runner) cancelTask(taskID, reason string) {
+func (r *Runner) cancelTask(taskID, executionID, reason string) {
 	r.mu.Lock()
-	if _, seen := r.cancelledTasks[taskID]; seen {
+	if _, seen := r.cancelledTasks[executionID]; seen {
 		r.mu.Unlock()
 		return
 	}
-	session, ok := r.tasks[taskID]
+	session, ok := r.tasks[executionID]
 	if ok {
-		r.cancelledTasks[taskID] = struct{}{}
+		r.cancelledTasks[executionID] = struct{}{}
 	}
 	r.mu.Unlock()
 	if !ok {
@@ -164,9 +164,9 @@ func (r *Runner) cancelTask(taskID, reason string) {
 	if reason == "" {
 		reason = "cancelled by operator"
 	}
-	slog.Info("cancelling task", "taskID", taskID, "reason", reason)
+	slog.Info("cancelling task", "taskID", taskID, "executionID", executionID, "reason", reason)
 	session.Cancel()
-	r.publishStatus(taskID, "cancelled", reason, nil)
+	r.publishStatusForRequest(session.Request, "cancelled", reason, nil)
 }
 
 func (r *Runner) startDrain() {
@@ -206,8 +206,8 @@ func (r *Runner) waitDrain(deadline time.Duration) {
 			slog.Warn("drain deadline exceeded, forcing exit",
 				"runner_id", r.runnerID, "remaining_tasks", count)
 			r.mu.Lock()
-			for taskID, session := range r.tasks {
-				slog.Warn("cancelling remaining task", "runner_id", r.runnerID, "task_id", taskID)
+			for executionID, session := range r.tasks {
+				slog.Warn("cancelling remaining task", "runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID)
 				session.Cancel()
 			}
 			r.mu.Unlock()

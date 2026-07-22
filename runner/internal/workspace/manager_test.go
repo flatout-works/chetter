@@ -10,7 +10,7 @@ func TestCreateNewWorkspace(t *testing.T) {
 	root := t.TempDir()
 	mgr := NewManager(root)
 
-	dir, err := mgr.Create("task-1")
+	dir, err := mgr.Create("task-1", "exec-1")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestCreateRemovesStaleWorkspace(t *testing.T) {
 	mgr := NewManager(root)
 
 	// Create a stale workspace with a file inside.
-	oldDir := filepath.Join(root, "task-1", "workspace")
+	oldDir := filepath.Join(root, "task-1", "exec-1", "workspace")
 	if err := os.MkdirAll(oldDir, 0750); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestCreateRemovesStaleWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir, err := mgr.Create("task-1")
+	dir, err := mgr.Create("task-1", "exec-1")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -51,12 +51,12 @@ func TestDestroy(t *testing.T) {
 	root := t.TempDir()
 	mgr := NewManager(root)
 
-	_, err := mgr.Create("task-1")
+	_, err := mgr.Create("task-1", "exec-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := mgr.Destroy("task-1"); err != nil {
+	if err := mgr.Destroy("task-1", "exec-1"); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
 
@@ -97,11 +97,11 @@ func TestCreateDifferentTasks(t *testing.T) {
 	root := t.TempDir()
 	mgr := NewManager(root)
 
-	d1, err := mgr.Create("task-a")
+	d1, err := mgr.Create("task-a", "exec-a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	d2, err := mgr.Create("task-b")
+	d2, err := mgr.Create("task-b", "exec-b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,11 +111,41 @@ func TestCreateDifferentTasks(t *testing.T) {
 	}
 }
 
+func TestDestroyOnlyRemovesOneExecution(t *testing.T) {
+	root := t.TempDir()
+	mgr := NewManager(root)
+
+	first, err := mgr.Create("task-a", "exec-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := mgr.Create("task-a", "exec-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(first, "first.txt"), []byte("first"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(second, "second.txt"), []byte("second"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.Destroy("task-a", "exec-1"); err != nil {
+		t.Fatalf("Destroy first execution: %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("second execution removed with first: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(second, "second.txt")); err != nil {
+		t.Fatalf("second execution contents missing: %v", err)
+	}
+}
+
 func TestDestroyNonexistent(t *testing.T) {
 	mgr := NewManager(t.TempDir())
 
 	// Destroying a nonexistent task should not error.
-	err := mgr.Destroy("nonexistent")
+	err := mgr.Destroy("nonexistent", "exec-none")
 	if err != nil {
 		t.Fatalf("Destroy nonexistent: %v", err)
 	}
