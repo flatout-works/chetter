@@ -46,7 +46,7 @@ See [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) for the current model and remaining
 
 ## Triggers And Schedules
 
-Chetter uses a unified trigger system. Cron schedules are `trigger_type: cron`; PR review automations are `trigger_type: pr_review`.
+Chetter uses a unified trigger system. Supported trigger types are `cron` (scheduled), `pr_review` (PR automation), and `issue` (issue event responses).
 
 Cron triggers:
 
@@ -146,6 +146,14 @@ Admin/team tools:
 - `chetter_list_teams`
 - `chetter_delete_team`
 - `chetter_list_users`
+
+Managed Git identities control commit attribution for agent work. Identities store an author name, email, and credential provider reference (GitHub App credentials remain server-managed). Agent definition frontmatter can declare `identity: <name>` to select a specific identity; otherwise the team default or global default is resolved automatically.
+
+- `chetter_create_git_identity`
+- `chetter_list_git_identities`
+- `chetter_update_git_identity`
+- `chetter_delete_git_identity`
+- `chetter_set_git_identity_default`
 
 ## Configuration From Git
 
