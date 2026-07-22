@@ -24,7 +24,7 @@ Supported task inputs include:
 
 Task monitoring includes:
 
-- Status via `chetter_task_status` and `chetter_list_tasks`.
+- Status via `chetter_task_status` and `chetter_list_tasks` (with optional `status`, `search`, and `agent` filters).
 - Full event history via `chetter_task_events`.
 - Distilled progress via `chetter_task_progress`.
 - Latest activity via `chetter_task_latest_event`.
@@ -166,11 +166,7 @@ Implemented today:
 - Manual sync via `chetter_sync_definitions`.
 - Read access via `chetter_get_model_catalog`.
 
-Planned next:
-
-- Git-backed agents, skills, triggers, and task templates.
-- Definition read tools and proposal workflow.
-- Immutable definition hashes recorded on task/session runs.
+Git-backed agents, skills, triggers, task templates, and MCP endpoints are supported under `global/`, `groups/<team-name>/`, and `repos/<owner>/<repo>/` scopes. Definition read tools (`chetter_list_definitions`, `chetter_get_definition`) and proposal workflow (`chetter_create_definition_proposal`) are available. Validation errors fail the sync before new definitions are materialized.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the definitions repo, model catalog, and configuration-as-code architecture.
 
@@ -183,7 +179,7 @@ Chetter has two listen addresses:
 
 The Compose deployment maps these to host ports `18088` and `18090` respectively.
 
-The web UI includes task views, trigger run history, and an admin artifact browser.
+The web UI includes task views, an agent catalog with definition browsing, trigger run history, and an admin artifact browser.
 
 ## Arcane Vulnerability Scanning
 

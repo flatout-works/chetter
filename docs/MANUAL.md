@@ -142,6 +142,7 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `CHETTER_RUNNER_AUTH_TOKEN` | Runner config token env. Compose fills this from `CHETTER_RUNNER_RPC_TOKEN` for current runner fallback compatibility. |
 | `CHETTER_MCP_AUTH_TOKEN` | MCP token injected into agents for Chetter MCP tools. |
 | `CHETTER_MCP_URL` | MCP URL injected into agents. |
+| `CHETTER_MCP_RELAY_LISTEN_ADDR` | Runner-local MCP relay listen address (default `:18081`). The relay forwards to `CHETTER_MCP_URL`, making the Chetter MCP reachable by runner IP for gVisor task containers. |
 | `USE_GVISOR` | Enables Docker `runsc` execution and checkpoint support when `true`. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
@@ -233,6 +234,7 @@ chetter_mcp:
 | `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |
 | `chetter_mcp.url` | empty | MCP URL injected into task environments when configured. |
 | `chetter_mcp.auth_token` | `CHETTER_MCP_AUTH_TOKEN` env | MCP token injected into task environments when configured. |
+| `chetter_mcp.relay_listen_addr` | `:18081` | Runner-local MCP relay listen address. The relay forwards requests to the configured Chetter MCP service, avoiding Docker service-name DNS inside gVisor task containers. |
 
 ### Definitions Repo YAML
 
@@ -445,7 +447,7 @@ For a resumable session:
 |---|---|
 | `chetter_submit_task` | Submit a one-off development task. |
 | `chetter_task_status` | Get task status and result details. |
-| `chetter_list_tasks` | List recent tasks with optional status filter. |
+| `chetter_list_tasks` | List recent tasks with optional status, search, and agent filters. |
 | `chetter_cancel_task` | Cancel a pending or running task. |
 | `chetter_clear_queue` | Admin-only cancellation of all pending tasks. |
 | `chetter_task_events` | Full event history for a task. |
@@ -885,6 +887,10 @@ gVisor adds per-syscall latency because every call is intercepted by the Sentry.
 ### Network Isolation
 
 Regardless of the container runtime, Chetter runners provide outbound network filtering via a transparent HTTP proxy and DNS proxy. The proxy enforces an allowlist of domains and blocks everything else.
+
+### Chetter MCP Relay
+
+The runner starts a local MCP relay when `CHETTER_MCP_URL` is configured. The relay is an HTTP reverse proxy that forwards `/mcp` requests from the runner's host network (at `relay_listen_addr`, default `:18081`) to the Chetter MCP service. Task containers reach the relay by runner IP rather than Docker service name, which avoids service-discovery DNS issues inside gVisor-isolated containers. The relay injects the `CHETTER_MCP_AUTH_TOKEN` bearer token on each forwarded request, so task containers do not need their own client credentials for the Chetter MCP tools.
 
 ## Related Docs
 
