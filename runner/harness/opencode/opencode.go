@@ -10,10 +10,11 @@ import (
 )
 
 type OpenCode struct {
-	mu     sync.Mutex
-	sessID string
-	idleCh <-chan struct{}
-	onIdle func()
+	mu                   sync.Mutex
+	sessID               string
+	idleCh               <-chan struct{}
+	onIdle               func()
+	chetterMCPConfigJSON string
 }
 
 func New() *OpenCode {
@@ -23,7 +24,14 @@ func New() *OpenCode {
 func (oc *OpenCode) Name() string { return "opencode" }
 
 func (oc *OpenCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, req task.TaskRequest, isLocal bool) error {
-	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, true, req, isLocal)
+	if err := GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, true, req, isLocal); err != nil {
+		return err
+	}
+	// Project configuration is loaded after OPENCODE_CONFIG. Re-apply the
+	// runner-owned Chetter entry through the final config source so a cloned
+	// repository cannot redirect the agent to another MCP server.
+	oc.chetterMCPConfigJSON = chetterMCPConfigContent(chetterMCPURL, chetterMCPToken)
+	return nil
 }
 
 func (oc *OpenCode) ConfigFilePath(wsDir string) string {
@@ -35,10 +43,14 @@ func (oc *OpenCode) ConfigFilePathGlobal(wsDir string) string {
 }
 
 func (oc *OpenCode) Env(wsDir string, secret string, _ task.TaskRequest) map[string]string {
-	return map[string]string{
+	env := map[string]string{
 		"OPENCODE_CONFIG":          wsDir + "/.opencode.json",
 		"OPENCODE_SERVER_PASSWORD": secret,
 	}
+	if oc.chetterMCPConfigJSON != "" {
+		env["OPENCODE_CONFIG_CONTENT"] = oc.chetterMCPConfigJSON
+	}
+	return env
 }
 
 func (oc *OpenCode) ServeCommand(port int) []string {

@@ -178,6 +178,30 @@ func GenerateConfigWithEnv(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
 }
 
+func chetterMCPConfigContent(url, token string) string {
+	if strings.TrimSpace(url) == "" {
+		return ""
+	}
+	server := map[string]any{
+		"type":    "remote",
+		"url":     url,
+		"enabled": true,
+		"oauth":   false,
+	}
+	if token != "" {
+		server["headers"] = map[string]string{
+			"Authorization": "Bearer " + token,
+		}
+	}
+	data, err := json.Marshal(map[string]any{
+		"mcp": map[string]any{"chetter": server},
+	})
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
 func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, includeRunnerMCP bool, req task.TaskRequest, isLocal bool) error {
 	wsConfigPath := wsDir + "/.opencode.json"
 	data, err := os.ReadFile(wsConfigPath)
