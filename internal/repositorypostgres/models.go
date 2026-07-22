@@ -50,6 +50,8 @@ type ChetterAgentSession struct {
 	PauseReason      sql.NullString `json:"pause_reason"`
 	Error            sql.NullString `json:"error"`
 	SearchText       sql.NullString `json:"search_text"`
+	TaskID           string         `json:"task_id"`
+	Sequence         int32          `json:"sequence"`
 }
 
 type ChetterAgentSessionCheckpoint struct {
@@ -146,6 +148,7 @@ type ChetterSessionRun struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 	StartedAt        sql.NullTime   `json:"started_at"`
 	EndedAt          sql.NullTime   `json:"ended_at"`
+	Sequence         int32          `json:"sequence"`
 }
 
 type ChetterTask struct {

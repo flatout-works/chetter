@@ -135,6 +135,10 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
 			resumeHarnessSessionID := ""
+			run, runErr := s.db.GetSessionRunByTaskID(ctx, task.ID)
+			if runErr != nil && !errors.Is(runErr, sql.ErrNoRows) {
+				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task prompt: %w", runErr))
+			}
 			if task.RequiredRunnerID.Valid {
 				sess, sessErr := s.db.GetAgentSessionByTaskID(ctx, task.ID)
 				if sessErr == nil {
@@ -156,6 +160,9 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
+			if runErr == nil {
+				protoTask.Prompt = run.Prompt
+			}
 			mcpEndpointNames := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if recoverFrom, ok := protoTask.Env["__recover_from"]; ok && recoverFrom != "" {

@@ -7,6 +7,27 @@ VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?
 SELECT * FROM chetter_tasks
 WHERE id = ?;
 
+-- name: RequeueTaskForPrompt :execrows
+UPDATE chetter_tasks
+SET status = 'pending',
+    runner_id = NULL,
+    execution_id = '',
+    required_runner_id = ?,
+    checkpoint_after_success = true,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    attempt = 0,
+    timeout_sec = ?,
+    summary = NULL,
+    error = NULL,
+    error_category = NULL,
+    started_at = NULL,
+    ended_at = NULL,
+    session_export = NULL,
+    updated_at = ?
+WHERE id = ?
+  AND status IN ('done', 'error', 'cancelled');
+
 -- name: ListTasksByStatus :many
 SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))

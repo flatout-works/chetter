@@ -606,6 +606,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		sessionSearchText := strings.Join(strings.Fields(sessionID+" "+in.Agent+" "+in.ModelID+" "+in.GitURL), " ")
 		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
 			ID:          sessionID,
+			TaskID:      taskID,
+			Sequence:    1,
 			TeamID:      nullString(teamID),
 			Status:      "running",
 			ResumeMode:  resumeMode,
@@ -628,6 +630,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			ID:               runID,
 			AgentSessionID:   sessionID,
 			TaskID:           taskID,
+			Sequence:         1,
 			Status:           "pending",
 			Prompt:           in.Prompt,
 			RequiredRunnerID: sql.NullString{},
@@ -823,69 +826,43 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		return ResumeAgentSessionOutput{}, fmt.Errorf("pinned runner %s is not alive", session.PinnedRunnerID.String)
 	}
 
-	taskID, err := randomID("task")
-	if err != nil {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("generate task id: %w", err)
+	if session.TaskID == "" {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no task")
 	}
+	taskID := session.TaskID
 	runID, err := randomID("run")
 	if err != nil {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("generate session run id: %w", err)
 	}
 
 	now := time.Now().UTC()
-	teamID := session.TeamID.String
-	gitIdentity, err := s.defaultGitIdentity(ctx, teamID)
-	if err != nil {
-		return ResumeAgentSessionOutput{}, err
-	}
-	if session.Agent.Valid && strings.TrimSpace(session.Agent.String) != "" {
-		gitIdentity, err = s.resolveTaskGitIdentity(ctx, session.Agent.String, teamID, session.GitUrl.String)
-		if err != nil {
-			return ResumeAgentSessionOutput{}, err
-		}
-	}
 	if timeoutSec == 0 {
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
 
-	skills := mustMarshalJSON([]string{})
-	mcpEndpoints := mustMarshalJSON([]string{})
-	env := mustMarshalJSON(map[string]string{})
-
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		if err := q.InsertTask(ctx, repository.InsertTaskParams{
-			ID:                     taskID,
-			TeamID:                 nullString(teamID),
-			Prompt:                 prompt,
-			GitUrl:                 session.GitUrl,
-			GitRef:                 session.GitRef,
-			AgentImage:             session.AgentImage,
-			Agent:                  session.Agent,
-			ProviderID:             session.ProviderID,
-			ModelID:                session.ModelID,
-			VariantID:              session.VariantID,
-			CommitAuthorName:       sql.NullString{String: gitIdentity.GitAuthorName, Valid: true},
-			CommitAuthorEmail:      sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true},
-			GitIdentityID:          nullString(gitIdentity.ID),
-			TriggerName:            sql.NullString{},
-			TriggerType:            sql.NullString{},
-			SubmissionSource:       "session_resume",
-			CheckpointAfterSuccess: true,
-			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
-			Skills:                 skills,
-			McpEndpoints:           nullableJSON(mcpEndpoints),
-			Env:                    env,
-			TimeoutSec:             int32(timeoutSec),
-			CreatedAt:              now,
-			UpdatedAt:              now,
-		}); err != nil {
-			return fmt.Errorf("insert task: %w", err)
+		sequence, err := q.GetNextSessionRunSequence(ctx, sessionID)
+		if err != nil {
+			return fmt.Errorf("get next prompt sequence: %w", err)
+		}
+		rows, err := q.RequeueTaskForPrompt(ctx, repository.RequeueTaskForPromptParams{
+			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
+			TimeoutSec:       int32(timeoutSec),
+			UpdatedAt:        now,
+			ID:               taskID,
+		})
+		if err != nil {
+			return fmt.Errorf("requeue task: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("task %s is not in a terminal state", taskID)
 		}
 		if err := q.InsertSessionRun(ctx, repository.InsertSessionRunParams{
 			ID:               runID,
 			AgentSessionID:   sessionID,
 			TaskID:           taskID,
+			Sequence:         sequence,
 			Status:           "pending",
 			Prompt:           prompt,
 			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},

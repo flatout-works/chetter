@@ -532,6 +532,8 @@ type ListAgentSessionsInput struct {
 
 type AgentSessionRecord struct {
 	ID               string     `json:"id"`
+	TaskID           string     `json:"task_id"`
+	Sequence         int32      `json:"sequence"`
 	TeamID           string     `json:"team_id,omitempty"`
 	Status           string     `json:"status"`
 	ResumeMode       string     `json:"resume_mode"`
@@ -558,6 +560,7 @@ type SessionRunRecord struct {
 	ID               string     `json:"id"`
 	AgentSessionID   string     `json:"agent_session_id"`
 	TaskID           string     `json:"task_id"`
+	Sequence         int32      `json:"sequence"`
 	Status           string     `json:"status"`
 	RequiredRunnerID string     `json:"required_runner_id,omitempty"`
 	Summary          string     `json:"summary,omitempty"`
@@ -758,6 +761,8 @@ func clampListLimit(limit int) int32 {
 func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionRecord {
 	return AgentSessionRecord{
 		ID:               session.ID,
+		TaskID:           session.TaskID,
+		Sequence:         session.Sequence,
 		TeamID:           session.TeamID.String,
 		Status:           session.Status,
 		ResumeMode:       session.ResumeMode,
@@ -785,6 +790,7 @@ func sessionRunRecord(run repository.ChetterSessionRun) SessionRunRecord {
 		ID:               run.ID,
 		AgentSessionID:   run.AgentSessionID,
 		TaskID:           run.TaskID,
+		Sequence:         run.Sequence,
 		Status:           run.Status,
 		RequiredRunnerID: run.RequiredRunnerID.String,
 		Summary:          run.Summary.String,

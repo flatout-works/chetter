@@ -1,7 +1,7 @@
 -- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, search_text, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, search_text, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetAgentSessionByID :one
 SELECT * FROM chetter_agent_sessions
@@ -43,22 +43,14 @@ SET status = ?,
     harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
     error = ?,
     updated_at = ?
-WHERE id = (
-    SELECT agent_session_id
-    FROM chetter_session_runs
-    WHERE task_id = ?
-    LIMIT 1
-)
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = ? ORDER BY agent.sequence DESC LIMIT 1)
 AND status IN ('running', 'resuming');
 
 -- name: GetAgentSessionByTaskID :one
 SELECT * FROM chetter_agent_sessions
-WHERE id = (
-    SELECT agent_session_id
-    FROM chetter_session_runs
-    WHERE task_id = ?
-    LIMIT 1
-);
+WHERE task_id = ?
+ORDER BY sequence DESC
+LIMIT 1;
 
 -- name: PauseAgentSessionByTaskID :execrows
 UPDATE chetter_agent_sessions
@@ -70,12 +62,7 @@ SET status = ?,
     harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
     paused_at = ?,
     updated_at = ?
-WHERE id = (
-    SELECT agent_session_id
-    FROM chetter_session_runs
-    WHERE task_id = ?
-    LIMIT 1
-)
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = ? ORDER BY agent.sequence DESC LIMIT 1)
 AND status IN ('running', 'resuming');
 
 -- name: MarkAgentSessionResuming :execrows
@@ -111,24 +98,36 @@ WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
 
 -- name: InsertSessionRun :exec
 INSERT INTO chetter_session_runs
-    (id, agent_session_id, task_id, status, prompt, required_runner_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    (id, agent_session_id, task_id, sequence, status, prompt, required_runner_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetSessionRunByTaskID :one
 SELECT * FROM chetter_session_runs
-WHERE task_id = ?;
+WHERE task_id = ?
+ORDER BY sequence DESC
+LIMIT 1;
 
 -- name: ListSessionRunsBySession :many
 SELECT * FROM chetter_session_runs
 WHERE agent_session_id = ?
-ORDER BY created_at ASC;
+ORDER BY sequence ASC, created_at ASC;
+
+-- name: GetNextAgentSessionSequence :one
+SELECT COALESCE(MAX(sequence), 0) + 1
+FROM chetter_agent_sessions
+WHERE task_id = ?;
+
+-- name: GetNextSessionRunSequence :one
+SELECT COALESCE(MAX(sequence), 0) + 1
+FROM chetter_session_runs
+WHERE agent_session_id = ?;
 
 -- name: MarkSessionRunRunningByTask :execrows
 UPDATE chetter_session_runs
 SET status = 'running',
     started_at = COALESCE(started_at, ?),
     updated_at = ?
-WHERE task_id = ?
+WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1)
   AND status IN ('pending', 'claimed');
 
 -- name: MarkSessionRunTerminalByTask :execrows
@@ -140,7 +139,7 @@ SET status = ?,
     started_at = COALESCE(started_at, ?),
     ended_at = COALESCE(?, ended_at),
     updated_at = ?
-WHERE task_id = ?;
+WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1);
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t

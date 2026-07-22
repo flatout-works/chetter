@@ -439,6 +439,12 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	if session.ResumeMode != "harness_session" {
 		t.Fatalf("resume_mode = %s, want harness_session", session.ResumeMode)
 	}
+	if session.TaskID != rec.ID || session.Sequence != 1 {
+		t.Fatalf("session ownership = %s/%d, want %s/1", session.TaskID, session.Sequence, rec.ID)
+	}
+	if run.Sequence != 1 {
+		t.Fatalf("initial prompt sequence = %d, want 1", run.Sequence)
+	}
 	if session.PauseReason.String != "waiting_for_pr_feedback" {
 		t.Fatalf("pause_reason = %s, want waiting_for_pr_feedback", session.PauseReason.String)
 	}
@@ -585,8 +591,11 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume agent session: %v", err)
 	}
-	if resumeOut.Task.ID == "" {
-		t.Fatal("resume task ID is empty")
+	if resumeOut.Task.ID != rec.ID {
+		t.Fatalf("resume task ID = %s, want stable task ID %s", resumeOut.Task.ID, rec.ID)
+	}
+	if resumeOut.Run.Sequence != 2 {
+		t.Fatalf("resume prompt sequence = %d, want 2", resumeOut.Run.Sequence)
 	}
 	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
 	if err != nil {
@@ -615,6 +624,9 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	}
 	if resumeClaim.Msg.Task == nil || resumeClaim.Msg.Task.TaskId != resumeOut.Task.ID {
 		t.Fatalf("wrong resume task claimed: %+v", resumeClaim.Msg.Task)
+	}
+	if resumeClaim.Msg.Task.Prompt != "address feedback" {
+		t.Fatalf("resume prompt = %q, want address feedback", resumeClaim.Msg.Task.Prompt)
 	}
 	if resumeClaim.Msg.Task.ResumeWorkspacePath != "/var/lib/runner/"+rec.ID+"/workspace" {
 		t.Fatalf("resume workspace_path = %q, want /var/lib/runner/%s/workspace",

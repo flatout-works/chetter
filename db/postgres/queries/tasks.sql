@@ -6,6 +6,27 @@ VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL,
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks WHERE id = $1;
 
+-- name: RequeueTaskForPrompt :execrows
+UPDATE chetter_tasks
+SET status = 'pending',
+    runner_id = NULL,
+    execution_id = '',
+    required_runner_id = $1,
+    checkpoint_after_success = true,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    attempt = 0,
+    timeout_sec = $2,
+    summary = NULL,
+    error = NULL,
+    error_category = NULL,
+    started_at = NULL,
+    ended_at = NULL,
+    session_export = NULL,
+    updated_at = $3
+WHERE id = $4
+  AND status IN ('done', 'error', 'cancelled');
+
 -- name: ListTasksByStatus :many
 SELECT * FROM chetter_tasks
 WHERE (sqlc.arg(status_filter) = '' OR status = sqlc.arg(status_filter))

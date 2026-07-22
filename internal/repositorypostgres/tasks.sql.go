@@ -839,6 +839,48 @@ func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) 
 	return result.RowsAffected()
 }
 
+const requeueTaskForPrompt = `-- name: RequeueTaskForPrompt :execrows
+UPDATE chetter_tasks
+SET status = 'pending',
+    runner_id = NULL,
+    execution_id = '',
+    required_runner_id = $1,
+    checkpoint_after_success = true,
+    claimed_at = NULL,
+    lease_expires_at = NULL,
+    attempt = 0,
+    timeout_sec = $2,
+    summary = NULL,
+    error = NULL,
+    error_category = NULL,
+    started_at = NULL,
+    ended_at = NULL,
+    session_export = NULL,
+    updated_at = $3
+WHERE id = $4
+  AND status IN ('done', 'error', 'cancelled')
+`
+
+type RequeueTaskForPromptParams struct {
+	RequiredRunnerID sql.NullString `json:"required_runner_id"`
+	TimeoutSec       int32          `json:"timeout_sec"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	ID               string         `json:"id"`
+}
+
+func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPromptParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, requeueTaskForPrompt,
+		arg.RequiredRunnerID,
+		arg.TimeoutSec,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const searchTasks = `-- name: SearchTasks :many
 SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints, execution_id FROM chetter_tasks
 WHERE ($1 = '' OR team_id = $1)
