@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-22
+
+### Added
+
+- MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from `mcp-endpoints/*.yaml` in the definitions repo, with agent frontmatter declarations and JSON schema validation.
+- MCP endpoints wired through service, RPC, and web API: endpoints loaded at submit and claim time with scope filtering, merged with agent-declared endpoints from frontmatter, and delivered to runners in the task proto.
+- Runner MCP endpoint support: bearer-token environments validated and protected from task overrides, injected into containers without embedding values in arguments. Native MCP configuration generated for OpenCode, Claude Code, CodeWhale, Pi, and Codex harnesses.
+- Chetter MCP tools allowlist in gVisor task containers: 32 read/management Chetter MCP tools explicitly permitted for agents when the Chetter MCP server is injected; admin-only tools excluded to limit blast radius.
+- `CompletionAwareHarness` interface for the opencode harness, detecting session completion via SSE `session.status` idle events and breaking the single-point-of-failure in poll-only completion detection.
+- `UpdateTriggerRunStatusByTask` query that updates trigger run status on task status transitions and cancellations, so the Recent Runs list reflects actual task lifecycle.
+
+### Fixed
+
+- gVisor task containers can now reach the Chetter MCP server: `chetter-mcp` removed from `NO_PROXY` so traffic routes through the runner HTTP proxy which can resolve Docker service names; proxy allowlist port stripping fixed by using `url.Hostname()`.
+- Compose files (`compose.yaml`, `deploy/compose.yaml`) had `CHETTER_MCP_URL` missing the `/mcp` path prefix, causing MCP connection failures from runners.
+- PR review triggers: head branch no longer overridden by trigger `git_url`/`git_ref` — PR reviews always check out the PR's actual head branch.
+- Custom review prompts now receive the PR context block (repo, PR number, branch context, review procedure), ensuring the agent knows which PR to review regardless of what custom prompt the trigger configured.
+- Webhook `handlePullRequest` author gate skips the Chetter App's own bot login, preventing noisy `webhook_author_gate_denied` entries for the bot's own PRs.
+- Trigger run inserts: `INSERT IGNORE` replaced with `ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE` so real insert errors propagate instead of being silently swallowed.
+- Nullable MCP endpoint task data: generated as pointers so legacy and directly inserted tasks with NULL endpoint data remain readable; nullable JSON normalized at service boundaries.
+- Team-scoped MCP endpoint definitions now correctly override global definitions with the same name (previously caused a "multiple active" error).
+
+### Documentation
+
+- MCP endpoint definitions and trust boundaries documented in `docs/HARNESSES.md`, `docs/MANUAL.md`, `docs/FEATURES.md`, with a config-repo example and schema reference.
+- Completion detection per harness documented in `docs/HARNESSES.md`.
+- `AGENTS.md` expanded with dual-dialect SQL workflow guide: table comparing MySQL vs PostgreSQL placeholder syntax, query checklist, and common mistakes.
+- Website (`website/index.html`, `website/technical.html`) updated with PostgreSQL support and managed Git identities documentation.
+
 ## 2026-07-21
 
 ### Added
