@@ -19,9 +19,11 @@ import (
 )
 
 const (
-	serveReadyTimeout = 15 * time.Second
-	servePollInterval = 500 * time.Millisecond
-	serveHTTPTimeout  = 2 * time.Second
+	serveReadyTimeout       = 15 * time.Second
+	servePollInterval       = 500 * time.Millisecond
+	serveHTTPTimeout        = 2 * time.Second
+	eventReconnectAttempts  = 4
+	eventReconnectBaseDelay = 250 * time.Millisecond
 )
 
 func generatePassword() string {
@@ -124,6 +126,13 @@ func createSession(ctx context.Context, baseURL, secret string) (string, error) 
 }
 
 func (cw *CodeWhale) sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string, timeout time.Duration) (string, error) {
+	promptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	publishFn, tokenFn, err := cw.waitForCallbacks(promptCtx)
+	if err != nil {
+		return "", fmt.Errorf("wait for CodeWhale event callbacks: %w", err)
+	}
+
 	prompt := req.Prompt
 	if len(req.Skills) > 0 {
 		prompt = fmt.Sprintf("You have access to the following skills: %s. Use them when relevant.\n\n%s",
@@ -141,7 +150,7 @@ func (cw *CodeWhale) sendPrompt(ctx context.Context, baseURL, sessionID, secret 
 	body, _ := json.Marshal(payload)
 	url := baseURL + "/v1/threads/" + sessionID + "/turns"
 	httpClient := &http.Client{Timeout: timeout}
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(promptCtx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
@@ -174,10 +183,7 @@ func (cw *CodeWhale) sendPrompt(ctx context.Context, baseURL, sessionID, secret 
 	}
 	cw.setTurnID(sessionID, result.Turn.ID)
 
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	publishFn, tokenFn := cw.callbacks()
-	summary, err := waitForTurnCompletion(waitCtx, baseURL, sessionID, result.Turn.ID, secret, publishFn, tokenFn)
+	summary, err := waitForTurnCompletion(promptCtx, baseURL, sessionID, result.Turn.ID, secret, publishFn, tokenFn)
 	cw.setSessionExport(sessionID, renderMarkdownExport(sessionID, result.Turn.ID, prompt, summary, err))
 	return summary, err
 }
@@ -229,28 +235,9 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 }
 
 func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/threads/"+sessionID+"/events?since_seq=0", nil)
-	if err != nil {
-		return "", fmt.Errorf("create event request: %w", err)
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", bearerAuthHeader(secret))
-	}
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("event stream: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return "", fmt.Errorf("GET /events: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	br := newSSEReader(resp.Body)
 	var summary strings.Builder
 	var pending []string
+	var lastSeq uint64
 	lastFlush := time.Now()
 
 	flush := func(force bool) {
@@ -269,59 +256,111 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 		lastFlush = time.Now()
 	}
 
-	for {
-		ev, err := br.Read()
+	var streamErr error
+	for attempt := 0; attempt <= eventReconnectAttempts; attempt++ {
+		if attempt > 0 {
+			delay := eventReconnectBaseDelay * time.Duration(1<<(attempt-1))
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return summary.String(), ctx.Err()
+			case <-timer.C:
+			}
+		}
+
+		eventsURL := baseURL + "/v1/threads/" + sessionID + "/events?since_seq=" + strconv.FormatUint(lastSeq, 10)
+		req, err := http.NewRequestWithContext(ctx, "GET", eventsURL, nil)
+		if err != nil {
+			return summary.String(), fmt.Errorf("create event request: %w", err)
+		}
+		if secret != "" {
+			req.Header.Set("Authorization", bearerAuthHeader(secret))
+		}
+		req.Header.Set("Accept", "text/event-stream")
+
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
 				return summary.String(), ctx.Err()
 			}
-			return summary.String(), err
-		}
-		if ev == nil {
+			streamErr = err
 			continue
 		}
-		envelope, ok := decodeCodewhaleEnvelope(ev)
-		if !ok || envelope.TurnID != turnID {
-			continue
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+			resp.Body.Close()
+			return summary.String(), fmt.Errorf("GET /events: status %d: %s", resp.StatusCode, string(body))
 		}
-		if ev.Type == "turn.completed" {
-			flush(true)
-			if tokenFn != nil {
-				usage := extractCodewhaleTokenUsage(envelope)
-				tokenFn(*usage)
-			}
-			status := strings.ToLower(envelope.Payload.Turn.Status)
-			switch status {
-			case "", "completed":
-				return summary.String(), nil
-			case "failed", "interrupted", "canceled", "cancelled":
-				if envelope.Payload.Turn.Error != "" {
-					return summary.String(), fmt.Errorf("turn %s: %s", status, envelope.Payload.Turn.Error)
+
+		br := newSSEReader(resp.Body)
+		for {
+			ev, err := br.Read()
+			if err != nil {
+				resp.Body.Close()
+				if ctx.Err() != nil {
+					return summary.String(), ctx.Err()
 				}
-				return summary.String(), fmt.Errorf("turn %s", status)
-			default:
-				return summary.String(), nil
+				streamErr = err
+				break
 			}
-		}
-		detail := summarizeCodewhaleEnvelope(ev.Type, envelope)
-		if detail == "" {
-			continue
-		}
-		if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
-			summary.WriteString(detail)
-		} else {
-			switch ev.Type {
-			case "approval.required", "item.failed":
+			if ev == nil {
+				continue
+			}
+			envelope, ok := decodeCodewhaleEnvelope(ev)
+			if !ok {
+				continue
+			}
+			if envelope.Seq > 0 {
+				if envelope.Seq <= lastSeq {
+					continue
+				}
+				lastSeq = envelope.Seq
+			}
+			if envelope.TurnID != turnID {
+				continue
+			}
+			if ev.Type == "turn.completed" {
+				resp.Body.Close()
 				flush(true)
-				if publishFn != nil {
-					publishFn("running", "codewhale: "+detail)
+				if tokenFn != nil {
+					usage := extractCodewhaleTokenUsage(envelope)
+					tokenFn(*usage)
 				}
-			default:
-				pending = append(pending, "codewhale: "+detail)
+				status := strings.ToLower(envelope.Payload.Turn.Status)
+				switch status {
+				case "completed":
+					return summary.String(), nil
+				case "failed", "interrupted", "canceled", "cancelled":
+					if envelope.Payload.Turn.Error != "" {
+						return summary.String(), fmt.Errorf("turn %s: %s", status, envelope.Payload.Turn.Error)
+					}
+					return summary.String(), fmt.Errorf("turn %s", status)
+				default:
+					return summary.String(), fmt.Errorf("turn completed with unknown status %q", envelope.Payload.Turn.Status)
+				}
 			}
+			detail := summarizeCodewhaleEnvelope(ev.Type, envelope)
+			if detail == "" {
+				continue
+			}
+			if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
+				summary.WriteString(detail)
+			} else {
+				switch ev.Type {
+				case "approval.required", "item.failed":
+					flush(true)
+					if publishFn != nil {
+						publishFn("running", "codewhale: "+detail)
+					}
+				default:
+					pending = append(pending, "codewhale: "+detail)
+				}
+			}
+			flush(false)
 		}
-		flush(false)
 	}
+	return summary.String(), fmt.Errorf("event stream ended before turn %s completed after %d reconnect attempts: %w", turnID, eventReconnectAttempts, streamErr)
 }
 
 type codewhaleEnvelope struct {

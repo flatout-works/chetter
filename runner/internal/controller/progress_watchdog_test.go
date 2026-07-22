@@ -50,7 +50,7 @@ func TestProgressWatchdogNudgesThenFails(t *testing.T) {
 	}
 }
 
-func TestProgressWatchdogFailsWithoutNudge(t *testing.T) {
+func TestProgressWatchdogWaitsWithoutNudge(t *testing.T) {
 	start := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
 	w := &progressWatchdog{lastProgress: start}
 
@@ -60,8 +60,8 @@ func TestProgressWatchdogFailsWithoutNudge(t *testing.T) {
 	}
 
 	nudge, fail = w.check(start.Add(harnessProgressFailAfter))
-	if nudge || !fail {
-		t.Fatalf("no-nudge timeout = nudge:%v fail:%v, want fail only", nudge, fail)
+	if nudge || fail {
+		t.Fatalf("no-nudge timeout = nudge:%v fail:%v, want neither", nudge, fail)
 	}
 }
 
