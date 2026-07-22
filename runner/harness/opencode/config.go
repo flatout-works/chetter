@@ -215,6 +215,9 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 			"type":    "remote",
 			"url":     chetterMCPURL,
 			"enabled": true,
+			// The Chetter bearer token is injected below; do not start an
+			// interactive OAuth flow for a non-OAuth server.
+			"oauth": false,
 		}
 		if chetterMCPToken != "" {
 			dfm["headers"] = map[string]string{
