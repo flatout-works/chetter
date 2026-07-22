@@ -37,7 +37,7 @@
           <p>This split keeps the control plane understandable and lets you scale execution by adding runner containers or Kubernetes workloads.</p>
         </div>
         <div class="map">
-          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, managed Git identities, model catalog, definitions sync, audit log, and embedded SvelteKit UI.</p></article>
+          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, managed Git identities, model catalog, definitions sync, MCP endpoint resolution, audit log, and embedded SvelteKit UI.</p></article>
           <article class="card"><small>Database</small><h3>TiDB, MySQL &amp; PostgreSQL</h3><p>Stores tasks, leases, events, triggers, sessions, checkpoints, runners, teams, API tokens, git identities, definitions, audit events, artifacts, and searchable text.</p></article>
           <article class="card"><small>Runner</small><h3>Harness controller</h3><p>Claims work, prepares a workspace, starts the chosen harness, supervises timeouts, streams events, and cleans up containers and workspaces.</p></article>
           <article class="card"><small>Agent image</small><h3>Project runtime</h3><p>Language/tooling images inherit from the agent base and run OpenCode, Claude Code, Codex, Pi, or CodeWhale against the mounted workspace.</p></article>
@@ -72,6 +72,7 @@
         <article class="card detail-card"><span>Definitions</span><h3>Git-backed configuration</h3><p>Agent markdown, skills, triggers, task templates, and model catalogs can sync from Git every five minutes. Definitions are materialized and validated before use.</p></article>
         <article class="card detail-card"><span>Model catalog</span><h3>Provider details stay data-driven</h3><p>The catalog resolves provider id, model id, base URL, API key env var, provider kind (<code>openai_compatible</code>, <code>native</code>, <code>aws_bedrock</code>), and per-harness API transport before the task reaches a runner. One logical provider — a LiteLLM router, for example — can map to different wire protocols per harness (OpenAI completions, Anthropic messages, or Responses API) with no code changes.</p></article>
         <article class="card detail-card"><span>Cost &amp; Audit</span><h3>Full audit trail with cost tracking</h3><p>Every server action is logged with event type, source, target, repo, token identity, and searchable detail. Aggregate token usage and cost summaries group by team, trigger, or repo across configurable time windows. The web UI filters, toggles, and searches the trail in real time.</p></article>
+        <article class="card detail-card"><span>MCP Endpoints</span><h3>External tool integration</h3><p>Agent definitions reference named MCP endpoint definitions synced from the config repo. At claim time the server resolves URLs, headers, and bearer-token credentials, then delivers endpoint tokens to the runner. Each harness — OpenCode, Claude Code, CodeWhale, Pi, and Codex — receives native MCP configuration. Tokens are validated and protected from task overrides, keeping secrets out of task payloads. gVisor DNS is routed through the runner so endpoint hostnames resolve inside sandboxed containers.</p></article>
       </section>
 
       <section class="section">
@@ -93,6 +94,9 @@
   "trigger_type": "cron",
   "agent_definition": "---\npermission:\n  edit: allow\n---\n...",
   "skill_definitions": { "skill-name": "tar.gz bytes" },
+  "mcp_endpoints": [
+    { "name": "linear", "url": "https://mcp.linear.app/mcp", "bearer_token_env": "LINEAR_MCP_TOKEN" }
+  ],
   "git_author_name": "Chetter Agent",
   "git_author_email": "agent@chetter.dev",
   "timeout_seconds": 7200,
