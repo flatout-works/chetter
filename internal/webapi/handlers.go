@@ -113,12 +113,14 @@ func protoSession(s service.AgentSessionRecord) *apiv1.AgentSession {
 		ExpiresAt:        optTimeStr(s.ExpiresAt),
 		PauseReason:      s.PauseReason,
 		Error:            s.Error,
-		RunCount:         s.RunCount,
+		PromptCount:      s.PromptCount,
+		TaskId:           s.TaskID,
+		Sequence:         s.Sequence,
 	}
 }
 
-func protoRun(r service.SessionRunRecord) *apiv1.SessionRun {
-	return &apiv1.SessionRun{
+func protoPrompt(r service.UserPromptRecord) *apiv1.UserPrompt {
+	return &apiv1.UserPrompt{
 		Id:               r.ID,
 		AgentSessionId:   r.AgentSessionID,
 		TaskId:           r.TaskID,
@@ -127,6 +129,7 @@ func protoRun(r service.SessionRunRecord) *apiv1.SessionRun {
 		Summary:          r.Summary,
 		Error:            r.Error,
 		Prompt:           r.Prompt,
+		Sequence:         r.Sequence,
 		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        r.UpdatedAt.Format(time.RFC3339),
 		StartedAt:        optTimeStr(r.StartedAt),
@@ -431,17 +434,17 @@ func (h *sessionHandler) ListSessions(ctx context.Context, req *connect.Request[
 }
 
 func (h *sessionHandler) GetSession(ctx context.Context, req *connect.Request[apiv1.GetSessionRequest]) (*connect.Response[apiv1.GetSessionResponse], error) {
-	session, runs, err := h.svc.GetAgentSession(ctx, req.Msg.SessionId)
+	session, prompts, err := h.svc.GetAgentSession(ctx, req.Msg.SessionId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	protoRuns := make([]*apiv1.SessionRun, len(runs))
-	for i, r := range runs {
-		protoRuns[i] = protoRun(r)
+	protoPrompts := make([]*apiv1.UserPrompt, len(prompts))
+	for i, prompt := range prompts {
+		protoPrompts[i] = protoPrompt(prompt)
 	}
 	return connect.NewResponse(&apiv1.GetSessionResponse{
 		Session: protoSession(session),
-		Runs:    protoRuns,
+		Prompts: protoPrompts,
 	}), nil
 }
 
@@ -451,8 +454,8 @@ func (h *sessionHandler) ResumeSession(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&apiv1.ResumeSessionResponse{
-		Task: protoTask(out.Task),
-		Run:  protoRun(out.Run),
+		Task:   protoTask(out.Task),
+		Prompt: protoPrompt(out.Prompt),
 	}), nil
 }
 
@@ -766,7 +769,7 @@ func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Reque
 			Id:              a.ID,
 			TaskId:          a.TaskID,
 			AgentSessionId:  a.AgentSessionID,
-			SessionRunId:    a.SessionRunID,
+			UserPromptId:    a.UserPromptID,
 			ArtifactType:    a.ArtifactType,
 			Repo:            a.Repo,
 			Number:          int32(a.Number),

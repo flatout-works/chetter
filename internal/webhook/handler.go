@@ -55,7 +55,7 @@ type ArtifactRecorder interface {
 type RecordArtifactParams struct {
 	TaskID          string
 	AgentSessionID  string
-	SessionRunID    string
+	UserPromptID    string
 	ArtifactType    string
 	Repo            string
 	Number          int
@@ -851,7 +851,7 @@ func (h *Handler) checkAuthorWriteAccess(ctx context.Context, repo, username, de
 
 var taskIDFooterRe = regexp.MustCompile(`Task:\s*\[?(task_[a-f0-9]+)`)
 var agentSessionIDFooterRe = regexp.MustCompile(`Session:\s*(sess_[a-f0-9]+)`)
-var sessionRunIDFooterRe = regexp.MustCompile(`Run:\s*(run_[a-f0-9]+)`)
+var userPromptIDFooterRe = regexp.MustCompile(`Prompt:\s*(prompt_[a-f0-9]+)`)
 
 func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifactType string) {
 	if h.artifacts == nil {
@@ -866,14 +866,14 @@ func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifact
 	if sessionMatches := agentSessionIDFooterRe.FindStringSubmatch(text); len(sessionMatches) >= 2 {
 		agentSessionID = sessionMatches[1]
 	}
-	sessionRunID := ""
-	if runMatches := sessionRunIDFooterRe.FindStringSubmatch(text); len(runMatches) >= 2 {
-		sessionRunID = runMatches[1]
+	userPromptID := ""
+	if promptMatches := userPromptIDFooterRe.FindStringSubmatch(text); len(promptMatches) >= 2 {
+		userPromptID = promptMatches[1]
 	}
 	if err := h.artifacts.RecordArtifact(asyncCtx(10*time.Second), RecordArtifactParams{
 		TaskID:          taskID,
 		AgentSessionID:  agentSessionID,
-		SessionRunID:    sessionRunID,
+		UserPromptID:    userPromptID,
 		ArtifactType:    artifactType,
 		Repo:            repo,
 		Number:          number,

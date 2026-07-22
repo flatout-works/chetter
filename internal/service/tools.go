@@ -553,10 +553,10 @@ type AgentSessionRecord struct {
 	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
 	PauseReason      string     `json:"pause_reason,omitempty"`
 	Error            string     `json:"error,omitempty"`
-	RunCount         int32      `json:"run_count,omitempty"`
+	PromptCount      int32      `json:"prompt_count,omitempty"`
 }
 
-type SessionRunRecord struct {
+type UserPromptRecord struct {
 	ID               string     `json:"id"`
 	AgentSessionID   string     `json:"agent_session_id"`
 	TaskID           string     `json:"task_id"`
@@ -582,7 +582,7 @@ type AgentSessionStatusInput struct {
 
 type AgentSessionStatusOutput struct {
 	Session AgentSessionRecord `json:"session"`
-	Runs    []SessionRunRecord `json:"runs"`
+	Prompts []UserPromptRecord `json:"prompts"`
 }
 
 type ResumeAgentSessionInput struct {
@@ -592,8 +592,8 @@ type ResumeAgentSessionInput struct {
 }
 
 type ResumeAgentSessionOutput struct {
-	Task TaskToolRecord   `json:"task"`
-	Run  SessionRunRecord `json:"run"`
+	Task   TaskToolRecord   `json:"task"`
+	Prompt UserPromptRecord `json:"prompt"`
 }
 
 // RegisterTools registers chetter MCP tools.
@@ -602,7 +602,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_status", Description: "Get current status and result details for a chetter task."}, svc.taskStatusTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_tasks", Description: "List recent chetter tasks, optionally filtered by status."}, svc.listTasksTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_agent_sessions", Description: "List recent chetter agent sessions, optionally filtered by status."}, svc.listAgentSessionsTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its session runs."}, svc.agentSessionStatusTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_agent_session_status", Description: "Get an agent session with its user prompts."}, svc.agentSessionStatusTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_resume_agent_session", Description: "Resume a paused or recoverable agent session with a follow-up prompt."}, svc.resumeAgentSessionTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_trigger", Description: "Create a trigger (cron trigger or PR review webhook)."}, svc.createTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_trigger", Description: "Update a trigger by name. Only provided fields are changed."}, svc.updateTriggerTool)
@@ -734,7 +734,7 @@ func (s *Service) agentSessionStatusTool(ctx context.Context, _ *mcp.CallToolReq
 	if err != nil {
 		return nil, AgentSessionStatusOutput{}, fmt.Errorf("get agent session: %w", err)
 	}
-	return nil, AgentSessionStatusOutput{Session: session, Runs: runs}, nil
+	return nil, AgentSessionStatusOutput{Session: session, Prompts: runs}, nil
 }
 
 func (s *Service) resumeAgentSessionTool(ctx context.Context, _ *mcp.CallToolRequest, in ResumeAgentSessionInput) (*mcp.CallToolResult, ResumeAgentSessionOutput, error) {
@@ -785,8 +785,8 @@ func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionReco
 	}
 }
 
-func sessionRunRecord(run repository.ChetterSessionRun) SessionRunRecord {
-	return SessionRunRecord{
+func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
+	return UserPromptRecord{
 		ID:               run.ID,
 		AgentSessionID:   run.AgentSessionID,
 		TaskID:           run.TaskID,
@@ -1698,7 +1698,7 @@ type TaskArtifactRecord struct {
 	ID              string    `json:"id"`
 	TaskID          string    `json:"task_id"`
 	AgentSessionID  string    `json:"agent_session_id,omitempty"`
-	SessionRunID    string    `json:"session_run_id,omitempty"`
+	UserPromptID    string    `json:"user_prompt_id,omitempty"`
 	ArtifactType    string    `json:"artifact_type"`
 	Repo            string    `json:"repo"`
 	Number          int       `json:"number,omitempty"`

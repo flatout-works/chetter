@@ -70,10 +70,12 @@ message AgentSession {
   optional string expires_at = 18;
   string pause_reason = 19;
   string error = 20;
-  int32 run_count = 21;
+  int32 prompt_count = 21;
+  string task_id = 22;
+  int32 sequence = 23;
 }
 
-message SessionRun {
+message UserPrompt {
   string id = 1;
   string agent_session_id = 2;
   string task_id = 3;
@@ -86,6 +88,7 @@ message SessionRun {
   optional string started_at = 10;
   optional string ended_at = 11;
   string prompt = 12;
+  int32 sequence = 13;
 }
 
 message Trigger {
@@ -241,7 +244,7 @@ message TaskArtifact {
   string id = 1;
   string task_id = 2;
   string agent_session_id = 3;
-  string session_run_id = 4;
+  string user_prompt_id = 4;
   string artifact_type = 5;
   string repo = 6;
   int32 number = 7;
@@ -370,7 +373,7 @@ message WhoamiTeamInfo {
 
 message SubscribeTaskEventsRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
-  string since = 2;  // RFC3339 cursor; empty = from beginning
+  string since = 2; // RFC3339 cursor; empty = from beginning
 }
 
 // --- EventService ---
@@ -440,7 +443,7 @@ message GetSessionRequest {
 
 message GetSessionResponse {
   AgentSession session = 1;
-  repeated SessionRun runs = 2;
+  repeated UserPrompt prompts = 2;
 }
 
 message ResumeSessionRequest {
@@ -451,7 +454,7 @@ message ResumeSessionRequest {
 
 message ResumeSessionResponse {
   Task task = 1;
-  SessionRun run = 2;
+  UserPrompt prompt = 2;
 }
 
 // --- TriggerService ---
@@ -575,9 +578,9 @@ message GetRunnerHealthResponse {
 message SubscribeFleetUpdatesRequest {}
 
 message FleetUpdate {
-  string type = 1;  // "task_status_change", "runner_registered", "runner_lost"
-  Task task = 2;     // set when type = task_status_change
-  RunnerInfo runner = 3;  // set when type = runner_registered/runner_lost
+  string type = 1; // "task_status_change", "runner_registered", "runner_lost"
+  Task task = 2; // set when type = task_status_change
+  RunnerInfo runner = 3; // set when type = runner_registered/runner_lost
 }
 
 // --- AdminService ---

@@ -135,7 +135,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
 			resumeHarnessSessionID := ""
-			run, runErr := s.db.GetSessionRunByTaskID(ctx, task.ID)
+			run, runErr := s.db.GetUserPromptByTaskID(ctx, task.ID)
 			if runErr != nil && !errors.Is(runErr, sql.ErrNoRows) {
 				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task prompt: %w", runErr))
 			}
@@ -548,7 +548,7 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 
 	query := `SELECT DISTINCT t.id
 		FROM chetter_tasks t
-		LEFT JOIN chetter_session_runs sr ON sr.task_id = t.id
+		LEFT JOIN chetter_user_prompts sr ON sr.task_id = t.id
 		LEFT JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id AND s.status IN ('paused', 'recoverable', 'paused_waiting_review')
 		WHERE t.id IN (` + strings.Join(placeholders, ",") + `)
 		  AND (t.status IN ('running', 'pending') OR s.id IS NOT NULL)`
@@ -722,7 +722,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if rows == 0 {
 			return errNoClaimableTask
 		}
-		if _, err := q.MarkSessionRunRunningByTask(ctx, repository.MarkSessionRunRunningByTaskParams{
+		if _, err := q.MarkUserPromptRunningByTask(ctx, repository.MarkUserPromptRunningByTaskParams{
 			StartedAt: sql.NullTime{Time: now, Valid: true},
 			UpdatedAt: now,
 			TaskID:    task.ID,
@@ -878,7 +878,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			if !endedAt.Valid {
 				endedAt = sql.NullTime{Time: now, Valid: true}
 			}
-			if _, err := q.MarkSessionRunTerminalByTask(ctx, repository.MarkSessionRunTerminalByTaskParams{
+			if _, err := q.MarkUserPromptTerminalByTask(ctx, repository.MarkUserPromptTerminalByTaskParams{
 				Status:        terminalRunStatus,
 				Summary:       nullString(event.Summary),
 				Error:         nullString(event.Error),

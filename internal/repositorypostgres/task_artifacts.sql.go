@@ -12,7 +12,7 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
+INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (task_id, artifact_type, repo, number) DO NOTHING
 `
@@ -21,7 +21,7 @@ type InsertTaskArtifactParams struct {
 	ID              string         `json:"id"`
 	TaskID          string         `json:"task_id"`
 	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	SessionRunID    sql.NullString `json:"session_run_id"`
+	UserPromptID    sql.NullString `json:"user_prompt_id"`
 	ArtifactType    string         `json:"artifact_type"`
 	Repo            string         `json:"repo"`
 	Number          sql.NullInt32  `json:"number"`
@@ -39,7 +39,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 		arg.ID,
 		arg.TaskID,
 		arg.AgentSessionID,
-		arg.SessionRunID,
+		arg.UserPromptID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.Number,
@@ -55,7 +55,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 }
 
 const listTaskArtifacts = `-- name: ListTaskArtifacts :many
-SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = $1 OR $1 = '')
   AND (agent_session_id = $2 OR $2 = '')
@@ -78,7 +78,7 @@ type ListTaskArtifactsRow struct {
 	ID              string         `json:"id"`
 	TaskID          string         `json:"task_id"`
 	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	SessionRunID    sql.NullString `json:"session_run_id"`
+	UserPromptID    sql.NullString `json:"user_prompt_id"`
 	ArtifactType    string         `json:"artifact_type"`
 	Repo            string         `json:"repo"`
 	Number          sql.NullInt32  `json:"number"`
@@ -110,7 +110,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 			&i.ID,
 			&i.TaskID,
 			&i.AgentSessionID,
-			&i.SessionRunID,
+			&i.UserPromptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,
@@ -135,7 +135,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 }
 
 const searchTaskArtifacts = `-- name: SearchTaskArtifacts :many
-SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = $1 OR $1 = '')
   AND (agent_session_id = $2 OR $2 = '')
@@ -160,7 +160,7 @@ type SearchTaskArtifactsRow struct {
 	ID              string         `json:"id"`
 	TaskID          string         `json:"task_id"`
 	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	SessionRunID    sql.NullString `json:"session_run_id"`
+	UserPromptID    sql.NullString `json:"user_prompt_id"`
 	ArtifactType    string         `json:"artifact_type"`
 	Repo            string         `json:"repo"`
 	Number          sql.NullInt32  `json:"number"`
@@ -193,7 +193,7 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 			&i.ID,
 			&i.TaskID,
 			&i.AgentSessionID,
-			&i.SessionRunID,
+			&i.UserPromptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

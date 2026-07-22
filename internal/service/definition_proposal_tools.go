@@ -142,13 +142,13 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	}
 	body := in.Body
 	var task repository.ChetterTask
-	var sessionRun repository.ChetterSessionRun
+	var userPrompt repository.ChetterUserPrompt
 	if strings.TrimSpace(in.TaskID) != "" {
-		task, sessionRun, err = s.githubToolTaskContext(ctx, in.TaskID)
+		task, userPrompt, err = s.githubToolTaskContext(ctx, in.TaskID)
 		if err != nil {
 			return nil, CreateDefinitionProposalOutput{}, err
 		}
-		body = appendChetterSignature(body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+		body = appendChetterSignature(body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
 	}
 	created, err := s.githubClient().CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
 	if err != nil {
@@ -187,7 +187,7 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get stored definition proposal: %w", err)
 	}
 	if strings.TrimSpace(in.TaskID) != "" {
-		if _, _, err := s.recordGitHubToolArtifact(ctx, task, sessionRun, "definition_proposal", repo, created.Number, created.URL, branch, body, map[string]any{
+		if _, _, err := s.recordGitHubToolArtifact(ctx, task, userPrompt, "definition_proposal", repo, created.Number, created.URL, branch, body, map[string]any{
 			"title":     in.Title,
 			"source_id": source.ID,
 			"files":     files,

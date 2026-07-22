@@ -24,7 +24,7 @@ Chetter is useful when the goal is to operate agents as a shared, observable, se
 
 5. **Keep a database-backed record of every agent run.**
 
-   Chetter persists tasks, triggers, runs, sessions, session runs, task events, progress, terminal results, and created GitHub artifacts in its database. Session transcripts can be exported for retrospective analysis, prompt and agent improvement, quality evaluation, and compliance evidence. Operators can inspect an in-progress review, diagnose a stuck agent from its heartbeat or event history, and recover failed work. GitHub Actions provides useful job logs, but it is not a cross-workload agent session and task observability system.
+   Chetter persists tasks, triggers, runs, sessions, user prompts, task events, progress, terminal results, and created GitHub artifacts in its database. Session transcripts can be exported for retrospective analysis, prompt and agent improvement, quality evaluation, and compliance evidence. Operators can inspect an in-progress review, diagnose a stuck agent from its heartbeat or event history, and recover failed work. GitHub Actions provides useful job logs, but it is not a cross-workload agent session and task observability system.
 
 6. **Support long-running and resumable agent work.**
 

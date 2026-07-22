@@ -604,7 +604,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	var args []any
 	if s.dialect == store.DialectMySQL {
 		query = `
-			SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 			FROM chetter_task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
@@ -623,7 +623,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 		}
 	} else {
 		query = fmt.Sprintf(`
-			SELECT id, task_id, agent_session_id, session_run_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 			FROM chetter_task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
@@ -673,7 +673,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 			&i.ID,
 			&i.TaskID,
 			&i.AgentSessionID,
-			&i.SessionRunID,
+			&i.UserPromptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

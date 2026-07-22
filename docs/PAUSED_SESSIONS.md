@@ -2,7 +2,7 @@
 
 Status: **Partially implemented - current behavior and remaining work**
 
-Chetter now has first-class agent session records. A task is no longer only a one-shot row in `chetter_tasks`; every submitted task also creates an `agent_session` and a first `session_run`.
+Chetter now has first-class agent session records. A task is no longer only a one-shot row in `chetter_tasks`; every submitted task also creates an `agent_session` and a first `user_prompt`.
 
 Resumable sessions use gVisor/Docker checkpoint metadata and runner affinity. Non-resumable sessions are still useful for lineage and UI/history, but they do not support true process restore.
 
@@ -10,24 +10,24 @@ Resumable sessions use gVisor/Docker checkpoint metadata and runner affinity. No
 
 An `agent_session` is the long-lived identity and workspace lineage for an agent.
 
-A `session_run` is one prompt execution inside that session.
+A `user_prompt` is one user-authored turn inside that session. Runner executions are tracked separately as execution attempts.
 
 ```text
 agent_session sess_1
-  session_run run_1 -> creates PR
+  user_prompt prompt_1 -> creates PR
 agent_session -> paused
 
 review feedback arrives
 
 agent_session sess_1
-  session_run run_2 -> addresses feedback
+  user_prompt prompt_2 -> addresses feedback
 ```
 
 For a default one-shot task:
 
 ```text
 agent_session sess_1
-  session_run run_1 -> completed
+  user_prompt prompt_1 -> completed
 agent_session -> completed
 ```
 
@@ -38,12 +38,12 @@ agent_session -> completed
 Migration `011_add_agent_sessions.sql` adds:
 
 - `chetter_agent_sessions`
-- `chetter_session_runs`
+- `chetter_user_prompts`
 - `chetter_agent_session_checkpoints`
 - `chetter_tasks.required_runner_id`
 - `chetter_tasks.checkpoint_after_success`
 - `chetter_task_artifacts.agent_session_id`
-- `chetter_task_artifacts.session_run_id`
+- `chetter_task_artifacts.user_prompt_id`
 
 ### Task Submission
 
@@ -51,7 +51,7 @@ Every submitted task creates:
 
 - A `task_*` row in `chetter_tasks`.
 - A `sess_*` row in `chetter_agent_sessions`.
-- A `run_*` row in `chetter_session_runs`.
+- A `prompt_*` row in `chetter_user_prompts`.
 
 When `session_mode: resumable` is set:
 
@@ -105,13 +105,13 @@ MCP tools:
 
 If a resumable harness session times out or encounters an opencode transport failure (EOF, connection reset, broken pipe) after the runner has captured workspace and harness session metadata, the server marks it `recoverable` instead of `error`, so it can be resumed manually from the UI or API.
 
-It then creates a follow-up task and `session_run` with `required_runner_id` set to the pinned runner.
+It appends a `user_prompt`, keeps the same stable task ID, and requeues that task with `required_runner_id` set to the pinned runner.
 
 ### PR Feedback Resume
 
-Webhook handling can look up a paused Chetter-authored PR session through `chetter_task_artifacts` and enqueue a follow-up run with a feedback-response prompt.
+Webhook handling can look up a paused Chetter-authored PR session through `chetter_task_artifacts` and enqueue a follow-up user prompt with review feedback.
 
-This path currently relies on server-side artifact records. Chetter-authored artifacts should continue to include `Task:` footers for compatibility, and future footers should include `Session:` and `Run:` when the creating task has session metadata.
+This path relies on server-side artifact records. Chetter-authored artifacts include `Task:`, `Session:`, and `Prompt:` attribution.
 
 ## Current Workflow
 
@@ -154,8 +154,8 @@ Resume manually:
 - Resume is same-runner only for the current implementation.
 - A `gvisor_checkpoint` session can resume only from a ready checkpoint.
 - A `harness_session` session can resume from preserved workspace and harness session metadata.
-- Resume runs inherit the original session's repo, ref, image, agent, provider, model, and variant.
-- Resume runs are pinned with `required_runner_id`.
+- Resume prompts inherit the original session's repo, ref, image, agent, provider, model, and variant.
+- Resume prompts are pinned with `required_runner_id`.
 
 ## Workspace Strategy
 
@@ -179,13 +179,12 @@ This avoids copying a workspace while the process may have open file descriptors
 ### Documentation And UX
 
 - Add session views to the web UI if not already complete.
-- Show checkpoint status, pinned runner, expiry, and latest run in the UI.
-- Link tasks, session runs, artifacts, and GitHub PRs from each other.
+- Show checkpoint status, pinned runner, expiry, and latest prompt in the UI.
+- Link tasks, user prompts, artifacts, and GitHub PRs from each other.
 
 ### Footers And Artifact Ownership
 
-- Extend Chetter artifact footers from `Task:` only to include `Session:` and `Run:`.
-- Keep `Task:` parsing for backward compatibility.
+- Keep `Task:`, `Session:`, and `Prompt:` attribution aligned with stored artifacts.
 - Prefer server-side artifact records when available.
 
 Suggested footer:
@@ -194,7 +193,7 @@ Suggested footer:
 ---
 Generated by [Chetter](https://github.com/flatout-works/chetter)
 Session: sess_abc123
-Run: run_def456
+Prompt: prompt_def456
 Task: task_789
 Agent: ... | Model: ... | Runner: ...
 ```

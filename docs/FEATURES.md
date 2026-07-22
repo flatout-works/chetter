@@ -33,14 +33,14 @@ Task monitoring includes:
 
 ## Agent Sessions
 
-Chetter now tracks long-lived agent sessions separately from individual task runs.
+Chetter tracks user prompts and resumable conversations beneath a stable task.
 
-- Every session has one or more `session_runs`.
+- Every session has one or more `user_prompts`.
 - `session_mode: resumable` creates a gVisor checkpoint-backed session.
 - Resumable sessions are pinned to the runner that created the checkpoint.
 - `chetter_list_agent_sessions` lists sessions.
-- `chetter_agent_session_status` returns a session with its runs.
-- `chetter_resume_agent_session` queues a follow-up run for a paused session.
+- `chetter_agent_session_status` returns a session with its user prompts.
+- `chetter_resume_agent_session` appends a follow-up prompt and requeues the same task.
 
 See [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) for the current model and remaining work.
 
@@ -170,7 +170,7 @@ Planned next:
 
 - Git-backed agents, skills, triggers, and task templates.
 - Definition read tools and proposal workflow.
-- Immutable definition hashes recorded on task/session runs.
+- Immutable definition hashes recorded on task/user prompts.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the definitions repo, model catalog, and configuration-as-code architecture.
 

@@ -71,7 +71,7 @@ type AuditEventParams struct {
 type RecordArtifactParams struct {
 	TaskID          string
 	AgentSessionID  string
-	SessionRunID    string
+	UserPromptID    string
 	ArtifactType    string
 	Repo            string
 	Number          int
@@ -175,7 +175,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 	svc.reaperSteps = []func(){
 		svc.reapStaleTasks,
 		svc.reapExpiredLeases,
-		svc.reapStaleSessionRuns,
+		svc.reapStaleUserPrompts,
 		svc.reapUnavailablePinnedResumeTasks,
 		svc.reapExpiredSessions,
 		svc.checkDBQuota,
@@ -378,7 +378,7 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 		}
 		return
 	}
-	failedRuns, err := s.repo.FailPendingSessionRunsForUnavailableRunner(ctx, repository.FailPendingSessionRunsForUnavailableRunnerParams{
+	failedRuns, err := s.repo.FailPendingUserPromptsForUnavailableRunner(ctx, repository.FailPendingUserPromptsForUnavailableRunnerParams{
 		EndedAt:   sql.NullTime{Time: now, Valid: true},
 		UpdatedAt: now,
 	})
@@ -418,30 +418,30 @@ func (s *Service) reapStaleTasks() {
 	}
 }
 
-func (s *Service) reapStaleSessionRuns() {
+func (s *Service) reapStaleUserPrompts() {
 	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 	defer cancel()
-	n, err := s.repo.ReapStaleSessionRuns(ctx)
+	n, err := s.repo.ReapStaleUserPrompts(ctx)
 	if err != nil {
-		slog.Error("session run reaper failed", "error", err)
+		slog.Error("user prompt reaper failed", "error", err)
 		if isQuotaExhaustedError(err) {
 			s.quotaExhausted.Store(true)
 		}
 		return
 	}
 	if n > 0 {
-		slog.Info("reaped stale session runs", "count", n)
+		slog.Info("reaped stale user prompts", "count", n)
 	}
-	o, err := s.repo.RevertOrphanedRunningSessionRuns(ctx)
+	o, err := s.repo.RevertOrphanedRunningUserPrompts(ctx)
 	if err != nil {
-		slog.Error("revert orphaned session runs failed", "error", err)
+		slog.Error("revert orphaned user prompts failed", "error", err)
 		if isQuotaExhaustedError(err) {
 			s.quotaExhausted.Store(true)
 		}
 		return
 	}
 	if o > 0 {
-		slog.Info("reverted orphaned session runs to pending", "count", o)
+		slog.Info("reverted orphaned user prompts to pending", "count", o)
 	}
 	m, err := s.repo.ReapStaleSessionsForTerminalRuns(ctx)
 	if err != nil {
@@ -522,9 +522,9 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate session id: %w", err)
 	}
-	runID, err := randomID("run")
+	runID, err := randomID("prompt")
 	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("generate session run id: %w", err)
+		return store.TaskRecord{}, fmt.Errorf("generate user prompt id: %w", err)
 	}
 	now := time.Now().UTC()
 	submissionSource := in.SubmissionSource
@@ -626,7 +626,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		}); err != nil {
 			return fmt.Errorf("insert agent session: %w", err)
 		}
-		if err := q.InsertSessionRun(ctx, repository.InsertSessionRunParams{
+		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
 			ID:               runID,
 			AgentSessionID:   sessionID,
 			TaskID:           taskID,
@@ -637,7 +637,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}); err != nil {
-			return fmt.Errorf("insert session run: %w", err)
+			return fmt.Errorf("insert user prompt: %w", err)
 		}
 		row, err := q.GetTaskByID(ctx, taskID)
 		if err != nil {
@@ -649,7 +649,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, err
 	}
-	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "session_run_id", runID)
+	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "user_prompt_id", runID)
 	if in.TriggerName != "" {
 		trigger, err := s.repo.GetTriggerByName(ctx, in.TriggerName)
 		if err != nil {
@@ -830,9 +830,9 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no task")
 	}
 	taskID := session.TaskID
-	runID, err := randomID("run")
+	runID, err := randomID("prompt")
 	if err != nil {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("generate session run id: %w", err)
+		return ResumeAgentSessionOutput{}, fmt.Errorf("generate user prompt id: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -842,7 +842,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		sequence, err := q.GetNextSessionRunSequence(ctx, sessionID)
+		sequence, err := q.GetNextUserPromptSequence(ctx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get next prompt sequence: %w", err)
 		}
@@ -858,7 +858,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		if rows == 0 {
 			return fmt.Errorf("task %s is not in a terminal state", taskID)
 		}
-		if err := q.InsertSessionRun(ctx, repository.InsertSessionRunParams{
+		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
 			ID:               runID,
 			AgentSessionID:   sessionID,
 			TaskID:           taskID,
@@ -869,7 +869,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}); err != nil {
-			return fmt.Errorf("insert session run: %w", err)
+			return fmt.Errorf("insert user prompt: %w", err)
 		}
 		if _, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
 			ID:        sessionID,
@@ -889,12 +889,12 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		return ResumeAgentSessionOutput{}, err
 	}
 
-	run, err := s.repo.GetSessionRunByTaskID(ctx, taskID)
+	run, err := s.repo.GetUserPromptByTaskID(ctx, taskID)
 	if err != nil {
-		return ResumeAgentSessionOutput{}, fmt.Errorf("get session run: %w", err)
+		return ResumeAgentSessionOutput{}, fmt.Errorf("get user prompt: %w", err)
 	}
 
-	slog.Info("agent session resumed", "session_id", sessionID, "task_id", taskID, "session_run_id", runID)
+	slog.Info("agent session resumed", "session_id", sessionID, "task_id", taskID, "user_prompt_id", runID)
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "session_resumed",
 		SourceType: "api",
@@ -904,8 +904,8 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		Detail:     fmt.Sprintf("session resumed via API: prompt=%.100s", prompt),
 	})
 	return ResumeAgentSessionOutput{
-		Task: taskToolRecord(repoTaskToStoreRecord(task)),
-		Run:  sessionRunRecord(run),
+		Task:   taskToolRecord(repoTaskToStoreRecord(task)),
+		Prompt: userPromptRecord(run),
 	}, nil
 }
 
@@ -1637,7 +1637,7 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 		ID:              id,
 		TaskID:          params.TaskID,
 		AgentSessionID:  nullString(params.AgentSessionID),
-		SessionRunID:    nullString(params.SessionRunID),
+		UserPromptID:    nullString(params.UserPromptID),
 		ArtifactType:    params.ArtifactType,
 		Repo:            params.Repo,
 		Number:          number,

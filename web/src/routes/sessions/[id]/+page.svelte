@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, SessionRun, Task } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, UserPrompt, Task } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -12,7 +13,7 @@
 
   let { params } = $props();
   let session = $state<AgentSession | null>(null);
-  let runs = $state<SessionRun[]>([]);
+  let prompts = $state<UserPrompt[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let activeRunners = $state<string[]>([]);
@@ -25,11 +26,10 @@
   let resumePrompt = $state("");
   let resuming = $state(false);
 
-  let runTokenUsages = $state<Map<string, { totalTokens: bigint; costCents: bigint }>>(new Map());
-  let runTasks = $state<Map<string, Task>>(new Map());
+  const promptTasks = new SvelteMap<string, Task>();
   let totalSessionTokens = $state<bigint>(0n);
   let totalSessionCost = $state<bigint>(0n);
-  let initialTask = $derived(runs.length > 0 ? runTasks.get(runs[0].taskId) : undefined);
+  let initialTask = $derived(prompts.length > 0 ? promptTasks.get(prompts[0].taskId) : undefined);
 
   function fmtCost(cents: bigint): string {
     return `$${(Number(cents) / 100).toFixed(4)}`;
@@ -79,18 +79,17 @@
         createClient(FleetService, getTransport()).getRunnerHealth({ includeTasks: false }),
       ]);
       session = sessionResp.session ?? null;
-      runs = sessionResp.runs ?? [];
+      prompts = sessionResp.prompts ?? [];
       activeRunners = (fleetResp.health?.runners ?? []).map((r) => r.runnerId);
 
       const taskClient = createClient(TaskService, getTransport());
       const taskResults = await Promise.allSettled(
-        runs.map(async (run) => {
-          const resp = await taskClient.getTask({ taskId: run.taskId });
+        [...new Set(prompts.map((prompt) => prompt.taskId))].map(async (taskId) => {
+          const resp = await taskClient.getTask({ taskId });
           return resp.task;
         })
       );
-      const m = new Map<string, { totalTokens: bigint; costCents: bigint }>();
-      const taskMap = new Map<string, Task>();
+      const taskMap = new SvelteMap<string, Task>();
       let sessionTotal = 0n;
       let costTotal = 0n;
       taskResults.forEach((result) => {
@@ -100,13 +99,12 @@
         if (result.status === "fulfilled" && result.value?.tokenUsage) {
           const tu = result.value.tokenUsage;
           const total = (tu.inputTokens ?? 0n) + (tu.outputTokens ?? 0n) + (tu.reasoningTokens ?? 0n);
-          m.set(result.value.id, { totalTokens: total, costCents: tu.costCents ?? 0n });
           sessionTotal += total;
           costTotal += tu.costCents ?? 0n;
         }
       });
-      runTokenUsages = m;
-      runTasks = taskMap;
+      promptTasks.clear();
+      for (const [taskId, task] of taskMap) promptTasks.set(taskId, task);
       totalSessionTokens = sessionTotal;
       totalSessionCost = costTotal;
     } catch (e) {
@@ -206,53 +204,45 @@
       </Card>
     {/if}
 
-    <TableCard title={`Session runs (${runs.length})`}>
+    <TableCard title={`Session prompts (${prompts.length})`}>
     <Table hoverable={true} shadow={false}>
       <TableHead>
-        <TableHeadCell>Run ID</TableHeadCell>
+        <TableHeadCell>Prompt</TableHeadCell>
         <TableHeadCell>Task</TableHeadCell>
         <TableHeadCell>Origin</TableHeadCell>
         <TableHeadCell>Status</TableHeadCell>
-        <TableHeadCell>Tokens</TableHeadCell>
         <TableHeadCell>Summary</TableHeadCell>
         <TableHeadCell>Started</TableHeadCell>
       </TableHead>
       <TableBody>
-        {#each runs as run (run.id)}
-          {@const runTask = runTasks.get(run.taskId)}
+        {#each prompts as prompt (prompt.id)}
+          {@const promptTask = promptTasks.get(prompt.taskId)}
           <TableBodyRow>
-            <TableBodyCell><span class="font-mono text-gray-700 dark:text-gray-300 text-xs">{run.id.slice(0, 20)}…</span></TableBodyCell>
+            <TableBodyCell><span class="font-mono text-gray-700 dark:text-gray-300 text-xs">#{prompt.sequence} · {prompt.id.slice(0, 16)}…</span></TableBodyCell>
             <TableBodyCell>
-              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
-                {run.taskId.slice(0, 20)}…
+              <a href={resolve("/tasks/[id]", { id: prompt.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
+                {prompt.taskId.slice(0, 20)}…
               </a>
             </TableBodyCell>
             <TableBodyCell>
-              {#if runTask?.triggerName && runTask.triggerType !== "event_callback"}
-                <a href={resolve("/triggers/[name]", { name: runTask.triggerName })} class="text-blue-600 dark:text-blue-400 hover:underline text-sm">
-                  {runTask.triggerName}
+              {#if promptTask?.triggerName && promptTask.triggerType !== "event_callback"}
+                <a href={resolve("/triggers/[name]", { name: promptTask.triggerName })} class="text-blue-600 dark:text-blue-400 hover:underline text-sm">
+                  {promptTask.triggerName}
                 </a>
-              {:else if runTask?.triggerName}
-                <span class="text-gray-500 dark:text-gray-400 text-sm">Event callback: {runTask.triggerName}</span>
+              {:else if promptTask?.triggerName}
+                <span class="text-gray-500 dark:text-gray-400 text-sm">Event callback: {promptTask.triggerName}</span>
               {:else}
-                <span class="text-gray-500 dark:text-gray-400 text-sm">{submissionSourceLabel(runTask?.submissionSource ?? "")}</span>
+                <span class="text-gray-500 dark:text-gray-400 text-sm">{submissionSourceLabel(promptTask?.submissionSource ?? "")}</span>
               {/if}
             </TableBodyCell>
-            <TableBodyCell><StatusBadge status={run.status} /></TableBodyCell>
-            <TableBodyCell>
-              {#if runTokenUsages.has(run.taskId)}
-                <span class="font-mono text-xs text-gray-900 dark:text-white">{fmtTokens(runTokenUsages.get(run.taskId)!.totalTokens)}</span>
-              {:else}
-                <span class="text-gray-400 dark:text-gray-600 text-xs">—</span>
-              {/if}
-            </TableBodyCell>
-            <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{run.summary || "—"}</span></TableBodyCell>
-            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(run.startedAt || "")}</span></TableBodyCell>
+            <TableBodyCell><StatusBadge status={prompt.status} /></TableBodyCell>
+            <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{prompt.summary || "—"}</span></TableBodyCell>
+            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(prompt.startedAt || "")}</span></TableBodyCell>
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={7}>
-              <div class="text-center text-gray-500 dark:text-gray-400 py-8">No runs recorded</div>
+            <TableBodyCell colspan={6}>
+              <div class="text-center text-gray-500 dark:text-gray-400 py-8">No prompts recorded</div>
             </TableBodyCell>
           </TableBodyRow>
         {/each}

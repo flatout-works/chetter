@@ -141,17 +141,17 @@ func (s *RunnerRPCService) requireGitHub() (*webhook.Client, error) {
 }
 
 func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, artifactType, repo string, number int, url, ref string) error {
-	var agentSessionID, sessionRunID string
-	if run, err := s.db.GetSessionRunByTaskID(ctx, taskID); err == nil {
+	var agentSessionID, userPromptID string
+	if run, err := s.db.GetUserPromptByTaskID(ctx, taskID); err == nil {
 		agentSessionID = run.AgentSessionID
-		sessionRunID = run.ID
+		userPromptID = run.ID
 	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("get session run: %w", err)
+		return fmt.Errorf("get user prompt: %w", err)
 	}
 	if err := s.ghActions.RecordArtifact(ctx, RecordArtifactParams{
 		TaskID:          taskID,
 		AgentSessionID:  agentSessionID,
-		SessionRunID:    sessionRunID,
+		UserPromptID:    userPromptID,
 		ArtifactType:    artifactType,
 		Repo:            repo,
 		Number:          number,

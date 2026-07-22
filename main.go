@@ -277,7 +277,7 @@ func (a *artifactRecorderAdapter) RecordArtifact(ctx context.Context, params web
 	return a.svc.RecordArtifact(ctx, service.RecordArtifactParams{
 		TaskID:          params.TaskID,
 		AgentSessionID:  params.AgentSessionID,
-		SessionRunID:    params.SessionRunID,
+		UserPromptID:    params.UserPromptID,
 		ArtifactType:    params.ArtifactType,
 		Repo:            params.Repo,
 		Number:          params.Number,

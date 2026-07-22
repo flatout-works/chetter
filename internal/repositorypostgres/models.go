@@ -57,7 +57,7 @@ type ChetterAgentSession struct {
 type ChetterAgentSessionCheckpoint struct {
 	ID             string         `json:"id"`
 	AgentSessionID string         `json:"agent_session_id"`
-	SessionRunID   sql.NullString `json:"session_run_id"`
+	UserPromptID   sql.NullString `json:"user_prompt_id"`
 	RunnerID       string         `json:"runner_id"`
 	CheckpointPath string         `json:"checkpoint_path"`
 	WorkspacePath  string         `json:"workspace_path"`
@@ -134,23 +134,6 @@ type ChetterRunner struct {
 	Metadata       json.RawMessage `json:"metadata"`
 }
 
-type ChetterSessionRun struct {
-	ID               string         `json:"id"`
-	AgentSessionID   string         `json:"agent_session_id"`
-	TaskID           string         `json:"task_id"`
-	Status           string         `json:"status"`
-	Prompt           string         `json:"prompt"`
-	RequiredRunnerID sql.NullString `json:"required_runner_id"`
-	Summary          sql.NullString `json:"summary"`
-	Error            sql.NullString `json:"error"`
-	SessionExport    sql.NullString `json:"session_export"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	StartedAt        sql.NullTime   `json:"started_at"`
-	EndedAt          sql.NullTime   `json:"ended_at"`
-	Sequence         int32          `json:"sequence"`
-}
-
 type ChetterTask struct {
 	ID                     string           `json:"id"`
 	TeamID                 sql.NullString   `json:"team_id"`
@@ -205,7 +188,7 @@ type ChetterTaskArtifact struct {
 	ID              string         `json:"id"`
 	TaskID          string         `json:"task_id"`
 	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	SessionRunID    sql.NullString `json:"session_run_id"`
+	UserPromptID    sql.NullString `json:"user_prompt_id"`
 	ArtifactType    string         `json:"artifact_type"`
 	Repo            string         `json:"repo"`
 	Number          sql.NullInt32  `json:"number"`
@@ -262,6 +245,23 @@ type ChetterTriggerRun struct {
 	Status      string         `json:"status"`
 	TriggeredAt time.Time      `json:"triggered_at"`
 	CreatedAt   time.Time      `json:"created_at"`
+}
+
+type ChetterUserPrompt struct {
+	ID               string         `json:"id"`
+	AgentSessionID   string         `json:"agent_session_id"`
+	TaskID           string         `json:"task_id"`
+	Status           string         `json:"status"`
+	Prompt           string         `json:"prompt"`
+	RequiredRunnerID sql.NullString `json:"required_runner_id"`
+	Summary          sql.NullString `json:"summary"`
+	Error            sql.NullString `json:"error"`
+	SessionExport    sql.NullString `json:"session_export"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	StartedAt        sql.NullTime   `json:"started_at"`
+	EndedAt          sql.NullTime   `json:"ended_at"`
+	Sequence         int32          `json:"sequence"`
 }
 
 type Definition struct {

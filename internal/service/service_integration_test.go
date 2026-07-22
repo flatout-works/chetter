@@ -302,15 +302,15 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	if row.TimeoutSec != 600 {
 		t.Errorf("timeout_sec: %d", row.TimeoutSec)
 	}
-	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	if run.Status != "pending" {
-		t.Errorf("session run status: %s", run.Status)
+		t.Errorf("user prompt status: %s", run.Status)
 	}
 	if run.TaskID != rec.ID {
-		t.Errorf("session run task_id: %s", run.TaskID)
+		t.Errorf("user prompt task_id: %s", run.TaskID)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
@@ -348,7 +348,7 @@ func TestSubmitTaskAppliesDefaultAgentImage(t *testing.T) {
 	}
 }
 
-func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
+func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -379,15 +379,15 @@ func TestRunnerTerminalEventCompletesSessionRun(t *testing.T) {
 	}
 
 	q := data.New(tdb.DB, tdb.Dialect())
-	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	if run.Status != "completed" {
-		t.Fatalf("session run status = %s, want completed", run.Status)
+		t.Fatalf("user prompt status = %s, want completed", run.Status)
 	}
 	if run.Summary.String != "finished" {
-		t.Fatalf("session run summary = %q", run.Summary.String)
+		t.Fatalf("user prompt summary = %q", run.Summary.String)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
@@ -425,9 +425,9 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		t.Fatal("expected checkpoint_after_success=true for resumable session")
 	}
 
-	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	if run.Status != "pending" {
 		t.Fatalf("run status = %s, want pending", run.Status)
@@ -470,12 +470,12 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		t.Fatalf("report terminal event: %v", err)
 	}
 
-	run, err = q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err = q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	if run.Status != "completed" {
-		t.Fatalf("session run status = %s, want completed", run.Status)
+		t.Fatalf("user prompt status = %s, want completed", run.Status)
 	}
 
 	session, err = q.GetAgentSessionByID(ctx, run.AgentSessionID)
@@ -513,9 +513,9 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 
-	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
@@ -594,8 +594,8 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if resumeOut.Task.ID != rec.ID {
 		t.Fatalf("resume task ID = %s, want stable task ID %s", resumeOut.Task.ID, rec.ID)
 	}
-	if resumeOut.Run.Sequence != 2 {
-		t.Fatalf("resume prompt sequence = %d, want 2", resumeOut.Run.Sequence)
+	if resumeOut.Prompt.Sequence != 2 {
+		t.Fatalf("resume prompt sequence = %d, want 2", resumeOut.Prompt.Sequence)
 	}
 	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
 	if err != nil {
@@ -693,7 +693,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			t.Fatalf("report timeout terminal event: %v", err)
 		}
 
-		run3, err := q.GetSessionRunByTaskID(ctx, rec3.ID)
+		run3, err := q.GetUserPromptByTaskID(ctx, rec3.ID)
 		if err != nil {
 			t.Fatalf("get timeout run: %v", err)
 		}
@@ -775,7 +775,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			t.Fatalf("report second terminal event: %v", err)
 		}
 
-		run2, _ := q.GetSessionRunByTaskID(ctx, rec2.ID)
+		run2, _ := q.GetUserPromptByTaskID(ctx, rec2.ID)
 		sess2, _ := q.GetAgentSessionByID(ctx, run2.AgentSessionID)
 		resume2, err := svc.ResumeAgentSession(ctx, sess2.ID, "even more feedback", 600)
 		if err != nil {
@@ -842,9 +842,9 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 		t.Fatalf("report terminal event: %v", err)
 	}
 
-	run, err := q.GetSessionRunByTaskID(ctx, rec.ID)
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("get session run: %v", err)
+		t.Fatalf("get user prompt: %v", err)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
@@ -877,7 +877,7 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	if resumeTask.Status != "error" || resumeTask.ErrorCategory.String != "runner_unavailable" {
 		t.Fatalf("resume task status/category = %s/%s, want error/runner_unavailable", resumeTask.Status, resumeTask.ErrorCategory.String)
 	}
-	resumeRun, err := q.GetSessionRunByTaskID(ctx, resumeOut.Task.ID)
+	resumeRun, err := q.GetUserPromptByTaskID(ctx, resumeOut.Task.ID)
 	if err != nil {
 		t.Fatalf("get resume run: %v", err)
 	}

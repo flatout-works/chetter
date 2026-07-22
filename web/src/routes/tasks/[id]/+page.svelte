@@ -4,7 +4,7 @@
   import { SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService, SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
-  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo, SessionRun } from "$gen/proto/api/v1/api_pb";
+  import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo, UserPrompt } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
     loadTaskEvents, loadTaskProgress, loadOlderTaskProgress, refreshTaskProgress, subscribeToTaskEvents,
@@ -18,10 +18,10 @@
   let { params } = $props();
   let task = $state<Task | null>(null);
   let taskSession = $state<AgentSession | null>(null);
-  let sessionRuns = $state<SessionRun[]>([]);
+  let userPrompts = $state<UserPrompt[]>([]);
   let artifacts = $state<TaskArtifact[]>([]);
   let uniqueArtifacts = $derived.by(() => {
-    const seen = new Set<string>();
+    const seen = new SvelteSet<string>();
     return artifacts.filter((a) => {
       const key = `${a.artifactType}:${a.repo}:${a.number}`;
       if (seen.has(key)) return false;
@@ -341,13 +341,13 @@
 
   async function loadTaskSession() {
     taskSession = null;
-    sessionRuns = [];
+    userPrompts = [];
     if (!task?.agentSessionId) return;
     try {
       const client = createClient(SessionService, getTransport());
       const resp = await client.getSession({ sessionId: task.agentSessionId });
       taskSession = resp.session ?? null;
-      sessionRuns = resp.runs ?? [];
+      userPrompts = resp.prompts ?? [];
     } catch {
       taskSession = null;
     }
@@ -701,26 +701,22 @@
       </Alert>
     {/if}
 
-    <!-- Session Run Chain -->
-    {#if sessionRuns.length > 1}
+    <!-- User Prompt Chain -->
+    {#if userPrompts.length > 1}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
-        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Session Runs</h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">This task is part of a resumed session. Each follow-up prompt creates a new session run.</p>
+        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">User Prompts</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">This task is part of a resumed session. Each follow-up creates a new user prompt.</p>
         <div class="space-y-1">
-          {#each sessionRuns as run (run.id)}
-            <div class="flex items-center gap-3 px-3 py-2 rounded {run.taskId === task.id ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : 'bg-gray-50 dark:bg-gray-800/50'}">
-              <StatusBadge status={run.status} />
-              <a href={resolve("/tasks/[id]", { id: run.taskId })} class="flex-1 min-w-0">
-                <span class="text-sm font-mono text-blue-600 dark:text-blue-400 hover:underline">
-                  {run.taskId.slice(0, 24)}…
-                </span>
-              </a>
-              {#if run.prompt}
-                <span class="text-xs text-gray-400 dark:text-gray-500 truncate hidden sm:block">{run.prompt.slice(0, 60)}</span>
+          {#each userPrompts as prompt (prompt.id)}
+            <div class="flex items-center gap-3 px-3 py-2 rounded {prompt.id === userPrompts[userPrompts.length - 1].id ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : 'bg-gray-50 dark:bg-gray-800/50'}">
+              <StatusBadge status={prompt.status} />
+              <span class="text-sm font-mono text-gray-700 dark:text-gray-300">Prompt {prompt.sequence}</span>
+              {#if prompt.prompt}
+                <span class="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate">{prompt.prompt}</span>
               {/if}
-              {#if run.taskId === task.id}
+              {#if prompt.id === userPrompts[userPrompts.length - 1].id}
                 <Badge color="blue">current</Badge>
-              {:else if run.id === sessionRuns[0].id}
+              {:else if prompt.id === userPrompts[0].id}
                 <span class="text-xs text-gray-400">initial</span>
               {/if}
             </div>

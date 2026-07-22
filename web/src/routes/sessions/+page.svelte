@@ -24,7 +24,7 @@
     if (u.href !== window.location.href) goto(u, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  type SortColumn = "id" | "status" | "agent" | "model" | "runs" | "created";
+  type SortColumn = "id" | "status" | "agent" | "model" | "prompts" | "created";
   let sessions = $state<AgentSession[]>([]);
   let loading = $state(true);
   let activeRunners = $state<string[]>([]);
@@ -45,7 +45,7 @@
         case "status": cmp = a.status.localeCompare(b.status); break;
         case "agent": cmp = (a.agent || "").localeCompare(b.agent || ""); break;
         case "model": cmp = (a.modelId || "").localeCompare(b.modelId || ""); break;
-        case "runs": cmp = a.runCount - b.runCount; break;
+        case "prompts": cmp = a.promptCount - b.promptCount; break;
         case "created": cmp = a.createdAt.localeCompare(b.createdAt); break;
       }
       return sortDirection === "asc" ? cmp : -cmp;
@@ -163,7 +163,7 @@
         <TableHeadCell onclick={() => toggleSort("status")} class="cursor-pointer select-none">Status {sortIcon("status")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("agent")} class="cursor-pointer select-none">Agent {sortIcon("agent")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("model")} class="cursor-pointer select-none">Model {sortIcon("model")}</TableHeadCell>
-        <TableHeadCell onclick={() => toggleSort("runs")} class="cursor-pointer select-none">Runs {sortIcon("runs")}</TableHeadCell>
+        <TableHeadCell onclick={() => toggleSort("prompts")} class="cursor-pointer select-none">Prompts {sortIcon("prompts")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("created")} class="cursor-pointer select-none">Created {sortIcon("created")}</TableHeadCell>
         <TableHeadCell class="text-right">Actions</TableHeadCell>
       </TableHead>
@@ -178,7 +178,7 @@
             <TableBodyCell><StatusBadge status={session.status} /></TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.agent || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.modelId || "—"}</span></TableBodyCell>
-            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 font-mono">{session.runCount}</span></TableBodyCell>
+            <TableBodyCell><span class="text-gray-500 dark:text-gray-400 font-mono">{session.promptCount}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
             <TableBodyCell class="text-right">
               {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}

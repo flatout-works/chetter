@@ -396,7 +396,9 @@ type AgentSession struct {
 	ExpiresAt        *string                `protobuf:"bytes,18,opt,name=expires_at,json=expiresAt,proto3,oneof" json:"expires_at,omitempty"`
 	PauseReason      string                 `protobuf:"bytes,19,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	Error            string                 `protobuf:"bytes,20,opt,name=error,proto3" json:"error,omitempty"`
-	RunCount         int32                  `protobuf:"varint,21,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
+	PromptCount      int32                  `protobuf:"varint,21,opt,name=prompt_count,json=promptCount,proto3" json:"prompt_count,omitempty"`
+	TaskId           string                 `protobuf:"bytes,22,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Sequence         int32                  `protobuf:"varint,23,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -571,14 +573,28 @@ func (x *AgentSession) GetError() string {
 	return ""
 }
 
-func (x *AgentSession) GetRunCount() int32 {
+func (x *AgentSession) GetPromptCount() int32 {
 	if x != nil {
-		return x.RunCount
+		return x.PromptCount
 	}
 	return 0
 }
 
-type SessionRun struct {
+func (x *AgentSession) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *AgentSession) GetSequence() int32 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+type UserPrompt struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	AgentSessionId   string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
@@ -592,24 +608,25 @@ type SessionRun struct {
 	StartedAt        *string                `protobuf:"bytes,10,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
 	EndedAt          *string                `protobuf:"bytes,11,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
 	Prompt           string                 `protobuf:"bytes,12,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Sequence         int32                  `protobuf:"varint,13,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
-func (x *SessionRun) Reset() {
-	*x = SessionRun{}
+func (x *UserPrompt) Reset() {
+	*x = UserPrompt{}
 	mi := &file_proto_api_v1_api_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SessionRun) String() string {
+func (x *UserPrompt) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SessionRun) ProtoMessage() {}
+func (*UserPrompt) ProtoMessage() {}
 
-func (x *SessionRun) ProtoReflect() protoreflect.Message {
+func (x *UserPrompt) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_api_v1_api_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -621,93 +638,100 @@ func (x *SessionRun) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SessionRun.ProtoReflect.Descriptor instead.
-func (*SessionRun) Descriptor() ([]byte, []int) {
+// Deprecated: Use UserPrompt.ProtoReflect.Descriptor instead.
+func (*UserPrompt) Descriptor() ([]byte, []int) {
 	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *SessionRun) GetId() string {
+func (x *UserPrompt) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *SessionRun) GetAgentSessionId() string {
+func (x *UserPrompt) GetAgentSessionId() string {
 	if x != nil {
 		return x.AgentSessionId
 	}
 	return ""
 }
 
-func (x *SessionRun) GetTaskId() string {
+func (x *UserPrompt) GetTaskId() string {
 	if x != nil {
 		return x.TaskId
 	}
 	return ""
 }
 
-func (x *SessionRun) GetStatus() string {
+func (x *UserPrompt) GetStatus() string {
 	if x != nil {
 		return x.Status
 	}
 	return ""
 }
 
-func (x *SessionRun) GetRequiredRunnerId() string {
+func (x *UserPrompt) GetRequiredRunnerId() string {
 	if x != nil {
 		return x.RequiredRunnerId
 	}
 	return ""
 }
 
-func (x *SessionRun) GetSummary() string {
+func (x *UserPrompt) GetSummary() string {
 	if x != nil {
 		return x.Summary
 	}
 	return ""
 }
 
-func (x *SessionRun) GetError() string {
+func (x *UserPrompt) GetError() string {
 	if x != nil {
 		return x.Error
 	}
 	return ""
 }
 
-func (x *SessionRun) GetCreatedAt() string {
+func (x *UserPrompt) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
 	}
 	return ""
 }
 
-func (x *SessionRun) GetUpdatedAt() string {
+func (x *UserPrompt) GetUpdatedAt() string {
 	if x != nil {
 		return x.UpdatedAt
 	}
 	return ""
 }
 
-func (x *SessionRun) GetStartedAt() string {
+func (x *UserPrompt) GetStartedAt() string {
 	if x != nil && x.StartedAt != nil {
 		return *x.StartedAt
 	}
 	return ""
 }
 
-func (x *SessionRun) GetEndedAt() string {
+func (x *UserPrompt) GetEndedAt() string {
 	if x != nil && x.EndedAt != nil {
 		return *x.EndedAt
 	}
 	return ""
 }
 
-func (x *SessionRun) GetPrompt() string {
+func (x *UserPrompt) GetPrompt() string {
 	if x != nil {
 		return x.Prompt
 	}
 	return ""
+}
+
+func (x *UserPrompt) GetSequence() int32 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
 }
 
 type Trigger struct {
@@ -2051,7 +2075,7 @@ type TaskArtifact struct {
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	TaskId          string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	AgentSessionId  string                 `protobuf:"bytes,3,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	SessionRunId    string                 `protobuf:"bytes,4,opt,name=session_run_id,json=sessionRunId,proto3" json:"session_run_id,omitempty"`
+	UserPromptId    string                 `protobuf:"bytes,4,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
 	ArtifactType    string                 `protobuf:"bytes,5,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
 	Repo            string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
 	Number          int32                  `protobuf:"varint,7,opt,name=number,proto3" json:"number,omitempty"`
@@ -2116,9 +2140,9 @@ func (x *TaskArtifact) GetAgentSessionId() string {
 	return ""
 }
 
-func (x *TaskArtifact) GetSessionRunId() string {
+func (x *TaskArtifact) GetUserPromptId() string {
 	if x != nil {
-		return x.SessionRunId
+		return x.UserPromptId
 	}
 	return ""
 }
@@ -3777,7 +3801,7 @@ func (x *GetSessionRequest) GetSessionId() string {
 type GetSessionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Session       *AgentSession          `protobuf:"bytes,1,opt,name=session,proto3" json:"session,omitempty"`
-	Runs          []*SessionRun          `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs,omitempty"`
+	Prompts       []*UserPrompt          `protobuf:"bytes,2,rep,name=prompts,proto3" json:"prompts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3819,9 +3843,9 @@ func (x *GetSessionResponse) GetSession() *AgentSession {
 	return nil
 }
 
-func (x *GetSessionResponse) GetRuns() []*SessionRun {
+func (x *GetSessionResponse) GetPrompts() []*UserPrompt {
 	if x != nil {
-		return x.Runs
+		return x.Prompts
 	}
 	return nil
 }
@@ -3889,7 +3913,7 @@ func (x *ResumeSessionRequest) GetTimeoutSec() int32 {
 type ResumeSessionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
-	Run           *SessionRun            `protobuf:"bytes,2,opt,name=run,proto3" json:"run,omitempty"`
+	Prompt        *UserPrompt            `protobuf:"bytes,2,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3931,9 +3955,9 @@ func (x *ResumeSessionResponse) GetTask() *Task {
 	return nil
 }
 
-func (x *ResumeSessionResponse) GetRun() *SessionRun {
+func (x *ResumeSessionResponse) GetPrompt() *UserPrompt {
 	if x != nil {
-		return x.Run
+		return x.Prompt
 	}
 	return nil
 }
@@ -7819,7 +7843,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\xa8\x05\n" +
+	"\t_ended_at\"\xe3\x05\n" +
 	"\fAgentSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -7848,13 +7872,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x12 \x01(\tH\x01R\texpiresAt\x88\x01\x01\x12!\n" +
 	"\fpause_reason\x18\x13 \x01(\tR\vpauseReason\x12\x14\n" +
-	"\x05error\x18\x14 \x01(\tR\x05error\x12\x1b\n" +
-	"\trun_count\x18\x15 \x01(\x05R\brunCountB\f\n" +
+	"\x05error\x18\x14 \x01(\tR\x05error\x12!\n" +
+	"\fprompt_count\x18\x15 \x01(\x05R\vpromptCount\x12\x17\n" +
+	"\atask_id\x18\x16 \x01(\tR\x06taskId\x12\x1a\n" +
+	"\bsequence\x18\x17 \x01(\x05R\bsequenceB\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
-	"\v_expires_at\"\x8b\x03\n" +
+	"\v_expires_at\"\xa7\x03\n" +
 	"\n" +
-	"SessionRun\x12\x0e\n" +
+	"UserPrompt\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
 	"\x10agent_session_id\x18\x02 \x01(\tR\x0eagentSessionId\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x16\n" +
@@ -7870,7 +7896,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"started_at\x18\n" +
 	" \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
 	"\bended_at\x18\v \x01(\tH\x01R\aendedAt\x88\x01\x01\x12\x16\n" +
-	"\x06prompt\x18\f \x01(\tR\x06promptB\r\n" +
+	"\x06prompt\x18\f \x01(\tR\x06prompt\x12\x1a\n" +
+	"\bsequence\x18\r \x01(\x05R\bsequenceB\r\n" +
 	"\v_started_atB\v\n" +
 	"\t_ended_at\"\x81\a\n" +
 	"\aTrigger\x12\x0e\n" +
@@ -8044,7 +8071,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12(\n" +
 	"\x10agent_session_id\x18\x03 \x01(\tR\x0eagentSessionId\x12$\n" +
-	"\x0esession_run_id\x18\x04 \x01(\tR\fsessionRunId\x12#\n" +
+	"\x0euser_prompt_id\x18\x04 \x01(\tR\fuserPromptId\x12#\n" +
 	"\rartifact_type\x18\x05 \x01(\tR\fartifactType\x12\x12\n" +
 	"\x04repo\x18\x06 \x01(\tR\x04repo\x12\x16\n" +
 	"\x06number\x18\a \x01(\x05R\x06number\x12\x10\n" +
@@ -8162,19 +8189,19 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\bsessions\x18\x01 \x03(\v2\x14.api.v1.AgentSessionR\bsessions\";\n" +
 	"\x11GetSessionRequest\x12&\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tsessionId\"l\n" +
+	"session_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tsessionId\"r\n" +
 	"\x12GetSessionResponse\x12.\n" +
-	"\asession\x18\x01 \x01(\v2\x14.api.v1.AgentSessionR\asession\x12&\n" +
-	"\x04runs\x18\x02 \x03(\v2\x12.api.v1.SessionRunR\x04runs\"\x80\x01\n" +
+	"\asession\x18\x01 \x01(\v2\x14.api.v1.AgentSessionR\asession\x12,\n" +
+	"\aprompts\x18\x02 \x03(\v2\x12.api.v1.UserPromptR\aprompts\"\x80\x01\n" +
 	"\x14ResumeSessionRequest\x12&\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\tsessionId\x12\x1f\n" +
 	"\x06prompt\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06prompt\x12\x1f\n" +
 	"\vtimeout_sec\x18\x03 \x01(\x05R\n" +
-	"timeoutSec\"_\n" +
+	"timeoutSec\"e\n" +
 	"\x15ResumeSessionResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\x12$\n" +
-	"\x03run\x18\x02 \x01(\v2\x12.api.v1.SessionRunR\x03run\"\xdb\x04\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\x12*\n" +
+	"\x06prompt\x18\x02 \x01(\v2\x12.api.v1.UserPromptR\x06prompt\"\xdb\x04\n" +
 	"\x14CreateTriggerRequest\x12\x1b\n" +
 	"\x04name\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04name\x12*\n" +
 	"\ftrigger_type\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vtriggerType\x12\x1b\n" +
@@ -8540,7 +8567,7 @@ var file_proto_api_v1_api_proto_goTypes = []any{
 	(*TokenUsage)(nil),                        // 0: api.v1.TokenUsage
 	(*Task)(nil),                              // 1: api.v1.Task
 	(*AgentSession)(nil),                      // 2: api.v1.AgentSession
-	(*SessionRun)(nil),                        // 3: api.v1.SessionRun
+	(*UserPrompt)(nil),                        // 3: api.v1.UserPrompt
 	(*Trigger)(nil),                           // 4: api.v1.Trigger
 	(*TaskEvent)(nil),                         // 5: api.v1.TaskEvent
 	(*TaskProgressEntry)(nil),                 // 6: api.v1.TaskProgressEntry
@@ -8672,9 +8699,9 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	5,   // 15: api.v1.GetLatestTaskEventResponse.event:type_name -> api.v1.TaskEvent
 	2,   // 16: api.v1.ListSessionsResponse.sessions:type_name -> api.v1.AgentSession
 	2,   // 17: api.v1.GetSessionResponse.session:type_name -> api.v1.AgentSession
-	3,   // 18: api.v1.GetSessionResponse.runs:type_name -> api.v1.SessionRun
+	3,   // 18: api.v1.GetSessionResponse.prompts:type_name -> api.v1.UserPrompt
 	1,   // 19: api.v1.ResumeSessionResponse.task:type_name -> api.v1.Task
-	3,   // 20: api.v1.ResumeSessionResponse.run:type_name -> api.v1.SessionRun
+	3,   // 20: api.v1.ResumeSessionResponse.prompt:type_name -> api.v1.UserPrompt
 	4,   // 21: api.v1.CreateTriggerResponse.trigger:type_name -> api.v1.Trigger
 	4,   // 22: api.v1.UpdateTriggerResponse.trigger:type_name -> api.v1.Trigger
 	4,   // 23: api.v1.ListTriggersResponse.triggers:type_name -> api.v1.Trigger

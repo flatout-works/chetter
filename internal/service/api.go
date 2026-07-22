@@ -26,7 +26,7 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 		return TaskToolRecord{}, err
 	}
 	rec := repoTaskToToolRecord(task)
-	if run, err := s.repo.GetSessionRunByTaskID(ctx, taskID); err == nil {
+	if run, err := s.repo.GetUserPromptByTaskID(ctx, taskID); err == nil {
 		rec.AgentSessionID = run.AgentSessionID
 	}
 	return rec, nil
@@ -648,16 +648,16 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 		for i, s := range out {
 			ids[i] = s.ID
 		}
-		counts := s.batchSessionRunCounts(ctx, ids)
+		counts := s.batchUserPromptCounts(ctx, ids)
 		for i := range out {
-			out[i].RunCount = counts[out[i].ID]
+			out[i].PromptCount = counts[out[i].ID]
 		}
 	}
 	return out, nil
 }
 
-// GetAgentSession returns a single agent session with its runs.
-func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentSessionRecord, []SessionRunRecord, error) {
+// GetAgentSession returns a single agent session with its user prompts.
+func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentSessionRecord, []UserPromptRecord, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)
 	if err != nil {
 		return AgentSessionRecord{}, nil, fmt.Errorf("get agent session: %w", err)
@@ -665,19 +665,19 @@ func (s *Service) GetAgentSession(ctx context.Context, sessionID string) (AgentS
 	if err := authorizeAgentSessionAccess(ctx, session); err != nil {
 		return AgentSessionRecord{}, nil, err
 	}
-	runs, err := s.repo.ListSessionRunsBySession(ctx, sessionID)
+	runs, err := s.repo.ListUserPromptsBySession(ctx, sessionID)
 	if err != nil {
-		return AgentSessionRecord{}, nil, fmt.Errorf("list session runs: %w", err)
+		return AgentSessionRecord{}, nil, fmt.Errorf("list user prompts: %w", err)
 	}
-	outRuns := make([]SessionRunRecord, 0, len(runs))
+	outRuns := make([]UserPromptRecord, 0, len(runs))
 	for _, run := range runs {
-		outRuns = append(outRuns, sessionRunRecord(run))
+		outRuns = append(outRuns, userPromptRecord(run))
 	}
 	return agentSessionRecord(session), outRuns, nil
 }
 
-// batchSessionRunCounts returns a map of session_id -> run count for a batch of sessions.
-func (s *Service) batchSessionRunCounts(ctx context.Context, sessionIDs []string) map[string]int32 {
+// batchUserPromptCounts returns a map of session_id -> run count for a batch of sessions.
+func (s *Service) batchUserPromptCounts(ctx context.Context, sessionIDs []string) map[string]int32 {
 	if len(sessionIDs) == 0 {
 		return nil
 	}
@@ -689,10 +689,10 @@ func (s *Service) batchSessionRunCounts(ctx context.Context, sessionIDs []string
 	for i, v := range sessionIDs {
 		args[i] = v
 	}
-	query := "SELECT agent_session_id, COUNT(*) FROM chetter_session_runs WHERE agent_session_id IN (" + strings.Join(sqlPlaceholders(s.dialect, len(sessionIDs)), ",") + ") GROUP BY agent_session_id"
+	query := "SELECT agent_session_id, COUNT(*) FROM chetter_user_prompts WHERE agent_session_id IN (" + strings.Join(sqlPlaceholders(s.dialect, len(sessionIDs)), ",") + ") GROUP BY agent_session_id"
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		slog.ErrorContext(ctx, "batch session run counts", "err", err)
+		slog.ErrorContext(ctx, "batch user prompt counts", "err", err)
 		return nil
 	}
 	defer rows.Close()
@@ -1308,7 +1308,7 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 			ID:              r.ID,
 			TaskID:          r.TaskID,
 			AgentSessionID:  r.AgentSessionID.String,
-			SessionRunID:    r.SessionRunID.String,
+			UserPromptID:    r.UserPromptID.String,
 			ArtifactType:    r.ArtifactType,
 			Repo:            r.Repo,
 			Number:          int(r.Number.Int32),

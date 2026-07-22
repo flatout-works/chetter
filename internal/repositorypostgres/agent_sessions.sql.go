@@ -53,7 +53,7 @@ WHERE t.status = 'pending'
   )
   AND EXISTS (
     SELECT 1
-    FROM chetter_session_runs sr
+    FROM chetter_user_prompts sr
     JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
     WHERE sr.task_id = t.id AND sr.status = 'pending' AND s.status = 'resuming'
   )
@@ -79,8 +79,8 @@ func (q *Queries) FailPendingResumeTasksForMissingRunner(ctx context.Context, ar
 	return result.RowsAffected()
 }
 
-const failPendingSessionRunsForUnavailableRunner = `-- name: FailPendingSessionRunsForUnavailableRunner :execrows
-UPDATE chetter_session_runs sr
+const failPendingUserPromptsForUnavailableRunner = `-- name: FailPendingUserPromptsForUnavailableRunner :execrows
+UPDATE chetter_user_prompts sr
 SET status = 'failed',
     error = t.error,
     ended_at = COALESCE(sr.ended_at, $1),
@@ -92,13 +92,13 @@ WHERE t.id = sr.task_id
   AND t.error_category = 'runner_unavailable'
 `
 
-type FailPendingSessionRunsForUnavailableRunnerParams struct {
+type FailPendingUserPromptsForUnavailableRunnerParams struct {
 	EndedAt   sql.NullTime `json:"ended_at"`
 	UpdatedAt time.Time    `json:"updated_at"`
 }
 
-func (q *Queries) FailPendingSessionRunsForUnavailableRunner(ctx context.Context, arg FailPendingSessionRunsForUnavailableRunnerParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, failPendingSessionRunsForUnavailableRunner, arg.EndedAt, arg.UpdatedAt)
+func (q *Queries) FailPendingUserPromptsForUnavailableRunner(ctx context.Context, arg FailPendingUserPromptsForUnavailableRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingUserPromptsForUnavailableRunner, arg.EndedAt, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -185,7 +185,7 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (C
 }
 
 const getLatestAgentSessionCheckpoint = `-- name: GetLatestAgentSessionCheckpoint :one
-SELECT id, agent_session_id, session_run_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at FROM chetter_agent_session_checkpoints
+SELECT id, agent_session_id, user_prompt_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at FROM chetter_agent_session_checkpoints
 WHERE agent_session_id = $1
 ORDER BY created_at DESC
 LIMIT 1
@@ -197,7 +197,7 @@ func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSess
 	err := row.Scan(
 		&i.ID,
 		&i.AgentSessionID,
-		&i.SessionRunID,
+		&i.UserPromptID,
 		&i.RunnerID,
 		&i.CheckpointPath,
 		&i.WorkspacePath,
@@ -215,8 +215,8 @@ func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSess
 }
 
 const getLatestAgentSessionCheckpointByTaskID = `-- name: GetLatestAgentSessionCheckpointByTaskID :one
-SELECT chk.id, chk.agent_session_id, chk.session_run_id, chk.runner_id, chk.checkpoint_path, chk.workspace_path, chk.container_name, chk.runsc_version, chk.agent_image, chk.size_bytes, chk.status, chk.error, chk.created_at, chk.updated_at, chk.expires_at FROM chetter_agent_session_checkpoints chk
-JOIN chetter_session_runs r ON r.agent_session_id = chk.agent_session_id
+SELECT chk.id, chk.agent_session_id, chk.user_prompt_id, chk.runner_id, chk.checkpoint_path, chk.workspace_path, chk.container_name, chk.runsc_version, chk.agent_image, chk.size_bytes, chk.status, chk.error, chk.created_at, chk.updated_at, chk.expires_at FROM chetter_agent_session_checkpoints chk
+JOIN chetter_user_prompts r ON r.agent_session_id = chk.agent_session_id
 WHERE r.task_id = $1
 ORDER BY chk.created_at DESC
 LIMIT 1
@@ -228,7 +228,7 @@ func (q *Queries) GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, t
 	err := row.Scan(
 		&i.ID,
 		&i.AgentSessionID,
-		&i.SessionRunID,
+		&i.UserPromptID,
 		&i.RunnerID,
 		&i.CheckpointPath,
 		&i.WorkspacePath,
@@ -258,14 +258,14 @@ func (q *Queries) GetNextAgentSessionSequence(ctx context.Context, taskID string
 	return column_1, err
 }
 
-const getNextSessionRunSequence = `-- name: GetNextSessionRunSequence :one
+const getNextUserPromptSequence = `-- name: GetNextUserPromptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
-FROM chetter_session_runs
+FROM chetter_user_prompts
 WHERE agent_session_id = $1
 `
 
-func (q *Queries) GetNextSessionRunSequence(ctx context.Context, agentSessionID string) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getNextSessionRunSequence, agentSessionID)
+func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getNextUserPromptSequence, agentSessionID)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -323,13 +323,13 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg GetPausedS
 	return i, err
 }
 
-const getSessionRunByTaskID = `-- name: GetSessionRunByTaskID :one
-SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence FROM chetter_session_runs WHERE task_id = $1 ORDER BY sequence DESC LIMIT 1
+const getUserPromptByTaskID = `-- name: GetUserPromptByTaskID :one
+SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence FROM chetter_user_prompts WHERE task_id = $1 ORDER BY sequence DESC LIMIT 1
 `
 
-func (q *Queries) GetSessionRunByTaskID(ctx context.Context, taskID string) (ChetterSessionRun, error) {
-	row := q.db.QueryRowContext(ctx, getSessionRunByTaskID, taskID)
-	var i ChetterSessionRun
+func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (ChetterUserPrompt, error) {
+	row := q.db.QueryRowContext(ctx, getUserPromptByTaskID, taskID)
+	var i ChetterUserPrompt
 	err := row.Scan(
 		&i.ID,
 		&i.AgentSessionID,
@@ -402,14 +402,14 @@ func (q *Queries) InsertAgentSession(ctx context.Context, arg InsertAgentSession
 
 const insertAgentSessionCheckpoint = `-- name: InsertAgentSessionCheckpoint :exec
 INSERT INTO chetter_agent_session_checkpoints
-    (id, agent_session_id, session_run_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)
+    (id, agent_session_id, user_prompt_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 `
 
 type InsertAgentSessionCheckpointParams struct {
 	ID             string         `json:"id"`
 	AgentSessionID string         `json:"agent_session_id"`
-	SessionRunID   sql.NullString `json:"session_run_id"`
+	UserPromptID   sql.NullString `json:"user_prompt_id"`
 	RunnerID       string         `json:"runner_id"`
 	CheckpointPath string         `json:"checkpoint_path"`
 	WorkspacePath  string         `json:"workspace_path"`
@@ -428,7 +428,7 @@ func (q *Queries) InsertAgentSessionCheckpoint(ctx context.Context, arg InsertAg
 	_, err := q.db.ExecContext(ctx, insertAgentSessionCheckpoint,
 		arg.ID,
 		arg.AgentSessionID,
-		arg.SessionRunID,
+		arg.UserPromptID,
 		arg.RunnerID,
 		arg.CheckpointPath,
 		arg.WorkspacePath,
@@ -445,13 +445,13 @@ func (q *Queries) InsertAgentSessionCheckpoint(ctx context.Context, arg InsertAg
 	return err
 }
 
-const insertSessionRun = `-- name: InsertSessionRun :exec
-INSERT INTO chetter_session_runs
+const insertUserPrompt = `-- name: InsertUserPrompt :exec
+INSERT INTO chetter_user_prompts
     (id, agent_session_id, task_id, sequence, status, prompt, required_runner_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
-type InsertSessionRunParams struct {
+type InsertUserPromptParams struct {
 	ID               string         `json:"id"`
 	AgentSessionID   string         `json:"agent_session_id"`
 	TaskID           string         `json:"task_id"`
@@ -463,8 +463,8 @@ type InsertSessionRunParams struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
-func (q *Queries) InsertSessionRun(ctx context.Context, arg InsertSessionRunParams) error {
-	_, err := q.db.ExecContext(ctx, insertSessionRun,
+func (q *Queries) InsertUserPrompt(ctx context.Context, arg InsertUserPromptParams) error {
+	_, err := q.db.ExecContext(ctx, insertUserPrompt,
 		arg.ID,
 		arg.AgentSessionID,
 		arg.TaskID,
@@ -637,19 +637,19 @@ func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg ListAgentSes
 	return items, nil
 }
 
-const listSessionRunsBySession = `-- name: ListSessionRunsBySession :many
-SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence FROM chetter_session_runs WHERE agent_session_id = $1 ORDER BY sequence ASC, created_at ASC
+const listUserPromptsBySession = `-- name: ListUserPromptsBySession :many
+SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence FROM chetter_user_prompts WHERE agent_session_id = $1 ORDER BY sequence ASC, created_at ASC
 `
 
-func (q *Queries) ListSessionRunsBySession(ctx context.Context, agentSessionID string) ([]ChetterSessionRun, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionRunsBySession, agentSessionID)
+func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]ChetterUserPrompt, error) {
+	rows, err := q.db.QueryContext(ctx, listUserPromptsBySession, agentSessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterSessionRun{}
+	items := []ChetterUserPrompt{}
 	for rows.Next() {
-		var i ChetterSessionRun
+		var i ChetterUserPrompt
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentSessionID,
@@ -732,7 +732,7 @@ func (q *Queries) MarkAgentSessionTerminalByTask(ctx context.Context, arg MarkAg
 const markResumingSessionsFailedForUnavailableRunner = `-- name: MarkResumingSessionsFailedForUnavailableRunner :execrows
 UPDATE chetter_agent_sessions s
 SET status = 'error', error = COALESCE(sr.error, t.error), updated_at = $1
-FROM chetter_session_runs sr
+FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id
 WHERE sr.agent_session_id = s.id
   AND s.status = 'resuming'
@@ -749,29 +749,29 @@ func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Con
 	return result.RowsAffected()
 }
 
-const markSessionRunRunningByTask = `-- name: MarkSessionRunRunningByTask :execrows
-UPDATE chetter_session_runs
+const markUserPromptRunningByTask = `-- name: MarkUserPromptRunningByTask :execrows
+UPDATE chetter_user_prompts
 SET status = 'running', started_at = COALESCE(started_at, $1), updated_at = $2
-WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = $3 ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $3 ORDER BY sr.sequence DESC LIMIT 1)
   AND status IN ('pending', 'claimed')
 `
 
-type MarkSessionRunRunningByTaskParams struct {
+type MarkUserPromptRunningByTaskParams struct {
 	StartedAt sql.NullTime `json:"started_at"`
 	UpdatedAt time.Time    `json:"updated_at"`
 	TaskID    string       `json:"task_id"`
 }
 
-func (q *Queries) MarkSessionRunRunningByTask(ctx context.Context, arg MarkSessionRunRunningByTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markSessionRunRunningByTask, arg.StartedAt, arg.UpdatedAt, arg.TaskID)
+func (q *Queries) MarkUserPromptRunningByTask(ctx context.Context, arg MarkUserPromptRunningByTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markUserPromptRunningByTask, arg.StartedAt, arg.UpdatedAt, arg.TaskID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const markSessionRunTerminalByTask = `-- name: MarkSessionRunTerminalByTask :execrows
-UPDATE chetter_session_runs
+const markUserPromptTerminalByTask = `-- name: MarkUserPromptTerminalByTask :execrows
+UPDATE chetter_user_prompts
 SET status = $1,
     summary = $2,
     error = $3,
@@ -779,10 +779,10 @@ SET status = $1,
     started_at = COALESCE(started_at, $5),
     ended_at = COALESCE($6, ended_at),
     updated_at = $7
-WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = $8 ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $8 ORDER BY sr.sequence DESC LIMIT 1)
 `
 
-type MarkSessionRunTerminalByTaskParams struct {
+type MarkUserPromptTerminalByTaskParams struct {
 	Status        string         `json:"status"`
 	Summary       sql.NullString `json:"summary"`
 	Error         sql.NullString `json:"error"`
@@ -793,8 +793,8 @@ type MarkSessionRunTerminalByTaskParams struct {
 	TaskID        string         `json:"task_id"`
 }
 
-func (q *Queries) MarkSessionRunTerminalByTask(ctx context.Context, arg MarkSessionRunTerminalByTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markSessionRunTerminalByTask,
+func (q *Queries) MarkUserPromptTerminalByTask(ctx context.Context, arg MarkUserPromptTerminalByTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markUserPromptTerminalByTask,
 		arg.Status,
 		arg.Summary,
 		arg.Error,
@@ -854,30 +854,6 @@ func (q *Queries) PauseAgentSessionByTaskID(ctx context.Context, arg PauseAgentS
 	return result.RowsAffected()
 }
 
-const reapStaleSessionRuns = `-- name: ReapStaleSessionRuns :execrows
-UPDATE chetter_session_runs sr
-SET status = CASE
-        WHEN t.status = 'done' THEN 'completed'
-        WHEN t.status = 'cancelled' THEN 'cancelled'
-        ELSE 'failed'
-    END,
-    error = COALESCE(NULLIF(sr.error, ''), t.error, sr.error),
-    ended_at = COALESCE(sr.ended_at, t.ended_at, NOW()),
-    updated_at = NOW()
-FROM chetter_tasks t
-WHERE t.id = sr.task_id
-  AND sr.status = 'running'
-  AND t.status IN ('done', 'error', 'cancelled')
-`
-
-func (q *Queries) ReapStaleSessionRuns(ctx context.Context) (int64, error) {
-	result, err := q.db.ExecContext(ctx, reapStaleSessionRuns)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const reapStaleSessionsForTerminalRuns = `-- name: ReapStaleSessionsForTerminalRuns :execrows
 UPDATE chetter_agent_sessions s
 SET status = CASE
@@ -887,7 +863,7 @@ SET status = CASE
     END,
     error = COALESCE(NULLIF(s.error, ''), t.error, s.error),
     updated_at = NOW()
-FROM chetter_session_runs sr
+FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id
 WHERE sr.agent_session_id = s.id
   AND s.status = 'running'
@@ -903,8 +879,32 @@ func (q *Queries) ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, 
 	return result.RowsAffected()
 }
 
-const revertOrphanedRunningSessionRuns = `-- name: RevertOrphanedRunningSessionRuns :execrows
-UPDATE chetter_session_runs sr
+const reapStaleUserPrompts = `-- name: ReapStaleUserPrompts :execrows
+UPDATE chetter_user_prompts sr
+SET status = CASE
+        WHEN t.status = 'done' THEN 'completed'
+        WHEN t.status = 'cancelled' THEN 'cancelled'
+        ELSE 'failed'
+    END,
+    error = COALESCE(NULLIF(sr.error, ''), t.error, sr.error),
+    ended_at = COALESCE(sr.ended_at, t.ended_at, NOW()),
+    updated_at = NOW()
+FROM chetter_tasks t
+WHERE t.id = sr.task_id
+  AND sr.status = 'running'
+  AND t.status IN ('done', 'error', 'cancelled')
+`
+
+func (q *Queries) ReapStaleUserPrompts(ctx context.Context) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reapStaleUserPrompts)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const revertOrphanedRunningUserPrompts = `-- name: RevertOrphanedRunningUserPrompts :execrows
+UPDATE chetter_user_prompts sr
 SET status = 'pending', started_at = NULL, updated_at = NOW()
 FROM chetter_tasks t
 WHERE t.id = sr.task_id
@@ -912,8 +912,8 @@ WHERE t.id = sr.task_id
   AND t.status = 'pending'
 `
 
-func (q *Queries) RevertOrphanedRunningSessionRuns(ctx context.Context) (int64, error) {
-	result, err := q.db.ExecContext(ctx, revertOrphanedRunningSessionRuns)
+func (q *Queries) RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revertOrphanedRunningUserPrompts)
 	if err != nil {
 		return 0, err
 	}

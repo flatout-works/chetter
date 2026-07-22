@@ -62,16 +62,16 @@ func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequ
 	if strings.TrimSpace(in.Title) == "" {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("title is required")
 	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
+	task, userPrompt, err := s.githubToolTaskContext(ctx, in.TaskID)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
 	created, err := s.githubClient().CreateIssue(ctx, in.Repo, in.Title, body, in.Labels)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue: %w", err)
 	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "issue", in.Repo, created.Number, created.URL, "", body, map[string]any{
+	return s.recordGitHubToolArtifact(ctx, task, userPrompt, "issue", in.Repo, created.Number, created.URL, "", body, map[string]any{
 		"title":  in.Title,
 		"labels": in.Labels,
 	})
@@ -84,16 +84,16 @@ func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallT
 	if in.IssueNumber <= 0 {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("issue_number is required")
 	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
+	task, userPrompt, err := s.githubToolTaskContext(ctx, in.TaskID)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
 	created, err := s.githubClient().CreateIssueCommentWithResponse(ctx, in.Repo, in.IssueNumber, body)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue comment: %w", err)
 	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "issue_comment", in.Repo, in.IssueNumber, created.URL, "", body, map[string]any{
+	return s.recordGitHubToolArtifact(ctx, task, userPrompt, "issue_comment", in.Repo, in.IssueNumber, created.URL, "", body, map[string]any{
 		"issue_number": in.IssueNumber,
 	})
 }
@@ -105,16 +105,16 @@ func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest
 	if strings.TrimSpace(in.Title) == "" || strings.TrimSpace(in.Head) == "" || strings.TrimSpace(in.Base) == "" {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("title, head, and base are required")
 	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
+	task, userPrompt, err := s.githubToolTaskContext(ctx, in.TaskID)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
 	created, err := s.githubClient().CreatePullRequest(ctx, in.Repo, in.Title, body, in.Head, in.Base, in.Draft)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request: %w", err)
 	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr", in.Repo, created.Number, created.URL, in.Head, body, map[string]any{
+	return s.recordGitHubToolArtifact(ctx, task, userPrompt, "pr", in.Repo, created.Number, created.URL, in.Head, body, map[string]any{
 		"title": in.Title,
 		"head":  in.Head,
 		"base":  in.Base,
@@ -138,16 +138,16 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 	default:
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("event must be COMMENT, APPROVE, or REQUEST_CHANGES")
 	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
+	task, userPrompt, err := s.githubToolTaskContext(ctx, in.TaskID)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
 	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request review: %w", err)
 	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr_review", in.Repo, in.PRNumber, created.URL, "", body, map[string]any{
+	return s.recordGitHubToolArtifact(ctx, task, userPrompt, "pr_review", in.Repo, in.PRNumber, created.URL, "", body, map[string]any{
 		"pr_number": in.PRNumber,
 		"event":     event,
 	})
@@ -162,11 +162,11 @@ func (s *Service) GitHubClient() *webhook.Client {
 }
 
 func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, error) {
-	task, sessionRun, err := s.githubToolTaskContext(ctx, taskID)
+	task, userPrompt, err := s.githubToolTaskContext(ctx, taskID)
 	if err != nil {
 		return "", err
 	}
-	return githubToolSignature(task, sessionRun, s.cfg.WebURL), nil
+	return githubToolSignature(task, userPrompt, s.cfg.WebURL), nil
 }
 
 func requireGitHubToolFields(taskID, repo string) error {
@@ -179,33 +179,39 @@ func requireGitHubToolFields(taskID, repo string) error {
 	return nil
 }
 
-func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (repository.ChetterTask, repository.ChetterSessionRun, error) {
+func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (repository.ChetterTask, repository.ChetterUserPrompt, error) {
 	if s.githubClient() == nil {
-		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("GitHub App client is not configured")
+		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("GitHub App client is not configured")
 	}
 	task, err := s.repo.GetTaskByID(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("task %q not found", taskID)
+			return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("task %q not found", taskID)
 		}
-		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("get task: %w", err)
+		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("get task: %w", err)
 	}
 	if scope, ok := auth.GetScope(ctx); ok && !scope.Admin && (!task.TeamID.Valid || !scope.HasTeam(task.TeamID.String)) {
-		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("task %q not found", taskID)
+		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("task %q not found", taskID)
 	}
-	sessionRun, err := s.repo.GetSessionRunByTaskID(ctx, taskID)
+	userPrompt, err := s.repo.GetUserPromptByTaskID(ctx, taskID)
 	if err != nil && err != sql.ErrNoRows {
-		return repository.ChetterTask{}, repository.ChetterSessionRun{}, fmt.Errorf("get session run: %w", err)
+		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("get user prompt: %w", err)
 	}
-	return task, sessionRun, nil
+	return task, userPrompt, nil
 }
 
-func githubToolSignature(task repository.ChetterTask, sessionRun repository.ChetterSessionRun, webURL string) string {
+func githubToolSignature(task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, webURL string) string {
 	taskLink := task.ID
 	if webURL != "" {
 		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", task.ID, strings.TrimRight(webURL, "/"), task.ID)
 	}
 	parts := []string{fmt.Sprintf("Task: %s", taskLink)}
+	if userPrompt.AgentSessionID != "" {
+		parts = append(parts, "Session: "+userPrompt.AgentSessionID)
+	}
+	if userPrompt.ID != "" {
+		parts = append(parts, "Prompt: "+userPrompt.ID)
+	}
 	if agent := strings.TrimSpace(task.Agent.String); agent != "" {
 		parts = append(parts, "Agent: "+agent)
 	}
@@ -242,11 +248,11 @@ func nonEmpty(value, fallback string) string {
 	return value
 }
 
-func (s *Service) recordGitHubToolArtifact(ctx context.Context, task repository.ChetterTask, sessionRun repository.ChetterSessionRun, artifactType, repo string, number int, url, ref, body string, detail map[string]any) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+func (s *Service) recordGitHubToolArtifact(ctx context.Context, task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, artifactType, repo string, number int, url, ref, body string, detail map[string]any) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
 	if err := s.RecordArtifact(ctx, RecordArtifactParams{
 		TaskID:          task.ID,
-		AgentSessionID:  sessionRun.AgentSessionID,
-		SessionRunID:    sessionRun.ID,
+		AgentSessionID:  userPrompt.AgentSessionID,
+		UserPromptID:    userPrompt.ID,
 		ArtifactType:    artifactType,
 		Repo:            repo,
 		Number:          number,

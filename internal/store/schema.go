@@ -92,7 +92,7 @@ var schemaStatements = []string{
 		KEY idx_agent_sessions_expires (expires_at),
 		FULLTEXT INDEX idx_sessions_search (search_text)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_session_runs (
+	`CREATE TABLE IF NOT EXISTS chetter_user_prompts (
 		id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
@@ -108,16 +108,16 @@ var schemaStatements = []string{
 		started_at DATETIME(6) NULL,
 		ended_at DATETIME(6) NULL,
 		PRIMARY KEY (id),
-		UNIQUE KEY uq_session_runs_session_sequence (agent_session_id, sequence),
-		KEY idx_session_runs_task_sequence (task_id, sequence),
-		KEY idx_session_runs_session_created (agent_session_id, created_at),
-		KEY idx_session_runs_status_created (status, created_at),
-		KEY idx_session_runs_required_runner (required_runner_id, status)
+		UNIQUE KEY uq_user_prompts_session_sequence (agent_session_id, sequence),
+		KEY idx_user_prompts_task_sequence (task_id, sequence),
+		KEY idx_user_prompts_session_created (agent_session_id, created_at),
+		KEY idx_user_prompts_status_created (status, created_at),
+		KEY idx_user_prompts_required_runner (required_runner_id, status)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_session_checkpoints (
 		id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NOT NULL,
-		session_run_id VARCHAR(64) NULL,
+		user_prompt_id VARCHAR(64) NULL,
 		runner_id VARCHAR(64) NOT NULL,
 		checkpoint_path TEXT NOT NULL,
 		workspace_path TEXT NOT NULL,
@@ -315,7 +315,7 @@ var schemaStatements = []string{
 		id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NULL,
-		session_run_id VARCHAR(64) NULL,
+		user_prompt_id VARCHAR(64) NULL,
 		artifact_type VARCHAR(32) NOT NULL,
 		repo VARCHAR(255) NOT NULL,
 		number INT NULL,
@@ -330,7 +330,7 @@ var schemaStatements = []string{
 		UNIQUE KEY idx_task_artifacts_dedup (task_id, artifact_type, repo, number),
 		KEY idx_task_artifacts_task (task_id),
 		KEY idx_task_artifacts_agent_session (agent_session_id),
-		KEY idx_task_artifacts_session_run (session_run_id),
+		KEY idx_task_artifacts_user_prompt (user_prompt_id),
 		KEY idx_task_artifacts_type_repo (artifact_type, repo),
 		KEY idx_task_artifacts_number (repo, number),
 		FULLTEXT INDEX idx_artifacts_search (search_text)

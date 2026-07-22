@@ -41,7 +41,7 @@ type Repository interface {
 	ExtendTaskTimeout(ctx context.Context, arg repository.ExtendTaskTimeoutParams) (int64, error)
 	FailExpiredLeases(ctx context.Context, arg repository.FailExpiredLeasesParams) (int64, error)
 	FailPendingResumeTasksForMissingRunner(ctx context.Context, arg repository.FailPendingResumeTasksForMissingRunnerParams) (int64, error)
-	FailPendingSessionRunsForUnavailableRunner(ctx context.Context, arg repository.FailPendingSessionRunsForUnavailableRunnerParams) (int64, error)
+	FailPendingUserPromptsForUnavailableRunner(ctx context.Context, arg repository.FailPendingUserPromptsForUnavailableRunnerParams) (int64, error)
 	GetActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, error)
 	GetAgentSessionByID(ctx context.Context, id string) (repository.ChetterAgentSession, error)
 	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSession, error)
@@ -58,9 +58,8 @@ type Repository interface {
 	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error)
 	GetModelCatalogByName(ctx context.Context, name string) (repository.ChetterModelCatalog, error)
 	GetNextAgentSessionSequence(ctx context.Context, taskID string) (int32, error)
-	GetNextSessionRunSequence(ctx context.Context, agentSessionID string) (int32, error)
+	GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error)
 	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error)
-	GetSessionRunByTaskID(ctx context.Context, taskID string) (repository.ChetterSessionRun, error)
 	GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error)
 	GetTeamByID(ctx context.Context, id string) (repository.Team, error)
 	GetTeamByName(ctx context.Context, name string) (repository.Team, error)
@@ -68,6 +67,7 @@ type Repository interface {
 	GetTriggerByID(ctx context.Context, id string) (repository.ChetterTrigger, error)
 	GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error)
 	GetUserByID(ctx context.Context, id string) (repository.User, error)
+	GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error)
 	InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error
 	InsertAgentSessionCheckpoint(ctx context.Context, arg repository.InsertAgentSessionCheckpointParams) error
 	InsertAuditLog(ctx context.Context, arg repository.InsertAuditLogParams) error
@@ -75,11 +75,11 @@ type Repository interface {
 	InsertDefinitionSyncRun(ctx context.Context, arg repository.InsertDefinitionSyncRunParams) error
 	InsertEventCallback(ctx context.Context, arg repository.InsertEventCallbackParams) error
 	InsertModelCatalog(ctx context.Context, arg repository.InsertModelCatalogParams) error
-	InsertSessionRun(ctx context.Context, arg repository.InsertSessionRunParams) error
 	InsertTask(ctx context.Context, arg repository.InsertTaskParams) error
 	InsertTaskArtifact(ctx context.Context, arg repository.InsertTaskArtifactParams) error
 	InsertTaskEvent(ctx context.Context, arg repository.InsertTaskEventParams) error
 	InsertTriggerRun(ctx context.Context, arg repository.InsertTriggerRunParams) error
+	InsertUserPrompt(ctx context.Context, arg repository.InsertUserPromptParams) error
 	IsRunnerAlive(ctx context.Context, arg repository.IsRunnerAliveParams) (bool, error)
 	ListAgentSessions(ctx context.Context, arg repository.ListAgentSessionsParams) ([]repository.ChetterAgentSession, error)
 	ListAgentSessionsByTeams(ctx context.Context, arg repository.ListAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error)
@@ -100,7 +100,6 @@ type Repository interface {
 	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ChetterRunner, error)
 	ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error)
 	ListReclaimableExpiredLeases(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExpiredLeasesRow, error)
-	ListSessionRunsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterSessionRun, error)
 	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error)
 	ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error)
 	ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.ChetterTask, error)
@@ -114,23 +113,24 @@ type Repository interface {
 	ListTriggers(ctx context.Context) ([]repository.ChetterTrigger, error)
 	ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.ChetterTrigger, error)
 	ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.ChetterTrigger, error)
+	ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterUserPrompt, error)
 	ListUsers(ctx context.Context) ([]repository.ListUsersRow, error)
 	ListUsersByTeam(ctx context.Context, teamID string) ([]repository.ListUsersByTeamRow, error)
 	MarkAgentSessionResuming(ctx context.Context, arg repository.MarkAgentSessionResumingParams) (int64, error)
 	MarkAgentSessionTerminalByTask(ctx context.Context, arg repository.MarkAgentSessionTerminalByTaskParams) (int64, error)
 	MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error
 	MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error)
-	MarkSessionRunRunningByTask(ctx context.Context, arg repository.MarkSessionRunRunningByTaskParams) (int64, error)
-	MarkSessionRunTerminalByTask(ctx context.Context, arg repository.MarkSessionRunTerminalByTaskParams) (int64, error)
 	MarkTaskClaimed(ctx context.Context, arg repository.MarkTaskClaimedParams) (int64, error)
+	MarkUserPromptRunningByTask(ctx context.Context, arg repository.MarkUserPromptRunningByTaskParams) (int64, error)
+	MarkUserPromptTerminalByTask(ctx context.Context, arg repository.MarkUserPromptTerminalByTaskParams) (int64, error)
 	PauseAgentSessionByTaskID(ctx context.Context, arg repository.PauseAgentSessionByTaskIDParams) (int64, error)
-	ReapStaleSessionRuns(ctx context.Context) (int64, error)
 	ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, error)
+	ReapStaleUserPrompts(ctx context.Context) (int64, error)
 	ReclaimExpiredLeases(ctx context.Context, arg repository.ReclaimExpiredLeasesParams) (int64, error)
 	RenewRunningTaskLeases(ctx context.Context, arg repository.RenewRunningTaskLeasesParams) (int64, error)
 	RenewTaskLease(ctx context.Context, arg repository.RenewTaskLeaseParams) (int64, error)
 	RequeueTaskForPrompt(ctx context.Context, arg repository.RequeueTaskForPromptParams) (int64, error)
-	RevertOrphanedRunningSessionRuns(ctx context.Context) (int64, error)
+	RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, error)
 	SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.ChetterAgentSession, error)
 	SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error)
 	SearchAuditLog(ctx context.Context, arg repository.SearchAuditLogParams) ([]repository.SearchAuditLogRow, error)
@@ -249,8 +249,8 @@ func (q *Queries) FailPendingResumeTasksForMissingRunner(ctx context.Context, ar
 	return convert[int64](value), err
 }
 
-func (q *Queries) FailPendingSessionRunsForUnavailableRunner(ctx context.Context, arg repository.FailPendingSessionRunsForUnavailableRunnerParams) (int64, error) {
-	value, err := q.postgres.FailPendingSessionRunsForUnavailableRunner(ctx, convert[repositorypostgres.FailPendingSessionRunsForUnavailableRunnerParams](arg))
+func (q *Queries) FailPendingUserPromptsForUnavailableRunner(ctx context.Context, arg repository.FailPendingUserPromptsForUnavailableRunnerParams) (int64, error) {
+	value, err := q.postgres.FailPendingUserPromptsForUnavailableRunner(ctx, convert[repositorypostgres.FailPendingUserPromptsForUnavailableRunnerParams](arg))
 	return convert[int64](value), err
 }
 
@@ -334,19 +334,14 @@ func (q *Queries) GetNextAgentSessionSequence(ctx context.Context, taskID string
 	return convert[int32](value), err
 }
 
-func (q *Queries) GetNextSessionRunSequence(ctx context.Context, agentSessionID string) (int32, error) {
-	value, err := q.postgres.GetNextSessionRunSequence(ctx, convert[string](agentSessionID))
+func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error) {
+	value, err := q.postgres.GetNextUserPromptSequence(ctx, convert[string](agentSessionID))
 	return convert[int32](value), err
 }
 
 func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error) {
 	value, err := q.postgres.GetPausedSessionByArtifact(ctx, convert[repositorypostgres.GetPausedSessionByArtifactParams](arg))
 	return convert[repository.ChetterAgentSession](value), err
-}
-
-func (q *Queries) GetSessionRunByTaskID(ctx context.Context, taskID string) (repository.ChetterSessionRun, error) {
-	value, err := q.postgres.GetSessionRunByTaskID(ctx, convert[string](taskID))
-	return convert[repository.ChetterSessionRun](value), err
 }
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error) {
@@ -384,6 +379,11 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (repository.User, 
 	return convert[repository.User](value), err
 }
 
+func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error) {
+	value, err := q.postgres.GetUserPromptByTaskID(ctx, convert[string](taskID))
+	return convert[repository.ChetterUserPrompt](value), err
+}
+
 func (q *Queries) InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error {
 	return q.postgres.InsertAgentSession(ctx, convert[repositorypostgres.InsertAgentSessionParams](arg))
 }
@@ -412,10 +412,6 @@ func (q *Queries) InsertModelCatalog(ctx context.Context, arg repository.InsertM
 	return q.postgres.InsertModelCatalog(ctx, convert[repositorypostgres.InsertModelCatalogParams](arg))
 }
 
-func (q *Queries) InsertSessionRun(ctx context.Context, arg repository.InsertSessionRunParams) error {
-	return q.postgres.InsertSessionRun(ctx, convert[repositorypostgres.InsertSessionRunParams](arg))
-}
-
 func (q *Queries) InsertTask(ctx context.Context, arg repository.InsertTaskParams) error {
 	return q.postgres.InsertTask(ctx, convert[repositorypostgres.InsertTaskParams](arg))
 }
@@ -430,6 +426,10 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg repository.InsertTask
 
 func (q *Queries) InsertTriggerRun(ctx context.Context, arg repository.InsertTriggerRunParams) error {
 	return q.postgres.InsertTriggerRun(ctx, convert[repositorypostgres.InsertTriggerRunParams](arg))
+}
+
+func (q *Queries) InsertUserPrompt(ctx context.Context, arg repository.InsertUserPromptParams) error {
+	return q.postgres.InsertUserPrompt(ctx, convert[repositorypostgres.InsertUserPromptParams](arg))
 }
 
 func (q *Queries) IsRunnerAlive(ctx context.Context, arg repository.IsRunnerAliveParams) (bool, error) {
@@ -532,11 +532,6 @@ func (q *Queries) ListReclaimableExpiredLeases(ctx context.Context, leaseExpires
 	return convert[[]repository.ListReclaimableExpiredLeasesRow](value), err
 }
 
-func (q *Queries) ListSessionRunsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterSessionRun, error) {
-	value, err := q.postgres.ListSessionRunsBySession(ctx, convert[string](agentSessionID))
-	return convert[[]repository.ChetterSessionRun](value), err
-}
-
 func (q *Queries) ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error) {
 	value, err := q.postgres.ListTaskEvents(ctx, convert[repositorypostgres.ListTaskEventsParams](arg))
 	return convert[[]repository.ChetterTaskEvent](value), err
@@ -602,6 +597,11 @@ func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullStr
 	return convert[[]repository.ChetterTrigger](value), err
 }
 
+func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterUserPrompt, error) {
+	value, err := q.postgres.ListUserPromptsBySession(ctx, convert[string](agentSessionID))
+	return convert[[]repository.ChetterUserPrompt](value), err
+}
+
 func (q *Queries) ListUsers(ctx context.Context) ([]repository.ListUsersRow, error) {
 	value, err := q.postgres.ListUsers(ctx)
 	return convert[[]repository.ListUsersRow](value), err
@@ -631,18 +631,18 @@ func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Con
 	return convert[int64](value), err
 }
 
-func (q *Queries) MarkSessionRunRunningByTask(ctx context.Context, arg repository.MarkSessionRunRunningByTaskParams) (int64, error) {
-	value, err := q.postgres.MarkSessionRunRunningByTask(ctx, convert[repositorypostgres.MarkSessionRunRunningByTaskParams](arg))
-	return convert[int64](value), err
-}
-
-func (q *Queries) MarkSessionRunTerminalByTask(ctx context.Context, arg repository.MarkSessionRunTerminalByTaskParams) (int64, error) {
-	value, err := q.postgres.MarkSessionRunTerminalByTask(ctx, convert[repositorypostgres.MarkSessionRunTerminalByTaskParams](arg))
-	return convert[int64](value), err
-}
-
 func (q *Queries) MarkTaskClaimed(ctx context.Context, arg repository.MarkTaskClaimedParams) (int64, error) {
 	value, err := q.postgres.MarkTaskClaimed(ctx, convert[repositorypostgres.MarkTaskClaimedParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) MarkUserPromptRunningByTask(ctx context.Context, arg repository.MarkUserPromptRunningByTaskParams) (int64, error) {
+	value, err := q.postgres.MarkUserPromptRunningByTask(ctx, convert[repositorypostgres.MarkUserPromptRunningByTaskParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) MarkUserPromptTerminalByTask(ctx context.Context, arg repository.MarkUserPromptTerminalByTaskParams) (int64, error) {
+	value, err := q.postgres.MarkUserPromptTerminalByTask(ctx, convert[repositorypostgres.MarkUserPromptTerminalByTaskParams](arg))
 	return convert[int64](value), err
 }
 
@@ -651,13 +651,13 @@ func (q *Queries) PauseAgentSessionByTaskID(ctx context.Context, arg repository.
 	return convert[int64](value), err
 }
 
-func (q *Queries) ReapStaleSessionRuns(ctx context.Context) (int64, error) {
-	value, err := q.postgres.ReapStaleSessionRuns(ctx)
+func (q *Queries) ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, error) {
+	value, err := q.postgres.ReapStaleSessionsForTerminalRuns(ctx)
 	return convert[int64](value), err
 }
 
-func (q *Queries) ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, error) {
-	value, err := q.postgres.ReapStaleSessionsForTerminalRuns(ctx)
+func (q *Queries) ReapStaleUserPrompts(ctx context.Context) (int64, error) {
+	value, err := q.postgres.ReapStaleUserPrompts(ctx)
 	return convert[int64](value), err
 }
 
@@ -681,8 +681,8 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg repository.Reque
 	return convert[int64](value), err
 }
 
-func (q *Queries) RevertOrphanedRunningSessionRuns(ctx context.Context) (int64, error) {
-	value, err := q.postgres.RevertOrphanedRunningSessionRuns(ctx)
+func (q *Queries) RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, error) {
+	value, err := q.postgres.RevertOrphanedRunningUserPrompts(ctx)
 	return convert[int64](value), err
 }
 

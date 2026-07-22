@@ -859,7 +859,7 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 		ddl  string
 	}{
 		{"agent_session_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN agent_session_id VARCHAR(64) NULL AFTER task_id"},
-		{"session_run_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN session_run_id VARCHAR(64) NULL AFTER agent_session_id"},
+		{"user_prompt_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN user_prompt_id VARCHAR(64) NULL AFTER agent_session_id"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_task_artifacts", column.name)

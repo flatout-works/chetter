@@ -91,35 +91,35 @@ WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
   AND expires_at < $2;
 
--- name: InsertSessionRun :exec
-INSERT INTO chetter_session_runs
+-- name: InsertUserPrompt :exec
+INSERT INTO chetter_user_prompts
     (id, agent_session_id, task_id, sequence, status, prompt, required_runner_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
--- name: GetSessionRunByTaskID :one
-SELECT * FROM chetter_session_runs WHERE task_id = $1 ORDER BY sequence DESC LIMIT 1;
+-- name: GetUserPromptByTaskID :one
+SELECT * FROM chetter_user_prompts WHERE task_id = $1 ORDER BY sequence DESC LIMIT 1;
 
--- name: ListSessionRunsBySession :many
-SELECT * FROM chetter_session_runs WHERE agent_session_id = $1 ORDER BY sequence ASC, created_at ASC;
+-- name: ListUserPromptsBySession :many
+SELECT * FROM chetter_user_prompts WHERE agent_session_id = $1 ORDER BY sequence ASC, created_at ASC;
 
 -- name: GetNextAgentSessionSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
 FROM chetter_agent_sessions
 WHERE task_id = $1;
 
--- name: GetNextSessionRunSequence :one
+-- name: GetNextUserPromptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
-FROM chetter_session_runs
+FROM chetter_user_prompts
 WHERE agent_session_id = $1;
 
--- name: MarkSessionRunRunningByTask :execrows
-UPDATE chetter_session_runs
+-- name: MarkUserPromptRunningByTask :execrows
+UPDATE chetter_user_prompts
 SET status = 'running', started_at = COALESCE(started_at, $1), updated_at = $2
-WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = $3 ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $3 ORDER BY sr.sequence DESC LIMIT 1)
   AND status IN ('pending', 'claimed');
 
--- name: MarkSessionRunTerminalByTask :execrows
-UPDATE chetter_session_runs
+-- name: MarkUserPromptTerminalByTask :execrows
+UPDATE chetter_user_prompts
 SET status = $1,
     summary = $2,
     error = $3,
@@ -127,7 +127,7 @@ SET status = $1,
     started_at = COALESCE(started_at, $5),
     ended_at = COALESCE($6, ended_at),
     updated_at = $7
-WHERE id = (SELECT sr.id FROM chetter_session_runs sr WHERE sr.task_id = $8 ORDER BY sr.sequence DESC LIMIT 1);
+WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $8 ORDER BY sr.sequence DESC LIMIT 1);
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t
@@ -148,13 +148,13 @@ WHERE t.status = 'pending'
   )
   AND EXISTS (
     SELECT 1
-    FROM chetter_session_runs sr
+    FROM chetter_user_prompts sr
     JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
     WHERE sr.task_id = t.id AND sr.status = 'pending' AND s.status = 'resuming'
   );
 
--- name: FailPendingSessionRunsForUnavailableRunner :execrows
-UPDATE chetter_session_runs sr
+-- name: FailPendingUserPromptsForUnavailableRunner :execrows
+UPDATE chetter_user_prompts sr
 SET status = 'failed',
     error = t.error,
     ended_at = COALESCE(sr.ended_at, $1),
@@ -168,7 +168,7 @@ WHERE t.id = sr.task_id
 -- name: MarkResumingSessionsFailedForUnavailableRunner :execrows
 UPDATE chetter_agent_sessions s
 SET status = 'error', error = COALESCE(sr.error, t.error), updated_at = $1
-FROM chetter_session_runs sr
+FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id
 WHERE sr.agent_session_id = s.id
   AND s.status = 'resuming'
@@ -178,7 +178,7 @@ WHERE sr.agent_session_id = s.id
 
 -- name: InsertAgentSessionCheckpoint :exec
 INSERT INTO chetter_agent_session_checkpoints
-    (id, agent_session_id, session_run_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)
+    (id, agent_session_id, user_prompt_id, runner_id, checkpoint_path, workspace_path, container_name, runsc_version, agent_image, size_bytes, status, error, created_at, updated_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 
 -- name: GetLatestAgentSessionCheckpoint :one
@@ -189,13 +189,13 @@ LIMIT 1;
 
 -- name: GetLatestAgentSessionCheckpointByTaskID :one
 SELECT chk.* FROM chetter_agent_session_checkpoints chk
-JOIN chetter_session_runs r ON r.agent_session_id = chk.agent_session_id
+JOIN chetter_user_prompts r ON r.agent_session_id = chk.agent_session_id
 WHERE r.task_id = $1
 ORDER BY chk.created_at DESC
 LIMIT 1;
 
--- name: ReapStaleSessionRuns :execrows
-UPDATE chetter_session_runs sr
+-- name: ReapStaleUserPrompts :execrows
+UPDATE chetter_user_prompts sr
 SET status = CASE
         WHEN t.status = 'done' THEN 'completed'
         WHEN t.status = 'cancelled' THEN 'cancelled'
@@ -218,15 +218,15 @@ SET status = CASE
     END,
     error = COALESCE(NULLIF(s.error, ''), t.error, s.error),
     updated_at = NOW()
-FROM chetter_session_runs sr
+FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id
 WHERE sr.agent_session_id = s.id
   AND s.status = 'running'
   AND sr.status IN ('failed', 'completed', 'cancelled')
   AND t.status IN ('done', 'error', 'cancelled');
 
--- name: RevertOrphanedRunningSessionRuns :execrows
-UPDATE chetter_session_runs sr
+-- name: RevertOrphanedRunningUserPrompts :execrows
+UPDATE chetter_user_prompts sr
 SET status = 'pending', started_at = NULL, updated_at = NOW()
 FROM chetter_tasks t
 WHERE t.id = sr.task_id
