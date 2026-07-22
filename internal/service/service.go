@@ -286,13 +286,84 @@ func (s *Service) reapExpiredLeases() {
 			return err
 		}
 		for _, task := range candidates {
+			oldSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+			if err != nil {
+				return fmt.Errorf("get reclaimed task session: %w", err)
+			}
+			oldPrompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+			if err != nil {
+				return fmt.Errorf("get reclaimed task prompt: %w", err)
+			}
+			newSessionSequence, err := q.GetNextAgentSessionSequence(ctx, task.ID)
+			if err != nil {
+				return fmt.Errorf("get next session sequence: %w", err)
+			}
+			newSessionID, err := randomID("sess")
+			if err != nil {
+				return err
+			}
+			newPromptID, err := randomID("prompt")
+			if err != nil {
+				return err
+			}
+			reclaimError := fmt.Sprintf("runner lease expired after attempt %d", task.Attempt)
 			if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
-				Error:     nullString(fmt.Sprintf("runner lease expired after attempt %d", task.Attempt)),
+				Error:     nullString(reclaimError),
 				EndedAt:   sql.NullTime{Time: now, Valid: true},
 				UpdatedAt: now,
 				ID:        task.ExecutionID,
 			}); err != nil {
 				return err
+			}
+			if _, err := q.AbandonUserPrompt(ctx, repository.AbandonUserPromptParams{
+				Error:     nullString(reclaimError),
+				EndedAt:   sql.NullTime{Time: now, Valid: true},
+				UpdatedAt: now,
+				ID:        oldPrompt.ID,
+			}); err != nil {
+				return err
+			}
+			if _, err := q.AbandonAgentSession(ctx, repository.AbandonAgentSessionParams{
+				Error:     nullString(reclaimError),
+				UpdatedAt: now,
+				ID:        oldSession.ID,
+			}); err != nil {
+				return err
+			}
+			sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+oldSession.Agent.String+" "+oldSession.ModelID.String+" "+oldSession.GitUrl.String), " ")
+			if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
+				ID:          newSessionID,
+				TaskID:      task.ID,
+				Sequence:    newSessionSequence,
+				TeamID:      oldSession.TeamID,
+				Status:      "running",
+				ResumeMode:  oldSession.ResumeMode,
+				PauseReason: oldSession.PauseReason,
+				ExpiresAt:   oldSession.ExpiresAt,
+				GitUrl:      oldSession.GitUrl,
+				GitRef:      oldSession.GitRef,
+				AgentImage:  oldSession.AgentImage,
+				Agent:       oldSession.Agent,
+				ProviderID:  oldSession.ProviderID,
+				ModelID:     oldSession.ModelID,
+				VariantID:   oldSession.VariantID,
+				SearchText:  nullString(sessionSearchText),
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}); err != nil {
+				return fmt.Errorf("insert reclaimed task session: %w", err)
+			}
+			if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
+				ID:             newPromptID,
+				AgentSessionID: newSessionID,
+				TaskID:         task.ID,
+				Sequence:       1,
+				Status:         "pending",
+				Prompt:         oldPrompt.Prompt,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}); err != nil {
+				return fmt.Errorf("insert reclaimed task prompt: %w", err)
 			}
 			eventID, err := randomID("evt")
 			if err != nil {
@@ -331,6 +402,46 @@ func (s *Service) reapExpiredLeases() {
 				return err
 			}
 			reclaimEvents = append(reclaimEvents, event)
+
+			restartEventID, err := randomID("evt")
+			if err != nil {
+				return err
+			}
+			restartSummary := fmt.Sprintf("Started agent session %s after %s was abandoned", newSessionID, oldSession.ID)
+			restartPayload := mustMarshalJSON(map[string]any{
+				"task_id":             task.ID,
+				"old_agent_session_id": oldSession.ID,
+				"new_agent_session_id": newSessionID,
+				"old_user_prompt_id":   oldPrompt.ID,
+				"new_user_prompt_id":   newPromptID,
+				"execution_id":         task.ExecutionID,
+				"reason":               "lease_expired",
+				"status":               "pending",
+				"summary":              restartSummary,
+			})
+			restartEvent := TaskEventCallbackContext{
+				ID:        restartEventID,
+				TaskID:    task.ID,
+				TeamID:    task.TeamID.String,
+				Subject:   fmt.Sprintf("control.reaper.%s", task.ID),
+				Status:    "pending",
+				EventType: "task.session_restarted",
+				Summary:   restartSummary,
+				Payload:   restartPayload,
+				CreatedAt: now,
+			}
+			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+				ID:        restartEvent.ID,
+				TaskID:    restartEvent.TaskID,
+				Subject:   restartEvent.Subject,
+				Status:    restartEvent.Status,
+				EventType: restartEvent.EventType,
+				Payload:   restartPayload,
+				CreatedAt: restartEvent.CreatedAt,
+			}); err != nil {
+				return err
+			}
+			reclaimEvents = append(reclaimEvents, restartEvent)
 		}
 		return nil
 	})

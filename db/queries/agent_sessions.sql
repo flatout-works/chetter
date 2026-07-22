@@ -71,6 +71,11 @@ SET status = ?,
     updated_at = ?
 WHERE id = ?;
 
+-- name: AbandonAgentSession :execrows
+UPDATE chetter_agent_sessions
+SET status = 'abandoned', error = ?, updated_at = ?
+WHERE id = ? AND status IN ('running', 'resuming');
+
 -- name: IsRunnerAlive :one
 SELECT COUNT(*) > 0 FROM chetter_runners
 WHERE id = sqlc.arg(runner_id)
@@ -102,10 +107,16 @@ INSERT INTO chetter_user_prompts
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetUserPromptByTaskID :one
-SELECT * FROM chetter_user_prompts
-WHERE task_id = ?
-ORDER BY sequence DESC
+SELECT prompt.* FROM chetter_user_prompts prompt
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+WHERE prompt.task_id = ?
+ORDER BY session.sequence DESC, prompt.sequence DESC
 LIMIT 1;
+
+-- name: AbandonUserPrompt :execrows
+UPDATE chetter_user_prompts
+SET status = 'failed', error = ?, ended_at = ?, updated_at = ?
+WHERE id = ? AND status IN ('pending', 'claimed', 'running');
 
 -- name: ListUserPromptsBySession :many
 SELECT * FROM chetter_user_prompts
@@ -127,7 +138,13 @@ UPDATE chetter_user_prompts
 SET status = 'running',
     started_at = COALESCE(started_at, ?),
     updated_at = ?
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = ?
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+)
   AND status IN ('pending', 'claimed');
 
 -- name: MarkUserPromptTerminalByTask :execrows
@@ -139,7 +156,13 @@ SET status = ?,
     started_at = COALESCE(started_at, ?),
     ended_at = COALESCE(?, ended_at),
     updated_at = ?
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1);
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = ?
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+);
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t

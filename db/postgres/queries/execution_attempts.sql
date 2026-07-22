@@ -6,6 +6,11 @@ VALUES ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10);
 -- name: GetExecutionAttemptByID :one
 SELECT * FROM chetter_execution_attempts WHERE id = $1;
 
+-- name: GetNextExecutionAttemptSequence :one
+SELECT COALESCE(MAX(sequence), 0) + 1
+FROM chetter_execution_attempts
+WHERE user_prompt_id = $1;
+
 -- name: RenewExecutionAttemptLease :execrows
 UPDATE chetter_execution_attempts
 SET lease_expires_at = $1, updated_at = $2

@@ -67,6 +67,11 @@ WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_i
 -- name: MarkAgentSessionResuming :execrows
 UPDATE chetter_agent_sessions SET status = $1, updated_at = $2 WHERE id = $3;
 
+-- name: AbandonAgentSession :execrows
+UPDATE chetter_agent_sessions
+SET status = 'abandoned', error = $1, updated_at = $2
+WHERE id = $3 AND status IN ('running', 'resuming');
+
 -- name: IsRunnerAlive :one
 SELECT COUNT(*) > 0 FROM chetter_runners
 WHERE id = sqlc.arg(runner_id)
@@ -97,7 +102,16 @@ INSERT INTO chetter_user_prompts
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
 
 -- name: GetUserPromptByTaskID :one
-SELECT * FROM chetter_user_prompts WHERE task_id = $1 ORDER BY sequence DESC LIMIT 1;
+SELECT prompt.* FROM chetter_user_prompts prompt
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+WHERE prompt.task_id = $1
+ORDER BY session.sequence DESC, prompt.sequence DESC
+LIMIT 1;
+
+-- name: AbandonUserPrompt :execrows
+UPDATE chetter_user_prompts
+SET status = 'failed', error = $1, ended_at = $2, updated_at = $3
+WHERE id = $4 AND status IN ('pending', 'claimed', 'running');
 
 -- name: ListUserPromptsBySession :many
 SELECT * FROM chetter_user_prompts WHERE agent_session_id = $1 ORDER BY sequence ASC, created_at ASC;
@@ -115,7 +129,13 @@ WHERE agent_session_id = $1;
 -- name: MarkUserPromptRunningByTask :execrows
 UPDATE chetter_user_prompts
 SET status = 'running', started_at = COALESCE(started_at, $1), updated_at = $2
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $3 ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = $3
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+)
   AND status IN ('pending', 'claimed');
 
 -- name: MarkUserPromptTerminalByTask :execrows
@@ -127,7 +147,13 @@ SET status = $1,
     started_at = COALESCE(started_at, $5),
     ended_at = COALESCE($6, ended_at),
     updated_at = $7
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = $8 ORDER BY sr.sequence DESC LIMIT 1);
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = $8
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+);
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t

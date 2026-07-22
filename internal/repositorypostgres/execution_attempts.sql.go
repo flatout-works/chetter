@@ -48,6 +48,19 @@ func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (Chett
 	return i, err
 }
 
+const getNextExecutionAttemptSequence = `-- name: GetNextExecutionAttemptSequence :one
+SELECT COALESCE(MAX(sequence), 0) + 1
+FROM chetter_execution_attempts
+WHERE user_prompt_id = $1
+`
+
+func (q *Queries) GetNextExecutionAttemptSequence(ctx context.Context, userPromptID string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getNextExecutionAttemptSequence, userPromptID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const insertExecutionAttempt = `-- name: InsertExecutionAttempt :exec
 INSERT INTO chetter_execution_attempts
     (id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, created_at, updated_at)

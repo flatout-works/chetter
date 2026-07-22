@@ -739,10 +739,14 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			return promptErr
 		}
 		if promptErr == nil {
+			attemptSequence, err := q.GetNextExecutionAttemptSequence(ctx, prompt.ID)
+			if err != nil {
+				return err
+			}
 			if err := q.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
 				ID:               executionID,
 				UserPromptID:     prompt.ID,
-				Sequence:         task.Attempt + 1,
+				Sequence:         attemptSequence,
 				RunnerID:         nullString(runnerID),
 				RequiredRunnerID: task.RequiredRunnerID,
 				ClaimedAt:        sql.NullTime{Time: now, Valid: true},

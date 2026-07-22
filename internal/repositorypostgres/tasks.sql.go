@@ -756,6 +756,7 @@ const reclaimExpiredLeases = `-- name: ReclaimExpiredLeases :execrows
 UPDATE chetter_tasks
 SET status = 'pending',
     runner_id = NULL,
+    required_runner_id = NULL,
     claimed_at = NULL,
     lease_expires_at = NULL,
     started_at = NULL,

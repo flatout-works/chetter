@@ -12,6 +12,52 @@ import (
 	"time"
 )
 
+const abandonAgentSession = `-- name: AbandonAgentSession :execrows
+UPDATE chetter_agent_sessions
+SET status = 'abandoned', error = ?, updated_at = ?
+WHERE id = ? AND status IN ('running', 'resuming')
+`
+
+type AbandonAgentSessionParams struct {
+	Error     sql.NullString `json:"error"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	ID        string         `json:"id"`
+}
+
+func (q *Queries) AbandonAgentSession(ctx context.Context, arg AbandonAgentSessionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, abandonAgentSession, arg.Error, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const abandonUserPrompt = `-- name: AbandonUserPrompt :execrows
+UPDATE chetter_user_prompts
+SET status = 'failed', error = ?, ended_at = ?, updated_at = ?
+WHERE id = ? AND status IN ('pending', 'claimed', 'running')
+`
+
+type AbandonUserPromptParams struct {
+	Error     sql.NullString `json:"error"`
+	EndedAt   sql.NullTime   `json:"ended_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	ID        string         `json:"id"`
+}
+
+func (q *Queries) AbandonUserPrompt(ctx context.Context, arg AbandonUserPromptParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, abandonUserPrompt,
+		arg.Error,
+		arg.EndedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const expirePausedSessions = `-- name: ExpirePausedSessions :execrows
 UPDATE chetter_agent_sessions
 SET status = 'expired',
@@ -326,9 +372,10 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg GetPausedS
 }
 
 const getUserPromptByTaskID = `-- name: GetUserPromptByTaskID :one
-SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence FROM chetter_user_prompts
-WHERE task_id = ?
-ORDER BY sequence DESC
+SELECT prompt.id, prompt.agent_session_id, prompt.task_id, prompt.status, prompt.prompt, prompt.required_runner_id, prompt.summary, prompt.error, prompt.session_export, prompt.created_at, prompt.updated_at, prompt.started_at, prompt.ended_at, prompt.sequence FROM chetter_user_prompts prompt
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+WHERE prompt.task_id = ?
+ORDER BY session.sequence DESC, prompt.sequence DESC
 LIMIT 1
 `
 
@@ -776,7 +823,13 @@ UPDATE chetter_user_prompts
 SET status = 'running',
     started_at = COALESCE(started_at, ?),
     updated_at = ?
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = ?
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+)
   AND status IN ('pending', 'claimed')
 `
 
@@ -803,7 +856,13 @@ SET status = ?,
     started_at = COALESCE(started_at, ?),
     ended_at = COALESCE(?, ended_at),
     updated_at = ?
-WHERE id = (SELECT sr.id FROM chetter_user_prompts sr WHERE sr.task_id = ? ORDER BY sr.sequence DESC LIMIT 1)
+WHERE id = (
+    SELECT prompt.id FROM chetter_user_prompts prompt
+    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+    WHERE prompt.task_id = ?
+    ORDER BY session.sequence DESC, prompt.sequence DESC
+    LIMIT 1
+)
 `
 
 type MarkUserPromptTerminalByTaskParams struct {

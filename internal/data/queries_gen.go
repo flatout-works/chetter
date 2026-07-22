@@ -18,6 +18,8 @@ type Repository interface {
 	SearchTasks(context.Context, repository.SearchTasksParams) ([]repository.ChetterTask, error)
 	ListAuditLog(context.Context, repository.ListAuditLogParams) ([]repository.ListAuditLogRow, error)
 	ListTaskArtifacts(context.Context, repository.ListTaskArtifactsParams) ([]repository.ListTaskArtifactsRow, error)
+	AbandonAgentSession(ctx context.Context, arg repository.AbandonAgentSessionParams) (int64, error)
+	AbandonUserPrompt(ctx context.Context, arg repository.AbandonUserPromptParams) (int64, error)
 	AddTokenTeam(ctx context.Context, arg repository.AddTokenTeamParams) error
 	AddUserTeamMembership(ctx context.Context, arg repository.AddUserTeamMembershipParams) error
 	CancelTask(ctx context.Context, arg repository.CancelTaskParams) (int64, error)
@@ -59,6 +61,7 @@ type Repository interface {
 	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error)
 	GetModelCatalogByName(ctx context.Context, name string) (repository.ChetterModelCatalog, error)
 	GetNextAgentSessionSequence(ctx context.Context, taskID string) (int32, error)
+	GetNextExecutionAttemptSequence(ctx context.Context, userPromptID string) (int32, error)
 	GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error)
 	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error)
 	GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error)
@@ -153,6 +156,16 @@ type Repository interface {
 	UpsertDefinitionSource(ctx context.Context, arg repository.UpsertDefinitionSourceParams) error
 	UpsertRunnerHeartbeat(ctx context.Context, arg repository.UpsertRunnerHeartbeatParams) error
 	UpsertTrigger(ctx context.Context, arg repository.UpsertTriggerParams) error
+}
+
+func (q *Queries) AbandonAgentSession(ctx context.Context, arg repository.AbandonAgentSessionParams) (int64, error) {
+	value, err := q.postgres.AbandonAgentSession(ctx, convert[repositorypostgres.AbandonAgentSessionParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) AbandonUserPrompt(ctx context.Context, arg repository.AbandonUserPromptParams) (int64, error) {
+	value, err := q.postgres.AbandonUserPrompt(ctx, convert[repositorypostgres.AbandonUserPromptParams](arg))
+	return convert[int64](value), err
 }
 
 func (q *Queries) AddTokenTeam(ctx context.Context, arg repository.AddTokenTeamParams) error {
@@ -341,6 +354,11 @@ func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (repos
 
 func (q *Queries) GetNextAgentSessionSequence(ctx context.Context, taskID string) (int32, error) {
 	value, err := q.postgres.GetNextAgentSessionSequence(ctx, convert[string](taskID))
+	return convert[int32](value), err
+}
+
+func (q *Queries) GetNextExecutionAttemptSequence(ctx context.Context, userPromptID string) (int32, error) {
+	value, err := q.postgres.GetNextExecutionAttemptSequence(ctx, convert[string](userPromptID))
 	return convert[int32](value), err
 }
 

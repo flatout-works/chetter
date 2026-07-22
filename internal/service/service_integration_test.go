@@ -154,7 +154,7 @@ func TestGetTaskProgressPaginatesRawEvents(t *testing.T) {
 }
 
 func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
-	svc, _, cleanup := newServiceForTest(t)
+	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()
 	ctx := context.Background()
 	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "reclaim me", AgentImage: "runner:latest"})
@@ -181,6 +181,10 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUserPromptByTaskID: %v", err)
 	}
+	oldSession, err := svc.repo.GetAgentSessionByID(ctx, prompt.AgentSessionID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
 	if err := svc.repo.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
 		ID:             executionID,
 		UserPromptID:   prompt.ID,
@@ -204,6 +208,9 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	if reclaimed.Status != "pending" {
 		t.Fatalf("task status = %q, want pending", reclaimed.Status)
 	}
+	if reclaimed.RequiredRunnerID.Valid {
+		t.Fatalf("required runner = %q, want cleared", reclaimed.RequiredRunnerID.String)
+	}
 	attempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
 	if err != nil {
 		t.Fatalf("GetExecutionAttemptByID: %v", err)
@@ -211,19 +218,73 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	if attempt.Status != "lost" || !attempt.EndedAt.Valid {
 		t.Fatalf("attempt status/ended_at = %s/%v, want lost/set", attempt.Status, attempt.EndedAt.Valid)
 	}
+	abandonedSession, err := svc.repo.GetAgentSessionByID(ctx, oldSession.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID old: %v", err)
+	}
+	if abandonedSession.Status != "abandoned" {
+		t.Fatalf("old session status = %q, want abandoned", abandonedSession.Status)
+	}
+	newSession, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+	if newSession.ID == oldSession.ID || newSession.Sequence != 2 || newSession.Status != "running" {
+		t.Fatalf("new session = %s/%d/%s, want new ID/2/running", newSession.ID, newSession.Sequence, newSession.Status)
+	}
+	newPrompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID new: %v", err)
+	}
+	if newPrompt.ID == prompt.ID || newPrompt.AgentSessionID != newSession.ID || newPrompt.Sequence != 1 || newPrompt.Status != "pending" || newPrompt.Prompt != prompt.Prompt {
+		t.Fatalf("new prompt = %+v, want fresh pending copy in session %s", newPrompt, newSession.ID)
+	}
 	events, err := svc.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: task.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListTaskEvents: %v", err)
 	}
-	if len(events) != 1 || events[0].EventType != "task.reclaimed" {
+	if len(events) != 2 {
 		t.Fatalf("reclaim events = %+v", events)
 	}
+	eventsByType := make(map[string]repository.ChetterTaskEvent, len(events))
+	for _, event := range events {
+		eventsByType[event.EventType] = event
+	}
+	reclaimEvent, ok := eventsByType["task.reclaimed"]
+	if !ok {
+		t.Fatalf("task.reclaimed missing from %+v", events)
+	}
+	restartEvent, ok := eventsByType["task.session_restarted"]
+	if !ok {
+		t.Fatalf("task.session_restarted missing from %+v", events)
+	}
 	var payload map[string]any
-	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
+	if err := json.Unmarshal(reclaimEvent.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal reclaim event: %v", err)
 	}
 	if payload["attempt"] != float64(1) || payload["runner_id"] != "runner_reclaim" {
 		t.Fatalf("reclaim payload = %+v", payload)
+	}
+	if err := json.Unmarshal(restartEvent.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal restart event: %v", err)
+	}
+	if payload["old_agent_session_id"] != oldSession.ID || payload["new_agent_session_id"] != newSession.ID {
+		t.Fatalf("restart payload = %+v", payload)
+	}
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_after_reclaim", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim restarted task: %v", err)
+	}
+	if claim.Msg.Task == nil || claim.Msg.Task.TaskId != task.ID || claim.Msg.Task.Prompt != prompt.Prompt {
+		t.Fatalf("restarted claim = %+v", claim.Msg.Task)
+	}
+	restartedAttempt, err := svc.repo.GetExecutionAttemptByID(ctx, claim.Msg.Task.ExecutionId)
+	if err != nil {
+		t.Fatalf("GetExecutionAttemptByID restarted: %v", err)
+	}
+	if restartedAttempt.UserPromptID != newPrompt.ID || restartedAttempt.Sequence != 1 {
+		t.Fatalf("restarted attempt = %+v, want prompt %s sequence 1", restartedAttempt, newPrompt.ID)
 	}
 }
 
