@@ -2,176 +2,287 @@
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 execution: code
-product_contract_source: ce-plan-bootstrap
-title: "feat: Chetter credential forwarder (security gate) + pluggable provider backends — real key never in the sandbox"
+product_contract_source: "issue #118 and PR #119 design review"
+title: "feat: keep operator model credentials out of agent sandboxes"
 date: 2026-06-27
+updated: 2026-07-22
 ---
 
-# feat: Chetter credential forwarder + pluggable provider backends — Plan
+# Keep operator model credentials out of agent sandboxes
 
-## Goal Capsule
+## Goal
 
-**Objective.** Keep the **real provider credential out of the agent sandbox**. The sandbox holds only valueless placeholders; a forwarder outside the sandbox swaps in the real credential and makes the call on the agent's behalf. For Bedrock, Chetter provides the gateway backend so the customer deploys nothing.
+An agent task must be able to call its configured model provider without receiving the real provider credential.
 
-**Product authority.** `ce-plan-bootstrap` (in-session 2026-06-27; refined by a 3-codebase gap analysis — chetter / smith9 / run9).
+The first milestone is deliberately narrow:
 
-**Open blockers.** None. Per-team RBAC and at-rest KMS encryption are deferred but named.
+- Protect operator-managed API keys already present in the trusted runner environment.
+- Support direct HTTP model providers through the Claude Code and OpenCode harnesses, starting with Anthropic- and OpenAI-compatible APIs.
+- Keep real keys out of the task proto, container environment, Docker arguments, workspace, logs, and audit events.
+- Do not add a credential vault, BYOK, OAuth, Bedrock translation, or transparent TLS interception.
 
----
+The runner host and control plane remain trusted. The task container and agent-generated code are untrusted.
 
-## How it works (in plain terms)
+## Plain-Language Design
 
-**One line:** the real key never enters the sandbox. The sandbox holds only a worthless **placeholder**; a **forwarder** outside the sandbox recognizes the placeholder, swaps in the real key, and makes the call for the agent.
+Today the runner copies model keys from its environment into task containers. The agent can read and exfiltrate them.
 
-**Four parts**
+The new flow is:
 
-1. **Sandbox (the agent)** — holds only two things: the forwarder address (`ANTHROPIC_BASE_URL=<forwarder>`) and a **placeholder per credential** (`ANTHROPIC_AUTH_TOKEN=chttr-fake-task123-anthropic`). No real key anywhere in it.
-2. **Forwarder (the security gate — on the runner, outside the sandbox)** — for each request: validate the placeholder → look up which real key it maps to → **delete the placeholder, inject the real key** → forward upstream and stream the response back → write a token-free audit row.
-3. **Binding (server-side table)** — `(task/box, slot) → { real key, upstream host, which header }`, created at claim time by the **server**, with the account derived from the task's `team_id`.
-4. **Backend (where the forwarder sends the request)** — `direct` for Anthropic/OpenAI (inject the real key, forward to the provider); `chetter_bedrock_gateway` for Bedrock (a Chetter-provided gateway does the AWS SigV4 / format work, so the gate never touches signing).
-
-**A request, end to end**
-
-```
-① Claim time (server):   derive account from task.team_id
-                          → create binding: placeholder chttr-fake-task123-anthropic → real key sk-ant-REAL…
-                          → give the box: BASE_URL=forwarder, AUTH_TOKEN=placeholder
-② In the sandbox:         the agent uses the placeholder as its key and calls the FORWARDER (not Anthropic)
-③ Forwarder:              validate placeholder → look up binding → delete placeholder, inject real key
-                          → forward (Anthropic/OpenAI directly; Bedrock via the Chetter gateway) → stream back
-④ Result:                 the real key never entered the sandbox; on task end the binding/placeholder is revoked
+```text
+control plane claims task
+  -> creates a short-lived claim capability (stores only its hash)
+  -> task receives the capability and the forwarder URL
+  -> agent sends its model request to the forwarder
+  -> forwarder validates the live claim with the control plane
+  -> forwarder reads the real key from the trusted runner environment
+  -> forwarder sends the request to a fixed provider endpoint
+  -> response streams back to the agent
 ```
 
-**Six rules that make it correct**
+The capability is not described as worthless: it is a temporary bearer capability that can spend the bound credential through the forwarder. It is random, short-lived, scoped to one claim attempt, unusable at the provider, and reachable only through the private forwarder endpoint.
 
-1. The real key **never enters the sandbox** — and there are **two** doors to close: `claudeEnv` *and* `runnerOwnedEnvKeys` (the runner copies host keys into every container).
-2. Placeholders are **valueless, one per credential slot, and valid only on the sandbox→forwarder hop** (rejected anywhere past the gate).
-3. The account is **derived server-side from `team_id`** — never trust the runner or the box (the runner is a shared admin worker, not a per-team identity).
-4. On **any** failure (no binding, backend down), **fail the claim** — never fall back to putting a real key in the box.
-5. **No forging CA** — the forwarder is an explicitly-configured normal endpoint (normal TLS cert), not transparent interception.
-6. **No customer-deployed dependency** — Chetter provides the Bedrock gateway backend.
+No real provider credential is stored in the Chetter database in this milestone. Existing operator keys remain in the runner environment, but only the trusted forwarder process may read them.
 
-Everything below just makes these four parts and six rules precise for an implementer.
+## Current Problem
 
----
+There are multiple paths that expose model credentials today:
 
-## Problem Frame
+1. Harness configuration reads `ProviderAPIKeyEnv` and writes the real value into agent configuration or environment. Relevant paths include `runner/harness/claude/resolve.go` and `runner/harness/opencode/config.go`.
+2. `runnerOwnedEnvKeys` copies all populated model-provider variables into every task, independent of the selected provider. It is used by local, Docker, resume, and RPC execution paths in `runner/internal/controller/runner_task.go`.
+3. OpenCode copies runner-side `auth.json` state into Docker workspaces, which may expose provider credentials independently of environment handling.
 
-Today the real credential is injected into the sandbox verbatim, on **two** paths, and is readable by the untrusted agent:
-1. `claudeEnv` sets `ANTHROPIC_AUTH_TOKEN`=`os.Getenv(api_key_env)` — the real key — into the box (`runner/harness/claude/resolve.go:49-58`).
-2. `runnerOwnedEnvKeys` **unconditionally** copies host `ANTHROPIC_*`/`OPENAI_API_KEY`/etc. into **every** container (`runner/internal/controller/runner_task.go:223-246, 599-603, 817-821, 1079-1083`).
+Protecting only a selected provider or only one harness is insufficient. A task could choose another path and still receive runner-held keys.
 
-The agent can read `/proc/self/environ`, the workspace, and the copied `auth.json` in local mode (`config.go:113-153`), and exfiltrate. Closing only path 1 still leaks via path 2.
+## Security Invariants
 
-**Things the earlier draft got wrong (fixed here):** `claude-serve-proxy` is an in-box CLI wrapper, **not** a forwarder (`main.go:274-302`); the egress proxy CONNECT-tunnels HTTPS (no header rewrite) and is gVisor-only — reusable as an upstream allowlist, not as the gate; tenancy is **server-derived from `team_id`**, not claim-authenticated (the runner is admin-scoped, `internal/auth/resolve.go:14-16`, and `team_id` isn't even in the proto Task, `runner_rpc.go:994-1020`).
+### I1. No model credential enters an untrusted task
 
----
+All model credential variables are removed from generic runner-to-task environment propagation. Harnesses receive only the claim capability and forwarder URL.
 
-## Requirements
+This is global for Docker/gVisor execution, not conditional on provider `auth_mode`. There is no legacy model-key injection fallback.
 
-- **R1.** The real provider credential (provider API key, AWS/Bedrock identity, any gateway credential) is **never present in the sandbox**. For forwarded providers, **both** injection sites (`claudeEnv` and `runnerOwnedEnvKeys`) emit only the placeholder.
-- **R2.** The sandbox holds only **per-task placeholders — one per credential slot** — each valueless outside the forwarder; leaking one reveals nothing about the others.
-- **R3.** A task that can't be bound, or whose backend is unavailable, **fails the claim** — it **never** falls back to injecting a real key.
-- **R4.** Each credential use is audited (task, provider, account — never token, key, or prompt body).
-- **R5.** Additive: providers not on the forwarder path behave exactly as today.
-- **R6.** **No customer-required external dependency.** Default deployment works without the operator standing up a gateway; Chetter provides the Bedrock backend. External gateway optional.
-- **R7.** **Account is server-derived** from `chetter_tasks.team_id`; the forwarder never trusts runner/box-asserted identity. (Per-team RBAC is a separate, deferred design.)
-- **R8.** **Forwarder ↔ store auth + hygiene.** The forwarder authenticates to the binding store with a server-minted non-forgeable per-box token (HMAC-derived) + a live-lease check; placeholder validation is constant-time; secret files are atomic 0600 + symlink-rejecting; host matching rejects IP literals and uses exact / `*.suffix`; the forwarder is not an open proxy.
-- **R9.** **First-hop-only placeholder** — valid only sandbox→forwarder; the forwarder→backend hop uses a separate server-side credential.
+Provider auth-state files are not copied into container workspaces. File- or OAuth-authenticated provider modes are rejected for forwarder-protected tasks.
 
----
+Local execution is a trusted development mode that shares the runner host and is outside this security boundary. Forwarder-required tasks are rejected in local mode rather than claiming the sandbox-isolation guarantee there.
 
-## Key Technical Decisions
+`GITHUB_TOKEN`, MCP endpoint tokens, and other non-model credentials are unchanged and explicitly out of scope.
 
-- **KTD1 — Forwarder = security gate; backend = provider adapter.** New reverse proxy on the runner: validate → bind-check (provider/model/account/expiry) → strip+rewrite one named auth header → route to backend → audit. Fully greenfield. Primary reference = smith9's run9-BoxSecret path (`provider_secret.go`, `protectedClaudeProviderSecretsForEnv:2654-2688`, `run9.go`); transport reference = `codex_proxy.go` (SSE, header strip/passthrough).
-- **KTD2 — No forging CA.** Box explicitly points at the forwarder (normal cert / internal HTTP). FSA-clean alternative to run9's transparent MITM CA.
-- **KTD3 — Bedrock is gateway-backed first.** `direct` for Anthropic/OpenAI; Bedrock via a Chetter-provided gateway (format/region/model/streaming/SigV4), initially over a proven gateway. Native SigV4 deferred. (smith9's `AWS_BEARER_TOKEN_BEDROCK` passthrough is a viable fast interim.)
-- **KTD4 — One placeholder per slot; account server-derived from `team_id`** (R7), never agent-supplied.
-- **KTD5 — Credential provenance is a decoupled external op** (static / mint / STS / rotate just write the binding; the data path never changes).
-- **KTD6 — Pluggable `backend.kind ∈ {direct, chetter_bedrock_gateway, external_gateway, native_bedrock(deferred)}`** as **new** catalog fields (do not overload `Provider.Kind`).
-- **KTD7 — Never fall back to a real key in the box.** Deliberate inversion of smith9's `shouldProtectManagedProviderAPIKeyForEnv` (which silently injects the real key when its protected path is unavailable): we fail the claim (R3).
-- **KTD8 — Adopt run9 hardening; port its crypto.** Port `run9/portal/api/secret_crypto.go` (AES-256-GCM, AAD-bound) ~verbatim. Adopt the broker-token chain (HMAC per-box token + live-lease) for R8, `subtle.ConstantTimeCompare`, atomic 0600/symlink-safe writes, IP-literal-rejecting host matcher, `ReverseProxy{FlushInterval:-1}` streaming. Do **not** copy run9's `strings.ReplaceAll` substitution or `inject_header_name='*'`.
+### I2. Every capability belongs to one claim attempt
 
----
+The control plane generates a 32-byte CSPRNG capability for each credential slot. The database stores only `SHA-256(capability)`.
 
-## High-Level Technical Design
+A binding includes:
 
-```mermaid
-flowchart LR
-  resolve["resolveTaskModel @ ClaimTask\nbind task→account (from team_id) · set base_url=forwarder + per-slot placeholders\nreturn error → fail claim (no real-key fallback)"] --> box["sandbox (untrusted)\nper-slot placeholders only"]
-  box -->|placeholder| fwd["forwarder (SECURITY GATE)\nvalidate · binding · provider/model/account/expiry · strip+inject one header · stream · audit · no open proxy"]
-  fwd -->|server-side cred| d["backend: direct"] --> p1["api.anthropic.com / api.openai.com"]
-  fwd -->|server-side cred| g["backend: chetter_bedrock_gateway\n(format + region/model + SigV4 + streaming)"] --> p2["AWS Bedrock"]
-  fwd -.optional.-> e["backend: external_gateway"]
+```text
+task_id, attempt, claim_id, runner_id, slot,
+provider_id, backend_id, credential_env, expires_at, revoked_at
 ```
 
----
+`claim_id` is a new random identifier. Reusing a task ID does not reuse a claim. A resumed or reclaimed task receives a new claim and capability.
 
-## Implementation Units
+Every runner-originated task mutation carries `claim_id`, including events, terminal status, lease renewal, heartbeat task references, checkpoint operations, and session pause/resume state. Database updates match `task_id + runner_id + claim_id`; a stale process cannot renew or terminate a newer claim on the same runner.
 
-### U1. Forwarder (security gate) + `direct` backend (Anthropic, OpenAI) — do first
-- **Goal.** Real key out of the box for the common case; both injection paths closed; box holds only per-slot placeholders.
-- **Requirements.** R1, R2, R3, R4, R6, R7, R8, R9.
-- **Dependencies.** none.
-- **Files.** `runner/cmd/cred-forwarder/` (the gate), `internal/service/runner_rpc.go` (resolveTaskModel: derive account from `team_id`, create binding, set `base_url`=forwarder + per-slot placeholders, **return error + roll back the claim tx** on failure), `runner/harness/claude/resolve.go:49-58` (forwarded → placeholder), `runner/internal/controller/runner_task.go:223-246,599-603,817-821,1079-1083` (**gate `runnerOwnedEnvKeys` by `auth_mode`**; `GITHUB_TOKEN`/non-model keys unchanged), `pkg/modelcatalog/catalog.go` (new `auth_mode`+`backend` fields), `internal/crypto/secretbox.go` (port run9), audit RPC, tests.
-- **Approach.** Forwarder on the runner (runner IP already allowlisted, `runner.go:156-168`). Box gets `ANTHROPIC_BASE_URL=<forwarder>` + per-slot placeholders. Gate per request: constant-time validate placeholder → resolve binding `(box,slot)→{cred,upstream,header}` → check not expired/revoked + provider/model/account match (**net-new**, not free from ported code) → strict delete-then-inject one named header → open-list `anthropic-*` business passthrough → stream (`FlushInterval:-1`) → token/prompt-free audit. Store auth per R8 (HMAC per-box token + live-lease). `direct` forwards to the provider. Any failure → fail the claim (KTD7), never a real key. Primary ref: smith9 run9-BoxSecret path; transport: `codex_proxy.go`.
-- **Patterns to follow.** smith9 `provider_secret.go` / `protectedClaudeProviderSecretsForEnv:2654-2688` / `run9.go`; `codex_proxy.go` (SSE); run9 `secret_crypto.go`, `box_runtime_credential_signer.go`, `project_secret_runtime.go:196` (constant-time).
-- **Test scenarios.** Anthropic+OpenAI task → gate injects real header → 200, streaming + beta passthrough; real key absent from proto Task, **both** env paths, workspace. Critical: a forwarded task's container `-e` args contain **no** real key value (closes path 2). Placeholder for a finished/other task or presented past the forwarder → rejected (R9). Binding/backend unavailable → claim fails, no real key (KTD7). Agent cannot redirect upstream (R8). Audit row is token/prompt-free.
-- **Verification.** Forwarded tasks run with only placeholders on both paths; failure fails the claim with no real-key fallback.
+### I3. Claim and binding are atomic
 
-### U2. Bedrock via Chetter-provided gateway backend
-- **Goal.** Same property for Bedrock — AWS identity/signing never reach the box — without hand-rolling SigV4 in the gate.
-- **Requirements.** R1, R2, R3, R4, R6, R7, R9.
-- **Dependencies.** U1.
-- **Files.** `runner/cmd/cred-forwarder/backend_bedrock_gateway.go` (route to the Chetter Bedrock gateway with a server-side credential), deploy/config for the bundled gateway (LiteLLM/agentgateway/wrap; AWS identity via IRSA/role) + gateway host on the egress allowlist, `pkg/modelcatalog` (`backend.kind: chetter_bedrock_gateway`), tests.
-- **Approach.** Box runs Claude in Anthropic mode pointed at the forwarder with a placeholder; the gate validates+binds, then routes to the Chetter-provided Bedrock gateway with a **server-side** credential (R9). The backend does Anthropic↔Bedrock format, region/model, `InvokeModelWithResponseStream`, SigV4 with its held/assumed AWS identity. No AWS/gateway credential enters the box. `external_gateway` optional; `AWS_BEARER_TOKEN_BEDROCK` passthrough as a fast interim if needed.
-- **Test scenarios.** Bedrock task → gate → Chetter gateway → 200, streaming; no AWS/gateway credential in the box. Misconfig → claim fails (KTD7). Region/model mapping; placeholder not forwarded onward (R9).
-- **Verification.** Bedrock task runs with no AWS/gateway credential in the box; signing only in the backend.
+Model resolution, backend validation, capability generation, binding insertion, task claim, and attempt increment happen in the same `claimOnce` transaction.
 
----
+Claim-time failures have explicit outcomes so a bad task cannot block the FIFO queue:
 
-## Scope Boundaries
+- Invalid task/provider/harness configuration is marked terminal `configuration` without creating a binding or consuming a runner attempt.
+- A runner that lacks `credential_forwarder_v1` or the required provider credential is ineligible for that task; eligibility filtering skips it before selecting/locking a task.
+- A transient control-plane, database, or catalog-read failure returns a claim error without mutating the task.
+- For an eligible valid task, model resolution, binding insertion, task claim, and attempt increment commit atomically.
 
-**In scope.** Forwarder gate + `direct` backend (U1, both paths closed); Bedrock via Chetter gateway (U2); per-slot placeholders (server-derived account); first-hop-only; run9 hardening + at-rest crypto port; token-free audit.
+The current post-commit `resolveTaskModel` flow, which cannot return an error to the claim transaction, must not be used for credential binding.
 
-### Deferred (named, out of scope here)
-- **`native_bedrock`** (Chetter doing AWS SDK SigV4 directly) — after U1 + gateway-backed U2.
-- **Subscription OAuth** (Claude `setup-token`, Codex PKCE) — native-file injection, separate opt-in/non-prod track; new **codex harness**.
-- **Non-model secrets** (`GITHUB_TOKEN`, tool/MCP creds) via the gate — they stay on the current path until then. **Known limitation:** rejecting run9's CA-MITM (KTD2) means these non-base_url secrets are not forwarder-covered until this lands (run9 covers them for free; we choose not to).
-- **Per-team RBAC / per-team runner identity** — separate "tenancy & runner identity" design; here we only need server-side `team_id` derivation (R7).
-- **At-rest KMS/HSM + rotation** for the now-server-concentrated keys — named, not built (the `secretbox.go` port is the at-rest cipher; custody/rotation is the follow-up).
+### I4. All model providers fail closed
 
----
+An invalid active catalog, missing backend policy, missing binding, expired lease, revoked claim, unavailable validation service, or missing runner credential never causes direct credential injection.
 
-## Risks & Dependencies
+Runtime provider or forwarder failures return an error to the model client. They do not change the authentication mode. A runner startup or environment change that makes an advertised credential unavailable is reported as a terminal runner configuration error rather than retried until `max_attempts` is exhausted.
 
-- Bundled Bedrock gateway is a new operated component — base it on a proven gateway, Chetter-managed (R6).
-- Forwarder is in the request path — must stream + strict auth rewrite + business passthrough; thin gate on the runner.
-- Forwarder TLS — normal server cert in the agent image (not a forging CA), or internal HTTP.
-- **Plaintext-at-rest (named limitation)** — smith9 stores secrets plaintext; this plan concentrates real keys server-side, so schedule envelope/KMS encryption.
-- **Non-gVisor egress bypass** — the egress allowlist is gVisor-only (`runner_task.go:576-587`); for non-gVisor, R7/R8 "no open proxy" must be enforced by the forwarder/backend allowlist itself.
-- Local-mode `auth.json` copy (`config.go:113-153`) — ensure the forwarded path doesn't rely on it; gate to trusted local dev.
+### I5. The agent cannot choose the real upstream
 
----
+The capability binds to a server-resolved `backend_id`. The forwarder constructs the upstream request from that backend policy and ignores any inbound scheme, authority, host, or absolute URL.
 
-## Verification Contract
+The agent may choose only request data allowed by the provider adapter, such as the message body and approved provider headers.
 
-- **R1** — real key/AWS/gateway credential absent from proto Task, **both** env paths, and workspace.
-- **R2** — box holds only per-slot placeholders, valueless outside the forwarder.
-- **R3 / KTD7** — binding/backend failure fails the claim; no real-key fallback ever.
-- **R4** — each use writes a token/prompt-free audit row.
-- **R5** — non-forwarded providers unchanged.
-- **R6** — default deployment incl. Bedrock works with no customer-deployed gateway.
-- **R7** — account derived server-side from `team_id`.
-- **R8** — constant-time validation; per-box token + live-lease store auth; 0600/atomic/symlink-safe files; no open proxy.
-- **R9** — placeholder rejected past the forwarder.
+### I6. Revocation follows the exact claim lifecycle
+
+Completion, cancellation, lease reclaim, runner loss, and resume revoke the exact `claim_id`. Validation requires all of the following:
+
+- capability hash matches the binding;
+- task is currently running;
+- task `runner_id`, `attempt`, and active `claim_id` match;
+- lease has not expired;
+- binding is not expired or revoked.
+
+Revocation and lease checks happen on every forwarded request. No positive validation cache is required in the first version.
+
+## Components
+
+### 1. Backend policy in the model catalog
+
+Add a provider backend configuration rather than overloading `Provider.Kind`:
+
+```yaml
+providers:
+  anthropic:
+    kind: anthropic
+    backend:
+      kind: direct
+      url: https://api.anthropic.com
+      credential_env: ANTHROPIC_API_KEY
+      auth_header: x-api-key
+      allowed_paths: [/v1/messages]
+```
+
+Validation rules:
+
+- `kind` is `direct` in U1.
+- URL is an absolute HTTPS URL with no userinfo, query, or fragment.
+- Host and port are operator-controlled catalog values, never task input.
+- `credential_env` must be a valid environment-variable name.
+- `auth_header` is one exact supported header, never `*`.
+- Methods and path prefixes are an explicit open list.
+- An invalid active catalog is an error; it does not silently fall back to another catalog. The built-in catalog remains valid only when no active catalog has been configured.
+
+### 2. Claim-scoped binding store
+
+Add `chetter_model_credential_bindings` with no plaintext capability and no provider key. Apply the schema through both startup schema management and a Goose migration, then generate sqlc code.
+
+The claim transaction returns the plaintext capability once in the `Task` response. It is never persisted or logged.
+
+Add `claim_id` to the task claim state and all relevant runner proto messages. Heartbeats identify current tasks by `{task_id, claim_id}` rather than bare task IDs. The runner sends the binding fields required by the harness, but not `credential_env`, the upstream URL, or the real key.
+
+### 3. Runner credential forwarder
+
+Add a small runner-side reverse proxy, preferably as a package in the runner process unless process isolation provides a concrete operational benefit.
+
+For each request it:
+
+1. Extracts the capability from the one expected inbound auth field.
+2. Hashes it and calls a narrow binding-validation RPC over the runner's existing authenticated control-plane channel.
+3. Receives the fixed backend policy and credential environment reference after the server verifies the live claim and runner ID.
+4. Reads the real credential from the runner environment only after successful validation.
+5. Builds a new upstream request; it does not mutate and reuse the inbound URL.
+6. Removes `Authorization`, `Proxy-Authorization`, cookies, forwarding headers, and known provider auth headers before inserting the configured auth header.
+7. Passes only approved business headers, for example `content-type`, `accept`, `anthropic-version`, and `anthropic-beta` where required.
+8. Streams the response and records a token-, key-, header-, URL-query-, and prompt-free audit event.
+
+The validation RPC accepts a token hash, `runner_id`, and request metadata. It returns no key. Reusing the runner's authenticated channel is acceptable for U1 because a compromised runner is outside this threat model; per-runner credentials remain future hardening.
+
+The forwarder does not cache a second copy of the real key beyond the runner environment. Request-local values are discarded after the request, and credentials are never written to files or child-process environments.
+
+### 4. Safe upstream transport
+
+Each direct backend gets a dedicated transport that:
+
+- ignores `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`;
+- does not follow redirects;
+- resolves and validates every dialed IP;
+- rejects loopback, private, link-local, multicast, unspecified, and cloud-metadata destinations;
+- rechecks DNS results when connecting, preventing DNS rebinding from bypassing validation;
+- uses the configured TLS server name and normal certificate verification;
+- applies request, response-header, idle-stream, and total connection limits.
+
+The forwarder is not a general HTTP proxy.
+
+### 5. Private forwarder endpoint
+
+Docker/gVisor tasks receive an HTTPS forwarder URL using a normal service certificate trusted by the runner image. This is an explicit endpoint, not a forged CA or transparent MITM.
+
+Use an operator-configured internal hostname, for example `credential-forwarder.internal`, mapped to the runner's task-network IP. The certificate SAN must contain that hostname. `CREDENTIAL_FORWARDER_CERT_FILE` and `CREDENTIAL_FORWARDER_KEY_FILE` provide the endpoint certificate; the issuing root is installed in the runner image's normal trust store. The runner fails startup if the key pair, SAN, listener, or trust probe is invalid. Rotation occurs by replacing the files and draining/restarting the runner.
+
+The listener binds only to the runner's private task network and is not published on a host or public interface. Plain HTTP is allowed only on loopback in explicit local-development mode.
+
+The capability remains the authorization mechanism; network placement is defense in depth. Add conservative per-binding concurrency and request-rate limits to reduce the impact of a stolen live capability.
+
+### 6. Harness integration
+
+Harnesses stop reading real model keys:
+
+- Claude receives `ANTHROPIC_BASE_URL=<forwarder>` and the capability in the auth field expected by Claude Code.
+- OpenCode provider configuration uses the forwarder URL and capability, never `os.Getenv(ProviderAPIKeyEnv)`.
+- OpenCode provider auth-state copying is disabled for containerized tasks; only non-secret model/cache state may be copied.
+- Pi and any other harness that cannot currently set both the provider base URL and capability are rejected as unsupported in U1; they do not fall back to direct key injection.
+
+Capabilities may appear in ephemeral task configuration. They must be redacted from logs and exports. Persisted workspaces and resumed sessions cannot reuse them because the old claim is revoked and a new claim is minted.
+
+## Implementation Order
+
+### U1. Direct Anthropic/OpenAI-compatible forwarding
+
+1. Add validated backend policy fields to `pkg/modelcatalog`.
+2. Add `claim_id`, binding schema/queries, and the validation/audit RPC.
+3. Move model resolution and binding creation into `claimOnce`.
+4. Add the runner forwarder and safe transport.
+5. Update Claude and OpenCode to use the forwarder; disable container auth-state copying and reject Pi/unsupported harnesses.
+6. Remove every model credential and custom `ProviderAPIKeyEnv` from generic task environment propagation.
+7. Require `claim_id` on every runner mutation and revoke bindings on every terminal, reclaim, and resume transition.
+
+These changes ship as one security boundary. There is no mixed mode in which a failed forwarder silently uses the old injection path.
+
+### U2. Bedrock gateway backend
+
+Bedrock remains a separate follow-up after U1 is operating successfully. Select one maintained gateway and define ownership, deployment, health checks, model/region mapping, streaming behavior, and SLO before implementation.
+
+The forwarder will authenticate to that gateway with a runner-side credential. AWS credentials and gateway credentials remain outside the sandbox. Native SigV4 in the forwarder stays deferred.
+
+## Rollout
+
+Chetter's deployment already drains runners. Use a coordinated rollout:
+
+1. Deploy the control-plane schema/proto changes.
+2. Drain old runners.
+3. Deploy runners that advertise `credential_forwarder_v1` plus supported provider IDs and pass startup checks for the private listener, TLS configuration, and catalog credential references.
+4. Permit model tasks to claim only on capable runners.
+5. Verify canary tasks, then remove the temporary compatibility gate in a follow-up release.
+
+Old runners must never receive a task containing a forwarder binding and must not remain eligible once forwarder-only mode is enabled.
+
+## Verification
+
+Required automated tests:
+
+- Search every Docker, gVisor, resume, and RPC argument builder: no real model credential value or `ProviderAPIKeyEnv` value reaches the task.
+- Claude and OpenCode configuration contains only the capability and forwarder URL; provider `auth.json` state is absent.
+- Claim failure rolls back task status, attempt, and binding insertion.
+- Invalid tasks become terminal without blocking later tasks; runner-incompatible tasks are skipped by eligibility filtering.
+- Reclaim and resume mint a new `claim_id`; the previous capability returns 401/403.
+- Events and heartbeats carrying an old or missing `claim_id` cannot mutate or renew the current attempt.
+- A capability for another task, attempt, runner, provider, or slot is rejected.
+- Expired lease, cancellation, terminal status, revoked binding, and control-plane outage fail closed.
+- Incoming absolute URLs, forged `Host`, alternate auth headers, redirects, proxy environment variables, DNS rebinding, and private/special destination IPs cannot redirect a credential.
+- Provider streaming works without buffering and preserves required approved headers.
+- Audit records contain task, claim, provider, status, and timing, but no capability, key, prompt, body, auth header, or query string.
+- Missing runner credentials produce one clear configuration failure and no fallback.
+
+Manual verification in a canary container:
+
+```text
+/proc/self/environ       contains no real model key
+docker inspect           contains no real model key
+workspace/config files   contain no real model key
+task proto/event/export  contains no real model key
+provider receives        the configured real auth header
+```
+
+## Out of Scope
+
+- Team or user BYOK and credential-selection policy.
+- A database credential vault, KMS/HSM integration, key rotation, and per-team runner identities.
+- Subscription OAuth, Claude setup tokens, Codex PKCE, and persisted provider auth files.
+- Local execution mode and Pi/other harnesses until they support explicit forwarder configuration.
+- Bedrock in U1, native SigV4, and customer-operated gateway integrations.
+- Git, MCP, tool, and arbitrary application secrets.
+- General network egress isolation. The forwarder protects the model credential even when a sandbox can reach the public provider directly because the sandbox never receives that credential.
+
+These need separate threat models. In particular, BYOK requires authenticated owner identity, consent/delegation, billing attribution, automation principals, and an encrypted vault; it should not be hidden inside this transport change.
 
 ## Definition of Done
 
-Anthropic/OpenAI (U1) and Bedrock (U2) tasks run with only per-slot placeholders in the sandbox; the real provider/AWS/gateway credential is never present on **either** env path or in the workspace (R1); placeholders valueless/per-slot/first-hop (R2,R9); binding/backend failure fails the claim with no fallback (R3/KTD7); account server-derived (R7); store auth + hardening in place (R8); audit token/prompt-free (R4); non-forwarded providers unchanged (R5); no customer gateway required (R6). Native SigV4, subscription OAuth, non-model secrets, per-team RBAC, and at-rest KMS remain deferred/named.
+U1 is complete when every supported untrusted model task uses a claim-scoped capability through the private forwarder; no real model credential can be found in its proto, environment, process arguments, workspace, logs, or exports; all current model-key injection paths are removed; claim and revocation behavior is attempt-safe; upstream routing is fixed and SSRF-resistant; and every failure remains forwarder-only and fails closed.
 
----
-
-## Sources & Research
-
-In-session investigations + 3-codebase gap analysis (2026-06-27). Chetter: two injection paths (`runner/harness/claude/resolve.go:49-58`; `runner/internal/controller/runner_task.go:223-246,599-603,817-821,1079-1083`); `resolveTaskModel` void/fire-and-forget (`internal/service/runner_rpc.go:166,192`); `team_id` on tasks but not in proto (`runner_rpc.go:994-1020`), runner admin-scoped (`internal/auth/resolve.go:14-16`); `claude-serve-proxy` in-box CLI wrapper (`runner/cmd/claude-serve-proxy/main.go:274-302`); egress proxy CONNECT-tunnel, gVisor-only (`runner/internal/network/proxy.go`, `runner_task.go:576-587`); `chetter_audit_log`+`LogAuditEvent` token-free (`internal/store/schema.go:245`, `service.go:1410`); runner IP allowlisted (`runner.go:156-168`); zero-code base_url routing (`resolve_test.go:35-54`). smith9: gate+placeholder = run9-BoxSecret path (`provider_secret.go`, `protectedClaudeProviderSecretsForEnv:2654-2688`, `run9.go`); transport `codex_proxy.go`; insecure fallback to avoid (`shouldProtectManagedProviderAPIKeyForEnv:2742`); plaintext `SecretJSON`; deferred subscription = `openai_codex_oauth.go` + refresh `project_auth_service.go:2995-3093` + `marshalManagedCodexAuthJSON:286`. run9: `secret_crypto.go` (port), broker-token chain (`box_runtime_credential_signer.go`) + live-lease, `subtle.ConstantTimeCompare` (`project_secret_runtime.go:196`), atomic 0600/symlink-safe writes, IP-literal-rejecting host matcher, `ReverseProxy{FlushInterval:-1}`.
+Bedrock and BYOK are not required for U1 completion.
