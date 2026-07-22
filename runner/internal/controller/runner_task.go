@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness"
+	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -85,7 +86,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	h := r.harnessFor(req.Harness)
 
-	if err := validateEndpointTokenEnvironment(req.McpEndpoints); err != nil {
+	if err := agentenv.ValidateEndpointTokenEnvironment(req.McpEndpoints); err != nil {
 		message := fmt.Sprintf("prepare MCP endpoints: %v", err)
 		r.publishStatusForRequest(req, "error", message, nil)
 		r.publishActivityEvent("agent", "Task Failed", message, "failed", message, time.Since(session.StartedAt).Milliseconds())
@@ -134,7 +135,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	gitURL := req.GitURL
 	if req.GitURL != "" {
 		slog.Info("cloning", "taskID", req.TaskID, "url", req.GitURL)
-		credentialDir := gitCloneCredentialDir(wsDir)
+		credentialDir := agentenv.GitCloneCredentialDir(wsDir)
 		if err := os.RemoveAll(wsDir); err != nil {
 			slog.Warn("removing stale workspace", "taskID", req.TaskID, "err", err)
 		}
@@ -142,12 +143,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", err.Error(), nil)
 			return
 		}
-		if err := writeGitAskpass(credentialDir); err != nil {
+		if err := agentenv.WriteGitAskpass(credentialDir); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("prepare Git credentials: %v", err), nil)
 			return
 		}
 		if r.cfg.Git.PAT != "" && strings.HasPrefix(req.GitURL, "https://") {
-			gitURL = injectPATIntoURL(req.GitURL, r.cfg.Git.PAT)
+			gitURL = agentenv.InjectPATIntoURL(req.GitURL, r.cfg.Git.PAT)
 		}
 		cloneCmd := exec.CommandContext(ctx, "git", "clone")
 		if req.GitRef != "" {
@@ -155,7 +156,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
 		cloneCmd.Dir = wsDir
-		cloneCmd.Env = append(os.Environ(), gitCredentialEnv(credentialDir)...)
+		cloneCmd.Env = append(os.Environ(), agentenv.GitCredentialEnv(credentialDir)...)
 		if r.cfg.Git.SSHKeyPath != "" {
 			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
@@ -166,7 +167,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			return
 		}
 	}
-	if err := prepareGitWorkspace(ctx, wsDir, req); err != nil {
+	if err := agentenv.PrepareGitWorkspace(ctx, wsDir, req); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
 		return
 	}
@@ -687,13 +688,13 @@ func gvisorHostAliases() []string {
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.ServeHarness) {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isManagedEnv(k, req) {
+		if agentenv.IsManagedEnv(k, req) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
-	env = append(env, gitIdentityEnv(req, session.WorkspaceDir)...)
+	env = agentenv.AppendRunnerOwnedEnv(env)
+	env = append(env, agentenv.GitIdentityEnv(req, session.WorkspaceDir)...)
 	env = append(env,
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
@@ -713,7 +714,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	for k, v := range h.Env(session.WorkspaceDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
-	env = append(env, providerCredentialEnv(req)...)
+	env = append(env, agentenv.ProviderCredentialEnv(req)...)
 	env = append(env, "HOME="+session.WorkspaceDir)
 
 	if req.Prompt == "" {
@@ -867,7 +868,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	dockerArgs = append(dockerArgs,
-		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
+		"-v", agentenv.HostWorkspaceDir(session.WorkspaceDir)+":/workspace",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
@@ -884,7 +885,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
-	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 	if gvisor {
@@ -911,12 +912,12 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	for k, v := range req.Env {
-		if isManagedEnv(k, req) {
+		if agentenv.IsManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
+	dockerArgs = agentenv.AppendDockerManagedEnvironment(dockerArgs, req)
 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
@@ -1035,7 +1036,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	session.WorkspaceDir = workspaceDir
-	if err := prepareGitWorkspace(ctx, workspaceDir, req); err != nil {
+	if err := agentenv.PrepareGitWorkspace(ctx, workspaceDir, req); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
 		return
 	}
@@ -1110,7 +1111,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
 	dockerArgs = append(dockerArgs,
-		"-v", hostWorkspaceDir(session.WorkspaceDir)+":/workspace",
+		"-v", agentenv.HostWorkspaceDir(session.WorkspaceDir)+":/workspace",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
@@ -1127,7 +1128,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
-	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 	if gvisor {
@@ -1151,12 +1152,12 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isManagedEnv(k, req) {
+		if agentenv.IsManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
+	dockerArgs = agentenv.AppendDockerManagedEnvironment(dockerArgs, req)
 
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
@@ -1503,7 +1504,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
 	dockerArgs = append(dockerArgs,
-		"-v", hostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
+		"-v", agentenv.HostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
 		"-w", containerWorkspaceDir,
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE="+containerWorkspaceDir,
@@ -1520,7 +1521,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
-	for _, value := range gitIdentityEnv(req, containerWorkspaceDir) {
+	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 	if gvisor {
@@ -1543,12 +1544,12 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
 	for k, v := range req.Env {
-		if isManagedEnv(k, req) {
+		if agentenv.IsManagedEnv(k, req) {
 			continue
 		}
 		dockerArgs = append(dockerArgs, "-e", k+"="+v)
 	}
-	dockerArgs = appendDockerManagedEnvironment(dockerArgs, req)
+	dockerArgs = agentenv.AppendDockerManagedEnvironment(dockerArgs, req)
 
 	if shouldPullAgentImage(req.AgentImage) {
 		dockerArgs = append(dockerArgs, "--pull=always")
@@ -1721,13 +1722,13 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
 	env := os.Environ()
 	for k, v := range req.Env {
-		if isManagedEnv(k, req) {
+		if agentenv.IsManagedEnv(k, req) {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
-	env = appendRunnerOwnedEnv(env)
-	env = append(env, gitIdentityEnv(req, wsDir)...)
+	env = agentenv.AppendRunnerOwnedEnv(env)
+	env = append(env, agentenv.GitIdentityEnv(req, wsDir)...)
 	env = append(env,
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
@@ -1744,7 +1745,7 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.
 	for k, v := range h.Env(wsDir, secret, req) {
 		env = append(env, k+"="+v)
 	}
-	env = append(env, providerCredentialEnv(req)...)
+	env = append(env, agentenv.ProviderCredentialEnv(req)...)
 	return env
 }
 

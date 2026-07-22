@@ -3,6 +3,8 @@ package controller
 import (
 	"testing"
 	"time"
+
+	"github.com/flatout-works/chetter/runner/internal/agentenv"
 )
 
 func TestClassifyErrorCategory(t *testing.T) {
@@ -70,7 +72,7 @@ func TestInjectPATIntoURL(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := injectPATIntoURL(tc.url, tc.pat)
+			got := agentenv.InjectPATIntoURL(tc.url, tc.pat)
 			if got != tc.want {
 				t.Errorf("injectPATIntoURL(%q, %q) = %q, want %q", tc.url, tc.pat, got, tc.want)
 			}

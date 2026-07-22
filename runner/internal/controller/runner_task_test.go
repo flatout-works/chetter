@@ -23,39 +23,23 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
+	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 func TestRunnerOwnedEnv(t *testing.T) {
-	for _, key := range []string{"CHETTER_TASK_ID", "CHETTER_AGENT_SESSION_ID", "CHETTER_USER_PROMPT_ID", "CHETTER_EXECUTION_ID"} {
-		if !isRunnerOwnedEnv(key) {
+	for _, key := range []string{
+		"CHETTER_TASK_ID", "CHETTER_AGENT_SESSION_ID", "CHETTER_USER_PROMPT_ID", "CHETTER_EXECUTION_ID",
+		"MEM9_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+		"CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_SERVE_PROXY_TOKEN",
+	} {
+		if !agentenv.IsRunnerOwnedEnv(key) {
 			t.Fatalf("%s should be runner-owned", key)
 		}
 	}
-	if !isRunnerOwnedEnv("MEM9_API_KEY") {
-		t.Fatal("MEM9_API_KEY should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("OPENAI_API_KEY") {
-		t.Fatal("OPENAI_API_KEY should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("DEEPSEEK_API_KEY") {
-		t.Fatal("DEEPSEEK_API_KEY should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("ANTHROPIC_AUTH_TOKEN") {
-		t.Fatal("ANTHROPIC_AUTH_TOKEN should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("ANTHROPIC_BASE_URL") {
-		t.Fatal("ANTHROPIC_BASE_URL should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("CLAUDE_CODE_SUBAGENT_MODEL") {
-		t.Fatal("CLAUDE_CODE_SUBAGENT_MODEL should be runner-owned")
-	}
-	if !isRunnerOwnedEnv("CLAUDE_SERVE_PROXY_TOKEN") {
-		t.Fatal("CLAUDE_SERVE_PROXY_TOKEN should be runner-owned")
-	}
-	if isRunnerOwnedEnv("LLM_PROVIDER") {
+	if agentenv.IsRunnerOwnedEnv("LLM_PROVIDER") {
 		t.Fatal("LLM_PROVIDER should not be treated as runner-owned env")
 	}
 }
@@ -81,11 +65,11 @@ func TestGitCloneCredentialDirLeavesWorkspaceEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	credentialDir := gitCloneCredentialDir(workspace)
+	credentialDir := agentenv.GitCloneCredentialDir(workspace)
 	if credentialDir == workspace {
 		t.Fatal("clone credential directory must be outside the workspace")
 	}
-	if err := writeGitAskpass(credentialDir); err != nil {
+	if err := agentenv.WriteGitAskpass(credentialDir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -103,7 +87,7 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "runner-openai-key")
 	t.Setenv("DEEPSEEK_API_KEY", "runner-deepseek-key")
 	env := map[string]string{"MEM9_API_KEY": "task-key", "OPENAI_API_KEY": "task-openai-key", "DEEPSEEK_API_KEY": "task-deepseek-key"}
-	addRunnerOwnedEnv(env)
+	agentenv.AddRunnerOwnedEnv(env)
 	if env["MEM9_API_KEY"] != "runner-key" {
 		t.Fatalf("expected runner mem9 key to win, got %q", env["MEM9_API_KEY"])
 	}
@@ -117,21 +101,21 @@ func TestAddRunnerOwnedEnvUsesRunnerValue(t *testing.T) {
 
 func TestProviderCredentialEnvUsesResolvedRunnerCredential(t *testing.T) {
 	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
-	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"})
+	got := agentenv.ProviderCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "LITELLM_API_KEY"})
 	if len(got) != 1 || got[0] != "LITELLM_API_KEY=runner-litellm-key" {
 		t.Fatalf("providerCredentialEnv() = %v", got)
 	}
 }
 
 func TestProviderCredentialEnvEmptyKeyReturnsNil(t *testing.T) {
-	got := providerCredentialEnv(task.TaskRequest{})
+	got := agentenv.ProviderCredentialEnv(task.TaskRequest{})
 	if got != nil {
 		t.Fatalf("providerCredentialEnv() with empty key should return nil, got %v", got)
 	}
 }
 
 func TestProviderCredentialEnvUnsetVarReturnsNil(t *testing.T) {
-	got := providerCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "UNSET_LITELLM_KEY"})
+	got := agentenv.ProviderCredentialEnv(task.TaskRequest{ProviderAPIKeyEnv: "UNSET_LITELLM_KEY"})
 	if got != nil {
 		t.Fatalf("providerCredentialEnv() with unset env var should return nil, got %v", got)
 	}
@@ -142,26 +126,26 @@ func TestManagedEnvRejectsTaskProviderCredential(t *testing.T) {
 		ProviderAPIKeyEnv: "LITELLM_API_KEY",
 		McpEndpoints:      []task.MCPEndpoint{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}},
 	}
-	if !isManagedEnv("LITELLM_API_KEY", req) {
+	if !agentenv.IsManagedEnv("LITELLM_API_KEY", req) {
 		t.Fatal("catalog-selected provider credential should be runner-managed")
 	}
-	if !isManagedEnv("OPENAI_API_KEY", req) {
+	if !agentenv.IsManagedEnv("OPENAI_API_KEY", req) {
 		t.Fatal("existing runner credential should remain runner-managed")
 	}
-	if !isManagedEnv("CONTEXT_MCP_TOKEN", req) {
+	if !agentenv.IsManagedEnv("CONTEXT_MCP_TOKEN", req) {
 		t.Fatal("MCP endpoint token should be runner-managed")
 	}
-	if isManagedEnv("CUSTOM_ENV", req) {
+	if agentenv.IsManagedEnv("CUSTOM_ENV", req) {
 		t.Fatal("unrelated task environment should be allowed")
 	}
 }
 
 func TestManagedEnvEmptyProviderKeyDoesNotMatch(t *testing.T) {
 	req := task.TaskRequest{}
-	if isManagedEnv("", req) {
+	if agentenv.IsManagedEnv("", req) {
 		t.Fatal("empty key should not be managed when ProviderAPIKeyEnv is empty")
 	}
-	if isManagedEnv("CUSTOM_ENV", req) {
+	if agentenv.IsManagedEnv("CUSTOM_ENV", req) {
 		t.Fatal("non-runner-owned env should not be managed without a provider key")
 	}
 }
@@ -187,7 +171,7 @@ func TestShellQuoteArg(t *testing.T) {
 		{`"quoted"`, `'"quoted"'`},
 	}
 	for _, tc := range tests {
-		got := shellQuoteArg(tc.in)
+		got := agentenv.ShellQuoteArg(tc.in)
 		if got != tc.want {
 			t.Errorf("shellQuoteArg(%q) = %q, want %q", tc.in, got, tc.want)
 		}
@@ -195,7 +179,7 @@ func TestShellQuoteArg(t *testing.T) {
 }
 
 func TestShellQuoteArgs(t *testing.T) {
-	result := shellQuoteArgs([]string{"opencode", "run", "--pure"})
+	result := agentenv.ShellQuoteArgs([]string{"opencode", "run", "--pure"})
 	if !strings.HasPrefix(result, "opencode") {
 		t.Errorf("expected 'opencode' at start: %s", result)
 	}
@@ -885,14 +869,14 @@ func TestProtoTaskToRequest_MapsMcpEndpoints(t *testing.T) {
 func TestValidateEndpointTokenEnvironment(t *testing.T) {
 	endpoints := []task.MCPEndpoint{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}}
 	t.Setenv("CONTEXT_MCP_TOKEN", "")
-	if err := validateEndpointTokenEnvironment(endpoints); err == nil {
+	if err := agentenv.ValidateEndpointTokenEnvironment(endpoints); err == nil {
 		t.Fatal("expected missing endpoint token environment to fail")
 	}
 	t.Setenv("CONTEXT_MCP_TOKEN", "runner-secret")
-	if err := validateEndpointTokenEnvironment(endpoints); err != nil {
+	if err := agentenv.ValidateEndpointTokenEnvironment(endpoints); err != nil {
 		t.Fatalf("expected configured endpoint token environment: %v", err)
 	}
-	if err := validateEndpointTokenEnvironment([]task.MCPEndpoint{{BearerTokenEnv: "DEEPSEEK_MCP_CONFIG"}}); err == nil {
+	if err := agentenv.ValidateEndpointTokenEnvironment([]task.MCPEndpoint{{BearerTokenEnv: "DEEPSEEK_MCP_CONFIG"}}); err == nil {
 		t.Fatal("expected harness control environment to be rejected")
 	}
 }
@@ -1021,7 +1005,7 @@ func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
 }
 
 func TestOpenCodeConfigContentIsHarnessControlled(t *testing.T) {
-	if !isHarnessControlEnv("OPENCODE_CONFIG_CONTENT") {
+	if !agentenv.IsHarnessControlEnv("OPENCODE_CONFIG_CONTENT") {
 		t.Fatal("OPENCODE_CONFIG_CONTENT must be protected from task environment overrides")
 	}
 }
