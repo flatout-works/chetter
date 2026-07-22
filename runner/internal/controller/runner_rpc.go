@@ -113,6 +113,8 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 	req := task.TaskRequest{
 		TaskID:                 t.TaskId,
 		ExecutionID:            t.ExecutionId,
+		AgentSessionID:         t.AgentSessionId,
+		UserPromptID:           t.UserPromptId,
 		AgentImage:             t.AgentImage,
 		Prompt:                 t.Prompt,
 		GitURL:                 t.GitUrl,
@@ -170,6 +172,8 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 	event := &runnerv1.TaskEvent{
 		TaskId:            resp.TaskID,
 		ExecutionId:       resp.ExecutionID,
+		AgentSessionId:    resp.AgentSessionID,
+		UserPromptId:      resp.UserPromptID,
 		Status:            resp.Status,
 		Summary:           resp.Summary,
 		Error:             resp.Error,

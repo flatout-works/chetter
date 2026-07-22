@@ -727,12 +727,17 @@ func TestHarnessFor_EmptyDefault(t *testing.T) {
 
 func TestProtoTaskToRequest_MapsHarness(t *testing.T) {
 	req := protoTaskToRequest(&runnerv1.Task{
-		TaskId:  "task-1",
-		Prompt:  "test",
-		Harness: "pi",
+		TaskId:         "task-1",
+		AgentSessionId: "sess-1",
+		UserPromptId:   "prompt-1",
+		Prompt:         "test",
+		Harness:        "pi",
 	})
 	if req.Harness != "pi" {
 		t.Fatalf("expected harness='pi', got %q", req.Harness)
+	}
+	if req.AgentSessionID != "sess-1" || req.UserPromptID != "prompt-1" {
+		t.Fatalf("hierarchy IDs = %q/%q", req.AgentSessionID, req.UserPromptID)
 	}
 }
 

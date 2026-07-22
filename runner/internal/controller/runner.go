@@ -211,10 +211,12 @@ func (r *Runner) Start(ctx context.Context) error {
 
 func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message string, artifacts []string) {
 	resp := task.TaskResponse{
-		TaskID:      req.TaskID,
-		ExecutionID: req.ExecutionID,
-		Status:      status,
-		Artifacts:   artifacts,
+		TaskID:         req.TaskID,
+		ExecutionID:    req.ExecutionID,
+		AgentSessionID: req.AgentSessionID,
+		UserPromptID:   req.UserPromptID,
+		Status:         status,
+		Artifacts:      artifacts,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, "")
 	r.finishStatusResponse(&resp, status, message)
@@ -295,6 +297,8 @@ func (r *Runner) decorateTaskResponse(resp *task.TaskResponse, env map[string]st
 }
 
 func (r *Runner) decorateTaskResponseForRequest(resp *task.TaskResponse, req task.TaskRequest, sessionID string) {
+	resp.AgentSessionID = req.AgentSessionID
+	resp.UserPromptID = req.UserPromptID
 	if resp.ProviderID == "" {
 		resp.ProviderID = req.ProviderID
 	}

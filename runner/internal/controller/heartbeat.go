@@ -88,7 +88,10 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	r.mu.Lock()
 	currentExecutions := make([]*runnerv1.RunningExecution, 0, len(r.tasks))
 	for executionID, session := range r.tasks {
-		currentExecutions = append(currentExecutions, &runnerv1.RunningExecution{TaskId: session.TaskID, ExecutionId: executionID})
+		currentExecutions = append(currentExecutions, &runnerv1.RunningExecution{
+			TaskId: session.TaskID, ExecutionId: executionID,
+			AgentSessionId: session.Request.AgentSessionID, UserPromptId: session.Request.UserPromptID,
+		})
 	}
 	totalStarted := r.totalStarted
 	totalCompleted := r.totalCompleted

@@ -162,6 +162,8 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
 			if runErr == nil {
 				protoTask.Prompt = run.Prompt
+				protoTask.AgentSessionId = run.AgentSessionID
+				protoTask.UserPromptId = run.ID
 			}
 			mcpEndpointNames := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID

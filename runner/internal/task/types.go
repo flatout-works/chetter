@@ -12,6 +12,8 @@ import (
 type TaskRequest struct {
 	TaskID                 string            `json:"task_id"`
 	ExecutionID            string            `json:"execution_id"`
+	AgentSessionID         string            `json:"agent_session_id"`
+	UserPromptID           string            `json:"user_prompt_id"`
 	AgentImage             string            `json:"agent_image"`
 	Prompt                 string            `json:"prompt,omitempty"`
 	Command                []string          `json:"command,omitempty"`
@@ -68,6 +70,8 @@ type TokenUsage struct {
 type TaskResponse struct {
 	TaskID            string     `json:"task_id"`
 	ExecutionID       string     `json:"execution_id,omitempty"`
+	AgentSessionID    string     `json:"agent_session_id"`
+	UserPromptID      string     `json:"user_prompt_id"`
 	Status            string     `json:"status"`
 	Summary           string     `json:"summary,omitempty"`
 	Error             string     `json:"error,omitempty"`

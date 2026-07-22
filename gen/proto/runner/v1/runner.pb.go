@@ -203,11 +203,13 @@ func (x *RunnerInfo) GetCurrentExecutions() []*RunningExecution {
 }
 
 type RunningExecution struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	ExecutionId   string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	TaskId         string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ExecutionId    string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	AgentSessionId string                 `protobuf:"bytes,3,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	UserPromptId   string                 `protobuf:"bytes,4,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RunningExecution) Reset() {
@@ -250,6 +252,20 @@ func (x *RunningExecution) GetTaskId() string {
 func (x *RunningExecution) GetExecutionId() string {
 	if x != nil {
 		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *RunningExecution) GetAgentSessionId() string {
+	if x != nil {
+		return x.AgentSessionId
+	}
+	return ""
+}
+
+func (x *RunningExecution) GetUserPromptId() string {
+	if x != nil {
+		return x.UserPromptId
 	}
 	return ""
 }
@@ -585,6 +601,8 @@ type Task struct {
 	GitAuthorEmail         string                 `protobuf:"bytes,31,opt,name=git_author_email,json=gitAuthorEmail,proto3" json:"git_author_email,omitempty"`
 	McpEndpoints           []*MCPEndpoint         `protobuf:"bytes,32,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
 	ExecutionId            string                 `protobuf:"bytes,33,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	AgentSessionId         string                 `protobuf:"bytes,34,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	UserPromptId           string                 `protobuf:"bytes,35,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -850,6 +868,20 @@ func (x *Task) GetExecutionId() string {
 	return ""
 }
 
+func (x *Task) GetAgentSessionId() string {
+	if x != nil {
+		return x.AgentSessionId
+	}
+	return ""
+}
+
+func (x *Task) GetUserPromptId() string {
+	if x != nil {
+		return x.UserPromptId
+	}
+	return ""
+}
+
 type MCPEndpoint struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1075,6 +1107,8 @@ type TaskEvent struct {
 	ErrorCategory     string                 `protobuf:"bytes,17,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
 	TokenUsage        *TokenUsage            `protobuf:"bytes,18,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"`
 	ExecutionId       string                 `protobuf:"bytes,19,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	AgentSessionId    string                 `protobuf:"bytes,20,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	UserPromptId      string                 `protobuf:"bytes,21,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1238,6 +1272,20 @@ func (x *TaskEvent) GetTokenUsage() *TokenUsage {
 func (x *TaskEvent) GetExecutionId() string {
 	if x != nil {
 		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetAgentSessionId() string {
+	if x != nil {
+		return x.AgentSessionId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetUserPromptId() string {
+	if x != nil {
+		return x.UserPromptId
 	}
 	return ""
 }
@@ -1956,10 +2004,12 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0egvisor_enabled\x18\x0f \x01(\bR\rgvisorEnabled\x12-\n" +
 	"\x12checkpoint_restore\x18\x10 \x01(\bR\x11checkpointRestore\x12#\n" +
 	"\rrunsc_version\x18\x11 \x01(\tR\frunscVersion\x12J\n" +
-	"\x12current_executions\x18\x12 \x03(\v2\x1b.runner.v1.RunningExecutionR\x11currentExecutions\"`\n" +
+	"\x12current_executions\x18\x12 \x03(\v2\x1b.runner.v1.RunningExecutionR\x11currentExecutions\"\xc2\x01\n" +
 	"\x10RunningExecution\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
-	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"N\n" +
+	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x121\n" +
+	"\x10agent_session_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
+	"\x0euser_prompt_id\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\"N\n" +
 	"\x15RegisterRunnerRequest\x125\n" +
 	"\x06runner\x18\x01 \x01(\v2\x15.runner.v1.RunnerInfoB\x06\xbaH\x03\xc8\x01\x01R\x06runner\"\x18\n" +
 	"\x16RegisterRunnerResponse\"I\n" +
@@ -1975,7 +2025,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xe6\v\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xb6\f\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -2014,7 +2064,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0fgit_author_name\x18\x1e \x01(\tR\rgitAuthorName\x12(\n" +
 	"\x10git_author_email\x18\x1f \x01(\tR\x0egitAuthorEmail\x12;\n" +
 	"\rmcp_endpoints\x18  \x03(\v2\x16.runner.v1.MCPEndpointR\fmcpEndpoints\x12!\n" +
-	"\fexecution_id\x18! \x01(\tR\vexecutionId\x1a6\n" +
+	"\fexecution_id\x18! \x01(\tR\vexecutionId\x12(\n" +
+	"\x10agent_session_id\x18\" \x01(\tR\x0eagentSessionId\x12$\n" +
+	"\x0euser_prompt_id\x18# \x01(\tR\fuserPromptId\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -2043,7 +2095,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xad\x05\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\x8f\x06\n" +
 	"\tTaskEvent\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1f\n" +
 	"\x06status\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06status\x12\x18\n" +
@@ -2068,7 +2120,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0eerror_category\x18\x11 \x01(\tR\rerrorCategory\x126\n" +
 	"\vtoken_usage\x18\x12 \x01(\v2\x15.runner.v1.TokenUsageR\n" +
 	"tokenUsage\x12!\n" +
-	"\fexecution_id\x18\x13 \x01(\tR\vexecutionId\"w\n" +
+	"\fexecution_id\x18\x13 \x01(\tR\vexecutionId\x121\n" +
+	"\x10agent_session_id\x18\x14 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
+	"\x0euser_prompt_id\x18\x15 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\"w\n" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +

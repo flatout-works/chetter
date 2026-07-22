@@ -30,6 +30,8 @@ message RunnerInfo {
 message RunningExecution {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
   string execution_id = 2 [(buf.validate.field).string.min_len = 1];
+  string agent_session_id = 3 [(buf.validate.field).string.min_len = 1];
+  string user_prompt_id = 4 [(buf.validate.field).string.min_len = 1];
 }
 
 message RegisterRunnerRequest {
@@ -87,12 +89,14 @@ message Task {
   map<string, bytes> skill_definitions = 24;
   map<string, bytes> extra_files = 26;
   string provider_api = 27;
-	bool provider_auth_header = 28;
+  bool provider_auth_header = 28;
   string git_identity_id = 29;
   string git_author_name = 30;
   string git_author_email = 31;
   repeated MCPEndpoint mcp_endpoints = 32;
   string execution_id = 33;
+  string agent_session_id = 34;
+  string user_prompt_id = 35;
 }
 
 message MCPEndpoint {
@@ -136,6 +140,8 @@ message TaskEvent {
   string error_category = 17;
   TokenUsage token_usage = 18;
   string execution_id = 19;
+  string agent_session_id = 20 [(buf.validate.field).string.min_len = 1];
+  string user_prompt_id = 21 [(buf.validate.field).string.min_len = 1];
 }
 
 message ReportTaskEventsRequest {
@@ -156,22 +162,22 @@ message PruneWorkspacesResponse {
 
 message GitHubCreateIssueRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
-  string repo    = 2 [(buf.validate.field).string.min_len = 1];
-  string title   = 3 [(buf.validate.field).string.min_len = 1];
-  string body    = 4;
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  string title = 3 [(buf.validate.field).string.min_len = 1];
+  string body = 4;
   repeated string labels = 5;
 }
 
 message GitHubCreateIssueResponse {
-  int32  number = 1;
-  string url    = 2;
+  int32 number = 1;
+  string url = 2;
 }
 
 message GitHubIssueCommentRequest {
-  string task_id      = 1 [(buf.validate.field).string.min_len = 1];
-  string repo         = 2 [(buf.validate.field).string.min_len = 1];
-  int32  issue_number = 3 [(buf.validate.field).int32.gt = 0];
-  string body         = 4 [(buf.validate.field).string.min_len = 1];
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 issue_number = 3 [(buf.validate.field).int32.gt = 0];
+  string body = 4 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubIssueCommentResponse {
@@ -180,25 +186,25 @@ message GitHubIssueCommentResponse {
 
 message GitHubCreatePRRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
-  string repo    = 2 [(buf.validate.field).string.min_len = 1];
-  string title   = 3 [(buf.validate.field).string.min_len = 1];
-  string body    = 4;
-  string head    = 5 [(buf.validate.field).string.min_len = 1];
-  string base    = 6 [(buf.validate.field).string.min_len = 1];
-  bool   draft   = 7;
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  string title = 3 [(buf.validate.field).string.min_len = 1];
+  string body = 4;
+  string head = 5 [(buf.validate.field).string.min_len = 1];
+  string base = 6 [(buf.validate.field).string.min_len = 1];
+  bool draft = 7;
 }
 
 message GitHubCreatePRResponse {
-  int32  number = 1;
-  string url    = 2;
+  int32 number = 1;
+  string url = 2;
 }
 
 message GitHubPRReviewRequest {
-  string task_id   = 1 [(buf.validate.field).string.min_len = 1];
-  string repo      = 2 [(buf.validate.field).string.min_len = 1];
-  int32  pr_number = 3 [(buf.validate.field).int32.gt = 0];
-  string body      = 4 [(buf.validate.field).string.min_len = 1];
-  string event     = 5; // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 pr_number = 3 [(buf.validate.field).int32.gt = 0];
+  string body = 4 [(buf.validate.field).string.min_len = 1];
+  string event = 5; // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
 }
 
 message GitHubPRReviewResponse {

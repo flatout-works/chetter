@@ -455,6 +455,8 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			AgentSessionId:    claim.Msg.Task.AgentSessionId,
+			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
 			Summary:           "finished",
 			OpencodeSessionId: "opencode-session-1",
@@ -475,6 +477,9 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	}
 	if run.Summary.String != "finished" {
 		t.Fatalf("user prompt summary = %q", run.Summary.String)
+	}
+	if claim.Msg.Task.AgentSessionId != run.AgentSessionID || claim.Msg.Task.UserPromptId != run.ID {
+		t.Fatalf("claim hierarchy = %s/%s, want %s/%s", claim.Msg.Task.AgentSessionId, claim.Msg.Task.UserPromptId, run.AgentSessionID, run.ID)
 	}
 	attempt, err := q.GetExecutionAttemptByID(ctx, claim.Msg.Task.ExecutionId)
 	if err != nil {
