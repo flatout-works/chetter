@@ -73,6 +73,9 @@ message AgentSession {
   int32 prompt_count = 21;
   string task_id = 22;
   int32 sequence = 23;
+  string summary = 24;
+  optional string started_at = 25;
+  optional string ended_at = 26;
 }
 
 message UserPrompt {

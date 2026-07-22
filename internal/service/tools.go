@@ -562,7 +562,10 @@ type AgentSessionRecord struct {
 	PausedAt          *time.Time        `json:"paused_at,omitempty"`
 	ExpiresAt         *time.Time        `json:"expires_at,omitempty"`
 	PauseReason       string            `json:"pause_reason,omitempty"`
+	Summary           string            `json:"summary,omitempty"`
 	Error             string            `json:"error,omitempty"`
+	StartedAt         *time.Time        `json:"started_at,omitempty"`
+	EndedAt           *time.Time        `json:"ended_at,omitempty"`
 	PromptCount       int32             `json:"prompt_count,omitempty"`
 }
 
@@ -829,7 +832,10 @@ func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionReco
 		PausedAt:          nullTimePtr(session.PausedAt),
 		ExpiresAt:         nullTimePtr(session.ExpiresAt),
 		PauseReason:       session.PauseReason.String,
+		Summary:           session.Summary.String,
 		Error:             session.Error.String,
+		StartedAt:         nullTimePtr(session.StartedAt),
+		EndedAt:           nullTimePtr(session.EndedAt),
 	}
 }
 
@@ -889,6 +895,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		ModelID:          task.ModelID,
 		VariantID:        task.VariantID,
 		GitIdentityID:    task.GitIdentityID,
+		AgentSessionID:   task.AgentSessionID,
 		TriggerName:      task.TriggerName,
 		TriggerType:      task.TriggerType,
 		SubmissionSource: task.SubmissionSource,
@@ -923,6 +930,7 @@ func repoTaskToToolRecord(task repository.ChetterTask, session repository.Chette
 		ModelID:          session.ModelID.String,
 		VariantID:        session.VariantID.String,
 		GitIdentityID:    session.GitIdentityID.String,
+		AgentSessionID:   session.ID,
 		TriggerName:      task.TriggerName.String,
 		TriggerType:      task.TriggerType.String,
 		SubmissionSource: task.SubmissionSource,

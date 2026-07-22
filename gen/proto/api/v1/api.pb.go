@@ -399,6 +399,9 @@ type AgentSession struct {
 	PromptCount      int32                  `protobuf:"varint,21,opt,name=prompt_count,json=promptCount,proto3" json:"prompt_count,omitempty"`
 	TaskId           string                 `protobuf:"bytes,22,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Sequence         int32                  `protobuf:"varint,23,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Summary          string                 `protobuf:"bytes,24,opt,name=summary,proto3" json:"summary,omitempty"`
+	StartedAt        *string                `protobuf:"bytes,25,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
+	EndedAt          *string                `protobuf:"bytes,26,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -592,6 +595,27 @@ func (x *AgentSession) GetSequence() int32 {
 		return x.Sequence
 	}
 	return 0
+}
+
+func (x *AgentSession) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *AgentSession) GetStartedAt() string {
+	if x != nil && x.StartedAt != nil {
+		return *x.StartedAt
+	}
+	return ""
+}
+
+func (x *AgentSession) GetEndedAt() string {
+	if x != nil && x.EndedAt != nil {
+		return *x.EndedAt
+	}
+	return ""
 }
 
 type UserPrompt struct {
@@ -8063,7 +8087,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\xe3\x05\n" +
+	"\t_ended_at\"\xdd\x06\n" +
 	"\fAgentSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -8095,10 +8119,16 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x05error\x18\x14 \x01(\tR\x05error\x12!\n" +
 	"\fprompt_count\x18\x15 \x01(\x05R\vpromptCount\x12\x17\n" +
 	"\atask_id\x18\x16 \x01(\tR\x06taskId\x12\x1a\n" +
-	"\bsequence\x18\x17 \x01(\x05R\bsequenceB\f\n" +
+	"\bsequence\x18\x17 \x01(\x05R\bsequence\x12\x18\n" +
+	"\asummary\x18\x18 \x01(\tR\asummary\x12\"\n" +
+	"\n" +
+	"started_at\x18\x19 \x01(\tH\x02R\tstartedAt\x88\x01\x01\x12\x1e\n" +
+	"\bended_at\x18\x1a \x01(\tH\x03R\aendedAt\x88\x01\x01B\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
-	"\v_expires_at\"\xfc\x03\n" +
+	"\v_expires_atB\r\n" +
+	"\v_started_atB\v\n" +
+	"\t_ended_at\"\xfc\x03\n" +
 	"\n" +
 	"UserPrompt\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +

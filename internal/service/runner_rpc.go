@@ -1031,7 +1031,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 				if _, err := q.MarkAgentSessionTerminalByTask(ctx, repository.MarkAgentSessionTerminalByTaskParams{
 					Status:           sessionStatus,
 					HarnessSessionID: event.OpencodeSessionId,
+					Summary:          nullString(event.Summary),
 					Error:            nullString(event.Error),
+					EndedAt:          sql.NullTime{Time: now, Valid: true},
 					UpdatedAt:        now,
 					TaskID:           event.TaskId,
 				}); err != nil {

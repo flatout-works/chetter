@@ -349,6 +349,7 @@ func (s *Service) reapExpiredLeases() {
 			}
 			if _, err := q.AbandonAgentSession(ctx, repository.AbandonAgentSessionParams{
 				Error:     nullString(reclaimError),
+				EndedAt:   sql.NullTime{Time: now, Valid: true},
 				UpdatedAt: now,
 				ID:        oldSession.ID,
 			}); err != nil {
@@ -381,6 +382,7 @@ func (s *Service) reapExpiredLeases() {
 				SearchText:        nullString(sessionSearchText),
 				CreatedAt:         now,
 				UpdatedAt:         now,
+				StartedAt:         sql.NullTime{Time: now, Valid: true},
 			}); err != nil {
 				return fmt.Errorf("insert reclaimed task session: %w", err)
 			}
@@ -548,7 +550,9 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 		if err != nil {
 			return err
 		}
-		failedSessions, err = q.MarkResumingSessionsFailedForUnavailableRunner(ctx, now)
+		failedSessions, err = q.MarkResumingSessionsFailedForUnavailableRunner(ctx, repository.MarkResumingSessionsFailedForUnavailableRunnerParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now,
+		})
 		return err
 	})
 	if err != nil {
@@ -622,6 +626,7 @@ func (s *Service) reapExpiredSessions() {
 	defer cancel()
 	now := time.Now().UTC()
 	n, err := s.repo.ExpirePausedSessions(ctx, repository.ExpirePausedSessionsParams{
+		EndedAt:   sql.NullTime{Time: now, Valid: true},
 		UpdatedAt: now,
 		ExpiresAt: sql.NullTime{Time: now, Valid: true},
 	})
@@ -735,17 +740,17 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
-			ID:                     taskID,
-			TeamID:                 nullString(teamID),
-			Prompt:                 in.Prompt,
-			GitUrl:                 nullString(in.GitURL),
-			GitRef:                 nullString(in.GitRef),
-			TriggerName:            nullString(in.TriggerName),
-			TriggerType:            nullString(in.TriggerType),
-			SubmissionSource:       submissionSource,
-			SearchText:             nullString(taskSearchText),
-			CreatedAt:              now,
-			UpdatedAt:              now,
+			ID:               taskID,
+			TeamID:           nullString(teamID),
+			Prompt:           in.Prompt,
+			GitUrl:           nullString(in.GitURL),
+			GitRef:           nullString(in.GitRef),
+			TriggerName:      nullString(in.TriggerName),
+			TriggerType:      nullString(in.TriggerType),
+			SubmissionSource: submissionSource,
+			SearchText:       nullString(taskSearchText),
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}); err != nil {
 			return fmt.Errorf("insert task: %w", err)
 		}
@@ -776,18 +781,19 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			SearchText:        nullString(sessionSearchText),
 			CreatedAt:         now,
 			UpdatedAt:         now,
+			StartedAt:         sql.NullTime{Time: now, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("insert agent session: %w", err)
 		}
 		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
-			ID:               runID,
-			AgentSessionID:   sessionID,
-			TaskID:           taskID,
-			Sequence:         1,
-			Status:           "pending",
-			Prompt:           in.Prompt,
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:             runID,
+			AgentSessionID: sessionID,
+			TaskID:         taskID,
+			Sequence:       1,
+			Status:         "pending",
+			Prompt:         in.Prompt,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}); err != nil {
 			return fmt.Errorf("insert user prompt: %w", err)
 		}
@@ -852,6 +858,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		})
 	}
 	record := repoTaskToStoreRecord(task, repository.ChetterAgentSession{
+		ID:         sessionID,
 		AgentImage: nullString(in.AgentImage), Agent: nullString(in.Agent), ProviderID: nullString(in.ProviderID), ModelID: nullString(in.ModelID), VariantID: nullString(in.VariantID),
 		Harness: nullString(in.Harness), Skills: skills, McpEndpoints: nullableJSON(mcpEndpoints), Env: env,
 		CommitAuthorName: sql.NullString{String: gitIdentity.GitAuthorName, Valid: true}, CommitAuthorEmail: sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true}, GitIdentityID: nullString(gitIdentity.ID),
@@ -963,6 +970,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			SearchText:        nullString(sessionSearchText),
 			CreatedAt:         now,
 			UpdatedAt:         now,
+			StartedAt:         sql.NullTime{Time: now, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("insert recovery session: %w", err)
 		}
@@ -1131,14 +1139,14 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			return fmt.Errorf("task %s is not in a terminal state", taskID)
 		}
 		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
-			ID:               runID,
-			AgentSessionID:   sessionID,
-			TaskID:           taskID,
-			Sequence:         sequence,
-			Status:           "pending",
-			Prompt:           prompt,
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:             runID,
+			AgentSessionID: sessionID,
+			TaskID:         taskID,
+			Sequence:       sequence,
+			Status:         "pending",
+			Prompt:         prompt,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}); err != nil {
 			return fmt.Errorf("insert user prompt: %w", err)
 		}
@@ -1254,6 +1262,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask, session repository.Chett
 		CommitAuthorName:  session.CommitAuthorName.String,
 		CommitAuthorEmail: session.CommitAuthorEmail.String,
 		GitIdentityID:     session.GitIdentityID.String,
+		AgentSessionID:    session.ID,
 		TriggerName:       task.TriggerName.String,
 		TriggerType:       task.TriggerType.String,
 		SubmissionSource:  task.SubmissionSource,

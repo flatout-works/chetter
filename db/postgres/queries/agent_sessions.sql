@@ -1,7 +1,7 @@
 -- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25);
+    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at, started_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26);
 
 -- name: GetAgentSessionByID :one
 SELECT * FROM chetter_agent_sessions WHERE id = $1;
@@ -40,9 +40,11 @@ LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 UPDATE chetter_agent_sessions
 SET status = $1,
     harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
-    error = $2,
-    updated_at = $3
-WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = $4 ORDER BY agent.sequence DESC LIMIT 1)
+    summary = $2,
+    error = $3,
+    ended_at = $4,
+    updated_at = $5
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = $6 ORDER BY agent.sequence DESC LIMIT 1)
   AND status IN ('running', 'resuming');
 
 -- name: GetAgentSessionByTaskID :one
@@ -79,8 +81,8 @@ UPDATE chetter_agent_sessions SET status = $1, updated_at = $2 WHERE id = $3;
 
 -- name: AbandonAgentSession :execrows
 UPDATE chetter_agent_sessions
-SET status = 'abandoned', error = $1, updated_at = $2
-WHERE id = $3 AND status IN ('running', 'resuming');
+SET status = 'abandoned', error = $1, ended_at = $2, updated_at = $3
+WHERE id = $4 AND status IN ('running', 'resuming');
 
 -- name: IsRunnerAlive :one
 SELECT COUNT(*) > 0 FROM chetter_runners
@@ -101,10 +103,10 @@ LIMIT 1;
 
 -- name: ExpirePausedSessions :execrows
 UPDATE chetter_agent_sessions
-SET status = 'expired', updated_at = $1
+SET status = 'expired', ended_at = $1, updated_at = $2
 WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
-  AND expires_at < $2;
+  AND expires_at < $3;
 
 -- name: InsertUserPrompt :exec
 INSERT INTO chetter_user_prompts
@@ -196,7 +198,7 @@ WHERE t.id = sr.task_id
 
 -- name: MarkResumingSessionsFailedForUnavailableRunner :execrows
 UPDATE chetter_agent_sessions s
-SET status = 'error', error = COALESCE(sr.error, t.error), updated_at = $1
+SET status = 'error', error = COALESCE(sr.error, t.error), ended_at = $1, updated_at = $2
 FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id
 WHERE sr.agent_session_id = s.id
@@ -246,6 +248,8 @@ SET status = CASE
         ELSE 'error'
     END,
     error = COALESCE(NULLIF(s.error, ''), t.error, s.error),
+    summary = COALESCE(NULLIF(s.summary, ''), t.summary, s.summary),
+    ended_at = COALESCE(s.ended_at, t.ended_at, NOW()),
     updated_at = NOW()
 FROM chetter_user_prompts sr
 JOIN chetter_tasks t ON t.id = sr.task_id

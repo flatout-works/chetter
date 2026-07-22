@@ -59,6 +59,9 @@ type ChetterAgentSession struct {
 	GitIdentityID     sql.NullString   `json:"git_identity_id"`
 	Skills            json.RawMessage  `json:"skills"`
 	Env               json.RawMessage  `json:"env"`
+	Summary           sql.NullString   `json:"summary"`
+	StartedAt         sql.NullTime     `json:"started_at"`
+	EndedAt           sql.NullTime     `json:"ended_at"`
 }
 
 type ChetterAgentSessionCheckpoint struct {

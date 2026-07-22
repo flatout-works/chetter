@@ -1,7 +1,7 @@
 -- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at, started_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetAgentSessionByID :one
 SELECT * FROM chetter_agent_sessions
@@ -41,7 +41,9 @@ LIMIT ? OFFSET ?;
 UPDATE chetter_agent_sessions
 SET status = ?,
     harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
+    summary = ?,
     error = ?,
+    ended_at = ?,
     updated_at = ?
 WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = ? ORDER BY agent.sequence DESC LIMIT 1)
 AND status IN ('running', 'resuming');
@@ -83,7 +85,7 @@ WHERE id = ?;
 
 -- name: AbandonAgentSession :execrows
 UPDATE chetter_agent_sessions
-SET status = 'abandoned', error = ?, updated_at = ?
+SET status = 'abandoned', error = ?, ended_at = ?, updated_at = ?
 WHERE id = ? AND status IN ('running', 'resuming');
 
 -- name: IsRunnerAlive :one
@@ -106,6 +108,7 @@ LIMIT 1;
 -- name: ExpirePausedSessions :execrows
 UPDATE chetter_agent_sessions
 SET status = 'expired',
+    ended_at = ?,
     updated_at = ?
 WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
@@ -207,6 +210,7 @@ JOIN chetter_user_prompts sr ON sr.agent_session_id = s.id
 JOIN chetter_tasks t ON t.id = sr.task_id
 SET s.status = 'error',
     s.error = COALESCE(sr.error, t.error),
+    s.ended_at = ?,
     s.updated_at = ?
 WHERE s.status = 'resuming'
   AND sr.status = 'failed'
@@ -255,6 +259,8 @@ SET s.status = CASE
     ELSE 'error'
 END,
 s.error = COALESCE(NULLIF(s.error, ''), t.error, s.error),
+s.summary = COALESCE(NULLIF(s.summary, ''), t.summary, s.summary),
+s.ended_at = COALESCE(s.ended_at, t.ended_at, NOW()),
 s.updated_at = NOW()
 WHERE s.status = 'running'
   AND sr.status IN ('failed', 'completed', 'cancelled')

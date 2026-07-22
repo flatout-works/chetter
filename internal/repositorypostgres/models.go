@@ -59,6 +59,9 @@ type ChetterAgentSession struct {
 	CommitAuthorName  sql.NullString   `json:"commit_author_name"`
 	CommitAuthorEmail sql.NullString   `json:"commit_author_email"`
 	GitIdentityID     sql.NullString   `json:"git_identity_id"`
+	Summary           sql.NullString   `json:"summary"`
+	StartedAt         sql.NullTime     `json:"started_at"`
+	EndedAt           sql.NullTime     `json:"ended_at"`
 }
 
 type ChetterAgentSessionCheckpoint struct {

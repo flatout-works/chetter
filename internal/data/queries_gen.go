@@ -135,7 +135,7 @@ type Repository interface {
 	MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error
 	MarkExecutionAttemptClaimed(ctx context.Context, arg repository.MarkExecutionAttemptClaimedParams) (int64, error)
 	MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error)
-	MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error)
+	MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, arg repository.MarkResumingSessionsFailedForUnavailableRunnerParams) (int64, error)
 	MarkTaskRunning(ctx context.Context, arg repository.MarkTaskRunningParams) (int64, error)
 	MarkUserPromptRunningByTask(ctx context.Context, arg repository.MarkUserPromptRunningByTaskParams) (int64, error)
 	MarkUserPromptTerminalByTask(ctx context.Context, arg repository.MarkUserPromptTerminalByTaskParams) (int64, error)
@@ -721,8 +721,8 @@ func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg repository.M
 	return convert[int64](value), err
 }
 
-func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error) {
-	value, err := q.postgres.MarkResumingSessionsFailedForUnavailableRunner(ctx, convert[time.Time](updatedAt))
+func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, arg repository.MarkResumingSessionsFailedForUnavailableRunnerParams) (int64, error) {
+	value, err := q.postgres.MarkResumingSessionsFailedForUnavailableRunner(ctx, convert[repositorypostgres.MarkResumingSessionsFailedForUnavailableRunnerParams](arg))
 	return convert[int64](value), err
 }
 

@@ -94,6 +94,7 @@ type TaskRecord struct {
 	CommitAuthorName      string            `json:"commit_author_name,omitempty"`
 	CommitAuthorEmail     string            `json:"commit_author_email,omitempty"`
 	GitIdentityID         string            `json:"git_identity_id,omitempty"`
+	AgentSessionID        string            `json:"agent_session_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
 	TriggerType           string            `json:"trigger_type,omitempty"`
 	SubmissionSource      string            `json:"submission_source,omitempty"`

@@ -453,6 +453,9 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	if run.TaskID != rec.ID {
 		t.Errorf("user prompt task_id: %s", run.TaskID)
 	}
+	if rec.AgentSessionID != run.AgentSessionID {
+		t.Errorf("submitted task agent_session_id = %s, want %s", rec.AgentSessionID, run.AgentSessionID)
+	}
 	attempts, err := q.ListExecutionAttemptsByPrompt(ctx, run.ID)
 	if err != nil || len(attempts) != 1 {
 		t.Fatalf("list execution attempts: %v, attempts=%+v", err, attempts)
@@ -469,6 +472,13 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 	if session.ResumeMode != "none" {
 		t.Errorf("agent session resume_mode: %s", session.ResumeMode)
+	}
+	if !session.StartedAt.Valid || session.EndedAt.Valid {
+		t.Errorf("active agent session lifecycle = started %v ended %v", session.StartedAt, session.EndedAt)
+	}
+	tasks, err := svc.ListTasks(ctx, "", 20, 0, "", nil, nil)
+	if err != nil || len(tasks) != 1 || tasks[0].AgentSessionID != session.ID {
+		t.Fatalf("task list latest session projection = %+v, err %v", tasks, err)
 	}
 }
 
@@ -562,6 +572,9 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 	}
 	if session.Status != "completed" {
 		t.Fatalf("agent session status = %s, want completed", session.Status)
+	}
+	if session.Summary.String != "finished" || !session.StartedAt.Valid || !session.EndedAt.Valid {
+		t.Fatalf("agent session lifecycle = summary %q started %v ended %v", session.Summary.String, session.StartedAt, session.EndedAt)
 	}
 	if session.HarnessSessionID.String != "opencode-session-1" {
 		t.Fatalf("harness session id = %q", session.HarnessSessionID.String)
