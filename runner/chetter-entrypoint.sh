@@ -147,17 +147,42 @@ export CHETTER_RUNNER_IMAGE CHETTER_RUNNER_IMAGE_DIGEST
 
 PROXY_ALLOWED_YAML=""
 if [ -n "${CHETTER_PROXY_ALLOWED_DOMAINS:-}" ]; then
-  PROXY_ALLOWED_YAML=$(echo "${CHETTER_PROXY_ALLOWED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)
+  PROXY_ALLOWED_YAML="  allowed_domains:
+$(echo "${CHETTER_PROXY_ALLOWED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)"
 fi
 PROXY_BLOCKED_YAML=""
 if [ -n "${CHETTER_PROXY_BLOCKED_DOMAINS:-}" ]; then
-  PROXY_BLOCKED_YAML=$(echo "${CHETTER_PROXY_BLOCKED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)
+  PROXY_BLOCKED_YAML="  blocked_domains:
+$(echo "${CHETTER_PROXY_BLOCKED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)"
 fi
 
 DNS_BLOCKED_YAML=""
 if [ -n "${CHETTER_DNS_BLOCKED_DOMAINS:-}" ]; then
-  DNS_BLOCKED_YAML=$(echo "${CHETTER_DNS_BLOCKED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)
+  DNS_BLOCKED_YAML="  blocked_domains:
+$(echo "${CHETTER_DNS_BLOCKED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)"
 fi
+DNS_ALLOWED_YAML=""
+if [ -n "${CHETTER_DNS_ALLOWED_DOMAINS:-}" ]; then
+  DNS_ALLOWED_YAML="  allowed_domains:
+$(echo "${CHETTER_DNS_ALLOWED_DOMAINS}" | tr ',' '\n' | while IFS= read -r d; do [ -n "$d" ] && printf "    - %s\n" "$d"; done)"
+fi
+
+# Delegate DNS resolution to the platform resolver available to the runner.
+# In Docker this is normally 127.0.0.11 (service discovery); in Kubernetes it
+# is normally the cluster DNS service. Operators may override it explicitly.
+DNS_UPSTREAM="${RUNNER_DNS_UPSTREAM:-}"
+if [ -z "$DNS_UPSTREAM" ]; then
+  DNS_UPSTREAM=$(awk '$1 == "nameserver" { print $2; exit }' /etc/resolv.conf || true)
+fi
+if [ -z "$DNS_UPSTREAM" ]; then
+  DNS_UPSTREAM="8.8.8.8"
+fi
+case "$DNS_UPSTREAM" in
+  \[*\]:*) ;;
+  *:*:*) DNS_UPSTREAM="[${DNS_UPSTREAM}]:53" ;;
+  *:*) ;;
+  *) DNS_UPSTREAM="${DNS_UPSTREAM}:53" ;;
+esac
 
 mkdir -p "$RUNNER_WORKSPACE_ROOT" /var/lib/chetter-runner/cache/go/pkg/mod /var/lib/chetter-runner/cache/go/build /var/lib/chetter-runner/cache/npm
 
@@ -178,9 +203,9 @@ proxy:
   listen_addr: :18080
 ${PROXY_ALLOWED_YAML}${PROXY_BLOCKED_YAML}
 dns:
-  listen_addr: :5300
-  upstream: 8.8.8.8:53
-${DNS_BLOCKED_YAML}
+  listen_addr: :53
+  upstream: ${DNS_UPSTREAM}
+${DNS_ALLOWED_YAML}${DNS_BLOCKED_YAML}
 workspace: {}
 
 git:

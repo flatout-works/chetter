@@ -181,7 +181,13 @@ func (r *Runner) Start(ctx context.Context) error {
 		}()
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
 
-		r.dnsProxy = network.NewDNSProxy(r.cfg.DNS.ListenAddr, r.cfg.DNS.Upstream, r.cfg.DNS.BlockedDomains)
+		dnsAllowed := append([]string(nil), r.cfg.DNS.AllowedDomains...)
+		if len(dnsAllowed) > 0 && r.cfg.ChetterMCP.URL != "" {
+			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Hostname() != "" {
+				dnsAllowed = append(dnsAllowed, u.Hostname())
+			}
+		}
+		r.dnsProxy = network.NewDNSProxy(r.cfg.DNS.ListenAddr, r.cfg.DNS.Upstream, dnsAllowed, r.cfg.DNS.BlockedDomains)
 		go func() {
 			if err := r.dnsProxy.Start(); err != nil {
 				slog.Error("dns error", "err", err)

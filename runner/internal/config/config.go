@@ -53,6 +53,7 @@ type ProxyConfig struct {
 type DNSConfig struct {
 	ListenAddr     string   `yaml:"listen_addr"`
 	Upstream       string   `yaml:"upstream"`
+	AllowedDomains []string `yaml:"allowed_domains"`
 	BlockedDomains []string `yaml:"blocked_domains"`
 }
 
