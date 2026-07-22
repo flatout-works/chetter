@@ -25,7 +25,7 @@ func TestMCPRelayForwardsToTarget(t *testing.T) {
 	}))
 	defer target.Close()
 
-	relay, err := NewMCPRelay("127.0.0.1:0", target.URL+"/mcp")
+	relay, err := NewMCPRelay("127.0.0.1:0", target.URL+"/mcp", "relay-token")
 	if err != nil {
 		t.Fatalf("new relay: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestMCPRelayForwardsToTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	request.Header.Set("Authorization", "Bearer test-token")
+	request.Header.Set("Authorization", "Bearer task-token")
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("relay request: %v", err)
@@ -48,7 +48,7 @@ func TestMCPRelayForwardsToTarget(t *testing.T) {
 	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusAccepted)
 	}
-	if receivedAuth != "Bearer test-token" {
+	if receivedAuth != "Bearer relay-token" {
 		t.Errorf("authorization = %q", receivedAuth)
 	}
 	if receivedBody != `{"jsonrpc":"2.0"}` {
@@ -59,7 +59,7 @@ func TestMCPRelayForwardsToTarget(t *testing.T) {
 func TestNewMCPRelayRejectsInvalidTarget(t *testing.T) {
 	for _, target := range []string{"", "ftp://chetter-mcp:8080/mcp", "http:///mcp"} {
 		t.Run(target, func(t *testing.T) {
-			if _, err := NewMCPRelay(":0", target); err == nil {
+			if _, err := NewMCPRelay(":0", target, ""); err == nil {
 				t.Fatal("expected invalid target error")
 			}
 		})

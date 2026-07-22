@@ -183,7 +183,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		}()
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
 		if r.cfg.ChetterMCP.URL != "" {
-			relay, err := network.NewMCPRelay(r.cfg.ChetterMCP.RelayListenAddr, r.cfg.ChetterMCP.URL)
+			relay, err := network.NewMCPRelay(r.cfg.ChetterMCP.RelayListenAddr, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken)
 			if err != nil {
 				return fmt.Errorf("create Chetter MCP relay: %w", err)
 			}
