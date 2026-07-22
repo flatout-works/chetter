@@ -18,6 +18,7 @@ import (
 	"time"
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
@@ -468,7 +469,7 @@ func validateConfigWithOpenCode(t *testing.T, configPath, workDir string) error 
 	port := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 
-	cmd := exec.Command("opencode", h.ServeArgs(port)...)
+	cmd := exec.Command("opencode", h.ServeCommand(port)[1:]...)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(),
 		"OPENCODE_CONFIG="+configPath,
@@ -672,7 +673,7 @@ func TestSelectHarnessByName_Pi(t *testing.T) {
 	if _, ok := h.(*pi.Pi); !ok {
 		t.Fatalf("expected *pi.Pi, got %T", h)
 	}
-	if !h.SupportsRpc() {
+	if _, ok := h.(harness.RPCHarness); !ok {
 		t.Fatal("pi should support RPC")
 	}
 }
@@ -779,7 +780,7 @@ func TestSelectHarnessByName_Claude(t *testing.T) {
 	if _, ok := h.(*claude.ClaudeCode); !ok {
 		t.Fatalf("expected *claude.ClaudeCode, got %T", h)
 	}
-	if h.SupportsRpc() {
+	if _, ok := h.(harness.RPCHarness); ok {
 		t.Fatal("claude-code should not support RPC")
 	}
 }
@@ -792,7 +793,7 @@ func TestSelectHarnessByName_Codex(t *testing.T) {
 	if _, ok := h.(*codex.Codex); !ok {
 		t.Fatalf("expected *codex.Codex, got %T", h)
 	}
-	if h.SupportsRpc() {
+	if _, ok := h.(harness.RPCHarness); ok {
 		t.Fatal("codex should not support RPC")
 	}
 }
@@ -805,7 +806,7 @@ func TestSelectHarnessByName_OpenCode(t *testing.T) {
 	if _, ok := h.(*opencode.OpenCode); !ok {
 		t.Fatalf("expected *opencode.OpenCode, got %T", h)
 	}
-	if h.SupportsRpc() {
+	if _, ok := h.(harness.RPCHarness); ok {
 		t.Fatal("opencode should not support RPC")
 	}
 }

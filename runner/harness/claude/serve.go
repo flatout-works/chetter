@@ -168,30 +168,6 @@ func abortSession(ctx context.Context, baseURL, sessionID, secret string) error 
 	return nil
 }
 
-func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	exportCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(exportCtx, "GET", baseURL+"/session/"+sessionID+"/export", nil)
-	if err != nil {
-		return "", fmt.Errorf("create export request: %w", err)
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", basicAuthHeader(secret))
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("GET /export: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return "", fmt.Errorf("GET /export: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	exportBody, _ := io.ReadAll(resp.Body)
-	return string(exportBody), nil
-}
-
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), sessionID string, onComplete func(summary string)) {
 	eventURL := baseURL + "/event"
 	if sessionID != "" {
@@ -435,8 +411,4 @@ func promptWithSkillHints(prompt string, skills []string) string {
 
 func claudeServeCommand(port int) []string {
 	return []string{"claude-serve-proxy", "--port", strconv.Itoa(port)}
-}
-
-func claudeServeArgsResume(port int) []string {
-	return claudeServeCommand(port)[1:]
 }

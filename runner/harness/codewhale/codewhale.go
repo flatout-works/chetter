@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -18,6 +19,8 @@ type CodeWhale struct {
 	callbacksReady chan struct{}
 	callbacksOnce  sync.Once
 }
+
+var _ harness.ServeHarness = (*CodeWhale)(nil)
 
 func New() *CodeWhale {
 	return &CodeWhale{
@@ -33,24 +36,12 @@ func (cw *CodeWhale) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterM
 	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req, isLocal)
 }
 
-func (cw *CodeWhale) ConfigFilePath(wsDir string) string {
-	return wsDir + "/.codewhale/config.toml"
-}
-
-func (cw *CodeWhale) ConfigFilePathGlobal(wsDir string) string {
-	return wsDir + "/.codewhale/settings.json"
-}
-
 func (cw *CodeWhale) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
 	return codewhaleEnv(wsDir, secret, req)
 }
 
 func (cw *CodeWhale) ServeCommand(port int) []string {
 	return codewhaleServeCommand(port)
-}
-
-func (cw *CodeWhale) ServeArgsResume(port int) []string {
-	return codewhaleServeArgsResume(port)
 }
 
 func (cw *CodeWhale) ServerPassword() string {
@@ -73,10 +64,6 @@ func (cw *CodeWhale) AbortSession(ctx context.Context, baseURL, sessionID, secre
 	return cw.abortSession(ctx, baseURL, sessionID, secret)
 }
 
-func (cw *CodeWhale) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	return exportSession(ctx, baseURL, sessionID, secret)
-}
-
 func (cw *CodeWhale) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	if export := cw.getSessionExport(sessionID); export != "" {
 		return export, nil
@@ -96,16 +83,6 @@ func (cw *CodeWhale) PipeOutput(taskID, stream string, reader io.Reader) {
 func (cw *CodeWhale) ResolvedModelID(req task.TaskRequest) string {
 	provider, model := codewhaleModelFields(req)
 	return provider + "/" + model
-}
-
-func (cw *CodeWhale) SupportsRpc() bool { return false }
-
-func (cw *CodeWhale) RpcCommand(req task.TaskRequest) []string { return nil }
-
-func (cw *CodeWhale) ServeArgs(port int) []string { return codewhaleServeCommand(port)[1:] }
-
-func (cw *CodeWhale) DockerConfigPath(wsDir string) string {
-	return wsDir + "/.codewhale/mcp.json"
 }
 
 func (cw *CodeWhale) setTurnID(sessionID, turnID string) {

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -18,6 +19,8 @@ type ClaudeCode struct {
 	terminalSummary string
 }
 
+var _ harness.ServeHarness = (*ClaudeCode)(nil)
+
 func New() *ClaudeCode {
 	return &ClaudeCode{}
 }
@@ -28,24 +31,12 @@ func (cc *ClaudeCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetter
 	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req, isLocal)
 }
 
-func (cc *ClaudeCode) ConfigFilePath(wsDir string) string {
-	return wsDir + "/.claude/settings.json"
-}
-
-func (cc *ClaudeCode) ConfigFilePathGlobal(wsDir string) string {
-	return wsDir + "/.claude/settings.local.json"
-}
-
 func (cc *ClaudeCode) Env(wsDir string, secret string, req task.TaskRequest) map[string]string {
 	return claudeEnv(wsDir, secret, req)
 }
 
 func (cc *ClaudeCode) ServeCommand(port int) []string {
 	return claudeServeCommand(port)
-}
-
-func (cc *ClaudeCode) ServeArgsResume(port int) []string {
-	return claudeServeArgsResume(port)
 }
 
 func (cc *ClaudeCode) ServerPassword() string {
@@ -144,10 +135,6 @@ func (cc *ClaudeCode) AbortSession(ctx context.Context, baseURL, sessionID, secr
 	return abortSession(ctx, baseURL, sessionID, secret)
 }
 
-func (cc *ClaudeCode) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	return exportSession(ctx, baseURL, sessionID, secret)
-}
-
 func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	return readSessionExport(wsDir, sessionID)
 }
@@ -177,16 +164,6 @@ func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
 
 func (cc *ClaudeCode) ResolvedModelID(req task.TaskRequest) string {
 	return resolvedClaudeModelID(req)
-}
-
-func (cc *ClaudeCode) SupportsRpc() bool { return false }
-
-func (cc *ClaudeCode) RpcCommand(req task.TaskRequest) []string { return nil }
-
-func (cc *ClaudeCode) ServeArgs(port int) []string { return claudeServeCommand(port)[1:] }
-
-func (cc *ClaudeCode) DockerConfigPath(wsDir string) string {
-	return wsDir + "/.claude/mcp.json"
 }
 
 func (cc *ClaudeCode) SetCompletionContext(sessionID string, idleCh <-chan struct{}, onIdle func()) {

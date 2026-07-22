@@ -197,27 +197,6 @@ func abortSession(ctx context.Context, baseURL, sessionID, secret string) error 
 	return nil
 }
 
-func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/session/"+sessionID+"/export", nil)
-	if err != nil {
-		return "", err
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", basicAuthHeader(secret))
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("GET /export: status %d: %s", resp.StatusCode, body)
-	}
-	body, err := io.ReadAll(resp.Body)
-	return string(body), err
-}
-
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), onComplete func(summary string, err error)) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/event", nil)
 	if err != nil {

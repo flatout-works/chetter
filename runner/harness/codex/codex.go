@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -21,6 +22,8 @@ type Codex struct {
 	terminalSet     bool
 }
 
+var _ harness.ServeHarness = (*Codex)(nil)
+
 func New() *Codex { return &Codex{} }
 
 func (c *Codex) Name() string { return "codex" }
@@ -29,21 +32,11 @@ func (c *Codex) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPTok
 	return GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, req)
 }
 
-func (c *Codex) ConfigFilePath(wsDir string) string {
-	return wsDir + "/.codex/config.toml"
-}
-
-func (c *Codex) ConfigFilePathGlobal(wsDir string) string {
-	return wsDir + "/.codex/config.toml"
-}
-
 func (c *Codex) Env(wsDir, secret string, req task.TaskRequest) map[string]string {
 	return codexEnv(wsDir, secret)
 }
 
 func (c *Codex) ServeCommand(port int) []string { return codexServeCommand(port) }
-
-func (c *Codex) ServeArgsResume(port int) []string { return codexServeCommand(port)[1:] }
 
 func (c *Codex) ServerPassword() string { return generatePassword() }
 
@@ -64,10 +57,6 @@ func (c *Codex) SendPrompt(ctx context.Context, baseURL, sessionID, secret strin
 
 func (c *Codex) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
 	return abortSession(ctx, baseURL, sessionID, secret)
-}
-
-func (c *Codex) ExportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	return exportSession(ctx, baseURL, sessionID, secret)
 }
 
 func (c *Codex) ReadSessionExport(wsDir, sessionID string) (string, error) {
@@ -117,11 +106,3 @@ func (c *Codex) PipeOutput(taskID, stream string, reader io.Reader) {
 }
 
 func (c *Codex) ResolvedModelID(req task.TaskRequest) string { return resolvedModelID(req) }
-
-func (c *Codex) SupportsRpc() bool { return false }
-
-func (c *Codex) RpcCommand(req task.TaskRequest) []string { return nil }
-
-func (c *Codex) DockerConfigPath(wsDir string) string {
-	return wsDir + "/.codex/config.toml"
-}

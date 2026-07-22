@@ -178,11 +178,12 @@ func startAsyncPrompt(ctx context.Context, baseURL, sessionID, secret string, pa
 			}
 			continue
 		}
-		resp.Body.Close()
 		if resp.StatusCode == 204 || resp.StatusCode == 200 {
+			resp.Body.Close()
 			return nil
 		}
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		resp.Body.Close()
 		lastErr = fmt.Errorf("POST /prompt_async: status %d: %s", resp.StatusCode, string(body))
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			break
@@ -221,8 +222,7 @@ func waitForSessionIdle(ctx context.Context, baseURL, sessionID, secret string, 
 				consecutiveErrors++
 				slog.Warn("failed to poll session status", "sessionID", sessionID, "err", err, "consecutive", consecutiveErrors)
 				if consecutiveErrors >= maxConsecutivePollErrors {
-					slog.Info("treating session as idle after consecutive poll errors", "sessionID", sessionID, "errors", consecutiveErrors)
-					return nil
+					return fmt.Errorf("polling session %s failed %d consecutive times: %w", sessionID, consecutiveErrors, err)
 				}
 				continue
 			}
@@ -315,86 +315,11 @@ func fetchSessionSummary(ctx context.Context, baseURL, sessionID, secret string)
 	return "", fmt.Errorf("no assistant response found in session %s messages", sessionID)
 }
 
-func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	exportCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	payload, _ := json.Marshal(map[string]any{
-		"parts": []map[string]any{
-			{"type": "text", "text": "/export"},
-		},
-	})
-	url := baseURL + "/session/" + sessionID + "/prompt_async"
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(exportCtx, "POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("create export request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if secret != "" {
-		req.Header.Set("Authorization", basicAuthHeader(secret))
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("POST /prompt_async /export: %w", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return "", fmt.Errorf("POST /prompt_async /export: status %d: %s", resp.StatusCode, string(body))
-	}
-
-	if err := waitForSessionIdle(exportCtx, baseURL, sessionID, secret, 25*time.Second, nil); err != nil {
-		return "", fmt.Errorf("export wait: %w", err)
-	}
-
-	var messages []struct {
-		Info struct {
-			Role string `json:"role"`
-		} `json:"info"`
-		Parts []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"parts"`
-	}
-	msgReq, _ := http.NewRequestWithContext(exportCtx, "GET", baseURL+"/session/"+sessionID+"/message", nil)
-	if secret != "" {
-		msgReq.Header.Set("Authorization", basicAuthHeader(secret))
-	}
-	msgResp, err := httpClient.Do(msgReq)
-	if err != nil {
-		return "", fmt.Errorf("GET /message /export: %w", err)
-	}
-	defer msgResp.Body.Close()
-	if msgResp.StatusCode != 200 {
-		return "", fmt.Errorf("GET /message /export: status %d", msgResp.StatusCode)
-	}
-	respBody, _ := io.ReadAll(msgResp.Body)
-	if err := json.Unmarshal(respBody, &messages); err != nil {
-		return "", fmt.Errorf("parse export response: %w", err)
-	}
-	var lines []string
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Info.Role == "assistant" {
-			for _, part := range messages[i].Parts {
-				if part.Type == "text" {
-					lines = append(lines, part.Text)
-				}
-			}
-			break
-		}
-	}
-	return strings.Join(lines, "\n"), nil
-}
-
 func opencodeServeCommand(port int) []string {
 	return []string{"opencode", "serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 
 func opencodeServeArgs(port int) []string {
-	return []string{"serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
-}
-
-func opencodeServeArgsResume(port int) []string {
 	return []string{"serve", "--hostname", "0.0.0.0", "--port", strconv.Itoa(port)}
 }
 

@@ -48,17 +48,6 @@ func doPost(ctx context.Context, url, secret string, body io.Reader) (*http.Resp
 	return http.DefaultClient.Do(req)
 }
 
-func doGet(ctx context.Context, url, secret string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	if secret != "" {
-		req.Header.Set("Authorization", bearerAuthHeader(secret))
-	}
-	return http.DefaultClient.Do(req)
-}
-
 func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: serveHTTPTimeout}
@@ -211,22 +200,6 @@ func (cw *CodeWhale) abortSession(ctx context.Context, baseURL, sessionID, secre
 
 // exportSession retrieves the session transcript via the HTTP API.
 // TODO: confirm exact endpoint path (GET /v1/thread/{id}/export or similar).
-func exportSession(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
-	exportCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	resp, err := doGet(exportCtx, baseURL+"/v1/thread/"+sessionID+"/export", secret)
-	if err != nil {
-		return "", fmt.Errorf("GET /v1/thread/%s/export: %w", sessionID, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return "", fmt.Errorf("GET /v1/thread/%s/export: status %d: %s", sessionID, resp.StatusCode, string(body))
-	}
-	exportBody, _ := io.ReadAll(resp.Body)
-	return string(exportBody), nil
-}
-
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 	// The thread-scoped event stream is opened by SendPrompt for terminal waiting.
 	// The generic watcher cannot know the thread ID until CreateSession has run,
@@ -526,10 +499,6 @@ func renderMarkdownExport(sessionID, turnID, prompt, summary string, err error) 
 
 func codewhaleServeCommand(port int) []string {
 	return []string{"codewhale", "app-server", "--http", "--host", "0.0.0.0", "--port", strconv.Itoa(port)}
-}
-
-func codewhaleServeArgsResume(port int) []string {
-	return codewhaleServeCommand(port)[1:]
 }
 
 func codewhaleModelFields(req task.TaskRequest) (provider, model string) {
