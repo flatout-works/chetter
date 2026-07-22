@@ -133,6 +133,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		claim, err := s.claimOnce(ctx, req.Msg.RunnerId, time.Duration(leaseSec)*time.Second)
 		if err == nil {
 			task := claim.Task
+			session := claim.Session
 			run := claim.Prompt
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
@@ -157,11 +158,11 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 					}
 				}
 			}
-			protoTask := taskToProto(task, claim.Attempt, claim.AttemptNumber, resumeCheckpointPath, resumeWorkspacePath)
+			protoTask := taskToProto(task, session, claim.Attempt, claim.AttemptNumber, resumeCheckpointPath, resumeWorkspacePath)
 			protoTask.Prompt = run.Prompt
 			protoTask.AgentSessionId = run.AgentSessionID
 			protoTask.UserPromptId = run.ID
-			mcpEndpointNames := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
+			mcpEndpointNames := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if run.SourceUserPromptID.Valid {
 				sourcePrompt, sourceErr := s.db.GetUserPromptByID(ctx, run.SourceUserPromptID.String)
@@ -681,6 +682,7 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 
 type claimedExecution struct {
 	Task          repository.ChetterTask
+	Session       repository.ChetterAgentSession
 	Prompt        repository.ChetterUserPrompt
 	Attempt       repository.ChetterExecutionAttempt
 	AttemptNumber int64
@@ -725,6 +727,10 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			return err
 		}
 		prompt, err := q.GetUserPromptByID(ctx, attempt.UserPromptID)
+		if err != nil {
+			return err
+		}
+		session, err := q.GetAgentSessionByID(ctx, prompt.AgentSessionID)
 		if err != nil {
 			return err
 		}
@@ -785,7 +791,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}); err != nil {
 			return err
 		}
-		claimed = claimedExecution{Task: task, Prompt: prompt, Attempt: attempt, AttemptNumber: attemptNumber}
+		claimed = claimedExecution{Task: task, Session: session, Prompt: prompt, Attempt: attempt, AttemptNumber: attemptNumber}
 		return nil
 	})
 	if err == nil {
@@ -1193,22 +1199,20 @@ func sanitizeEventTypePart(part string) string {
 	return b.String()
 }
 
-func taskToProto(task repository.ChetterTask, attempt repository.ChetterExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
-	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
-	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
-	harness := env["__chetter_harness"]
-	delete(env, "__chetter_harness")
+func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSession, attempt repository.ChetterExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
+	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
+	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		ExecutionId:            attempt.ID,
-		AgentImage:             task.AgentImage.String,
+		AgentImage:             session.AgentImage.String,
 		Prompt:                 task.Prompt,
 		GitUrl:                 task.GitUrl.String,
 		GitRef:                 task.GitRef.String,
-		Agent:                  task.Agent.String,
-		ProviderId:             task.ProviderID.String,
-		ModelId:                task.ModelID.String,
-		VariantId:              task.VariantID.String,
+		Agent:                  session.Agent.String,
+		ProviderId:             session.ProviderID.String,
+		ModelId:                session.ModelID.String,
+		VariantId:              session.VariantID.String,
 		Skills:                 skills,
 		TimeoutSeconds:         attempt.TimeoutSec,
 		MaxMemoryMb:            defaultMaxMemoryMB,
@@ -1218,10 +1222,10 @@ func taskToProto(task repository.ChetterTask, attempt repository.ChetterExecutio
 		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
-		Harness:                harness,
-		GitIdentityId:          task.GitIdentityID.String,
-		GitAuthorName:          task.CommitAuthorName.String,
-		GitAuthorEmail:         task.CommitAuthorEmail.String,
+		Harness:                session.Harness.String,
+		GitIdentityId:          session.GitIdentityID.String,
+		GitAuthorName:          session.CommitAuthorName.String,
+		GitAuthorEmail:         session.CommitAuthorEmail.String,
 	}
 }
 

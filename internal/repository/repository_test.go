@@ -137,7 +137,6 @@ func TestTaskLifecycle(t *testing.T) {
 	start := now.Add(-time.Hour)
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "hello", TeamID: sql.NullString{},
-		Skills: json.RawMessage("null"), Env: json.RawMessage("null"),
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -188,11 +187,9 @@ func TestListTasksByStatus(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Second).Add(-time.Hour)
 
 	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
 	for _, id := range []string{"t1", "t2", "t3"} {
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: id, Prompt: id, TeamID: null,
-			Skills: nullJSON, Env: nullJSON,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", id, err)
@@ -224,10 +221,8 @@ func TestClearPendingTasks(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -257,10 +252,8 @@ func TestTaskEvents(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -563,10 +556,8 @@ func TestUpdateTaskAggregateFromRunnerEvent(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -598,7 +589,6 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 	ctx := context.Background()
 	start := time.Now().UTC().Truncate(time.Second).Add(-time.Hour)
 
-	nullJSON := json.RawMessage("null")
 	for _, tc := range []struct{ id, team string }{
 		{"t1", "team-a"}, {"t2", "team-a"}, {"t3", "team-b"},
 	} {
@@ -608,7 +598,6 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 		}
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: tc.id, Prompt: tc.id, TeamID: teamID,
-			Skills: nullJSON, Env: nullJSON,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", tc.id, err)

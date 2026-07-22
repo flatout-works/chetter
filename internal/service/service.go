@@ -356,24 +356,31 @@ func (s *Service) reapExpiredLeases() {
 			}
 			sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+oldSession.Agent.String+" "+oldSession.ModelID.String+" "+oldSession.GitUrl.String), " ")
 			if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
-				ID:          newSessionID,
-				TaskID:      task.TaskID,
-				Sequence:    newSessionSequence,
-				TeamID:      oldSession.TeamID,
-				Status:      "running",
-				ResumeMode:  oldSession.ResumeMode,
-				PauseReason: oldSession.PauseReason,
-				ExpiresAt:   oldSession.ExpiresAt,
-				GitUrl:      oldSession.GitUrl,
-				GitRef:      oldSession.GitRef,
-				AgentImage:  oldSession.AgentImage,
-				Agent:       oldSession.Agent,
-				ProviderID:  oldSession.ProviderID,
-				ModelID:     oldSession.ModelID,
-				VariantID:   oldSession.VariantID,
-				SearchText:  nullString(sessionSearchText),
-				CreatedAt:   now,
-				UpdatedAt:   now,
+				ID:                newSessionID,
+				TaskID:            task.TaskID,
+				Sequence:          newSessionSequence,
+				TeamID:            oldSession.TeamID,
+				Status:            "running",
+				ResumeMode:        oldSession.ResumeMode,
+				PauseReason:       oldSession.PauseReason,
+				ExpiresAt:         oldSession.ExpiresAt,
+				GitUrl:            oldSession.GitUrl,
+				GitRef:            oldSession.GitRef,
+				AgentImage:        oldSession.AgentImage,
+				Agent:             oldSession.Agent,
+				ProviderID:        oldSession.ProviderID,
+				ModelID:           oldSession.ModelID,
+				VariantID:         oldSession.VariantID,
+				Harness:           oldSession.Harness,
+				Skills:            oldSession.Skills,
+				McpEndpoints:      oldSession.McpEndpoints,
+				Env:               oldSession.Env,
+				CommitAuthorName:  oldSession.CommitAuthorName,
+				CommitAuthorEmail: oldSession.CommitAuthorEmail,
+				GitIdentityID:     oldSession.GitIdentityID,
+				SearchText:        nullString(sessionSearchText),
+				CreatedAt:         now,
+				UpdatedAt:         now,
 			}); err != nil {
 				return fmt.Errorf("insert reclaimed task session: %w", err)
 			}
@@ -706,11 +713,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal mcp_endpoints: %w", err)
 	}
-	taskEnv := sanitizeTaskEnv(in.Env)
-	if in.Harness != "" {
-		taskEnv["__chetter_harness"] = in.Harness
-	}
-	env, err := json.Marshal(taskEnv)
+	env, err := json.Marshal(sanitizeTaskEnv(in.Env))
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal env: %w", err)
 	}
@@ -739,21 +742,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Prompt:                 in.Prompt,
 			GitUrl:                 nullString(in.GitURL),
 			GitRef:                 nullString(in.GitRef),
-			AgentImage:             nullString(in.AgentImage),
-			Agent:                  nullString(in.Agent),
-			ProviderID:             nullString(in.ProviderID),
-			ModelID:                nullString(in.ModelID),
-			VariantID:              nullString(in.VariantID),
-			CommitAuthorName:       sql.NullString{String: gitIdentity.GitAuthorName, Valid: true},
-			CommitAuthorEmail:      sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true},
-			GitIdentityID:          nullString(gitIdentity.ID),
 			TriggerName:            nullString(in.TriggerName),
 			TriggerType:            nullString(in.TriggerType),
 			SubmissionSource:       submissionSource,
 			CheckpointAfterSuccess: checkpointAfterSuccess,
-			Skills:                 skills,
-			McpEndpoints:           nullableJSON(mcpEndpoints),
-			Env:                    env,
 			SearchText:             nullString(taskSearchText),
 			CreatedAt:              now,
 			UpdatedAt:              now,
@@ -762,24 +754,31 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		}
 		sessionSearchText := strings.Join(strings.Fields(sessionID+" "+in.Agent+" "+in.ModelID+" "+in.GitURL), " ")
 		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
-			ID:          sessionID,
-			TaskID:      taskID,
-			Sequence:    1,
-			TeamID:      nullString(teamID),
-			Status:      "running",
-			ResumeMode:  resumeMode,
-			PauseReason: nullString(pauseReason),
-			ExpiresAt:   expiresAt,
-			GitUrl:      nullString(in.GitURL),
-			GitRef:      nullString(in.GitRef),
-			AgentImage:  nullString(in.AgentImage),
-			Agent:       nullString(in.Agent),
-			ProviderID:  nullString(in.ProviderID),
-			ModelID:     nullString(in.ModelID),
-			VariantID:   nullString(in.VariantID),
-			SearchText:  nullString(sessionSearchText),
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:                sessionID,
+			TaskID:            taskID,
+			Sequence:          1,
+			TeamID:            nullString(teamID),
+			Status:            "running",
+			ResumeMode:        resumeMode,
+			PauseReason:       nullString(pauseReason),
+			ExpiresAt:         expiresAt,
+			GitUrl:            nullString(in.GitURL),
+			GitRef:            nullString(in.GitRef),
+			AgentImage:        nullString(in.AgentImage),
+			Agent:             nullString(in.Agent),
+			ProviderID:        nullString(in.ProviderID),
+			ModelID:           nullString(in.ModelID),
+			VariantID:         nullString(in.VariantID),
+			Harness:           nullString(in.Harness),
+			Skills:            skills,
+			McpEndpoints:      nullableJSON(mcpEndpoints),
+			Env:               env,
+			CommitAuthorName:  sql.NullString{String: gitIdentity.GitAuthorName, Valid: true},
+			CommitAuthorEmail: sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true},
+			GitIdentityID:     nullString(gitIdentity.ID),
+			SearchText:        nullString(sessionSearchText),
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		}); err != nil {
 			return fmt.Errorf("insert agent session: %w", err)
 		}
@@ -856,7 +855,11 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
 		})
 	}
-	record := repoTaskToStoreRecord(task)
+	record := repoTaskToStoreRecord(task, repository.ChetterAgentSession{
+		AgentImage: nullString(in.AgentImage), Agent: nullString(in.Agent), ProviderID: nullString(in.ProviderID), ModelID: nullString(in.ModelID), VariantID: nullString(in.VariantID),
+		Harness: nullString(in.Harness), Skills: skills, McpEndpoints: nullableJSON(mcpEndpoints), Env: env,
+		CommitAuthorName: sql.NullString{String: gitIdentity.GitAuthorName, Valid: true}, CommitAuthorEmail: sql.NullString{String: gitIdentity.GitAuthorEmail, Valid: true}, GitIdentityID: nullString(gitIdentity.ID),
+	})
 	record.ExecutionID = attemptID
 	record.TimeoutSec = in.TimeoutSec
 	return record, nil
@@ -939,24 +942,31 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		}
 		sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+oldSession.Agent.String+" "+oldSession.ModelID.String+" "+oldSession.GitUrl.String), " ")
 		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
-			ID:          newSessionID,
-			TaskID:      taskID,
-			Sequence:    sequence,
-			TeamID:      oldSession.TeamID,
-			Status:      "running",
-			ResumeMode:  oldSession.ResumeMode,
-			PauseReason: oldSession.PauseReason,
-			ExpiresAt:   expiresAt,
-			GitUrl:      oldSession.GitUrl,
-			GitRef:      oldSession.GitRef,
-			AgentImage:  oldSession.AgentImage,
-			Agent:       oldSession.Agent,
-			ProviderID:  oldSession.ProviderID,
-			ModelID:     oldSession.ModelID,
-			VariantID:   oldSession.VariantID,
-			SearchText:  nullString(sessionSearchText),
-			CreatedAt:   now,
-			UpdatedAt:   now,
+			ID:                newSessionID,
+			TaskID:            taskID,
+			Sequence:          sequence,
+			TeamID:            oldSession.TeamID,
+			Status:            "running",
+			ResumeMode:        oldSession.ResumeMode,
+			PauseReason:       oldSession.PauseReason,
+			ExpiresAt:         expiresAt,
+			GitUrl:            oldSession.GitUrl,
+			GitRef:            oldSession.GitRef,
+			AgentImage:        oldSession.AgentImage,
+			Agent:             oldSession.Agent,
+			ProviderID:        oldSession.ProviderID,
+			ModelID:           oldSession.ModelID,
+			VariantID:         oldSession.VariantID,
+			Harness:           oldSession.Harness,
+			Skills:            oldSession.Skills,
+			McpEndpoints:      oldSession.McpEndpoints,
+			Env:               oldSession.Env,
+			CommitAuthorName:  oldSession.CommitAuthorName,
+			CommitAuthorEmail: oldSession.CommitAuthorEmail,
+			GitIdentityID:     oldSession.GitIdentityID,
+			SearchText:        nullString(sessionSearchText),
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		}); err != nil {
 			return fmt.Errorf("insert recovery session: %w", err)
 		}
@@ -1176,7 +1186,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		SourceID:   taskID,
 		Detail:     fmt.Sprintf("session resumed via API: prompt=%.100s", prompt),
 	})
-	taskRecord := repoTaskToStoreRecord(task)
+	taskRecord := repoTaskToStoreRecord(task, session)
 	taskRecord.ExecutionID = attemptID
 	taskRecord.TimeoutSec = timeoutSec
 	return ResumeAgentSessionOutput{
@@ -1226,10 +1236,10 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 	return nil
 }
 
-func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
-	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
-	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
-	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+func repoTaskToStoreRecord(task repository.ChetterTask, session repository.ChetterAgentSession) store.TaskRecord {
+	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
+	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	var endedAt *time.Time
 	if task.EndedAt.Valid {
 		endedAt = &task.EndedAt.Time
@@ -1241,14 +1251,14 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		Prompt:            task.Prompt,
 		GitURL:            task.GitUrl.String,
 		GitRef:            task.GitRef.String,
-		AgentImage:        task.AgentImage.String,
-		Agent:             task.Agent.String,
-		ProviderID:        task.ProviderID.String,
-		ModelID:           task.ModelID.String,
-		VariantID:         task.VariantID.String,
-		CommitAuthorName:  task.CommitAuthorName.String,
-		CommitAuthorEmail: task.CommitAuthorEmail.String,
-		GitIdentityID:     task.GitIdentityID.String,
+		AgentImage:        session.AgentImage.String,
+		Agent:             session.Agent.String,
+		ProviderID:        session.ProviderID.String,
+		ModelID:           session.ModelID.String,
+		VariantID:         session.VariantID.String,
+		CommitAuthorName:  session.CommitAuthorName.String,
+		CommitAuthorEmail: session.CommitAuthorEmail.String,
+		GitIdentityID:     session.GitIdentityID.String,
 		TriggerName:       task.TriggerName.String,
 		TriggerType:       task.TriggerType.String,
 		SubmissionSource:  task.SubmissionSource,

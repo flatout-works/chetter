@@ -31,22 +31,17 @@ func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage s
 	t.Helper()
 	now := time.Now().UTC()
 	if err := q.InsertTask(context.Background(), repository.InsertTaskParams{
-		ID:                id,
-		Prompt:            prompt,
-		AgentImage:        sql.NullString{String: agentImage, Valid: true},
-		Skills:            json.RawMessage(`[]`),
-		Env:               json.RawMessage(`{}`),
-		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
-		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID: id, Prompt: prompt, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("insert task: %v", err)
 	}
 	sessionID := "sess_" + id
 	promptID := "prompt_" + id
 	if err := q.InsertAgentSession(context.Background(), repository.InsertAgentSessionParams{
-		ID: sessionID, TaskID: id, Sequence: 1, Status: "running", ResumeMode: "none", CreatedAt: now, UpdatedAt: now,
+		ID: sessionID, TaskID: id, Sequence: 1, Status: "running", ResumeMode: "none",
+		AgentImage: sql.NullString{String: agentImage, Valid: true}, Skills: json.RawMessage(`[]`), Env: json.RawMessage(`{}`),
+		CommitAuthorName: sql.NullString{String: "Chetter", Valid: true}, CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
+		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("insert session: %v", err)
 	}
@@ -284,15 +279,7 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 	// Insert a task that has max_attempts exhausted
 	now := time.Now().UTC()
 	if err := q.InsertTask(ctx, repository.InsertTaskParams{
-		ID:                "task_lease",
-		Prompt:            "x",
-		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
-		Skills:            json.RawMessage(`[]`),
-		Env:               json.RawMessage(`{}`),
-		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
-		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID: "task_lease", Prompt: "x", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
@@ -615,32 +602,25 @@ func TestRPCHeartbeatCancelsReclaimedTask(t *testing.T) {
 	}
 }
 
-func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
-	harnessJSON, _ := json.Marshal(map[string]string{
-		"__chetter_harness": "pi",
-		"CUSTOM_VAR":        "val",
-	})
+func TestTaskToProto_UsesSessionConfig(t *testing.T) {
+	envJSON, _ := json.Marshal(map[string]string{"CUSTOM_VAR": "val"})
 	task := repository.ChetterTask{
-		ID:                "task-1",
-		Prompt:            "test prompt",
-		AgentImage:        sql.NullString{String: "img", Valid: true},
-		Env:               harnessJSON,
-		Skills:            []byte(`[]`),
+		ID: "task-1", Prompt: "test prompt",
+		GitUrl: sql.NullString{}, GitRef: sql.NullString{},
+	}
+	session := repository.ChetterAgentSession{
+		ID: "sess-1", AgentImage: sql.NullString{String: "img", Valid: true}, Env: envJSON, Skills: []byte(`[]`),
+		Harness:           sql.NullString{String: "pi", Valid: true},
 		ProviderID:        sql.NullString{},
 		ModelID:           sql.NullString{},
 		VariantID:         sql.NullString{},
 		Agent:             sql.NullString{},
-		GitUrl:            sql.NullString{},
-		GitRef:            sql.NullString{},
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
+	proto := taskToProto(task, session, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "pi" {
 		t.Fatalf("expected harness='pi', got %q", proto.Harness)
-	}
-	if v, ok := proto.Env["__chetter_harness"]; ok {
-		t.Fatalf("__chetter_harness should be removed from env, got %q", v)
 	}
 	if proto.Env["CUSTOM_VAR"] != "val" {
 		t.Fatalf("CUSTOM_VAR should be preserved, got %q", proto.Env["CUSTOM_VAR"])
@@ -653,21 +633,19 @@ func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
 func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	envJSON, _ := json.Marshal(map[string]string{"FOO": "bar"})
 	task := repository.ChetterTask{
-		ID:                "task-2",
-		Prompt:            "test",
-		Env:               envJSON,
-		Skills:            []byte(`[]`),
+		ID: "task-2", Prompt: "test", GitUrl: sql.NullString{}, GitRef: sql.NullString{},
+	}
+	session := repository.ChetterAgentSession{
+		ID: "sess-2", Env: envJSON, Skills: []byte(`[]`),
 		ProviderID:        sql.NullString{},
 		ModelID:           sql.NullString{},
 		VariantID:         sql.NullString{},
 		Agent:             sql.NullString{},
 		AgentImage:        sql.NullString{String: "img", Valid: true},
-		GitUrl:            sql.NullString{},
-		GitRef:            sql.NullString{},
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
+	proto := taskToProto(task, session, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", proto.Harness)
 	}

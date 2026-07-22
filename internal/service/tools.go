@@ -534,29 +534,36 @@ type ListAgentSessionsInput struct {
 }
 
 type AgentSessionRecord struct {
-	ID               string     `json:"id"`
-	TaskID           string     `json:"task_id"`
-	Sequence         int32      `json:"sequence"`
-	TeamID           string     `json:"team_id,omitempty"`
-	Status           string     `json:"status"`
-	ResumeMode       string     `json:"resume_mode"`
-	PinnedRunnerID   string     `json:"pinned_runner_id,omitempty"`
-	CheckpointID     string     `json:"checkpoint_id,omitempty"`
-	HarnessSessionID string     `json:"harness_session_id,omitempty"`
-	GitURL           string     `json:"git_url,omitempty"`
-	GitRef           string     `json:"git_ref,omitempty"`
-	AgentImage       string     `json:"agent_image,omitempty"`
-	Agent            string     `json:"agent,omitempty"`
-	ProviderID       string     `json:"provider_id,omitempty"`
-	ModelID          string     `json:"model_id,omitempty"`
-	VariantID        string     `json:"variant_id,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	PausedAt         *time.Time `json:"paused_at,omitempty"`
-	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
-	PauseReason      string     `json:"pause_reason,omitempty"`
-	Error            string     `json:"error,omitempty"`
-	PromptCount      int32      `json:"prompt_count,omitempty"`
+	ID                string            `json:"id"`
+	TaskID            string            `json:"task_id"`
+	Sequence          int32             `json:"sequence"`
+	TeamID            string            `json:"team_id,omitempty"`
+	Status            string            `json:"status"`
+	ResumeMode        string            `json:"resume_mode"`
+	PinnedRunnerID    string            `json:"pinned_runner_id,omitempty"`
+	CheckpointID      string            `json:"checkpoint_id,omitempty"`
+	HarnessSessionID  string            `json:"harness_session_id,omitempty"`
+	GitURL            string            `json:"git_url,omitempty"`
+	GitRef            string            `json:"git_ref,omitempty"`
+	AgentImage        string            `json:"agent_image,omitempty"`
+	Agent             string            `json:"agent,omitempty"`
+	ProviderID        string            `json:"provider_id,omitempty"`
+	ModelID           string            `json:"model_id,omitempty"`
+	VariantID         string            `json:"variant_id,omitempty"`
+	Harness           string            `json:"harness,omitempty"`
+	Skills            []string          `json:"skills,omitempty"`
+	McpEndpoints      []string          `json:"mcp_endpoints,omitempty"`
+	Env               map[string]string `json:"env,omitempty"`
+	CommitAuthorName  string            `json:"commit_author_name,omitempty"`
+	CommitAuthorEmail string            `json:"commit_author_email,omitempty"`
+	GitIdentityID     string            `json:"git_identity_id,omitempty"`
+	CreatedAt         time.Time         `json:"created_at"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+	PausedAt          *time.Time        `json:"paused_at,omitempty"`
+	ExpiresAt         *time.Time        `json:"expires_at,omitempty"`
+	PauseReason       string            `json:"pause_reason,omitempty"`
+	Error             string            `json:"error,omitempty"`
+	PromptCount       int32             `json:"prompt_count,omitempty"`
 }
 
 type UserPromptRecord struct {
@@ -791,29 +798,39 @@ func clampListLimit(limit int) int32 {
 }
 
 func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionRecord {
+	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
+	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	return AgentSessionRecord{
-		ID:               session.ID,
-		TaskID:           session.TaskID,
-		Sequence:         session.Sequence,
-		TeamID:           session.TeamID.String,
-		Status:           session.Status,
-		ResumeMode:       session.ResumeMode,
-		PinnedRunnerID:   session.PinnedRunnerID.String,
-		CheckpointID:     session.CheckpointID.String,
-		HarnessSessionID: session.HarnessSessionID.String,
-		GitURL:           session.GitUrl.String,
-		GitRef:           session.GitRef.String,
-		AgentImage:       session.AgentImage.String,
-		Agent:            session.Agent.String,
-		ProviderID:       session.ProviderID.String,
-		ModelID:          session.ModelID.String,
-		VariantID:        session.VariantID.String,
-		CreatedAt:        session.CreatedAt,
-		UpdatedAt:        session.UpdatedAt,
-		PausedAt:         nullTimePtr(session.PausedAt),
-		ExpiresAt:        nullTimePtr(session.ExpiresAt),
-		PauseReason:      session.PauseReason.String,
-		Error:            session.Error.String,
+		ID:                session.ID,
+		TaskID:            session.TaskID,
+		Sequence:          session.Sequence,
+		TeamID:            session.TeamID.String,
+		Status:            session.Status,
+		ResumeMode:        session.ResumeMode,
+		PinnedRunnerID:    session.PinnedRunnerID.String,
+		CheckpointID:      session.CheckpointID.String,
+		HarnessSessionID:  session.HarnessSessionID.String,
+		GitURL:            session.GitUrl.String,
+		GitRef:            session.GitRef.String,
+		AgentImage:        session.AgentImage.String,
+		Agent:             session.Agent.String,
+		ProviderID:        session.ProviderID.String,
+		ModelID:           session.ModelID.String,
+		VariantID:         session.VariantID.String,
+		Harness:           session.Harness.String,
+		Skills:            skills,
+		McpEndpoints:      mcpEndpoints,
+		Env:               env,
+		CommitAuthorName:  session.CommitAuthorName.String,
+		CommitAuthorEmail: session.CommitAuthorEmail.String,
+		GitIdentityID:     session.GitIdentityID.String,
+		CreatedAt:         session.CreatedAt,
+		UpdatedAt:         session.UpdatedAt,
+		PausedAt:          nullTimePtr(session.PausedAt),
+		ExpiresAt:         nullTimePtr(session.ExpiresAt),
+		PauseReason:       session.PauseReason.String,
+		Error:             session.Error.String,
 	}
 }
 
@@ -891,10 +908,10 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	}
 }
 
-func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
-	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
-	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
-	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
+func repoTaskToToolRecord(task repository.ChetterTask, session repository.ChetterAgentSession) TaskToolRecord {
+	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
+	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
+	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	return TaskToolRecord{
 		ID:               task.ID,
 		TeamID:           task.TeamID.String,
@@ -902,12 +919,12 @@ func repoTaskToToolRecord(task repository.ChetterTask) TaskToolRecord {
 		Prompt:           task.Prompt,
 		GitURL:           task.GitUrl.String,
 		GitRef:           task.GitRef.String,
-		AgentImage:       task.AgentImage.String,
-		Agent:            task.Agent.String,
-		ProviderID:       task.ProviderID.String,
-		ModelID:          task.ModelID.String,
-		VariantID:        task.VariantID.String,
-		GitIdentityID:    task.GitIdentityID.String,
+		AgentImage:       session.AgentImage.String,
+		Agent:            session.Agent.String,
+		ProviderID:       session.ProviderID.String,
+		ModelID:          session.ModelID.String,
+		VariantID:        session.VariantID.String,
+		GitIdentityID:    session.GitIdentityID.String,
 		TriggerName:      task.TriggerName.String,
 		TriggerType:      task.TriggerType.String,
 		SubmissionSource: task.SubmissionSource,

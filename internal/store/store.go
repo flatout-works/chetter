@@ -498,21 +498,13 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"agent", "ALTER TABLE chetter_tasks ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image"},
-		{"provider_id", "ALTER TABLE chetter_tasks ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent_image"},
-		{"model_id", "ALTER TABLE chetter_tasks ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
-		{"variant_id", "ALTER TABLE chetter_tasks ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
-		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER variant_id"},
-		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
-		{"git_identity_id", "ALTER TABLE chetter_tasks ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email"},
-		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER git_identity_id"},
+		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER git_ref"},
 		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER checkpoint_after_success"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER checkpoint_after_success"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
-		{"mcp_endpoints", "ALTER TABLE chetter_tasks ADD COLUMN mcp_endpoints JSON NULL AFTER skills"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)

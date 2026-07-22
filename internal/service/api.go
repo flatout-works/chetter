@@ -25,7 +25,11 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 	if err != nil {
 		return TaskToolRecord{}, err
 	}
-	rec := repoTaskToToolRecord(task)
+	session, err := s.repo.GetAgentSessionByTaskID(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get latest agent session: %w", err)
+	}
+	rec := repoTaskToToolRecord(task, session)
 	if run, err := s.repo.GetUserPromptByTaskID(ctx, taskID); err == nil {
 		rec.AgentSessionID = run.AgentSessionID
 		if attempts, err := s.repo.ListExecutionAttemptsByPrompt(ctx, run.ID); err == nil && len(attempts) > 0 {
@@ -126,7 +130,11 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	}
 	out := make([]TaskToolRecord, 0, len(tasks))
 	for _, task := range tasks {
-		out = append(out, repoTaskToToolRecord(task))
+		session, sessionErr := s.repo.GetAgentSessionByTaskID(ctx, task.ID)
+		if sessionErr != nil {
+			return nil, fmt.Errorf("get latest agent session for task %s: %w", task.ID, sessionErr)
+		}
+		out = append(out, repoTaskToToolRecord(task, session))
 	}
 	return out, nil
 }

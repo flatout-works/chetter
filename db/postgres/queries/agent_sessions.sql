@@ -1,7 +1,7 @@
 -- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, search_text, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);
+    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25);
 
 -- name: GetAgentSessionByID :one
 SELECT * FROM chetter_agent_sessions WHERE id = $1;

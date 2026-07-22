@@ -66,7 +66,7 @@ func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequ
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, s.githubToolSignature(ctx, task, userPrompt))
 	created, err := s.githubClient().CreateIssue(ctx, in.Repo, in.Title, body, in.Labels)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue: %w", err)
@@ -88,7 +88,7 @@ func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallT
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, s.githubToolSignature(ctx, task, userPrompt))
 	created, err := s.githubClient().CreateIssueCommentWithResponse(ctx, in.Repo, in.IssueNumber, body)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue comment: %w", err)
@@ -109,7 +109,7 @@ func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, s.githubToolSignature(ctx, task, userPrompt))
 	created, err := s.githubClient().CreatePullRequest(ctx, in.Repo, in.Title, body, in.Head, in.Base, in.Draft)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request: %w", err)
@@ -142,7 +142,7 @@ func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolR
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, err
 	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, userPrompt, s.cfg.WebURL))
+	body := appendChetterSignature(in.Body, s.githubToolSignature(ctx, task, userPrompt))
 	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
 	if err != nil {
 		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request review: %w", err)
@@ -166,7 +166,7 @@ func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, 
 	if err != nil {
 		return "", err
 	}
-	return githubToolSignature(task, userPrompt, s.cfg.WebURL), nil
+	return s.githubToolSignature(ctx, task, userPrompt), nil
 }
 
 func requireGitHubToolFields(taskID, repo string) error {
@@ -200,10 +200,10 @@ func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (rep
 	return task, userPrompt, nil
 }
 
-func githubToolSignature(task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, webURL string) string {
+func (s *Service) githubToolSignature(ctx context.Context, task repository.ChetterTask, userPrompt repository.ChetterUserPrompt) string {
 	taskLink := task.ID
-	if webURL != "" {
-		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", task.ID, strings.TrimRight(webURL, "/"), task.ID)
+	if s.cfg.WebURL != "" {
+		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", task.ID, strings.TrimRight(s.cfg.WebURL, "/"), task.ID)
 	}
 	parts := []string{fmt.Sprintf("Task: %s", taskLink)}
 	if userPrompt.AgentSessionID != "" {
@@ -212,11 +212,13 @@ func githubToolSignature(task repository.ChetterTask, userPrompt repository.Chet
 	if userPrompt.ID != "" {
 		parts = append(parts, "Prompt: "+userPrompt.ID)
 	}
-	if agent := strings.TrimSpace(task.Agent.String); agent != "" {
-		parts = append(parts, "Agent: "+agent)
-	}
-	if model := strings.TrimSpace(task.ModelID.String); model != "" {
-		parts = append(parts, "Model: "+model)
+	if session, err := s.repo.GetAgentSessionByID(ctx, userPrompt.AgentSessionID); err == nil {
+		if agent := strings.TrimSpace(session.Agent.String); agent != "" {
+			parts = append(parts, "Agent: "+agent)
+		}
+		if model := strings.TrimSpace(session.ModelID.String); model != "" {
+			parts = append(parts, "Model: "+model)
+		}
 	}
 	return "---\n" + strings.Join(parts, " | ")
 }

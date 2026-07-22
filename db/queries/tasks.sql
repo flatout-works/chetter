@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, commit_author_name, commit_author_email, git_identity_id, trigger_name, trigger_type, submission_source, checkpoint_after_success, skills, mcp_endpoints, env, search_text, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, checkpoint_after_success, search_text, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks
@@ -118,8 +118,9 @@ LIMIT ? OFFSET ?;
 -- name: UpdateTaskSearchText :exec
 UPDATE chetter_tasks
 SET search_text = CONCAT_WS(' ',
-    COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
-    COALESCE(agent, ''), COALESCE(model_id, ''), COALESCE(trigger_name, ''),
-    COALESCE(git_url, '')
+	COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
+	COALESCE((SELECT agent FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
+	COALESCE((SELECT model_id FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
+	COALESCE(trigger_name, ''), COALESCE(git_url, '')
 )
-WHERE id = sqlc.arg(id);
+WHERE chetter_tasks.id = sqlc.arg(id);

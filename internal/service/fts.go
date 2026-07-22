@@ -154,7 +154,7 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 func (s *Service) listAgentSessionsRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	query := `SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	query := `SELECT id, task_id, sequence, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args := append([]any{status, status}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
@@ -221,9 +221,10 @@ func (s *Service) scanAgentSessions(ctx context.Context, query string, args []an
 	for rows.Next() {
 		var i repository.ChetterAgentSession
 		if err := rows.Scan(
-			&i.ID, &i.TeamID, &i.Status, &i.ResumeMode, &i.PinnedRunnerID, &i.PinnedRunnerName,
+			&i.ID, &i.TaskID, &i.Sequence, &i.TeamID, &i.Status, &i.ResumeMode, &i.PinnedRunnerID, &i.PinnedRunnerName,
 			&i.CheckpointID, &i.WorkspacePath, &i.ContainerName, &i.HarnessSessionID,
 			&i.GitUrl, &i.GitRef, &i.AgentImage, &i.Agent, &i.ProviderID, &i.ModelID, &i.VariantID,
+			&i.Harness, &i.Skills, &i.McpEndpoints, &i.Env, &i.CommitAuthorName, &i.CommitAuthorEmail, &i.GitIdentityID,
 			&i.CreatedAt, &i.UpdatedAt, &i.PausedAt, &i.ExpiresAt, &i.PauseReason, &i.Error, &i.SearchText,
 		); err != nil {
 			return nil, err

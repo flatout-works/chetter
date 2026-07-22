@@ -8,6 +8,7 @@ package repositorypostgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/lib/pq"
@@ -135,7 +136,7 @@ func (q *Queries) FailPendingUserPromptsForUnavailableRunner(ctx context.Context
 }
 
 const getAgentSessionByID = `-- name: GetAgentSessionByID :one
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions WHERE id = $1
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions WHERE id = $1
 `
 
 func (q *Queries) GetAgentSessionByID(ctx context.Context, id string) (ChetterAgentSession, error) {
@@ -168,12 +169,19 @@ func (q *Queries) GetAgentSessionByID(ctx context.Context, id string) (ChetterAg
 		&i.SearchText,
 		&i.TaskID,
 		&i.Sequence,
+		&i.Harness,
+		&i.Skills,
+		&i.McpEndpoints,
+		&i.Env,
+		&i.CommitAuthorName,
+		&i.CommitAuthorEmail,
+		&i.GitIdentityID,
 	)
 	return i, err
 }
 
 const getAgentSessionByTaskID = `-- name: GetAgentSessionByTaskID :one
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions
 WHERE task_id = $1
 ORDER BY sequence DESC
 LIMIT 1
@@ -209,6 +217,13 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (C
 		&i.SearchText,
 		&i.TaskID,
 		&i.Sequence,
+		&i.Harness,
+		&i.Skills,
+		&i.McpEndpoints,
+		&i.Env,
+		&i.CommitAuthorName,
+		&i.CommitAuthorEmail,
+		&i.GitIdentityID,
 	)
 	return i, err
 }
@@ -301,7 +316,7 @@ func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID 
 }
 
 const getPausedSessionByArtifact = `-- name: GetPausedSessionByArtifact :one
-SELECT s.id, s.team_id, s.status, s.resume_mode, s.pinned_runner_id, s.pinned_runner_name, s.checkpoint_id, s.workspace_path, s.container_name, s.harness_session_id, s.git_url, s.git_ref, s.agent_image, s.agent, s.provider_id, s.model_id, s.variant_id, s.created_at, s.updated_at, s.paused_at, s.expires_at, s.pause_reason, s.error, s.search_text, s.task_id, s.sequence FROM chetter_agent_sessions s
+SELECT s.id, s.team_id, s.status, s.resume_mode, s.pinned_runner_id, s.pinned_runner_name, s.checkpoint_id, s.workspace_path, s.container_name, s.harness_session_id, s.git_url, s.git_ref, s.agent_image, s.agent, s.provider_id, s.model_id, s.variant_id, s.created_at, s.updated_at, s.paused_at, s.expires_at, s.pause_reason, s.error, s.search_text, s.task_id, s.sequence, s.harness, s.skills, s.mcp_endpoints, s.env, s.commit_author_name, s.commit_author_email, s.git_identity_id FROM chetter_agent_sessions s
 JOIN chetter_task_artifacts a ON a.agent_session_id = s.id
 WHERE a.repo = $1
   AND a.number = $2
@@ -348,6 +363,13 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg GetPausedS
 		&i.SearchText,
 		&i.TaskID,
 		&i.Sequence,
+		&i.Harness,
+		&i.Skills,
+		&i.McpEndpoints,
+		&i.Env,
+		&i.CommitAuthorName,
+		&i.CommitAuthorEmail,
+		&i.GitIdentityID,
 	)
 	return i, err
 }
@@ -412,29 +434,36 @@ func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (Che
 
 const insertAgentSession = `-- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, search_text, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 `
 
 type InsertAgentSessionParams struct {
-	ID          string         `json:"id"`
-	TaskID      string         `json:"task_id"`
-	Sequence    int32          `json:"sequence"`
-	TeamID      sql.NullString `json:"team_id"`
-	Status      string         `json:"status"`
-	ResumeMode  string         `json:"resume_mode"`
-	PauseReason sql.NullString `json:"pause_reason"`
-	ExpiresAt   sql.NullTime   `json:"expires_at"`
-	GitUrl      sql.NullString `json:"git_url"`
-	GitRef      sql.NullString `json:"git_ref"`
-	AgentImage  sql.NullString `json:"agent_image"`
-	Agent       sql.NullString `json:"agent"`
-	ProviderID  sql.NullString `json:"provider_id"`
-	ModelID     sql.NullString `json:"model_id"`
-	VariantID   sql.NullString `json:"variant_id"`
-	SearchText  sql.NullString `json:"search_text"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID                string           `json:"id"`
+	TaskID            string           `json:"task_id"`
+	Sequence          int32            `json:"sequence"`
+	TeamID            sql.NullString   `json:"team_id"`
+	Status            string           `json:"status"`
+	ResumeMode        string           `json:"resume_mode"`
+	PauseReason       sql.NullString   `json:"pause_reason"`
+	ExpiresAt         sql.NullTime     `json:"expires_at"`
+	GitUrl            sql.NullString   `json:"git_url"`
+	GitRef            sql.NullString   `json:"git_ref"`
+	AgentImage        sql.NullString   `json:"agent_image"`
+	Agent             sql.NullString   `json:"agent"`
+	ProviderID        sql.NullString   `json:"provider_id"`
+	ModelID           sql.NullString   `json:"model_id"`
+	VariantID         sql.NullString   `json:"variant_id"`
+	Harness           sql.NullString   `json:"harness"`
+	Skills            json.RawMessage  `json:"skills"`
+	McpEndpoints      *json.RawMessage `json:"mcp_endpoints"`
+	Env               json.RawMessage  `json:"env"`
+	CommitAuthorName  sql.NullString   `json:"commit_author_name"`
+	CommitAuthorEmail sql.NullString   `json:"commit_author_email"`
+	GitIdentityID     sql.NullString   `json:"git_identity_id"`
+	SearchText        sql.NullString   `json:"search_text"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
 }
 
 func (q *Queries) InsertAgentSession(ctx context.Context, arg InsertAgentSessionParams) error {
@@ -454,6 +483,13 @@ func (q *Queries) InsertAgentSession(ctx context.Context, arg InsertAgentSession
 		arg.ProviderID,
 		arg.ModelID,
 		arg.VariantID,
+		arg.Harness,
+		arg.Skills,
+		arg.McpEndpoints,
+		arg.Env,
+		arg.CommitAuthorName,
+		arg.CommitAuthorEmail,
+		arg.GitIdentityID,
 		arg.SearchText,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -561,7 +597,7 @@ func (q *Queries) IsRunnerAlive(ctx context.Context, arg IsRunnerAliveParams) (b
 }
 
 const listAgentSessions = `-- name: ListAgentSessions :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions
 WHERE ($1 = '' OR COALESCE(team_id, '') = $1)
   AND ($2 = '' OR status = $2)
 ORDER BY updated_at DESC
@@ -616,6 +652,13 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 			&i.SearchText,
 			&i.TaskID,
 			&i.Sequence,
+			&i.Harness,
+			&i.Skills,
+			&i.McpEndpoints,
+			&i.Env,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.GitIdentityID,
 		); err != nil {
 			return nil, err
 		}
@@ -631,7 +674,7 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 }
 
 const listAgentSessionsByTeams = `-- name: ListAgentSessionsByTeams :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions
 WHERE team_id = ANY($1::text[])
   AND ($2 = '' OR status = $2)
 ORDER BY updated_at DESC
@@ -686,6 +729,13 @@ func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg ListAgentSes
 			&i.SearchText,
 			&i.TaskID,
 			&i.Sequence,
+			&i.Harness,
+			&i.Skills,
+			&i.McpEndpoints,
+			&i.Env,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.GitIdentityID,
 		); err != nil {
 			return nil, err
 		}
@@ -997,7 +1047,7 @@ func (q *Queries) RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, 
 }
 
 const searchAgentSessions = `-- name: SearchAgentSessions :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions
 WHERE ($1 = '' OR COALESCE(team_id, '') = $1)
   AND ($2 = '' OR status = $2)
   AND search_text ILIKE '%' || $3 || '%'
@@ -1055,6 +1105,13 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 			&i.SearchText,
 			&i.TaskID,
 			&i.Sequence,
+			&i.Harness,
+			&i.Skills,
+			&i.McpEndpoints,
+			&i.Env,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.GitIdentityID,
 		); err != nil {
 			return nil, err
 		}
@@ -1070,7 +1127,7 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 }
 
 const searchAgentSessionsByTeams = `-- name: SearchAgentSessionsByTeams :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, task_id, sequence, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id FROM chetter_agent_sessions
 WHERE team_id = ANY($1::text[])
   AND ($2 = '' OR status = $2)
   AND search_text ILIKE '%' || $3 || '%'
@@ -1128,6 +1185,13 @@ func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg SearchAgen
 			&i.SearchText,
 			&i.TaskID,
 			&i.Sequence,
+			&i.Harness,
+			&i.Skills,
+			&i.McpEndpoints,
+			&i.Env,
+			&i.CommitAuthorName,
+			&i.CommitAuthorEmail,
+			&i.GitIdentityID,
 		); err != nil {
 			return nil, err
 		}
