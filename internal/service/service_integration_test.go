@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -88,6 +89,115 @@ func TestPostgresRepositoryUsesNativeQueries(t *testing.T) {
 	}
 	if len(rows) != 1 {
 		t.Fatalf("SearchTasks returned %d rows, want 1", len(rows))
+	}
+}
+
+func TestGetTaskProgressPaginatesRawEvents(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "paginate progress", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	base := time.Now().UTC().Add(-time.Minute)
+	for i := range 5 {
+		payload, err := json.Marshal(store.TaskResponse{Summary: fmt.Sprintf("progress %d", i)})
+		if err != nil {
+			t.Fatalf("marshal payload: %v", err)
+		}
+		if err := svc.repo.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+			ID:        fmt.Sprintf("evt_page_%d", i),
+			TaskID:    task.ID,
+			Subject:   "test.progress",
+			Status:    "running",
+			EventType: "task.progress",
+			Payload:   payload,
+			CreatedAt: base.Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatalf("InsertTaskEvent %d: %v", i, err)
+		}
+	}
+
+	first, err := svc.GetTaskProgress(ctx, task.ID, 2, 0)
+	if err != nil {
+		t.Fatalf("GetTaskProgress first page: %v", err)
+	}
+	if !first.HasMore || first.NextOffset != 2 {
+		t.Fatalf("first page metadata = has_more %v next_offset %d", first.HasMore, first.NextOffset)
+	}
+	if len(first.Entries) != 2 || first.Entries[0].Summary != "progress 3" || first.Entries[1].Summary != "progress 4" {
+		t.Fatalf("first page entries = %+v", first.Entries)
+	}
+
+	second, err := svc.GetTaskProgress(ctx, task.ID, 2, first.NextOffset)
+	if err != nil {
+		t.Fatalf("GetTaskProgress second page: %v", err)
+	}
+	if !second.HasMore || second.NextOffset != 4 {
+		t.Fatalf("second page metadata = has_more %v next_offset %d", second.HasMore, second.NextOffset)
+	}
+	if len(second.Entries) != 2 || second.Entries[0].Summary != "progress 1" || second.Entries[1].Summary != "progress 2" {
+		t.Fatalf("second page entries = %+v", second.Entries)
+	}
+
+	last, err := svc.GetTaskProgress(ctx, task.ID, 2, second.NextOffset)
+	if err != nil {
+		t.Fatalf("GetTaskProgress last page: %v", err)
+	}
+	if last.HasMore || last.NextOffset != 5 {
+		t.Fatalf("last page metadata = has_more %v next_offset %d", last.HasMore, last.NextOffset)
+	}
+	if len(last.Entries) != 1 || last.Entries[0].Summary != "progress 0" {
+		t.Fatalf("last page entries = %+v", last.Entries)
+	}
+}
+
+func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "reclaim me", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	now := time.Now().UTC()
+	if rows, err := svc.repo.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
+		RunnerID:       sql.NullString{String: "runner_reclaim", Valid: true},
+		ClaimedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Second), Valid: true},
+		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+		UpdatedAt:      now,
+		LastEventAt:    sql.NullTime{Time: now, Valid: true},
+		ID:             task.ID,
+	}); err != nil {
+		t.Fatalf("MarkTaskClaimed: %v", err)
+	} else if rows != 1 {
+		t.Fatalf("MarkTaskClaimed rows = %d", rows)
+	}
+
+	svc.reapExpiredLeases()
+
+	reclaimed, err := svc.repo.GetTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	if reclaimed.Status != "pending" {
+		t.Fatalf("task status = %q, want pending", reclaimed.Status)
+	}
+	events, err := svc.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: task.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListTaskEvents: %v", err)
+	}
+	if len(events) != 1 || events[0].EventType != "task.reclaimed" {
+		t.Fatalf("reclaim events = %+v", events)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal reclaim event: %v", err)
+	}
+	if payload["attempt"] != float64(1) || payload["runner_id"] != "runner_reclaim" {
+		t.Fatalf("reclaim payload = %+v", payload)
 	}
 }
 

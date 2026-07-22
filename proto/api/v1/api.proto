@@ -397,6 +397,8 @@ message GetTaskProgressRequest {
 
 message GetTaskProgressResponse {
   repeated TaskProgressEntry entries = 1;
+  bool has_more = 2;
+  int32 next_offset = 3;
 }
 
 message GetLatestTaskEventRequest {

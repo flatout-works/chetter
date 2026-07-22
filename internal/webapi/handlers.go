@@ -376,12 +376,12 @@ func (h *eventHandler) GetTaskEvents(ctx context.Context, req *connect.Request[a
 }
 
 func (h *eventHandler) GetTaskProgress(ctx context.Context, req *connect.Request[apiv1.GetTaskProgressRequest]) (*connect.Response[apiv1.GetTaskProgressResponse], error) {
-	entries, err := h.svc.GetTaskProgress(ctx, req.Msg.TaskId, int(req.Msg.Limit), int(req.Msg.Offset))
+	page, err := h.svc.GetTaskProgress(ctx, req.Msg.TaskId, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	out := make([]*apiv1.TaskProgressEntry, len(entries))
-	for i, e := range entries {
+	out := make([]*apiv1.TaskProgressEntry, len(page.Entries))
+	for i, e := range page.Entries {
 		out[i] = &apiv1.TaskProgressEntry{
 			Time:    e.Time.Format(time.RFC3339Nano),
 			Status:  e.Status,
@@ -389,7 +389,11 @@ func (h *eventHandler) GetTaskProgress(ctx context.Context, req *connect.Request
 			Error:   e.Error,
 		}
 	}
-	return connect.NewResponse(&apiv1.GetTaskProgressResponse{Entries: out}), nil
+	return connect.NewResponse(&apiv1.GetTaskProgressResponse{
+		Entries:    out,
+		HasMore:    page.HasMore,
+		NextOffset: int32(page.NextOffset),
+	}), nil
 }
 
 func (h *eventHandler) GetLatestTaskEvent(ctx context.Context, req *connect.Request[apiv1.GetLatestTaskEventRequest]) (*connect.Response[apiv1.GetLatestTaskEventResponse], error) {

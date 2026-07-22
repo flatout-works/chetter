@@ -306,7 +306,9 @@ type TaskProgressInput struct {
 
 // TaskProgressOutput is the output for chetter_task_progress.
 type TaskProgressOutput struct {
-	Entries []TaskProgressRecord `json:"entries"`
+	Entries    []TaskProgressRecord `json:"entries"`
+	HasMore    bool                 `json:"has_more"`
+	NextOffset int                  `json:"next_offset"`
 }
 
 // TaskProgressRecord is a distilled status + summary entry.
@@ -1227,11 +1229,11 @@ func clampEventLimit(limit int) int32 {
 }
 
 func (s *Service) taskProgressTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskProgressInput) (*mcp.CallToolResult, TaskProgressOutput, error) {
-	entries, err := s.GetTaskProgress(ctx, in.TaskID, in.Limit, in.Offset)
+	page, err := s.GetTaskProgress(ctx, in.TaskID, in.Limit, in.Offset)
 	if err != nil {
 		return nil, TaskProgressOutput{}, err
 	}
-	return nil, TaskProgressOutput{Entries: entries}, nil
+	return nil, TaskProgressOutput(page), nil
 }
 
 func (s *Service) taskLatestEventTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskLatestEventInput) (*mcp.CallToolResult, TaskLatestEventOutput, error) {

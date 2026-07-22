@@ -103,6 +103,16 @@ WHERE status = 'running'
   AND lease_expires_at < $2
   AND attempt < max_attempts;
 
+-- name: ListReclaimableExpiredLeases :many
+SELECT id, team_id, runner_id, attempt, lease_expires_at
+FROM chetter_tasks
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < $1
+  AND attempt < max_attempts
+ORDER BY lease_expires_at ASC
+FOR UPDATE;
+
 -- name: FailExpiredLeases :execrows
 UPDATE chetter_tasks
 SET status = 'error',

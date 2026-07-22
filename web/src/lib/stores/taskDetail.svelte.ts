@@ -6,9 +6,12 @@ import { getTransport } from "$lib/api/client";
 
 export const taskEvents = writable<TaskEvent[]>([]);
 export const taskProgress = writable<TaskProgressEntry[]>([]);
+export const taskProgressHasMore = writable(false);
 export const streamConnected = writable(false);
 
 let abortController: AbortController | null = null;
+let progressOffset = 0;
+const progressPageSize = 50;
 
 export async function loadTaskEvents(taskId: string, limit = 100) {
   try {
@@ -25,10 +28,36 @@ export async function loadTaskEvents(taskId: string, limit = 100) {
 export async function loadTaskProgress(taskId: string) {
   try {
     const client = createClient(EventService, getTransport());
-    const resp = await client.getTaskProgress({ taskId });
+    const resp = await client.getTaskProgress({ taskId, limit: progressPageSize });
     taskProgress.set(resp.entries);
+    taskProgressHasMore.set(resp.hasMore);
+    progressOffset = resp.nextOffset;
   } catch (e) {
     console.error("Failed to load task progress:", e);
+  }
+}
+
+export async function loadOlderTaskProgress(taskId: string) {
+  try {
+    const client = createClient(EventService, getTransport());
+    const resp = await client.getTaskProgress({ taskId, limit: progressPageSize, offset: progressOffset });
+    taskProgress.update((entries) => [...resp.entries, ...entries]);
+    taskProgressHasMore.set(resp.hasMore);
+    progressOffset = resp.nextOffset;
+  } catch (e) {
+    console.error("Failed to load older task progress:", e);
+  }
+}
+
+export async function refreshTaskProgress(taskId: string) {
+  try {
+    const client = createClient(EventService, getTransport());
+    const resp = await client.getTaskProgress({ taskId, limit: Math.max(progressOffset, progressPageSize) });
+    taskProgress.set(resp.entries);
+    taskProgressHasMore.set(resp.hasMore);
+    progressOffset = resp.nextOffset;
+  } catch (e) {
+    console.error("Failed to refresh task progress:", e);
   }
 }
 
@@ -84,6 +113,8 @@ export function subscribeToTaskEvents(taskId: string, since: string, onTerminal?
 export function clearTaskDetail() {
   taskEvents.set([]);
   taskProgress.set([]);
+  taskProgressHasMore.set(false);
+  progressOffset = 0;
   streamConnected.set(false);
   if (abortController) {
     abortController.abort();

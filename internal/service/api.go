@@ -259,18 +259,32 @@ func (s *Service) GetTaskEventsSince(ctx context.Context, taskID string, since t
 	return out, nil
 }
 
-// GetTaskProgress returns a distilled progress timeline for a task.
-func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, offset int) ([]TaskProgressRecord, error) {
+type TaskProgressPage struct {
+	Entries    []TaskProgressRecord
+	HasMore    bool
+	NextOffset int
+}
+
+// GetTaskProgress returns one raw-event page distilled into timeline entries.
+// Pagination advances over persisted events rather than filtered entries so
+// noisy harness events cannot cause skipped or duplicated history.
+func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, offset int) (TaskProgressPage, error) {
 	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
-		return nil, err
+		return TaskProgressPage{}, err
 	}
+	pageLimit := clampProgressLimit(limit)
+	pageOffset := max(offset, 0)
 	events, err := s.repo.ListTaskEvents(ctx, repository.ListTaskEventsParams{
 		TaskID: taskID,
-		Limit:  clampEventLimit(limit),
-		Offset: int32(offset),
+		Limit:  int32(pageLimit + 1),
+		Offset: int32(pageOffset),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get events: %w", err)
+		return TaskProgressPage{}, fmt.Errorf("get events: %w", err)
+	}
+	hasMore := len(events) > pageLimit
+	if hasMore {
+		events = events[:pageLimit]
 	}
 	var out []TaskProgressRecord
 	var lastStatus, lastSummary string
@@ -298,7 +312,19 @@ func (s *Service) GetTaskProgress(ctx context.Context, taskID string, limit, off
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
-	return out, nil
+	return TaskProgressPage{
+		Entries:    out,
+		HasMore:    hasMore,
+		NextOffset: pageOffset + len(events),
+	}, nil
+}
+
+func clampProgressLimit(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	// Reserve one row under the repository's 500-row cap to detect another page.
+	return min(limit, 499)
 }
 
 func isProgressHeartbeat(summary string) bool {

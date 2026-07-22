@@ -271,9 +271,59 @@ func (s *Service) reapExpiredLeases() {
 	defer cancel()
 	now := time.Now().UTC()
 	expiredBefore := sql.NullTime{Time: now, Valid: true}
-	reclaimed, err := s.repo.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
-		UpdatedAt:      now,
-		LeaseExpiresAt: expiredBefore,
+	var reclaimed int64
+	var reclaimEvents []TaskEventCallbackContext
+	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		candidates, err := q.ListReclaimableExpiredLeases(ctx, expiredBefore)
+		if err != nil {
+			return err
+		}
+		reclaimed, err = q.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
+			UpdatedAt:      now,
+			LeaseExpiresAt: expiredBefore,
+		})
+		if err != nil {
+			return err
+		}
+		for _, task := range candidates {
+			eventID, err := randomID("evt")
+			if err != nil {
+				return err
+			}
+			summary := fmt.Sprintf("Runner lease expired after attempt %d; task reclaimed for a fresh execution", task.Attempt)
+			payload := mustMarshalJSON(map[string]any{
+				"task_id":          task.ID,
+				"runner_id":        task.RunnerID.String,
+				"attempt":          task.Attempt,
+				"lease_expires_at": task.LeaseExpiresAt.Time,
+				"status":           "pending",
+				"summary":          summary,
+			})
+			event := TaskEventCallbackContext{
+				ID:        eventID,
+				TaskID:    task.ID,
+				TeamID:    task.TeamID.String,
+				Subject:   fmt.Sprintf("control.reaper.%s", task.ID),
+				Status:    "pending",
+				EventType: "task.reclaimed",
+				Summary:   summary,
+				Payload:   payload,
+				CreatedAt: now,
+			}
+			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+				ID:        event.ID,
+				TaskID:    event.TaskID,
+				Subject:   event.Subject,
+				Status:    event.Status,
+				EventType: event.EventType,
+				Payload:   payload,
+				CreatedAt: event.CreatedAt,
+			}); err != nil {
+				return err
+			}
+			reclaimEvents = append(reclaimEvents, event)
+		}
+		return nil
 	})
 	if err != nil {
 		slog.Error("lease reaper reclaim failed", "error", err)
@@ -281,6 +331,16 @@ func (s *Service) reapExpiredLeases() {
 			s.quotaExhausted.Store(true)
 		}
 		return
+	}
+	if s.runnerRPC != nil {
+		for _, event := range reclaimEvents {
+			if s.runnerRPC.eventBus != nil {
+				s.runnerRPC.eventBus.PublishTaskEvent(event.TaskID, event.ID, event.Status, event.EventType, event.Summary, string(event.Payload), event.CreatedAt.Format(time.RFC3339))
+			}
+			if s.runnerRPC.callbacks != nil {
+				s.runnerRPC.callbacks.DispatchTaskEventCallbacks(ctx, event)
+			}
+		}
 	}
 	failed, err := s.repo.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
 		EndedAt:        sql.NullTime{Time: now, Valid: true},

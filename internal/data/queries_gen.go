@@ -97,6 +97,7 @@ type Repository interface {
 	ListHeartbeatTasks(ctx context.Context, arg repository.ListHeartbeatTasksParams) ([]repository.ListHeartbeatTasksRow, error)
 	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ChetterRunner, error)
 	ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error)
+	ListReclaimableExpiredLeases(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExpiredLeasesRow, error)
 	ListSessionRunsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterSessionRun, error)
 	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error)
 	ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error)
@@ -511,6 +512,11 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 func (q *Queries) ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error) {
 	value, err := q.postgres.ListModelCatalogs(ctx)
 	return convert[[]repository.ChetterModelCatalog](value), err
+}
+
+func (q *Queries) ListReclaimableExpiredLeases(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExpiredLeasesRow, error) {
+	value, err := q.postgres.ListReclaimableExpiredLeases(ctx, convert[sql.NullTime](leaseExpiresAt))
+	return convert[[]repository.ListReclaimableExpiredLeasesRow](value), err
 }
 
 func (q *Queries) ListSessionRunsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterSessionRun, error) {

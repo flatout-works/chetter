@@ -42,7 +42,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 const listTaskEvents = `-- name: ListTaskEvents :many
 SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
 WHERE task_id = ?
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT ?
 OFFSET ?
 `
@@ -87,7 +87,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 const listTaskEventsSince = `-- name: ListTaskEventsSince :many
 SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
 WHERE task_id = ? AND created_at > ?
-ORDER BY created_at ASC
+ORDER BY created_at ASC, id ASC
 `
 
 type ListTaskEventsSinceParams struct {

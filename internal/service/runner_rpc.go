@@ -725,8 +725,9 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		eventPayload = mustMarshalJSON(map[string]any{
 			"task_id":   task.ID,
 			"runner_id": runnerID,
+			"attempt":   task.Attempt,
 			"status":    "running",
-			"summary":   "Task claimed by runner",
+			"summary":   fmt.Sprintf("Task claimed by runner for attempt %d", task.Attempt),
 		})
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
 			ID:        eventID,
@@ -744,7 +745,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	})
 	if err == nil {
 		if s.eventBus != nil {
-			s.eventBus.PublishTaskEvent(claimed.ID, eventID, "running", "task.claimed", "Task claimed by runner", string(eventPayload), eventCreatedAt.Format(time.RFC3339))
+			s.eventBus.PublishTaskEvent(claimed.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.Attempt), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
 		}
 		if s.callbacks != nil {
 			dispatch := TaskEventCallbackContext{
@@ -754,7 +755,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 				Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, claimed.ID),
 				Status:    "running",
 				EventType: "task.claimed",
-				Summary:   "Task claimed by runner",
+				Summary:   fmt.Sprintf("Task claimed by runner for attempt %d", claimed.Attempt),
 				Payload:   eventPayload,
 				CreatedAt: eventCreatedAt,
 			}

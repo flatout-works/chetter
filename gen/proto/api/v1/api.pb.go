@@ -3425,6 +3425,8 @@ func (x *GetTaskProgressRequest) GetOffset() int32 {
 type GetTaskProgressResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Entries       []*TaskProgressEntry   `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	HasMore       bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	NextOffset    int32                  `protobuf:"varint,3,opt,name=next_offset,json=nextOffset,proto3" json:"next_offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3464,6 +3466,20 @@ func (x *GetTaskProgressResponse) GetEntries() []*TaskProgressEntry {
 		return x.Entries
 	}
 	return nil
+}
+
+func (x *GetTaskProgressResponse) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
+func (x *GetTaskProgressResponse) GetNextOffset() int32 {
+	if x != nil {
+		return x.NextOffset
+	}
+	return 0
 }
 
 type GetLatestTaskEventRequest struct {
@@ -8105,9 +8121,12 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x16GetTaskProgressRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x05R\x06offset\"N\n" +
+	"\x06offset\x18\x03 \x01(\x05R\x06offset\"\x8a\x01\n" +
 	"\x17GetTaskProgressResponse\x123\n" +
-	"\aentries\x18\x01 \x03(\v2\x19.api.v1.TaskProgressEntryR\aentries\"=\n" +
+	"\aentries\x18\x01 \x03(\v2\x19.api.v1.TaskProgressEntryR\aentries\x12\x19\n" +
+	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1f\n" +
+	"\vnext_offset\x18\x03 \x01(\x05R\n" +
+	"nextOffset\"=\n" +
 	"\x19GetLatestTaskEventRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"y\n" +
 	"\x1aGetLatestTaskEventResponse\x12'\n" +

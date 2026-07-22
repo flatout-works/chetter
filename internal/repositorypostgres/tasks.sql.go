@@ -381,6 +381,54 @@ func (q *Queries) ListHeartbeatTasks(ctx context.Context, arg ListHeartbeatTasks
 	return items, nil
 }
 
+const listReclaimableExpiredLeases = `-- name: ListReclaimableExpiredLeases :many
+SELECT id, team_id, runner_id, attempt, lease_expires_at
+FROM chetter_tasks
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < $1
+  AND attempt < max_attempts
+ORDER BY lease_expires_at ASC
+FOR UPDATE
+`
+
+type ListReclaimableExpiredLeasesRow struct {
+	ID             string         `json:"id"`
+	TeamID         sql.NullString `json:"team_id"`
+	RunnerID       sql.NullString `json:"runner_id"`
+	Attempt        int32          `json:"attempt"`
+	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
+}
+
+func (q *Queries) ListReclaimableExpiredLeases(ctx context.Context, leaseExpiresAt sql.NullTime) ([]ListReclaimableExpiredLeasesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listReclaimableExpiredLeases, leaseExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReclaimableExpiredLeasesRow{}
+	for rows.Next() {
+		var i ListReclaimableExpiredLeasesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.RunnerID,
+			&i.Attempt,
+			&i.LeaseExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByStatus = `-- name: ListTasksByStatus :many
 SELECT id, team_id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, runner_id, required_runner_id, checkpoint_after_success, trigger_name, trigger_type, submission_source, claimed_at, lease_expires_at, attempt, max_attempts, skills, env, timeout_sec, summary, error, error_category, created_at, updated_at, last_event_at, started_at, ended_at, session_export, search_text, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, git_identity_id, mcp_endpoints FROM chetter_tasks
 WHERE ($1 = '' OR status = $1)

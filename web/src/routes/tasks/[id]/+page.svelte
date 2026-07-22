@@ -7,8 +7,8 @@
   import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo, SessionRun } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import {
-    loadTaskEvents, loadTaskProgress, subscribeToTaskEvents,
-    taskEvents, taskProgress, streamConnected, clearTaskDetail,
+    loadTaskEvents, loadTaskProgress, loadOlderTaskProgress, refreshTaskProgress, subscribeToTaskEvents,
+    taskEvents, taskProgress, taskProgressHasMore, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
   import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -58,6 +58,8 @@
 
   let events = $state<TaskEvent[]>([]);
   let progress = $state<TaskProgressEntry[]>([]);
+  let progressHasMore = $state(false);
+  let loadingOlderProgress = $state(false);
   let connected = $state(false);
   let activeRunners = $state<string[]>([]);
 
@@ -275,13 +277,14 @@
     unsubStores = [
       taskEvents.subscribe(v => events = v),
       taskProgress.subscribe(v => progress = v),
+      taskProgressHasMore.subscribe(v => progressHasMore = v),
       streamConnected.subscribe(v => connected = v),
     ];
     timerInterval = setInterval(() => {
       now = Date.now();
       progressRefreshCounter++;
       if (progressRefreshCounter % 5 === 0 && connected) {
-        loadTaskProgress(params.id);
+        refreshTaskProgress(params.id);
       }
     }, 1000);
     await loadTaskData(params.id);
@@ -308,10 +311,20 @@
           artifacts = artResp.artifacts ?? [];
         } catch { /* silently skip */ }
       }
-      await loadTaskProgress(params.id);
+      await refreshTaskProgress(params.id);
       if (unsub) { unsub(); unsub = null; }
     } catch (e) {
       console.error("Failed to refresh task after completion:", e);
+    }
+  }
+
+  async function loadOlderProgress() {
+    if (loadingOlderProgress || !progressHasMore) return;
+    loadingOlderProgress = true;
+    try {
+      await loadOlderTaskProgress(params.id);
+    } finally {
+      loadingOlderProgress = false;
     }
   }
 
@@ -802,6 +815,18 @@
               </TimelineItem>
             {/each}
           </Timeline>
+          {#if progressHasMore}
+            <div class="mt-4 flex justify-center">
+              <Button color="alternative" size="sm" disabled={loadingOlderProgress} onclick={loadOlderProgress}>
+                {#if loadingOlderProgress}
+                  <Spinner size="4" class="me-2" />
+                  Loading older events
+                {:else}
+                  Load older
+                {/if}
+              </Button>
+            </div>
+          {/if}
         </div>
       </Card>
     {/if}
