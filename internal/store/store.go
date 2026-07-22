@@ -498,10 +498,9 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER git_ref"},
-		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER checkpoint_after_success"},
+		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER git_ref"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
-		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER checkpoint_after_success"},
+		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER max_attempts"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},

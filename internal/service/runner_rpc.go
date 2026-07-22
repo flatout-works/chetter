@@ -1219,7 +1219,7 @@ func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSes
 		MaxCpu:                 defaultMaxCPU,
 		Env:                    env,
 		Attempt:                int32(attemptNumber),
-		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
+		CheckpointAfterSuccess: session.ResumeMode != "none",
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
 		Harness:                session.Harness.String,

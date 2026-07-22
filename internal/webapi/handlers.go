@@ -129,7 +129,6 @@ func protoPrompt(r service.UserPromptRecord) *apiv1.UserPrompt {
 		AgentSessionId:     r.AgentSessionID,
 		TaskId:             r.TaskID,
 		Status:             r.Status,
-		RequiredRunnerId:   r.RequiredRunnerID,
 		Summary:            r.Summary,
 		Error:              r.Error,
 		Prompt:             r.Prompt,

@@ -7,7 +7,6 @@ var schemaStatements = []string{
 		prompt TEXT NOT NULL,
 		git_url TEXT NULL,
 		git_ref VARCHAR(255) NULL,
-		checkpoint_after_success BOOL NOT NULL DEFAULT false,
 		trigger_name VARCHAR(128) NULL,
 		trigger_type VARCHAR(32) NULL,
 		submission_source VARCHAR(32) NOT NULL DEFAULT 'manual',
@@ -75,7 +74,6 @@ var schemaStatements = []string{
 		status VARCHAR(32) NOT NULL,
 		prompt TEXT NOT NULL,
 		source_user_prompt_id VARCHAR(64) NULL,
-		required_runner_id VARCHAR(64) NULL,
 		summary TEXT NULL,
 		error TEXT NULL,
 		session_export MEDIUMTEXT NULL,
@@ -88,8 +86,7 @@ var schemaStatements = []string{
 		KEY idx_user_prompts_task_sequence (task_id, sequence),
 		KEY idx_user_prompts_source (source_user_prompt_id),
 		KEY idx_user_prompts_session_created (agent_session_id, created_at),
-		KEY idx_user_prompts_status_created (status, created_at),
-		KEY idx_user_prompts_required_runner (required_runner_id, status)
+		KEY idx_user_prompts_status_created (status, created_at)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_execution_attempts (
 		id VARCHAR(64) NOT NULL,

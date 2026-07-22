@@ -76,11 +76,12 @@ message AgentSession {
 }
 
 message UserPrompt {
+  reserved 5;
+  reserved "required_runner_id";
   string id = 1;
   string agent_session_id = 2;
   string task_id = 3;
   string status = 4;
-  string required_runner_id = 5;
   string summary = 6;
   string error = 7;
   string created_at = 8;

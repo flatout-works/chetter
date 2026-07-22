@@ -573,7 +573,6 @@ type UserPromptRecord struct {
 	Sequence           int32                    `json:"sequence"`
 	SourceUserPromptID string                   `json:"source_user_prompt_id,omitempty"`
 	Status             string                   `json:"status"`
-	RequiredRunnerID   string                   `json:"required_runner_id,omitempty"`
 	Summary            string                   `json:"summary,omitempty"`
 	Error              string                   `json:"error,omitempty"`
 	Prompt             string                   `json:"prompt,omitempty"`
@@ -842,7 +841,6 @@ func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
 		Sequence:           run.Sequence,
 		SourceUserPromptID: run.SourceUserPromptID.String,
 		Status:             run.Status,
-		RequiredRunnerID:   run.RequiredRunnerID.String,
 		Summary:            run.Summary.String,
 		Error:              run.Error.String,
 		Prompt:             run.Prompt,

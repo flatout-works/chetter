@@ -173,24 +173,23 @@ type ChetterRunner struct {
 }
 
 type ChetterTask struct {
-	ID                     string         `json:"id"`
-	TeamID                 sql.NullString `json:"team_id"`
-	Status                 string         `json:"status"`
-	Prompt                 string         `json:"prompt"`
-	GitUrl                 sql.NullString `json:"git_url"`
-	GitRef                 sql.NullString `json:"git_ref"`
-	CheckpointAfterSuccess bool           `json:"checkpoint_after_success"`
-	TriggerName            sql.NullString `json:"trigger_name"`
-	TriggerType            sql.NullString `json:"trigger_type"`
-	SubmissionSource       string         `json:"submission_source"`
-	MaxAttempts            int32          `json:"max_attempts"`
-	Summary                sql.NullString `json:"summary"`
-	Error                  sql.NullString `json:"error"`
-	ErrorCategory          sql.NullString `json:"error_category"`
-	CreatedAt              time.Time      `json:"created_at"`
-	UpdatedAt              time.Time      `json:"updated_at"`
-	EndedAt                sql.NullTime   `json:"ended_at"`
-	SearchText             sql.NullString `json:"search_text"`
+	ID               string         `json:"id"`
+	TeamID           sql.NullString `json:"team_id"`
+	Status           string         `json:"status"`
+	Prompt           string         `json:"prompt"`
+	GitUrl           sql.NullString `json:"git_url"`
+	GitRef           sql.NullString `json:"git_ref"`
+	TriggerName      sql.NullString `json:"trigger_name"`
+	TriggerType      sql.NullString `json:"trigger_type"`
+	SubmissionSource string         `json:"submission_source"`
+	MaxAttempts      int32          `json:"max_attempts"`
+	Summary          sql.NullString `json:"summary"`
+	Error            sql.NullString `json:"error"`
+	ErrorCategory    sql.NullString `json:"error_category"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	EndedAt          sql.NullTime   `json:"ended_at"`
+	SearchText       sql.NullString `json:"search_text"`
 }
 
 type ChetterTaskArtifact struct {
@@ -265,7 +264,6 @@ type ChetterUserPrompt struct {
 	TaskID             string         `json:"task_id"`
 	Status             string         `json:"status"`
 	Prompt             string         `json:"prompt"`
-	RequiredRunnerID   sql.NullString `json:"required_runner_id"`
 	Summary            sql.NullString `json:"summary"`
 	Error              sql.NullString `json:"error"`
 	SessionExport      sql.NullString `json:"session_export"`

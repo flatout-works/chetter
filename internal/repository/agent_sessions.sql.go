@@ -374,7 +374,7 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg GetPausedS
 }
 
 const getUserPromptByID = `-- name: GetUserPromptByID :one
-SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence, source_user_prompt_id FROM chetter_user_prompts WHERE id = ?
+SELECT id, agent_session_id, task_id, status, prompt, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence, source_user_prompt_id FROM chetter_user_prompts WHERE id = ?
 `
 
 func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (ChetterUserPrompt, error) {
@@ -386,7 +386,6 @@ func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (ChetterUser
 		&i.TaskID,
 		&i.Status,
 		&i.Prompt,
-		&i.RequiredRunnerID,
 		&i.Summary,
 		&i.Error,
 		&i.SessionExport,
@@ -401,7 +400,7 @@ func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (ChetterUser
 }
 
 const getUserPromptByTaskID = `-- name: GetUserPromptByTaskID :one
-SELECT prompt.id, prompt.agent_session_id, prompt.task_id, prompt.status, prompt.prompt, prompt.required_runner_id, prompt.summary, prompt.error, prompt.session_export, prompt.created_at, prompt.updated_at, prompt.started_at, prompt.ended_at, prompt.sequence, prompt.source_user_prompt_id FROM chetter_user_prompts prompt
+SELECT prompt.id, prompt.agent_session_id, prompt.task_id, prompt.status, prompt.prompt, prompt.summary, prompt.error, prompt.session_export, prompt.created_at, prompt.updated_at, prompt.started_at, prompt.ended_at, prompt.sequence, prompt.source_user_prompt_id FROM chetter_user_prompts prompt
 JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
 WHERE prompt.task_id = ?
 ORDER BY session.sequence DESC, prompt.sequence DESC
@@ -417,7 +416,6 @@ func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (Che
 		&i.TaskID,
 		&i.Status,
 		&i.Prompt,
-		&i.RequiredRunnerID,
 		&i.Summary,
 		&i.Error,
 		&i.SessionExport,
@@ -543,8 +541,8 @@ func (q *Queries) InsertAgentSessionCheckpoint(ctx context.Context, arg InsertAg
 
 const insertUserPrompt = `-- name: InsertUserPrompt :exec
 INSERT INTO chetter_user_prompts
-    (id, agent_session_id, task_id, sequence, status, prompt, source_user_prompt_id, required_runner_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, agent_session_id, task_id, sequence, status, prompt, source_user_prompt_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertUserPromptParams struct {
@@ -555,7 +553,6 @@ type InsertUserPromptParams struct {
 	Status             string         `json:"status"`
 	Prompt             string         `json:"prompt"`
 	SourceUserPromptID sql.NullString `json:"source_user_prompt_id"`
-	RequiredRunnerID   sql.NullString `json:"required_runner_id"`
 	CreatedAt          time.Time      `json:"created_at"`
 	UpdatedAt          time.Time      `json:"updated_at"`
 }
@@ -569,7 +566,6 @@ func (q *Queries) InsertUserPrompt(ctx context.Context, arg InsertUserPromptPara
 		arg.Status,
 		arg.Prompt,
 		arg.SourceUserPromptID,
-		arg.RequiredRunnerID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -761,7 +757,7 @@ func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg ListAgentSes
 }
 
 const listUserPromptsBySession = `-- name: ListUserPromptsBySession :many
-SELECT id, agent_session_id, task_id, status, prompt, required_runner_id, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence, source_user_prompt_id FROM chetter_user_prompts
+SELECT id, agent_session_id, task_id, status, prompt, summary, error, session_export, created_at, updated_at, started_at, ended_at, sequence, source_user_prompt_id FROM chetter_user_prompts
 WHERE agent_session_id = ?
 ORDER BY sequence ASC, created_at ASC
 `
@@ -781,7 +777,6 @@ func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID s
 			&i.TaskID,
 			&i.Status,
 			&i.Prompt,
-			&i.RequiredRunnerID,
 			&i.Summary,
 			&i.Error,
 			&i.SessionExport,

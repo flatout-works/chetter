@@ -671,14 +671,6 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	}
 
 	q := data.New(tdb.DB, tdb.Dialect())
-	task, err := q.GetTaskByID(ctx, rec.ID)
-	if err != nil {
-		t.Fatalf("get task: %v", err)
-	}
-	if !task.CheckpointAfterSuccess {
-		t.Fatal("expected checkpoint_after_success=true for resumable session")
-	}
-
 	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get user prompt: %v", err)

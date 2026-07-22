@@ -720,10 +720,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	resumeMode := "none"
 	pauseReason := ""
 	var expiresAt sql.NullTime
-	checkpointAfterSuccess := false
 	if in.SessionMode == "resumable" {
 		resumeMode = "harness_session"
-		checkpointAfterSuccess = true
 		if in.PauseReason != "" {
 			pauseReason = in.PauseReason
 		}
@@ -745,7 +743,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerName:            nullString(in.TriggerName),
 			TriggerType:            nullString(in.TriggerType),
 			SubmissionSource:       submissionSource,
-			CheckpointAfterSuccess: checkpointAfterSuccess,
 			SearchText:             nullString(taskSearchText),
 			CreatedAt:              now,
 			UpdatedAt:              now,
@@ -789,7 +786,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Sequence:         1,
 			Status:           "pending",
 			Prompt:           in.Prompt,
-			RequiredRunnerID: sql.NullString{},
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}); err != nil {
@@ -1141,7 +1137,6 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			Sequence:         sequence,
 			Status:           "pending",
 			Prompt:           prompt,
-			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
 			CreatedAt:        now,
 			UpdatedAt:        now,
 		}); err != nil {

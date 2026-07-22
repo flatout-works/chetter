@@ -600,7 +600,6 @@ type UserPrompt struct {
 	AgentSessionId     string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	TaskId             string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Status             string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	RequiredRunnerId   string                 `protobuf:"bytes,5,opt,name=required_runner_id,json=requiredRunnerId,proto3" json:"required_runner_id,omitempty"`
 	Summary            string                 `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
 	Error              string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 	CreatedAt          string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -669,13 +668,6 @@ func (x *UserPrompt) GetTaskId() string {
 func (x *UserPrompt) GetStatus() string {
 	if x != nil {
 		return x.Status
-	}
-	return ""
-}
-
-func (x *UserPrompt) GetRequiredRunnerId() string {
-	if x != nil {
-		return x.RequiredRunnerId
 	}
 	return ""
 }
@@ -8106,14 +8098,13 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\bsequence\x18\x17 \x01(\x05R\bsequenceB\f\n" +
 	"\n" +
 	"_paused_atB\r\n" +
-	"\v_expires_at\"\x90\x04\n" +
+	"\v_expires_at\"\xfc\x03\n" +
 	"\n" +
 	"UserPrompt\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
 	"\x10agent_session_id\x18\x02 \x01(\tR\x0eagentSessionId\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\x12,\n" +
-	"\x12required_runner_id\x18\x05 \x01(\tR\x10requiredRunnerId\x12\x18\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x18\n" +
 	"\asummary\x18\x06 \x01(\tR\asummary\x12\x14\n" +
 	"\x05error\x18\a \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
@@ -8129,7 +8120,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x15source_user_prompt_id\x18\x0e \x01(\tR\x12sourceUserPromptId\x124\n" +
 	"\battempts\x18\x0f \x03(\v2\x18.api.v1.ExecutionAttemptR\battemptsB\r\n" +
 	"\v_started_atB\v\n" +
-	"\t_ended_at\"\xe8\x05\n" +
+	"\t_ended_atJ\x04\b\x05\x10\x06R\x12required_runner_id\"\xe8\x05\n" +
 	"\x10ExecutionAttempt\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12$\n" +
 	"\x0euser_prompt_id\x18\x02 \x01(\tR\fuserPromptId\x12\x1a\n" +

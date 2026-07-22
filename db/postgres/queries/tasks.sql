@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, checkpoint_after_success, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks WHERE id = $1;
