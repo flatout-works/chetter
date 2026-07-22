@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Agent definitions API: new `ListAgentDefinitions` ConnectRPC endpoint exposing agent metadata (description, provider, model, mode, identity, MCP endpoints) parsed from definition frontmatter, scoped by team and repo.
+- Web agent catalog: new `/agents` list page and `/agents/[name]` detail page for browsing git-managed agent definitions.
+- Task list filtering by agent name: `agent` filter parameter on `ListTasks` API, MCP tool, and web UI, supporting server-side filtering of tasks by the agent definition that ran them.
 - MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from scoped `mcp-endpoints/*.yaml` paths in the definitions repo, with agent frontmatter declarations and JSON schema validation.
 - MCP endpoints wired through service, RPC, and web API: endpoints loaded at submit and claim time with scope filtering, merged with agent-declared endpoints from frontmatter, and delivered to runners in the task proto.
 - Runner MCP endpoint support: bearer-token environments validated and protected from task overrides, injected into containers without embedding values in arguments. Native MCP configuration generated for OpenCode, Claude Code, CodeWhale, Pi, and Codex harnesses.
@@ -19,6 +22,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Harness completion detection hardened across all harnesses: token usage accumulator with mutex protection prevents concurrent writes, `stopWatching` guard prevents double-stop, and stuck-harness detection catches harnesses that stop producing progress events.
+- Claude Code harness: session export rewritten to use native session ID mapping (`chetter-sessions/` directory) instead of scanning project directories; serve proxy refactored for reliable completion and resume lifecycle.
 - Chetter MCP traffic now routes through a runner-local reverse proxy (MCP relay) instead of requiring task containers to resolve Docker service names. The relay exposes a consistent endpoint on the runner IP, eliminating gVisor DNS resolution failures for MCP requests without `--add-host` entries.
 - Runner MCP config precedence: `OPENCODE_CONFIG_CONTENT` environment variable re-applies the runner-configured Chetter MCP server URL, auth token, and OAuth settings after the cloned project's `.opencode.json` is loaded, preventing a repository from redirecting or impersonating the Chetter MCP server.
 - OAuth disabled for Chetter MCP in OpenCode config (`oauth: false`) to prevent interactive OAuth flows in non-interactive agent runners.
@@ -36,6 +41,7 @@ All notable changes to this project will be documented in this file.
 
 - MCP endpoint definitions and trust boundaries documented in `docs/HARNESSES.md`, `docs/MANUAL.md`, `docs/FEATURES.md`, with a config-repo example and schema reference.
 - Completion detection per harness documented in `docs/HARNESSES.md`.
+- New `docs/LITELLM.md` documenting LiteLLM provider configuration, API transport mapping, and harness-specific model routing.
 - `AGENTS.md` expanded with dual-dialect SQL workflow guide: table comparing MySQL vs PostgreSQL placeholder syntax, query checklist, and common mistakes.
 - Website (`website/index.html`, `website/technical.html`) updated with PostgreSQL support and managed Git identities documentation.
 
