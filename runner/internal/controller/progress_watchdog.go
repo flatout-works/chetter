@@ -29,27 +29,39 @@ type progressWatchdog struct {
 	nudge        func(context.Context) error
 	report       func(string)
 	cancel       context.CancelFunc
+	stopContext  context.CancelFunc
 	isIdle       func() bool
 	done         chan struct{}
+	stopped      chan struct{}
 	stopOnce     sync.Once
 }
 
 func startProgressWatchdog(ctx context.Context, cancel context.CancelFunc, nudge func(context.Context) error, report func(string), isIdle func() bool) *progressWatchdog {
+	watchCtx, stopContext := context.WithCancel(ctx)
 	watchdog := &progressWatchdog{
 		now:          time.Now,
 		lastProgress: time.Now(),
 		nudge:        nudge,
 		report:       report,
 		cancel:       cancel,
+		stopContext:  stopContext,
 		isIdle:       isIdle,
 		done:         make(chan struct{}),
+		stopped:      make(chan struct{}),
 	}
-	go watchdog.run(ctx)
+	go func() {
+		defer close(watchdog.stopped)
+		watchdog.run(watchCtx)
+	}()
 	return watchdog
 }
 
 func (w *progressWatchdog) stop() {
-	w.stopOnce.Do(func() { close(w.done) })
+	w.stopOnce.Do(func() {
+		close(w.done)
+		w.stopContext()
+	})
+	<-w.stopped
 }
 
 func (w *progressWatchdog) record(summary string) {
@@ -82,7 +94,7 @@ func (w *progressWatchdog) run(ctx context.Context) {
 				nudgeCtx, cancel := context.WithTimeout(ctx, harnessContinueTimeout)
 				err := w.nudge(nudgeCtx)
 				cancel()
-				if err != nil {
+				if err != nil && ctx.Err() == nil {
 					w.report(fmt.Sprintf("Continuation prompt failed: %v", err))
 				}
 			}

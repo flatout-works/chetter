@@ -61,7 +61,7 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 
 	<-ctx.Done()
 	if r.draining.Load() {
-		r.waitDrain(10 * time.Minute)
+		r.waitDrain(drainTimeout())
 	}
 	r.publishRunnerHeartbeat("stopping")
 	r.stopNetwork()

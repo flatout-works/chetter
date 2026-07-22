@@ -43,6 +43,7 @@ const (
 type Runner struct {
 	cfg            *config.Config
 	defaultHarness string
+	harnessFactory func(string) harness.Harness
 	wsManager      *workspace.Manager
 	proxy          *network.TransparentProxy
 	dnsProxy       *network.DNSProxy
@@ -52,6 +53,7 @@ type Runner struct {
 	runCtx         context.Context
 	mu             sync.Mutex
 	tasks          map[string]*task.TaskSession
+	tasksChanged   chan struct{}
 	runnerID       string
 	startedAt      time.Time
 
@@ -62,11 +64,7 @@ type Runner struct {
 	cancelledTasks map[string]struct{}
 	sem            chan struct{}
 
-	draining    atomic.Bool
-	drainCh     chan struct{}
-	drainedCh   chan struct{}
-	drainCtx    context.Context
-	drainCancel context.CancelFunc
+	draining atomic.Bool
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
@@ -74,20 +72,18 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	drainCh := make(chan struct{})
-	drainedCh := make(chan struct{})
 	return &Runner{
 		cfg:            cfg,
 		defaultHarness: cfg.Execution.Harness,
+		harnessFactory: selectHarnessByName,
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
 		tasks:          make(map[string]*task.TaskSession),
+		tasksChanged:   make(chan struct{}),
 		runnerID:       runnerID,
 		startedAt:      time.Now().UTC(),
 		terminalTasks:  make(map[string]struct{}),
 		cancelledTasks: make(map[string]struct{}),
 		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent),
-		drainCh:        drainCh,
-		drainedCh:      drainedCh,
 	}, nil
 }
 
@@ -110,7 +106,11 @@ func (r *Runner) harnessFor(name string) harness.Harness {
 	if name == "" {
 		name = r.defaultHarness
 	}
-	return selectHarnessByName(name)
+	factory := r.harnessFactory
+	if factory == nil {
+		factory = selectHarnessByName
+	}
+	return factory(name)
 }
 
 func (r *Runner) executionMode() string {
@@ -176,21 +176,21 @@ func (r *Runner) Start(ctx context.Context) error {
 			slog.Info("added runner IP to proxy allowlist", "host", runnerIP)
 		}
 		r.proxy = network.NewProxy(r.cfg.Proxy.ListenAddr, allowed, r.cfg.Proxy.BlockedDomains)
-		go func() {
-			if err := r.proxy.Start(); err != nil {
-				slog.Error("proxy error", "err", err)
-			}
-		}()
+		if err := r.proxy.Start(); err != nil {
+			return fmt.Errorf("start proxy: %w", err)
+		}
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
 		if r.cfg.ChetterMCP.URL != "" {
 			relay, err := network.NewMCPRelay(r.cfg.ChetterMCP.RelayListenAddr, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken)
 			if err != nil {
+				r.stopNetwork()
 				return fmt.Errorf("create Chetter MCP relay: %w", err)
 			}
+			r.mcpRelay = relay
 			if err := relay.Start(); err != nil {
+				r.stopNetwork()
 				return fmt.Errorf("start Chetter MCP relay: %w", err)
 			}
-			r.mcpRelay = relay
 			slog.Info("Chetter MCP relay started", "addr", relay.Addr(), "target", r.cfg.ChetterMCP.URL)
 		}
 
@@ -212,6 +212,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 		r.dnsProxy = network.NewDNSProxy(r.cfg.DNS.ListenAddr, r.cfg.DNS.Upstream, dnsAllowed, r.cfg.DNS.BlockedDomains, dnsRecords)
 		if err := r.dnsProxy.Start(); err != nil {
+			r.stopNetwork()
 			return fmt.Errorf("start DNS proxy: %w", err)
 		}
 	} else {

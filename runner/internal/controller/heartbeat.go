@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 const heartbeatInterval = 5 * time.Second
+const defaultDrainTimeout = 10 * time.Minute
 
 func newRunnerID(workspaceRoot string) (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
@@ -181,21 +183,15 @@ func (r *Runner) startDrain() {
 		return // already draining
 	}
 	slog.Info("runner draining — will stop claiming tasks and wait for running tasks to finish", "runner_id", r.runnerID)
-	close(r.drainCh)
 }
 
 func (r *Runner) waitDrain(deadline time.Duration) {
-	select {
-	case <-r.drainCh:
-		// not draining, nothing to wait for
+	if !r.draining.Load() {
 		return
-	default:
 	}
 
 	slog.Info("waiting for running tasks to finish before exit", "runner_id", r.runnerID, "deadline", deadline)
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
-	r.drainCtx = ctx
-	r.drainCancel = cancel
 	defer cancel()
 
 	ticker := time.NewTicker(10 * time.Second)
@@ -203,6 +199,7 @@ func (r *Runner) waitDrain(deadline time.Duration) {
 	for {
 		r.mu.Lock()
 		count := len(r.tasks)
+		tasksChanged := r.tasksChanged
 		r.mu.Unlock()
 		if count == 0 {
 			slog.Info("all tasks completed, drain finished", "runner_id", r.runnerID)
@@ -219,10 +216,20 @@ func (r *Runner) waitDrain(deadline time.Duration) {
 			}
 			r.mu.Unlock()
 			return
+		case <-tasksChanged:
+			continue
 		case <-ticker.C:
 			slog.Info("drain waiting", "runner_id", r.runnerID, "remaining_tasks", count)
 		}
 	}
+}
+
+func drainTimeout() time.Duration {
+	seconds, err := strconv.Atoi(firstEnv("CHETTER_DRAIN_TIMEOUT_SEC"))
+	if err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	return defaultDrainTimeout
 }
 
 func firstEnv(keys ...string) string {

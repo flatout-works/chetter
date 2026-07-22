@@ -43,7 +43,6 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		if rec := recover(); rec != nil {
 			slog.Error("runner panic", "taskID", req.TaskID, "panic", rec)
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("runner panic: %v", rec), nil)
-			panic(rec)
 		}
 	}()
 	if req.ExecutionID == "" {
@@ -73,6 +72,11 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer func() {
 		r.mu.Lock()
 		delete(r.tasks, key)
+		if r.tasksChanged == nil {
+			r.tasksChanged = make(chan struct{})
+		}
+		close(r.tasksChanged)
+		r.tasksChanged = make(chan struct{})
 		r.mu.Unlock()
 	}()
 
@@ -89,6 +93,11 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 
 	if req.ResumeWorkspacePath != "" {
+		serveHarness, ok := h.(harness.ServeHarness)
+		if !ok {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s cannot resume HTTP sessions", h.Name()), nil)
+			return
+		}
 		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
 		if err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
@@ -96,7 +105,11 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		defer mcpServer.Close()
 		mcpURL := runnerMCPURL(r, mcpServer)
-		r.runDockerAgentResume(ctx, session, req, mcpURL, h)
+		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, false); err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
+			return
+		}
+		r.runDockerAgentResume(ctx, session, req, serveHarness)
 		return
 	}
 
@@ -196,19 +209,23 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		return
 	}
 
-	switch r.executionMode() {
-	case "local":
-		if h.SupportsRpc() {
-			r.runRpcAgent(ctx, session, req, mcpURL, h)
-			return
+	if rpcHarness, ok := h.(harness.RPCHarness); ok {
+		if r.executionMode() == "local" {
+			r.runRpcAgent(ctx, session, req, rpcHarness)
+		} else {
+			r.runDockerRpcAgent(ctx, session, req, rpcHarness)
 		}
-		r.runLocalAgent(ctx, session, req, mcpURL, h)
-	default:
-		if h.SupportsRpc() {
-			r.runDockerRpcAgent(ctx, session, req, mcpURL, h)
-			return
-		}
-		r.runDockerAgent(ctx, session, req, mcpURL, h)
+		return
+	}
+	serveHarness, ok := h.(harness.ServeHarness)
+	if !ok {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s has no supported execution mode", h.Name()), nil)
+		return
+	}
+	if r.executionMode() == "local" {
+		r.runLocalAgent(ctx, session, req, serveHarness)
+	} else {
+		r.runDockerAgent(ctx, session, req, serveHarness)
 	}
 }
 
@@ -222,7 +239,7 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID stri
 	return mcpServer, nil
 }
 
-func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.Harness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
+func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 
 	idleCh := make(chan struct{})
@@ -667,7 +684,7 @@ func gvisorHostAliases() []string {
 	return aliases
 }
 
-func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.ServeHarness) {
 	env := os.Environ()
 	for k, v := range req.Env {
 		if isManagedEnv(k, req) {
@@ -719,6 +736,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		return
 	}
 	serveCmd := exec.CommandContext(ctx, serveCmdParts[0], serveCmdParts[1:]...)
+	configureProcess(serveCmd)
 	serveCmd.Dir = session.WorkspaceDir
 	serveCmd.Env = env
 	stdout, err := serveCmd.StdoutPipe()
@@ -741,7 +759,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 
 	defer func() {
 		if serveCmd.Process != nil {
-			serveCmd.Process.Kill()
+			_ = terminateProcess(serveCmd)
 			serveCmd.Wait()
 		}
 	}()
@@ -774,7 +792,11 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("prompt failed: %v", err), nil, sid, sessionExport, tokenUsage.snapshot())
+		status, message := "error", fmt.Sprintf("prompt failed: %v", err)
+		if ctx.Err() != nil && !watchdog.isStuck() {
+			status, message = cancellationStatus(ctx, h.Name())
+		}
+		r.publishStatusWithMetadata(req, status, message, nil, sid, sessionExport, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -783,7 +805,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.ServeHarness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -960,6 +982,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if err != nil {
 		workspacePath := ""
 		errorMessage := fmt.Sprintf("prompt failed: %v", err)
+		status, statusMessage := "error", errorMessage
+		if ctx.Err() != nil && !watchdog.isStuck() {
+			status, statusMessage = cancellationStatus(ctx, h.Name())
+		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
@@ -978,7 +1004,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -997,7 +1023,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
-func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.ServeHarness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -1174,6 +1200,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if err != nil {
 		workspacePath := ""
 		errorMessage := fmt.Sprintf("prompt failed: %v", err)
+		status, statusMessage := "error", errorMessage
+		if ctx.Err() != nil && !watchdog.isStuck() {
+			status, statusMessage = cancellationStatus(ctx, h.Name())
+		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
@@ -1192,7 +1222,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, "error", errorMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -1236,7 +1266,7 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 	r.publishTaskResponse(resp)
 }
 
-func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.Harness) string {
+func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.ServeHarness) string {
 	type result struct {
 		export string
 		err    error
@@ -1398,7 +1428,7 @@ func (s *rpcAgentState) completeOnEOF() bool {
 	return s.finalAssistant && !s.retrying && s.activeToolCount == 0 && s.errorMessage == ""
 }
 
-func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -1415,12 +1445,13 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	r.publishStatusForRequest(req, "running", "Starting agent (RPC mode)...", nil)
 
 	cmd := exec.Command(args[0], args[1:]...)
+	configureProcess(cmd)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, mcpURL string, h harness.Harness) {
+func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
 	if req.Prompt == "" {
 		r.publishStatusForRequest(req, "error", "no prompt provided", nil)
 		return
@@ -1450,10 +1481,11 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
 
 	cmd := exec.Command("docker", dockerArgs...)
+	configureProcess(cmd)
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
+func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string) []string {
 	dockerArgs := []string{
 		"run", "--rm", "-i",
 		"--entrypoint", command[0],
@@ -1530,7 +1562,7 @@ func shouldPullAgentImage(image string) bool {
 	return strings.HasPrefix(image, "ghcr.io/")
 }
 
-func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.Harness, cmd *exec.Cmd) {
+func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd *exec.Cmd) {
 	name := h.Name()
 
 	stdin, err := cmd.StdinPipe()
@@ -1558,7 +1590,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	exited := false
 	defer func() {
 		if !exited && cmd.Process != nil {
-			_ = cmd.Process.Kill()
+			_ = terminateProcess(cmd)
 			_ = cmd.Wait()
 		}
 	}()
@@ -1576,7 +1608,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	readyResp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "ready", state)
 	if err != nil {
 		if ctx.Err() != nil {
-			status, message := rpcCancellationStatus(ctx, name)
+			status, message := cancellationStatus(ctx, name)
 			r.publishStatusForRequest(req, status, message, nil)
 			return
 		}
@@ -1594,7 +1626,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	if _, err := r.waitForRPCResponse(ctx, req, lines, stdin, "prompt", state); err != nil {
 		if ctx.Err() != nil {
 			sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
-			status, message := rpcCancellationStatus(ctx, name)
+			status, message := cancellationStatus(ctx, name)
 			r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 			return
 		}
@@ -1607,7 +1639,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		if err != nil {
 			if ctx.Err() != nil {
 				sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
-				status, message := rpcCancellationStatus(ctx, name)
+				status, message := cancellationStatus(ctx, name)
 				r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 				return
 			}
@@ -1655,7 +1687,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 	if ctx.Err() != nil {
 		sessionExport = r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
-		status, message := rpcCancellationStatus(ctx, name)
+		status, message := cancellationStatus(ctx, name)
 		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 		return
 	}
@@ -1664,7 +1696,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	waitErr := waitForRPCProcess(ctx, cmd)
 	exited = true
 	if ctx.Err() != nil {
-		status, message := rpcCancellationStatus(ctx, name)
+		status, message := cancellationStatus(ctx, name)
 		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 		return
 	}
@@ -1936,7 +1968,7 @@ func (r *Runner) cleanupRPCSession(req task.TaskRequest, wsDir string, stdin io.
 	return sessionExport
 }
 
-func rpcCancellationStatus(ctx context.Context, name string) (string, string) {
+func cancellationStatus(ctx context.Context, name string) (string, string) {
 	if errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
 		return "error", fmt.Sprintf("%s timed out", name)
 	}
@@ -1951,7 +1983,7 @@ func waitForRPCProcess(ctx context.Context, cmd *exec.Cmd) error {
 		return err
 	case <-ctx.Done():
 		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+			_ = terminateProcess(cmd)
 		}
 		<-done
 		return ctx.Err()

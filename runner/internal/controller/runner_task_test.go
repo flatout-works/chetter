@@ -737,14 +737,14 @@ func TestPiRPCMissingTerminalEOFFallback(t *testing.T) {
 func TestPiRPCCancellationStatus(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	status, message := rpcCancellationStatus(cancelled, "pi")
+	status, message := cancellationStatus(cancelled, "pi")
 	if status != "cancelled" || message != "pi cancelled" {
 		t.Fatalf("cancellation = %q %q", status, message)
 	}
 	timedOut, timeoutCancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer timeoutCancel()
 	<-timedOut.Done()
-	status, message = rpcCancellationStatus(timedOut, "pi")
+	status, message = cancellationStatus(timedOut, "pi")
 	if status != "error" || message != "pi timed out" {
 		t.Fatalf("timeout = %q %q", status, message)
 	}
