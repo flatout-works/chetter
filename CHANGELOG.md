@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Agent definitions exposed through a new `ListAgentDefinitions` RPC on `CatalogService`, returning Git-managed agent definitions with team/repo scope filtering. The `agent` filter added to all `ListTasks` SQL queries enables task filtering by agent name across admin, team, and search paths (both MySQL and PostgreSQL).
+- Agent catalog and detail pages in the web UI: `/agents` lists agent definitions with name, description, model, identity, scope, and last-updated columns; `/agents/[name]` shows full agent configuration.
 - MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from scoped `mcp-endpoints/*.yaml` paths in the definitions repo, with agent frontmatter declarations and JSON schema validation.
 - MCP endpoints wired through service, RPC, and web API: endpoints loaded at submit and claim time with scope filtering, merged with agent-declared endpoints from frontmatter, and delivered to runners in the task proto.
 - Runner MCP endpoint support: bearer-token environments validated and protected from task overrides, injected into containers without embedding values in arguments. Native MCP configuration generated for OpenCode, Claude Code, CodeWhale, Pi, and Codex harnesses.
@@ -19,6 +21,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Claude Code completion and resume lifecycle hardened: serve-proxy persists session mapping files (`chetter-sessions/*.json`) to reliably reconstruct native session IDs across restarts, an SSE event watcher signals completion and tracks token usage independently of the primary HTTP response path (so a completed turn survives a lost or hanging response), and session discovery falls back to native `.jsonl` scanning for legacy sessions without a mapping file.
+- Completion detection hardened across all harnesses: CodeWhale SSE event stream reconnects with cursor-based sequence tracking and deduplication (exhausted reconnects fail clearly instead of silently reporting success); Codex implements SSE-based terminal detection; OpenCode completion callback ordering fixed to signal idle before the next poll cycle; CodeWhale `sendPrompt` waits for event callbacks to be registered before sending.
 - Chetter MCP traffic now routes through a runner-local reverse proxy (MCP relay) instead of requiring task containers to resolve Docker service names. The relay exposes a consistent endpoint on the runner IP, eliminating gVisor DNS resolution failures for MCP requests without `--add-host` entries.
 - Runner MCP config precedence: `OPENCODE_CONFIG_CONTENT` environment variable re-applies the runner-configured Chetter MCP server URL, auth token, and OAuth settings after the cloned project's `.opencode.json` is loaded, preventing a repository from redirecting or impersonating the Chetter MCP server.
 - OAuth disabled for Chetter MCP in OpenCode config (`oauth: false`) to prevent interactive OAuth flows in non-interactive agent runners.
