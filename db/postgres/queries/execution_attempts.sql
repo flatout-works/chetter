@@ -3,6 +3,29 @@ INSERT INTO chetter_execution_attempts
     (id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, created_at, updated_at)
 VALUES ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10);
 
+-- name: InsertPendingExecutionAttempt :exec
+INSERT INTO chetter_execution_attempts
+    (id, user_prompt_id, sequence, status, required_runner_id, created_at, updated_at)
+VALUES ($1, $2, $3, 'pending', $4, $5, $6);
+
+-- name: GetClaimableExecutionAttemptForUpdate :one
+SELECT attempt.id AS execution_attempt_id, prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_tasks task ON task.id = prompt.task_id
+WHERE attempt.status = 'pending'
+  AND task.status = 'pending'
+  AND task.attempt < task.max_attempts
+  AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = sqlc.arg(runner_id))
+ORDER BY attempt.created_at ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED;
+
+-- name: MarkExecutionAttemptClaimed :execrows
+UPDATE chetter_execution_attempts
+SET status = 'running', runner_id = $1, claimed_at = $2, lease_expires_at = $3, started_at = $4, updated_at = $5
+WHERE id = $6 AND status = 'pending';
+
 -- name: GetExecutionAttemptByID :one
 SELECT * FROM chetter_execution_attempts WHERE id = $1;
 

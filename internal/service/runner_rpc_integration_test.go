@@ -44,6 +44,23 @@ func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage s
 	}); err != nil {
 		t.Fatalf("insert task: %v", err)
 	}
+	sessionID := "sess_" + id
+	promptID := "prompt_" + id
+	if err := q.InsertAgentSession(context.Background(), repository.InsertAgentSessionParams{
+		ID: sessionID, TaskID: id, Sequence: 1, Status: "running", ResumeMode: "none", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	if err := q.InsertUserPrompt(context.Background(), repository.InsertUserPromptParams{
+		ID: promptID, AgentSessionID: sessionID, TaskID: id, Sequence: 1, Status: "pending", Prompt: prompt, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert prompt: %v", err)
+	}
+	if err := q.InsertPendingExecutionAttempt(context.Background(), repository.InsertPendingExecutionAttemptParams{
+		ID: "exec_" + id, UserPromptID: promptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert pending attempt: %v", err)
+	}
 }
 
 func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
@@ -121,6 +138,22 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("reclaim: %v", err)
 	}
+	if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
+		Error: nullString("lease expired"), EndedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
+		UpdatedAt: time.Now().UTC(), ID: firstExecution,
+	}); err != nil {
+		t.Fatalf("mark first attempt lost: %v", err)
+	}
+	firstAttempt, err := q.GetExecutionAttemptByID(ctx, firstExecution)
+	if err != nil {
+		t.Fatalf("get first attempt: %v", err)
+	}
+	if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+		ID: "exec_reclaimed", UserPromptID: firstAttempt.UserPromptID, Sequence: 2,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("queue replacement attempt: %v", err)
+	}
 
 	second, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId: "runner_2", WaitSeconds: 0, LeaseSeconds: 60,
@@ -179,6 +212,9 @@ func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
 	insertPendingTask(t, q, "task_pinned", "resume work", "runner:latest")
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_tasks SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "task_pinned"); err != nil {
 		t.Fatalf("pin task: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_execution_attempts SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_execution_attempts SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "exec_task_pinned"); err != nil {
+		t.Fatalf("pin attempt: %v", err)
 	}
 
 	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{

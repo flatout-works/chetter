@@ -306,6 +306,10 @@ func (s *Service) reapExpiredLeases() {
 			if err != nil {
 				return err
 			}
+			newAttemptID, err := randomID("exec")
+			if err != nil {
+				return err
+			}
 			reclaimError := fmt.Sprintf("runner lease expired after attempt %d", task.Attempt)
 			if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
 				Error:     nullString(reclaimError),
@@ -364,6 +368,11 @@ func (s *Service) reapExpiredLeases() {
 				UpdatedAt:      now,
 			}); err != nil {
 				return fmt.Errorf("insert reclaimed task prompt: %w", err)
+			}
+			if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+				ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+			}); err != nil {
+				return fmt.Errorf("insert reclaimed execution attempt: %w", err)
 			}
 			eventID, err := randomID("evt")
 			if err != nil {
@@ -650,6 +659,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("generate user prompt id: %w", err)
 	}
+	attemptID, err := randomID("exec")
+	if err != nil {
+		return store.TaskRecord{}, fmt.Errorf("generate execution attempt id: %w", err)
+	}
 	now := time.Now().UTC()
 	submissionSource := in.SubmissionSource
 	if submissionSource == "" {
@@ -763,6 +776,11 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		}); err != nil {
 			return fmt.Errorf("insert user prompt: %w", err)
 		}
+		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+			ID: attemptID, UserPromptID: runID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("insert pending execution attempt: %w", err)
+		}
 		row, err := q.GetTaskByID(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("get task: %w", err)
@@ -848,6 +866,10 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("generate recovery prompt id: %w", err)
 	}
+	newAttemptID, err := randomID("exec")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate recovery attempt id: %w", err)
+	}
 	recoveryEventID, err := randomID("evt")
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("generate recovery event id: %w", err)
@@ -921,6 +943,11 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			UpdatedAt:          now,
 		}); err != nil {
 			return fmt.Errorf("insert recovery prompt: %w", err)
+		}
+		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+			ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("insert recovery execution attempt: %w", err)
 		}
 		recoverySummary := fmt.Sprintf("Started recovery session %s from %s", newSessionID, oldSession.ID)
 		recoveryPayload := mustMarshalJSON(map[string]any{
@@ -1042,6 +1069,10 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	if err != nil {
 		return ResumeAgentSessionOutput{}, fmt.Errorf("generate user prompt id: %w", err)
 	}
+	attemptID, err := randomID("exec")
+	if err != nil {
+		return ResumeAgentSessionOutput{}, fmt.Errorf("generate execution attempt id: %w", err)
+	}
 
 	now := time.Now().UTC()
 	if timeoutSec == 0 {
@@ -1079,6 +1110,13 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			UpdatedAt:        now,
 		}); err != nil {
 			return fmt.Errorf("insert user prompt: %w", err)
+		}
+		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+			ID: attemptID, UserPromptID: runID, Sequence: 1,
+			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
+			CreatedAt:        now, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("insert pending execution attempt: %w", err)
 		}
 		if _, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
 			ID:        sessionID,

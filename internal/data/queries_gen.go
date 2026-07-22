@@ -47,6 +47,7 @@ type Repository interface {
 	GetActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, error)
 	GetAgentSessionByID(ctx context.Context, id string) (repository.ChetterAgentSession, error)
 	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSession, error)
+	GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (repository.GetClaimableExecutionAttemptForUpdateRow, error)
 	GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.NullString) (repository.ChetterTask, error)
 	GetDefinitionBySourceTypeName(ctx context.Context, arg repository.GetDefinitionBySourceTypeNameParams) (repository.Definition, error)
 	GetDefinitionChangeProposal(ctx context.Context, id string) (repository.DefinitionChangeProposal, error)
@@ -81,6 +82,7 @@ type Repository interface {
 	InsertEventCallback(ctx context.Context, arg repository.InsertEventCallbackParams) error
 	InsertExecutionAttempt(ctx context.Context, arg repository.InsertExecutionAttemptParams) error
 	InsertModelCatalog(ctx context.Context, arg repository.InsertModelCatalogParams) error
+	InsertPendingExecutionAttempt(ctx context.Context, arg repository.InsertPendingExecutionAttemptParams) error
 	InsertTask(ctx context.Context, arg repository.InsertTaskParams) error
 	InsertTaskArtifact(ctx context.Context, arg repository.InsertTaskArtifactParams) error
 	InsertTaskEvent(ctx context.Context, arg repository.InsertTaskEventParams) error
@@ -126,6 +128,7 @@ type Repository interface {
 	MarkAgentSessionResuming(ctx context.Context, arg repository.MarkAgentSessionResumingParams) (int64, error)
 	MarkAgentSessionTerminalByTask(ctx context.Context, arg repository.MarkAgentSessionTerminalByTaskParams) (int64, error)
 	MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error
+	MarkExecutionAttemptClaimed(ctx context.Context, arg repository.MarkExecutionAttemptClaimedParams) (int64, error)
 	MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error)
 	MarkResumingSessionsFailedForUnavailableRunner(ctx context.Context, updatedAt time.Time) (int64, error)
 	MarkTaskClaimed(ctx context.Context, arg repository.MarkTaskClaimedParams) (int64, error)
@@ -289,6 +292,11 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (r
 	return convert[repository.ChetterAgentSession](value), err
 }
 
+func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (repository.GetClaimableExecutionAttemptForUpdateRow, error) {
+	value, err := q.postgres.GetClaimableExecutionAttemptForUpdate(ctx, convert[sql.NullString](runnerID))
+	return convert[repository.GetClaimableExecutionAttemptForUpdateRow](value), err
+}
+
 func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.NullString) (repository.ChetterTask, error) {
 	value, err := q.postgres.GetClaimableTaskForUpdate(ctx, convert[sql.NullString](runnerID))
 	return convert[repository.ChetterTask](value), err
@@ -449,6 +457,10 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg repository.Ins
 
 func (q *Queries) InsertModelCatalog(ctx context.Context, arg repository.InsertModelCatalogParams) error {
 	return q.postgres.InsertModelCatalog(ctx, convert[repositorypostgres.InsertModelCatalogParams](arg))
+}
+
+func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg repository.InsertPendingExecutionAttemptParams) error {
+	return q.postgres.InsertPendingExecutionAttempt(ctx, convert[repositorypostgres.InsertPendingExecutionAttemptParams](arg))
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg repository.InsertTaskParams) error {
@@ -668,6 +680,11 @@ func (q *Queries) MarkAgentSessionTerminalByTask(ctx context.Context, arg reposi
 
 func (q *Queries) MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error {
 	return q.postgres.MarkDefinitionSourceSynced(ctx, convert[repositorypostgres.MarkDefinitionSourceSyncedParams](arg))
+}
+
+func (q *Queries) MarkExecutionAttemptClaimed(ctx context.Context, arg repository.MarkExecutionAttemptClaimedParams) (int64, error) {
+	value, err := q.postgres.MarkExecutionAttemptClaimed(ctx, convert[repositorypostgres.MarkExecutionAttemptClaimedParams](arg))
+	return convert[int64](value), err
 }
 
 func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error) {

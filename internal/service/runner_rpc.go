@@ -700,19 +700,30 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	var eventID string
 	var eventPayload json.RawMessage
 	var eventCreatedAt time.Time
-	executionID, err := randomID("exec")
-	if err != nil {
-		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
-	}
+	var executionID string
+	var err error
 	eventID, err = randomID("evt")
 	if err != nil {
 		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
 	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		task, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
+		queued, err := q.GetClaimableExecutionAttemptForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoClaimableTask
 		}
+		if err != nil {
+			return err
+		}
+		executionID = queued.ExecutionAttemptID
+		task, err := q.GetTaskByID(ctx, queued.TaskID)
+		if err != nil {
+			return err
+		}
+		attempt, err := q.GetExecutionAttemptByID(ctx, executionID)
+		if err != nil {
+			return err
+		}
+		prompt, err := q.GetUserPromptByID(ctx, attempt.UserPromptID)
 		if err != nil {
 			return err
 		}
@@ -734,32 +745,16 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if rows == 0 {
 			return errNoClaimableTask
 		}
-		prompt, promptErr := q.GetUserPromptByTaskID(ctx, task.ID)
-		if promptErr != nil && !errors.Is(promptErr, sql.ErrNoRows) {
-			return promptErr
+		attemptRows, err := q.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
+			RunnerID: nullString(runnerID), ClaimedAt: sql.NullTime{Time: now, Valid: true},
+			LeaseExpiresAt: sql.NullTime{Time: now.Add(lease), Valid: true},
+			StartedAt:      sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, ID: executionID,
+		})
+		if err != nil {
+			return err
 		}
-		var agentSessionID, userPromptID sql.NullString
-		if promptErr == nil {
-			agentSessionID = nullString(prompt.AgentSessionID)
-			userPromptID = nullString(prompt.ID)
-			attemptSequence, err := q.GetNextExecutionAttemptSequence(ctx, prompt.ID)
-			if err != nil {
-				return err
-			}
-			if err := q.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
-				ID:               executionID,
-				UserPromptID:     prompt.ID,
-				Sequence:         attemptSequence,
-				RunnerID:         nullString(runnerID),
-				RequiredRunnerID: task.RequiredRunnerID,
-				ClaimedAt:        sql.NullTime{Time: now, Valid: true},
-				LeaseExpiresAt:   sql.NullTime{Time: now.Add(lease), Valid: true},
-				StartedAt:        sql.NullTime{Time: now, Valid: true},
-				CreatedAt:        now,
-				UpdatedAt:        now,
-			}); err != nil {
-				return err
-			}
+		if attemptRows == 0 {
+			return errNoClaimableTask
 		}
 		if _, err := q.MarkUserPromptRunningByTask(ctx, repository.MarkUserPromptRunningByTaskParams{
 			StartedAt: sql.NullTime{Time: now, Valid: true},
@@ -788,8 +783,8 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
 			ID:                 eventID,
 			TaskID:             task.ID,
-			AgentSessionID:     agentSessionID,
-			UserPromptID:       userPromptID,
+			AgentSessionID:     nullString(prompt.AgentSessionID),
+			UserPromptID:       nullString(prompt.ID),
 			ExecutionAttemptID: nullString(executionID),
 			Subject:            fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, task.ID),
 			Status:             "running",

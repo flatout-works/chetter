@@ -162,7 +162,15 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 		t.Fatalf("SubmitTask: %v", err)
 	}
 	now := time.Now().UTC()
-	executionID := "exec_reclaim"
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+	attempts, err := svc.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListExecutionAttemptsByPrompt: %v, attempts=%+v", err, attempts)
+	}
+	executionID := attempts[0].ID
 	if rows, err := svc.repo.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
 		RunnerID:       sql.NullString{String: "runner_reclaim", Valid: true},
 		ExecutionID:    executionID,
@@ -177,26 +185,16 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	} else if rows != 1 {
 		t.Fatalf("MarkTaskClaimed rows = %d", rows)
 	}
-	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
-	if err != nil {
-		t.Fatalf("GetUserPromptByTaskID: %v", err)
-	}
 	oldSession, err := svc.repo.GetAgentSessionByID(ctx, prompt.AgentSessionID)
 	if err != nil {
 		t.Fatalf("GetAgentSessionByID: %v", err)
 	}
-	if err := svc.repo.InsertExecutionAttempt(ctx, repository.InsertExecutionAttemptParams{
-		ID:             executionID,
-		UserPromptID:   prompt.ID,
-		Sequence:       1,
-		RunnerID:       nullString("runner_reclaim"),
-		ClaimedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+	if rows, err := svc.repo.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
+		RunnerID: nullString("runner_reclaim"), ClaimedAt: sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Second), Valid: true},
-		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
-		CreatedAt:      now.Add(-time.Minute),
-		UpdatedAt:      now,
-	}); err != nil {
-		t.Fatalf("InsertExecutionAttempt: %v", err)
+		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true}, UpdatedAt: now, ID: executionID,
+	}); err != nil || rows != 1 {
+		t.Fatalf("MarkExecutionAttemptClaimed: rows=%d err=%v", rows, err)
 	}
 
 	svc.reapExpiredLeases()

@@ -11,6 +11,39 @@ import (
 	"time"
 )
 
+const getClaimableExecutionAttemptForUpdate = `-- name: GetClaimableExecutionAttemptForUpdate :one
+SELECT attempt.id AS execution_attempt_id, prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_tasks task ON task.id = prompt.task_id
+WHERE attempt.status = 'pending'
+  AND task.status = 'pending'
+  AND task.attempt < task.max_attempts
+  AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = $1)
+ORDER BY attempt.created_at ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+`
+
+type GetClaimableExecutionAttemptForUpdateRow struct {
+	ExecutionAttemptID string `json:"execution_attempt_id"`
+	TaskID             string `json:"task_id"`
+	UserPromptID       string `json:"user_prompt_id"`
+	LockedTaskID       string `json:"locked_task_id"`
+}
+
+func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (GetClaimableExecutionAttemptForUpdateRow, error) {
+	row := q.db.QueryRowContext(ctx, getClaimableExecutionAttemptForUpdate, runnerID)
+	var i GetClaimableExecutionAttemptForUpdateRow
+	err := row.Scan(
+		&i.ExecutionAttemptID,
+		&i.TaskID,
+		&i.UserPromptID,
+		&i.LockedTaskID,
+	)
+	return i, err
+}
+
 const getExecutionAttemptByID = `-- name: GetExecutionAttemptByID :one
 SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at FROM chetter_execution_attempts WHERE id = $1
 `
@@ -96,6 +129,33 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg InsertExecutio
 	return err
 }
 
+const insertPendingExecutionAttempt = `-- name: InsertPendingExecutionAttempt :exec
+INSERT INTO chetter_execution_attempts
+    (id, user_prompt_id, sequence, status, required_runner_id, created_at, updated_at)
+VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+`
+
+type InsertPendingExecutionAttemptParams struct {
+	ID               string         `json:"id"`
+	UserPromptID     string         `json:"user_prompt_id"`
+	Sequence         int32          `json:"sequence"`
+	RequiredRunnerID sql.NullString `json:"required_runner_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+}
+
+func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg InsertPendingExecutionAttemptParams) error {
+	_, err := q.db.ExecContext(ctx, insertPendingExecutionAttempt,
+		arg.ID,
+		arg.UserPromptID,
+		arg.Sequence,
+		arg.RequiredRunnerID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const listExecutionAttemptsByPrompt = `-- name: ListExecutionAttemptsByPrompt :many
 SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at FROM chetter_execution_attempts
 WHERE user_prompt_id = $1
@@ -149,6 +209,36 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 		return nil, err
 	}
 	return items, nil
+}
+
+const markExecutionAttemptClaimed = `-- name: MarkExecutionAttemptClaimed :execrows
+UPDATE chetter_execution_attempts
+SET status = 'running', runner_id = $1, claimed_at = $2, lease_expires_at = $3, started_at = $4, updated_at = $5
+WHERE id = $6 AND status = 'pending'
+`
+
+type MarkExecutionAttemptClaimedParams struct {
+	RunnerID       sql.NullString `json:"runner_id"`
+	ClaimedAt      sql.NullTime   `json:"claimed_at"`
+	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
+	StartedAt      sql.NullTime   `json:"started_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	ID             string         `json:"id"`
+}
+
+func (q *Queries) MarkExecutionAttemptClaimed(ctx context.Context, arg MarkExecutionAttemptClaimedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markExecutionAttemptClaimed,
+		arg.RunnerID,
+		arg.ClaimedAt,
+		arg.LeaseExpiresAt,
+		arg.StartedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const markExecutionAttemptLost = `-- name: MarkExecutionAttemptLost :execrows
