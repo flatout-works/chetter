@@ -188,7 +188,7 @@ func (q *Queries) GetClaimableTaskForUpdate(ctx context.Context, runnerID sql.Nu
 }
 
 const getLatestTaskEvent = `-- name: GetLatestTaskEvent :one
-SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT 1
@@ -205,6 +205,9 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 		&i.Payload,
 		&i.CreatedAt,
 		&i.EventType,
+		&i.AgentSessionID,
+		&i.UserPromptID,
+		&i.ExecutionAttemptID,
 	)
 	return i, err
 }

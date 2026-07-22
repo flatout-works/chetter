@@ -191,14 +191,17 @@ func protoTrigger(t store.TriggerRecord) *apiv1.Trigger {
 
 func protoEvent(e service.TaskEventRecord) *apiv1.TaskEvent {
 	return &apiv1.TaskEvent{
-		Id:          e.ID,
-		TaskId:      "",
-		Subject:     e.Subject,
-		Status:      e.Status,
-		EventType:   e.EventType,
-		ExecutionId: e.ExecutionID,
-		Payload:     e.Payload,
-		CreatedAt:   e.CreatedAt.Format(time.RFC3339),
+		Id:                 e.ID,
+		TaskId:             e.TaskID,
+		Subject:            e.Subject,
+		Status:             e.Status,
+		EventType:          e.EventType,
+		ExecutionId:        e.ExecutionID,
+		AgentSessionId:     e.AgentSessionID,
+		UserPromptId:       e.UserPromptID,
+		ExecutionAttemptId: e.ExecutionAttemptID,
+		Payload:            e.Payload,
+		CreatedAt:          e.CreatedAt.Format(time.RFC3339),
 	}
 }
 

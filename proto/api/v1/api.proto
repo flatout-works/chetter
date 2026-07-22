@@ -153,6 +153,9 @@ message TaskEvent {
   string created_at = 6;
   string event_type = 7;
   string execution_id = 8;
+  string agent_session_id = 9;
+  string user_prompt_id = 10;
+  string execution_attempt_id = 11;
 }
 
 message TaskProgressEntry {

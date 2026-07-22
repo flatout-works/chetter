@@ -738,7 +738,10 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if promptErr != nil && !errors.Is(promptErr, sql.ErrNoRows) {
 			return promptErr
 		}
+		var agentSessionID, userPromptID sql.NullString
 		if promptErr == nil {
+			agentSessionID = nullString(prompt.AgentSessionID)
+			userPromptID = nullString(prompt.ID)
 			attemptSequence, err := q.GetNextExecutionAttemptSequence(ctx, prompt.ID)
 			if err != nil {
 				return err
@@ -783,13 +786,16 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			"summary":      fmt.Sprintf("Task claimed by runner for attempt %d", task.Attempt),
 		})
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
-			ID:        eventID,
-			TaskID:    task.ID,
-			Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, task.ID),
-			Status:    "running",
-			EventType: "task.claimed",
-			Payload:   eventPayload,
-			CreatedAt: now,
+			ID:                 eventID,
+			TaskID:             task.ID,
+			AgentSessionID:     agentSessionID,
+			UserPromptID:       userPromptID,
+			ExecutionAttemptID: nullString(executionID),
+			Subject:            fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, task.ID),
+			Status:             "running",
+			EventType:          "task.claimed",
+			Payload:            eventPayload,
+			CreatedAt:          now,
 		}); err != nil {
 			return err
 		}
@@ -859,13 +865,16 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		attemptEndedAt = sql.NullTime{Time: now, Valid: true}
 	}
 	eventInsert := repository.InsertTaskEventParams{
-		ID:        eventID,
-		TaskID:    event.TaskId,
-		Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, event.TaskId),
-		Status:    status,
-		EventType: eventType,
-		Payload:   payload,
-		CreatedAt: now,
+		ID:                 eventID,
+		TaskID:             event.TaskId,
+		AgentSessionID:     nullString(event.AgentSessionId),
+		UserPromptID:       nullString(event.UserPromptId),
+		ExecutionAttemptID: nullString(event.ExecutionId),
+		Subject:            fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, event.TaskId),
+		Status:             status,
+		EventType:          eventType,
+		Payload:            payload,
+		CreatedAt:          now,
 	}
 	updateParams := repository.UpdateTaskFromRunnerEventParams{
 		Status:                status,

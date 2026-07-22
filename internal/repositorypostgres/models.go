@@ -230,13 +230,16 @@ type ChetterTaskArtifact struct {
 }
 
 type ChetterTaskEvent struct {
-	ID        string          `json:"id"`
-	TaskID    string          `json:"task_id"`
-	Subject   string          `json:"subject"`
-	Status    string          `json:"status"`
-	EventType string          `json:"event_type"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt time.Time       `json:"created_at"`
+	ID                 string          `json:"id"`
+	TaskID             string          `json:"task_id"`
+	Subject            string          `json:"subject"`
+	Status             string          `json:"status"`
+	EventType          string          `json:"event_type"`
+	Payload            json.RawMessage `json:"payload"`
+	CreatedAt          time.Time       `json:"created_at"`
+	AgentSessionID     sql.NullString  `json:"agent_session_id"`
+	UserPromptID       sql.NullString  `json:"user_prompt_id"`
+	ExecutionAttemptID sql.NullString  `json:"execution_attempt_id"`
 }
 
 type ChetterTrigger struct {

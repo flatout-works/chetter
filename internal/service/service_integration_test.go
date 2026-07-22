@@ -254,9 +254,15 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	if !ok {
 		t.Fatalf("task.reclaimed missing from %+v", events)
 	}
+	if reclaimEvent.AgentSessionID.String != oldSession.ID || reclaimEvent.UserPromptID.String != prompt.ID || reclaimEvent.ExecutionAttemptID.String != executionID {
+		t.Fatalf("reclaim event hierarchy = %+v", reclaimEvent)
+	}
 	restartEvent, ok := eventsByType["task.session_restarted"]
 	if !ok {
 		t.Fatalf("task.session_restarted missing from %+v", events)
+	}
+	if restartEvent.AgentSessionID.String != newSession.ID || restartEvent.UserPromptID.String != newPrompt.ID || restartEvent.ExecutionAttemptID.Valid {
+		t.Fatalf("restart event hierarchy = %+v", restartEvent)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(reclaimEvent.Payload, &payload); err != nil {

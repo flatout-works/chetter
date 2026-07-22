@@ -7,29 +7,36 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 )
 
 const insertTaskEvent = `-- name: InsertTaskEvent :exec
-INSERT INTO chetter_task_events (id, task_id, subject, status, event_type, payload, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chetter_task_events (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, subject, status, event_type, payload, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskEventParams struct {
-	ID        string          `json:"id"`
-	TaskID    string          `json:"task_id"`
-	Subject   string          `json:"subject"`
-	Status    string          `json:"status"`
-	EventType string          `json:"event_type"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt time.Time       `json:"created_at"`
+	ID                 string          `json:"id"`
+	TaskID             string          `json:"task_id"`
+	AgentSessionID     sql.NullString  `json:"agent_session_id"`
+	UserPromptID       sql.NullString  `json:"user_prompt_id"`
+	ExecutionAttemptID sql.NullString  `json:"execution_attempt_id"`
+	Subject            string          `json:"subject"`
+	Status             string          `json:"status"`
+	EventType          string          `json:"event_type"`
+	Payload            json.RawMessage `json:"payload"`
+	CreatedAt          time.Time       `json:"created_at"`
 }
 
 func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error {
 	_, err := q.db.ExecContext(ctx, insertTaskEvent,
 		arg.ID,
 		arg.TaskID,
+		arg.AgentSessionID,
+		arg.UserPromptID,
+		arg.ExecutionAttemptID,
 		arg.Subject,
 		arg.Status,
 		arg.EventType,
@@ -40,7 +47,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 }
 
 const listTaskEvents = `-- name: ListTaskEvents :many
-SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC, id DESC
 LIMIT ?
@@ -70,6 +77,9 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 			&i.Payload,
 			&i.CreatedAt,
 			&i.EventType,
+			&i.AgentSessionID,
+			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 		); err != nil {
 			return nil, err
 		}
@@ -85,7 +95,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const listTaskEventsSince = `-- name: ListTaskEventsSince :many
-SELECT id, task_id, subject, status, payload, created_at, event_type FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
 WHERE task_id = ? AND created_at > ?
 ORDER BY created_at ASC, id ASC
 `
@@ -112,6 +122,9 @@ func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSin
 			&i.Payload,
 			&i.CreatedAt,
 			&i.EventType,
+			&i.AgentSessionID,
+			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 		); err != nil {
 			return nil, err
 		}

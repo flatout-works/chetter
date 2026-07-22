@@ -1,6 +1,6 @@
 -- name: InsertTaskEvent :exec
-INSERT INTO chetter_task_events (id, task_id, subject, status, event_type, payload, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO chetter_task_events (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, subject, status, event_type, payload, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListTaskEvents :many
 SELECT * FROM chetter_task_events

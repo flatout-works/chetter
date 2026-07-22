@@ -391,13 +391,16 @@ func (s *Service) reapExpiredLeases() {
 				CreatedAt: now,
 			}
 			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
-				ID:        event.ID,
-				TaskID:    event.TaskID,
-				Subject:   event.Subject,
-				Status:    event.Status,
-				EventType: event.EventType,
-				Payload:   payload,
-				CreatedAt: event.CreatedAt,
+				ID:                 event.ID,
+				TaskID:             event.TaskID,
+				AgentSessionID:     nullString(oldSession.ID),
+				UserPromptID:       nullString(oldPrompt.ID),
+				ExecutionAttemptID: nullString(task.ExecutionID),
+				Subject:            event.Subject,
+				Status:             event.Status,
+				EventType:          event.EventType,
+				Payload:            payload,
+				CreatedAt:          event.CreatedAt,
 			}); err != nil {
 				return err
 			}
@@ -431,13 +434,15 @@ func (s *Service) reapExpiredLeases() {
 				CreatedAt: now,
 			}
 			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
-				ID:        restartEvent.ID,
-				TaskID:    restartEvent.TaskID,
-				Subject:   restartEvent.Subject,
-				Status:    restartEvent.Status,
-				EventType: restartEvent.EventType,
-				Payload:   restartPayload,
-				CreatedAt: restartEvent.CreatedAt,
+				ID:             restartEvent.ID,
+				TaskID:         restartEvent.TaskID,
+				AgentSessionID: nullString(newSessionID),
+				UserPromptID:   nullString(newPromptID),
+				Subject:        restartEvent.Subject,
+				Status:         restartEvent.Status,
+				EventType:      restartEvent.EventType,
+				Payload:        restartPayload,
+				CreatedAt:      restartEvent.CreatedAt,
 			}); err != nil {
 				return err
 			}
@@ -940,13 +945,15 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			CreatedAt: now,
 		}
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
-			ID:        recoveryEvent.ID,
-			TaskID:    recoveryEvent.TaskID,
-			Subject:   recoveryEvent.Subject,
-			Status:    recoveryEvent.Status,
-			EventType: recoveryEvent.EventType,
-			Payload:   recoveryPayload,
-			CreatedAt: recoveryEvent.CreatedAt,
+			ID:             recoveryEvent.ID,
+			TaskID:         recoveryEvent.TaskID,
+			AgentSessionID: nullString(newSessionID),
+			UserPromptID:   nullString(newPromptID),
+			Subject:        recoveryEvent.Subject,
+			Status:         recoveryEvent.Status,
+			EventType:      recoveryEvent.EventType,
+			Payload:        recoveryPayload,
+			CreatedAt:      recoveryEvent.CreatedAt,
 		}); err != nil {
 			return fmt.Errorf("insert recovery event: %w", err)
 		}

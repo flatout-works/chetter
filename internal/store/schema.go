@@ -171,6 +171,9 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS chetter_task_events (
 		id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
+		agent_session_id VARCHAR(64) NULL,
+		user_prompt_id VARCHAR(64) NULL,
+		execution_attempt_id VARCHAR(64) NULL,
 		subject VARCHAR(255) NOT NULL,
 		status VARCHAR(32) NOT NULL,
 		event_type VARCHAR(64) NOT NULL DEFAULT 'task.progress',
@@ -178,6 +181,7 @@ var schemaStatements = []string{
 		created_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),
 		KEY idx_chetter_task_events_task_created (task_id, created_at),
+		KEY idx_task_events_hierarchy (agent_session_id, user_prompt_id, execution_attempt_id),
 		KEY idx_chetter_task_events_type_created (event_type, created_at),
 		KEY idx_chetter_task_events_created (created_at)
 	)`,

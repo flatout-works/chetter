@@ -222,14 +222,17 @@ func (s *Service) GetTaskEvents(ctx context.Context, taskID string, limit, offse
 	out := make([]TaskEventRecord, len(events))
 	for i, ev := range events {
 		out[i] = TaskEventRecord{
-			ID:          ev.ID,
-			TaskID:      ev.TaskID,
-			Subject:     ev.Subject,
-			Status:      ev.Status,
-			EventType:   ev.EventType,
-			ExecutionID: taskEventExecutionID(ev.Payload),
-			Payload:     string(ev.Payload),
-			CreatedAt:   ev.CreatedAt,
+			ID:                 ev.ID,
+			TaskID:             ev.TaskID,
+			Subject:            ev.Subject,
+			Status:             ev.Status,
+			EventType:          ev.EventType,
+			ExecutionID:        ev.ExecutionAttemptID.String,
+			AgentSessionID:     ev.AgentSessionID.String,
+			UserPromptID:       ev.UserPromptID.String,
+			ExecutionAttemptID: ev.ExecutionAttemptID.String,
+			Payload:            string(ev.Payload),
+			CreatedAt:          ev.CreatedAt,
 		}
 	}
 	return out, nil
@@ -248,27 +251,20 @@ func (s *Service) GetTaskEventsSince(ctx context.Context, taskID string, since t
 	out := make([]TaskEventRecord, len(rows))
 	for i, ev := range rows {
 		out[i] = TaskEventRecord{
-			ID:          ev.ID,
-			TaskID:      ev.TaskID,
-			Subject:     ev.Subject,
-			Status:      ev.Status,
-			EventType:   ev.EventType,
-			ExecutionID: taskEventExecutionID(ev.Payload),
-			Payload:     string(ev.Payload),
-			CreatedAt:   ev.CreatedAt,
+			ID:                 ev.ID,
+			TaskID:             ev.TaskID,
+			Subject:            ev.Subject,
+			Status:             ev.Status,
+			EventType:          ev.EventType,
+			ExecutionID:        ev.ExecutionAttemptID.String,
+			AgentSessionID:     ev.AgentSessionID.String,
+			UserPromptID:       ev.UserPromptID.String,
+			ExecutionAttemptID: ev.ExecutionAttemptID.String,
+			Payload:            string(ev.Payload),
+			CreatedAt:          ev.CreatedAt,
 		}
 	}
 	return out, nil
-}
-
-func taskEventExecutionID(payload json.RawMessage) string {
-	var event struct {
-		ExecutionID string `json:"execution_id"`
-	}
-	if err := json.Unmarshal(payload, &event); err != nil {
-		return ""
-	}
-	return event.ExecutionID
 }
 
 type TaskProgressPage struct {
@@ -564,13 +560,10 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 	ageSec := int(time.Since(ev.CreatedAt).Seconds())
 	return TaskLatestEventOutput{
 		Event: TaskEventRecord{
-			ID:        ev.ID,
-			TaskID:    ev.TaskID,
-			Subject:   ev.Subject,
-			Status:    ev.Status,
-			EventType: ev.EventType,
-			Payload:   string(ev.Payload),
-			CreatedAt: ev.CreatedAt,
+			ID: ev.ID, TaskID: ev.TaskID, AgentSessionID: ev.AgentSessionID.String,
+			UserPromptID: ev.UserPromptID.String, ExecutionID: ev.ExecutionAttemptID.String,
+			ExecutionAttemptID: ev.ExecutionAttemptID.String, Subject: ev.Subject,
+			Status: ev.Status, EventType: ev.EventType, Payload: string(ev.Payload), CreatedAt: ev.CreatedAt,
 		},
 		AgeSec:  ageSec,
 		IsStale: ageSec > reaperHealthMaxEventSec,

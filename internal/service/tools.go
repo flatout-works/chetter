@@ -289,14 +289,17 @@ type TaskEventsOutput struct {
 
 // TaskEventRecord is a single persisted runner event.
 type TaskEventRecord struct {
-	ID          string    `json:"id"`
-	TaskID      string    `json:"task_id,omitempty"`
-	Subject     string    `json:"subject"`
-	Status      string    `json:"status"`
-	EventType   string    `json:"event_type"`
-	ExecutionID string    `json:"execution_id,omitempty"`
-	Payload     string    `json:"payload"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID                 string    `json:"id"`
+	TaskID             string    `json:"task_id,omitempty"`
+	Subject            string    `json:"subject"`
+	Status             string    `json:"status"`
+	EventType          string    `json:"event_type"`
+	ExecutionID        string    `json:"execution_id,omitempty"`
+	AgentSessionID     string    `json:"agent_session_id,omitempty"`
+	UserPromptID       string    `json:"user_prompt_id,omitempty"`
+	ExecutionAttemptID string    `json:"execution_attempt_id,omitempty"`
+	Payload            string    `json:"payload"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // TaskProgressInput is the input for chetter_task_progress.

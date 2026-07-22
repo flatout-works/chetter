@@ -1183,17 +1183,20 @@ func (x *Trigger) GetSourcePath() string {
 }
 
 type TaskEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
-	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	Payload       string                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	EventType     string                 `protobuf:"bytes,7,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
-	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TaskId             string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Subject            string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Status             string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Payload            string                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
+	CreatedAt          string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	EventType          string                 `protobuf:"bytes,7,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	ExecutionId        string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	AgentSessionId     string                 `protobuf:"bytes,9,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	UserPromptId       string                 `protobuf:"bytes,10,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	ExecutionAttemptId string                 `protobuf:"bytes,11,opt,name=execution_attempt_id,json=executionAttemptId,proto3" json:"execution_attempt_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *TaskEvent) Reset() {
@@ -1278,6 +1281,27 @@ func (x *TaskEvent) GetEventType() string {
 func (x *TaskEvent) GetExecutionId() string {
 	if x != nil {
 		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetAgentSessionId() string {
+	if x != nil {
+		return x.AgentSessionId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetUserPromptId() string {
+	if x != nil {
+		return x.UserPromptId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetExecutionAttemptId() string {
+	if x != nil {
+		return x.ExecutionAttemptId
 	}
 	return ""
 }
@@ -8177,7 +8201,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"_source_idB\x12\n" +
 	"\x10_source_repo_urlB\x10\n" +
 	"\x0e_source_branchB\x0e\n" +
-	"\f_source_path\"\xe1\x01\n" +
+	"\f_source_path\"\xe3\x02\n" +
 	"\tTaskEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +
@@ -8188,7 +8212,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\a \x01(\tR\teventType\x12!\n" +
-	"\fexecution_id\x18\b \x01(\tR\vexecutionId\"o\n" +
+	"\fexecution_id\x18\b \x01(\tR\vexecutionId\x12(\n" +
+	"\x10agent_session_id\x18\t \x01(\tR\x0eagentSessionId\x12$\n" +
+	"\x0euser_prompt_id\x18\n" +
+	" \x01(\tR\fuserPromptId\x120\n" +
+	"\x14execution_attempt_id\x18\v \x01(\tR\x12executionAttemptId\"o\n" +
 	"\x11TaskProgressEntry\x12\x12\n" +
 	"\x04time\x18\x01 \x01(\tR\x04time\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +
