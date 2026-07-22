@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -17,13 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness/transport"
 	"github.com/flatout-works/chetter/runner/internal/task"
-)
-
-const (
-	serveReadyTimeout = 15 * time.Second
-	servePollInterval = 500 * time.Millisecond
-	serveHTTPTimeout  = 2 * time.Second
 )
 
 func generatePassword() string {
@@ -50,40 +44,11 @@ func doPost(ctx context.Context, url, secret string, body io.Reader) (*http.Resp
 }
 
 func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: serveHTTPTimeout}
-	var lastErr error
-	var lastStatus int
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/config", nil)
-		if err != nil {
-			lastErr = err
-			time.Sleep(servePollInterval)
-			continue
-		}
+	return transport.WaitForReady(ctx, baseURL, "/config", func(req *http.Request) {
 		if secret != "" {
 			req.Header.Set("Authorization", basicAuthHeader(secret))
 		}
-		resp, err := client.Do(req)
-		if err == nil {
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				resp.Body.Close()
-				return nil
-			}
-			lastStatus = resp.StatusCode
-			resp.Body.Close()
-		} else {
-			lastErr = err
-		}
-		time.Sleep(servePollInterval)
-	}
-	if lastStatus >= 400 {
-		return fmt.Errorf("server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
-	}
-	if lastErr != nil {
-		return fmt.Errorf("server at %s not responding within %v: last error: %w", baseURL, timeout, lastErr)
-	}
-	return fmt.Errorf("server at %s not responding within %v", baseURL, timeout)
+	}, timeout, "server")
 }
 
 func createSession(ctx context.Context, baseURL, secret string) (string, error) {
@@ -197,7 +162,7 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		return
 	}
 
-	br := newSSEReader(resp.Body)
+	br := transport.NewEventReader(resp.Body)
 
 	var textBuf strings.Builder
 	var pending []string
@@ -290,53 +255,7 @@ func extractClaudeDeltaText(data string) string {
 	return text
 }
 
-type sseEvent struct {
-	Type string
-	Data string
-}
-
-type sseReader struct {
-	br *bufio.Reader
-}
-
-func newSSEReader(r io.Reader) *sseReader {
-	return &sseReader{
-		br: bufio.NewReader(r),
-	}
-}
-
-func (r *sseReader) Read() (*sseEvent, error) {
-	var ev sseEvent
-	for {
-		line, err := r.br.ReadString('\n')
-		if err != nil {
-			if ev.Type != "" || ev.Data != "" {
-				result := &sseEvent{Type: ev.Type, Data: ev.Data}
-				return result, nil
-			}
-			return nil, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			if ev.Type != "" || ev.Data != "" {
-				result := &sseEvent{Type: ev.Type, Data: ev.Data}
-				return result, nil
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "event: ") {
-			ev.Type = strings.TrimPrefix(line, "event: ")
-		} else if strings.HasPrefix(line, "data: ") {
-			if ev.Data == "" {
-				ev.Data = strings.TrimPrefix(line, "data: ")
-			} else {
-				ev.Data += "\n" + strings.TrimPrefix(line, "data: ")
-			}
-		}
-	}
-}
-
-func summarizeClaudeEvent(ev *sseEvent) string {
+func summarizeClaudeEvent(ev *transport.Event) string {
 	switch ev.Type {
 	case "text_delta":
 		var data map[string]any

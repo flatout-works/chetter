@@ -1,7 +1,6 @@
 package codewhale
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -15,13 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness/transport"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 const (
-	serveReadyTimeout       = 15 * time.Second
-	servePollInterval       = 500 * time.Millisecond
-	serveHTTPTimeout        = 2 * time.Second
 	eventReconnectAttempts  = 4
 	eventReconnectBaseDelay = 250 * time.Millisecond
 )
@@ -49,40 +46,11 @@ func doPost(ctx context.Context, url, secret string, body io.Reader) (*http.Resp
 }
 
 func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: serveHTTPTimeout}
-	var lastErr error
-	var lastStatus int
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/health", nil)
-		if err != nil {
-			lastErr = err
-			time.Sleep(servePollInterval)
-			continue
-		}
+	return transport.WaitForReady(ctx, baseURL, "/health", func(req *http.Request) {
 		if secret != "" {
 			req.Header.Set("Authorization", bearerAuthHeader(secret))
 		}
-		resp, err := client.Do(req)
-		if err == nil {
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				resp.Body.Close()
-				return nil
-			}
-			lastStatus = resp.StatusCode
-			resp.Body.Close()
-		} else {
-			lastErr = err
-		}
-		time.Sleep(servePollInterval)
-	}
-	if lastStatus >= 400 {
-		return fmt.Errorf("codewhale server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
-	}
-	if lastErr != nil {
-		return fmt.Errorf("codewhale server at %s not responding within %v: last error: %w", baseURL, timeout, lastErr)
-	}
-	return fmt.Errorf("codewhale server at %s not responding within %v", baseURL, timeout)
+	}, timeout, "codewhale server")
 }
 
 func createSession(ctx context.Context, baseURL, secret string) (string, error) {
@@ -266,7 +234,7 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 			return summary.String(), fmt.Errorf("GET /events: status %d: %s", resp.StatusCode, string(body))
 		}
 
-		br := newSSEReader(resp.Body)
+		br := transport.NewEventReader(resp.Body)
 		for {
 			ev, err := br.Read()
 			if err != nil {
@@ -361,7 +329,7 @@ type codewhaleEnvelope struct {
 	} `json:"payload"`
 }
 
-func decodeCodewhaleEnvelope(ev *sseEvent) (codewhaleEnvelope, bool) {
+func decodeCodewhaleEnvelope(ev *transport.Event) (codewhaleEnvelope, bool) {
 	var envelope codewhaleEnvelope
 	if err := json.Unmarshal([]byte(ev.Data), &envelope); err != nil {
 		return envelope, false
@@ -373,49 +341,6 @@ func decodeCodewhaleEnvelope(ev *sseEvent) (codewhaleEnvelope, bool) {
 		envelope.Kind = envelope.Event
 	}
 	return envelope, true
-}
-
-// SSE parsing (modeled on claude/serve.go SSE reader).
-type sseEvent struct {
-	Type string
-	Data string
-}
-
-type sseReader struct {
-	br *bufio.Reader
-}
-
-func newSSEReader(r io.Reader) *sseReader {
-	return &sseReader{br: bufio.NewReader(r)}
-}
-
-func (r *sseReader) Read() (*sseEvent, error) {
-	var ev sseEvent
-	for {
-		line, err := r.br.ReadString('\n')
-		if err != nil {
-			if ev.Type != "" || ev.Data != "" {
-				return &ev, nil
-			}
-			return nil, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			if ev.Type != "" || ev.Data != "" {
-				return &ev, nil
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "event: ") {
-			ev.Type = strings.TrimPrefix(line, "event: ")
-		} else if strings.HasPrefix(line, "data: ") {
-			if ev.Data == "" {
-				ev.Data = strings.TrimPrefix(line, "data: ")
-			} else {
-				ev.Data += "\n" + strings.TrimPrefix(line, "data: ")
-			}
-		}
-	}
 }
 
 func summarizeCodewhaleEnvelope(event string, envelope codewhaleEnvelope) string {

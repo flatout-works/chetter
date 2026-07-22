@@ -15,13 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/runner/harness/transport"
 	"github.com/flatout-works/chetter/runner/internal/task"
-)
-
-const (
-	serveReadyTimeout = 15 * time.Second
-	servePollInterval = 500 * time.Millisecond
-	serveHTTPTimeout  = 2 * time.Second
 )
 
 func basicAuthHeader(secret string) string {
@@ -48,40 +43,11 @@ func doPost(ctx context.Context, url, contentType, secret string, body io.Reader
 }
 
 func waitForServeReady(ctx context.Context, baseURL, secret string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: serveHTTPTimeout}
-	var lastErr error
-	var lastStatus int
-	for time.Now().Before(deadline) {
-		req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/config", nil)
-		if err != nil {
-			lastErr = err
-			time.Sleep(servePollInterval)
-			continue
-		}
+	return transport.WaitForReady(ctx, baseURL, "/config", func(req *http.Request) {
 		if secret != "" {
 			req.Header.Set("Authorization", basicAuthHeader(secret))
 		}
-		resp, err := client.Do(req)
-		if err == nil {
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				resp.Body.Close()
-				return nil
-			}
-			lastStatus = resp.StatusCode
-			resp.Body.Close()
-		} else {
-			lastErr = err
-		}
-		time.Sleep(servePollInterval)
-	}
-	if lastStatus >= 400 {
-		return fmt.Errorf("server at %s not responding within %v: last status: %d", baseURL, timeout, lastStatus)
-	}
-	if lastErr != nil {
-		return fmt.Errorf("server at %s not responding within %v: last error: %w", baseURL, timeout, lastErr)
-	}
-	return fmt.Errorf("server at %s not responding within %v", baseURL, timeout)
+	}, timeout, "server")
 }
 
 func createOpenCodeSession(ctx context.Context, baseURL, secret string) (string, error) {

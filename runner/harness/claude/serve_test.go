@@ -2,8 +2,10 @@ package claude
 
 import "testing"
 
+import "github.com/flatout-works/chetter/runner/harness/transport"
+
 func TestSummarizeClaudeToolUse(t *testing.T) {
-	got := summarizeClaudeEvent(&sseEvent{
+	got := summarizeClaudeEvent(&transport.Event{
 		Type: "tool_use",
 		Data: `{"content_block":{"name":"Bash"}}`,
 	})
