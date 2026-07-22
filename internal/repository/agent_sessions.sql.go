@@ -82,45 +82,25 @@ func (q *Queries) ExpirePausedSessions(ctx context.Context, arg ExpirePausedSess
 
 const failPendingResumeTasksForMissingRunner = `-- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t
-LEFT JOIN chetter_runners r ON r.id = t.required_runner_id
+JOIN chetter_user_prompts prompt ON prompt.task_id = t.id
+JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
 SET t.status = 'error',
-    t.error = CONCAT('pinned runner ', t.required_runner_id, ' is not alive'),
+    t.error = attempt.error,
     t.error_category = 'runner_unavailable',
     t.ended_at = ?,
-    t.updated_at = ?,
-    t.last_event_at = ?
+    t.updated_at = ?
 WHERE t.status = 'pending'
-  AND t.required_runner_id IS NOT NULL
-  AND t.required_runner_id <> ''
-  AND (
-    r.id IS NULL
-    OR r.status <> 'active'
-    OR r.last_seen_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)
-  )
-  AND EXISTS (
-    SELECT 1
-    FROM chetter_user_prompts sr
-    JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
-    WHERE sr.task_id = t.id
-      AND sr.status = 'pending'
-      AND s.status = 'resuming'
-  )
+  AND attempt.status = 'error'
+  AND attempt.error_category = 'runner_unavailable'
 `
 
 type FailPendingResumeTasksForMissingRunnerParams struct {
-	EndedAt      sql.NullTime `json:"ended_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
-	LastEventAt  sql.NullTime `json:"last_event_at"`
-	StaleSeconds interface{}  `json:"stale_seconds"`
+	EndedAt   sql.NullTime `json:"ended_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 func (q *Queries) FailPendingResumeTasksForMissingRunner(ctx context.Context, arg FailPendingResumeTasksForMissingRunnerParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, failPendingResumeTasksForMissingRunner,
-		arg.EndedAt,
-		arg.UpdatedAt,
-		arg.LastEventAt,
-		arg.StaleSeconds,
-	)
+	result, err := q.db.ExecContext(ctx, failPendingResumeTasksForMissingRunner, arg.EndedAt, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -1188,4 +1168,39 @@ func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg SearchAgen
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateAgentSessionFromRunnerEvent = `-- name: UpdateAgentSessionFromRunnerEvent :execrows
+UPDATE chetter_agent_sessions
+SET provider_id = COALESCE(NULLIF(?, ''), provider_id),
+    model_id = COALESCE(NULLIF(?, ''), model_id),
+    variant_id = COALESCE(NULLIF(?, ''), variant_id),
+    harness_session_id = COALESCE(NULLIF(?, ''), harness_session_id),
+    updated_at = ?
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = ? ORDER BY agent.sequence DESC LIMIT 1)
+  AND status IN ('running', 'resuming')
+`
+
+type UpdateAgentSessionFromRunnerEventParams struct {
+	ProviderID       interface{} `json:"provider_id"`
+	ModelID          interface{} `json:"model_id"`
+	VariantID        interface{} `json:"variant_id"`
+	HarnessSessionID interface{} `json:"harness_session_id"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	TaskID           string      `json:"task_id"`
+}
+
+func (q *Queries) UpdateAgentSessionFromRunnerEvent(ctx context.Context, arg UpdateAgentSessionFromRunnerEventParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAgentSessionFromRunnerEvent,
+		arg.ProviderID,
+		arg.ModelID,
+		arg.VariantID,
+		arg.HarnessSessionID,
+		arg.UpdatedAt,
+		arg.TaskID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

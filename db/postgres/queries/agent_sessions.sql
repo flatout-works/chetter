@@ -51,6 +51,16 @@ WHERE task_id = $1
 ORDER BY sequence DESC
 LIMIT 1;
 
+-- name: UpdateAgentSessionFromRunnerEvent :execrows
+UPDATE chetter_agent_sessions
+SET provider_id = COALESCE(NULLIF(sqlc.arg(provider_id)::text, ''), provider_id),
+    model_id = COALESCE(NULLIF(sqlc.arg(model_id)::text, ''), model_id),
+    variant_id = COALESCE(NULLIF(sqlc.arg(variant_id)::text, ''), variant_id),
+    harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id)::text, ''), harness_session_id),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = sqlc.arg(task_id) ORDER BY agent.sequence DESC LIMIT 1)
+  AND status IN ('running', 'resuming');
+
 -- name: PauseAgentSessionByTaskID :execrows
 UPDATE chetter_agent_sessions
 SET status = $1,
@@ -161,26 +171,16 @@ WHERE id = (
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t
 SET status = 'error',
-    error = 'pinned runner ' || t.required_runner_id || ' is not alive',
+    error = attempt.error,
     error_category = 'runner_unavailable',
     ended_at = $1,
-    updated_at = $2,
-    last_event_at = $3
-WHERE t.status = 'pending'
-  AND t.required_runner_id IS NOT NULL
-  AND t.required_runner_id <> ''
-  AND NOT EXISTS (
-    SELECT 1 FROM chetter_runners r
-    WHERE r.id = t.required_runner_id
-      AND r.status = 'active'
-      AND r.last_seen_at > NOW() - (sqlc.arg(stale_seconds) * INTERVAL '1 second')
-  )
-  AND EXISTS (
-    SELECT 1
-    FROM chetter_user_prompts sr
-    JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
-    WHERE sr.task_id = t.id AND sr.status = 'pending' AND s.status = 'resuming'
-  );
+    updated_at = $2
+FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
+WHERE prompt.task_id = t.id
+  AND attempt.user_prompt_id = prompt.id
+  AND t.status = 'pending'
+  AND attempt.status = 'error'
+  AND attempt.error_category = 'runner_unavailable';
 
 -- name: FailPendingUserPromptsForUnavailableRunner :execrows
 UPDATE chetter_user_prompts sr

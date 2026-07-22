@@ -52,6 +52,16 @@ WHERE task_id = ?
 ORDER BY sequence DESC
 LIMIT 1;
 
+-- name: UpdateAgentSessionFromRunnerEvent :execrows
+UPDATE chetter_agent_sessions
+SET provider_id = COALESCE(NULLIF(sqlc.arg(provider_id), ''), provider_id),
+    model_id = COALESCE(NULLIF(sqlc.arg(model_id), ''), model_id),
+    variant_id = COALESCE(NULLIF(sqlc.arg(variant_id), ''), variant_id),
+    harness_session_id = COALESCE(NULLIF(sqlc.arg(harness_session_id), ''), harness_session_id),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = (SELECT agent.id FROM chetter_agent_sessions agent WHERE agent.task_id = sqlc.arg(task_id) ORDER BY agent.sequence DESC LIMIT 1)
+  AND status IN ('running', 'resuming');
+
 -- name: PauseAgentSessionByTaskID :execrows
 UPDATE chetter_agent_sessions
 SET status = ?,
@@ -169,29 +179,16 @@ WHERE id = (
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t
-LEFT JOIN chetter_runners r ON r.id = t.required_runner_id
+JOIN chetter_user_prompts prompt ON prompt.task_id = t.id
+JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
 SET t.status = 'error',
-    t.error = CONCAT('pinned runner ', t.required_runner_id, ' is not alive'),
+    t.error = attempt.error,
     t.error_category = 'runner_unavailable',
     t.ended_at = ?,
-    t.updated_at = ?,
-    t.last_event_at = ?
+    t.updated_at = ?
 WHERE t.status = 'pending'
-  AND t.required_runner_id IS NOT NULL
-  AND t.required_runner_id <> ''
-  AND (
-    r.id IS NULL
-    OR r.status <> 'active'
-    OR r.last_seen_at <= DATE_SUB(NOW(), INTERVAL sqlc.arg(stale_seconds) SECOND)
-  )
-  AND EXISTS (
-    SELECT 1
-    FROM chetter_user_prompts sr
-    JOIN chetter_agent_sessions s ON s.id = sr.agent_session_id
-    WHERE sr.task_id = t.id
-      AND sr.status = 'pending'
-      AND s.status = 'resuming'
-  );
+  AND attempt.status = 'error'
+  AND attempt.error_category = 'runner_unavailable';
 
 -- name: FailPendingUserPromptsForUnavailableRunner :execrows
 UPDATE chetter_user_prompts sr

@@ -36,7 +36,6 @@ func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage s
 		AgentImage:        sql.NullString{String: agentImage, Valid: true},
 		Skills:            json.RawMessage(`[]`),
 		Env:               json.RawMessage(`{}`),
-		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
 		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
 		CreatedAt:         now,
@@ -57,9 +56,34 @@ func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage s
 		t.Fatalf("insert prompt: %v", err)
 	}
 	if err := q.InsertPendingExecutionAttempt(context.Background(), repository.InsertPendingExecutionAttemptParams{
-		ID: "exec_" + id, UserPromptID: promptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+		ID: "exec_" + id, UserPromptID: promptID, Sequence: 1, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("insert pending attempt: %v", err)
+	}
+}
+
+func markPendingExecutionAttemptClaimed(t *testing.T, q data.Repository, taskID, runnerID string, claimedAt, leaseExpiresAt time.Time) {
+	t.Helper()
+	if rows, err := q.MarkExecutionAttemptClaimed(context.Background(), repository.MarkExecutionAttemptClaimedParams{
+		RunnerID:       nullString(runnerID),
+		ClaimedAt:      sql.NullTime{Time: claimedAt, Valid: true},
+		LeaseExpiresAt: sql.NullTime{Time: leaseExpiresAt, Valid: true},
+		StartedAt:      sql.NullTime{Time: claimedAt, Valid: true},
+		UpdatedAt:      claimedAt,
+		ID:             "exec_" + taskID,
+	}); err != nil {
+		t.Fatalf("claim execution attempt for %s: %v", taskID, err)
+	} else if rows != 1 {
+		t.Fatalf("claim execution attempt for %s rows: %d", taskID, rows)
+	}
+}
+
+func markTaskRunning(t *testing.T, q data.Repository, taskID string, updatedAt time.Time) {
+	t.Helper()
+	if rows, err := q.MarkTaskRunning(context.Background(), repository.MarkTaskRunningParams{UpdatedAt: updatedAt, ID: taskID}); err != nil {
+		t.Fatalf("mark task %s running: %v", taskID, err)
+	} else if rows != 1 {
+		t.Fatalf("mark task %s running rows: %d", taskID, rows)
 	}
 }
 
@@ -98,13 +122,17 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	if row.Status != "running" {
 		t.Errorf("expected status=running, got %s", row.Status)
 	}
-	if !row.RunnerID.Valid || row.RunnerID.String != "runner_1" {
-		t.Errorf("expected runner_id=runner_1, got %v", row.RunnerID)
+	attempt, err := q.GetExecutionAttemptByID(ctx, resp.Msg.Task.ExecutionId)
+	if err != nil {
+		t.Fatalf("get execution attempt: %v", err)
 	}
-	if !row.LeaseExpiresAt.Valid {
+	if !attempt.RunnerID.Valid || attempt.RunnerID.String != "runner_1" {
+		t.Errorf("expected runner_id=runner_1, got %v", attempt.RunnerID)
+	}
+	if !attempt.LeaseExpiresAt.Valid {
 		t.Error("expected lease_expires_at set")
 	}
-	if !row.ClaimedAt.Valid {
+	if !attempt.ClaimedAt.Valid {
 		t.Error("expected claimed_at set")
 	}
 }
@@ -127,16 +155,10 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	}
 
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
-		"UPDATE chetter_tasks SET lease_expires_at = ? WHERE id = ?",
-		"UPDATE chetter_tasks SET lease_expires_at = $1 WHERE id = $2"),
-		time.Now().UTC().Add(-time.Second), "task_fenced"); err != nil {
+		"UPDATE chetter_execution_attempts SET lease_expires_at = ? WHERE id = ?",
+		"UPDATE chetter_execution_attempts SET lease_expires_at = $1 WHERE id = $2"),
+		time.Now().UTC().Add(-time.Second), firstExecution); err != nil {
 		t.Fatalf("expire lease: %v", err)
-	}
-	if _, err := q.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
-		UpdatedAt:      time.Now().UTC(),
-		LeaseExpiresAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
-	}); err != nil {
-		t.Fatalf("reclaim: %v", err)
 	}
 	if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
 		Error: nullString("lease expired"), EndedAt: sql.NullTime{Time: time.Now().UTC(), Valid: true},
@@ -144,13 +166,18 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("mark first attempt lost: %v", err)
 	}
+	if _, err := q.RequeueTaskAfterExecutionAttemptLost(ctx, repository.RequeueTaskAfterExecutionAttemptLostParams{
+		UpdatedAt: time.Now().UTC(), TaskID: "task_fenced",
+	}); err != nil {
+		t.Fatalf("requeue task aggregate: %v", err)
+	}
 	firstAttempt, err := q.GetExecutionAttemptByID(ctx, firstExecution)
 	if err != nil {
 		t.Fatalf("get first attempt: %v", err)
 	}
 	if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
 		ID: "exec_reclaimed", UserPromptID: firstAttempt.UserPromptID, Sequence: 2,
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		TimeoutSec: 600, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("queue replacement attempt: %v", err)
 	}
@@ -210,9 +237,6 @@ func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_pinned", "resume work", "runner:latest")
-	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_tasks SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "task_pinned"); err != nil {
-		t.Fatalf("pin task: %v", err)
-	}
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_execution_attempts SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_execution_attempts SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "exec_task_pinned"); err != nil {
 		t.Fatalf("pin attempt: %v", err)
 	}
@@ -265,7 +289,6 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
 		Skills:            json.RawMessage(`[]`),
 		Env:               json.RawMessage(`{}`),
-		TimeoutSec:        600,
 		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
 		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
 		CreatedAt:         now,
@@ -273,23 +296,7 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
-	// Mark it as running with an expired lease and max attempts reached
-	past := now.Add(-1 * time.Hour)
-	rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: past, Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_lease",
-	})
-	if err != nil {
-		t.Fatalf("update: %v", err)
-	}
-	if rows != 1 {
-		t.Fatalf("update rows: %d", rows)
-	}
+	markTaskRunning(t, q, "task_lease", now)
 	// Just verify no pending task is claimable while the task is still running.
 	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId:    "runner_1",
@@ -309,18 +316,12 @@ func TestRPCHeartbeatReturnsCancelCommandForCancelledTask(t *testing.T) {
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_cancel_me", "do", "runner:latest")
 	now := time.Now().UTC()
-	if rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(5 * time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_cancel_me",
+	markTaskRunning(t, q, "task_cancel_me", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_cancel_me", "runner_1", now, now.Add(5*time.Minute))
+	if _, err := q.CancelExecutionAttemptsByTask(ctx, repository.CancelExecutionAttemptsByTaskParams{
+		Error: nullString("operator stop"), EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, TaskID: "task_cancel_me",
 	}); err != nil {
-		t.Fatalf("claim: %v", err)
-	} else if rows != 1 {
-		t.Fatalf("claim rows: %d", rows)
+		t.Fatalf("cancel execution attempt: %v", err)
 	}
 	if _, err := q.CancelTask(ctx, repository.CancelTaskParams{
 		Error:     sql.NullString{String: "operator stop", Valid: true},
@@ -335,7 +336,7 @@ func TestRPCHeartbeatReturnsCancelCommandForCancelledTask(t *testing.T) {
 		Runner: &runnerv1.RunnerInfo{
 			RunnerId:          "runner_1",
 			Status:            "active",
-			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_cancel_me"}},
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_cancel_me", ExecutionId: "exec_task_cancel_me"}},
 		},
 	}))
 	if err != nil {
@@ -375,19 +376,8 @@ func TestRPCHeartbeatMixedTasksOnlyReturnsCancelled(t *testing.T) {
 	insertPendingTask(t, q, "task_running", "x", "runner:latest")
 	insertPendingTask(t, q, "task_to_cancel", "x", "runner:latest")
 	now := time.Now().UTC()
-	if rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(5 * time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_running",
-	}); err != nil {
-		t.Fatalf("claim: %v", err)
-	} else if rows != 1 {
-		t.Fatalf("claim rows: %d", rows)
-	}
+	markTaskRunning(t, q, "task_running", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_running", "runner_1", now, now.Add(5*time.Minute))
 	if _, err := q.CancelTask(ctx, repository.CancelTaskParams{
 		Error:     sql.NullString{String: "by operator", Valid: true},
 		EndedAt:   sql.NullTime{Time: time.Now().UTC(), Valid: true},
@@ -401,7 +391,7 @@ func TestRPCHeartbeatMixedTasksOnlyReturnsCancelled(t *testing.T) {
 		Runner: &runnerv1.RunnerInfo{
 			RunnerId:          "runner_1",
 			Status:            "active",
-			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_running"}, {TaskId: "task_to_cancel"}},
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_running", ExecutionId: "exec_task_running"}, {TaskId: "task_to_cancel"}},
 		},
 	}))
 	if err != nil {
@@ -476,30 +466,20 @@ func TestRPCReportTaskEventsPersistsEventAndUpdatesTask(t *testing.T) {
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_report", "x", "runner:latest")
 	now := time.Now().UTC()
-	if rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_report",
-	}); err != nil {
-		t.Fatalf("claim: %v", err)
-	} else if rows != 1 {
-		t.Fatalf("claim rows: %d", rows)
-	}
+	markTaskRunning(t, q, "task_report", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_report", "runner_1", now, now.Add(time.Minute))
 
 	endedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:     "task_report",
-			Status:     "done",
-			Summary:    "completed",
-			ProviderId: "synthetic",
-			ModelId:    "model-x",
-			EndedAt:    endedAt,
+			TaskId:      "task_report",
+			ExecutionId: "exec_task_report",
+			Status:      "done",
+			Summary:     "completed",
+			ProviderId:  "synthetic",
+			ModelId:     "model-x",
+			EndedAt:     endedAt,
 		}},
 	}))
 	if err != nil {
@@ -516,8 +496,12 @@ func TestRPCReportTaskEventsPersistsEventAndUpdatesTask(t *testing.T) {
 	if row.Summary.String != "completed" {
 		t.Errorf("summary not persisted: %q", row.Summary.String)
 	}
-	if row.ProviderID.String != "synthetic" {
-		t.Errorf("provider_id not persisted: %q", row.ProviderID.String)
+	session, err := q.GetAgentSessionByTaskID(ctx, "task_report")
+	if err != nil {
+		t.Fatalf("get agent session: %v", err)
+	}
+	if session.ProviderID.String != "synthetic" || session.ModelID.String != "model-x" {
+		t.Errorf("session provider/model not persisted: %q/%q", session.ProviderID.String, session.ModelID.String)
 	}
 	if !row.EndedAt.Valid {
 		t.Error("ended_at not persisted")
@@ -551,82 +535,6 @@ func TestRPCReportTaskEventsRejectsEmptyTaskID(t *testing.T) {
 	}
 }
 
-func TestReapAndFailLeaveReclaimedTaskPending(t *testing.T) {
-	tdb, cleanup := testdb.NewForTesting(t)
-	defer cleanup()
-	tdb.Truncate(t)
-	ctx := context.Background()
-	q := data.New(tdb.DB, tdb.Dialect())
-
-	// Insert a running task with an expired lease
-	now := time.Now().UTC()
-	past := now.Add(-1 * time.Hour)
-	if err := q.InsertTask(ctx, repository.InsertTaskParams{
-		ID:                "task_expired",
-		Prompt:            "x",
-		AgentImage:        sql.NullString{String: "runner:latest", Valid: true},
-		Skills:            json.RawMessage(`[]`),
-		Env:               json.RawMessage(`{}`),
-		TimeoutSec:        600,
-		CommitAuthorName:  sql.NullString{String: "Chetter", Valid: true},
-		CommitAuthorEmail: sql.NullString{String: "chetter@chetter.flatout.works", Valid: true},
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-	rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: past, Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_expired",
-	})
-	if err != nil {
-		t.Fatalf("update: %v", err)
-	}
-	if rows != 1 {
-		t.Fatalf("update rows: %d", rows)
-	}
-
-	// Run the reaper
-	repo := q
-	expiredBefore := sql.NullTime{Time: now, Valid: true}
-	if _, err := repo.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
-		UpdatedAt:      now,
-		LeaseExpiresAt: expiredBefore,
-	}); err != nil {
-		t.Fatalf("reclaim: %v", err)
-	}
-	// Task should still be running (attempt=1 < max_attempts=3)
-	row, err := q.GetTaskByID(ctx, "task_expired")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if row.Status != "pending" {
-		t.Errorf("expected status=pending after reclaim, got %s", row.Status)
-	}
-
-	// Now fail it
-	if _, err := repo.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
-		EndedAt:        sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: expiredBefore,
-	}); err != nil {
-		t.Fatalf("fail: %v", err)
-	}
-	row, err = q.GetTaskByID(ctx, "task_expired")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if row.Status != "pending" {
-		t.Errorf("expected status=pending still, got %s", row.Status)
-	}
-}
-
 func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
@@ -634,19 +542,8 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 	now := time.Now().UTC()
 	claimAndExpire := func(id string) {
 		t.Helper()
-		if rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-			RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-			ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-			LeaseExpiresAt: sql.NullTime{Time: now.Add(-1 * time.Minute), Valid: true},
-			StartedAt:      sql.NullTime{Time: now, Valid: true},
-			UpdatedAt:      now,
-			LastEventAt:    sql.NullTime{Time: now, Valid: true},
-			ID:             id,
-		}); err != nil {
-			t.Fatalf("claim %s: %v", id, err)
-		} else if rows != 1 {
-			t.Fatalf("claim %s rows: %d", id, rows)
-		}
+		markTaskRunning(t, q, id, now)
+		markPendingExecutionAttemptClaimed(t, q, id, "runner_1", now, now.Add(-time.Minute))
 	}
 	insertPendingTask(t, q, "task_a", "x", "runner:latest")
 	insertPendingTask(t, q, "task_b", "x", "runner:latest")
@@ -657,7 +554,7 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 		Runner: &runnerv1.RunnerInfo{
 			RunnerId:          "runner_1",
 			Status:            "active",
-			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_a"}, {TaskId: "task_b"}},
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_a", ExecutionId: "exec_task_a"}, {TaskId: "task_b", ExecutionId: "exec_task_b"}},
 		},
 	}))
 	if err != nil {
@@ -667,7 +564,7 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 		t.Fatalf("expected no cancel commands, got %+v", resp.Msg.Commands)
 	}
 	for _, id := range []string{"task_a", "task_b"} {
-		row, err := q.GetTaskByID(ctx, id)
+		row, err := q.GetExecutionAttemptByID(ctx, "exec_"+id)
 		if err != nil {
 			t.Fatalf("get %s: %v", id, err)
 		}
@@ -683,31 +580,24 @@ func TestRPCHeartbeatCancelsReclaimedTask(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	insertPendingTask(t, q, "task_reclaim", "x", "runner:latest")
-	if rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(-1 * time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_reclaim",
-	}); err != nil {
-		t.Fatalf("claim: %v", err)
-	} else if rows != 1 {
-		t.Fatalf("claim rows: %d", rows)
+	markTaskRunning(t, q, "task_reclaim", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_reclaim", "runner_1", now, now.Add(-time.Minute))
+	if rows, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
+		Error: nullString("lease reclaimed"), EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, ID: "exec_task_reclaim",
+	}); err != nil || rows != 1 {
+		t.Fatalf("mark attempt lost: rows=%d err=%v", rows, err)
 	}
-	if _, err := q.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
-		UpdatedAt:      now,
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(-1 * time.Second), Valid: true},
-	}); err != nil {
-		t.Fatalf("reclaim: %v", err)
+	if rows, err := q.RequeueTaskAfterExecutionAttemptLost(ctx, repository.RequeueTaskAfterExecutionAttemptLostParams{
+		UpdatedAt: now, TaskID: "task_reclaim",
+	}); err != nil || rows != 1 {
+		t.Fatalf("requeue task: rows=%d err=%v", rows, err)
 	}
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
 			RunnerId:          "runner_1",
 			Status:            "active",
-			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_reclaim"}},
+			CurrentExecutions: []*runnerv1.RunningExecution{{TaskId: "task_reclaim", ExecutionId: "exec_task_reclaim"}},
 		},
 	}))
 	if err != nil {
@@ -734,7 +624,6 @@ func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
 		ID:                "task-1",
 		Prompt:            "test prompt",
 		AgentImage:        sql.NullString{String: "img", Valid: true},
-		TimeoutSec:        300,
 		Env:               harnessJSON,
 		Skills:            []byte(`[]`),
 		ProviderID:        sql.NullString{},
@@ -746,7 +635,7 @@ func TestTaskToProto_ExtractsHarnessFromEnv(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, "", "")
+	proto := taskToProto(task, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "pi" {
 		t.Fatalf("expected harness='pi', got %q", proto.Harness)
 	}
@@ -766,7 +655,6 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	task := repository.ChetterTask{
 		ID:                "task-2",
 		Prompt:            "test",
-		TimeoutSec:        300,
 		Env:               envJSON,
 		Skills:            []byte(`[]`),
 		ProviderID:        sql.NullString{},
@@ -779,7 +667,7 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, "", "")
+	proto := taskToProto(task, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", proto.Harness)
 	}

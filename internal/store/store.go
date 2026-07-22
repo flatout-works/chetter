@@ -357,6 +357,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureExecutionAttemptMetadataColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureGitIdentityColumns(ctx); err != nil {
 		return err
 	}
@@ -506,21 +509,13 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"model_id", "ALTER TABLE chetter_tasks ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
 		{"variant_id", "ALTER TABLE chetter_tasks ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
 		{"opencode_session_id", "ALTER TABLE chetter_tasks ADD COLUMN opencode_session_id VARCHAR(128) NULL AFTER variant_id"},
-		{"runner_image_digest", "ALTER TABLE chetter_tasks ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER opencode_session_id"},
-		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER runner_image_digest"},
+		{"commit_author_name", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER opencode_session_id"},
 		{"commit_author_email", "ALTER TABLE chetter_tasks ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name"},
 		{"git_identity_id", "ALTER TABLE chetter_tasks ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email"},
-		{"runner_id", "ALTER TABLE chetter_tasks ADD COLUMN runner_id VARCHAR(64) NULL AFTER commit_author_email"},
-		{"required_runner_id", "ALTER TABLE chetter_tasks ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER runner_id"},
-		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER required_runner_id"},
-		{"claimed_at", "ALTER TABLE chetter_tasks ADD COLUMN claimed_at DATETIME(6) NULL AFTER runner_id"},
-		{"lease_expires_at", "ALTER TABLE chetter_tasks ADD COLUMN lease_expires_at DATETIME(6) NULL AFTER claimed_at"},
-		{"attempt", "ALTER TABLE chetter_tasks ADD COLUMN attempt INT NOT NULL DEFAULT 0 AFTER lease_expires_at"},
-		{"execution_id", "ALTER TABLE chetter_tasks ADD COLUMN execution_id VARCHAR(64) NOT NULL DEFAULT '' AFTER attempt"},
-		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER attempt"},
-		{"last_event_at", "ALTER TABLE chetter_tasks ADD COLUMN last_event_at DATETIME(6) NULL AFTER updated_at"},
+		{"checkpoint_after_success", "ALTER TABLE chetter_tasks ADD COLUMN checkpoint_after_success BOOL NOT NULL DEFAULT false AFTER git_identity_id"},
+		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER checkpoint_after_success"},
 		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
-		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER runner_id"},
+		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER checkpoint_after_success"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
@@ -542,6 +537,30 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureExecutionAttemptMetadataColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"timeout_sec", "ALTER TABLE chetter_execution_attempts ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600 AFTER lease_expires_at"},
+		{"last_event_at", "ALTER TABLE chetter_execution_attempts ADD COLUMN last_event_at DATETIME(6) NULL AFTER timeout_sec"},
+		{"runner_image_digest", "ALTER TABLE chetter_execution_attempts ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER harness_execution_id"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "chetter_execution_attempts", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add chetter_execution_attempts.%s: %w", column.name, err)
 		}
 	}
 	return nil
@@ -1018,40 +1037,75 @@ func (s *Store) backfillSearchText(ctx context.Context) error {
 	return nil
 }
 
-// ReapStaleTasks finds running tasks that have exceeded their timeout + grace
-// period and marks them as error. Uses started_at (not updated_at) because
-// updated_at is refreshed on every heartbeat, which would prevent the reaper
-// from ever firing on tasks that keep heartbeating past their timeout.
+// ReapStaleTasks fails running execution attempts that exceed their timeout,
+// then rolls the terminal result up to their task aggregates.
 func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, error) {
-	query := `
-		UPDATE chetter_tasks
+	now := time.Now().UTC()
+	attemptQuery := `
+		UPDATE chetter_execution_attempts
 		SET status = 'error',
-		    error = CONCAT('runner timeout: task ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
+		    error = CONCAT('runner timeout: execution ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
 		    error_category = 'timeout',
 		    ended_at = ?,
 		    updated_at = ?
 		WHERE status = 'running'
 		  AND TIMESTAMPDIFF(SECOND, started_at, NOW()) > timeout_sec + ?
 	`
+	taskQuery := `
+		UPDATE chetter_tasks task
+		JOIN chetter_user_prompts prompt ON prompt.task_id = task.id
+		JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+		SET task.status = 'error',
+		    task.error = attempt.error,
+		    task.error_category = 'timeout',
+		    task.ended_at = ?,
+		    task.updated_at = ?
+		WHERE task.status = 'running'
+		  AND attempt.status = 'error'
+		  AND attempt.error_category = 'timeout'
+		  AND attempt.ended_at = ?
+	`
 	if s.IsPostgres() {
-		query = `
-			UPDATE chetter_tasks
+		attemptQuery = `
+			UPDATE chetter_execution_attempts
 			SET status = 'error',
-			    error = CONCAT('runner timeout: task ran for ', FLOOR(EXTRACT(EPOCH FROM NOW() - started_at))::int, ' seconds (timeout was ', timeout_sec, 's)'),
+			    error = CONCAT('runner timeout: execution ran for ', FLOOR(EXTRACT(EPOCH FROM NOW() - started_at))::int, ' seconds (timeout was ', timeout_sec, 's)'),
 			    error_category = 'timeout',
 			    ended_at = $1,
 			    updated_at = $2
 			WHERE status = 'running'
 			  AND EXTRACT(EPOCH FROM NOW() - started_at) > timeout_sec + $3
 		`
+		taskQuery = `
+			UPDATE chetter_tasks task
+			SET status = 'error', error = attempt.error, error_category = 'timeout', ended_at = $1, updated_at = $2
+			FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
+			WHERE prompt.task_id = task.id
+			  AND attempt.user_prompt_id = prompt.id
+			  AND task.status = 'running'
+			  AND attempt.status = 'error'
+			  AND attempt.error_category = 'timeout'
+			  AND attempt.ended_at = $3
+		`
 	}
-	result, err := s.db.ExecContext(ctx, query, time.Now().UTC(), time.Now().UTC(), int(grace.Seconds()))
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("reap stale tasks: %w", err)
+		return 0, fmt.Errorf("begin stale execution reaper: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, attemptQuery, now, now, int(grace.Seconds())); err != nil {
+		return 0, fmt.Errorf("reap stale execution attempts: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, taskQuery, now, now, now)
+	if err != nil {
+		return 0, fmt.Errorf("roll up stale execution attempts: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit stale execution reaper: %w", err)
 	}
 	return int(affected), nil
 }
@@ -1145,18 +1199,21 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		return health, fmt.Errorf("rows err after status count: %w", err)
 	}
 
-	runningTaskAge := "TIMESTAMPDIFF(SECOND, updated_at, NOW())"
+	runningTaskAge := "TIMESTAMPDIFF(SECOND, COALESCE(attempt.last_event_at, attempt.updated_at), NOW())"
 	runnerAge := "TIMESTAMPDIFF(SECOND, last_seen_at, NOW())"
 	if s.IsPostgres() {
-		runningTaskAge = "FLOOR(EXTRACT(EPOCH FROM NOW() - updated_at))::int"
+		runningTaskAge = "FLOOR(EXTRACT(EPOCH FROM NOW() - COALESCE(attempt.last_event_at, attempt.updated_at)))::int"
 		runnerAge = "FLOOR(EXTRACT(EPOCH FROM NOW() - last_seen_at))::int"
 	}
 	runningRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, prompt, summary, model_id, runner_image_digest, started_at,
+		SELECT task.id, task.prompt, task.summary, session.model_id, attempt.runner_image_digest, attempt.started_at,
 		       %s AS last_event_sec
-		FROM chetter_tasks
-		WHERE status = 'running'
-		ORDER BY started_at ASC
+		FROM chetter_execution_attempts attempt
+		JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+		JOIN chetter_tasks task ON task.id = prompt.task_id
+		JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+		WHERE attempt.status = 'running' AND task.status = 'running'
+		ORDER BY attempt.started_at ASC
 	`, runningTaskAge))
 	if err != nil {
 		return health, fmt.Errorf("query running tasks: %w", err)

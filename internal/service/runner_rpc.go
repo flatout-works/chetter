@@ -130,16 +130,14 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 	deadline := time.Now().Add(time.Duration(waitSec) * time.Second)
 
 	for {
-		task, err := s.claimOnce(ctx, req.Msg.RunnerId, time.Duration(leaseSec)*time.Second)
+		claim, err := s.claimOnce(ctx, req.Msg.RunnerId, time.Duration(leaseSec)*time.Second)
 		if err == nil {
+			task := claim.Task
+			run := claim.Prompt
 			resumeCheckpointPath := ""
 			resumeWorkspacePath := ""
 			resumeHarnessSessionID := ""
-			run, runErr := s.db.GetUserPromptByTaskID(ctx, task.ID)
-			if runErr != nil && !errors.Is(runErr, sql.ErrNoRows) {
-				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task prompt: %w", runErr))
-			}
-			if task.RequiredRunnerID.Valid {
+			if claim.Attempt.RequiredRunnerID.Valid {
 				sess, sessErr := s.db.GetAgentSessionByTaskID(ctx, task.ID)
 				if sessErr == nil {
 					if sess.WorkspacePath.Valid {
@@ -159,12 +157,10 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 					}
 				}
 			}
-			protoTask := taskToProto(task, resumeCheckpointPath, resumeWorkspacePath)
-			if runErr == nil {
-				protoTask.Prompt = run.Prompt
-				protoTask.AgentSessionId = run.AgentSessionID
-				protoTask.UserPromptId = run.ID
-			}
+			protoTask := taskToProto(task, claim.Attempt, claim.AttemptNumber, resumeCheckpointPath, resumeWorkspacePath)
+			protoTask.Prompt = run.Prompt
+			protoTask.AgentSessionId = run.AgentSessionID
+			protoTask.UserPromptId = run.ID
 			mcpEndpointNames := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 			protoTask.ResumeHarnessSessionId = resumeHarnessSessionID
 			if run.SourceUserPromptID.Valid {
@@ -633,26 +629,23 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 	}
 	now := time.Now().UTC()
 	lease := sql.NullTime{Time: now.Add(defaultTaskLeaseSec * time.Second), Valid: true}
-	rows, err := s.db.ListHeartbeatTasks(ctx, repository.ListHeartbeatTasksParams{
-		RunnerID: sql.NullString{String: info.RunnerId, Valid: true},
-		Ids:      runningExecutionTaskIDs(info.CurrentExecutions),
+	rows, err := s.db.ListExecutionAttemptsForHeartbeat(ctx, repository.ListExecutionAttemptsForHeartbeatParams{
+		ExecutionIds: runningExecutionAttemptIDs(info.CurrentExecutions),
+		RunnerID:     sql.NullString{String: info.RunnerId, Valid: true},
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	statusByID := make(map[string]repository.ListHeartbeatTasksRow, len(rows))
+	statusByID := make(map[string]repository.ListExecutionAttemptsForHeartbeatRow, len(rows))
 	for _, row := range rows {
-		statusByID[row.ID] = row
+		statusByID[row.ExecutionAttemptID] = row
 	}
 	for _, execution := range info.CurrentExecutions {
 		taskID := execution.TaskId
 		executionID := execution.ExecutionId
-		row, ok := statusByID[taskID]
+		row, ok := statusByID[executionID]
 		if !ok {
-			continue
-		}
-		if row.ExecutionID != executionID {
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: "execution superseded by a newer claim"})
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: taskID, ExecutionId: executionID, Reason: "execution attempt is no longer owned by this runner"})
 			continue
 		}
 		switch row.Status {
@@ -661,42 +654,43 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 			if reason == "" {
 				reason = "cancelled by operator"
 			}
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: reason})
-		case "pending":
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.ID, ExecutionId: executionID, Reason: "lease reclaimed; please stop"})
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: reason})
+		case "lost":
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "lease reclaimed; please stop"})
 		case "running":
-			renewed, err := s.db.RenewTaskLease(ctx, repository.RenewTaskLeaseParams{
+			renewed, err := s.db.RenewExecutionAttemptLease(ctx, repository.RenewExecutionAttemptLeaseParams{
 				LeaseExpiresAt: lease,
 				UpdatedAt:      now,
 				LastEventAt:    sql.NullTime{Time: now, Valid: true},
-				ID:             row.ID,
-				RunnerID:       sql.NullString{String: info.RunnerId, Valid: true},
-				ExecutionID:    executionID,
+				ID:             executionID,
+				RunnerID:       nullString(info.RunnerId),
 			})
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInternal, err)
 			}
 			if renewed == 0 {
+				commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "execution attempt is no longer running"})
 				continue
 			}
-			if _, err := s.db.RenewExecutionAttemptLease(ctx, repository.RenewExecutionAttemptLeaseParams{
-				LeaseExpiresAt: lease,
-				UpdatedAt:      now,
-				ID:             executionID,
-				RunnerID:       nullString(info.RunnerId),
-			}); err != nil {
-				return nil, connect.NewError(connect.CodeInternal, err)
-			}
+		default:
+			commands = append(commands, &runnerv1.RunnerCommand{Type: "cancel", TaskId: row.TaskID, ExecutionId: executionID, Reason: "execution attempt is no longer running"})
 		}
 	}
 	return commands, nil
 }
 
-func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease time.Duration) (repository.ChetterTask, error) {
+type claimedExecution struct {
+	Task          repository.ChetterTask
+	Prompt        repository.ChetterUserPrompt
+	Attempt       repository.ChetterExecutionAttempt
+	AttemptNumber int64
+}
+
+func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease time.Duration) (claimedExecution, error) {
 	if runnerID == "" {
-		return repository.ChetterTask{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
+		return claimedExecution{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
-	var claimed repository.ChetterTask
+	var claimed claimedExecution
 	var eventID string
 	var eventPayload json.RawMessage
 	var eventCreatedAt time.Time
@@ -704,7 +698,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	var err error
 	eventID, err = randomID("evt")
 	if err != nil {
-		return repository.ChetterTask{}, connect.NewError(connect.CodeInternal, err)
+		return claimedExecution{}, connect.NewError(connect.CodeInternal, err)
 	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		queued, err := q.GetClaimableExecutionAttemptForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
@@ -719,6 +713,13 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if err != nil {
 			return err
 		}
+		attemptNumber, err := q.CountExecutionAttemptsByTask(ctx, task.ID)
+		if err != nil {
+			return err
+		}
+		if attemptNumber > int64(task.MaxAttempts) {
+			return fmt.Errorf("task %s exceeded its execution attempt limit", task.ID)
+		}
 		attempt, err := q.GetExecutionAttemptByID(ctx, executionID)
 		if err != nil {
 			return err
@@ -729,31 +730,22 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}
 		now := time.Now().UTC()
 		eventCreatedAt = now
-		rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-			RunnerID:       nullString(runnerID),
-			ExecutionID:    executionID,
-			ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-			LeaseExpiresAt: sql.NullTime{Time: now.Add(lease), Valid: true},
-			StartedAt:      sql.NullTime{Time: now, Valid: true},
-			UpdatedAt:      now,
-			LastEventAt:    sql.NullTime{Time: now, Valid: true},
-			ID:             task.ID,
-		})
-		if err != nil {
-			return err
-		}
-		if rows == 0 {
-			return errNoClaimableTask
-		}
 		attemptRows, err := q.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
 			RunnerID: nullString(runnerID), ClaimedAt: sql.NullTime{Time: now, Valid: true},
 			LeaseExpiresAt: sql.NullTime{Time: now.Add(lease), Valid: true},
-			StartedAt:      sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, ID: executionID,
+			StartedAt:      sql.NullTime{Time: now, Valid: true}, LastEventAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, ID: executionID,
 		})
 		if err != nil {
 			return err
 		}
 		if attemptRows == 0 {
+			return errNoClaimableTask
+		}
+		rows, err := q.MarkTaskRunning(ctx, repository.MarkTaskRunningParams{UpdatedAt: now, ID: task.ID})
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
 			return errNoClaimableTask
 		}
 		if _, err := q.MarkUserPromptRunningByTask(ctx, repository.MarkUserPromptRunningByTaskParams{
@@ -764,21 +756,20 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			return err
 		}
 		task.Status = "running"
-		task.RunnerID = nullString(runnerID)
-		task.ExecutionID = executionID
-		task.ClaimedAt = sql.NullTime{Time: now, Valid: true}
-		task.LeaseExpiresAt = sql.NullTime{Time: now.Add(lease), Valid: true}
-		task.StartedAt = sql.NullTime{Time: now, Valid: true}
 		task.UpdatedAt = now
-		task.LastEventAt = sql.NullTime{Time: now, Valid: true}
-		task.Attempt++
+		attempt.Status = "running"
+		attempt.RunnerID = nullString(runnerID)
+		attempt.ClaimedAt = sql.NullTime{Time: now, Valid: true}
+		attempt.LeaseExpiresAt = sql.NullTime{Time: now.Add(lease), Valid: true}
+		attempt.StartedAt = sql.NullTime{Time: now, Valid: true}
+		attempt.UpdatedAt = now
 		eventPayload = mustMarshalJSON(map[string]any{
 			"task_id":      task.ID,
 			"runner_id":    runnerID,
 			"execution_id": executionID,
-			"attempt":      task.Attempt,
+			"attempt":      attemptNumber,
 			"status":       "running",
-			"summary":      fmt.Sprintf("Task claimed by runner for attempt %d", task.Attempt),
+			"summary":      fmt.Sprintf("Task claimed by runner for attempt %d", attemptNumber),
 		})
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
 			ID:                 eventID,
@@ -794,22 +785,22 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}); err != nil {
 			return err
 		}
-		claimed = task
+		claimed = claimedExecution{Task: task, Prompt: prompt, Attempt: attempt, AttemptNumber: attemptNumber}
 		return nil
 	})
 	if err == nil {
 		if s.eventBus != nil {
-			s.eventBus.PublishTaskEvent(claimed.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.Attempt), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
+			s.eventBus.PublishTaskEvent(claimed.Task.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
 		}
 		if s.callbacks != nil {
 			dispatch := TaskEventCallbackContext{
 				ID:        eventID,
-				TaskID:    claimed.ID,
-				TeamID:    claimed.TeamID.String,
-				Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, claimed.ID),
+				TaskID:    claimed.Task.ID,
+				TeamID:    claimed.Task.TeamID.String,
+				Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, claimed.Task.ID),
 				Status:    "running",
 				EventType: "task.claimed",
-				Summary:   fmt.Sprintf("Task claimed by runner for attempt %d", claimed.Attempt),
+				Summary:   fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber),
 				Payload:   eventPayload,
 				CreatedAt: eventCreatedAt,
 			}
@@ -871,42 +862,18 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		Payload:            payload,
 		CreatedAt:          now,
 	}
-	updateParams := repository.UpdateTaskFromRunnerEventParams{
-		Status:                status,
-		Summary:               nullString(event.Summary),
-		Error:                 nullString(event.Error),
-		ErrorCategory:         errorCategory,
-		SessionExport:         nullString(event.SessionExport),
-		ProviderID:            event.ProviderId,
-		ModelID:               event.ModelId,
-		VariantID:             event.VariantId,
-		OpencodeSessionID:     event.OpencodeSessionId,
-		RunnerImageDigest:     event.RunnerImageDigest,
-		LeaseExpiresAt:        lease,
-		StartedAt:             parseOptionalTime(event.StartedAt),
-		EndedAt:               parseOptionalTime(event.EndedAt),
-		UpdatedAt:             now,
-		LastEventAt:           sql.NullTime{Time: now, Valid: true},
-		TotalInputTokens:      tokenUsageInputTokens(event.TokenUsage),
-		TotalOutputTokens:     tokenUsageOutputTokens(event.TokenUsage),
-		TotalCacheReadTokens:  tokenUsageCacheReadTokens(event.TokenUsage),
-		TotalCacheWriteTokens: tokenUsageCacheWriteTokens(event.TokenUsage),
-		TotalReasoningTokens:  tokenUsageReasoningTokens(event.TokenUsage),
-		CostCents:             tokenUsageCostCents(event.TokenUsage),
-		ID:                    event.TaskId,
-		RunnerID:              sql.NullString{String: runnerID, Valid: true},
-		ExecutionID:           event.ExecutionId,
+	updateParams := repository.UpdateTaskAggregateFromRunnerEventParams{
+		Status:        status,
+		Summary:       nullString(event.Summary),
+		Error:         nullString(event.Error),
+		ErrorCategory: errorCategory,
+		EndedAt:       parseOptionalTime(event.EndedAt),
+		UpdatedAt:     now,
+		ID:            event.TaskId,
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		rows, err := q.UpdateTaskFromRunnerEvent(ctx, updateParams)
-		if err != nil {
-			return err
-		}
-		if rows == 0 {
-			return errTaskNotClaimed
-		}
-		if _, err := q.UpdateExecutionAttemptFromRunnerEvent(ctx, repository.UpdateExecutionAttemptFromRunnerEventParams{
+		attemptRows, err := q.UpdateExecutionAttemptFromRunnerEvent(ctx, repository.UpdateExecutionAttemptFromRunnerEventParams{
 			Status:                attemptStatus,
 			Summary:               nullString(event.Summary),
 			Error:                 nullString(event.Error),
@@ -917,15 +884,38 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			EndedAt:               attemptEndedAt,
 			WorkspacePath:         event.WorkspacePath,
 			HarnessExecutionID:    event.OpencodeSessionId,
+			RunnerImageDigest:     event.RunnerImageDigest,
 			TotalInputTokens:      tokenUsageInputTokens(event.TokenUsage),
 			TotalOutputTokens:     tokenUsageOutputTokens(event.TokenUsage),
 			TotalCacheReadTokens:  tokenUsageCacheReadTokens(event.TokenUsage),
 			TotalCacheWriteTokens: tokenUsageCacheWriteTokens(event.TokenUsage),
 			TotalReasoningTokens:  tokenUsageReasoningTokens(event.TokenUsage),
 			CostCents:             tokenUsageCostCents(event.TokenUsage),
+			LastEventAt:           sql.NullTime{Time: now, Valid: true},
 			UpdatedAt:             now,
 			ID:                    event.ExecutionId,
 			RunnerID:              nullString(runnerID),
+		})
+		if err != nil {
+			return err
+		}
+		if attemptRows == 0 {
+			return errTaskNotClaimed
+		}
+		rows, err := q.UpdateTaskAggregateFromRunnerEvent(ctx, updateParams)
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return errTaskNotClaimed
+		}
+		if _, err := q.UpdateAgentSessionFromRunnerEvent(ctx, repository.UpdateAgentSessionFromRunnerEventParams{
+			ProviderID:       event.ProviderId,
+			ModelID:          event.ModelId,
+			VariantID:        event.VariantId,
+			HarnessSessionID: event.OpencodeSessionId,
+			UpdatedAt:        now,
+			TaskID:           event.TaskId,
 		}); err != nil {
 			return err
 		}
@@ -1203,14 +1193,14 @@ func sanitizeEventTypePart(part string) string {
 	return b.String()
 }
 
-func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
+func taskToProto(task repository.ChetterTask, attempt repository.ChetterExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
 	harness := env["__chetter_harness"]
 	delete(env, "__chetter_harness")
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
-		ExecutionId:            task.ExecutionID,
+		ExecutionId:            attempt.ID,
 		AgentImage:             task.AgentImage.String,
 		Prompt:                 task.Prompt,
 		GitUrl:                 task.GitUrl.String,
@@ -1220,11 +1210,11 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 		ModelId:                task.ModelID.String,
 		VariantId:              task.VariantID.String,
 		Skills:                 skills,
-		TimeoutSeconds:         task.TimeoutSec,
+		TimeoutSeconds:         attempt.TimeoutSec,
 		MaxMemoryMb:            defaultMaxMemoryMB,
 		MaxCpu:                 defaultMaxCPU,
 		Env:                    env,
-		Attempt:                task.Attempt,
+		Attempt:                int32(attemptNumber),
 		CheckpointAfterSuccess: task.CheckpointAfterSuccess,
 		ResumeCheckpointPath:   resumeCheckpointPath,
 		ResumeWorkspacePath:    resumeWorkspacePath,
@@ -1235,11 +1225,11 @@ func taskToProto(task repository.ChetterTask, resumeCheckpointPath, resumeWorksp
 	}
 }
 
-func runningExecutionTaskIDs(values []*runnerv1.RunningExecution) []string {
+func runningExecutionAttemptIDs(values []*runnerv1.RunningExecution) []string {
 	keys := make([]string, 0, len(values))
 	for _, value := range values {
-		if value != nil && value.TaskId != "" {
-			keys = append(keys, value.TaskId)
+		if value != nil && value.ExecutionId != "" {
+			keys = append(keys, value.ExecutionId)
 		}
 	}
 	return keys

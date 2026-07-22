@@ -75,11 +75,28 @@ func teamInClause(teamIDs []string) (string, []any) {
 func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.ChetterTask, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	query := `SELECT id, status, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, opencode_session_id, runner_image_digest, commit_author_name, commit_author_email, git_identity_id, runner_id, claimed_at, lease_expires_at, attempt, skills, mcp_endpoints, env, timeout_sec, summary, error, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, last_event_at, started_at, ended_at, team_id, session_export, trigger_name, trigger_type, max_attempts, required_runner_id, checkpoint_after_success, error_category, submission_source, search_text, execution_id FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	query := `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args := append([]any{status, status}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
-	return s.scanTasks(ctx, query, args)
+	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks raw: %w", err)
+	}
+	defer rows.Close()
+	var tasks []repository.ChetterTask
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		task, err := s.repo.GetTaskByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, rows.Err()
 }
 
 // searchTasksRaw queries tasks with team, repo, and FTS search filtering.
@@ -130,34 +147,6 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
-}
-
-// scanTasks executes a query and scans the rows into ChetterTask slices.
-func (s *Service) scanTasks(ctx context.Context, query string, args []any) ([]repository.ChetterTask, error) {
-	rows, err := s.rawDB.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list tasks raw: %w", err)
-	}
-	defer rows.Close()
-	var items []repository.ChetterTask
-	for rows.Next() {
-		var i repository.ChetterTask
-		if err := rows.Scan(
-			&i.ID, &i.Status, &i.Prompt, &i.GitUrl, &i.GitRef, &i.AgentImage, &i.Agent,
-			&i.ProviderID, &i.ModelID, &i.VariantID, &i.OpencodeSessionID, &i.RunnerImageDigest,
-			&i.CommitAuthorName, &i.CommitAuthorEmail, &i.GitIdentityID, &i.RunnerID, &i.ClaimedAt, &i.LeaseExpiresAt,
-			&i.Attempt, &i.Skills, &i.McpEndpoints, &i.Env, &i.TimeoutSec, &i.Summary, &i.Error,
-			&i.TotalInputTokens, &i.TotalOutputTokens, &i.TotalCacheReadTokens, &i.TotalCacheWriteTokens,
-			&i.TotalReasoningTokens, &i.CostCents, &i.CreatedAt, &i.UpdatedAt, &i.LastEventAt,
-			&i.StartedAt, &i.EndedAt, &i.TeamID, &i.SessionExport, &i.TriggerName, &i.TriggerType,
-			&i.MaxAttempts, &i.RequiredRunnerID, &i.CheckpointAfterSuccess, &i.ErrorCategory, &i.SubmissionSource, &i.SearchText,
-			&i.ExecutionID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	return items, rows.Err()
 }
 
 // listAgentSessionsRaw queries sessions with team and repo filtering applied

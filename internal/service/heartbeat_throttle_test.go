@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 	"time"
 
@@ -57,25 +56,22 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_hb1", "x", "runner:latest")
 	now := time.Now().UTC()
-	if _, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_hb", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_hb1",
+	if _, err := q.MarkTaskRunning(ctx, repository.MarkTaskRunningParams{
+		UpdatedAt: now,
+		ID:        "task_hb1",
 	}); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
+	markPendingExecutionAttemptClaimed(t, q, "task_hb1", "runner_hb", now, now.Add(time.Minute))
 
 	// First heartbeat event — should be stored
 	_, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_hb",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:  "task_hb1",
-			Status:  "running",
-			Summary: "opencode: server.heartbeat",
+			TaskId:      "task_hb1",
+			ExecutionId: "exec_task_hb1",
+			Status:      "running",
+			Summary:     "opencode: server.heartbeat",
 		}},
 	}))
 	if err != nil {
@@ -86,9 +82,10 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_hb",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId:  "task_hb1",
-			Status:  "running",
-			Summary: "opencode: server.heartbeat",
+			TaskId:      "task_hb1",
+			ExecutionId: "exec_task_hb1",
+			Status:      "running",
+			Summary:     "opencode: server.heartbeat",
 		}},
 	}))
 	if err != nil {
@@ -116,14 +113,14 @@ func TestHeartbeatThrottlingStoresFirstButNotSecond(t *testing.T) {
 	}
 
 	// Verify lease was still renewed on both calls despite throttling the event row
-	task, err := q.GetTaskByID(ctx, "task_hb1")
+	attempt, err := q.GetExecutionAttemptByID(ctx, "exec_task_hb1")
 	if err != nil {
-		t.Fatalf("get task: %v", err)
+		t.Fatalf("get execution attempt: %v", err)
 	}
-	if !task.LeaseExpiresAt.Valid {
+	if !attempt.LeaseExpiresAt.Valid {
 		t.Error("lease_expires_at should be valid")
 	}
-	if task.LeaseExpiresAt.Time.Before(now.Add(50 * time.Second)) {
+	if attempt.LeaseExpiresAt.Time.Before(now.Add(50 * time.Second)) {
 		t.Error("lease should have been renewed to at least now+60s")
 	}
 }
@@ -134,26 +131,23 @@ func TestNonHeartbeatEventsAlwaysStored(t *testing.T) {
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_nonhb", "x", "runner:latest")
 	now := time.Now().UTC()
-	if _, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_nh", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(time.Minute), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             "task_nonhb",
+	if _, err := q.MarkTaskRunning(ctx, repository.MarkTaskRunningParams{
+		UpdatedAt: now,
+		ID:        "task_nonhb",
 	}); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
+	markPendingExecutionAttemptClaimed(t, q, "task_nonhb", "runner_nh", now, now.Add(time.Minute))
 
 	// Send two non-heartbeat running events rapidly — both should be stored
 	for i := 0; i < 2; i++ {
 		_, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 			RunnerId: "runner_nh",
 			Events: []*runnerv1.TaskEvent{{
-				TaskId:  "task_nonhb",
-				Status:  "running",
-				Summary: `opencode: session.status {"status":"busy"}`,
+				TaskId:      "task_nonhb",
+				ExecutionId: "exec_task_nonhb",
+				Status:      "running",
+				Summary:     `opencode: session.status {"status":"busy"}`,
 			}},
 		}))
 		if err != nil {

@@ -272,29 +272,34 @@ func (s *Service) reapExpiredLeases() {
 	now := time.Now().UTC()
 	expiredBefore := sql.NullTime{Time: now, Valid: true}
 	var reclaimed int64
+	var failed int64
 	var reclaimEvents []TaskEventCallbackContext
 	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		candidates, err := q.ListReclaimableExpiredLeases(ctx, expiredBefore)
-		if err != nil {
-			return err
-		}
-		reclaimed, err = q.ReclaimExpiredLeases(ctx, repository.ReclaimExpiredLeasesParams{
-			UpdatedAt:      now,
-			LeaseExpiresAt: expiredBefore,
-		})
+		reclaimed = 0
+		failed = 0
+		reclaimEvents = reclaimEvents[:0]
+		candidates, err := q.ListReclaimableExecutionAttemptsForUpdate(ctx, expiredBefore)
 		if err != nil {
 			return err
 		}
 		for _, task := range candidates {
-			oldSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+			attemptCount, err := q.CountExecutionAttemptsByTask(ctx, task.TaskID)
+			if err != nil {
+				return err
+			}
+			if attemptCount >= int64(task.MaxAttempts) {
+				continue
+			}
+			task.Attempt = int32(attemptCount)
+			oldSession, err := q.GetAgentSessionByTaskID(ctx, task.TaskID)
 			if err != nil {
 				return fmt.Errorf("get reclaimed task session: %w", err)
 			}
-			oldPrompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+			oldPrompt, err := q.GetUserPromptByTaskID(ctx, task.TaskID)
 			if err != nil {
 				return fmt.Errorf("get reclaimed task prompt: %w", err)
 			}
-			newSessionSequence, err := q.GetNextAgentSessionSequence(ctx, task.ID)
+			newSessionSequence, err := q.GetNextAgentSessionSequence(ctx, task.TaskID)
 			if err != nil {
 				return fmt.Errorf("get next session sequence: %w", err)
 			}
@@ -311,14 +316,29 @@ func (s *Service) reapExpiredLeases() {
 				return err
 			}
 			reclaimError := fmt.Sprintf("runner lease expired after attempt %d", task.Attempt)
-			if _, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
+			rows, err := q.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
 				Error:     nullString(reclaimError),
 				EndedAt:   sql.NullTime{Time: now, Valid: true},
 				UpdatedAt: now,
-				ID:        task.ExecutionID,
-			}); err != nil {
+				ID:        task.ExecutionAttemptID,
+			})
+			if err != nil {
 				return err
 			}
+			if rows != 1 {
+				return fmt.Errorf("execution attempt %s is no longer running", task.ExecutionAttemptID)
+			}
+			rows, err = q.RequeueTaskAfterExecutionAttemptLost(ctx, repository.RequeueTaskAfterExecutionAttemptLostParams{
+				UpdatedAt: now,
+				TaskID:    task.TaskID,
+			})
+			if err != nil {
+				return err
+			}
+			if rows != 1 {
+				return fmt.Errorf("task %s is no longer running execution attempt %s", task.TaskID, task.ExecutionAttemptID)
+			}
+			reclaimed++
 			if _, err := q.AbandonUserPrompt(ctx, repository.AbandonUserPromptParams{
 				Error:     nullString(reclaimError),
 				EndedAt:   sql.NullTime{Time: now, Valid: true},
@@ -337,7 +357,7 @@ func (s *Service) reapExpiredLeases() {
 			sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+oldSession.Agent.String+" "+oldSession.ModelID.String+" "+oldSession.GitUrl.String), " ")
 			if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
 				ID:          newSessionID,
-				TaskID:      task.ID,
+				TaskID:      task.TaskID,
 				Sequence:    newSessionSequence,
 				TeamID:      oldSession.TeamID,
 				Status:      "running",
@@ -360,7 +380,7 @@ func (s *Service) reapExpiredLeases() {
 			if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
 				ID:             newPromptID,
 				AgentSessionID: newSessionID,
-				TaskID:         task.ID,
+				TaskID:         task.TaskID,
 				Sequence:       1,
 				Status:         "pending",
 				Prompt:         oldPrompt.Prompt,
@@ -370,7 +390,7 @@ func (s *Service) reapExpiredLeases() {
 				return fmt.Errorf("insert reclaimed task prompt: %w", err)
 			}
 			if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
-				ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+				ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, TimeoutSec: task.TimeoutSec, CreatedAt: now, UpdatedAt: now,
 			}); err != nil {
 				return fmt.Errorf("insert reclaimed execution attempt: %w", err)
 			}
@@ -380,9 +400,9 @@ func (s *Service) reapExpiredLeases() {
 			}
 			summary := fmt.Sprintf("Runner lease expired after attempt %d; task reclaimed for a fresh execution", task.Attempt)
 			payload := mustMarshalJSON(map[string]any{
-				"task_id":          task.ID,
+				"task_id":          task.TaskID,
 				"runner_id":        task.RunnerID.String,
-				"execution_id":     task.ExecutionID,
+				"execution_id":     task.ExecutionAttemptID,
 				"attempt":          task.Attempt,
 				"lease_expires_at": task.LeaseExpiresAt.Time,
 				"status":           "pending",
@@ -390,9 +410,9 @@ func (s *Service) reapExpiredLeases() {
 			})
 			event := TaskEventCallbackContext{
 				ID:        eventID,
-				TaskID:    task.ID,
+				TaskID:    task.TaskID,
 				TeamID:    task.TeamID.String,
-				Subject:   fmt.Sprintf("control.reaper.%s", task.ID),
+				Subject:   fmt.Sprintf("control.reaper.%s", task.TaskID),
 				Status:    "pending",
 				EventType: "task.reclaimed",
 				Summary:   summary,
@@ -404,7 +424,7 @@ func (s *Service) reapExpiredLeases() {
 				TaskID:             event.TaskID,
 				AgentSessionID:     nullString(oldSession.ID),
 				UserPromptID:       nullString(oldPrompt.ID),
-				ExecutionAttemptID: nullString(task.ExecutionID),
+				ExecutionAttemptID: nullString(task.ExecutionAttemptID),
 				Subject:            event.Subject,
 				Status:             event.Status,
 				EventType:          event.EventType,
@@ -421,21 +441,21 @@ func (s *Service) reapExpiredLeases() {
 			}
 			restartSummary := fmt.Sprintf("Started agent session %s after %s was abandoned", newSessionID, oldSession.ID)
 			restartPayload := mustMarshalJSON(map[string]any{
-				"task_id":              task.ID,
+				"task_id":              task.TaskID,
 				"old_agent_session_id": oldSession.ID,
 				"new_agent_session_id": newSessionID,
 				"old_user_prompt_id":   oldPrompt.ID,
 				"new_user_prompt_id":   newPromptID,
-				"execution_id":         task.ExecutionID,
+				"execution_id":         task.ExecutionAttemptID,
 				"reason":               "lease_expired",
 				"status":               "pending",
 				"summary":              restartSummary,
 			})
 			restartEvent := TaskEventCallbackContext{
 				ID:        restartEventID,
-				TaskID:    task.ID,
+				TaskID:    task.TaskID,
 				TeamID:    task.TeamID.String,
-				Subject:   fmt.Sprintf("control.reaper.%s", task.ID),
+				Subject:   fmt.Sprintf("control.reaper.%s", task.TaskID),
 				Status:    "pending",
 				EventType: "task.session_restarted",
 				Summary:   restartSummary,
@@ -457,6 +477,21 @@ func (s *Service) reapExpiredLeases() {
 			}
 			reclaimEvents = append(reclaimEvents, restartEvent)
 		}
+		if _, err := q.FailExpiredExecutionAttempts(ctx, repository.FailExpiredExecutionAttemptsParams{
+			EndedAt:        sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:      now,
+			LeaseExpiresAt: expiredBefore,
+		}); err != nil {
+			return err
+		}
+		failed, err = q.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
+			EndedAt:        sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:      now,
+			LeaseExpiresAt: expiredBefore,
+		})
+		if err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -476,19 +511,6 @@ func (s *Service) reapExpiredLeases() {
 			}
 		}
 	}
-	failed, err := s.repo.FailExpiredLeases(ctx, repository.FailExpiredLeasesParams{
-		EndedAt:        sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: expiredBefore,
-	})
-	if err != nil {
-		slog.Error("lease reaper fail failed", "error", err)
-		if isQuotaExhaustedError(err) {
-			s.quotaExhausted.Store(true)
-		}
-		return
-	}
 	if reclaimed > 0 || failed > 0 {
 		slog.Info("reaped expired task leases", "reclaimed", reclaimed, "failed", failed)
 	}
@@ -498,40 +520,39 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 	defer cancel()
 	now := time.Now().UTC()
-	failedTasks, err := s.repo.FailPendingResumeTasksForMissingRunner(ctx, repository.FailPendingResumeTasksForMissingRunnerParams{
-		EndedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:    now,
-		LastEventAt:  sql.NullTime{Time: now, Valid: true},
-		StaleSeconds: runnerPresenceMaxSec,
+	var failedAttempts, failedTasks, failedRuns, failedSessions int64
+	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		var err error
+		failedAttempts, err = q.FailPendingExecutionAttemptsForMissingRunner(ctx, repository.FailPendingExecutionAttemptsForMissingRunnerParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, StaleSeconds: runnerPresenceMaxSec,
+		})
+		if err != nil {
+			return err
+		}
+		failedTasks, err = q.FailPendingResumeTasksForMissingRunner(ctx, repository.FailPendingResumeTasksForMissingRunnerParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now,
+		})
+		if err != nil {
+			return err
+		}
+		failedRuns, err = q.FailPendingUserPromptsForUnavailableRunner(ctx, repository.FailPendingUserPromptsForUnavailableRunnerParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now,
+		})
+		if err != nil {
+			return err
+		}
+		failedSessions, err = q.MarkResumingSessionsFailedForUnavailableRunner(ctx, now)
+		return err
 	})
 	if err != nil {
-		slog.Error("pinned resume reaper task failure failed", "error", err)
+		slog.Error("pinned resume reaper failed", "error", err)
 		if isQuotaExhaustedError(err) {
 			s.quotaExhausted.Store(true)
 		}
 		return
 	}
-	failedRuns, err := s.repo.FailPendingUserPromptsForUnavailableRunner(ctx, repository.FailPendingUserPromptsForUnavailableRunnerParams{
-		EndedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now,
-	})
-	if err != nil {
-		slog.Error("pinned resume reaper run failure failed", "error", err)
-		if isQuotaExhaustedError(err) {
-			s.quotaExhausted.Store(true)
-		}
-		return
-	}
-	failedSessions, err := s.repo.MarkResumingSessionsFailedForUnavailableRunner(ctx, now)
-	if err != nil {
-		slog.Error("pinned resume reaper session failure failed", "error", err)
-		if isQuotaExhaustedError(err) {
-			s.quotaExhausted.Store(true)
-		}
-		return
-	}
-	if failedTasks > 0 || failedRuns > 0 || failedSessions > 0 {
-		slog.Info("failed pinned resume work for unavailable runners", "tasks", failedTasks, "runs", failedRuns, "sessions", failedSessions)
+	if failedAttempts > 0 || failedTasks > 0 || failedRuns > 0 || failedSessions > 0 {
+		slog.Info("failed pinned resume work for unavailable runners", "attempts", failedAttempts, "tasks", failedTasks, "runs", failedRuns, "sessions", failedSessions)
 	}
 }
 
@@ -733,7 +754,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Skills:                 skills,
 			McpEndpoints:           nullableJSON(mcpEndpoints),
 			Env:                    env,
-			TimeoutSec:             int32(in.TimeoutSec),
 			SearchText:             nullString(taskSearchText),
 			CreatedAt:              now,
 			UpdatedAt:              now,
@@ -777,7 +797,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			return fmt.Errorf("insert user prompt: %w", err)
 		}
 		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
-			ID: attemptID, UserPromptID: runID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+			ID: attemptID, UserPromptID: runID, Sequence: 1, TimeoutSec: int32(in.TimeoutSec), CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("insert pending execution attempt: %w", err)
 		}
@@ -836,7 +856,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
 		})
 	}
-	return repoTaskToStoreRecord(task), nil
+	record := repoTaskToStoreRecord(task)
+	record.ExecutionID = attemptID
+	record.TimeoutSec = in.TimeoutSec
+	return record, nil
 }
 
 // RecoverTask starts a fresh agent session under an existing terminal task.
@@ -887,16 +910,22 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 		if !oldPrompt.SessionExport.Valid || strings.TrimSpace(oldPrompt.SessionExport.String) == "" {
 			return fmt.Errorf("no session export available for task %s", taskID)
 		}
+		oldAttempts, err := q.ListExecutionAttemptsByPrompt(ctx, oldPrompt.ID)
+		if err != nil {
+			return fmt.Errorf("get recovery source attempts: %w", err)
+		}
+		recoveryTimeoutSec := int32(s.cfg.DefaultTaskTimeoutSec)
+		if len(oldAttempts) > 0 {
+			recoveryTimeoutSec = oldAttempts[len(oldAttempts)-1].TimeoutSec
+		}
 		sequence, err := q.GetNextAgentSessionSequence(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("get recovery session sequence: %w", err)
 		}
 		checkpointAfterSuccess := oldSession.ResumeMode != "none"
 		rows, err := q.RequeueTaskForPrompt(ctx, repository.RequeueTaskForPromptParams{
-			CheckpointAfterSuccess: checkpointAfterSuccess,
-			TimeoutSec:             orig.TimeoutSec,
-			UpdatedAt:              now,
-			ID:                     taskID,
+			UpdatedAt: now,
+			ID:        taskID,
 		})
 		if err != nil {
 			return fmt.Errorf("requeue recovery task: %w", err)
@@ -945,7 +974,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			return fmt.Errorf("insert recovery prompt: %w", err)
 		}
 		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
-			ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, CreatedAt: now, UpdatedAt: now,
+			ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, TimeoutSec: recoveryTimeoutSec, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("insert recovery execution attempt: %w", err)
 		}
@@ -1086,11 +1115,8 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 			return fmt.Errorf("get next prompt sequence: %w", err)
 		}
 		rows, err := q.RequeueTaskForPrompt(ctx, repository.RequeueTaskForPromptParams{
-			RequiredRunnerID:       sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
-			CheckpointAfterSuccess: true,
-			TimeoutSec:             int32(timeoutSec),
-			UpdatedAt:              now,
-			ID:                     taskID,
+			UpdatedAt: now,
+			ID:        taskID,
 		})
 		if err != nil {
 			return fmt.Errorf("requeue task: %w", err)
@@ -1114,7 +1140,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
 			ID: attemptID, UserPromptID: runID, Sequence: 1,
 			RequiredRunnerID: sql.NullString{String: session.PinnedRunnerID.String, Valid: true},
-			CreatedAt:        now, UpdatedAt: now,
+			TimeoutSec:       int32(timeoutSec), CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("insert pending execution attempt: %w", err)
 		}
@@ -1150,8 +1176,11 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		SourceID:   taskID,
 		Detail:     fmt.Sprintf("session resumed via API: prompt=%.100s", prompt),
 	})
+	taskRecord := repoTaskToStoreRecord(task)
+	taskRecord.ExecutionID = attemptID
+	taskRecord.TimeoutSec = timeoutSec
 	return ResumeAgentSessionOutput{
-		Task:   taskToolRecord(repoTaskToStoreRecord(task)),
+		Task:   taskToolRecord(taskRecord),
 		Prompt: userPromptRecord(run),
 	}, nil
 }
@@ -1201,10 +1230,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 	skills := parseJSON[[]string](task.Skills, "task:"+task.ID+" skills")
 	mcpEndpoints := parseJSON[[]string](optionalJSON(task.McpEndpoints), "task:"+task.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](task.Env, "task:"+task.ID+" env")
-	var startedAt, endedAt *time.Time
-	if task.StartedAt.Valid {
-		startedAt = &task.StartedAt.Time
-	}
+	var endedAt *time.Time
 	if task.EndedAt.Valid {
 		endedAt = &task.EndedAt.Time
 	}
@@ -1220,9 +1246,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		ProviderID:            task.ProviderID.String,
 		ModelID:               task.ModelID.String,
 		VariantID:             task.VariantID.String,
-		ExecutionID:           task.ExecutionID,
 		OpenCodeSessionID:     task.OpencodeSessionID.String,
-		RunnerImageDigest:     task.RunnerImageDigest.String,
 		CommitAuthorName:      task.CommitAuthorName.String,
 		CommitAuthorEmail:     task.CommitAuthorEmail.String,
 		GitIdentityID:         task.GitIdentityID.String,
@@ -1232,13 +1256,11 @@ func repoTaskToStoreRecord(task repository.ChetterTask) store.TaskRecord {
 		Skills:                skills,
 		McpEndpoints:          mcpEndpoints,
 		Env:                   env,
-		TimeoutSec:            int(task.TimeoutSec),
 		Summary:               task.Summary.String,
 		Error:                 task.Error.String,
 		ErrorCategory:         task.ErrorCategory.String,
 		CreatedAt:             task.CreatedAt,
 		UpdatedAt:             task.UpdatedAt,
-		StartedAt:             startedAt,
 		EndedAt:               endedAt,
 		TotalInputTokens:      task.TotalInputTokens,
 		TotalOutputTokens:     task.TotalOutputTokens,

@@ -130,6 +130,9 @@ type ChetterExecutionAttempt struct {
 	CostCents             int64          `json:"cost_cents"`
 	CreatedAt             time.Time      `json:"created_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
+	TimeoutSec            int32          `json:"timeout_sec"`
+	LastEventAt           sql.NullTime   `json:"last_event_at"`
+	RunnerImageDigest     sql.NullString `json:"runner_image_digest"`
 }
 
 type ChetterModelCatalog struct {
@@ -174,16 +177,10 @@ type ChetterTask struct {
 	ModelID                sql.NullString   `json:"model_id"`
 	VariantID              sql.NullString   `json:"variant_id"`
 	OpencodeSessionID      sql.NullString   `json:"opencode_session_id"`
-	RunnerImageDigest      sql.NullString   `json:"runner_image_digest"`
 	CommitAuthorName       sql.NullString   `json:"commit_author_name"`
 	CommitAuthorEmail      sql.NullString   `json:"commit_author_email"`
-	RunnerID               sql.NullString   `json:"runner_id"`
-	ClaimedAt              sql.NullTime     `json:"claimed_at"`
-	LeaseExpiresAt         sql.NullTime     `json:"lease_expires_at"`
-	Attempt                int32            `json:"attempt"`
 	Skills                 json.RawMessage  `json:"skills"`
 	Env                    json.RawMessage  `json:"env"`
-	TimeoutSec             int32            `json:"timeout_sec"`
 	Summary                sql.NullString   `json:"summary"`
 	Error                  sql.NullString   `json:"error"`
 	TotalInputTokens       int64            `json:"total_input_tokens"`
@@ -194,22 +191,18 @@ type ChetterTask struct {
 	CostCents              int64            `json:"cost_cents"`
 	CreatedAt              time.Time        `json:"created_at"`
 	UpdatedAt              time.Time        `json:"updated_at"`
-	LastEventAt            sql.NullTime     `json:"last_event_at"`
-	StartedAt              sql.NullTime     `json:"started_at"`
 	EndedAt                sql.NullTime     `json:"ended_at"`
 	TeamID                 sql.NullString   `json:"team_id"`
 	SessionExport          sql.NullString   `json:"session_export"`
 	TriggerName            sql.NullString   `json:"trigger_name"`
 	TriggerType            sql.NullString   `json:"trigger_type"`
 	MaxAttempts            int32            `json:"max_attempts"`
-	RequiredRunnerID       sql.NullString   `json:"required_runner_id"`
 	CheckpointAfterSuccess bool             `json:"checkpoint_after_success"`
 	ErrorCategory          sql.NullString   `json:"error_category"`
 	SubmissionSource       string           `json:"submission_source"`
 	SearchText             sql.NullString   `json:"search_text"`
 	GitIdentityID          sql.NullString   `json:"git_identity_id"`
 	McpEndpoints           *json.RawMessage `json:"mcp_endpoints"`
-	ExecutionID            string           `json:"execution_id"`
 }
 
 type ChetterTaskArtifact struct {

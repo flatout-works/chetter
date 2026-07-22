@@ -9,16 +9,187 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/lib/pq"
 )
 
+const cancelExecutionAttemptsByTask = `-- name: CancelExecutionAttemptsByTask :execrows
+UPDATE chetter_execution_attempts attempt
+SET status = 'cancelled',
+    error = $1,
+    error_category = 'cancelled',
+    lease_expires_at = NULL,
+    ended_at = COALESCE(attempt.ended_at, $2),
+    updated_at = $3
+FROM chetter_user_prompts prompt
+WHERE prompt.id = attempt.user_prompt_id
+  AND prompt.task_id = $4
+  AND attempt.status IN ('pending', 'running')
+`
+
+type CancelExecutionAttemptsByTaskParams struct {
+	Error     sql.NullString `json:"error"`
+	EndedAt   sql.NullTime   `json:"ended_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	TaskID    string         `json:"task_id"`
+}
+
+func (q *Queries) CancelExecutionAttemptsByTask(ctx context.Context, arg CancelExecutionAttemptsByTaskParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, cancelExecutionAttemptsByTask,
+		arg.Error,
+		arg.EndedAt,
+		arg.UpdatedAt,
+		arg.TaskID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelPendingExecutionAttempts = `-- name: CancelPendingExecutionAttempts :execrows
+UPDATE chetter_execution_attempts
+SET status = 'cancelled',
+    error = $1,
+    error_category = 'cancelled',
+    lease_expires_at = NULL,
+    ended_at = COALESCE(ended_at, $2),
+    updated_at = $3
+WHERE status = 'pending'
+`
+
+type CancelPendingExecutionAttemptsParams struct {
+	Error     sql.NullString `json:"error"`
+	EndedAt   sql.NullTime   `json:"ended_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
+func (q *Queries) CancelPendingExecutionAttempts(ctx context.Context, arg CancelPendingExecutionAttemptsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, cancelPendingExecutionAttempts, arg.Error, arg.EndedAt, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const countExecutionAttemptsByTask = `-- name: CountExecutionAttemptsByTask :one
+SELECT COUNT(*)
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE prompt.task_id = $1
+`
+
+func (q *Queries) CountExecutionAttemptsByTask(ctx context.Context, taskID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countExecutionAttemptsByTask, taskID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const extendActiveExecutionAttemptTimeout = `-- name: ExtendActiveExecutionAttemptTimeout :execrows
+UPDATE chetter_execution_attempts attempt
+SET timeout_sec = attempt.timeout_sec + $1,
+    updated_at = $2
+FROM chetter_user_prompts prompt
+WHERE prompt.id = attempt.user_prompt_id
+  AND prompt.task_id = $3
+  AND attempt.status IN ('pending', 'running')
+`
+
+type ExtendActiveExecutionAttemptTimeoutParams struct {
+	ExtensionSec int32     `json:"extension_sec"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	TaskID       string    `json:"task_id"`
+}
+
+func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg ExtendActiveExecutionAttemptTimeoutParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, extendActiveExecutionAttemptTimeout, arg.ExtensionSec, arg.UpdatedAt, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const failExpiredExecutionAttempts = `-- name: FailExpiredExecutionAttempts :execrows
+UPDATE chetter_execution_attempts attempt
+SET status = 'error',
+    error = 'runner lease expired after ' || counts.attempt_count || ' attempts',
+    error_category = 'timeout',
+    ended_at = $1,
+    updated_at = $2
+FROM chetter_user_prompts prompt, chetter_tasks task, (
+    SELECT counted_prompt.task_id, COUNT(*) AS attempt_count
+    FROM chetter_execution_attempts counted_attempt
+    JOIN chetter_user_prompts counted_prompt ON counted_prompt.id = counted_attempt.user_prompt_id
+    GROUP BY counted_prompt.task_id
+) counts
+WHERE prompt.id = attempt.user_prompt_id
+  AND task.id = prompt.task_id
+  AND counts.task_id = task.id
+  AND attempt.status = 'running'
+  AND attempt.lease_expires_at IS NOT NULL
+  AND attempt.lease_expires_at < $3
+  AND counts.attempt_count >= task.max_attempts
+`
+
+type FailExpiredExecutionAttemptsParams struct {
+	EndedAt        sql.NullTime `json:"ended_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	LeaseExpiresAt sql.NullTime `json:"lease_expires_at"`
+}
+
+func (q *Queries) FailExpiredExecutionAttempts(ctx context.Context, arg FailExpiredExecutionAttemptsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failExpiredExecutionAttempts, arg.EndedAt, arg.UpdatedAt, arg.LeaseExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const failPendingExecutionAttemptsForMissingRunner = `-- name: FailPendingExecutionAttemptsForMissingRunner :execrows
+UPDATE chetter_execution_attempts attempt
+SET status = 'error',
+    error = 'pinned runner ' || attempt.required_runner_id || ' is not alive',
+    error_category = 'runner_unavailable',
+    ended_at = $1,
+    updated_at = $2
+FROM chetter_user_prompts prompt, chetter_agent_sessions session
+WHERE prompt.id = attempt.user_prompt_id
+  AND session.id = prompt.agent_session_id
+  AND attempt.status = 'pending'
+  AND session.status = 'resuming'
+  AND attempt.required_runner_id IS NOT NULL
+  AND attempt.required_runner_id <> ''
+  AND NOT EXISTS (
+    SELECT 1 FROM chetter_runners runner
+    WHERE runner.id = attempt.required_runner_id
+      AND runner.status = 'active'
+      AND runner.last_seen_at > NOW() - ($3 * INTERVAL '1 second')
+  )
+`
+
+type FailPendingExecutionAttemptsForMissingRunnerParams struct {
+	EndedAt      sql.NullTime `json:"ended_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	StaleSeconds interface{}  `json:"stale_seconds"`
+}
+
+func (q *Queries) FailPendingExecutionAttemptsForMissingRunner(ctx context.Context, arg FailPendingExecutionAttemptsForMissingRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingExecutionAttemptsForMissingRunner, arg.EndedAt, arg.UpdatedAt, arg.StaleSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getClaimableExecutionAttemptForUpdate = `-- name: GetClaimableExecutionAttemptForUpdate :one
-SELECT attempt.id AS execution_attempt_id, prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
+SELECT attempt.id AS execution_attempt_id, attempt.sequence,
+       prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
-  AND task.attempt < task.max_attempts
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = $1)
 ORDER BY attempt.created_at ASC
 LIMIT 1
@@ -27,6 +198,7 @@ FOR UPDATE SKIP LOCKED
 
 type GetClaimableExecutionAttemptForUpdateRow struct {
 	ExecutionAttemptID string `json:"execution_attempt_id"`
+	Sequence           int32  `json:"sequence"`
 	TaskID             string `json:"task_id"`
 	UserPromptID       string `json:"user_prompt_id"`
 	LockedTaskID       string `json:"locked_task_id"`
@@ -37,6 +209,7 @@ func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, run
 	var i GetClaimableExecutionAttemptForUpdateRow
 	err := row.Scan(
 		&i.ExecutionAttemptID,
+		&i.Sequence,
 		&i.TaskID,
 		&i.UserPromptID,
 		&i.LockedTaskID,
@@ -45,7 +218,7 @@ func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, run
 }
 
 const getExecutionAttemptByID = `-- name: GetExecutionAttemptByID :one
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at FROM chetter_execution_attempts WHERE id = $1
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest FROM chetter_execution_attempts WHERE id = $1
 `
 
 func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (ChetterExecutionAttempt, error) {
@@ -77,6 +250,9 @@ func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (Chett
 		&i.CostCents,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TimeoutSec,
+		&i.LastEventAt,
+		&i.RunnerImageDigest,
 	)
 	return i, err
 }
@@ -96,8 +272,8 @@ func (q *Queries) GetNextExecutionAttemptSequence(ctx context.Context, userPromp
 
 const insertExecutionAttempt = `-- name: InsertExecutionAttempt :exec
 INSERT INTO chetter_execution_attempts
-    (id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, created_at, updated_at)
-VALUES ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10)
+    (id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, timeout_sec, last_event_at, started_at, created_at, updated_at)
+VALUES ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
 
 type InsertExecutionAttemptParams struct {
@@ -108,6 +284,8 @@ type InsertExecutionAttemptParams struct {
 	RequiredRunnerID sql.NullString `json:"required_runner_id"`
 	ClaimedAt        sql.NullTime   `json:"claimed_at"`
 	LeaseExpiresAt   sql.NullTime   `json:"lease_expires_at"`
+	TimeoutSec       int32          `json:"timeout_sec"`
+	LastEventAt      sql.NullTime   `json:"last_event_at"`
 	StartedAt        sql.NullTime   `json:"started_at"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
@@ -122,6 +300,8 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg InsertExecutio
 		arg.RequiredRunnerID,
 		arg.ClaimedAt,
 		arg.LeaseExpiresAt,
+		arg.TimeoutSec,
+		arg.LastEventAt,
 		arg.StartedAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -131,8 +311,8 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg InsertExecutio
 
 const insertPendingExecutionAttempt = `-- name: InsertPendingExecutionAttempt :exec
 INSERT INTO chetter_execution_attempts
-    (id, user_prompt_id, sequence, status, required_runner_id, created_at, updated_at)
-VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+    (id, user_prompt_id, sequence, status, required_runner_id, timeout_sec, created_at, updated_at)
+VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 `
 
 type InsertPendingExecutionAttemptParams struct {
@@ -140,6 +320,7 @@ type InsertPendingExecutionAttemptParams struct {
 	UserPromptID     string         `json:"user_prompt_id"`
 	Sequence         int32          `json:"sequence"`
 	RequiredRunnerID sql.NullString `json:"required_runner_id"`
+	TimeoutSec       int32          `json:"timeout_sec"`
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 }
@@ -150,6 +331,7 @@ func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg InsertP
 		arg.UserPromptID,
 		arg.Sequence,
 		arg.RequiredRunnerID,
+		arg.TimeoutSec,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -157,7 +339,7 @@ func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg InsertP
 }
 
 const listExecutionAttemptsByPrompt = `-- name: ListExecutionAttemptsByPrompt :many
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at FROM chetter_execution_attempts
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest FROM chetter_execution_attempts
 WHERE user_prompt_id = $1
 ORDER BY sequence ASC, created_at ASC
 `
@@ -197,6 +379,119 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 			&i.CostCents,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TimeoutSec,
+			&i.LastEventAt,
+			&i.RunnerImageDigest,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExecutionAttemptsForHeartbeat = `-- name: ListExecutionAttemptsForHeartbeat :many
+SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error, prompt.task_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE attempt.id = ANY($1::text[])
+  AND attempt.runner_id = $2
+`
+
+type ListExecutionAttemptsForHeartbeatParams struct {
+	ExecutionIds []string       `json:"execution_ids"`
+	RunnerID     sql.NullString `json:"runner_id"`
+}
+
+type ListExecutionAttemptsForHeartbeatRow struct {
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	Status             string         `json:"status"`
+	Error              sql.NullString `json:"error"`
+	TaskID             string         `json:"task_id"`
+}
+
+func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg ListExecutionAttemptsForHeartbeatParams) ([]ListExecutionAttemptsForHeartbeatRow, error) {
+	rows, err := q.db.QueryContext(ctx, listExecutionAttemptsForHeartbeat, pq.Array(arg.ExecutionIds), arg.RunnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExecutionAttemptsForHeartbeatRow{}
+	for rows.Next() {
+		var i ListExecutionAttemptsForHeartbeatRow
+		if err := rows.Scan(
+			&i.ExecutionAttemptID,
+			&i.Status,
+			&i.Error,
+			&i.TaskID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReclaimableExecutionAttemptsForUpdate = `-- name: ListReclaimableExecutionAttemptsForUpdate :many
+SELECT attempt.id AS execution_attempt_id, prompt.task_id, prompt.id AS user_prompt_id,
+       task.id AS locked_task_id, task.team_id, attempt.runner_id, attempt.sequence AS attempt,
+       task.max_attempts, attempt.timeout_sec,
+       attempt.lease_expires_at
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_tasks task ON task.id = prompt.task_id
+WHERE attempt.status = 'running'
+  AND attempt.lease_expires_at IS NOT NULL
+  AND attempt.lease_expires_at < $1
+ORDER BY attempt.lease_expires_at ASC
+FOR UPDATE
+`
+
+type ListReclaimableExecutionAttemptsForUpdateRow struct {
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	TaskID             string         `json:"task_id"`
+	UserPromptID       string         `json:"user_prompt_id"`
+	LockedTaskID       string         `json:"locked_task_id"`
+	TeamID             sql.NullString `json:"team_id"`
+	RunnerID           sql.NullString `json:"runner_id"`
+	Attempt            int32          `json:"attempt"`
+	MaxAttempts        int32          `json:"max_attempts"`
+	TimeoutSec         int32          `json:"timeout_sec"`
+	LeaseExpiresAt     sql.NullTime   `json:"lease_expires_at"`
+}
+
+func (q *Queries) ListReclaimableExecutionAttemptsForUpdate(ctx context.Context, leaseExpiresAt sql.NullTime) ([]ListReclaimableExecutionAttemptsForUpdateRow, error) {
+	rows, err := q.db.QueryContext(ctx, listReclaimableExecutionAttemptsForUpdate, leaseExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReclaimableExecutionAttemptsForUpdateRow{}
+	for rows.Next() {
+		var i ListReclaimableExecutionAttemptsForUpdateRow
+		if err := rows.Scan(
+			&i.ExecutionAttemptID,
+			&i.TaskID,
+			&i.UserPromptID,
+			&i.LockedTaskID,
+			&i.TeamID,
+			&i.RunnerID,
+			&i.Attempt,
+			&i.MaxAttempts,
+			&i.TimeoutSec,
+			&i.LeaseExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -213,8 +508,10 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 
 const markExecutionAttemptClaimed = `-- name: MarkExecutionAttemptClaimed :execrows
 UPDATE chetter_execution_attempts
-SET status = 'running', runner_id = $1, claimed_at = $2, lease_expires_at = $3, started_at = $4, updated_at = $5
-WHERE id = $6 AND status = 'pending'
+SET status = 'running', runner_id = $1, claimed_at = $2,
+    lease_expires_at = $3, started_at = $4,
+    last_event_at = $5, updated_at = $6
+WHERE id = $7 AND status = 'pending'
 `
 
 type MarkExecutionAttemptClaimedParams struct {
@@ -222,6 +519,7 @@ type MarkExecutionAttemptClaimedParams struct {
 	ClaimedAt      sql.NullTime   `json:"claimed_at"`
 	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
 	StartedAt      sql.NullTime   `json:"started_at"`
+	LastEventAt    sql.NullTime   `json:"last_event_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	ID             string         `json:"id"`
 }
@@ -232,6 +530,7 @@ func (q *Queries) MarkExecutionAttemptClaimed(ctx context.Context, arg MarkExecu
 		arg.ClaimedAt,
 		arg.LeaseExpiresAt,
 		arg.StartedAt,
+		arg.LastEventAt,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -269,12 +568,13 @@ func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg MarkExecutio
 
 const renewExecutionAttemptLease = `-- name: RenewExecutionAttemptLease :execrows
 UPDATE chetter_execution_attempts
-SET lease_expires_at = $1, updated_at = $2
-WHERE id = $3 AND runner_id = $4 AND status = 'running'
+SET lease_expires_at = $1, last_event_at = $2, updated_at = $3
+WHERE id = $4 AND runner_id = $5 AND status = 'running'
 `
 
 type RenewExecutionAttemptLeaseParams struct {
 	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
+	LastEventAt    sql.NullTime   `json:"last_event_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	ID             string         `json:"id"`
 	RunnerID       sql.NullString `json:"runner_id"`
@@ -283,10 +583,36 @@ type RenewExecutionAttemptLeaseParams struct {
 func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg RenewExecutionAttemptLeaseParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, renewExecutionAttemptLease,
 		arg.LeaseExpiresAt,
+		arg.LastEventAt,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.RunnerID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const requeueTaskAfterExecutionAttemptLost = `-- name: RequeueTaskAfterExecutionAttemptLost :execrows
+UPDATE chetter_tasks
+SET status = 'pending',
+    summary = NULL,
+    error = NULL,
+    error_category = NULL,
+    ended_at = NULL,
+    updated_at = $1
+WHERE id = $2
+  AND status = 'running'
+`
+
+type RequeueTaskAfterExecutionAttemptLostParams struct {
+	UpdatedAt time.Time `json:"updated_at"`
+	TaskID    string    `json:"task_id"`
+}
+
+func (q *Queries) RequeueTaskAfterExecutionAttemptLost(ctx context.Context, arg RequeueTaskAfterExecutionAttemptLostParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, requeueTaskAfterExecutionAttemptLost, arg.UpdatedAt, arg.TaskID)
 	if err != nil {
 		return 0, err
 	}
@@ -305,14 +631,16 @@ SET status = $1,
     ended_at = COALESCE($8, ended_at),
     workspace_path = COALESCE(NULLIF($9::text, ''), workspace_path),
     harness_execution_id = COALESCE(NULLIF($10::text, ''), harness_execution_id),
-    total_input_tokens = total_input_tokens + $11,
-    total_output_tokens = total_output_tokens + $12,
-    total_cache_read_tokens = total_cache_read_tokens + $13,
-    total_cache_write_tokens = total_cache_write_tokens + $14,
-    total_reasoning_tokens = total_reasoning_tokens + $15,
-    cost_cents = cost_cents + $16,
-    updated_at = $17
-WHERE id = $18 AND runner_id = $19 AND status = 'running'
+    runner_image_digest = COALESCE(NULLIF($11::text, ''), runner_image_digest),
+    total_input_tokens = total_input_tokens + $12,
+    total_output_tokens = total_output_tokens + $13,
+    total_cache_read_tokens = total_cache_read_tokens + $14,
+    total_cache_write_tokens = total_cache_write_tokens + $15,
+    total_reasoning_tokens = total_reasoning_tokens + $16,
+    cost_cents = cost_cents + $17,
+    last_event_at = $18,
+    updated_at = $19
+WHERE id = $20 AND runner_id = $21 AND status = 'running'
 `
 
 type UpdateExecutionAttemptFromRunnerEventParams struct {
@@ -326,12 +654,14 @@ type UpdateExecutionAttemptFromRunnerEventParams struct {
 	EndedAt               sql.NullTime   `json:"ended_at"`
 	WorkspacePath         string         `json:"workspace_path"`
 	HarnessExecutionID    string         `json:"harness_execution_id"`
+	RunnerImageDigest     string         `json:"runner_image_digest"`
 	TotalInputTokens      int64          `json:"total_input_tokens"`
 	TotalOutputTokens     int64          `json:"total_output_tokens"`
 	TotalCacheReadTokens  int64          `json:"total_cache_read_tokens"`
 	TotalCacheWriteTokens int64          `json:"total_cache_write_tokens"`
 	TotalReasoningTokens  int64          `json:"total_reasoning_tokens"`
 	CostCents             int64          `json:"cost_cents"`
+	LastEventAt           sql.NullTime   `json:"last_event_at"`
 	UpdatedAt             time.Time      `json:"updated_at"`
 	ID                    string         `json:"id"`
 	RunnerID              sql.NullString `json:"runner_id"`
@@ -349,12 +679,14 @@ func (q *Queries) UpdateExecutionAttemptFromRunnerEvent(ctx context.Context, arg
 		arg.EndedAt,
 		arg.WorkspacePath,
 		arg.HarnessExecutionID,
+		arg.RunnerImageDigest,
 		arg.TotalInputTokens,
 		arg.TotalOutputTokens,
 		arg.TotalCacheReadTokens,
 		arg.TotalCacheWriteTokens,
 		arg.TotalReasoningTokens,
 		arg.CostCents,
+		arg.LastEventAt,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.RunnerID,

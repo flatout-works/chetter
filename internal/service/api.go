@@ -28,6 +28,12 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 	rec := repoTaskToToolRecord(task)
 	if run, err := s.repo.GetUserPromptByTaskID(ctx, taskID); err == nil {
 		rec.AgentSessionID = run.AgentSessionID
+		if attempts, err := s.repo.ListExecutionAttemptsByPrompt(ctx, run.ID); err == nil && len(attempts) > 0 {
+			attempt := attempts[len(attempts)-1]
+			rec.ExecutionID = attempt.ID
+			rec.TimeoutSec = int(attempt.TimeoutSec)
+			rec.StartedAt = nullTimePtr(attempt.StartedAt)
+		}
 	}
 	return rec, nil
 }
@@ -123,17 +129,35 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 		reason = "cancelled by operator"
 	}
 	now := time.Now().UTC()
-	rows, err := s.repo.CancelTask(ctx, repository.CancelTaskParams{
-		Error:     sql.NullString{String: reason, Valid: true},
-		EndedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now,
-		ID:        taskID,
+	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		rows, err := q.CancelExecutionAttemptsByTask(ctx, repository.CancelExecutionAttemptsByTaskParams{
+			Error:     sql.NullString{String: reason, Valid: true},
+			EndedAt:   sql.NullTime{Time: now, Valid: true},
+			UpdatedAt: now,
+			TaskID:    taskID,
+		})
+		if err != nil {
+			return fmt.Errorf("cancel execution attempt: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("task %s is not pending or running", taskID)
+		}
+		rows, err = q.CancelTask(ctx, repository.CancelTaskParams{
+			Error:     sql.NullString{String: reason, Valid: true},
+			EndedAt:   sql.NullTime{Time: now, Valid: true},
+			UpdatedAt: now,
+			ID:        taskID,
+		})
+		if err != nil {
+			return fmt.Errorf("cancel task aggregate: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("task %s is not pending or running", taskID)
+		}
+		return nil
 	})
 	if err != nil {
-		return TaskToolRecord{}, fmt.Errorf("cancel task: %w", err)
-	}
-	if rows == 0 {
-		return TaskToolRecord{}, fmt.Errorf("task %s is not pending or running", taskID)
+		return TaskToolRecord{}, err
 	}
 	if err := s.repo.UpdateTriggerRunStatusByTask(ctx, repository.UpdateTriggerRunStatusByTaskParams{
 		Status: "cancelled",
@@ -160,10 +184,10 @@ func (s *Service) ExtendTaskTimeout(ctx context.Context, taskID string, extensio
 		return TaskToolRecord{}, err
 	}
 	now := time.Now().UTC()
-	rows, err := s.repo.ExtendTaskTimeout(ctx, repository.ExtendTaskTimeoutParams{
+	rows, err := s.repo.ExtendActiveExecutionAttemptTimeout(ctx, repository.ExtendActiveExecutionAttemptTimeoutParams{
 		ExtensionSec: int32(extensionSec),
 		UpdatedAt:    now,
-		ID:           taskID,
+		TaskID:       taskID,
 	})
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("extend task timeout: %w", err)
@@ -187,13 +211,30 @@ func (s *Service) ClearQueue(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("admin access required")
 	}
 	now := time.Now().UTC()
-	cancelled, err := s.repo.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
-		Error:     sql.NullString{String: "cancelled by chetter_clear_queue", Valid: true},
-		EndedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now,
+	reason := sql.NullString{String: "cancelled by chetter_clear_queue", Valid: true}
+	endedAt := sql.NullTime{Time: now, Valid: true}
+	var cancelled int64
+	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		if _, err := q.CancelPendingExecutionAttempts(ctx, repository.CancelPendingExecutionAttemptsParams{
+			Error:     reason,
+			EndedAt:   endedAt,
+			UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("cancel pending execution attempts: %w", err)
+		}
+		var err error
+		cancelled, err = q.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
+			Error:     reason,
+			EndedAt:   endedAt,
+			UpdatedAt: now,
+		})
+		if err != nil {
+			return fmt.Errorf("cancel pending task aggregates: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return 0, fmt.Errorf("cancel pending tasks: %w", err)
+		return 0, err
 	}
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "queue_cleared",

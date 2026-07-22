@@ -171,20 +171,7 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 		t.Fatalf("ListExecutionAttemptsByPrompt: %v, attempts=%+v", err, attempts)
 	}
 	executionID := attempts[0].ID
-	if rows, err := svc.repo.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_reclaim", Valid: true},
-		ExecutionID:    executionID,
-		ClaimedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Second), Valid: true},
-		StartedAt:      sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             task.ID,
-	}); err != nil {
-		t.Fatalf("MarkTaskClaimed: %v", err)
-	} else if rows != 1 {
-		t.Fatalf("MarkTaskClaimed rows = %d", rows)
-	}
+	markTaskRunning(t, svc.repo, task.ID, now)
 	oldSession, err := svc.repo.GetAgentSessionByID(ctx, prompt.AgentSessionID)
 	if err != nil {
 		t.Fatalf("GetAgentSessionByID: %v", err)
@@ -205,9 +192,6 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	}
 	if reclaimed.Status != "pending" {
 		t.Fatalf("task status = %q, want pending", reclaimed.Status)
-	}
-	if reclaimed.RequiredRunnerID.Valid {
-		t.Fatalf("required runner = %q, want cleared", reclaimed.RequiredRunnerID.String)
 	}
 	attempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
 	if err != nil {
@@ -289,6 +273,75 @@ func TestReapExpiredLeasesRecordsReclaimEvent(t *testing.T) {
 	}
 	if restartedAttempt.UserPromptID != newPrompt.ID || restartedAttempt.Sequence != 1 {
 		t.Fatalf("restarted attempt = %+v, want prompt %s sequence 1", restartedAttempt, newPrompt.ID)
+	}
+}
+
+func TestReapExpiredLeasesFailsExhaustedExecutionAttempt(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "exhaust me", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+	attempts, err := svc.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListExecutionAttemptsByPrompt: %v, attempts=%+v", err, attempts)
+	}
+	taskRow, err := svc.repo.GetTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	executionID := attempts[0].ID
+	past := time.Now().UTC().Add(-time.Minute)
+	markTaskRunning(t, svc.repo, task.ID, past)
+	for attempt := int32(1); attempt <= taskRow.MaxAttempts; attempt++ {
+		if attempt > 1 {
+			executionID = fmt.Sprintf("exec_exhausted_%d", attempt)
+			if err := svc.repo.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+				ID: executionID, UserPromptID: prompt.ID, Sequence: attempt, TimeoutSec: 600, CreatedAt: past, UpdatedAt: past,
+			}); err != nil {
+				t.Fatalf("InsertPendingExecutionAttempt %d: %v", attempt, err)
+			}
+		}
+		if rows, err := svc.repo.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
+			RunnerID:       nullString("runner_exhausted"),
+			ClaimedAt:      sql.NullTime{Time: past, Valid: true},
+			LeaseExpiresAt: sql.NullTime{Time: past, Valid: true},
+			StartedAt:      sql.NullTime{Time: past, Valid: true},
+			UpdatedAt:      past,
+			ID:             executionID,
+		}); err != nil || rows != 1 {
+			t.Fatalf("MarkExecutionAttemptClaimed %d: rows=%d err=%v", attempt, rows, err)
+		}
+		if attempt < taskRow.MaxAttempts {
+			if rows, err := svc.repo.MarkExecutionAttemptLost(ctx, repository.MarkExecutionAttemptLostParams{
+				Error: nullString("lease expired"), EndedAt: sql.NullTime{Time: past, Valid: true}, UpdatedAt: past, ID: executionID,
+			}); err != nil || rows != 1 {
+				t.Fatalf("MarkExecutionAttemptLost %d: rows=%d err=%v", attempt, rows, err)
+			}
+		}
+	}
+
+	svc.reapExpiredLeases()
+
+	failedTask, err := svc.repo.GetTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	if failedTask.Status != "error" || failedTask.ErrorCategory.String != "timeout" {
+		t.Fatalf("task status/category = %s/%s, want error/timeout", failedTask.Status, failedTask.ErrorCategory.String)
+	}
+	failedAttempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
+	if err != nil {
+		t.Fatalf("GetExecutionAttemptByID: %v", err)
+	}
+	if failedAttempt.Status != "error" || failedAttempt.ErrorCategory.String != "timeout" || !failedAttempt.EndedAt.Valid {
+		t.Fatalf("attempt status/category/ended_at = %s/%s/%v, want error/timeout/set", failedAttempt.Status, failedAttempt.ErrorCategory.String, failedAttempt.EndedAt.Valid)
 	}
 }
 
@@ -390,9 +443,6 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	if row.Status != "pending" {
 		t.Errorf("db status: %s", row.Status)
 	}
-	if row.TimeoutSec != 600 {
-		t.Errorf("timeout_sec: %d", row.TimeoutSec)
-	}
 	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get user prompt: %v", err)
@@ -402,6 +452,13 @@ func TestSubmitTaskQueuesPendingRow(t *testing.T) {
 	}
 	if run.TaskID != rec.ID {
 		t.Errorf("user prompt task_id: %s", run.TaskID)
+	}
+	attempts, err := q.ListExecutionAttemptsByPrompt(ctx, run.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("list execution attempts: %v, attempts=%+v", err, attempts)
+	}
+	if attempts[0].TimeoutSec != 600 {
+		t.Errorf("attempt timeout_sec: %d", attempts[0].TimeoutSec)
 	}
 	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
 	if err != nil {
@@ -794,15 +851,12 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 	if resumeOut.Prompt.Sequence != 2 {
 		t.Fatalf("resume prompt sequence = %d, want 2", resumeOut.Prompt.Sequence)
 	}
-	resumeTask, err := q.GetTaskByID(ctx, resumeOut.Task.ID)
+	resumeAttempts, err := q.ListExecutionAttemptsByPrompt(ctx, resumeOut.Prompt.ID)
 	if err != nil {
-		t.Fatalf("get resume task: %v", err)
+		t.Fatalf("get resume attempts: %v", err)
 	}
-	if !resumeTask.RequiredRunnerID.Valid || resumeTask.RequiredRunnerID.String != "runner_1" {
-		t.Fatalf("resume task required_runner_id = %s, want runner_1", resumeTask.RequiredRunnerID.String)
-	}
-	if !resumeTask.CheckpointAfterSuccess {
-		t.Fatal("resume task should have checkpoint_after_success=true")
+	if len(resumeAttempts) != 1 || resumeAttempts[0].RequiredRunnerID.String != "runner_1" {
+		t.Fatalf("resume attempts = %+v, want one pinned to runner_1", resumeAttempts)
 	}
 
 	session, err = q.GetAgentSessionByID(ctx, run.AgentSessionID)
@@ -1103,33 +1157,20 @@ func TestServiceCancelTaskMarksRunningAsCancelled(t *testing.T) {
 	// Claim the task
 	now := time.Now().UTC()
 	q := data.New(tdb.DB, tdb.Dialect())
-	rows, err := q.MarkTaskClaimed(ctx, repository.MarkTaskClaimedParams{
-		RunnerID:       sql.NullString{String: "runner_1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(time.Hour), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now,
-		LastEventAt:    sql.NullTime{Time: now, Valid: true},
-		ID:             rec.ID,
-	})
+	markTaskRunning(t, q, rec.ID, now)
+	prompt, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
-		t.Fatalf("claim: %v", err)
+		t.Fatalf("get prompt: %v", err)
 	}
-	if rows != 1 {
-		t.Fatalf("claim rows: %d", rows)
+	attempts, err := q.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("list execution attempts: %v, attempts=%+v", err, attempts)
 	}
+	markPendingExecutionAttemptClaimed(t, q, strings.TrimPrefix(attempts[0].ID, "exec_"), "runner_1", now, now.Add(time.Hour))
 
-	rows, err = svc.repo.CancelTask(ctx, repository.CancelTaskParams{
-		Error:     sql.NullString{String: "by operator", Valid: true},
-		EndedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now,
-		ID:        rec.ID,
-	})
+	_, err = svc.CancelTask(ctx, rec.ID, "by operator")
 	if err != nil {
 		t.Fatalf("cancel: %v", err)
-	}
-	if rows != 1 {
-		t.Fatalf("cancel rows: %d", rows)
 	}
 
 	row, err := q.GetTaskByID(ctx, rec.ID)
@@ -1142,6 +1183,13 @@ func TestServiceCancelTaskMarksRunningAsCancelled(t *testing.T) {
 	if row.Error.String != "by operator" {
 		t.Errorf("error not stored: %q", row.Error.String)
 	}
+	attempts, err = q.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil {
+		t.Fatalf("list execution attempts: %v", err)
+	}
+	if len(attempts) != 1 || attempts[0].Status != "cancelled" || attempts[0].Error.String != "by operator" {
+		t.Fatalf("execution attempts = %+v, want one cancelled attempt", attempts)
+	}
 }
 
 func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
@@ -1152,11 +1200,7 @@ func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
 	rec1, _ := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "a", AgentImage: "runner:latest"})
 	rec2, _ := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "b", AgentImage: "runner:latest"})
 
-	cancelled, err := svc.repo.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
-		Error:     sql.NullString{String: "queue cleared", Valid: true},
-		EndedAt:   sql.NullTime{Time: time.Now().UTC(), Valid: true},
-		UpdatedAt: time.Now().UTC(),
-	})
+	cancelled, err := svc.ClearQueue(ctxWithAdmin(ctx))
 	if err != nil {
 		t.Fatalf("clear: %v", err)
 	}
@@ -1172,6 +1216,17 @@ func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
 		}
 		if row.Status != "cancelled" {
 			t.Errorf("expected cancelled, got %s", row.Status)
+		}
+		prompt, err := q.GetUserPromptByTaskID(ctx, id)
+		if err != nil {
+			t.Fatalf("get prompt: %v", err)
+		}
+		attempts, err := q.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+		if err != nil {
+			t.Fatalf("list execution attempts: %v", err)
+		}
+		if len(attempts) != 1 || attempts[0].Status != "cancelled" {
+			t.Fatalf("execution attempts = %+v, want one cancelled attempt", attempts)
 		}
 	}
 }
@@ -2306,22 +2361,22 @@ func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, 
 			id, team_id, status, prompt, git_url, trigger_name, trigger_type,
 			total_input_tokens, total_output_tokens, total_cache_read_tokens,
 			total_cache_write_tokens, total_reasoning_tokens, cost_cents,
-			skills, env, timeout_sec, created_at, updated_at
+			skills, env, created_at, updated_at
 		) VALUES (?, ?, 'done', ?, ?, ?, ?,
 			?, ?, ?,
 			?, ?, ?,
-			'[]', '{}', 600, ?, ?)`
+			'[]', '{}', ?, ?)`
 	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
 		query = `
 			INSERT INTO chetter_tasks (
 				id, team_id, status, prompt, git_url, trigger_name, trigger_type,
 				total_input_tokens, total_output_tokens, total_cache_read_tokens,
 				total_cache_write_tokens, total_reasoning_tokens, cost_cents,
-				skills, env, timeout_sec, created_at, updated_at
+				skills, env, created_at, updated_at
 			) VALUES ($1, $2, 'done', $3, $4, $5, $6,
 				$7, $8, $9,
 				$10, $11, $12,
-				'[]', '{}', 600, $13, $14)`
+				'[]', '{}', $13, $14)`
 	}
 	_, err := db.Exec(query,
 		id, teamID, prompt, gitURL, triggerName, triggerType,

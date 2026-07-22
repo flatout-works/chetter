@@ -138,7 +138,7 @@ func TestTaskLifecycle(t *testing.T) {
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "hello", TeamID: sql.NullString{},
 		Skills: json.RawMessage("null"), Env: json.RawMessage("null"),
-		TimeoutSec: 600, CreatedAt: start, UpdatedAt: start,
+		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
 	}
@@ -151,30 +151,16 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Errorf("GetTaskByID = %+v", got)
 	}
 
-	claimable, err := q.GetClaimableTaskForUpdate(ctx, sql.NullString{String: "runner-1", Valid: true})
+	n, err := q.MarkTaskRunning(ctx, MarkTaskRunningParams{ID: "task-1", UpdatedAt: now})
 	if err != nil {
-		t.Fatalf("GetClaimableTaskForUpdate: %v", err)
-	}
-	if claimable.ID != "task-1" {
-		t.Errorf("got claimable task %q, want task-1", claimable.ID)
-	}
-
-	n, err := q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
-		ID: "task-1", RunnerID: sql.NullString{String: "runner-1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-	})
-	if err != nil {
-		t.Fatalf("MarkTaskClaimed: %v", err)
+		t.Fatalf("MarkTaskRunning: %v", err)
 	}
 	if n != 1 {
-		t.Errorf("MarkTaskClaimed affected %d rows, want 1", n)
+		t.Errorf("MarkTaskRunning affected %d rows, want 1", n)
 	}
 
 	got, _ = q.GetTaskByID(ctx, "task-1")
-	if got.Status != "running" || got.RunnerID.String != "runner-1" {
+	if got.Status != "running" {
 		t.Errorf("task should be running, got %+v", got)
 	}
 
@@ -206,7 +192,7 @@ func TestListTasksByStatus(t *testing.T) {
 	for _, id := range []string{"t1", "t2", "t3"} {
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: id, Prompt: id, TeamID: null,
-			Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+			Skills: nullJSON, Env: nullJSON,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", id, err)
@@ -230,74 +216,6 @@ func TestListTasksByStatus(t *testing.T) {
 	}
 }
 
-func TestRenewAndReclaimLeases(t *testing.T) {
-	q, cleanup := newRepo(t)
-	defer cleanup()
-	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Second)
-
-	start := now.Add(-time.Hour)
-	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
-	if err := q.InsertTask(ctx, InsertTaskParams{
-		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
-		CreatedAt: start, UpdatedAt: start,
-	}); err != nil {
-		t.Fatalf("InsertTask: %v", err)
-	}
-
-	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
-		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-	})
-
-	n, err := q.RenewTaskLease(ctx, RenewTaskLeaseParams{
-		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(60 * time.Second), Valid: true},
-		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-	})
-	if err != nil {
-		t.Fatalf("RenewTaskLease: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("RenewTaskLease affected %d rows, want 1", n)
-	}
-
-	got, _ := q.GetTaskByID(ctx, "task-1")
-	if !got.LeaseExpiresAt.Time.Equal(now.Add(60 * time.Second).Truncate(time.Second)) {
-		t.Errorf("lease not renewed, got %v", got.LeaseExpiresAt.Time)
-	}
-
-	n, err = q.ReclaimExpiredLeases(ctx, ReclaimExpiredLeasesParams{
-		UpdatedAt: now, LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-	})
-	if err != nil {
-		t.Fatalf("ReclaimExpiredLeases: %v", err)
-	}
-	if n != 0 {
-		t.Errorf("ReclaimExpiredLeases affected %d rows (lease still valid), want 0", n)
-	}
-
-	n, err = q.ReclaimExpiredLeases(ctx, ReclaimExpiredLeasesParams{
-		UpdatedAt: now, LeaseExpiresAt: sql.NullTime{Time: now.Add(90 * time.Second), Valid: true},
-	})
-	if err != nil {
-		t.Fatalf("ReclaimExpiredLeases: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("ReclaimExpiredLeases affected %d rows (lease expired), want 1", n)
-	}
-
-	got, _ = q.GetTaskByID(ctx, "task-1")
-	if got.Status != "pending" {
-		t.Errorf("task status after reclaim = %q, want pending", got.Status)
-	}
-}
-
 func TestClearPendingTasks(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
@@ -309,7 +227,7 @@ func TestClearPendingTasks(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: start, UpdatedAt: start,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -342,7 +260,7 @@ func TestTaskEvents(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
@@ -622,66 +540,23 @@ func TestInsertTriggerRun(t *testing.T) {
 	}
 }
 
-func TestListHeartbeatTasksEmpty(t *testing.T) {
+func TestListExecutionAttemptsForHeartbeatEmpty(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	rows, err := q.ListHeartbeatTasks(ctx, ListHeartbeatTasksParams{
-		Ids: []string{}, RunnerID: sql.NullString{},
+	rows, err := q.ListExecutionAttemptsForHeartbeat(ctx, ListExecutionAttemptsForHeartbeatParams{
+		ExecutionIds: []string{}, RunnerID: sql.NullString{},
 	})
 	if err != nil {
-		t.Fatalf("ListHeartbeatTasks: %v", err)
+		t.Fatalf("ListExecutionAttemptsForHeartbeat: %v", err)
 	}
 	if len(rows) != 0 {
 		t.Errorf("expected 0 rows, got %d", len(rows))
 	}
 }
 
-func TestFailExpiredLeases(t *testing.T) {
-	q, cleanup := newRepo(t)
-	defer cleanup()
-	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Second)
-
-	start := now.Add(-time.Hour)
-	null := sql.NullString{}
-	nullJSON := json.RawMessage("null")
-	if err := q.InsertTask(ctx, InsertTaskParams{
-		ID: "task-expired", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
-		CreatedAt: start, UpdatedAt: start,
-	}); err != nil {
-		t.Fatalf("InsertTask: %v", err)
-	}
-
-	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
-		ID: "task-expired", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(-time.Hour), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-	})
-
-	got, _ := q.GetTaskByID(ctx, "task-expired")
-	if got.Attempt >= got.MaxAttempts {
-		t.Skip("task already at max_attempts, cannot test FailExpiredLeases")
-	}
-
-	n, err := q.FailExpiredLeases(ctx, FailExpiredLeasesParams{
-		EndedAt:   sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now, Valid: true},
-	})
-	if err != nil {
-		t.Fatalf("FailExpiredLeases: %v", err)
-	}
-	if n != 0 {
-		t.Errorf("expected 0 failed (attempt < max_attempts), got %d", n)
-	}
-}
-
-func TestUpdateTaskFromRunnerEvent(t *testing.T) {
+func TestUpdateTaskAggregateFromRunnerEvent(t *testing.T) {
 	q, cleanup := newRepo(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -691,34 +566,24 @@ func TestUpdateTaskFromRunnerEvent(t *testing.T) {
 	nullJSON := json.RawMessage("null")
 	if err := q.InsertTask(ctx, InsertTaskParams{
 		ID: "task-1", Prompt: "p1", TeamID: null,
-		Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+		Skills: nullJSON, Env: nullJSON,
 		CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatalf("InsertTask: %v", err)
 	}
 
-	_, _ = q.MarkTaskClaimed(ctx, MarkTaskClaimedParams{
-		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
-		ClaimedAt:      sql.NullTime{Time: now, Valid: true},
-		LeaseExpiresAt: sql.NullTime{Time: now.Add(30 * time.Second), Valid: true},
-		StartedAt:      sql.NullTime{Time: now, Valid: true},
-		UpdatedAt:      now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-	})
+	_, _ = q.MarkTaskRunning(ctx, MarkTaskRunningParams{ID: "task-1", UpdatedAt: now})
 
-	n, err := q.UpdateTaskFromRunnerEvent(ctx, UpdateTaskFromRunnerEventParams{
+	n, err := q.UpdateTaskAggregateFromRunnerEvent(ctx, UpdateTaskAggregateFromRunnerEventParams{
 		Status: "completed", Summary: sql.NullString{String: "done", Valid: true},
-		Error: sql.NullString{}, ProviderID: nil, ModelID: nil, VariantID: nil,
-		OpencodeSessionID: nil, RunnerImageDigest: nil,
-		LeaseExpiresAt: sql.NullTime{},
-		StartedAt:      sql.NullTime{}, EndedAt: sql.NullTime{Time: now, Valid: true},
-		UpdatedAt: now, LastEventAt: sql.NullTime{Time: now, Valid: true},
-		ID: "task-1", RunnerID: sql.NullString{String: "r1", Valid: true},
+		Error: sql.NullString{}, EndedAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt: now, ID: "task-1",
 	})
 	if err != nil {
-		t.Fatalf("UpdateTaskFromRunnerEvent: %v", err)
+		t.Fatalf("UpdateTaskAggregateFromRunnerEvent: %v", err)
 	}
 	if n != 1 {
-		t.Errorf("UpdateTaskFromRunnerEvent affected %d rows, want 1", n)
+		t.Errorf("UpdateTaskAggregateFromRunnerEvent affected %d rows, want 1", n)
 	}
 
 	got, _ := q.GetTaskByID(ctx, "task-1")
@@ -743,7 +608,7 @@ func TestListTasksByStatusAndTeam(t *testing.T) {
 		}
 		if err := q.InsertTask(ctx, InsertTaskParams{
 			ID: tc.id, Prompt: tc.id, TeamID: teamID,
-			Skills: nullJSON, Env: nullJSON, TimeoutSec: 300,
+			Skills: nullJSON, Env: nullJSON,
 			CreatedAt: start, UpdatedAt: start,
 		}); err != nil {
 			t.Fatalf("InsertTask(%s): %v", tc.id, err)
