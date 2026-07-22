@@ -898,6 +898,12 @@ func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
 	}
 }
 
+func TestOpenCodeConfigContentIsHarnessControlled(t *testing.T) {
+	if !isHarnessControlEnv("OPENCODE_CONFIG_CONTENT") {
+		t.Fatal("OPENCODE_CONFIG_CONTENT must be protected from task environment overrides")
+	}
+}
+
 func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
 	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp", "")
