@@ -1,11 +1,17 @@
 -- +goose Up
 ALTER TABLE chetter_agent_sessions
-    ADD COLUMN harness VARCHAR(32) NULL AFTER variant_id,
-    ADD COLUMN skills JSON NULL AFTER harness,
-    ADD COLUMN mcp_endpoints JSON NULL AFTER skills,
-    ADD COLUMN env JSON NULL AFTER mcp_endpoints,
-    ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER env,
-    ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name,
+    ADD COLUMN harness VARCHAR(32) NULL AFTER variant_id;
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN skills JSON NULL AFTER harness;
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN mcp_endpoints JSON NULL AFTER skills;
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN env JSON NULL AFTER mcp_endpoints;
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER env;
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name;
+ALTER TABLE chetter_agent_sessions
     ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email;
 
 UPDATE chetter_agent_sessions s
@@ -37,16 +43,26 @@ ALTER TABLE chetter_tasks
 
 -- +goose Down
 ALTER TABLE chetter_tasks
-    ADD COLUMN agent_image VARCHAR(512) NULL AFTER git_ref,
-    ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image,
-    ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent,
-    ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id,
-    ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id,
-    ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER variant_id,
-    ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name,
-    ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email,
-    ADD COLUMN skills JSON NULL AFTER max_attempts,
-    ADD COLUMN mcp_endpoints JSON NULL AFTER skills,
+    ADD COLUMN agent_image VARCHAR(512) NULL AFTER git_ref;
+ALTER TABLE chetter_tasks
+    ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image;
+ALTER TABLE chetter_tasks
+    ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent;
+ALTER TABLE chetter_tasks
+    ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id;
+ALTER TABLE chetter_tasks
+    ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id;
+ALTER TABLE chetter_tasks
+    ADD COLUMN commit_author_name VARCHAR(128) NULL AFTER variant_id;
+ALTER TABLE chetter_tasks
+    ADD COLUMN commit_author_email VARCHAR(255) NULL AFTER commit_author_name;
+ALTER TABLE chetter_tasks
+    ADD COLUMN git_identity_id VARCHAR(64) NULL AFTER commit_author_email;
+ALTER TABLE chetter_tasks
+    ADD COLUMN skills JSON NULL AFTER max_attempts;
+ALTER TABLE chetter_tasks
+    ADD COLUMN mcp_endpoints JSON NULL AFTER skills;
+ALTER TABLE chetter_tasks
     ADD COLUMN env JSON NULL AFTER mcp_endpoints;
 
 UPDATE chetter_tasks t

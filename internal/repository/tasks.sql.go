@@ -97,7 +97,7 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const getLatestTaskEvent = `-- name: GetLatestTaskEvent :one
-SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT 1
@@ -113,16 +113,16 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 		&i.Status,
 		&i.Payload,
 		&i.CreatedAt,
-		&i.EventType,
 		&i.AgentSessionID,
 		&i.UserPromptID,
 		&i.ExecutionAttemptID,
+		&i.EventType,
 	)
 	return i, err
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE id = ?
 `
 
@@ -144,9 +144,9 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.TriggerName,
 		&i.TriggerType,
 		&i.MaxAttempts,
+		&i.SearchText,
 		&i.ErrorCategory,
 		&i.SubmissionSource,
-		&i.SearchText,
 	)
 	return i, err
 }
@@ -189,7 +189,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
 ORDER BY created_at DESC
@@ -234,9 +234,9 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.SearchText,
 			&i.ErrorCategory,
 			&i.SubmissionSource,
-			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -252,7 +252,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE team_id = ?
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
@@ -300,9 +300,9 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.SearchText,
 			&i.ErrorCategory,
 			&i.SubmissionSource,
-			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -318,7 +318,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
@@ -374,9 +374,9 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.SearchText,
 			&i.ErrorCategory,
 			&i.SubmissionSource,
-			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -437,7 +437,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE (? = '' OR team_id = ?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
@@ -489,9 +489,9 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.SearchText,
 			&i.ErrorCategory,
 			&i.SubmissionSource,
-			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}
@@ -507,7 +507,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, error_category, submission_source, search_text FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source FROM chetter_tasks
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
   AND (COALESCE(?, '') = '' OR trigger_name = ?)
@@ -566,9 +566,9 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.TriggerName,
 			&i.TriggerType,
 			&i.MaxAttempts,
+			&i.SearchText,
 			&i.ErrorCategory,
 			&i.SubmissionSource,
-			&i.SearchText,
 		); err != nil {
 			return nil, err
 		}

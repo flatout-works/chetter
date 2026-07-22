@@ -47,7 +47,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 }
 
 const listTaskEvents = `-- name: ListTaskEvents :many
-SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM chetter_task_events
 WHERE task_id = ?
 ORDER BY created_at DESC, id DESC
 LIMIT ?
@@ -76,10 +76,10 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 			&i.Status,
 			&i.Payload,
 			&i.CreatedAt,
-			&i.EventType,
 			&i.AgentSessionID,
 			&i.UserPromptID,
 			&i.ExecutionAttemptID,
+			&i.EventType,
 		); err != nil {
 			return nil, err
 		}
@@ -95,7 +95,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const listTaskEventsSince = `-- name: ListTaskEventsSince :many
-SELECT id, task_id, subject, status, payload, created_at, event_type, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM chetter_task_events
 WHERE task_id = ? AND created_at > ?
 ORDER BY created_at ASC, id ASC
 `
@@ -121,10 +121,10 @@ func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSin
 			&i.Status,
 			&i.Payload,
 			&i.CreatedAt,
-			&i.EventType,
 			&i.AgentSessionID,
 			&i.UserPromptID,
 			&i.ExecutionAttemptID,
+			&i.EventType,
 		); err != nil {
 			return nil, err
 		}

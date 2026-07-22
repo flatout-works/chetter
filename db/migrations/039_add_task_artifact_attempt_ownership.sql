@@ -12,7 +12,9 @@ JOIN (
 SET artifact.execution_attempt_id = attempt.execution_attempt_id;
 
 ALTER TABLE chetter_task_artifacts
-    DROP INDEX idx_task_artifacts_dedup,
+    DROP INDEX idx_task_artifacts_dedup;
+
+ALTER TABLE chetter_task_artifacts
     ADD UNIQUE KEY idx_task_artifacts_dedup (task_id, artifact_type, repo, number, execution_attempt_id),
     ADD KEY idx_task_artifacts_execution_attempt (execution_attempt_id);
 
@@ -27,6 +29,10 @@ JOIN chetter_task_artifacts retained
 
 ALTER TABLE chetter_task_artifacts
     DROP INDEX idx_task_artifacts_dedup,
-    DROP INDEX idx_task_artifacts_execution_attempt,
-    DROP COLUMN execution_attempt_id,
+    DROP INDEX idx_task_artifacts_execution_attempt;
+
+ALTER TABLE chetter_task_artifacts
+    DROP COLUMN execution_attempt_id;
+
+ALTER TABLE chetter_task_artifacts
     ADD UNIQUE KEY idx_task_artifacts_dedup (task_id, artifact_type, repo, number);

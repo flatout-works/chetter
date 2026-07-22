@@ -2,7 +2,9 @@
 ALTER TABLE chetter_tasks
     DROP INDEX idx_chetter_tasks_claim,
     DROP INDEX idx_chetter_tasks_runner,
-    DROP INDEX idx_chetter_tasks_required_runner,
+    DROP INDEX idx_chetter_tasks_required_runner;
+
+ALTER TABLE chetter_tasks
     DROP COLUMN runner_id,
     DROP COLUMN required_runner_id,
     DROP COLUMN claimed_at,
@@ -25,7 +27,9 @@ ALTER TABLE chetter_tasks
     ADD COLUMN last_event_at DATETIME(6) NULL,
     ADD COLUMN started_at DATETIME(6) NULL,
     ADD COLUMN runner_image_digest VARCHAR(255) NULL,
-    ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600,
+    ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600;
+
+ALTER TABLE chetter_tasks
     ADD INDEX idx_chetter_tasks_claim (status, lease_expires_at, created_at),
     ADD INDEX idx_chetter_tasks_runner (runner_id, status),
     ADD INDEX idx_chetter_tasks_required_runner (required_runner_id, status, created_at);

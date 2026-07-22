@@ -1,7 +1,11 @@
 -- +goose Up
 ALTER TABLE chetter_agent_sessions
-    ADD COLUMN summary TEXT NULL AFTER pause_reason,
-    ADD COLUMN started_at DATETIME(6) NULL AFTER error,
+    ADD COLUMN summary TEXT NULL AFTER pause_reason;
+
+ALTER TABLE chetter_agent_sessions
+    ADD COLUMN started_at DATETIME(6) NULL AFTER error;
+
+ALTER TABLE chetter_agent_sessions
     ADD COLUMN ended_at DATETIME(6) NULL AFTER started_at;
 
 UPDATE chetter_agent_sessions

@@ -1,6 +1,6 @@
 -- +goose Up
-ALTER TABLE chetter_tasks ADD COLUMN IF NOT EXISTS team_id VARCHAR(64) NULL AFTER id;
-ALTER TABLE chetter_schedules ADD COLUMN IF NOT EXISTS team_id VARCHAR(64) NULL AFTER id;
+ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id;
+ALTER TABLE chetter_schedules ADD COLUMN team_id VARCHAR(64) NULL AFTER id;
 
 CREATE TABLE IF NOT EXISTS teams (
     id VARCHAR(64) NOT NULL,
@@ -37,5 +37,5 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 DROP TABLE IF EXISTS api_tokens;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS teams;
-ALTER TABLE chetter_tasks DROP COLUMN IF EXISTS team_id;
-ALTER TABLE chetter_schedules DROP COLUMN IF EXISTS team_id;
+ALTER TABLE chetter_tasks DROP COLUMN team_id;
+ALTER TABLE chetter_schedules DROP COLUMN team_id;

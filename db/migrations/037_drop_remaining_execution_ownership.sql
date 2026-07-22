@@ -1,6 +1,8 @@
 -- +goose Up
 ALTER TABLE chetter_user_prompts
-    DROP INDEX idx_user_prompts_required_runner,
+    DROP INDEX idx_user_prompts_required_runner;
+
+ALTER TABLE chetter_user_prompts
     DROP COLUMN required_runner_id;
 
 ALTER TABLE chetter_tasks
@@ -20,7 +22,9 @@ WHERE session.sequence = (
 );
 
 ALTER TABLE chetter_user_prompts
-    ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER source_user_prompt_id,
+    ADD COLUMN required_runner_id VARCHAR(64) NULL AFTER source_user_prompt_id;
+
+ALTER TABLE chetter_user_prompts
     ADD KEY idx_user_prompts_required_runner (required_runner_id, status);
 
 UPDATE chetter_user_prompts prompt

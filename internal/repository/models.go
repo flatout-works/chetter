@@ -190,9 +190,9 @@ type ChetterTask struct {
 	TriggerName      sql.NullString `json:"trigger_name"`
 	TriggerType      sql.NullString `json:"trigger_type"`
 	MaxAttempts      int32          `json:"max_attempts"`
+	SearchText       sql.NullString `json:"search_text"`
 	ErrorCategory    sql.NullString `json:"error_category"`
 	SubmissionSource string         `json:"submission_source"`
-	SearchText       sql.NullString `json:"search_text"`
 }
 
 type ChetterTaskArtifact struct {
@@ -220,10 +220,10 @@ type ChetterTaskEvent struct {
 	Status             string          `json:"status"`
 	Payload            json.RawMessage `json:"payload"`
 	CreatedAt          time.Time       `json:"created_at"`
-	EventType          string          `json:"event_type"`
 	AgentSessionID     sql.NullString  `json:"agent_session_id"`
 	UserPromptID       sql.NullString  `json:"user_prompt_id"`
 	ExecutionAttemptID sql.NullString  `json:"execution_attempt_id"`
+	EventType          string          `json:"event_type"`
 }
 
 type ChetterTrigger struct {

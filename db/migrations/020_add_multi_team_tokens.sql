@@ -1,6 +1,6 @@
 -- +goose Up
-ALTER TABLE teams ADD COLUMN IF NOT EXISTS okta_group_id VARCHAR(255) NULL AFTER name;
-ALTER TABLE teams ADD COLUMN IF NOT EXISTS okta_group_name VARCHAR(255) NULL AFTER okta_group_id;
+ALTER TABLE teams ADD COLUMN okta_group_id VARCHAR(255) NULL AFTER name;
+ALTER TABLE teams ADD COLUMN okta_group_name VARCHAR(255) NULL AFTER okta_group_id;
 
 CREATE TABLE IF NOT EXISTS user_team_memberships (
     user_id VARCHAR(64) NOT NULL,
