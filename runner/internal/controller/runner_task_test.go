@@ -291,6 +291,9 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 	if chetter["enabled"] != true {
 		t.Errorf("expected chetter MCP enabled, got %v", chetter["enabled"])
 	}
+	if chetter["oauth"] != false {
+		t.Errorf("expected chetter MCP OAuth disabled, got %v", chetter["oauth"])
+	}
 	headers, ok := chetter["headers"].(map[string]any)
 	if !ok {
 		t.Fatal("expected chetter MCP to include auth headers")
