@@ -102,8 +102,9 @@ func run() error {
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return mcpServer
 	}, &mcp.StreamableHTTPOptions{
-		Stateless: true,
-		Logger:    slog.Default(),
+		Stateless:    true,
+		JSONResponse: true,
+		Logger:       slog.Default(),
 	})
 
 	whHandler := buildWebhookHandler(cfg, svc)
