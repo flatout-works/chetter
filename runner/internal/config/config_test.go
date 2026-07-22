@@ -30,6 +30,8 @@ git:
 execution:
   runtime: docker
   harness: opencode
+chetter_mcp:
+  relay_listen_addr: :18082
 `
 	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
 		t.Fatal(err)
@@ -64,6 +66,9 @@ execution:
 	if cfg.Git.PAT != "ghp_token" {
 		t.Errorf("Git.PAT = %q", cfg.Git.PAT)
 	}
+	if cfg.ChetterMCP.RelayListenAddr != ":18082" {
+		t.Errorf("ChetterMCP.RelayListenAddr = %q", cfg.ChetterMCP.RelayListenAddr)
+	}
 }
 
 func TestLoadDefaultsAreApplied(t *testing.T) {
@@ -93,6 +98,9 @@ func TestLoadDefaultsAreApplied(t *testing.T) {
 	}
 	if cfg.DNS.Upstream != "" {
 		t.Errorf("DNS.Upstream = %q", cfg.DNS.Upstream)
+	}
+	if cfg.ChetterMCP.RelayListenAddr != ":18081" {
+		t.Errorf("ChetterMCP.RelayListenAddr = %q", cfg.ChetterMCP.RelayListenAddr)
 	}
 }
 

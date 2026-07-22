@@ -20,6 +20,8 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/codex"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
+	"github.com/flatout-works/chetter/runner/internal/config"
+	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -890,6 +892,38 @@ func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
 	got := gvisorNoProxy()
 	if got != "localhost,127.0.0.1,0.0.0.0,.local" {
 		t.Fatalf("unexpected no_proxy value: %q", got)
+	}
+}
+
+func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
+	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
+	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp")
+	if err != nil {
+		t.Fatalf("new relay: %v", err)
+	}
+	if err := relay.Start(); err != nil {
+		t.Fatalf("start relay: %v", err)
+	}
+	t.Cleanup(func() { _ = relay.Stop() })
+
+	runner := &Runner{
+		cfg:      &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp"}},
+		mcpRelay: relay,
+	}
+	_, port, err := net.SplitHostPort(relay.Addr())
+	if err != nil {
+		t.Fatalf("split relay address: %v", err)
+	}
+	if got, want := runner.taskChetterMCPURL(), "http://172.21.0.3:"+port+"/mcp"; got != want {
+		t.Fatalf("task Chetter MCP URL = %q, want %q", got, want)
+	}
+}
+
+func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
+	t.Setenv("RUNNER_LOCAL", "true")
+	runner := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp"}}}
+	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
+		t.Fatalf("task Chetter MCP URL = %q", got)
 	}
 }
 

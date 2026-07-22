@@ -221,6 +221,7 @@ deploy:
 chetter_mcp:
   url: "${CHETTER_MCP_URL:-}"
   auth_token: "${CHETTER_MCP_AUTH_TOKEN:-}"
+  relay_listen_addr: "${CHETTER_MCP_RELAY_LISTEN_ADDR:-:18081}"
 EOF
 
 exec runner -config /tmp/runner.yaml

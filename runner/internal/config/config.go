@@ -15,6 +15,7 @@ const (
 	DefaultProxyAddr        = ":18080"
 	DefaultDNSAddr          = ":53"
 	DefaultDNSUpstream      = ""
+	DefaultMCPRelayAddr     = ":18081"
 	DefaultDeployProvider   = "local"
 	DefaultChetterURL       = "chetter.flatout.works"
 	EventPublishMinInterval = 15 * time.Second
@@ -76,8 +77,9 @@ type DeployConfig struct {
 }
 
 type ChetterMCPConfig struct {
-	URL       string `yaml:"url"`
-	AuthToken string `yaml:"auth_token"`
+	URL             string `yaml:"url"`
+	AuthToken       string `yaml:"auth_token"`
+	RelayListenAddr string `yaml:"relay_listen_addr"`
 }
 
 func Load(path string) (*Config, error) {
@@ -147,6 +149,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.ChetterMCP.AuthToken == "" {
 		cfg.ChetterMCP.AuthToken = os.Getenv("CHETTER_MCP_AUTH_TOKEN")
+	}
+	if cfg.ChetterMCP.RelayListenAddr == "" {
+		cfg.ChetterMCP.RelayListenAddr = DefaultMCPRelayAddr
 	}
 	if !cfg.Execution.UseGVisor {
 		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"
