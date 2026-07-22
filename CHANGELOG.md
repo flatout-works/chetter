@@ -13,8 +13,16 @@ All notable changes to this project will be documented in this file.
 - `CompletionAwareHarness` interface for the opencode harness, detecting session completion via SSE `session.status` idle events and breaking the single-point-of-failure in poll-only completion detection.
 - `UpdateTriggerRunStatusByTask` query that updates trigger run status on task status transitions and cancellations, so the Recent Runs list reflects actual task lifecycle.
 
+### Changed
+
+- Definition scope requirements: config repo definitions must now be placed under explicit scope directories (`global/`, `groups/<team>/`, `repos/<owner>/<repo>/`). Root-level `agents/`, `skills/`, `triggers/`, `mcp-endpoints/`, and `task-templates/` directories are no longer scanned — only `model-catalog.yaml` remains at the repository root.
+
 ### Fixed
 
+- Chetter MCP traffic now routes through a runner-local reverse proxy (MCP relay) instead of requiring task containers to resolve Docker service names. The relay exposes a consistent endpoint on the runner IP, eliminating gVisor DNS resolution failures for MCP requests without `--add-host` entries.
+- Runner MCP config precedence: `OPENCODE_CONFIG_CONTENT` environment variable re-applies the runner-configured Chetter MCP server URL, auth token, and OAuth settings after the cloned project's `.opencode.json` is loaded, preventing a repository from redirecting or impersonating the Chetter MCP server.
+- OAuth disabled for Chetter MCP in OpenCode config (`oauth: false`) to prevent interactive OAuth flows in non-interactive agent runners.
+- MCP server returns proper `JSONResponse` flag so SSE streaming clients correctly handle the response as streamable JSON.
 - gVisor task containers can now reach the Chetter MCP server: `chetter-mcp` removed from `NO_PROXY` so traffic routes through the runner HTTP proxy which can resolve Docker service names; proxy allowlist port stripping fixed by using `url.Hostname()`.
 - Compose files (`compose.yaml`, `deploy/compose.yaml`) had `CHETTER_MCP_URL` missing the `/mcp` path prefix, causing MCP connection failures from runners.
 - PR review triggers: head branch no longer overridden by trigger `git_url`/`git_ref` — PR reviews always check out the PR's actual head branch.
