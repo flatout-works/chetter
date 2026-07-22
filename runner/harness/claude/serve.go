@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -191,8 +192,12 @@ func exportSession(ctx context.Context, baseURL, sessionID, secret string) (stri
 	return string(exportBody), nil
 }
 
-func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL+"/event", nil)
+func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), sessionID string, onComplete func(summary string)) {
+	eventURL := baseURL + "/event"
+	if sessionID != "" {
+		eventURL += "?session_id=" + url.QueryEscape(sessionID)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", eventURL, nil)
 	if err != nil {
 		slog.Warn("claude event request failed", "taskID", taskID, "err", err)
 		return
@@ -210,6 +215,11 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		slog.Warn("claude event stream returned non-200", "taskID", taskID, "status", resp.StatusCode, "body", string(body))
+		return
+	}
 
 	br := newSSEReader(resp.Body)
 
@@ -244,13 +254,20 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		if ev == nil {
 			continue
 		}
-		if ev.Type == "result" && tokenFn != nil {
-			if usage := extractClaudeTokenUsage(ev.Data); usage != nil {
-				tokenFn(*usage)
+		if ev.Type == "result" {
+			if tokenFn != nil {
+				if usage := extractClaudeTokenUsage(ev.Data); usage != nil {
+					tokenFn(*usage)
+				}
 			}
 			continue
 		}
 		switch ev.Type {
+		case "completed":
+			flush(true)
+			if onComplete != nil {
+				onComplete(extractClaudeResultSummary(ev.Data))
+			}
 		case "text_delta":
 			if text := extractClaudeDeltaText(ev.Data); text != "" {
 				textBuf.WriteString(text)
@@ -273,6 +290,15 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 			}
 		}
 	}
+}
+
+func extractClaudeResultSummary(data string) string {
+	var ev map[string]any
+	if json.Unmarshal([]byte(data), &ev) != nil {
+		return ""
+	}
+	result, _ := ev["result"].(string)
+	return result
 }
 
 func extractClaudeDeltaText(data string) string {

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,6 +33,9 @@ type session struct {
 	resumeID string
 	summary  strings.Builder
 	runErr   string
+	nativeID string
+	result   json.RawMessage
+	complete bool
 }
 
 type event struct {
@@ -40,9 +44,17 @@ type event struct {
 }
 
 type server struct {
-	mu       sync.Mutex
-	sessions map[string]*session
-	password string
+	mu         sync.Mutex
+	sessions   map[string]*session
+	password   string
+	workspace  string
+	command    func(context.Context, string, ...string) *exec.Cmd
+	abortGrace time.Duration
+}
+
+type sessionMapping struct {
+	NativeSessionID string `json:"native_session_id"`
+	Model           string `json:"model,omitempty"`
 }
 
 func main() {
@@ -55,8 +67,11 @@ func main() {
 	}
 
 	srv := &server{
-		sessions: make(map[string]*session),
-		password: password,
+		sessions:   make(map[string]*session),
+		password:   password,
+		workspace:  "/workspace",
+		command:    exec.CommandContext,
+		abortGrace: 2 * time.Second,
 	}
 
 	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
@@ -91,8 +106,11 @@ func main() {
 	defer cancel()
 	srv.mu.Lock()
 	for _, s := range srv.sessions {
-		if s.cancel != nil {
-			s.cancel()
+		s.mu.Lock()
+		cancel := s.cancel
+		s.mu.Unlock()
+		if cancel != nil {
+			cancel()
 		}
 	}
 	srv.mu.Unlock()
@@ -103,6 +121,136 @@ func generatePassword() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func newSession(id string) *session {
+	return &session{
+		id:     id,
+		events: make(chan event, 1024),
+		done:   make(chan struct{}),
+	}
+}
+
+func (srv *server) workspaceDir() string {
+	if srv.workspace != "" {
+		return srv.workspace
+	}
+	return "/workspace"
+}
+
+func (srv *server) lookupSession(id string) (*session, error) {
+	srv.mu.Lock()
+	s := srv.sessions[id]
+	srv.mu.Unlock()
+	if s != nil {
+		return s, nil
+	}
+
+	mapping, err := srv.readSessionMapping(id)
+	if err != nil {
+		return nil, err
+	}
+	s = newSession(id)
+	s.nativeID = mapping.NativeSessionID
+	s.model = mapping.Model
+
+	srv.mu.Lock()
+	if existing := srv.sessions[id]; existing != nil {
+		s = existing
+	} else {
+		srv.sessions[id] = s
+	}
+	srv.mu.Unlock()
+	return s, nil
+}
+
+func (srv *server) mappingPath(id string) (string, error) {
+	if id == "" || filepath.Base(id) != id {
+		return "", fmt.Errorf("invalid session ID")
+	}
+	return filepath.Join(srv.workspaceDir(), ".claude", "chetter-sessions", id+".json"), nil
+}
+
+func (srv *server) readSessionMapping(id string) (sessionMapping, error) {
+	path, err := srv.mappingPath(id)
+	if err != nil {
+		return sessionMapping{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return sessionMapping{}, err
+		}
+		nativeID, discoverErr := srv.discoverNativeSessionID()
+		if discoverErr != nil {
+			return sessionMapping{}, discoverErr
+		}
+		mapping := sessionMapping{NativeSessionID: nativeID}
+		stub := newSession(id)
+		srv.recordNativeSession(stub, nativeID)
+		return mapping, nil
+	}
+	var mapping sessionMapping
+	if err := json.Unmarshal(data, &mapping); err != nil {
+		return sessionMapping{}, fmt.Errorf("decode session mapping: %w", err)
+	}
+	if mapping.NativeSessionID == "" {
+		return sessionMapping{}, fmt.Errorf("session mapping has no native session ID")
+	}
+	return mapping, nil
+}
+
+func (srv *server) discoverNativeSessionID() (string, error) {
+	projectsDir := filepath.Join(srv.workspaceDir(), ".claude", "projects")
+	var ids []string
+	err := filepath.WalkDir(projectsDir, func(_ string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".jsonl" {
+			ids = append(ids, strings.TrimSuffix(entry.Name(), ".jsonl"))
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("discover Claude session transcript: %w", err)
+	}
+	if len(ids) != 1 {
+		return "", fmt.Errorf("cannot reconstruct Claude session: found %d native transcripts", len(ids))
+	}
+	return ids[0], nil
+}
+
+func (srv *server) recordNativeSession(s *session, nativeID string) {
+	if nativeID == "" {
+		return
+	}
+	s.mu.Lock()
+	s.nativeID = nativeID
+	mapping := sessionMapping{NativeSessionID: nativeID, Model: s.model}
+	s.mu.Unlock()
+
+	path, err := srv.mappingPath(s.id)
+	if err != nil {
+		slog.Warn("invalid Claude session mapping path", "session", s.id, "err", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		slog.Warn("create Claude session mapping directory", "session", s.id, "err", err)
+		return
+	}
+	data, err := json.Marshal(mapping)
+	if err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		slog.Warn("write Claude session mapping", "session", s.id, "err", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("replace Claude session mapping", "session", s.id, "err", err)
+	}
 }
 
 func basicAuthHeader(secret string) string {
@@ -171,11 +319,7 @@ func (srv *server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := generateSessionID()
-	s := &session{
-		id:     id,
-		events: make(chan event, 1024),
-		done:   make(chan struct{}),
-	}
+	s := newSession(id)
 
 	srv.mu.Lock()
 	srv.sessions[id] = s
@@ -197,18 +341,15 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sid := parts[0]
 
-	srv.mu.Lock()
-	s, ok := srv.sessions[sid]
-	srv.mu.Unlock()
-
-	if !ok {
-		http.Error(w, "session not found", http.StatusNotFound)
-		return
-	}
-
 	action := ""
 	if len(parts) > 1 {
 		action = parts[1]
+	}
+
+	s, err := srv.lookupSession(sid)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
 	}
 
 	switch {
@@ -232,14 +373,6 @@ type messageRequest struct {
 }
 
 func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session) {
-	s.mu.Lock()
-	if s.cmd != nil {
-		s.mu.Unlock()
-		http.Error(w, "session already running", http.StatusConflict)
-		return
-	}
-	s.mu.Unlock()
-
 	var req messageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
@@ -251,18 +384,7 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		return
 	}
 
-	s.mu.Lock()
-	s.prompt = req.Prompt
-	s.model = req.Model
-	if req.ResumeID != "" {
-		s.resumeID = req.ResumeID
-	}
-	s.mu.Unlock()
-
 	ctx, cancel := context.WithCancel(context.Background())
-	s.mu.Lock()
-	s.cancel = cancel
-	s.mu.Unlock()
 
 	prompt := req.Prompt
 	if len(req.Skills) > 0 {
@@ -290,14 +412,24 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 			args = append(args, "--system-prompt", systemPrompt)
 		}
 	}
-	if req.ResumeID != "" {
-		args = append(args, "--resume", req.ResumeID)
+	resumeID := req.ResumeID
+	s.mu.Lock()
+	if resumeID == s.id && s.nativeID != "" {
+		resumeID = s.nativeID
+	}
+	s.mu.Unlock()
+	if resumeID != "" {
+		args = append(args, "--resume", resumeID)
 	}
 
 	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID)
 
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.Dir = "/workspace"
+	command := srv.command
+	if command == nil {
+		command = exec.CommandContext
+	}
+	cmd := command(ctx, args[0], args[1:]...)
+	cmd.Dir = srv.workspaceDir()
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env,
 		"CLAUDE_CONFIG_DIR=/workspace/.claude",
@@ -318,11 +450,35 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		return
 	}
 
+	s.mu.Lock()
+	if s.cmd != nil {
+		s.mu.Unlock()
+		cancel()
+		http.Error(w, "session already running", http.StatusConflict)
+		return
+	}
+	select {
+	case <-s.done:
+		s.mu.Unlock()
+		cancel()
+		http.Error(w, "session already finished", http.StatusConflict)
+		return
+	default:
+	}
+	s.prompt = req.Prompt
+	s.model = model
+	s.resumeID = resumeID
+	s.cancel = cancel
+	s.cmd = cmd
 	if err := cmd.Start(); err != nil {
 		cancel()
+		s.cmd = nil
+		s.cancel = nil
+		s.mu.Unlock()
 		srv.sendError(w, fmt.Sprintf("start claude: %v", err))
 		return
 	}
+	s.mu.Unlock()
 
 	go pipeStderr(stderr, s.id)
 	go srv.streamEvents(ctx, s, stdout)
@@ -330,7 +486,12 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 	select {
 	case <-s.done:
 	case <-r.Context().Done():
-		cancel()
+		s.mu.Lock()
+		complete := s.complete
+		s.mu.Unlock()
+		if !complete {
+			cancel()
+		}
 		return
 	}
 
@@ -372,6 +533,9 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 
 		parsed := parseStreamEvent(ev)
 		s.recordStreamEvent(ev)
+		if nativeID := nativeSessionID(ev); nativeID != "" {
+			srv.recordNativeSession(s, nativeID)
+		}
 		if parsed != "" {
 			data, _ := json.Marshal(progressEventPayload(ev))
 			select {
@@ -383,6 +547,9 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 
 		if typ, _ := ev["type"].(string); typ == "result" {
 			data, _ := json.Marshal(ev)
+			s.mu.Lock()
+			s.result = append(s.result[:0], data...)
+			s.mu.Unlock()
 			select {
 			case s.events <- event{Type: "result", Data: data}:
 			case <-ctx.Done():
@@ -399,6 +566,20 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 		default:
 		}
 	}
+
+	s.waitForCommand(ctx)
+	s.mu.Lock()
+	if ctx.Err() == nil && s.runErr == "" && len(s.result) > 0 {
+		s.complete = true
+		data := append(json.RawMessage(nil), s.result...)
+		s.mu.Unlock()
+		select {
+		case s.events <- event{Type: "completed", Data: data}:
+		case <-ctx.Done():
+		}
+		return
+	}
+	s.mu.Unlock()
 }
 
 func progressEventPayload(ev map[string]any) any {
@@ -413,7 +594,6 @@ func progressEventPayload(ev map[string]any) any {
 func (s *session) waitForCommand(ctx context.Context) {
 	s.mu.Lock()
 	cmd := s.cmd
-	s.cmd = nil
 	s.mu.Unlock()
 	if cmd == nil {
 		return
@@ -421,6 +601,10 @@ func (s *session) waitForCommand(ctx context.Context) {
 	if err := cmd.Wait(); err != nil && ctx.Err() == nil {
 		s.setError(err.Error())
 	}
+	s.mu.Lock()
+	s.cmd = nil
+	s.cancel = nil
+	s.mu.Unlock()
 }
 
 func (s *session) recordStreamEvent(ev map[string]any) {
@@ -436,9 +620,15 @@ func (s *session) recordStreamEvent(ev map[string]any) {
 		if errText, _ := ev["error"].(string); errText != "" {
 			s.setError(errText)
 		}
-		if subtype, _ := ev["subtype"].(string); subtype == "error" {
+		isError, _ := ev["is_error"].(bool)
+		subtype, _ := ev["subtype"].(string)
+		if isError || strings.HasPrefix(subtype, "error") {
 			if message, _ := ev["message"].(string); message != "" {
 				s.setError(message)
+			} else if subtype != "" {
+				s.setError("Claude result reported " + subtype)
+			} else {
+				s.setError("Claude result reported an error")
 			}
 		}
 	}
@@ -520,6 +710,16 @@ func parseStreamEvent(ev map[string]any) string {
 	return ""
 }
 
+func nativeSessionID(ev map[string]any) string {
+	id, _ := ev["session_id"].(string)
+	if id != "" {
+		return id
+	}
+	message, _ := ev["message"].(map[string]any)
+	id, _ = message["session_id"].(string)
+	return id
+}
+
 func (srv *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")
 
@@ -535,11 +735,9 @@ func (srv *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	var s *session
 	if sid != "" {
-		srv.mu.Lock()
-		s = srv.sessions[sid]
-		srv.mu.Unlock()
-
-		if s == nil {
+		var err error
+		s, err = srv.lookupSession(sid)
+		if err != nil {
 			io.WriteString(w, formatSSE("error", `{"error":"session not found"}`))
 			flusher.Flush()
 			return
@@ -583,23 +781,33 @@ func (srv *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (srv *server) handleAbort(w http.ResponseWriter, r *http.Request, s *session) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.cmd == nil || s.cmd.Process == nil {
+		s.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "nothing-to-abort"})
 		return
 	}
+	cmd := s.cmd
+	cancel := s.cancel
+	done := s.done
+	s.mu.Unlock()
 
 	slog.Info("aborting session", "id", s.id)
 
-	if err := s.cmd.Process.Signal(syscall.SIGINT); err == nil {
-		time.Sleep(2 * time.Second)
+	if err := cmd.Process.Signal(syscall.SIGINT); err == nil {
+		grace := srv.abortGrace
+		if grace <= 0 {
+			grace = 2 * time.Second
+		}
+		select {
+		case <-done:
+		case <-time.After(grace):
+		}
 	}
 
-	if s.cancel != nil {
-		s.cancel()
+	if cancel != nil {
+		cancel()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -609,11 +817,11 @@ func (srv *server) handleAbort(w http.ResponseWriter, r *http.Request, s *sessio
 
 func (srv *server) handleExport(w http.ResponseWriter, r *http.Request, s *session) {
 	s.mu.Lock()
-	id := s.id
+	id := s.nativeID
 	model := s.model
 	s.mu.Unlock()
 
-	export, err := readSessionExport(id, model)
+	export, err := readSessionExport(srv.workspaceDir(), id, model)
 	if err != nil {
 		slog.Warn("export failed", "session", id, "err", err)
 		http.Error(w, fmt.Sprintf("export failed: %v", err), http.StatusInternalServerError)
@@ -625,79 +833,42 @@ func (srv *server) handleExport(w http.ResponseWriter, r *http.Request, s *sessi
 	io.WriteString(w, export)
 }
 
-func readSessionExport(sessionID, model string) (string, error) {
-	entries, err := os.ReadDir("/workspace/.claude/projects")
+func readSessionExport(workspace, sessionID, model string) (string, error) {
+	if sessionID == "" {
+		return "", fmt.Errorf("claude native session ID is not available")
+	}
+	path, err := findSessionFile(filepath.Join(workspace, ".claude", "projects"), sessionID)
 	if err != nil {
-		return "", fmt.Errorf("read projects dir: %w", err)
+		return "", err
 	}
-
-	var latestDir string
-	var latestTime time.Time
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(latestTime) {
-			latestTime = info.ModTime()
-			latestDir = entry.Name()
-		}
-	}
-
-	if latestDir == "" {
-		return "", fmt.Errorf("no Claude project directories found")
-	}
-
-	projectPath := "/workspace/.claude/projects/" + latestDir
-	jsonlDir := projectPath
-
-	subEntries, err := os.ReadDir(projectPath)
-	if err != nil {
-		return "", fmt.Errorf("read project dir: %w", err)
-	}
-
-	for _, sub := range subEntries {
-		if sub.IsDir() {
-			jsonlDir = projectPath + "/" + sub.Name()
-			break
-		}
-	}
-
-	jsonlFiles, err := filepathGlob(jsonlDir + "/*.jsonl")
-	if err != nil || len(jsonlFiles) == 0 {
-		return "", fmt.Errorf("no session files found in %s", jsonlDir)
-	}
-
-	latestFile := jsonlFiles[len(jsonlFiles)-1]
-	return renderSessionMarkdown(latestFile, model)
+	return renderSessionMarkdown(path, model)
 }
 
-func filepathGlob(pattern string) ([]string, error) {
-	dir := pattern[:strings.LastIndex(pattern, "/")]
-	prefix := pattern[strings.LastIndex(pattern, "/")+1:]
-	if !strings.Contains(prefix, "*") {
-		if _, err := os.Stat(pattern); err == nil {
-			return []string{pattern}, nil
-		}
-		return nil, fmt.Errorf("file not found: %s", pattern)
+func findSessionFile(projectsDir, sessionID string) (string, error) {
+	if filepath.Base(sessionID) != sessionID {
+		return "", fmt.Errorf("invalid Claude session ID")
 	}
-
-	entries, err := os.ReadDir(dir)
+	want := sessionID + ".jsonl"
+	var match string
+	err := filepath.WalkDir(projectsDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && entry.Name() == want {
+			if match != "" {
+				return fmt.Errorf("multiple transcripts found for Claude session %s", sessionID)
+			}
+			match = path
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("find Claude session transcript: %w", err)
 	}
-
-	var matches []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
-			matches = append(matches, dir+"/"+e.Name())
-		}
+	if match == "" {
+		return "", fmt.Errorf("no transcript found for Claude session %s", sessionID)
 	}
-	return matches, nil
+	return match, nil
 }
 
 func renderSessionMarkdown(path, model string) (string, error) {
