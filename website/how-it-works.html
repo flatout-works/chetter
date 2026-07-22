@@ -33,7 +33,7 @@
       <section class="section">
         <div class="map">
           <article class="card"><small>1. Request</small><h3>Someone asks for work</h3><p>An MCP client, cron trigger, GitHub PR review trigger, or issue trigger creates a task.</p></article>
-          <article class="card"><small>2. Queue</small><h3>The server stores it</h3><p>The task is persisted in TiDB or MySQL with status <code>pending</code>, team ownership, model settings, timeout, and optional repo metadata.</p></article>
+          <article class="card"><small>2. Queue</small><h3>The server stores it</h3><p>The task is persisted in TiDB, MySQL, or PostgreSQL with status <code>pending</code>, team ownership, model settings, timeout, and optional repo metadata.</p></article>
           <article class="card"><small>3. Claim</small><h3>A runner pulls work</h3><p>Runners poll over ConnectRPC. One runner claims a task with a database lease so two runners cannot execute the same work.</p></article>
           <article class="card"><small>4. Execute</small><h3>The agent runs remotely</h3><p>The runner creates a workspace, clones the repo, writes config, starts the selected harness, and reports events back.</p></article>
         </div>
