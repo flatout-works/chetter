@@ -825,7 +825,6 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	hostPort := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 
-	const containerPort = 9999
 	containerName := containerNameForRequest(req)
 
 	removeTaskContainer(containerName)
@@ -835,98 +834,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := runcNetwork()
 	runnerIP := ""
-	serveCmd := h.ServeCommand(containerPort)
+	if gvisor {
+		runnerIP = hostIP(netName)
+	}
+	serveCmd := h.ServeCommand(containerPortForServe)
 	if len(serveCmd) == 0 {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
 		return
 	}
-	entrypoint := serveCmd[0]
-	serveArgs := serveCmd[1:]
-
-	dockerArgs := []string{
-		"run", "-d",
-		"--entrypoint", entrypoint,
-		"--name", containerName,
-		"--label", "chetter.runner_id=" + r.runnerID,
-		"--label", "chetter.task_id=" + req.TaskID,
-		"--label", "chetter.execution_id=" + executionKey(req),
-		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
-		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc")
-		runnerIP = hostIP(netName)
-		dockerArgs = append(dockerArgs, "--dns", runnerIP)
-		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
-	}
-	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
-		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
-	}
-	// Put the dev container on the same network as the runner so it can
-	// reach the runner's MCP server directly (non-gVisor) or via the
-	// HTTP proxy (gVisor).
-	dockerArgs = append(dockerArgs, "--network", netName)
-	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
-	dockerArgs = append(dockerArgs,
-		"-v", agentenv.HostWorkspaceDir(session.WorkspaceDir)+":/workspace",
-		"-w", "/workspace",
-		"-e", "TASK_ID="+req.TaskID,
-		"-e", "WORKSPACE=/workspace",
-		"-e", "XDG_CONFIG_HOME=/workspace/.config",
-		"-e", "XDG_DATA_HOME=/workspace/.local/share",
-		"-e", "XDG_STATE_HOME=/workspace/.local/state",
-		"-e", "XDG_CACHE_HOME=/workspace/.cache",
-		"-e", "CHETTER_AGENT_NAME="+req.Agent,
-		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
-		"-e", "CHETTER_TASK_ID="+req.TaskID,
-		"-e", "CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
-		"-e", "CHETTER_USER_PROMPT_ID="+req.UserPromptID,
-		"-e", "CHETTER_EXECUTION_ID="+req.ExecutionID,
-		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
-		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
-	)
-	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
-		dockerArgs = append(dockerArgs, "-e", value)
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
-	} else {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
-	}
-
-	if gvisor {
-		dockerArgs = append(dockerArgs,
-			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
-			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
-			"-e", "http_proxy=http://"+runnerIP+":18080",
-			"-e", "https_proxy=http://"+runnerIP+":18080",
-			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NODE_USE_ENV_PROXY=1",
-			"-e", "NO_PROXY="+gvisorNoProxy(),
-			"-e", "no_proxy="+gvisorNoProxy(),
-		)
-	}
-
-	for k, v := range h.Env("/workspace", secret, req) {
-		dockerArgs = append(dockerArgs, "-e", k+"="+v)
-	}
-
-	for k, v := range req.Env {
-		if agentenv.IsManagedEnv(k, req) {
-			continue
-		}
-		dockerArgs = append(dockerArgs, "-e", k+"="+v)
-	}
-	dockerArgs = agentenv.AppendDockerManagedEnvironment(dockerArgs, req)
-
-	if gvisor {
-		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
-	}
-	if shouldPullAgentImage(req.AgentImage) {
-		dockerArgs = append(dockerArgs, "--pull=always")
-	}
-	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, serveArgs...)
+	dockerArgs := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -1069,7 +985,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	hostPort := ln.Addr().(*net.TCPAddr).Port
 	ln.Close()
 
-	const containerPort = 9999
 	containerName := containerNameForRequest(req)
 	removeTaskContainer(containerName)
 	defer removeTaskContainer(containerName)
@@ -1078,95 +993,15 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := runcNetwork()
 	runnerIP := ""
-	serveCmd := h.ServeCommand(containerPort)
+	if gvisor {
+		runnerIP = hostIP(netName)
+	}
+	serveCmd := h.ServeCommand(containerPortForServe)
 	if len(serveCmd) == 0 {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
 		return
 	}
-	entrypoint := serveCmd[0]
-	serveArgs := serveCmd[1:]
-
-	dockerArgs := []string{
-		"run", "-d",
-		"--entrypoint", entrypoint,
-		"--name", containerName,
-		"--label", "chetter.runner_id=" + r.runnerID,
-		"--label", "chetter.task_id=" + req.TaskID,
-		"--label", "chetter.execution_id=" + executionKey(req),
-		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
-		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs, "--runtime", "runsc")
-		runnerIP = hostIP(netName)
-		dockerArgs = append(dockerArgs, "--dns", runnerIP)
-		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
-	}
-	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
-		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
-	}
-	// Put the dev container on the same network as the runner so it can
-	// reach the runner's MCP server directly (non-gVisor) or via the
-	// HTTP proxy (gVisor).
-	dockerArgs = append(dockerArgs, "--network", netName)
-	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPort))
-	dockerArgs = append(dockerArgs,
-		"-v", agentenv.HostWorkspaceDir(session.WorkspaceDir)+":/workspace",
-		"-w", "/workspace",
-		"-e", "TASK_ID="+req.TaskID,
-		"-e", "WORKSPACE=/workspace",
-		"-e", "XDG_CONFIG_HOME=/workspace/.config",
-		"-e", "XDG_DATA_HOME=/workspace/.local/share",
-		"-e", "XDG_STATE_HOME=/workspace/.local/state",
-		"-e", "XDG_CACHE_HOME=/workspace/.cache",
-		"-e", "CHETTER_AGENT_NAME="+req.Agent,
-		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
-		"-e", "CHETTER_TASK_ID="+req.TaskID,
-		"-e", "CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
-		"-e", "CHETTER_USER_PROMPT_ID="+req.UserPromptID,
-		"-e", "CHETTER_EXECUTION_ID="+req.ExecutionID,
-		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
-		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
-	)
-	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
-		dockerArgs = append(dockerArgs, "-e", value)
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
-	} else {
-		dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
-	}
-	if gvisor {
-		dockerArgs = append(dockerArgs,
-			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
-			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
-			"-e", "http_proxy=http://"+runnerIP+":18080",
-			"-e", "https_proxy=http://"+runnerIP+":18080",
-			"-e", "CHETTER_PROXY="+runnerIP+":18080",
-			"-e", "NODE_USE_ENV_PROXY=1",
-			"-e", "NO_PROXY="+gvisorNoProxy(),
-			"-e", "no_proxy="+gvisorNoProxy(),
-		)
-	}
-	for k, v := range h.Env("/workspace", secret, req) {
-		dockerArgs = append(dockerArgs, "-e", k+"="+v)
-	}
-	for k, v := range req.Env {
-		if agentenv.IsManagedEnv(k, req) {
-			continue
-		}
-		dockerArgs = append(dockerArgs, "-e", k+"="+v)
-	}
-	dockerArgs = agentenv.AppendDockerManagedEnvironment(dockerArgs, req)
-
-	if gvisor {
-		dockerArgs = append(dockerArgs, "--hostname", "0.0.0.0")
-	}
-	if shouldPullAgentImage(req.AgentImage) {
-		dockerArgs = append(dockerArgs, "--pull=always")
-	}
-	dockerArgs = append(dockerArgs, req.AgentImage)
-	dockerArgs = append(dockerArgs, serveArgs...)
+	dockerArgs := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
 
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
