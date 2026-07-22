@@ -1,6 +1,12 @@
 package opencode
 
-import "testing"
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
 func TestIsSessionIdleStatus(t *testing.T) {
 	t.Parallel()
@@ -51,7 +57,16 @@ func TestIsSessionIdleStatus(t *testing.T) {
 			name: "different session ID",
 			props: map[string]any{
 				"sessionID": "ses_other",
-				"type":       "idle",
+				"type":      "idle",
+			},
+			sessionID: "ses_123",
+			want:      false,
+		},
+		{
+			name: "different event ID",
+			props: map[string]any{
+				"id":   "ses_other",
+				"type": "idle",
 			},
 			sessionID: "ses_123",
 			want:      false,
@@ -85,6 +100,171 @@ func TestIsSessionIdleStatus(t *testing.T) {
 			t.Parallel()
 			if got := isSessionIdleStatus(tc.props, tc.sessionID); got != tc.want {
 				t.Fatalf("isSessionIdleStatus() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsSessionIdleEvent(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		props     map[string]any
+		sessionID string
+		want      bool
+	}{
+		{
+			name:      "matching session",
+			props:     map[string]any{"sessionID": "ses_123"},
+			sessionID: "ses_123",
+			want:      true,
+		},
+		{
+			name:      "missing session ID",
+			props:     map[string]any{},
+			sessionID: "ses_123",
+			want:      true,
+		},
+		{
+			name:      "different session",
+			props:     map[string]any{"sessionID": "ses_other"},
+			sessionID: "ses_123",
+			want:      false,
+		},
+		{
+			name:      "nil properties",
+			sessionID: "ses_123",
+			want:      false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isSessionIdleEvent(tc.props, tc.sessionID); got != tc.want {
+				t.Fatalf("isSessionIdleEvent() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsTerminalAssistantMessage(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		props     map[string]any
+		sessionID string
+		want      bool
+	}{
+		{
+			name: "stop finish",
+			props: map[string]any{"info": map[string]any{
+				"role": "assistant", "sessionID": "ses_123", "finish": "stop",
+			}},
+			sessionID: "ses_123",
+			want:      true,
+		},
+		{
+			name: "end turn finish",
+			props: map[string]any{"info": map[string]any{
+				"role": "assistant", "sessionID": "ses_123", "finish": "end_turn",
+			}},
+			sessionID: "ses_123",
+			want:      true,
+		},
+		{
+			name: "tool calls are not terminal",
+			props: map[string]any{"info": map[string]any{
+				"role": "assistant", "sessionID": "ses_123", "finish": "tool-calls",
+			}},
+			sessionID: "ses_123",
+			want:      false,
+		},
+		{
+			name: "user message is not terminal",
+			props: map[string]any{"info": map[string]any{
+				"role": "user", "sessionID": "ses_123", "finish": "stop",
+			}},
+			sessionID: "ses_123",
+			want:      false,
+		},
+		{
+			name: "different session",
+			props: map[string]any{"info": map[string]any{
+				"role": "assistant", "sessionID": "ses_other", "finish": "stop",
+			}},
+			sessionID: "ses_123",
+			want:      false,
+		},
+		{
+			name:      "missing info",
+			props:     map[string]any{},
+			sessionID: "ses_123",
+			want:      false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isTerminalAssistantMessage(tc.props, tc.sessionID); got != tc.want {
+				t.Fatalf("isTerminalAssistantMessage() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWatchEventsSignalsTerminalEvents(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		event string
+	}{
+		{
+			name:  "session idle",
+			event: `{"type":"session.idle","properties":{"sessionID":"ses_123"}}`,
+		},
+		{
+			name:  "terminal assistant message",
+			event: `{"type":"message.updated","properties":{"info":{"role":"assistant","sessionID":"ses_123","finish":"stop"}}}`,
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				if _, err := w.Write([]byte("data: " + tc.event + "\n\n")); err != nil {
+					t.Errorf("write event: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			idleCh := make(chan struct{}, 1)
+			done := make(chan struct{})
+			go func() {
+				watchEvents(ctx, "task", server.URL, "", func(string, string) {}, nil, "ses_123", func() {
+					select {
+					case idleCh <- struct{}{}:
+					default:
+					}
+				})
+				close(done)
+			}()
+
+			select {
+			case <-idleCh:
+				cancel()
+			case <-time.After(2 * time.Second):
+				t.Fatal("timed out waiting for completion signal")
+			}
+
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("event watcher did not stop")
 			}
 		})
 	}

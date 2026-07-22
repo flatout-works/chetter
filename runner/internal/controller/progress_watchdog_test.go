@@ -99,3 +99,28 @@ func TestProgressWatchdogNudgesWhenNotIdle(t *testing.T) {
 		t.Fatalf("not-idle watchdog = nudge:%v fail:%v, want nudge only", nudge, fail)
 	}
 }
+
+func TestProgressWatchdogCapsContinuationAttempts(t *testing.T) {
+	start := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	now := start
+	w := &progressWatchdog{
+		now:          func() time.Time { return now },
+		lastProgress: start,
+		nudge:        func(context.Context) error { return nil },
+	}
+
+	for attempt := 0; attempt < maxHarnessContinuationAttempts; attempt++ {
+		now = start.Add(time.Duration(attempt+1) * harnessProgressNudgeAfter)
+		nudge, fail := w.check(now)
+		if !nudge || fail {
+			t.Fatalf("attempt %d = nudge:%v fail:%v, want nudge only", attempt+1, nudge, fail)
+		}
+		w.record("opencode: message.part.updated")
+	}
+
+	now = now.Add(harnessProgressNudgeAfter)
+	nudge, fail := w.check(now)
+	if nudge || !fail {
+		t.Fatalf("attempt cap = nudge:%v fail:%v, want fail only", nudge, fail)
+	}
+}

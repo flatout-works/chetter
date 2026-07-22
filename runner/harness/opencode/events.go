@@ -97,28 +97,48 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 						tokenFn(*usage)
 					}
 				}
-			switch typeName {
-			case "message.part.delta":
-				if text := extractOpenCodeDeltaText(props); text != "" {
-					textBuf.WriteString(text)
-					flush(false)
-				}
-			case "session.status":
-				if onIdle != nil && isSessionIdleStatus(props, sessionID) {
-					slog.Info("session.status idle event received", "taskID", taskID, "sessionID", sessionID)
-					onIdle()
-				}
-				detail := summarizeEvent(raw)
-				if detail != "" {
-					flush(true)
-					publishFn("running", "opencode: "+detail)
-				}
-			case "error", "session.error":
-				detail := summarizeEvent(raw)
-				if detail != "" {
-					flush(true)
-					publishFn("running", "opencode: "+detail)
-				}
+				switch typeName {
+				case "message.part.delta":
+					if text := extractOpenCodeDeltaText(props); text != "" {
+						textBuf.WriteString(text)
+						flush(false)
+					}
+				case "session.status":
+					if onIdle != nil && isSessionIdleStatus(props, sessionID) {
+						slog.Info("session.status idle event received", "taskID", taskID, "sessionID", sessionID)
+						onIdle()
+					}
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						flush(true)
+						publishFn("running", "opencode: "+detail)
+					}
+				case "session.idle":
+					if onIdle != nil && isSessionIdleEvent(props, sessionID) {
+						slog.Info("session.idle event received", "taskID", taskID, "sessionID", sessionID)
+						onIdle()
+					}
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						flush(true)
+						publishFn("running", "opencode: "+detail)
+					}
+				case "message.updated":
+					if onIdle != nil && isTerminalAssistantMessage(props, sessionID) {
+						slog.Info("terminal assistant message received", "taskID", taskID, "sessionID", sessionID)
+						onIdle()
+					}
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						flush(true)
+						publishFn("running", "opencode: "+detail)
+					}
+				case "error", "session.error":
+					detail := summarizeEvent(raw)
+					if detail != "" {
+						flush(true)
+						publishFn("running", "opencode: "+detail)
+					}
 				default:
 					detail := summarizeEvent(raw)
 					if detail != "" {
@@ -240,10 +260,10 @@ func extractTokenUsage(dataLines []string) *task.TokenUsage {
 		cache, _ := tokens["cache"].(map[string]any)
 		cost, _ := part["cost"].(float64)
 		usage := &task.TokenUsage{
-			InputTokens:      floatToInt64(tokens["input"]),
-			OutputTokens:     floatToInt64(tokens["output"]),
-			ReasoningTokens:  floatToInt64(tokens["reasoning"]),
-			CostCents:        int64(math.Round(cost * 100)),
+			InputTokens:     floatToInt64(tokens["input"]),
+			OutputTokens:    floatToInt64(tokens["output"]),
+			ReasoningTokens: floatToInt64(tokens["reasoning"]),
+			CostCents:       int64(math.Round(cost * 100)),
 		}
 		if cache != nil {
 			usage.CacheReadTokens = floatToInt64(cache["read"])
@@ -269,10 +289,27 @@ func floatToInt64(v any) int64 {
 	}
 }
 
-// isSessionIdleStatus checks whether a session.status SSE event indicates the
-// session has transitioned to an idle/complete state. It handles several
-// possible property layouts defensively.
-func isSessionIdleStatus(props map[string]any, sessionID string) bool {
+func isSessionIdleEvent(props map[string]any, sessionID string) bool {
+	return eventBelongsToSession(props, sessionID)
+}
+
+func isTerminalAssistantMessage(props map[string]any, sessionID string) bool {
+	if props == nil {
+		return false
+	}
+	info, _ := props["info"].(map[string]any)
+	if info == nil || !eventBelongsToSession(info, sessionID) {
+		return false
+	}
+	role, _ := info["role"].(string)
+	if role != "assistant" {
+		return false
+	}
+	finish, _ := info["finish"].(string)
+	return finish == "stop" || finish == "end_turn"
+}
+
+func eventBelongsToSession(props map[string]any, sessionID string) bool {
 	if props == nil {
 		return false
 	}
@@ -280,7 +317,14 @@ func isSessionIdleStatus(props map[string]any, sessionID string) bool {
 	if id == "" {
 		id, _ = props["id"].(string)
 	}
-	if id != "" && id != sessionID {
+	return id == "" || id == sessionID
+}
+
+// isSessionIdleStatus checks whether a session.status SSE event indicates the
+// session has transitioned to an idle/complete state. It handles several
+// possible property layouts defensively.
+func isSessionIdleStatus(props map[string]any, sessionID string) bool {
+	if !eventBelongsToSession(props, sessionID) {
 		return false
 	}
 	statusType, _ := props["type"].(string)

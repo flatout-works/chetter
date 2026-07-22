@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	harnessProgressCheckInterval = 10 * time.Second
-	harnessProgressNudgeAfter    = 2 * time.Minute
-	harnessProgressFailAfter     = 5 * time.Minute
-	harnessContinueTimeout       = 30 * time.Second
+	harnessProgressCheckInterval   = 10 * time.Second
+	harnessProgressNudgeAfter      = 2 * time.Minute
+	harnessProgressFailAfter       = 5 * time.Minute
+	harnessContinueTimeout         = 30 * time.Second
+	maxHarnessContinuationAttempts = 3
 )
 
 // progressWatchdog distinguishes harness activity from runner heartbeats. A
@@ -23,6 +24,7 @@ type progressWatchdog struct {
 	now          func() time.Time
 	lastProgress time.Time
 	nudgedAt     time.Time
+	nudgeCount   int
 	stuck        bool
 	nudge        func(context.Context) error
 	report       func(string)
@@ -108,7 +110,11 @@ func (w *progressWatchdog) check(now time.Time) (nudge, fail bool) {
 			return false, false
 		}
 		if w.nudge != nil {
+			if w.nudgeCount >= maxHarnessContinuationAttempts {
+				return false, true
+			}
 			w.nudgedAt = now
+			w.nudgeCount++
 			return true, false
 		}
 		return false, elapsed >= harnessProgressFailAfter
