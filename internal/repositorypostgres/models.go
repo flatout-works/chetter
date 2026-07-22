@@ -193,12 +193,6 @@ type ChetterTask struct {
 	UpdatedAt              time.Time        `json:"updated_at"`
 	EndedAt                sql.NullTime     `json:"ended_at"`
 	SearchText             sql.NullString   `json:"search_text"`
-	TotalInputTokens       int64            `json:"total_input_tokens"`
-	TotalOutputTokens      int64            `json:"total_output_tokens"`
-	TotalCacheReadTokens   int64            `json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens  int64            `json:"total_cache_write_tokens"`
-	TotalReasoningTokens   int64            `json:"total_reasoning_tokens"`
-	CostCents              int64            `json:"cost_cents"`
 	GitIdentityID          sql.NullString   `json:"git_identity_id"`
 	McpEndpoints           *json.RawMessage `json:"mcp_endpoints"`
 }

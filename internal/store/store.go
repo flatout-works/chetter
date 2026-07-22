@@ -408,9 +408,6 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskEventTypeColumn(ctx); err != nil {
 		return err
 	}
-	if err := s.ensureTokenColumns(ctx); err != nil {
-		return err
-	}
 	if err := s.ensureTeamAuthSchema(ctx); err != nil {
 		return err
 	}
@@ -515,12 +512,6 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
-		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER cost_cents"},
-		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},
-		{"total_cache_read_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_read_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_output_tokens"},
-		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
-		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
-		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
 		{"mcp_endpoints", "ALTER TABLE chetter_tasks ADD COLUMN mcp_endpoints JSON NULL AFTER skills"},
 	}
 	for _, column := range columns {
@@ -893,33 +884,6 @@ func (s *Store) ensureTaskEventTypeColumn(ctx context.Context) error {
 	if !indexExists {
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD KEY idx_chetter_task_events_type_created (event_type, created_at)"); err != nil {
 			return fmt.Errorf("add chetter_task_events event_type index: %w", err)
-		}
-	}
-	return nil
-}
-
-func (s *Store) ensureTokenColumns(ctx context.Context) error {
-	columns := []struct {
-		name string
-		ddl  string
-	}{
-		{"total_input_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_input_tokens BIGINT NOT NULL DEFAULT 0 AFTER error_category"},
-		{"total_output_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_input_tokens"},
-		{"total_cache_read_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_read_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_output_tokens"},
-		{"total_cache_write_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_cache_write_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_read_tokens"},
-		{"total_reasoning_tokens", "ALTER TABLE chetter_tasks ADD COLUMN total_reasoning_tokens BIGINT NOT NULL DEFAULT 0 AFTER total_cache_write_tokens"},
-		{"cost_cents", "ALTER TABLE chetter_tasks ADD COLUMN cost_cents BIGINT NOT NULL DEFAULT 0 AFTER total_reasoning_tokens"},
-	}
-	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
 		}
 	}
 	return nil

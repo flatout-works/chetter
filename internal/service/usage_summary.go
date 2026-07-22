@@ -209,13 +209,13 @@ func (s *Service) queryUsageSummary(
 		"COALESCE(t.trigger_name, '') AS trigger_name",
 		"COALESCE(t.trigger_type, '') AS trigger_type",
 		"COALESCE(t.git_url, '') AS git_url",
-		"COUNT(*) AS task_count",
-		"SUM(t.total_input_tokens) AS total_input_tokens",
-		"SUM(t.total_output_tokens) AS total_output_tokens",
-		"SUM(t.total_cache_read_tokens) AS total_cache_read_tokens",
-		"SUM(t.total_cache_write_tokens) AS total_cache_write_tokens",
-		"SUM(t.total_reasoning_tokens) AS total_reasoning_tokens",
-		"SUM(t.cost_cents) AS cost_cents",
+		"COUNT(DISTINCT t.id) AS task_count",
+		"COALESCE(SUM(attempt.total_input_tokens), 0) AS total_input_tokens",
+		"COALESCE(SUM(attempt.total_output_tokens), 0) AS total_output_tokens",
+		"COALESCE(SUM(attempt.total_cache_read_tokens), 0) AS total_cache_read_tokens",
+		"COALESCE(SUM(attempt.total_cache_write_tokens), 0) AS total_cache_write_tokens",
+		"COALESCE(SUM(attempt.total_reasoning_tokens), 0) AS total_reasoning_tokens",
+		"COALESCE(SUM(attempt.cost_cents), 0) AS cost_cents",
 	}
 
 	groupExprs := []string{"t.team_id", "t.trigger_name", "t.trigger_type", "t.git_url"}
@@ -282,9 +282,11 @@ func (s *Service) queryUsageSummary(
 
 	query := "SELECT " + strings.Join(selectExprs, ", ") +
 		" FROM chetter_tasks t" +
+		" JOIN chetter_user_prompts prompt ON prompt.task_id = t.id" +
+		" JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id" +
 		whereClause +
 		groupClause +
-		" ORDER BY SUM(t.cost_cents) DESC, COUNT(*) DESC"
+		" ORDER BY SUM(attempt.cost_cents) DESC, COUNT(DISTINCT t.id) DESC"
 
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {

@@ -35,6 +35,14 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 			rec.StartedAt = nullTimePtr(attempt.StartedAt)
 		}
 	}
+	if usage, err := s.repo.GetExecutionAttemptUsageByTask(ctx, taskID); err == nil {
+		rec.TotalInputTokens = usage.TotalInputTokens
+		rec.TotalOutputTokens = usage.TotalOutputTokens
+		rec.TotalCacheReadTokens = usage.TotalCacheReadTokens
+		rec.TotalCacheWriteTokens = usage.TotalCacheWriteTokens
+		rec.TotalReasoningTokens = usage.TotalReasoningTokens
+		rec.CostCents = usage.CostCents
+	}
 	return rec, nil
 }
 

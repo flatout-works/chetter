@@ -257,6 +257,41 @@ func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (Chett
 	return i, err
 }
 
+const getExecutionAttemptUsageByTask = `-- name: GetExecutionAttemptUsageByTask :one
+SELECT COALESCE(SUM(attempt.total_input_tokens), 0)::bigint AS total_input_tokens,
+       COALESCE(SUM(attempt.total_output_tokens), 0)::bigint AS total_output_tokens,
+       COALESCE(SUM(attempt.total_cache_read_tokens), 0)::bigint AS total_cache_read_tokens,
+       COALESCE(SUM(attempt.total_cache_write_tokens), 0)::bigint AS total_cache_write_tokens,
+       COALESCE(SUM(attempt.total_reasoning_tokens), 0)::bigint AS total_reasoning_tokens,
+       COALESCE(SUM(attempt.cost_cents), 0)::bigint AS cost_cents
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE prompt.task_id = $1
+`
+
+type GetExecutionAttemptUsageByTaskRow struct {
+	TotalInputTokens      int64 `json:"total_input_tokens"`
+	TotalOutputTokens     int64 `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64 `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64 `json:"total_cache_write_tokens"`
+	TotalReasoningTokens  int64 `json:"total_reasoning_tokens"`
+	CostCents             int64 `json:"cost_cents"`
+}
+
+func (q *Queries) GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (GetExecutionAttemptUsageByTaskRow, error) {
+	row := q.db.QueryRowContext(ctx, getExecutionAttemptUsageByTask, taskID)
+	var i GetExecutionAttemptUsageByTaskRow
+	err := row.Scan(
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.TotalCacheReadTokens,
+		&i.TotalCacheWriteTokens,
+		&i.TotalReasoningTokens,
+		&i.CostCents,
+	)
+	return i, err
+}
+
 const getNextExecutionAttemptSequence = `-- name: GetNextExecutionAttemptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
 FROM chetter_execution_attempts

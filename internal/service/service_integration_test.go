@@ -2363,33 +2363,42 @@ func insertTask(t *testing.T, db *sql.DB, id, teamID, triggerName, triggerType, 
 	query := `
 		INSERT INTO chetter_tasks (
 			id, team_id, status, prompt, git_url, trigger_name, trigger_type,
-			total_input_tokens, total_output_tokens, total_cache_read_tokens,
-			total_cache_write_tokens, total_reasoning_tokens, cost_cents,
 			skills, env, created_at, updated_at
-		) VALUES (?, ?, 'done', ?, ?, ?, ?,
-			?, ?, ?,
-			?, ?, ?,
-			'[]', '{}', ?, ?)`
-	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		) VALUES (?, ?, 'done', ?, ?, ?, ?, '[]', '{}', ?, ?)`
+	dialect := store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT"))
+	if dialect == store.DialectPostgres {
 		query = `
 			INSERT INTO chetter_tasks (
 				id, team_id, status, prompt, git_url, trigger_name, trigger_type,
-				total_input_tokens, total_output_tokens, total_cache_read_tokens,
-				total_cache_write_tokens, total_reasoning_tokens, cost_cents,
 				skills, env, created_at, updated_at
-			) VALUES ($1, $2, 'done', $3, $4, $5, $6,
-				$7, $8, $9,
-				$10, $11, $12,
-				'[]', '{}', $13, $14)`
+			) VALUES ($1, $2, 'done', $3, $4, $5, $6, '[]', '{}', $7, $8)`
 	}
 	_, err := db.Exec(query,
 		id, teamID, prompt, gitURL, triggerName, triggerType,
-		inputTokens, outputTokens, cacheRead,
-		cacheWrite, reasoning, costCents,
 		createdAt, createdAt,
 	)
 	if err != nil {
 		t.Fatalf("insertTask %s: %v", id, err)
+	}
+	sessionID := "session_" + id
+	promptID := "prompt_" + id
+	attemptID := "attempt_" + id
+	sessionQuery := "INSERT INTO chetter_agent_sessions (id, task_id, sequence, status, resume_mode, created_at, updated_at) VALUES (?, ?, 1, 'completed', 'none', ?, ?)"
+	promptQuery := "INSERT INTO chetter_user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES (?, ?, ?, 1, 'completed', ?, ?, ?)"
+	attemptQuery := "INSERT INTO chetter_execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at) VALUES (?, ?, 1, 'done', 600, ?, ?, ?, ?, ?, ?, ?, ?)"
+	if dialect == store.DialectPostgres {
+		sessionQuery = "INSERT INTO chetter_agent_sessions (id, task_id, sequence, status, resume_mode, created_at, updated_at) VALUES ($1, $2, 1, 'completed', 'none', $3, $4)"
+		promptQuery = "INSERT INTO chetter_user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES ($1, $2, $3, 1, 'completed', $4, $5, $6)"
+		attemptQuery = "INSERT INTO chetter_execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at) VALUES ($1, $2, 1, 'done', 600, $3, $4, $5, $6, $7, $8, $9, $10)"
+	}
+	if _, err := db.Exec(sessionQuery, sessionID, id, createdAt, createdAt); err != nil {
+		t.Fatalf("insert session %s: %v", id, err)
+	}
+	if _, err := db.Exec(promptQuery, promptID, sessionID, id, prompt, createdAt, createdAt); err != nil {
+		t.Fatalf("insert prompt %s: %v", id, err)
+	}
+	if _, err := db.Exec(attemptQuery, attemptID, promptID, inputTokens, outputTokens, cacheRead, cacheWrite, reasoning, costCents, createdAt, createdAt); err != nil {
+		t.Fatalf("insert attempt %s: %v", id, err)
 	}
 }
 

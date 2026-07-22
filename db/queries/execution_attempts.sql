@@ -47,6 +47,17 @@ FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE prompt.task_id = ?;
 
+-- name: GetExecutionAttemptUsageByTask :one
+SELECT CAST(COALESCE(SUM(attempt.total_input_tokens), 0) AS SIGNED) AS total_input_tokens,
+       CAST(COALESCE(SUM(attempt.total_output_tokens), 0) AS SIGNED) AS total_output_tokens,
+       CAST(COALESCE(SUM(attempt.total_cache_read_tokens), 0) AS SIGNED) AS total_cache_read_tokens,
+       CAST(COALESCE(SUM(attempt.total_cache_write_tokens), 0) AS SIGNED) AS total_cache_write_tokens,
+       CAST(COALESCE(SUM(attempt.total_reasoning_tokens), 0) AS SIGNED) AS total_reasoning_tokens,
+       CAST(COALESCE(SUM(attempt.cost_cents), 0) AS SIGNED) AS cost_cents
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE prompt.task_id = ?;
+
 -- name: RenewExecutionAttemptLease :execrows
 UPDATE chetter_execution_attempts
 SET lease_expires_at = sqlc.narg(lease_expires_at), last_event_at = sqlc.narg(last_event_at), updated_at = sqlc.arg(updated_at)
