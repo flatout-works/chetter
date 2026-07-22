@@ -91,7 +91,7 @@ func TestLoadDefaultsAreApplied(t *testing.T) {
 	if cfg.DNS.ListenAddr != ":53" {
 		t.Errorf("DNS.ListenAddr = %q", cfg.DNS.ListenAddr)
 	}
-	if cfg.DNS.Upstream != "8.8.8.8:53" {
+	if cfg.DNS.Upstream != "" {
 		t.Errorf("DNS.Upstream = %q", cfg.DNS.Upstream)
 	}
 }

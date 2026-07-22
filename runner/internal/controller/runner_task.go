@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -804,8 +803,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
 			"-e", "NODE_USE_ENV_PROXY=1",
-			"-e", "NO_PROXY="+gvisorNoProxy(r.cfg.ChetterMCP.URL),
-			"-e", "no_proxy="+gvisorNoProxy(r.cfg.ChetterMCP.URL),
+			"-e", "NO_PROXY="+gvisorNoProxy(),
+			"-e", "no_proxy="+gvisorNoProxy(),
 		)
 	}
 
@@ -1040,8 +1039,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
 			"-e", "NODE_USE_ENV_PROXY=1",
-			"-e", "NO_PROXY="+gvisorNoProxy(r.cfg.ChetterMCP.URL),
-			"-e", "no_proxy="+gvisorNoProxy(r.cfg.ChetterMCP.URL),
+			"-e", "NO_PROXY="+gvisorNoProxy(),
+			"-e", "no_proxy="+gvisorNoProxy(),
 		)
 	}
 	for k, v := range h.Env("/workspace", secret, req) {
@@ -1365,7 +1364,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP, r.cfg.ChetterMCP.URL)
+	dockerArgs := dockerRPCArgs(req, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -1374,7 +1373,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
 
-func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP, chetterMCPURL string) []string {
+func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.Harness, command []string, gvisor bool, netName, runnerIP string) []string {
 	dockerArgs := []string{
 		"run", "--rm", "-i",
 		"--entrypoint", command[0],
@@ -1413,8 +1412,8 @@ func dockerRPCArgs(req task.TaskRequest, wsDir, containerName string, h harness.
 			"-e", "https_proxy=http://"+runnerIP+":18080",
 			"-e", "CHETTER_PROXY="+runnerIP+":18080",
 			"-e", "NODE_USE_ENV_PROXY=1",
-			"-e", "NO_PROXY="+gvisorNoProxy(chetterMCPURL),
-			"-e", "no_proxy="+gvisorNoProxy(chetterMCPURL),
+			"-e", "NO_PROXY="+gvisorNoProxy(),
+			"-e", "no_proxy="+gvisorNoProxy(),
 		)
 	} else {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
@@ -1821,13 +1820,8 @@ func writeRPCSessionExport(wsDir, export string) error {
 	return os.WriteFile(path, []byte(export), 0644)
 }
 
-func gvisorNoProxy(chetterMCPURL string) string {
-	const localHosts = "localhost,127.0.0.1,0.0.0.0,.local"
-	u, err := url.Parse(chetterMCPURL)
-	if err != nil || u.Hostname() == "" {
-		return localHosts
-	}
-	return localHosts + "," + u.Hostname()
+func gvisorNoProxy() string {
+	return "localhost,127.0.0.1,0.0.0.0,.local"
 }
 
 func (r *Runner) publishEvent(taskID, detail string) {

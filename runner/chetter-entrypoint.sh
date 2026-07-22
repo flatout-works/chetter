@@ -175,7 +175,8 @@ if [ -z "$DNS_UPSTREAM" ]; then
   DNS_UPSTREAM=$(awk '$1 == "nameserver" { print $2; exit }' /etc/resolv.conf || true)
 fi
 if [ -z "$DNS_UPSTREAM" ]; then
-  DNS_UPSTREAM="8.8.8.8"
+  printf '%s\n' "runner DNS upstream is not configured and no platform nameserver is available" >&2
+  exit 1
 fi
 case "$DNS_UPSTREAM" in
   \[*\]:*) ;;

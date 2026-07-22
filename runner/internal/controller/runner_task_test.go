@@ -800,7 +800,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"LITELLM_API_KEY": "task-key",
 		},
 	}
-	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", "")
+	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
 
 	entrypointIdx := indexOf(args, "--entrypoint")
 	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
@@ -842,13 +842,13 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
-	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1", "http://chetter-mcp:8080/mcp")
+	args := dockerRPCArgs(req, "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1")
 
 	if !hasAdjacentArgs(args, "--dns", "172.21.0.1") {
 		t.Fatalf("expected runner DNS in args: %v", args)
 	}
-	if !hasAdjacentArgs(args, "-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp") {
-		t.Fatalf("expected Chetter MCP no_proxy entry: %v", args)
+	if !hasAdjacentArgs(args, "-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local") {
+		t.Fatalf("expected local-only no_proxy entry so MCP uses the proxy: %v", args)
 	}
 	if !hasAdjacentArgs(args, "-e", "NODE_USE_ENV_PROXY=1") {
 		t.Fatalf("expected Node environment proxy support: %v", args)
@@ -886,9 +886,9 @@ func TestHarnessPublishBindAddrUsesAllInterfacesForGVisor(t *testing.T) {
 	}
 }
 
-func TestGVisorNoProxyIncludesChetterMCPHost(t *testing.T) {
-	got := gvisorNoProxy("http://chetter-mcp:8080/mcp")
-	if got != "localhost,127.0.0.1,0.0.0.0,.local,chetter-mcp" {
+func TestGVisorNoProxyExcludesChetterMCPHost(t *testing.T) {
+	got := gvisorNoProxy()
+	if got != "localhost,127.0.0.1,0.0.0.0,.local" {
 		t.Fatalf("unexpected no_proxy value: %q", got)
 	}
 }
