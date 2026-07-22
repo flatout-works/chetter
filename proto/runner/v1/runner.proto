@@ -166,6 +166,7 @@ message GitHubCreateIssueRequest {
   string title = 3 [(buf.validate.field).string.min_len = 1];
   string body = 4;
   repeated string labels = 5;
+  string execution_id = 6 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubCreateIssueResponse {
@@ -178,6 +179,7 @@ message GitHubIssueCommentRequest {
   string repo = 2 [(buf.validate.field).string.min_len = 1];
   int32 issue_number = 3 [(buf.validate.field).int32.gt = 0];
   string body = 4 [(buf.validate.field).string.min_len = 1];
+  string execution_id = 5 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubIssueCommentResponse {
@@ -192,6 +194,7 @@ message GitHubCreatePRRequest {
   string head = 5 [(buf.validate.field).string.min_len = 1];
   string base = 6 [(buf.validate.field).string.min_len = 1];
   bool draft = 7;
+  string execution_id = 8 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubCreatePRResponse {
@@ -205,6 +208,7 @@ message GitHubPRReviewRequest {
   int32 pr_number = 3 [(buf.validate.field).int32.gt = 0];
   string body = 4 [(buf.validate.field).string.min_len = 1];
   string event = 5; // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
+  string execution_id = 6 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubPRReviewResponse {

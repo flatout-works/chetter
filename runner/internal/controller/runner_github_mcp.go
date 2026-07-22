@@ -14,22 +14,22 @@ import (
 
 const githubToolTimeout = 30 * time.Second
 
-func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID string) {
+func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, executionID string) {
 	for _, def := range runnermcp.ToolDefinitions() {
 		switch def.Name {
 		case "chetter_create_issue":
-			server.RegisterTool(def, r.githubCreateIssueTool(taskID))
+			server.RegisterTool(def, r.githubCreateIssueTool(taskID, executionID))
 		case "chetter_issue_comment":
-			server.RegisterTool(def, r.githubIssueCommentTool(taskID))
+			server.RegisterTool(def, r.githubIssueCommentTool(taskID, executionID))
 		case "chetter_create_pr":
-			server.RegisterTool(def, r.githubCreatePRTool(taskID))
+			server.RegisterTool(def, r.githubCreatePRTool(taskID, executionID))
 		case "chetter_pr_review":
-			server.RegisterTool(def, r.githubPRReviewTool(taskID))
+			server.RegisterTool(def, r.githubPRReviewTool(taskID, executionID))
 		}
 	}
 }
 
-func (r *Runner) githubCreateIssueTool(taskID string) runnermcp.ToolHandler {
+func (r *Runner) githubCreateIssueTool(taskID, executionID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -42,11 +42,12 @@ func (r *Runner) githubCreateIssueTool(taskID string) runnermcp.ToolHandler {
 		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
 		defer cancel()
 		resp, err := r.rpcClient.GitHubCreateIssue(callCtx, connect.NewRequest(&runnerv1.GitHubCreateIssueRequest{
-			TaskId: taskID,
-			Repo:   repo,
-			Title:  title,
-			Body:   optionalString(args, "body"),
-			Labels: optionalStringSlice(args, "labels"),
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			Repo:        repo,
+			Title:       title,
+			Body:        optionalString(args, "body"),
+			Labels:      optionalStringSlice(args, "labels"),
 		}))
 		if err != nil {
 			return nil, err
@@ -55,7 +56,7 @@ func (r *Runner) githubCreateIssueTool(taskID string) runnermcp.ToolHandler {
 	}
 }
 
-func (r *Runner) githubIssueCommentTool(taskID string) runnermcp.ToolHandler {
+func (r *Runner) githubIssueCommentTool(taskID, executionID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -73,6 +74,7 @@ func (r *Runner) githubIssueCommentTool(taskID string) runnermcp.ToolHandler {
 		defer cancel()
 		resp, err := r.rpcClient.GitHubIssueComment(callCtx, connect.NewRequest(&runnerv1.GitHubIssueCommentRequest{
 			TaskId:      taskID,
+			ExecutionId: executionID,
 			Repo:        repo,
 			IssueNumber: int32(issueNumber),
 			Body:        body,
@@ -84,7 +86,7 @@ func (r *Runner) githubIssueCommentTool(taskID string) runnermcp.ToolHandler {
 	}
 }
 
-func (r *Runner) githubCreatePRTool(taskID string) runnermcp.ToolHandler {
+func (r *Runner) githubCreatePRTool(taskID, executionID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -105,13 +107,14 @@ func (r *Runner) githubCreatePRTool(taskID string) runnermcp.ToolHandler {
 		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
 		defer cancel()
 		resp, err := r.rpcClient.GitHubCreatePR(callCtx, connect.NewRequest(&runnerv1.GitHubCreatePRRequest{
-			TaskId: taskID,
-			Repo:   repo,
-			Title:  title,
-			Body:   optionalString(args, "body"),
-			Head:   head,
-			Base:   base,
-			Draft:  optionalBool(args, "draft"),
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			Repo:        repo,
+			Title:       title,
+			Body:        optionalString(args, "body"),
+			Head:        head,
+			Base:        base,
+			Draft:       optionalBool(args, "draft"),
 		}))
 		if err != nil {
 			return nil, err
@@ -120,7 +123,7 @@ func (r *Runner) githubCreatePRTool(taskID string) runnermcp.ToolHandler {
 	}
 }
 
-func (r *Runner) githubPRReviewTool(taskID string) runnermcp.ToolHandler {
+func (r *Runner) githubPRReviewTool(taskID, executionID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -137,11 +140,12 @@ func (r *Runner) githubPRReviewTool(taskID string) runnermcp.ToolHandler {
 		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
 		defer cancel()
 		resp, err := r.rpcClient.GitHubPRReview(callCtx, connect.NewRequest(&runnerv1.GitHubPRReviewRequest{
-			TaskId:   taskID,
-			Repo:     repo,
-			PrNumber: int32(prNumber),
-			Body:     body,
-			Event:    optionalString(args, "event"),
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			Repo:        repo,
+			PrNumber:    int32(prNumber),
+			Body:        body,
+			Event:       optionalString(args, "event"),
 		}))
 		if err != nil {
 			return nil, err

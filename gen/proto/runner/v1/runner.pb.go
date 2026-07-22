@@ -1481,6 +1481,7 @@ type GitHubCreateIssueRequest struct {
 	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	Labels        []string               `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1550,6 +1551,13 @@ func (x *GitHubCreateIssueRequest) GetLabels() []string {
 	return nil
 }
 
+func (x *GitHubCreateIssueRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
 type GitHubCreateIssueResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -1608,6 +1616,7 @@ type GitHubIssueCommentRequest struct {
 	Repo          string                 `protobuf:"bytes,2,opt,name=repo,proto3" json:"repo,omitempty"`
 	IssueNumber   int32                  `protobuf:"varint,3,opt,name=issue_number,json=issueNumber,proto3" json:"issue_number,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,5,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1670,6 +1679,13 @@ func (x *GitHubIssueCommentRequest) GetBody() string {
 	return ""
 }
 
+func (x *GitHubIssueCommentRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
 type GitHubIssueCommentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
@@ -1723,6 +1739,7 @@ type GitHubCreatePRRequest struct {
 	Head          string                 `protobuf:"bytes,5,opt,name=head,proto3" json:"head,omitempty"`
 	Base          string                 `protobuf:"bytes,6,opt,name=base,proto3" json:"base,omitempty"`
 	Draft         bool                   `protobuf:"varint,7,opt,name=draft,proto3" json:"draft,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1806,6 +1823,13 @@ func (x *GitHubCreatePRRequest) GetDraft() bool {
 	return false
 }
 
+func (x *GitHubCreatePRRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
 type GitHubCreatePRResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -1865,6 +1889,7 @@ type GitHubPRReviewRequest struct {
 	PrNumber      int32                  `protobuf:"varint,3,opt,name=pr_number,json=prNumber,proto3" json:"pr_number,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	Event         string                 `protobuf:"bytes,5,opt,name=event,proto3" json:"event,omitempty"` // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
+	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1930,6 +1955,13 @@ func (x *GitHubPRReviewRequest) GetBody() string {
 func (x *GitHubPRReviewRequest) GetEvent() string {
 	if x != nil {
 		return x.Event
+	}
+	return ""
+}
+
+func (x *GitHubPRReviewRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
 	}
 	return ""
 }
@@ -2131,23 +2163,25 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x19\n" +
 	"\btask_ids\x18\x02 \x03(\tR\ataskIds\"?\n" +
 	"\x17PruneWorkspacesResponse\x12$\n" +
-	"\x0esafe_to_delete\x18\x01 \x03(\tR\fsafeToDelete\"\xa4\x01\n" +
+	"\x0esafe_to_delete\x18\x01 \x03(\tR\fsafeToDelete\"\xd0\x01\n" +
 	"\x18GitHubCreateIssueRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
 	"\x05title\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05title\x12\x12\n" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x16\n" +
-	"\x06labels\x18\x05 \x03(\tR\x06labels\"E\n" +
+	"\x06labels\x18\x05 \x03(\tR\x06labels\x12*\n" +
+	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"E\n" +
 	"\x19GitHubCreateIssueResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\xa3\x01\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xcf\x01\n" +
 	"\x19GitHubIssueCommentRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12*\n" +
 	"\fissue_number\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\vissueNumber\x12\x1b\n" +
-	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\".\n" +
+	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12*\n" +
+	"\fexecution_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\".\n" +
 	"\x1aGitHubIssueCommentResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\xd9\x01\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\x85\x02\n" +
 	"\x15GitHubCreatePRRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
@@ -2155,16 +2189,18 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x1b\n" +
 	"\x04head\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04head\x12\x1b\n" +
 	"\x04base\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04base\x12\x14\n" +
-	"\x05draft\x18\a \x01(\bR\x05draft\"B\n" +
+	"\x05draft\x18\a \x01(\bR\x05draft\x12*\n" +
+	"\fexecution_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"B\n" +
 	"\x16GitHubCreatePRResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\xaf\x01\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xdb\x01\n" +
 	"\x15GitHubPRReviewRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12$\n" +
 	"\tpr_number\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\bprNumber\x12\x1b\n" +
 	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12\x14\n" +
-	"\x05event\x18\x05 \x01(\tR\x05event\"*\n" +
+	"\x05event\x18\x05 \x01(\tR\x05event\x12*\n" +
+	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"*\n" +
 	"\x16GitHubPRReviewResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url2\xb0\x06\n" +
 	"\rRunnerService\x12W\n" +

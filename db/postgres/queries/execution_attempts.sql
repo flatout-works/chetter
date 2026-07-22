@@ -31,6 +31,15 @@ WHERE id = sqlc.arg(id) AND status = 'pending';
 -- name: GetExecutionAttemptByID :one
 SELECT * FROM chetter_execution_attempts WHERE id = $1;
 
+-- name: GetExecutionAttemptContext :one
+SELECT attempt.id AS execution_attempt_id,
+       prompt.id AS user_prompt_id,
+       prompt.agent_session_id,
+       prompt.task_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE attempt.id = $1;
+
 -- name: ListExecutionAttemptsByPrompt :many
 SELECT * FROM chetter_execution_attempts
 WHERE user_prompt_id = $1

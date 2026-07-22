@@ -53,16 +53,17 @@ type ArtifactRecorder interface {
 
 // RecordArtifactParams holds the data for a single task artifact entry.
 type RecordArtifactParams struct {
-	TaskID          string
-	AgentSessionID  string
-	UserPromptID    string
-	ArtifactType    string
-	Repo            string
-	Number          int
-	URL             string
-	Ref             string
-	SHA             string
-	DiscoverySource string
+	TaskID             string
+	AgentSessionID     string
+	UserPromptID       string
+	ExecutionAttemptID string
+	ArtifactType       string
+	Repo               string
+	Number             int
+	URL                string
+	Ref                string
+	SHA                string
+	DiscoverySource    string
 }
 
 // ReviewTrigger is the resolved data from a single trigger.
@@ -852,6 +853,7 @@ func (h *Handler) checkAuthorWriteAccess(ctx context.Context, repo, username, de
 var taskIDFooterRe = regexp.MustCompile(`Task:\s*\[?(task_[a-f0-9]+)`)
 var agentSessionIDFooterRe = regexp.MustCompile(`Session:\s*(sess_[a-f0-9]+)`)
 var userPromptIDFooterRe = regexp.MustCompile(`Prompt:\s*(prompt_[a-f0-9]+)`)
+var executionAttemptIDFooterRe = regexp.MustCompile(`Attempt:\s*(exec_[a-f0-9]+)`)
 
 func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifactType string) {
 	if h.artifacts == nil {
@@ -870,15 +872,20 @@ func (h *Handler) discoverArtifacts(text, repo string, number int, url, artifact
 	if promptMatches := userPromptIDFooterRe.FindStringSubmatch(text); len(promptMatches) >= 2 {
 		userPromptID = promptMatches[1]
 	}
+	executionAttemptID := ""
+	if attemptMatches := executionAttemptIDFooterRe.FindStringSubmatch(text); len(attemptMatches) >= 2 {
+		executionAttemptID = attemptMatches[1]
+	}
 	if err := h.artifacts.RecordArtifact(asyncCtx(10*time.Second), RecordArtifactParams{
-		TaskID:          taskID,
-		AgentSessionID:  agentSessionID,
-		UserPromptID:    userPromptID,
-		ArtifactType:    artifactType,
-		Repo:            repo,
-		Number:          number,
-		URL:             url,
-		DiscoverySource: "webhook",
+		TaskID:             taskID,
+		AgentSessionID:     agentSessionID,
+		UserPromptID:       userPromptID,
+		ExecutionAttemptID: executionAttemptID,
+		ArtifactType:       artifactType,
+		Repo:               repo,
+		Number:             number,
+		URL:                url,
+		DiscoverySource:    "webhook",
 	}); err != nil {
 		slog.Warn("webhook: record artifact", "err", err, "taskID", taskID, "type", artifactType)
 	}

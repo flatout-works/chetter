@@ -24,6 +24,11 @@ import (
 )
 
 func TestRunnerOwnedEnv(t *testing.T) {
+	for _, key := range []string{"CHETTER_TASK_ID", "CHETTER_AGENT_SESSION_ID", "CHETTER_USER_PROMPT_ID", "CHETTER_EXECUTION_ID"} {
+		if !isRunnerOwnedEnv(key) {
+			t.Fatalf("%s should be runner-owned", key)
+		}
+	}
 	if !isRunnerOwnedEnv("MEM9_API_KEY") {
 		t.Fatal("MEM9_API_KEY should be runner-owned")
 	}

@@ -252,6 +252,35 @@ func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (Chett
 	return i, err
 }
 
+const getExecutionAttemptContext = `-- name: GetExecutionAttemptContext :one
+SELECT attempt.id AS execution_attempt_id,
+       prompt.id AS user_prompt_id,
+       prompt.agent_session_id,
+       prompt.task_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE attempt.id = ?
+`
+
+type GetExecutionAttemptContextRow struct {
+	ExecutionAttemptID string `json:"execution_attempt_id"`
+	UserPromptID       string `json:"user_prompt_id"`
+	AgentSessionID     string `json:"agent_session_id"`
+	TaskID             string `json:"task_id"`
+}
+
+func (q *Queries) GetExecutionAttemptContext(ctx context.Context, id string) (GetExecutionAttemptContextRow, error) {
+	row := q.db.QueryRowContext(ctx, getExecutionAttemptContext, id)
+	var i GetExecutionAttemptContextRow
+	err := row.Scan(
+		&i.ExecutionAttemptID,
+		&i.UserPromptID,
+		&i.AgentSessionID,
+		&i.TaskID,
+	)
+	return i, err
+}
+
 const getExecutionAttemptUsageByTask = `-- name: GetExecutionAttemptUsageByTask :one
 SELECT CAST(COALESCE(SUM(attempt.total_input_tokens), 0) AS SIGNED) AS total_input_tokens,
        CAST(COALESCE(SUM(attempt.total_output_tokens), 0) AS SIGNED) AS total_output_tokens,

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -18,7 +17,7 @@ type GitHubActionService interface {
 	GitHubClient() *webhook.Client
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 	LogAuditEvent(ctx context.Context, params AuditEventParams) error
-	GetTaskSignature(ctx context.Context, taskID string) (string, error)
+	GetTaskSignature(ctx context.Context, taskID, executionAttemptID string) (string, error)
 }
 
 // WithGitHubActions injects the GitHub action service into RunnerRPCService so
@@ -36,7 +35,7 @@ func (s *RunnerRPCService) GitHubCreateIssue(ctx context.Context, req *connect.R
 	if strings.TrimSpace(req.Msg.Title) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title is required"))
 	}
-	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
+	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId, req.Msg.ExecutionId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task signature: %w", err))
 	}
@@ -45,7 +44,7 @@ func (s *RunnerRPCService) GitHubCreateIssue(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("create GitHub issue: %w", err))
 	}
-	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, "issue", req.Msg.Repo, created.Number, created.URL, ""); err != nil {
+	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, req.Msg.ExecutionId, "issue", req.Msg.Repo, created.Number, created.URL, ""); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&runnerv1.GitHubCreateIssueResponse{
@@ -59,7 +58,7 @@ func (s *RunnerRPCService) GitHubIssueComment(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
-	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
+	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId, req.Msg.ExecutionId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task signature: %w", err))
 	}
@@ -68,7 +67,7 @@ func (s *RunnerRPCService) GitHubIssueComment(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("create GitHub issue comment: %w", err))
 	}
-	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, "issue_comment", req.Msg.Repo, int(req.Msg.IssueNumber), created.URL, ""); err != nil {
+	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, req.Msg.ExecutionId, "issue_comment", req.Msg.Repo, int(req.Msg.IssueNumber), created.URL, ""); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&runnerv1.GitHubIssueCommentResponse{Url: created.URL}), nil
@@ -82,7 +81,7 @@ func (s *RunnerRPCService) GitHubCreatePR(ctx context.Context, req *connect.Requ
 	if strings.TrimSpace(req.Msg.Title) == "" || strings.TrimSpace(req.Msg.Head) == "" || strings.TrimSpace(req.Msg.Base) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title, head, and base are required"))
 	}
-	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
+	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId, req.Msg.ExecutionId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task signature: %w", err))
 	}
@@ -91,7 +90,7 @@ func (s *RunnerRPCService) GitHubCreatePR(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("create GitHub pull request: %w", err))
 	}
-	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, "pr", req.Msg.Repo, created.Number, created.URL, req.Msg.Head); err != nil {
+	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, req.Msg.ExecutionId, "pr", req.Msg.Repo, created.Number, created.URL, req.Msg.Head); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&runnerv1.GitHubCreatePRResponse{
@@ -114,7 +113,7 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event must be COMMENT, APPROVE, or REQUEST_CHANGES"))
 	}
-	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId)
+	sig, err := s.ghActions.GetTaskSignature(ctx, req.Msg.TaskId, req.Msg.ExecutionId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get task signature: %w", err))
 	}
@@ -123,7 +122,7 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("create GitHub PR review: %w", err))
 	}
-	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, "pr_review", req.Msg.Repo, int(req.Msg.PrNumber), created.URL, ""); err != nil {
+	if err := s.recordGitHubRPCArtifact(ctx, req.Msg.TaskId, req.Msg.ExecutionId, "pr_review", req.Msg.Repo, int(req.Msg.PrNumber), created.URL, ""); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&runnerv1.GitHubPRReviewResponse{Url: created.URL}), nil
@@ -140,24 +139,16 @@ func (s *RunnerRPCService) requireGitHub() (*webhook.Client, error) {
 	return gh, nil
 }
 
-func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, artifactType, repo string, number int, url, ref string) error {
-	var agentSessionID, userPromptID string
-	if run, err := s.db.GetUserPromptByTaskID(ctx, taskID); err == nil {
-		agentSessionID = run.AgentSessionID
-		userPromptID = run.ID
-	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("get user prompt: %w", err)
-	}
+func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, executionAttemptID, artifactType, repo string, number int, url, ref string) error {
 	if err := s.ghActions.RecordArtifact(ctx, RecordArtifactParams{
-		TaskID:          taskID,
-		AgentSessionID:  agentSessionID,
-		UserPromptID:    userPromptID,
-		ArtifactType:    artifactType,
-		Repo:            repo,
-		Number:          number,
-		URL:             url,
-		Ref:             ref,
-		DiscoverySource: "rpc_tool",
+		TaskID:             taskID,
+		ExecutionAttemptID: executionAttemptID,
+		ArtifactType:       artifactType,
+		Repo:               repo,
+		Number:             number,
+		URL:                url,
+		Ref:                ref,
+		DiscoverySource:    "rpc_tool",
 	}); err != nil {
 		return fmt.Errorf("record GitHub artifact: %w", err)
 	}

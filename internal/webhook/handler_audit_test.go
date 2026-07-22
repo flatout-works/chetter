@@ -156,3 +156,11 @@ func TestTaskIDFooterRegex(t *testing.T) {
 		})
 	}
 }
+
+func TestExecutionAttemptIDFooterRegex(t *testing.T) {
+	footer := "---\nTask: task_abc123 | Session: sess_def456 | Prompt: prompt_789abc | Attempt: exec_fed321"
+	matches := executionAttemptIDFooterRe.FindStringSubmatch(footer)
+	if len(matches) < 2 || matches[1] != "exec_fed321" {
+		t.Fatalf("execution attempt footer match = %v", matches)
+	}
+}

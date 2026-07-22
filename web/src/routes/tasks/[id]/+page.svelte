@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { resolve } from "$app/paths";
-  import { SvelteSet } from "svelte/reactivity";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, AdminService, SessionService, FleetService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, Task, TaskArtifact, TaskEvent, TaskProgressEntry, RunnerInfo, UserPrompt } from "$gen/proto/api/v1/api_pb";
@@ -20,14 +20,17 @@
   let taskSession = $state<AgentSession | null>(null);
   let userPrompts = $state<UserPrompt[]>([]);
   let artifacts = $state<TaskArtifact[]>([]);
-  let uniqueArtifacts = $derived.by(() => {
-    const seen = new SvelteSet<string>();
-    return artifacts.filter((a) => {
-      const key = `${a.artifactType}:${a.repo}:${a.number}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+  let artifactGroups = $derived.by(() => {
+    const groups = new SvelteMap<string, { artifact: TaskArtifact; attemptIds: string[] }>();
+    for (const artifact of artifacts) {
+      const key = `${artifact.artifactType}:${artifact.repo}:${artifact.number}`;
+      const group = groups.get(key) ?? { artifact, attemptIds: [] };
+      if (artifact.executionAttemptId && !group.attemptIds.includes(artifact.executionAttemptId)) {
+        group.attemptIds.push(artifact.executionAttemptId);
+      }
+      groups.set(key, group);
+    }
+    return [...groups.values()];
   });
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -740,11 +743,12 @@
     {/if}
 
     <!-- Artifacts -->
-    {#if uniqueArtifacts.length > 0}
+    {#if artifactGroups.length > 0}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">GitHub Artifacts</h2>
         <div class="space-y-2">
-          {#each uniqueArtifacts as art (art.id)}
+          {#each artifactGroups as group (`${group.artifact.artifactType}:${group.artifact.repo}:${group.artifact.number}`)}
+            {@const art = group.artifact}
             <div class="flex items-center gap-3 text-sm">
               <StatusBadge status={art.artifactType === "pr_review" ? "pr_review_artifact" : art.artifactType} label={art.artifactType} />
               {#if art.url}
@@ -757,6 +761,9 @@
               {#if art.ref}
                 <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{art.ref}</span>
               {/if}
+              {#each group.attemptIds as attemptId (attemptId)}
+                <Badge color="gray" class="font-mono text-xs">{attemptId}</Badge>
+              {/each}
             </div>
           {/each}
         </div>

@@ -1900,7 +1900,7 @@ func TestTaskArtifactDedupPreservesAttemptHistory(t *testing.T) {
 	record := func(attemptID string) {
 		t.Helper()
 		if err := svc.RecordArtifact(ctx, RecordArtifactParams{
-			TaskID: task.ID, AgentSessionID: prompt.AgentSessionID, UserPromptID: prompt.ID,
+			TaskID: task.ID, AgentSessionID: "sess_untrusted", UserPromptID: "prompt_untrusted",
 			ExecutionAttemptID: attemptID, ArtifactType: "pr", Repo: "flatout-works/chetter", Number: 42,
 			DiscoverySource: "test",
 		}); err != nil {
@@ -1918,9 +1918,24 @@ func TestTaskArtifactDedupPreservesAttemptHistory(t *testing.T) {
 	if len(artifacts) != 2 {
 		t.Fatalf("artifact contributions = %d, want 2: %+v", len(artifacts), artifacts)
 	}
+	for _, artifact := range artifacts {
+		if artifact.AgentSessionID != prompt.AgentSessionID || artifact.UserPromptID != prompt.ID {
+			t.Fatalf("artifact hierarchy was not derived from attempt: %+v", artifact)
+		}
+	}
 	filtered, err := svc.ListTaskArtifacts(ctxWithAdmin(ctx), TaskArtifactFilterInput{ExecutionAttemptID: secondAttemptID})
 	if err != nil || len(filtered) != 1 || filtered[0].ExecutionAttemptID != secondAttemptID {
 		t.Fatalf("attempt-filtered artifacts = %+v, err %v", filtered, err)
+	}
+	otherTask, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "other", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit other task: %v", err)
+	}
+	if err := svc.RecordArtifact(ctx, RecordArtifactParams{
+		TaskID: otherTask.ID, ExecutionAttemptID: task.ExecutionID,
+		ArtifactType: "pr", Repo: "flatout-works/chetter", Number: 43, DiscoverySource: "test",
+	}); err == nil {
+		t.Fatal("expected mismatched task and execution attempt to be rejected")
 	}
 }
 

@@ -275,16 +275,17 @@ type artifactRecorderAdapter struct{ svc *service.Service }
 
 func (a *artifactRecorderAdapter) RecordArtifact(ctx context.Context, params webhook.RecordArtifactParams) error {
 	return a.svc.RecordArtifact(ctx, service.RecordArtifactParams{
-		TaskID:          params.TaskID,
-		AgentSessionID:  params.AgentSessionID,
-		UserPromptID:    params.UserPromptID,
-		ArtifactType:    params.ArtifactType,
-		Repo:            params.Repo,
-		Number:          params.Number,
-		URL:             params.URL,
-		Ref:             params.Ref,
-		SHA:             params.SHA,
-		DiscoverySource: params.DiscoverySource,
+		TaskID:             params.TaskID,
+		AgentSessionID:     params.AgentSessionID,
+		UserPromptID:       params.UserPromptID,
+		ExecutionAttemptID: params.ExecutionAttemptID,
+		ArtifactType:       params.ArtifactType,
+		Repo:               params.Repo,
+		Number:             params.Number,
+		URL:                params.URL,
+		Ref:                params.Ref,
+		SHA:                params.SHA,
+		DiscoverySource:    params.DiscoverySource,
 	})
 }
 

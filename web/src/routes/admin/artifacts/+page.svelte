@@ -143,6 +143,7 @@
         <TableHeadCell onclick={() => toggleSort("type")} class="cursor-pointer select-none">Type {sortIcon("type")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("artifact")} class="cursor-pointer select-none">Artifact {sortIcon("artifact")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("task")} class="cursor-pointer select-none">Task {sortIcon("task")}</TableHeadCell>
+        <TableHeadCell>Attempt</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("ref")} class="cursor-pointer select-none">Ref {sortIcon("ref")}</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("discovered")} class="cursor-pointer select-none">Discovered {sortIcon("discovered")}</TableHeadCell>
       </TableHead>
@@ -160,6 +161,9 @@
               {/if}
             </TableBodyCell>
             <TableBodyCell>
+              <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{artifact.executionAttemptId || "unattributed"}</span>
+            </TableBodyCell>
+            <TableBodyCell>
               <a href={resolve("/tasks/[id]", { id: artifact.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
                 {artifact.taskId.slice(0, 20)}…
               </a>
@@ -171,7 +175,7 @@
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={5}>
+            <TableBodyCell colspan={6}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No artifacts found</div>
             </TableBodyCell>
           </TableBodyRow>

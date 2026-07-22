@@ -61,6 +61,7 @@ type Repository interface {
 	GetEventCallbackByID(ctx context.Context, id string) (repository.ChetterEventCallback, error)
 	GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.ChetterEventCallback, error)
 	GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error)
+	GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error)
 	GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error)
 	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error)
 	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSessionCheckpoint, error)
@@ -364,6 +365,11 @@ func (q *Queries) GetEventCallbackByName(ctx context.Context, arg repository.Get
 func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error) {
 	value, err := q.postgres.GetExecutionAttemptByID(ctx, convert[string](id))
 	return convert[repository.ChetterExecutionAttempt](value), err
+}
+
+func (q *Queries) GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error) {
+	value, err := q.postgres.GetExecutionAttemptContext(ctx, convert[string](id))
+	return convert[repository.GetExecutionAttemptContextRow](value), err
 }
 
 func (q *Queries) GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error) {

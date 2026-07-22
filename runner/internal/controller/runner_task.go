@@ -87,7 +87,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 
 	if req.ResumeWorkspacePath != "" {
-		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
+		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
 		if err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 			return
@@ -173,7 +173,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 	}
 
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
+	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 		return
@@ -210,12 +210,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 }
 
-func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID string) (*mcp.Server, error) {
+func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID string) (*mcp.Server, error) {
 	mcpServer, err := mcp.NewServer()
 	if err != nil {
 		return nil, err
 	}
-	r.registerGitHubMCPTools(mcpServer, taskID)
+	r.registerGitHubMCPTools(mcpServer, taskID, executionID)
 	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
 }
@@ -459,6 +459,10 @@ func runnerOwnedEnvKeys() []string {
 		"CLAUDE_SERVE_PROXY_TOKEN",
 		"CODEWHALE_CONFIG_DIR",
 		"CODEWHALE_RUNTIME_TOKEN",
+		"CHETTER_TASK_ID",
+		"CHETTER_AGENT_SESSION_ID",
+		"CHETTER_USER_PROMPT_ID",
+		"CHETTER_EXECUTION_ID",
 		"GITHUB_TOKEN",
 		"MEM9_API_KEY",
 		"MEM9_API_URL",
@@ -477,7 +481,7 @@ func runnerOwnedEnvKeys() []string {
 
 func isRunnerOwnedEnv(key string) bool {
 	switch key {
-	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_SERVE_PROXY_TOKEN", "CODEWHALE_CONFIG_DIR", "CODEWHALE_RUNTIME_TOKEN", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
+	case "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_SERVE_PROXY_TOKEN", "CODEWHALE_CONFIG_DIR", "CODEWHALE_RUNTIME_TOKEN", "CHETTER_TASK_ID", "CHETTER_AGENT_SESSION_ID", "CHETTER_USER_PROMPT_ID", "CHETTER_EXECUTION_ID", "GITHUB_TOKEN", "MEM9_API_KEY", "MEM9_API_URL", "MEM9_DEBUG", "MEM9_HOME", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENCODE_API_KEY", "SYNTHETIC_API_KEY", "ZAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "XAI_API_KEY":
 		return true
 	default:
 		return false
@@ -624,6 +628,9 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
+		"CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
+		"CHETTER_USER_PROMPT_ID="+req.UserPromptID,
+		"CHETTER_EXECUTION_ID="+req.ExecutionID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -800,6 +807,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
 		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"-e", "CHETTER_TASK_ID="+req.TaskID,
+		"-e", "CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
+		"-e", "CHETTER_USER_PROMPT_ID="+req.UserPromptID,
+		"-e", "CHETTER_EXECUTION_ID="+req.ExecutionID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -969,7 +979,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	r.publishStatusForRequest(req, "running", "Resuming agent session...", nil)
 
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID)
+	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 		return
@@ -1040,6 +1050,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
 		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"-e", "CHETTER_TASK_ID="+req.TaskID,
+		"-e", "CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
+		"-e", "CHETTER_USER_PROMPT_ID="+req.UserPromptID,
+		"-e", "CHETTER_EXECUTION_ID="+req.ExecutionID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -1420,6 +1433,9 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		"-e", "CHETTER_AGENT_NAME="+req.Agent,
 		"-e", "CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"-e", "CHETTER_TASK_ID="+req.TaskID,
+		"-e", "CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
+		"-e", "CHETTER_USER_PROMPT_ID="+req.UserPromptID,
+		"-e", "CHETTER_EXECUTION_ID="+req.ExecutionID,
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
@@ -1618,6 +1634,9 @@ func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.
 		"CHETTER_AGENT_NAME="+req.Agent,
 		"CHETTER_MODEL_ID="+h.ResolvedModelID(req),
 		"CHETTER_TASK_ID="+req.TaskID,
+		"CHETTER_AGENT_SESSION_ID="+req.AgentSessionID,
+		"CHETTER_USER_PROMPT_ID="+req.UserPromptID,
+		"CHETTER_EXECUTION_ID="+req.ExecutionID,
 		"CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 		"TASK_ID="+req.TaskID,

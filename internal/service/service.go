@@ -1900,6 +1900,17 @@ func (s *Service) auditAsync(ctx context.Context, params AuditEventParams) {
 }
 
 func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParams) error {
+	if params.ExecutionAttemptID != "" {
+		ownership, err := s.repo.GetExecutionAttemptContext(ctx, params.ExecutionAttemptID)
+		if err != nil {
+			return fmt.Errorf("get artifact execution attempt context: %w", err)
+		}
+		if ownership.TaskID != params.TaskID {
+			return fmt.Errorf("execution attempt %q does not belong to task %q", params.ExecutionAttemptID, params.TaskID)
+		}
+		params.AgentSessionID = ownership.AgentSessionID
+		params.UserPromptID = ownership.UserPromptID
+	}
 	id, err := randomID("art")
 	if err != nil {
 		return err

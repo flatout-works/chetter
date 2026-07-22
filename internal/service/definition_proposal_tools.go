@@ -21,15 +21,16 @@ type DefinitionProposalFileInput struct {
 }
 
 type CreateDefinitionProposalInput struct {
-	TaskID        string                        `json:"task_id,omitempty" jsonschema:"Chetter task ID from CHETTER_TASK_ID; required for task artifact tracking"`
-	SourceID      string                        `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
-	Title         string                        `json:"title" jsonschema:"Pull request title"`
-	Body          string                        `json:"body,omitempty" jsonschema:"Pull request body with rationale and evidence"`
-	Branch        string                        `json:"branch,omitempty" jsonschema:"Proposal branch name; generated if omitted"`
-	BaseBranch    string                        `json:"base_branch,omitempty" jsonschema:"Base branch; defaults to the source branch"`
-	CommitMessage string                        `json:"commit_message,omitempty" jsonschema:"Commit message for definition file updates"`
-	Files         []DefinitionProposalFileInput `json:"files" jsonschema:"Files to create or replace in the definitions repository"`
-	Draft         bool                          `json:"draft,omitempty" jsonschema:"Create a draft pull request"`
+	TaskID             string                        `json:"task_id,omitempty" jsonschema:"Chetter task ID from CHETTER_TASK_ID; required for task artifact tracking"`
+	ExecutionAttemptID string                        `json:"execution_attempt_id,omitempty" jsonschema:"Execution attempt ID from CHETTER_EXECUTION_ID; required with task_id"`
+	SourceID           string                        `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
+	Title              string                        `json:"title" jsonschema:"Pull request title"`
+	Body               string                        `json:"body,omitempty" jsonschema:"Pull request body with rationale and evidence"`
+	Branch             string                        `json:"branch,omitempty" jsonschema:"Proposal branch name; generated if omitted"`
+	BaseBranch         string                        `json:"base_branch,omitempty" jsonschema:"Base branch; defaults to the source branch"`
+	CommitMessage      string                        `json:"commit_message,omitempty" jsonschema:"Commit message for definition file updates"`
+	Files              []DefinitionProposalFileInput `json:"files" jsonschema:"Files to create or replace in the definitions repository"`
+	Draft              bool                          `json:"draft,omitempty" jsonschema:"Create a draft pull request"`
 }
 
 type CreateDefinitionProposalOutput struct {
@@ -144,11 +145,14 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	var task repository.ChetterTask
 	var userPrompt repository.ChetterUserPrompt
 	if strings.TrimSpace(in.TaskID) != "" {
-		task, userPrompt, err = s.githubToolTaskContext(ctx, in.TaskID)
+		if strings.TrimSpace(in.ExecutionAttemptID) == "" {
+			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("execution_attempt_id is required with task_id")
+		}
+		task, userPrompt, err = s.githubToolTaskContext(ctx, in.TaskID, in.ExecutionAttemptID)
 		if err != nil {
 			return nil, CreateDefinitionProposalOutput{}, err
 		}
-		body = appendChetterSignature(body, s.githubToolSignature(ctx, task, userPrompt))
+		body = appendChetterSignature(body, s.githubToolSignature(ctx, task, userPrompt, in.ExecutionAttemptID))
 	}
 	created, err := s.githubClient().CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
 	if err != nil {
@@ -187,7 +191,7 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get stored definition proposal: %w", err)
 	}
 	if strings.TrimSpace(in.TaskID) != "" {
-		if _, _, err := s.recordGitHubToolArtifact(ctx, task, userPrompt, "definition_proposal", repo, created.Number, created.URL, branch, body, map[string]any{
+		if _, _, err := s.recordGitHubToolArtifact(ctx, task, userPrompt, in.ExecutionAttemptID, "definition_proposal", repo, created.Number, created.URL, branch, body, map[string]any{
 			"title":     in.Title,
 			"source_id": source.ID,
 			"files":     files,
