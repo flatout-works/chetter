@@ -100,6 +100,8 @@ skills/*.md
 skills/*/SKILL.md
 triggers/*.yaml
 triggers/*.yml
+mcp-endpoints/*.yaml
+mcp-endpoints/*.yml
 task-templates/*.md
 ```
 

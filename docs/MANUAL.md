@@ -515,6 +515,7 @@ MCP tools. Read-only `gh` commands remain available for inspection.
 |---|---|
 | `chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token` | Admin token management. |
 | `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team`, `chetter_list_users` | Admin team/user management. |
+| `chetter_create_git_identity`, `chetter_list_git_identities`, `chetter_update_git_identity`, `chetter_delete_git_identity`, `chetter_set_git_identity_default` | Managed Git identity management (author name, email, credential provider). See [Managed Git Identities](#managed-git-identities). |
 | `chetter_get_model_catalog` | Read the active model catalog summary. |
 | `chetter_sync_definitions` | Admin manual sync of the definitions repo. |
 | `chetter_list_audit_events` | Admin audit log query. |

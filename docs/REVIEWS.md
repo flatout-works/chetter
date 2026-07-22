@@ -89,7 +89,7 @@ PR comes from an external fork (head repo full name differs from base repo). Aut
 A user with **write access** to the repo posts `/chetter-review` on a PR.
 
 - **Action filter:** `created` only
-- **Anti-abuse:** requires write access via `CheckUserHasWriteAccess()` (collaborator or team member with push/triage/admin permissions)
+- **Anti-abuse:** requires write access via `CheckUserHasWriteAccess()` (collaborator or team member with push/triage/admin permissions). The Chetter App's own bot login bypasses this gate — GitHub's collaborators API does not grant "write" to App bots (they get permissions through the installation).
 - **Acknowledgment:** Posts a comment `@user requested a review — Chetter is on it.` to the PR
 - **Auto-labeling:** Adds the `chetter-review` label via `submitReview` when at least one matching trigger is found
 
