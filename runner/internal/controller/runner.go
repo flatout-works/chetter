@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -182,17 +183,25 @@ func (r *Runner) Start(ctx context.Context) error {
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
 
 		dnsAllowed := append([]string(nil), r.cfg.DNS.AllowedDomains...)
-		if len(dnsAllowed) > 0 && r.cfg.ChetterMCP.URL != "" {
+		dnsRecords := make(map[string][]net.IP)
+		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Hostname() != "" {
-				dnsAllowed = append(dnsAllowed, u.Hostname())
+				host := u.Hostname()
+				if len(dnsAllowed) > 0 {
+					dnsAllowed = append(dnsAllowed, host)
+				}
+				if ips, lookupErr := net.LookupIP(host); lookupErr != nil {
+					slog.Warn("resolve chetter MCP DNS record", "host", host, "err", lookupErr)
+				} else {
+					dnsRecords[host] = ips
+					slog.Info("configured chetter MCP DNS record", "host", host, "ips", ips)
+				}
 			}
 		}
-		r.dnsProxy = network.NewDNSProxy(r.cfg.DNS.ListenAddr, r.cfg.DNS.Upstream, dnsAllowed, r.cfg.DNS.BlockedDomains)
-		go func() {
-			if err := r.dnsProxy.Start(); err != nil {
-				slog.Error("dns error", "err", err)
-			}
-		}()
+		r.dnsProxy = network.NewDNSProxy(r.cfg.DNS.ListenAddr, r.cfg.DNS.Upstream, dnsAllowed, r.cfg.DNS.BlockedDomains, dnsRecords)
+		if err := r.dnsProxy.Start(); err != nil {
+			return fmt.Errorf("start DNS proxy: %w", err)
+		}
 	} else {
 		slog.Info("skipping proxy/dns (local mode)")
 	}

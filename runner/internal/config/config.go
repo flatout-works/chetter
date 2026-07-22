@@ -14,7 +14,7 @@ const (
 	DefaultMaxConcurrent    = 10
 	DefaultProxyAddr        = ":18080"
 	DefaultDNSAddr          = ":53"
-	DefaultDNSUpstream      = "8.8.8.8:53"
+	DefaultDNSUpstream      = ""
 	DefaultDeployProvider   = "local"
 	DefaultChetterURL       = "chetter.flatout.works"
 	EventPublishMinInterval = 15 * time.Second
