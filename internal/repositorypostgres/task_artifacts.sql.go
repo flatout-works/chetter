@@ -12,26 +12,27 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-ON CONFLICT (task_id, artifact_type, repo, number) DO NOTHING
+INSERT INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+ON CONFLICT (task_id, artifact_type, repo, number, execution_attempt_id) DO NOTHING
 `
 
 type InsertTaskArtifactParams struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
-	SearchText      sql.NullString `json:"search_text"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
+	SearchText         sql.NullString `json:"search_text"`
 }
 
 func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifactParams) error {
@@ -40,6 +41,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 		arg.TaskID,
 		arg.AgentSessionID,
 		arg.UserPromptID,
+		arg.ExecutionAttemptID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.Number,
@@ -55,45 +57,52 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 }
 
 const listTaskArtifacts = `-- name: ListTaskArtifacts :many
-SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = $1 OR $1 = '')
   AND (agent_session_id = $2 OR $2 = '')
-  AND (artifact_type = $3 OR $3 = '')
-  AND (repo = $4 OR $4 = '')
-ORDER BY discovered_at DESC
-LIMIT $6 OFFSET $5
+  AND (user_prompt_id = $3 OR $3 = '')
+  AND (execution_attempt_id = $4 OR $4 = '')
+  AND (artifact_type = $5 OR $5 = '')
+  AND (repo = $6 OR $6 = '')
+ORDER BY discovered_at DESC, id DESC
+LIMIT $8 OFFSET $7
 `
 
 type ListTaskArtifactsParams struct {
-	TaskID         string         `json:"task_id"`
-	AgentSessionID sql.NullString `json:"agent_session_id"`
-	ArtifactType   string         `json:"artifact_type"`
-	Repo           string         `json:"repo"`
-	PageOffset     int32          `json:"page_offset"`
-	PageLimit      int32          `json:"page_limit"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	PageOffset         int32          `json:"page_offset"`
+	PageLimit          int32          `json:"page_limit"`
 }
 
 type ListTaskArtifactsRow struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
 }
 
 func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsParams) ([]ListTaskArtifactsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskArtifacts,
 		arg.TaskID,
 		arg.AgentSessionID,
+		arg.UserPromptID,
+		arg.ExecutionAttemptID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.PageOffset,
@@ -111,6 +120,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 			&i.TaskID,
 			&i.AgentSessionID,
 			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,
@@ -135,47 +145,54 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 }
 
 const searchTaskArtifacts = `-- name: SearchTaskArtifacts :many
-SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = $1 OR $1 = '')
   AND (agent_session_id = $2 OR $2 = '')
-  AND (artifact_type = $3 OR $3 = '')
-  AND (repo = $4 OR $4 = '')
-  AND search_text ILIKE '%' || $5 || '%'
-ORDER BY discovered_at DESC
-LIMIT $7 OFFSET $6
+  AND (user_prompt_id = $3 OR $3 = '')
+  AND (execution_attempt_id = $4 OR $4 = '')
+  AND (artifact_type = $5 OR $5 = '')
+  AND (repo = $6 OR $6 = '')
+  AND search_text ILIKE '%' || $7 || '%'
+ORDER BY discovered_at DESC, id DESC
+LIMIT $9 OFFSET $8
 `
 
 type SearchTaskArtifactsParams struct {
-	TaskID         string         `json:"task_id"`
-	AgentSessionID sql.NullString `json:"agent_session_id"`
-	ArtifactType   string         `json:"artifact_type"`
-	Repo           string         `json:"repo"`
-	Search         sql.NullString `json:"search"`
-	PageOffset     int32          `json:"page_offset"`
-	PageLimit      int32          `json:"page_limit"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Search             sql.NullString `json:"search"`
+	PageOffset         int32          `json:"page_offset"`
+	PageLimit          int32          `json:"page_limit"`
 }
 
 type SearchTaskArtifactsRow struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
 }
 
 func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifactsParams) ([]SearchTaskArtifactsRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchTaskArtifacts,
 		arg.TaskID,
 		arg.AgentSessionID,
+		arg.UserPromptID,
+		arg.ExecutionAttemptID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.Search,
@@ -194,6 +211,7 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 			&i.TaskID,
 			&i.AgentSessionID,
 			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

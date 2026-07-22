@@ -2315,22 +2315,23 @@ func (x *AuditEvent) GetTokenName() string {
 }
 
 type TaskArtifact struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	TaskId          string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	AgentSessionId  string                 `protobuf:"bytes,3,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	UserPromptId    string                 `protobuf:"bytes,4,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
-	ArtifactType    string                 `protobuf:"bytes,5,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
-	Repo            string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
-	Number          int32                  `protobuf:"varint,7,opt,name=number,proto3" json:"number,omitempty"`
-	Url             string                 `protobuf:"bytes,8,opt,name=url,proto3" json:"url,omitempty"`
-	Ref             string                 `protobuf:"bytes,9,opt,name=ref,proto3" json:"ref,omitempty"`
-	Sha             string                 `protobuf:"bytes,10,opt,name=sha,proto3" json:"sha,omitempty"`
-	CreatedAt       string                 `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	DiscoveredAt    string                 `protobuf:"bytes,12,opt,name=discovered_at,json=discoveredAt,proto3" json:"discovered_at,omitempty"`
-	DiscoverySource string                 `protobuf:"bytes,13,opt,name=discovery_source,json=discoverySource,proto3" json:"discovery_source,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TaskId             string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentSessionId     string                 `protobuf:"bytes,3,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	UserPromptId       string                 `protobuf:"bytes,4,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	ArtifactType       string                 `protobuf:"bytes,5,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
+	Repo               string                 `protobuf:"bytes,6,opt,name=repo,proto3" json:"repo,omitempty"`
+	Number             int32                  `protobuf:"varint,7,opt,name=number,proto3" json:"number,omitempty"`
+	Url                string                 `protobuf:"bytes,8,opt,name=url,proto3" json:"url,omitempty"`
+	Ref                string                 `protobuf:"bytes,9,opt,name=ref,proto3" json:"ref,omitempty"`
+	Sha                string                 `protobuf:"bytes,10,opt,name=sha,proto3" json:"sha,omitempty"`
+	CreatedAt          string                 `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	DiscoveredAt       string                 `protobuf:"bytes,12,opt,name=discovered_at,json=discoveredAt,proto3" json:"discovered_at,omitempty"`
+	DiscoverySource    string                 `protobuf:"bytes,13,opt,name=discovery_source,json=discoverySource,proto3" json:"discovery_source,omitempty"`
+	ExecutionAttemptId string                 `protobuf:"bytes,14,opt,name=execution_attempt_id,json=executionAttemptId,proto3" json:"execution_attempt_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *TaskArtifact) Reset() {
@@ -2450,6 +2451,13 @@ func (x *TaskArtifact) GetDiscoveredAt() string {
 func (x *TaskArtifact) GetDiscoverySource() string {
 	if x != nil {
 		return x.DiscoverySource
+	}
+	return ""
+}
+
+func (x *TaskArtifact) GetExecutionAttemptId() string {
+	if x != nil {
+		return x.ExecutionAttemptId
 	}
 	return ""
 }
@@ -6127,16 +6135,18 @@ func (x *ListAuditEventsResponse) GetEvents() []*AuditEvent {
 }
 
 type ListTaskArtifactsRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	TaskId         string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	AgentSessionId string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	ArtifactType   string                 `protobuf:"bytes,3,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
-	Repo           string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
-	Limit          int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset         int32                  `protobuf:"varint,6,opt,name=offset,proto3" json:"offset,omitempty"`
-	Search         string                 `protobuf:"bytes,7,opt,name=search,proto3" json:"search,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	TaskId             string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentSessionId     string                 `protobuf:"bytes,2,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	ArtifactType       string                 `protobuf:"bytes,3,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
+	Repo               string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
+	Limit              int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset             int32                  `protobuf:"varint,6,opt,name=offset,proto3" json:"offset,omitempty"`
+	Search             string                 `protobuf:"bytes,7,opt,name=search,proto3" json:"search,omitempty"`
+	UserPromptId       string                 `protobuf:"bytes,8,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	ExecutionAttemptId string                 `protobuf:"bytes,9,opt,name=execution_attempt_id,json=executionAttemptId,proto3" json:"execution_attempt_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ListTaskArtifactsRequest) Reset() {
@@ -6214,6 +6224,20 @@ func (x *ListTaskArtifactsRequest) GetOffset() int32 {
 func (x *ListTaskArtifactsRequest) GetSearch() string {
 	if x != nil {
 		return x.Search
+	}
+	return ""
+}
+
+func (x *ListTaskArtifactsRequest) GetUserPromptId() string {
+	if x != nil {
+		return x.UserPromptId
+	}
+	return ""
+}
+
+func (x *ListTaskArtifactsRequest) GetExecutionAttemptId() string {
+	if x != nil {
+		return x.ExecutionAttemptId
 	}
 	return ""
 }
@@ -8351,7 +8375,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x06detail\x18\r \x01(\tR\x06detail\x12\x19\n" +
 	"\btoken_id\x18\x0e \x01(\tR\atokenId\x12\x1d\n" +
 	"\n" +
-	"token_name\x18\x0f \x01(\tR\ttokenName\"\xfd\x02\n" +
+	"token_name\x18\x0f \x01(\tR\ttokenName\"\xaf\x03\n" +
 	"\fTaskArtifact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12(\n" +
@@ -8367,7 +8391,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\x12#\n" +
 	"\rdiscovered_at\x18\f \x01(\tR\fdiscoveredAt\x12)\n" +
-	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\"\xc1\x04\n" +
+	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\x120\n" +
+	"\x14execution_attempt_id\x18\x0e \x01(\tR\x12executionAttemptId\"\xc1\x04\n" +
 	"\x11SubmitTaskRequest\x12\x1f\n" +
 	"\x06prompt\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06prompt\x12\x17\n" +
 	"\agit_url\x18\x02 \x01(\tR\x06gitUrl\x12\x17\n" +
@@ -8635,7 +8660,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	" \x01(\tR\x06search\x12#\n" +
 	"\rexclude_types\x18\v \x03(\tR\fexcludeTypes\"E\n" +
 	"\x17ListAuditEventsResponse\x12*\n" +
-	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xdc\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\x12.api.v1.AuditEventR\x06events\"\xb4\x02\n" +
 	"\x18ListTaskArtifactsRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12(\n" +
 	"\x10agent_session_id\x18\x02 \x01(\tR\x0eagentSessionId\x12#\n" +
@@ -8643,7 +8668,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x04repo\x18\x04 \x01(\tR\x04repo\x12\x14\n" +
 	"\x05limit\x18\x05 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x06 \x01(\x05R\x06offset\x12\x16\n" +
-	"\x06search\x18\a \x01(\tR\x06search\"O\n" +
+	"\x06search\x18\a \x01(\tR\x06search\x12$\n" +
+	"\x0euser_prompt_id\x18\b \x01(\tR\fuserPromptId\x120\n" +
+	"\x14execution_attempt_id\x18\t \x01(\tR\x12executionAttemptId\"O\n" +
 	"\x19ListTaskArtifactsResponse\x122\n" +
 	"\tartifacts\x18\x01 \x03(\v2\x14.api.v1.TaskArtifactR\tartifacts\"\x12\n" +
 	"\x10ListReposRequest\")\n" +

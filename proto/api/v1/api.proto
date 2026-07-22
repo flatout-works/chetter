@@ -285,6 +285,7 @@ message TaskArtifact {
   string created_at = 11;
   string discovered_at = 12;
   string discovery_source = 13;
+  string execution_attempt_id = 14;
 }
 
 // --- TaskService ---
@@ -723,6 +724,8 @@ message ListTaskArtifactsRequest {
   int32 limit = 5;
   int32 offset = 6;
   string search = 7;
+  string user_prompt_id = 8;
+  string execution_attempt_id = 9;
 }
 
 message ListTaskArtifactsResponse {

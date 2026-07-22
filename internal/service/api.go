@@ -1348,16 +1348,20 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 		rows, listErr = s.searchTaskArtifactsFTS(ctx, filter, int32(limit), int32(max(filter.Offset, 0)))
 	} else {
 		rows, listErr = s.repo.ListTaskArtifacts(ctx, repository.ListTaskArtifactsParams{
-			TaskID:         filter.TaskID,
-			Column2:        filter.TaskID,
-			AgentSessionID: nullString(filter.AgentSessionID),
-			Column4:        filter.AgentSessionID,
-			ArtifactType:   filter.ArtifactType,
-			Column6:        filter.ArtifactType,
-			Repo:           filter.Repo,
-			Column8:        filter.Repo,
-			Limit:          int32(limit),
-			Offset:         int32(max(filter.Offset, 0)),
+			TaskID:             filter.TaskID,
+			Column2:            filter.TaskID,
+			AgentSessionID:     nullString(filter.AgentSessionID),
+			Column4:            filter.AgentSessionID,
+			UserPromptID:       nullString(filter.UserPromptID),
+			Column6:            filter.UserPromptID,
+			ExecutionAttemptID: filter.ExecutionAttemptID,
+			Column8:            filter.ExecutionAttemptID,
+			ArtifactType:       filter.ArtifactType,
+			Column10:           filter.ArtifactType,
+			Repo:               filter.Repo,
+			Column12:           filter.Repo,
+			Limit:              int32(limit),
+			Offset:             int32(max(filter.Offset, 0)),
 		})
 	}
 	if listErr != nil {
@@ -1366,19 +1370,20 @@ func (s *Service) ListTaskArtifacts(ctx context.Context, filter TaskArtifactFilt
 	out := make([]TaskArtifactRecord, len(rows))
 	for i, r := range rows {
 		out[i] = TaskArtifactRecord{
-			ID:              r.ID,
-			TaskID:          r.TaskID,
-			AgentSessionID:  r.AgentSessionID.String,
-			UserPromptID:    r.UserPromptID.String,
-			ArtifactType:    r.ArtifactType,
-			Repo:            r.Repo,
-			Number:          int(r.Number.Int32),
-			URL:             r.Url.String,
-			Ref:             r.Ref.String,
-			SHA:             r.Sha.String,
-			CreatedAt:       r.CreatedAt,
-			DiscoveredAt:    r.DiscoveredAt,
-			DiscoverySource: r.DiscoverySource,
+			ID:                 r.ID,
+			TaskID:             r.TaskID,
+			AgentSessionID:     r.AgentSessionID.String,
+			UserPromptID:       r.UserPromptID.String,
+			ExecutionAttemptID: r.ExecutionAttemptID,
+			ArtifactType:       r.ArtifactType,
+			Repo:               r.Repo,
+			Number:             int(r.Number.Int32),
+			URL:                r.Url.String,
+			Ref:                r.Ref.String,
+			SHA:                r.Sha.String,
+			CreatedAt:          r.CreatedAt,
+			DiscoveredAt:       r.DiscoveredAt,
+			DiscoverySource:    r.DiscoverySource,
 		}
 	}
 	return out, nil

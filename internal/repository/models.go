@@ -196,20 +196,21 @@ type ChetterTask struct {
 }
 
 type ChetterTaskArtifact struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	SearchText      sql.NullString `json:"search_text"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	SearchText         sql.NullString `json:"search_text"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
 }
 
 type ChetterTaskEvent struct {

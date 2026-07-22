@@ -370,6 +370,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureArtifactDedupIndex(ctx); err != nil {
 		return err
 	}
@@ -401,9 +404,6 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureTriggerRunTeamIDColumn(ctx); err != nil {
-		return err
-	}
-	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
 		return err
 	}
 	if err := s.ensureTaskEventTypeColumn(ctx); err != nil {
@@ -625,9 +625,25 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
+	if exists {
+		var attemptColumns int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = 'chetter_task_artifacts'
+			  AND index_name = 'idx_task_artifacts_dedup' AND column_name = 'execution_attempt_id'
+		`).Scan(&attemptColumns); err != nil {
+			return fmt.Errorf("inspect artifact dedup index: %w", err)
+		}
+		if attemptColumns > 0 {
+			return nil
+		}
+		if _, err := s.db.ExecContext(ctx, "DROP INDEX idx_task_artifacts_dedup ON chetter_task_artifacts"); err != nil {
+			return fmt.Errorf("drop old artifact dedup index: %w", err)
+		}
+	}
+	{
 		// Clean up existing duplicates before creating the unique index.
-		// Keep the first row for each (task_id, artifact_type, repo, number) tuple.
+		// Keep the first row for each objective artifact and contributing attempt.
 		if _, err := s.db.ExecContext(ctx, `
 			DELETE t1 FROM chetter_task_artifacts t1
 			INNER JOIN chetter_task_artifacts t2
@@ -636,10 +652,11 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 			  AND t1.artifact_type = t2.artifact_type
 			  AND t1.repo = t2.repo
 			  AND t1.number = t2.number
+			  AND t1.execution_attempt_id = t2.execution_attempt_id
 		`); err != nil {
 			return fmt.Errorf("dedup artifacts: %w", err)
 		}
-		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON chetter_task_artifacts (task_id, artifact_type, repo, number)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON chetter_task_artifacts (task_id, artifact_type, repo, number, execution_attempt_id)"); err != nil {
 			return fmt.Errorf("add artifact dedup index: %w", err)
 		}
 	}
@@ -843,6 +860,7 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 	}{
 		{"agent_session_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN agent_session_id VARCHAR(64) NULL AFTER task_id"},
 		{"user_prompt_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN user_prompt_id VARCHAR(64) NULL AFTER agent_session_id"},
+		{"execution_attempt_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN execution_attempt_id VARCHAR(64) NOT NULL DEFAULT '' AFTER user_prompt_id"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_task_artifacts", column.name)
@@ -854,6 +872,15 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_task_artifacts.%s: %w", column.name, err)
+		}
+	}
+	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_task_artifacts_execution_attempt")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_task_artifacts_execution_attempt ON chetter_task_artifacts (execution_attempt_id)"); err != nil {
+			return fmt.Errorf("add artifact execution attempt index: %w", err)
 		}
 	}
 	return nil

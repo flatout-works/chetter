@@ -82,12 +82,14 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg repository.ListAuditLogP
 
 func (q *Queries) ListTaskArtifacts(ctx context.Context, arg repository.ListTaskArtifactsParams) ([]repository.ListTaskArtifactsRow, error) {
 	value, err := q.postgres.ListTaskArtifacts(ctx, repositorypostgres.ListTaskArtifactsParams{
-		TaskID:         arg.TaskID,
-		AgentSessionID: optionalString(arg.AgentSessionID),
-		ArtifactType:   arg.ArtifactType,
-		Repo:           arg.Repo,
-		PageOffset:     arg.Offset,
-		PageLimit:      arg.Limit,
+		TaskID:             arg.TaskID,
+		AgentSessionID:     optionalString(arg.AgentSessionID),
+		UserPromptID:       optionalString(arg.UserPromptID),
+		ExecutionAttemptID: arg.ExecutionAttemptID,
+		ArtifactType:       arg.ArtifactType,
+		Repo:               arg.Repo,
+		PageOffset:         arg.Offset,
+		PageLimit:          arg.Limit,
 	})
 	return convert[[]repository.ListTaskArtifactsRow](value), err
 }

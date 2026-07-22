@@ -69,16 +69,17 @@ type AuditEventParams struct {
 }
 
 type RecordArtifactParams struct {
-	TaskID          string
-	AgentSessionID  string
-	UserPromptID    string
-	ArtifactType    string
-	Repo            string
-	Number          int
-	URL             string
-	Ref             string
-	SHA             string
-	DiscoverySource string
+	TaskID             string
+	AgentSessionID     string
+	UserPromptID       string
+	ExecutionAttemptID string
+	ArtifactType       string
+	Repo               string
+	Number             int
+	URL                string
+	Ref                string
+	SHA                string
+	DiscoverySource    string
 }
 
 const (
@@ -1908,21 +1909,22 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 	if params.Number > 0 {
 		number = sql.NullInt32{Int32: int32(params.Number), Valid: true}
 	}
-	artifactSearchText := strings.Join(strings.Fields(params.TaskID+" "+params.Repo+" "+params.ArtifactType+" "+params.Ref), " ")
+	artifactSearchText := strings.Join(strings.Fields(params.TaskID+" "+params.AgentSessionID+" "+params.UserPromptID+" "+params.ExecutionAttemptID+" "+params.Repo+" "+params.ArtifactType+" "+params.Ref), " ")
 	return s.repo.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
-		ID:              id,
-		TaskID:          params.TaskID,
-		AgentSessionID:  nullString(params.AgentSessionID),
-		UserPromptID:    nullString(params.UserPromptID),
-		ArtifactType:    params.ArtifactType,
-		Repo:            params.Repo,
-		Number:          number,
-		Url:             nullString(params.URL),
-		Ref:             nullString(params.Ref),
-		Sha:             nullString(params.SHA),
-		CreatedAt:       now,
-		DiscoveredAt:    now,
-		DiscoverySource: params.DiscoverySource,
-		SearchText:      nullString(artifactSearchText),
+		ID:                 id,
+		TaskID:             params.TaskID,
+		AgentSessionID:     nullString(params.AgentSessionID),
+		UserPromptID:       nullString(params.UserPromptID),
+		ExecutionAttemptID: params.ExecutionAttemptID,
+		ArtifactType:       params.ArtifactType,
+		Repo:               params.Repo,
+		Number:             number,
+		Url:                nullString(params.URL),
+		Ref:                nullString(params.Ref),
+		Sha:                nullString(params.SHA),
+		CreatedAt:          now,
+		DiscoveredAt:       now,
+		DiscoverySource:    params.DiscoverySource,
+		SearchText:         nullString(artifactSearchText),
 	})
 }

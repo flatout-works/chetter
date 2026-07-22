@@ -1743,29 +1743,32 @@ func (s *Service) listAuditEventsTool(ctx context.Context, _ *mcp.CallToolReques
 }
 
 type TaskArtifactFilterInput struct {
-	TaskID         string `json:"task_id,omitempty" jsonschema:"Filter by task ID"`
-	AgentSessionID string `json:"agent_session_id,omitempty" jsonschema:"Filter by agent session ID"`
-	ArtifactType   string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
-	Repo           string `json:"repo,omitempty" jsonschema:"Filter by repository"`
-	Search         string `json:"search,omitempty" jsonschema:"Free-text search across task_id, repo, artifact_type, and ref"`
-	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
-	Offset         int    `json:"offset,omitempty" jsonschema:"Number of artifacts to skip (default 0)"`
+	TaskID             string `json:"task_id,omitempty" jsonschema:"Filter by task ID"`
+	AgentSessionID     string `json:"agent_session_id,omitempty" jsonschema:"Filter by agent session ID"`
+	UserPromptID       string `json:"user_prompt_id,omitempty" jsonschema:"Filter by user prompt ID"`
+	ExecutionAttemptID string `json:"execution_attempt_id,omitempty" jsonschema:"Filter by execution attempt ID"`
+	ArtifactType       string `json:"artifact_type,omitempty" jsonschema:"Filter by artifact type (issue, pr, issue_comment, pr_review)"`
+	Repo               string `json:"repo,omitempty" jsonschema:"Filter by repository"`
+	Search             string `json:"search,omitempty" jsonschema:"Free-text search across task_id, repo, artifact_type, and ref"`
+	Limit              int    `json:"limit,omitempty" jsonschema:"Maximum artifacts to return (default 100, max 500)"`
+	Offset             int    `json:"offset,omitempty" jsonschema:"Number of artifacts to skip (default 0)"`
 }
 
 type TaskArtifactRecord struct {
-	ID              string    `json:"id"`
-	TaskID          string    `json:"task_id"`
-	AgentSessionID  string    `json:"agent_session_id,omitempty"`
-	UserPromptID    string    `json:"user_prompt_id,omitempty"`
-	ArtifactType    string    `json:"artifact_type"`
-	Repo            string    `json:"repo"`
-	Number          int       `json:"number,omitempty"`
-	URL             string    `json:"url,omitempty"`
-	Ref             string    `json:"ref,omitempty"`
-	SHA             string    `json:"sha,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	DiscoveredAt    time.Time `json:"discovered_at"`
-	DiscoverySource string    `json:"discovery_source"`
+	ID                 string    `json:"id"`
+	TaskID             string    `json:"task_id"`
+	AgentSessionID     string    `json:"agent_session_id,omitempty"`
+	UserPromptID       string    `json:"user_prompt_id,omitempty"`
+	ExecutionAttemptID string    `json:"execution_attempt_id,omitempty"`
+	ArtifactType       string    `json:"artifact_type"`
+	Repo               string    `json:"repo"`
+	Number             int       `json:"number,omitempty"`
+	URL                string    `json:"url,omitempty"`
+	Ref                string    `json:"ref,omitempty"`
+	SHA                string    `json:"sha,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	DiscoveredAt       time.Time `json:"discovered_at"`
+	DiscoverySource    string    `json:"discovery_source"`
 }
 
 type TaskArtifactsOutput struct {

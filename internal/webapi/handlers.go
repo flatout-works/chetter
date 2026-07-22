@@ -778,13 +778,15 @@ func (h *adminHandler) ListAuditEvents(ctx context.Context, req *connect.Request
 
 func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Request[apiv1.ListTaskArtifactsRequest]) (*connect.Response[apiv1.ListTaskArtifactsResponse], error) {
 	artifacts, err := h.svc.ListTaskArtifacts(ctx, service.TaskArtifactFilterInput{
-		TaskID:         req.Msg.TaskId,
-		AgentSessionID: req.Msg.AgentSessionId,
-		ArtifactType:   req.Msg.ArtifactType,
-		Repo:           req.Msg.Repo,
-		Search:         req.Msg.Search,
-		Limit:          int(req.Msg.Limit),
-		Offset:         int(req.Msg.Offset),
+		TaskID:             req.Msg.TaskId,
+		AgentSessionID:     req.Msg.AgentSessionId,
+		UserPromptID:       req.Msg.UserPromptId,
+		ExecutionAttemptID: req.Msg.ExecutionAttemptId,
+		ArtifactType:       req.Msg.ArtifactType,
+		Repo:               req.Msg.Repo,
+		Search:             req.Msg.Search,
+		Limit:              int(req.Msg.Limit),
+		Offset:             int(req.Msg.Offset),
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -792,19 +794,20 @@ func (h *adminHandler) ListTaskArtifacts(ctx context.Context, req *connect.Reque
 	out := make([]*apiv1.TaskArtifact, len(artifacts))
 	for i, a := range artifacts {
 		out[i] = &apiv1.TaskArtifact{
-			Id:              a.ID,
-			TaskId:          a.TaskID,
-			AgentSessionId:  a.AgentSessionID,
-			UserPromptId:    a.UserPromptID,
-			ArtifactType:    a.ArtifactType,
-			Repo:            a.Repo,
-			Number:          int32(a.Number),
-			Url:             a.URL,
-			Ref:             a.Ref,
-			Sha:             a.SHA,
-			CreatedAt:       a.CreatedAt.Format(time.RFC3339),
-			DiscoveredAt:    a.DiscoveredAt.Format(time.RFC3339),
-			DiscoverySource: a.DiscoverySource,
+			Id:                 a.ID,
+			TaskId:             a.TaskID,
+			AgentSessionId:     a.AgentSessionID,
+			UserPromptId:       a.UserPromptID,
+			ExecutionAttemptId: a.ExecutionAttemptID,
+			ArtifactType:       a.ArtifactType,
+			Repo:               a.Repo,
+			Number:             int32(a.Number),
+			Url:                a.URL,
+			Ref:                a.Ref,
+			Sha:                a.SHA,
+			CreatedAt:          a.CreatedAt.Format(time.RFC3339),
+			DiscoveredAt:       a.DiscoveredAt.Format(time.RFC3339),
+			DiscoverySource:    a.DiscoverySource,
 		}
 	}
 	return connect.NewResponse(&apiv1.ListTaskArtifactsResponse{Artifacts: out}), nil

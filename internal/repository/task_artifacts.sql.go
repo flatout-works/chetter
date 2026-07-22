@@ -12,25 +12,26 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskArtifactParams struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
-	SearchText      sql.NullString `json:"search_text"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
+	SearchText         sql.NullString `json:"search_text"`
 }
 
 func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifactParams) error {
@@ -39,6 +40,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 		arg.TaskID,
 		arg.AgentSessionID,
 		arg.UserPromptID,
+		arg.ExecutionAttemptID,
 		arg.ArtifactType,
 		arg.Repo,
 		arg.Number,
@@ -54,43 +56,50 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 }
 
 const listTaskArtifacts = `-- name: ListTaskArtifacts :many
-SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
+  AND (user_prompt_id = ? OR ? = '')
+  AND (execution_attempt_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
-ORDER BY discovered_at DESC
+ORDER BY discovered_at DESC, id DESC
 LIMIT ? OFFSET ?
 `
 
 type ListTaskArtifactsParams struct {
-	TaskID         string         `json:"task_id"`
-	Column2        interface{}    `json:"column_2"`
-	AgentSessionID sql.NullString `json:"agent_session_id"`
-	Column4        interface{}    `json:"column_4"`
-	ArtifactType   string         `json:"artifact_type"`
-	Column6        interface{}    `json:"column_6"`
-	Repo           string         `json:"repo"`
-	Column8        interface{}    `json:"column_8"`
-	Limit          int32          `json:"limit"`
-	Offset         int32          `json:"offset"`
+	TaskID             string         `json:"task_id"`
+	Column2            interface{}    `json:"column_2"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	Column4            interface{}    `json:"column_4"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	Column6            interface{}    `json:"column_6"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	Column8            interface{}    `json:"column_8"`
+	ArtifactType       string         `json:"artifact_type"`
+	Column10           interface{}    `json:"column_10"`
+	Repo               string         `json:"repo"`
+	Column12           interface{}    `json:"column_12"`
+	Limit              int32          `json:"limit"`
+	Offset             int32          `json:"offset"`
 }
 
 type ListTaskArtifactsRow struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
 }
 
 func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsParams) ([]ListTaskArtifactsRow, error) {
@@ -99,10 +108,14 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 		arg.Column2,
 		arg.AgentSessionID,
 		arg.Column4,
-		arg.ArtifactType,
+		arg.UserPromptID,
 		arg.Column6,
-		arg.Repo,
+		arg.ExecutionAttemptID,
 		arg.Column8,
+		arg.ArtifactType,
+		arg.Column10,
+		arg.Repo,
+		arg.Column12,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -118,6 +131,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 			&i.TaskID,
 			&i.AgentSessionID,
 			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,
@@ -142,45 +156,52 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 }
 
 const searchTaskArtifacts = `-- name: SearchTaskArtifacts :many
-SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 FROM chetter_task_artifacts
 WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
+  AND (user_prompt_id = ? OR ? = '')
+  AND (execution_attempt_id = ? OR ? = '')
   AND (artifact_type = ? OR ? = '')
   AND (repo = ? OR ? = '')
   AND (search_text LIKE CONCAT('%', ?, '%'))
-ORDER BY discovered_at DESC
+ORDER BY discovered_at DESC, id DESC
 LIMIT ? OFFSET ?
 `
 
 type SearchTaskArtifactsParams struct {
-	TaskID         string         `json:"task_id"`
-	Column2        interface{}    `json:"column_2"`
-	AgentSessionID sql.NullString `json:"agent_session_id"`
-	Column4        interface{}    `json:"column_4"`
-	ArtifactType   string         `json:"artifact_type"`
-	Column6        interface{}    `json:"column_6"`
-	Repo           string         `json:"repo"`
-	Column8        interface{}    `json:"column_8"`
-	Search         interface{}    `json:"search"`
-	Limit          int32          `json:"limit"`
-	Offset         int32          `json:"offset"`
+	TaskID             string         `json:"task_id"`
+	Column2            interface{}    `json:"column_2"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	Column4            interface{}    `json:"column_4"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	Column6            interface{}    `json:"column_6"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	Column8            interface{}    `json:"column_8"`
+	ArtifactType       string         `json:"artifact_type"`
+	Column10           interface{}    `json:"column_10"`
+	Repo               string         `json:"repo"`
+	Column12           interface{}    `json:"column_12"`
+	Search             interface{}    `json:"search"`
+	Limit              int32          `json:"limit"`
+	Offset             int32          `json:"offset"`
 }
 
 type SearchTaskArtifactsRow struct {
-	ID              string         `json:"id"`
-	TaskID          string         `json:"task_id"`
-	AgentSessionID  sql.NullString `json:"agent_session_id"`
-	UserPromptID    sql.NullString `json:"user_prompt_id"`
-	ArtifactType    string         `json:"artifact_type"`
-	Repo            string         `json:"repo"`
-	Number          sql.NullInt32  `json:"number"`
-	Url             sql.NullString `json:"url"`
-	Ref             sql.NullString `json:"ref"`
-	Sha             sql.NullString `json:"sha"`
-	CreatedAt       time.Time      `json:"created_at"`
-	DiscoveredAt    time.Time      `json:"discovered_at"`
-	DiscoverySource string         `json:"discovery_source"`
+	ID                 string         `json:"id"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     sql.NullString `json:"agent_session_id"`
+	UserPromptID       sql.NullString `json:"user_prompt_id"`
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ArtifactType       string         `json:"artifact_type"`
+	Repo               string         `json:"repo"`
+	Number             sql.NullInt32  `json:"number"`
+	Url                sql.NullString `json:"url"`
+	Ref                sql.NullString `json:"ref"`
+	Sha                sql.NullString `json:"sha"`
+	CreatedAt          time.Time      `json:"created_at"`
+	DiscoveredAt       time.Time      `json:"discovered_at"`
+	DiscoverySource    string         `json:"discovery_source"`
 }
 
 func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifactsParams) ([]SearchTaskArtifactsRow, error) {
@@ -189,10 +210,14 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 		arg.Column2,
 		arg.AgentSessionID,
 		arg.Column4,
-		arg.ArtifactType,
+		arg.UserPromptID,
 		arg.Column6,
-		arg.Repo,
+		arg.ExecutionAttemptID,
 		arg.Column8,
+		arg.ArtifactType,
+		arg.Column10,
+		arg.Repo,
+		arg.Column12,
 		arg.Search,
 		arg.Limit,
 		arg.Offset,
@@ -209,6 +234,7 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg SearchTaskArtifac
 			&i.TaskID,
 			&i.AgentSessionID,
 			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

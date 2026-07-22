@@ -594,10 +594,12 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	var args []any
 	if s.dialect == store.DialectMySQL {
 		query = `
-			SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 			FROM chetter_task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
+			  AND (user_prompt_id <=> ? OR ? = '')
+			  AND (execution_attempt_id = ? OR ? = '')
 			  AND (artifact_type = ? OR ? = '')
 			  AND (repo = ? OR ? = '')
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
@@ -606,6 +608,8 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 		args = []any{
 			filter.TaskID, filter.TaskID,
 			nullString(filter.AgentSessionID), filter.AgentSessionID,
+			nullString(filter.UserPromptID), filter.UserPromptID,
+			filter.ExecutionAttemptID, filter.ExecutionAttemptID,
 			filter.ArtifactType, filter.ArtifactType,
 			filter.Repo, filter.Repo,
 			filter.Search,
@@ -613,10 +617,12 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 		}
 	} else {
 		query = fmt.Sprintf(`
-			SELECT id, task_id, agent_session_id, user_prompt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 			FROM chetter_task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
+			  AND (user_prompt_id <=> ? OR ? = '')
+			  AND (execution_attempt_id = ? OR ? = '')
 			  AND (artifact_type = ? OR ? = '')
 			  AND (repo = ? OR ? = '')
 			  AND FTS_MATCH_WORD(search_text, '%s')
@@ -625,6 +631,8 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 		args = []any{
 			filter.TaskID, filter.TaskID,
 			nullString(filter.AgentSessionID), filter.AgentSessionID,
+			nullString(filter.UserPromptID), filter.UserPromptID,
+			filter.ExecutionAttemptID, filter.ExecutionAttemptID,
 			filter.ArtifactType, filter.ArtifactType,
 			filter.Repo, filter.Repo,
 			limit, offset,
@@ -634,17 +642,21 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	if err != nil {
 		slog.DebugContext(ctx, "FTS search artifacts failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		searchRows, err := s.repo.SearchTaskArtifacts(ctx, repository.SearchTaskArtifactsParams{
-			TaskID:         filter.TaskID,
-			Column2:        filter.TaskID,
-			AgentSessionID: nullString(filter.AgentSessionID),
-			Column4:        filter.AgentSessionID,
-			ArtifactType:   filter.ArtifactType,
-			Column6:        filter.ArtifactType,
-			Repo:           filter.Repo,
-			Column8:        filter.Repo,
-			Search:         filter.Search,
-			Limit:          limit,
-			Offset:         offset,
+			TaskID:             filter.TaskID,
+			Column2:            filter.TaskID,
+			AgentSessionID:     nullString(filter.AgentSessionID),
+			Column4:            filter.AgentSessionID,
+			UserPromptID:       nullString(filter.UserPromptID),
+			Column6:            filter.UserPromptID,
+			ExecutionAttemptID: filter.ExecutionAttemptID,
+			Column8:            filter.ExecutionAttemptID,
+			ArtifactType:       filter.ArtifactType,
+			Column10:           filter.ArtifactType,
+			Repo:               filter.Repo,
+			Column12:           filter.Repo,
+			Search:             filter.Search,
+			Limit:              limit,
+			Offset:             offset,
 		})
 		if err != nil {
 			return nil, err
@@ -664,6 +676,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 			&i.TaskID,
 			&i.AgentSessionID,
 			&i.UserPromptID,
+			&i.ExecutionAttemptID,
 			&i.ArtifactType,
 			&i.Repo,
 			&i.Number,

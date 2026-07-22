@@ -1875,6 +1875,55 @@ func TestUnscopedToolsRequireAdmin(t *testing.T) {
 	}
 }
 
+func TestTaskArtifactDedupPreservesAttemptHistory(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "create PR", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	q := data.New(tdb.DB, tdb.Dialect())
+	prompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get prompt: %v", err)
+	}
+	now := time.Now().UTC()
+	secondAttemptID := "exec_artifact_second"
+	if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+		ID: secondAttemptID, UserPromptID: prompt.ID, Sequence: 2, TimeoutSec: 600, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert second attempt: %v", err)
+	}
+
+	record := func(attemptID string) {
+		t.Helper()
+		if err := svc.RecordArtifact(ctx, RecordArtifactParams{
+			TaskID: task.ID, AgentSessionID: prompt.AgentSessionID, UserPromptID: prompt.ID,
+			ExecutionAttemptID: attemptID, ArtifactType: "pr", Repo: "flatout-works/chetter", Number: 42,
+			DiscoverySource: "test",
+		}); err != nil {
+			t.Fatalf("record artifact for %s: %v", attemptID, err)
+		}
+	}
+	record(task.ExecutionID)
+	record(task.ExecutionID)
+	record(secondAttemptID)
+
+	artifacts, err := svc.ListTaskArtifacts(ctxWithAdmin(ctx), TaskArtifactFilterInput{TaskID: task.ID})
+	if err != nil {
+		t.Fatalf("list artifacts: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("artifact contributions = %d, want 2: %+v", len(artifacts), artifacts)
+	}
+	filtered, err := svc.ListTaskArtifacts(ctxWithAdmin(ctx), TaskArtifactFilterInput{ExecutionAttemptID: secondAttemptID})
+	if err != nil || len(filtered) != 1 || filtered[0].ExecutionAttemptID != secondAttemptID {
+		t.Fatalf("attempt-filtered artifacts = %+v, err %v", filtered, err)
+	}
+}
+
 // --- Team-scoped trigger tests ---
 
 func TestCreateTriggerWithTeamContextStampsTeamID(t *testing.T) {
