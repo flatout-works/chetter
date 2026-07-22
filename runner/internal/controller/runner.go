@@ -46,6 +46,7 @@ type Runner struct {
 	wsManager      *workspace.Manager
 	proxy          *network.TransparentProxy
 	dnsProxy       *network.DNSProxy
+	mcpRelay       *network.MCPRelay
 	rpcClient      runnerRPCClient
 	claimClient    runnerRPCClient
 	runCtx         context.Context
@@ -181,6 +182,17 @@ func (r *Runner) Start(ctx context.Context) error {
 			}
 		}()
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
+		if r.cfg.ChetterMCP.URL != "" {
+			relay, err := network.NewMCPRelay(r.cfg.ChetterMCP.RelayListenAddr, r.cfg.ChetterMCP.URL)
+			if err != nil {
+				return fmt.Errorf("create Chetter MCP relay: %w", err)
+			}
+			if err := relay.Start(); err != nil {
+				return fmt.Errorf("start Chetter MCP relay: %w", err)
+			}
+			r.mcpRelay = relay
+			slog.Info("Chetter MCP relay started", "addr", relay.Addr(), "target", r.cfg.ChetterMCP.URL)
+		}
 
 		dnsAllowed := append([]string(nil), r.cfg.DNS.AllowedDomains...)
 		dnsRecords := make(map[string][]net.IP)
@@ -351,6 +363,11 @@ func (r *Runner) recordTerminalStatus(taskID, status string) {
 }
 
 func (r *Runner) stopNetwork() {
+	if r.mcpRelay != nil {
+		if err := r.mcpRelay.Stop(); err != nil {
+			slog.Error("Chetter MCP relay stop error", "err", err)
+		}
+	}
 	if r.dnsProxy != nil {
 		if err := r.dnsProxy.Stop(); err != nil {
 			slog.Error("dns stop error", "err", err)

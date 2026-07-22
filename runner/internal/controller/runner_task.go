@@ -167,7 +167,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.cfg.ChetterMCP.AuthToken, req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -258,6 +258,21 @@ func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
 	// via the shared Docker network.
 	runnerIP := hostIP(runcNetwork())
 	return "http://" + runnerIP + ":" + port + "/mcp"
+}
+
+func (r *Runner) taskChetterMCPURL() string {
+	if r.cfg.ChetterMCP.URL == "" {
+		return ""
+	}
+	if r.executionMode() == "local" || r.mcpRelay == nil {
+		return r.cfg.ChetterMCP.URL
+	}
+	_, port, err := net.SplitHostPort(r.mcpRelay.Addr())
+	if err != nil || port == "" {
+		slog.Error("invalid Chetter MCP relay address", "addr", r.mcpRelay.Addr(), "err", err)
+		return ""
+	}
+	return "http://" + hostIP(runcNetwork()) + ":" + port + "/mcp"
 }
 
 func hostWorkspaceDir(containerPath string) string {
