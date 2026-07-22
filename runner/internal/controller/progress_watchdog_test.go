@@ -124,3 +124,11 @@ func TestProgressWatchdogCapsContinuationAttempts(t *testing.T) {
 		t.Fatalf("attempt cap = nudge:%v fail:%v, want fail only", nudge, fail)
 	}
 }
+
+func TestProgressWatchdogStopWaitsForRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	w := startProgressWatchdog(ctx, cancel, nil, nil, nil)
+	w.stop()
+}
