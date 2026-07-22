@@ -73,7 +73,7 @@ Trigger tools:
 
 ## GitHub Artifacts
 
-Chetter exposes server-side GitHub tools so agents do not need direct `gh` write access for common artifact creation.
+Chetter exposes runner-bridge GitHub tools to task agents so they do not need direct `gh` write access for common artifact creation. These tools are not part of the control-plane MCP API.
 
 - `chetter_create_issue`
 - `chetter_issue_comment`

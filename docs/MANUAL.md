@@ -479,27 +479,20 @@ For a resumable session:
 | `chetter_runner_health` | Fleet diagnostics and heartbeat ages. |
 | `chetter_drain_runner` | Ask a runner to stop claiming new work and exit after current work. |
 
-### GitHub Artifacts
+### GitHub Artifact Observability
 
 | Tool | Purpose |
 |---|---|
-| `chetter_create_issue` | Create a GitHub issue with Chetter footer and audit/artifact records. |
-| `chetter_issue_comment` | Create an issue or PR comment with Chetter footer. |
-| `chetter_create_pr` | Create a GitHub PR with Chetter footer. |
-| `chetter_pr_review` | Create a GitHub PR review with Chetter footer. |
 | `chetter_list_task_artifacts` | Admin-only artifact browser/filter. |
 
 ### Runner Bridge MCP Tools (Agent-Side)
 
-These tools run inside the runner, exposed over a Unix socket to the agent harness
-via `mcp-bridge`. They give agents controlled access to the workspace filesystem and
-GitHub write operations with automatic audit logging and Chetter signatures.
+These tools are exposed by a runner-local MCP endpoint. They give task agents
+controlled GitHub write operations with automatic task attribution, audit logging,
+and Chetter signatures. They are not exposed by the control-plane MCP server.
 
 | Tool | Purpose |
 |---|---|
-| `workspace_read_file` | Read a file from `/workspace` (paths relative to workspace root). |
-| `workspace_write_file` | Write or overwrite a file in `/workspace`. |
-| `workspace_list_directory` | List files and directories relative to `/workspace`. |
 | `chetter_create_issue` | Create a GitHub issue with a canonical Chetter signature and artifact/audit records. `task_id` is auto-injected by the runner. |
 | `chetter_issue_comment` | Comment on a GitHub issue or PR with Chetter signature and artifact/audit records. |
 | `chetter_create_pr` | Create a GitHub pull request with Chetter signature and artifact/audit records. |
@@ -759,7 +752,7 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
-`gh` read commands remain available for inspection. GitHub writes must use Chetter MCP tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+`gh` read commands remain available for inspection. GitHub writes from task agents must use the runner-bridge tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
 
 ### Harness Interface Support Matrix
 

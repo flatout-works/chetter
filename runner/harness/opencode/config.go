@@ -53,11 +53,6 @@ var chetterMCPAllowedTools = []string{
 	"chetter_get_definition_proposal",
 	// Definitions — write
 	"chetter_create_definition_proposal",
-	// GitHub artifacts
-	"chetter_create_issue",
-	"chetter_issue_comment",
-	"chetter_create_pr",
-	"chetter_pr_review",
 	// Audit & usage
 	"chetter_list_audit_events",
 	"chetter_usage_summary",

@@ -614,10 +614,6 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_drain_runner", Description: "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically."}, svc.drainRunnerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a failed task by creating a new task with the previous session export as a workspace file."}, svc.taskRecoverTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_issue", Description: "Create a GitHub issue with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_issue_comment", Description: "Create a GitHub issue or PR comment with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubIssueCommentTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_pr", Description: "Create a GitHub pull request with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubPRTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_pr_review", Description: "Create a GitHub pull request review with a canonical Chetter signature and audit/artifact records."}, svc.createGitHubPRReviewTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)

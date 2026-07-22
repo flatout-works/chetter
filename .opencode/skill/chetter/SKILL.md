@@ -40,7 +40,6 @@ Interactive MCP clients may expose the full Chetter API, subject to token scope 
 | Git identities | `chetter_create_git_identity`, `chetter_list_git_identities`, `chetter_update_git_identity`, `chetter_delete_git_identity`, `chetter_set_git_identity_default` |
 | Administration | `chetter_create_token`, `chetter_list_tokens`, `chetter_delete_token`, `chetter_create_team`, `chetter_list_teams`, `chetter_delete_team`, `chetter_list_users` |
 | Observability | `chetter_list_audit_events`, `chetter_list_task_artifacts`, `chetter_usage_summary`, `chetter_get_model_catalog` |
-| GitHub artifacts | `chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review` |
 
 Arcane image-scanning tools are present only when the server has Arcane configured: `chetter_arcane_scanner_status`, `chetter_arcane_environment_summary`, `chetter_arcane_list_images`, `chetter_arcane_image_summary`, and `chetter_arcane_list_vulnerabilities`.
 
@@ -48,9 +47,9 @@ Admin-only or unavailable tools may not be visible to team-scoped clients. Use t
 
 ### Agents running inside tasks
 
-OpenCode task agents receive a restricted subset of the remote Chetter tools. They can inspect tasks, sessions, fleet health, triggers, definitions, audit/usage data, and Arcane data; submit/recover/resume tasks; create definition proposals; and create GitHub artifacts. They cannot administer teams, tokens, identities, triggers, callbacks, the queue, or runners.
+OpenCode task agents receive a restricted subset of the remote Chetter tools. They can inspect tasks, sessions, fleet health, triggers, definitions, audit/usage data, and Arcane data; submit/recover/resume tasks; and create definition proposals. They cannot administer teams, tokens, identities, triggers, callbacks, the queue, or runners.
 
-Task agents also receive runner-bridge versions of these artifact tools, with task context injected automatically:
+Task agents receive these artifact tools only through the runner bridge, with task context injected automatically:
 
 - `chetter_create_issue`
 - `chetter_issue_comment`

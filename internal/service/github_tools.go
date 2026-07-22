@@ -13,39 +13,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type GitHubCreateIssueInput struct {
-	TaskID string   `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
-	Repo   string   `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
-	Title  string   `json:"title" jsonschema:"Issue title"`
-	Body   string   `json:"body,omitempty" jsonschema:"Issue body without the Chetter footer"`
-	Labels []string `json:"labels,omitempty" jsonschema:"Labels to apply to the issue"`
-}
-
-type GitHubIssueCommentInput struct {
-	TaskID      string `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
-	Repo        string `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
-	IssueNumber int    `json:"issue_number" jsonschema:"Issue or PR number to comment on"`
-	Body        string `json:"body" jsonschema:"Comment body without the Chetter footer"`
-}
-
-type GitHubCreatePRInput struct {
-	TaskID string `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
-	Repo   string `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
-	Title  string `json:"title" jsonschema:"Pull request title"`
-	Body   string `json:"body,omitempty" jsonschema:"Pull request body without the Chetter footer"`
-	Head   string `json:"head" jsonschema:"Head branch or owner:branch"`
-	Base   string `json:"base" jsonschema:"Base branch"`
-	Draft  bool   `json:"draft,omitempty" jsonschema:"Create a draft pull request"`
-}
-
-type GitHubPRReviewInput struct {
-	TaskID   string `json:"task_id" jsonschema:"Chetter task ID from CHETTER_TASK_ID"`
-	Repo     string `json:"repo" jsonschema:"Repository, e.g. flatout-works/chetter"`
-	PRNumber int    `json:"pr_number" jsonschema:"Pull request number to review"`
-	Event    string `json:"event,omitempty" jsonschema:"Review event: COMMENT, APPROVE, or REQUEST_CHANGES (default COMMENT)"`
-	Body     string `json:"body" jsonschema:"Review body without the Chetter footer"`
-}
-
 type GitHubArtifactOutput struct {
 	TaskID       string `json:"task_id"`
 	Repo         string `json:"repo"`
@@ -53,104 +20,6 @@ type GitHubArtifactOutput struct {
 	Number       int    `json:"number,omitempty"`
 	URL          string `json:"url,omitempty"`
 	Body         string `json:"body,omitempty"`
-}
-
-func (s *Service) createGitHubIssueTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubCreateIssueInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
-	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	if strings.TrimSpace(in.Title) == "" {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("title is required")
-	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
-	created, err := s.githubClient().CreateIssue(ctx, in.Repo, in.Title, body, in.Labels)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue: %w", err)
-	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "issue", in.Repo, created.Number, created.URL, "", body, map[string]any{
-		"title":  in.Title,
-		"labels": in.Labels,
-	})
-}
-
-func (s *Service) createGitHubIssueCommentTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubIssueCommentInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
-	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	if in.IssueNumber <= 0 {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("issue_number is required")
-	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
-	created, err := s.githubClient().CreateIssueCommentWithResponse(ctx, in.Repo, in.IssueNumber, body)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub issue comment: %w", err)
-	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "issue_comment", in.Repo, in.IssueNumber, created.URL, "", body, map[string]any{
-		"issue_number": in.IssueNumber,
-	})
-}
-
-func (s *Service) createGitHubPRTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubCreatePRInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
-	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	if strings.TrimSpace(in.Title) == "" || strings.TrimSpace(in.Head) == "" || strings.TrimSpace(in.Base) == "" {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("title, head, and base are required")
-	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
-	created, err := s.githubClient().CreatePullRequest(ctx, in.Repo, in.Title, body, in.Head, in.Base, in.Draft)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request: %w", err)
-	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr", in.Repo, created.Number, created.URL, in.Head, body, map[string]any{
-		"title": in.Title,
-		"head":  in.Head,
-		"base":  in.Base,
-		"draft": in.Draft,
-	})
-}
-
-func (s *Service) createGitHubPRReviewTool(ctx context.Context, _ *mcp.CallToolRequest, in GitHubPRReviewInput) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
-	if err := requireGitHubToolFields(in.TaskID, in.Repo); err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	if in.PRNumber <= 0 {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("pr_number is required")
-	}
-	event := strings.ToUpper(strings.TrimSpace(in.Event))
-	if event == "" {
-		event = "COMMENT"
-	}
-	switch event {
-	case "COMMENT", "APPROVE", "REQUEST_CHANGES":
-	default:
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("event must be COMMENT, APPROVE, or REQUEST_CHANGES")
-	}
-	task, sessionRun, err := s.githubToolTaskContext(ctx, in.TaskID)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, err
-	}
-	body := appendChetterSignature(in.Body, githubToolSignature(task, sessionRun, s.cfg.WebURL))
-	created, err := s.githubClient().CreatePullRequestReview(ctx, in.Repo, in.PRNumber, event, body)
-	if err != nil {
-		return nil, GitHubArtifactOutput{}, fmt.Errorf("create GitHub pull request review: %w", err)
-	}
-	return s.recordGitHubToolArtifact(ctx, task, sessionRun, "pr_review", in.Repo, in.PRNumber, created.URL, "", body, map[string]any{
-		"pr_number": in.PRNumber,
-		"event":     event,
-	})
 }
 
 func (s *Service) githubClient() *webhook.Client {
@@ -167,16 +36,6 @@ func (s *Service) GetTaskSignature(ctx context.Context, taskID string) (string, 
 		return "", err
 	}
 	return githubToolSignature(task, sessionRun, s.cfg.WebURL), nil
-}
-
-func requireGitHubToolFields(taskID, repo string) error {
-	if strings.TrimSpace(taskID) == "" {
-		return fmt.Errorf("task_id is required")
-	}
-	if strings.TrimSpace(repo) == "" {
-		return fmt.Errorf("repo is required")
-	}
-	return nil
 }
 
 func (s *Service) githubToolTaskContext(ctx context.Context, taskID string) (repository.ChetterTask, repository.ChetterSessionRun, error) {

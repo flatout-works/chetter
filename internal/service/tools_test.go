@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -14,6 +15,34 @@ func TestRegisterTools(t *testing.T) {
 	t.Parallel()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0"}, nil)
 	RegisterTools(server, nil)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatalf("connect server: %v", err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v0"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect client: %v", err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	result, err := clientSession.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	forbidden := map[string]bool{
+		"chetter_create_issue":  true,
+		"chetter_issue_comment": true,
+		"chetter_create_pr":     true,
+		"chetter_pr_review":     true,
+	}
+	for _, tool := range result.Tools {
+		if forbidden[tool.Name] {
+			t.Errorf("control-plane MCP unexpectedly exposes %s", tool.Name)
+		}
+	}
 }
 
 func TestTaskToolRecordKeepsStableShape(t *testing.T) {
