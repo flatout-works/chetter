@@ -219,23 +219,21 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		}
 		return
 	}
-	go func() {
-		deadline := time.Now().Add(terminalReportRetryWindow)
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			err := report(ctx)
-			cancel()
-			if err == nil {
-				return
-			}
-			if time.Now().After(deadline) {
-				slog.Error("failed to report terminal task event", "taskID", resp.TaskID, "status", resp.Status, "err", err)
-				return
-			}
-			slog.Warn("retrying terminal task event report", "taskID", resp.TaskID, "status", resp.Status, "err", err)
-			time.Sleep(2 * time.Second)
+	deadline := time.Now().Add(terminalReportRetryWindow)
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := report(ctx)
+		cancel()
+		if err == nil {
+			return
 		}
-	}()
+		if time.Now().After(deadline) {
+			slog.Error("failed to report terminal task event", "taskID", resp.TaskID, "status", resp.Status, "err", err)
+			return
+		}
+		slog.Warn("retrying terminal task event report", "taskID", resp.TaskID, "status", resp.Status, "err", err)
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func isTerminalStatus(status string) bool {
