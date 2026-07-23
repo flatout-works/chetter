@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-23
+
+### Added
+
+- Execution attempt backfill migration: legacy tasks without execution attempt rows now get backfilled on deploy, ensuring all tasks appear in the execution history.
+- Internal documentation: database separation plan (`docs/plans/2026-07-23-002-ops-separate-chetter-database-plan.md`) and updated quality hardening plan (`docs/plans/2026-07-23-001-quality-hardening-plan.md`).
+
+### Changed
+
+- Database migrations now run automatically before server startup (via new `chetter-migrate` binary and entrypoint script), eliminating the need for a separate migration step in production deployments.
+
+### Fixed
+
+- Trigger run history: trigger runs now correctly relinked after definition sync, and task duration/status updates properly persist back to trigger runs through `UpdateTriggerRunStatusByTask`.
+- Runner: superseded `runner_task.go` helper removed (241 lines deleted), reducing maintenance surface.
+- UI navigation: agent, session, task, trigger, and artifact pages now show clearer navigation context and breadcrumb-style labels.
+
+### Performance
+
+- Agent detail page loading streamlined: model catalog tool now includes agent metadata to avoid redundant per-agent API calls on the detail page.
+
 ## 2026-07-22
 
 ### Added
