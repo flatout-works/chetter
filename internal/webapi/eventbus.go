@@ -17,13 +17,23 @@ type EventBus struct {
 }
 
 type taskSubscriber struct {
-	ch     chan *apiv1.TaskEvent
-	closed chan struct{}
+	ch        chan *apiv1.TaskEvent
+	closed    chan struct{}
+	closeOnce sync.Once
 }
 
 type fleetSubscriber struct {
-	ch     chan *apiv1.FleetUpdate
-	closed chan struct{}
+	ch        chan *apiv1.FleetUpdate
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+func (s *taskSubscriber) close() {
+	s.closeOnce.Do(func() { close(s.closed) })
+}
+
+func (s *fleetSubscriber) close() {
+	s.closeOnce.Do(func() { close(s.closed) })
 }
 
 func NewEventBus() *EventBus {
@@ -69,7 +79,7 @@ func (b *EventBus) SubscribeTaskEvents(taskID string, bufSize int) (<-chan *apiv
 	b.mu.Unlock()
 
 	return sub.ch, func() {
-		close(sub.closed)
+		sub.close()
 		b.mu.Lock()
 		subs := b.taskSubs[taskID]
 		for i, s := range subs {
@@ -101,7 +111,7 @@ func (b *EventBus) SubscribeFleetUpdates(bufSize int) (<-chan *apiv1.FleetUpdate
 	b.mu.Unlock()
 
 	return sub.ch, func() {
-		close(sub.closed)
+		sub.close()
 		b.mu.Lock()
 		for i, s := range b.fleetSubs {
 			if s == sub {
@@ -122,19 +132,11 @@ func (b *EventBus) CloseAll() {
 	defer b.mu.Unlock()
 	for _, subs := range b.taskSubs {
 		for _, sub := range subs {
-			select {
-			case <-sub.closed:
-			default:
-				close(sub.closed)
-			}
+			sub.close()
 		}
 	}
 	for _, sub := range b.fleetSubs {
-		select {
-		case <-sub.closed:
-		default:
-			close(sub.closed)
-		}
+		sub.close()
 	}
 	b.taskSubs = make(map[string][]*taskSubscriber)
 	b.fleetSubs = nil

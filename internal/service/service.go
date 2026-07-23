@@ -1679,16 +1679,19 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
 	}
+	var nextRun time.Time
+	s.cronMu.Lock()
 	if entryID, ok := s.cronEntries[triggerID]; ok {
-		entry := s.cron.Entry(entryID)
-		if !entry.Next.IsZero() {
-			if err := s.repo.SetTriggerNextRun(ctx, repository.SetTriggerNextRunParams{
-				NextRunAt: sql.NullTime{Time: entry.Next, Valid: true},
-				UpdatedAt: time.Now().UTC(),
-				ID:        triggerID,
-			}); err != nil {
-				return store.TaskRecord{}, err
-			}
+		nextRun = s.cron.Entry(entryID).Next
+	}
+	s.cronMu.Unlock()
+	if !nextRun.IsZero() {
+		if err := s.repo.SetTriggerNextRun(ctx, repository.SetTriggerNextRunParams{
+			NextRunAt: sql.NullTime{Time: nextRun, Valid: true},
+			UpdatedAt: time.Now().UTC(),
+			ID:        triggerID,
+		}); err != nil {
+			return store.TaskRecord{}, err
 		}
 	}
 	return task, nil

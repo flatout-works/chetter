@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -42,6 +43,18 @@ func TestRegisterTools(t *testing.T) {
 		if forbidden[tool.Name] {
 			t.Errorf("control-plane MCP unexpectedly exposes %s", tool.Name)
 		}
+	}
+}
+
+func TestDrainRunnerToolRequiresAdmin(t *testing.T) {
+	svc := &Service{}
+	if _, _, err := svc.drainRunnerTool(context.Background(), nil, DrainRunnerInput{RunnerID: "runner_1"}); err == nil || err.Error() != "admin access required" {
+		t.Fatalf("team-scoped drain error = %v, want admin access required", err)
+	}
+
+	adminCtx := auth.WithScope(context.Background(), auth.Scope{Admin: true})
+	if _, _, err := svc.drainRunnerTool(adminCtx, nil, DrainRunnerInput{RunnerID: "runner_1"}); err == nil || err.Error() != "runner RPC service not available" {
+		t.Fatalf("admin drain error = %v, want runner RPC service not available", err)
 	}
 }
 

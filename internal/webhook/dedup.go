@@ -49,6 +49,7 @@ func (r *RecentDeliveries) Seen(id string) bool {
 	r.entries[id] = now
 	if len(r.entries) > r.maxSize {
 		r.evictExpired(now)
+		r.evictOldest()
 	}
 	return false
 }
@@ -58,6 +59,25 @@ func (r *RecentDeliveries) evictExpired(now time.Time) {
 		if now.Sub(t) >= r.ttl {
 			delete(r.entries, id)
 		}
+	}
+}
+
+func (r *RecentDeliveries) evictOldest() {
+	for len(r.entries) > r.maxSize {
+		var oldestID string
+		var oldest time.Time
+		found := false
+		for id, t := range r.entries {
+			if !found || t.Before(oldest) {
+				oldestID = id
+				oldest = t
+				found = true
+			}
+		}
+		if !found {
+			return
+		}
+		delete(r.entries, oldestID)
 	}
 }
 

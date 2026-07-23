@@ -81,6 +81,20 @@ func TestRecentDeliveries_Expiry(t *testing.T) {
 	}
 }
 
+func TestRecentDeliveries_MaxSize(t *testing.T) {
+	r := NewRecentDeliveries(time.Hour, 2)
+	r.Seen("delivery-1")
+	r.Seen("delivery-2")
+	r.Seen("delivery-3")
+
+	if got := r.Size(); got != 2 {
+		t.Fatalf("expected 2 entries after size eviction, got %d", got)
+	}
+	if r.Seen("delivery-1") {
+		t.Fatal("oldest delivery should have been evicted")
+	}
+}
+
 // TestShouldReview_FilterLogic checks the filter that determines whether a
 // PR should be reviewed, using a mocked GitHub client.
 func TestShouldReview_FilterLogic(t *testing.T) {

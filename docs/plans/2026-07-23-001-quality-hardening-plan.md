@@ -20,7 +20,10 @@ The work is ordered around four invariants:
 3. An execution has one terminal outcome, and shutdown waits for all owned work.
 4. Database, scheduler, webhook, and stream behavior remains correct across MySQL/TiDB and PostgreSQL.
 
-This is a plan only. It does not introduce a new credential vault or change the product model for teams and users.
+This is the implementation plan for the broader hardening effort. The bounded fixes
+recorded below are already implemented; the remaining findings still require the
+larger changes described in the phases that follow. It does not introduce a new
+credential vault or change the product model for teams and users.
 
 ## Current Baseline
 
@@ -44,18 +47,18 @@ The recent execution hierarchy, artifact attribution, and runner-cleanups work i
 | S1 | Still relevant | Empty team-filter intersections become unfiltered task, session, and trigger queries. `internal/service/api.go:76-129,646-693,783-808`; `internal/service/fts.go:60-70`. | P0 authorization scope fix. |
 | S2 | Partially fixed | GitHub RPCs now validate task/execution hierarchy, but not active status, runner ownership, or caller runner identity. `internal/service/runner_github_rpc.go:38-126`; `internal/service/github_tools.go:42-67`. | P0 runner claim authentication. |
 | S3 | Partially fixed | Agent listing has team filtering, but definition get/list and runner materialization remain name-only. `internal/service/model_catalog_tools.go:140-163,256-293`; `internal/service/runner_rpc.go:254-310`. | P0 scoped definition resolver. |
-| S4 | Still relevant | `drainRunnerTool` does not require admin access. `internal/service/tools.go:1326-1338`. | P0 admin authorization and audit. |
+| S4 | Fixed (2026-07-23) | `drainRunnerTool` now requires admin access and records a `runner_drain_requested` audit event. `internal/service/tools.go:1326-1344`. | Keep regression coverage. |
 | S5 | Still relevant | Fleet health aggregates all runners/tasks for team tokens. `internal/service/api.go:948-957`; `internal/store/store.go:1137-1286`. | P0 scope filtering and task-detail redaction. |
 | S6 | Partially fixed | GitHub writes moved server-side, but webhook review tasks still receive redacted/unusable GitHub credentials. `internal/webhook/handler.go:490-529`; `internal/service/service.go:1307-1317`. | P1 replace CLI credential delivery with runner-scoped server operations. |
 | S7 | Still relevant | Team deletion is not a transactional cascade and does not remove the full task/session/attempt/artifact graph. `internal/service/api.go:1193-1230`; `db/queries/triggers.sql:102-108`. | P1 transactional deletion and migration-backed cascade. |
-| S8 | Still relevant | `cronEntries` is read without `cronMu` during trigger execution. `internal/service/service.go:1615-1632,1682-1693`. | P1 lock discipline and scheduler tests. |
+| S8 | Partially fixed (2026-07-23) | The trigger-execution read of `cronEntries` now uses `cronMu`; scheduler behavior still needs dedicated regression coverage. `internal/service/service.go:1615-1632,1682-1697`. | Add scheduler tests and retain the shared lock discipline. |
 | S9 | Still relevant | A `task.completed` callback can create another task that triggers the same callback indefinitely. `internal/service/event_callbacks.go:245-310`; `internal/service/runner_rpc.go:1073-1092`. | P1 provenance, depth, deduplication, and rate limits. |
 | S10 | Still relevant | Definition sync creates new trigger IDs and leaves old cron entries registered. `internal/service/model_catalog_tools.go:374-405,660-730`. | P1 stable trigger identity and obsolete-entry cleanup. |
 | S11 | Still relevant | Raw repo-filtered queries use `?` directly and bypass PostgreSQL placeholder conversion. `internal/service/fts.go:46-83,154-187`. | P1 move queries into both sqlc dialects. |
-| S12 | Still relevant | Webhook deduplication does not enforce its live-size bound and acknowledges before durable processing. `internal/webhook/dedup.go:36-53`; `internal/webhook/handler.go:189-200`. | P1 durable intake, bounded eviction, retry/dead-letter behavior. |
+| S12 | Partially fixed (2026-07-23) | In-memory webhook deduplication now evicts the oldest entries when the configured bound is exceeded; durable intake and acknowledgement ordering remain unresolved. `internal/webhook/dedup.go:36-80`; `internal/webhook/handler.go:189-200`. | P1 durable intake, retry/dead-letter behavior, and bounded eviction coverage. |
 | S13 | Still relevant | Reaper, definition sync, callback, and shutdown goroutines are not joined. `internal/service/service.go:205-267`; `internal/service/runner_rpc.go:824-828,1088-1092`. | P1 service-owned context and wait group. |
 | S14 | Partially fixed | Historical task IDs are now populated, but replay still subscribes after querying history and uses timestamp-only cursors. `internal/webapi/streaming.go:26-46`; `db/queries/task_events.sql:12-15`. | P1 cursor-safe replay protocol. |
-| S15 | Still relevant | `CloseAll` and deferred unsubscribe can close the same subscriber signal twice. `internal/webapi/eventbus.go:71-85,103-141`. | P1 idempotent subscription lifecycle. |
+| S15 | Fixed (2026-07-23) | Subscriber shutdown and unsubscribe now share `sync.Once`, so deferred cleanup after `CloseAll` is idempotent. `internal/webapi/eventbus.go:19-39,71-145`. | Keep regression coverage. |
 | S16 | Still relevant | Repository enumeration and artifact repository lists are not consistently team-scoped. `internal/service/api.go:1554-1568`; `internal/webapi/handlers.go:817-822`. | P0 authorization and scoped repository queries. |
 | S17 | Still relevant | Callback webhooks accept arbitrary destinations through `http.DefaultClient`. `internal/service/event_callbacks.go:313-345,400-413`. | P1 SSRF-safe destination policy. |
 | S18 | Partially fixed | PostgreSQL DSNs are detected, but failed probes still operationally fall back to TiDB. `internal/store/store.go:207-210,309-316`. | P1 fail-closed dialect selection. |

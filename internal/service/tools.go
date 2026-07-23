@@ -1324,6 +1324,9 @@ func (s *Service) cancelTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) drainRunnerTool(ctx context.Context, _ *mcp.CallToolRequest, in DrainRunnerInput) (*mcp.CallToolResult, DrainRunnerOutput, error) {
+	if !isAdmin(ctx) {
+		return nil, DrainRunnerOutput{}, fmt.Errorf("admin access required")
+	}
 	if in.RunnerID == "" {
 		return nil, DrainRunnerOutput{}, fmt.Errorf("runner_id is required")
 	}
@@ -1331,6 +1334,13 @@ func (s *Service) drainRunnerTool(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, DrainRunnerOutput{}, fmt.Errorf("runner RPC service not available")
 	}
 	s.runnerRPC.RequestDrain(in.RunnerID)
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "runner_drain_requested",
+		SourceType: "api",
+		TargetType: "runner",
+		TargetID:   in.RunnerID,
+		Detail:     "runner drain requested",
+	})
 	return nil, DrainRunnerOutput{
 		Drained:  true,
 		RunnerID: in.RunnerID,

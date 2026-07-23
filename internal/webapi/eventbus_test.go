@@ -167,6 +167,18 @@ func TestEventBusCloseAllStopsDelivery(t *testing.T) {
 	}
 }
 
+func TestEventBusUnsubscribeAfterCloseAllIsIdempotent(t *testing.T) {
+	bus := NewEventBus()
+	_, unsubTask := bus.SubscribeTaskEvents("task_1", 1)
+	_, unsubFleet := bus.SubscribeFleetUpdates(1)
+
+	bus.CloseAll()
+	unsubTask()
+	unsubTask()
+	unsubFleet()
+	unsubFleet()
+}
+
 func TestEventBusPublishNilBus(t *testing.T) {
 	var bus *EventBus = nil
 
