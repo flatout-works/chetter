@@ -331,6 +331,24 @@ func (s *Service) definitionSourceByInput(ctx context.Context, sourceID, name st
 	return source, nil
 }
 
+func authorizeDefinitionSourceRead(ctx context.Context, source repository.DefinitionSource) error {
+	scope, scoped := auth.GetScope(ctx)
+	if !scoped || scope.Admin || source.Scope == definitionScopeGlobal {
+		return nil
+	}
+	if source.TeamID.Valid && scope.HasTeam(source.TeamID.String) {
+		return nil
+	}
+	return fmt.Errorf("definition source %q is not in token scope", source.Name)
+}
+
+func authorizeDefinitionSourceWrite(ctx context.Context, source repository.DefinitionSource) error {
+	if source.Scope == definitionScopeGlobal && !isAdmin(ctx) {
+		return fmt.Errorf("admin access required to modify global definition source %q", source.Name)
+	}
+	return authorizeDefinitionSourceRead(ctx, source)
+}
+
 func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, error) {
 	if s.definitions == nil {
 		return ModelCatalogRecord{}, fmt.Errorf("no definitions repo configured (set DEFINITIONS_REPO)")

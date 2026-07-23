@@ -109,6 +109,9 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get definition source: %w", err)
 	}
+	if err := authorizeDefinitionSourceWrite(ctx, source); err != nil {
+		return nil, CreateDefinitionProposalOutput{}, err
+	}
 	repo, err := githubRepoFromURL(source.RepoUrl)
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, err
@@ -216,6 +219,10 @@ func (s *Service) listDefinitionProposalsTool(ctx context.Context, _ *mcp.CallTo
 	}
 	out := make([]DefinitionProposalToolRecord, 0, len(rows))
 	for _, row := range rows {
+		source, sourceErr := s.repo.GetDefinitionSource(ctx, row.SourceID)
+		if sourceErr != nil || authorizeDefinitionSourceRead(ctx, source) != nil {
+			continue
+		}
 		out = append(out, definitionProposalToolRecord(row, nil))
 	}
 	return nil, ListDefinitionProposalsOutput{Proposals: out}, nil
@@ -242,19 +249,28 @@ func (s *Service) getDefinitionProposalTool(ctx context.Context, _ *mcp.CallTool
 }
 
 func (s *Service) definitionProposalByInput(ctx context.Context, in GetDefinitionProposalInput) (repository.DefinitionChangeProposal, error) {
+	var row repository.DefinitionChangeProposal
+	var err error
 	if strings.TrimSpace(in.ProposalID) != "" {
-		row, err := s.repo.GetDefinitionChangeProposal(ctx, in.ProposalID)
-		if err != nil {
+		row, err = s.repo.GetDefinitionChangeProposal(ctx, in.ProposalID)
+	} else {
+		if strings.TrimSpace(in.Repo) == "" || in.PRNumber <= 0 {
+			return repository.DefinitionChangeProposal{}, fmt.Errorf("proposal_id or repo+pr_number is required")
+		}
+		row, err = s.repo.GetDefinitionChangeProposalByPR(ctx, repository.GetDefinitionChangeProposalByPRParams{Repo: in.Repo, PrNumber: int32(in.PRNumber)})
+	}
+	if err != nil {
+		if strings.TrimSpace(in.ProposalID) != "" {
 			return repository.DefinitionChangeProposal{}, fmt.Errorf("get definition proposal: %w", err)
 		}
-		return row, nil
-	}
-	if strings.TrimSpace(in.Repo) == "" || in.PRNumber <= 0 {
-		return repository.DefinitionChangeProposal{}, fmt.Errorf("proposal_id or repo+pr_number is required")
-	}
-	row, err := s.repo.GetDefinitionChangeProposalByPR(ctx, repository.GetDefinitionChangeProposalByPRParams{Repo: in.Repo, PrNumber: int32(in.PRNumber)})
-	if err != nil {
 		return repository.DefinitionChangeProposal{}, fmt.Errorf("get definition proposal by PR: %w", err)
+	}
+	source, err := s.repo.GetDefinitionSource(ctx, row.SourceID)
+	if err != nil {
+		return repository.DefinitionChangeProposal{}, fmt.Errorf("get definition proposal source: %w", err)
+	}
+	if err := authorizeDefinitionSourceRead(ctx, source); err != nil {
+		return repository.DefinitionChangeProposal{}, err
 	}
 	return row, nil
 }

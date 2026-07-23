@@ -156,6 +156,17 @@ func TestWebAPITeamTokenScopesTasks(t *testing.T) {
 		t.Fatalf("team-b saw wrong tasks: %+v", listedB.Msg.Tasks)
 	}
 
+	disjoint, err := tasksA.ListTasks(context.Background(), connect.NewRequest(&apiv1.ListTasksRequest{
+		Limit:   10,
+		TeamIds: teamB.Msg.TeamIds,
+	}))
+	if err != nil {
+		t.Fatalf("ListTasks with disjoint team filter: %v", err)
+	}
+	if len(disjoint.Msg.Tasks) != 0 {
+		t.Fatalf("team-a saw %d tasks for disjoint team filter", len(disjoint.Msg.Tasks))
+	}
+
 	adminTasks := apiv1connect.NewTaskServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
 	listedAdmin, err := adminTasks.ListTasks(context.Background(), connect.NewRequest(&apiv1.ListTasksRequest{Limit: 10}))
 	if err != nil {
