@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	containerWorkspaceDir   = "/workspace"
-	containerCleanupTimeout = 30 * time.Second
-	sessionExportTimeout    = 30 * time.Second
+	containerWorkspaceDir         = "/workspace"
+	containerCleanupTimeout       = 30 * time.Second
+	sessionExportTimeout          = 30 * time.Second
+	finalizationHeartbeatInterval = 15 * time.Second
 )
 
 func executionKey(req task.TaskRequest) string {
@@ -238,6 +239,28 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID stri
 	r.registerGitHubMCPTools(mcpServer, taskID, executionID)
 	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
+}
+
+func (r *Runner) startFinalizationHeartbeat(req task.TaskRequest) func() {
+	heartbeatCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(finalizationHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				r.publishStatusForRequest(req, "running", "opencode: server.heartbeat: finalizing task result...", nil)
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
@@ -549,6 +572,8 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.
+	stopFinalizationHeartbeat := r.startFinalizationHeartbeat(req)
+	defer stopFinalizationHeartbeat()
 	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if sid != "" {
@@ -659,6 +684,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.
+	stopFinalizationHeartbeat := r.startFinalizationHeartbeat(req)
+	defer stopFinalizationHeartbeat()
 	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if err != nil {
@@ -802,6 +829,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.
+	stopFinalizationHeartbeat := r.startFinalizationHeartbeat(req)
+	defer stopFinalizationHeartbeat()
 	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if err != nil {
