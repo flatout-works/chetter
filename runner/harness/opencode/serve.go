@@ -193,7 +193,7 @@ func waitForSessionIdle(ctx context.Context, baseURL, sessionID, secret string, 
 				continue
 			}
 			consecutiveErrors = 0
-			if status == "idle" || status == "completed" || status == "finished" || status == "done" {
+			if isCompletedSessionStatus(status) {
 				if status != "idle" {
 					slog.Info("session status indicates completion", "sessionID", sessionID, "status", status)
 				}
