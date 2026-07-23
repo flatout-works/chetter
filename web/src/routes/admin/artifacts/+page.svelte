@@ -28,7 +28,7 @@
     return type === "pull_request" ? "pr" : type;
   }
 
-  type SortColumn = "type" | "artifact" | "task" | "ref" | "discovered";
+  type SortColumn = "type" | "artifact" | "task" | "ref" | "recorded";
   let artifacts = $state<TaskArtifact[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -37,7 +37,7 @@
   let pageSize = $state(initialNumberParam("size", 25));
   let search = $state(initialParam("q"));
   let offset = $derived(pageNum * pageSize);
-  let sortColumn = $state<SortColumn>("discovered");
+  let sortColumn = $state<SortColumn>("recorded");
   let sortDirection = $state<"asc" | "desc">("desc");
 
   function syncURL() {
@@ -60,7 +60,7 @@
         case "artifact": cmp = `${a.repo}#${a.number}`.localeCompare(`${b.repo}#${b.number}`); break;
         case "task": cmp = a.taskId.localeCompare(b.taskId); break;
         case "ref": cmp = (a.ref || a.sha || "").localeCompare(b.ref || b.sha || ""); break;
-        case "discovered": cmp = a.discoveredAt.localeCompare(b.discoveredAt); break;
+        case "recorded": cmp = a.discoveredAt.localeCompare(b.discoveredAt); break;
       }
       return sortDirection === "asc" ? cmp : -cmp;
     });
@@ -71,7 +71,7 @@
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
-    else { sortColumn = col; sortDirection = col === "discovered" ? "desc" : "asc"; }
+    else { sortColumn = col; sortDirection = col === "recorded" ? "desc" : "asc"; }
   }
 
   function sortIcon(col: SortColumn): string {
@@ -145,7 +145,7 @@
         <TableHeadCell onclick={() => toggleSort("task")} class="cursor-pointer select-none">Task {sortIcon("task")}</TableHeadCell>
         <TableHeadCell>Attempt</TableHeadCell>
         <TableHeadCell onclick={() => toggleSort("ref")} class="cursor-pointer select-none">Ref {sortIcon("ref")}</TableHeadCell>
-        <TableHeadCell onclick={() => toggleSort("discovered")} class="cursor-pointer select-none">Discovered {sortIcon("discovered")}</TableHeadCell>
+        <TableHeadCell onclick={() => toggleSort("recorded")} class="cursor-pointer select-none">Recorded {sortIcon("recorded")}</TableHeadCell>
       </TableHead>
       <TableBody>
         {#each sortedArtifacts as artifact (artifact.id)}
@@ -161,12 +161,12 @@
               {/if}
             </TableBodyCell>
             <TableBodyCell>
-              <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{artifact.executionAttemptId || "unattributed"}</span>
-            </TableBodyCell>
-            <TableBodyCell>
               <a href={resolve("/tasks/[id]", { id: artifact.taskId })} class="font-mono text-blue-600 dark:text-blue-400 hover:underline text-xs">
                 {artifact.taskId.slice(0, 20)}…
               </a>
+            </TableBodyCell>
+            <TableBodyCell>
+              <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{artifact.executionAttemptId || "Not recorded"}</span>
             </TableBodyCell>
             <TableBodyCell class="max-w-xs">
               <span class="text-gray-500 dark:text-gray-400 font-mono truncate block">{artifact.ref || artifact.sha || "—"}</span>

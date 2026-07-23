@@ -53,6 +53,24 @@
     }
   }
 
+  function missingAttemptLabel(prompt: UserPrompt, task?: Task): string {
+    const status = prompt.status || task?.status || "";
+    switch (status) {
+      case "done":
+      case "completed":
+        return "Completed (attempt history unavailable)";
+      case "error":
+      case "failed":
+        return "Failed (attempt history unavailable)";
+      case "cancelled":
+        return "Cancelled (attempt history unavailable)";
+      case "running":
+        return "Running (attempt history unavailable)";
+      default:
+        return "Not yet attempted";
+    }
+  }
+
   async function resume() {
     resumePrompt = "";
     showResume = true;
@@ -149,7 +167,11 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{session.agent || "—"}</p>
+        {#if session.agent}
+          <a href={resolve("/agents/[name]", { name: session.agent })} class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate">{session.agent}</a>
+        {:else}
+          <p class="text-sm font-medium text-gray-900 dark:text-white">—</p>
+        {/if}
       </Card>
       <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
@@ -246,7 +268,7 @@
                     {#if attempt.runnerId}<span class="text-xs text-gray-400">{attempt.runnerId}</span>{/if}
                   </div>
                 {:else}
-                  <span class="text-xs text-gray-400">Not claimed</span>
+                  <span class="text-xs text-gray-400">{missingAttemptLabel(prompt, promptTask)}</span>
                 {/each}
               </div>
             </TableBodyCell>

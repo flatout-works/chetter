@@ -324,7 +324,13 @@
               <Toggle checked={trigger.enabled} onchange={() => toggleEnabled(trigger)} color="gray" size="small" disabled={isGitManaged(trigger)} />
             </TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300 font-mono text-sm">{triggerTarget(trigger)}</span></TableBodyCell>
-            <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{trigger.agent || "—"}</span></TableBodyCell>
+             <TableBodyCell>
+               {#if trigger.agent}
+                 <a href={resolve("/agents/[name]", { name: trigger.agent })} class="text-blue-600 dark:text-blue-400 hover:underline">{trigger.agent}</a>
+               {:else}
+                 <span class="text-gray-700 dark:text-gray-300">—</span>
+               {/if}
+             </TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{trigger.lastRunAt ? formatTime(trigger.lastRunAt) : "—"}</span></TableBodyCell>
             <TableBodyCell class="text-right">
               <div class="flex items-center justify-end gap-1">

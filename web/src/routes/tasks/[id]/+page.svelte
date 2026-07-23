@@ -516,7 +516,11 @@
     <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.agent || "default"}</p>
+        {#if task.agent}
+          <a href={resolve("/agents/[name]", { name: task.agent })} class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate">{task.agent}</a>
+        {:else}
+          <p class="text-sm font-medium text-gray-900 dark:text-white">default</p>
+        {/if}
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Provider</p>

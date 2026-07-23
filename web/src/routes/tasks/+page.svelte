@@ -361,7 +361,13 @@
           <TableBodyCell>
             <StatusBadge status={task.status} />
           </TableBodyCell>
-           <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.agent || "—"}</span></TableBodyCell>
+          <TableBodyCell>
+            {#if task.agent}
+              <a href={resolve("/agents/[name]", { name: task.agent })} class="text-blue-600 dark:text-blue-400 hover:underline">{task.agent}</a>
+            {:else}
+              <span class="text-gray-700 dark:text-gray-300">—</span>
+            {/if}
+          </TableBodyCell>
            <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{task.modelId || "—"}</span></TableBodyCell>
            <TableBodyCell>
              {#if hasTriggerOrigin(task)}

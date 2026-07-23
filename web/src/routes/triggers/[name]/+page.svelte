@@ -240,7 +240,7 @@
         {#if trigger.agent}
           <div>
             <span class="text-xs text-gray-400 dark:text-gray-500">Agent</span>
-            <p class="text-gray-900 dark:text-white">{trigger.agent}</p>
+            <a href={resolve("/agents/[name]", { name: trigger.agent })} class="text-blue-600 dark:text-blue-400 hover:underline">{trigger.agent}</a>
           </div>
         {/if}
         {#if trigger.modelId}

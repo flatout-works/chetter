@@ -176,7 +176,13 @@
               </a>
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={session.status} /></TableBodyCell>
-            <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.agent || "—"}</span></TableBodyCell>
+            <TableBodyCell>
+              {#if session.agent}
+                <a href={resolve("/agents/[name]", { name: session.agent })} class="text-blue-600 dark:text-blue-400 hover:underline">{session.agent}</a>
+              {:else}
+                <span class="text-gray-700 dark:text-gray-300">—</span>
+              {/if}
+            </TableBodyCell>
             <TableBodyCell><span class="text-gray-700 dark:text-gray-300">{session.modelId || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 font-mono">{session.promptCount}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400">{formatTime(session.createdAt)}</span></TableBodyCell>
@@ -185,6 +191,8 @@
                 <Button color="green" size="xs" onclick={() => resume(session.id)} disabled={pinnedRunnerOffline(session)}>
                   Resume{#if pinnedRunnerOffline(session)} (pinned runner offline){/if}
                 </Button>
+              {:else}
+                <span class="text-gray-400 dark:text-gray-500">—</span>
               {/if}
             </TableBodyCell>
           </TableBodyRow>
