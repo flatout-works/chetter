@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Webhook delivery queue: `chetter_webhook_deliveries` table persists deliveries with idempotency deduplication; background worker retries failed deliveries with exponential backoff (1s/5s/15s) and dead-letters after 3 attempts. New `chetter_list_webhook_deliveries` MCP tool lets operators inspect delivery status, attempts, and errors (#102).
+- Reaper auto-recovery audit events: `task_recovered` audit events emitted when the reaper auto-reclaims an expired lease, recording runner ID, attempt number, and max attempts for operator traceability (#96).
 - Execution attempts: new `chetter_execution_attempts` table, DB migrations, sqlc queries, and facade methods. Attempts are queued before claim, persisted with runtime state, and exposed via API and web UI as execution attempt history on task detail pages.
 - Agent session lifecycle: new `lifecycle` column on agent sessions tracking session state transitions (created, started, completed, failed), persisted via DB migration and exposed in the API proto.
 - Task event hierarchy: events attributed to execution attempts and user prompts via `execution_attempt_id` and `user_prompt_id` foreign keys, with DB migration and API exposure.
@@ -20,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Default runner drain timeout reduced from 10m to 30s, configurable via `CHETTER_DRAIN_TIMEOUT_SEC`, aligning with Kubernetes `terminationGracePeriodSeconds` (#97).
 - Task session model refactored: execution config moved from tasks to agent sessions, execution runtime state moved to execution attempts, task usage aggregated from execution attempts instead of task-level columns. Session runs renamed to user prompts. Agent sessions made task-owned. Remaining execution ownership columns dropped from tasks.
 - Runner harness capabilities split: `ServeCommand`, `DockerConfigPath`, `CompletionAwareHarness` extracted into separate interfaces per harness, reducing per-harness boilerplate.
 - Runner Docker serve setup shared across harnesses via `docker_args.go`, eliminating duplicated container argument construction.
@@ -31,6 +34,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Webhook delivery reliability: events now persisted with idempotency deduplication before processing, retried with exponential backoff (1s/5s/15s), and dead-lettered after 3 failed attempts. New `chetter_list_webhook_deliveries` MCP tool reports delivery status, attempts, and errors (#102).
+- Webhook goroutine leak: `asyncCtx` replaced with `context.AfterFunc`, eliminating one idle goroutine per webhook event (#52). In-flight goroutines tracked via `sync.WaitGroup` and drained on shutdown with configurable deadline (#57).
+- Server graceful shutdown: reaper and sync loops abort early on shutdown context via `ReaperStopCh()`; ordered shutdown sequence with second-signal force-exit and explicit DB close. Configurable via `CHETTER_SHUTDOWN_TIMEOUT` (#99).
+- Runner SIGTERM handling: signal handler now sets the draining flag and sends an immediate draining heartbeat, then waits for in-flight tasks via the drain protocol with configurable timeout. Exits with code 1 if tasks were force-cancelled (#97).
+- Runner drain: drain deadline derived from each task's remaining timeout (clamped by `CHETTER_DRAIN_TIMEOUT_SEC`) instead of a fixed deadline, preventing premature force-cancel of long-running tasks (#160). Resumable sessions are paused (workspace preserved) before force-cancel, enabling later resume by a fresh runner.
+- Team authorization scopes: non-admin tokens now correctly scoped to their team's resources across all MCP tools and web API endpoints.
+- Web UI task list: responsive updates restored on the task list page (`internal/service/task_list.go` + Svelte store refactor).
+- Reaper auto-recovery: new `DEFAULT_AUTO_RECOVERY` config (default true) lets operators opt out of automatic retry. Auto-recovery skips tasks whose runner was deliberately drained, preventing silent re-queue during operator-initiated maintenance (#96).
+- Expired leases now fail without auto-recovery when the runner's runner is in a draining/stopping state or auto-recovery is disabled (new `FailExpiredLeases` query).
+- False completion lease expiry prevented: OpenCode harness events no longer prematurely clear task lease timestamps.
+- Webhook deduplication and event bus lifecycle hardened: shutdown signal propagated through the event stream.
 - Database migrations made portable: renumbered and adjusted MySQL/TiDB migrations to produce a clean chain from migration 001, fixing deployment issues on fresh databases.
 - Trigger run history preserved after definition sync: new migration re-links trigger runs to their tasks when a definition sync changes task IDs.
 - Legacy execution attempts backfilled: migration populates `execution_attempts` for tasks created before the attempts table existed.
@@ -50,6 +64,7 @@ All notable changes to this project will be documented in this file.
 - Bundled Chetter skill (`SKILL.md`) updated to reflect current MCP tool set and workflow.
 - Website how-it-works page now lists PostgreSQL alongside TiDB and MySQL as supported database backends.
 - Agent credential forwarder plan simplified in `docs/plans/`.
+- `docs/MANUAL.md`: graceful shutdown documentation for server and runner, including `CHETTER_SHUTDOWN_TIMEOUT` and `CHETTER_DRAIN_TIMEOUT_SEC` configuration (#99, #97).
 
 ## 2026-07-22
 
