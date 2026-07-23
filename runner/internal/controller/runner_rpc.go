@@ -61,7 +61,12 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 
 	<-ctx.Done()
 	if r.draining.Load() {
-		r.waitDrain(drainTimeout())
+		// On a graceful drain (operator-initiated or SIGTERM/SIGINT via
+		// BeginGracefulShutdown) wait for in-flight tasks to finish within the
+		// configured drain timeout, force-cancelling any that overrun. Record
+		// whether we had to force-cancel so main.go can set the exit code. See
+		// issue #97.
+		r.forcedExit.Store(r.waitDrain(drainTimeout()))
 	}
 	r.publishRunnerHeartbeat("stopping")
 	r.stopNetwork()

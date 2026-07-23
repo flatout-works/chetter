@@ -65,6 +65,10 @@ type Runner struct {
 	sem            chan struct{}
 
 	draining atomic.Bool
+	// forcedExit is set when waitDrain force-cancelled in-flight tasks after
+	// the drain deadline expired (see issue #97). main.go reads it via
+	// ForcedExit to exit with a non-zero status after a forced termination.
+	forcedExit atomic.Bool
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {

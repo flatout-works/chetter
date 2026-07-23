@@ -16,7 +16,15 @@ import (
 )
 
 const heartbeatInterval = 5 * time.Second
-const defaultDrainTimeout = 10 * time.Minute
+
+// defaultDrainTimeout is the grace period the runner waits for in-flight tasks
+// to finish after a drain is triggered (e.g. SIGTERM during a Kubernetes
+// rolling deployment). It defaults to 30s to align with Kubernetes' default
+// terminationGracePeriodSeconds. Operators whose tasks need longer to wind
+// down cleanly, or who run with a larger terminationGracePeriodSeconds, can
+// raise it via CHETTER_DRAIN_TIMEOUT_SEC (set it a few seconds below the pod's
+// grace period to leave time for the forced task shutdown). See issue #97.
+const defaultDrainTimeout = 30 * time.Second
 
 func newRunnerID(workspaceRoot string) (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
@@ -178,16 +186,52 @@ func (r *Runner) cancelTask(taskID, agentSessionID, userPromptID, executionID, r
 	session.Cancel()
 }
 
-func (r *Runner) startDrain() {
+// startDrain marks the runner as draining. It returns true if this call
+// transitioned the runner into the draining state, and false if it was
+// already draining (idempotent). Callers that want to act on the transition
+// (e.g. publishing a final heartbeat) should check the return value.
+func (r *Runner) startDrain() bool {
 	if r.draining.Swap(true) {
-		return // already draining
+		return false // already draining
 	}
 	slog.Info("runner draining — will stop claiming tasks and wait for running tasks to finish", "runner_id", r.runnerID)
+	return true
 }
 
-func (r *Runner) waitDrain(deadline time.Duration) {
+// BeginGracefulShutdown initiates an operator- or signal-triggered graceful
+// drain. It marks the runner as draining (so claim loops stop accepting new
+// tasks) and, on the first transition, immediately publishes a final heartbeat
+// reporting the "draining" status, so the server knows this runner is going
+// away and can reassign in-flight tasks sooner. The heartbeat loop would
+// otherwise only report the new status on its next 5s tick, which may never
+// arrive if the run context is cancelled immediately afterwards (e.g. on
+// SIGTERM). See issue #97.
+//
+// The caller (cmd/runner/main.go on SIGTERM/SIGINT) cancels the run context
+// after this returns, which lets the existing startConnectRPC shutdown path
+// invoke waitDrain to wait for in-flight tasks.
+func (r *Runner) BeginGracefulShutdown() {
+	if r.startDrain() {
+		r.publishRunnerHeartbeat("draining")
+	}
+}
+
+// ForcedExit reports whether the most recent drain force-cancelled in-flight
+// tasks after the drain deadline expired. main.go uses this to exit with a
+// non-zero status code after a forced termination (issue #97).
+func (r *Runner) ForcedExit() bool {
+	return r.forcedExit.Load()
+}
+
+// waitDrain blocks until all in-flight tasks have finished or the deadline
+// expires. It returns true if the deadline expired while tasks were still
+// running (i.e. the remaining tasks were force-cancelled), and false if all
+// tasks completed cleanly within the grace period. Callers (the SIGTERM/SIGINT
+// path in startConnectRPC) use the result to set the process exit code. See
+// issue #97.
+func (r *Runner) waitDrain(deadline time.Duration) bool {
 	if !r.draining.Load() {
-		return
+		return false
 	}
 
 	slog.Info("waiting for running tasks to finish before exit", "runner_id", r.runnerID, "deadline", deadline)
@@ -203,7 +247,7 @@ func (r *Runner) waitDrain(deadline time.Duration) {
 		r.mu.Unlock()
 		if count == 0 {
 			slog.Info("all tasks completed, drain finished", "runner_id", r.runnerID)
-			return
+			return false
 		}
 		select {
 		case <-ctx.Done():
@@ -215,7 +259,7 @@ func (r *Runner) waitDrain(deadline time.Duration) {
 				session.Cancel()
 			}
 			r.mu.Unlock()
-			return
+			return true
 		case <-tasksChanged:
 			continue
 		case <-ticker.C:
