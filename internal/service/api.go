@@ -67,24 +67,16 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
 func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search, agent string, uiTeamIDs, uiRepos []string) ([]TaskToolRecord, error) {
-	scope, scoped := auth.GetScope(ctx)
+	teamFilter := auth.ResolveTeamFilter(ctx, uiTeamIDs)
+	if teamFilter.Empty {
+		return []TaskToolRecord{}, nil
+	}
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var tasks []repository.ChetterTask
 	var err error
 
-	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
-	var effectiveTeamIDs []string
-	if scoped && !scope.Admin {
-		effectiveTeamIDs = scope.Teams()
-	}
-	if len(uiTeamIDs) > 0 {
-		if len(effectiveTeamIDs) == 0 {
-			effectiveTeamIDs = uiTeamIDs
-		} else {
-			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
-		}
-	}
+	effectiveTeamIDs := teamFilter.TeamIDs
 	hasRepos := len(uiRepos) > 0
 
 	// When repo filtering is needed, use raw queries to apply both team and repo
@@ -645,24 +637,16 @@ func (s *Service) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskLa
 
 // ListAgentSessions returns agent sessions, optionally filtered by status, respecting team scope.
 func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, offset int, search string, uiTeamIDs, uiRepos []string) ([]AgentSessionRecord, error) {
-	scope, scoped := auth.GetScope(ctx)
+	teamFilter := auth.ResolveTeamFilter(ctx, uiTeamIDs)
+	if teamFilter.Empty {
+		return []AgentSessionRecord{}, nil
+	}
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
 	var rows []repository.ChetterAgentSession
 	var err error
 
-	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
-	var effectiveTeamIDs []string
-	if scoped && !scope.Admin {
-		effectiveTeamIDs = scope.Teams()
-	}
-	if len(uiTeamIDs) > 0 {
-		if len(effectiveTeamIDs) == 0 {
-			effectiveTeamIDs = uiTeamIDs
-		} else {
-			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
-		}
-	}
+	effectiveTeamIDs := teamFilter.TeamIDs
 	hasRepos := len(uiRepos) > 0
 
 	if hasRepos && search != "" {
@@ -784,22 +768,14 @@ func (s *Service) batchUserPromptCounts(ctx context.Context, sessionIDs []string
 
 // ListTriggers returns triggers, optionally filtered by type and enabled status, respecting team scope.
 func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerType string, uiTeamIDs, uiRepos []string) ([]store.TriggerRecord, error) {
-	scope, scoped := auth.GetScope(ctx)
+	teamFilter := auth.ResolveTeamFilter(ctx, uiTeamIDs)
+	if teamFilter.Empty {
+		return []store.TriggerRecord{}, nil
+	}
 	var repoRecords []repository.ChetterTrigger
 	var err error
 
-	// Determine effective team IDs: auth-scoped teams intersected with UI filter.
-	var effectiveTeamIDs []string
-	if scoped && !scope.Admin {
-		effectiveTeamIDs = scope.Teams()
-	}
-	if len(uiTeamIDs) > 0 {
-		if len(effectiveTeamIDs) == 0 {
-			effectiveTeamIDs = uiTeamIDs
-		} else {
-			effectiveTeamIDs = intersectStrings(effectiveTeamIDs, uiTeamIDs)
-		}
-	}
+	effectiveTeamIDs := teamFilter.TeamIDs
 
 	if len(effectiveTeamIDs) > 0 {
 		if enabledOnly {
@@ -959,7 +935,11 @@ func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store
 	if err != nil {
 		return store.RunnerFleetHealth{}, fmt.Errorf("get runner fleet health: %w", err)
 	}
-	if !includeTasks {
+	if scope, scoped := auth.GetScope(ctx); scoped && !scope.Admin {
+		health.RunnerImages = nil
+		health.Runners = nil
+		health.RunningTaskInfos = nil
+	} else if !includeTasks {
 		health.RunningTaskInfos = nil
 	}
 	return health, nil
@@ -1560,7 +1540,21 @@ func (s *Service) Whoami(ctx context.Context) (WhoamiOutput, error) {
 }
 
 func (s *Service) ListRepos(ctx context.Context) ([]string, error) {
-	rows, err := s.rawDB.QueryContext(ctx, `SELECT repo FROM chetter_task_artifacts WHERE repo IS NOT NULL AND repo != '' GROUP BY repo ORDER BY repo`)
+	teamFilter := auth.ResolveTeamFilter(ctx, nil)
+	if teamFilter.Empty {
+		return []string{}, nil
+	}
+	query := `SELECT repo FROM chetter_task_artifacts artifact WHERE artifact.repo IS NOT NULL AND artifact.repo != ''`
+	args := make([]any, 0, len(teamFilter.TeamIDs))
+	if teamFilter.Constrained {
+		placeholders := strings.Join(sqlPlaceholders(s.dialect, len(teamFilter.TeamIDs)), ",")
+		query += ` AND EXISTS (SELECT 1 FROM chetter_tasks task WHERE task.id = artifact.task_id AND task.team_id IN (` + placeholders + `))`
+		for _, teamID := range teamFilter.TeamIDs {
+			args = append(args, teamID)
+		}
+	}
+	query += ` GROUP BY repo ORDER BY repo`
+	rows, err := s.rawDB.QueryContext(ctx, sqlQuery(s.dialect, query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list repos: %w", err)
 	}

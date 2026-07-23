@@ -1793,6 +1793,99 @@ func TestMultiTeamTokenListsUnionAndRequiresSubmitOwner(t *testing.T) {
 	}
 }
 
+func TestDisjointTeamFiltersReturnNoRows(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamA, _ := seedTeam(t, tdb.DB, "scope-a", "alice")
+	teamB, _ := seedTeam(t, tdb.DB, "scope-b", "bob")
+
+	taskA, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{Prompt: "team a task", GitURL: "https://github.com/org/team-a", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit team a task: %v", err)
+	}
+	taskB, err := svc.SubmitTask(ctxWithTeam(ctx, teamB), SubmitTaskRequest{Prompt: "team b task", GitURL: "https://github.com/org/team-b", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit team b task: %v", err)
+	}
+	if _, err := svc.CreateTrigger(ctxWithTeam(ctx, teamB), store.TriggerInput{
+		Name: "scope-b-trigger", TeamID: teamB, TriggerType: store.TriggerTypeCron,
+		CronExpr: "@hourly", Prompt: "team b trigger", AgentImage: "runner:latest", TimeoutSec: 60,
+	}); err != nil {
+		t.Fatalf("create team b trigger: %v", err)
+	}
+
+	caller := ctxWithTeam(ctx, teamA)
+	if tasks, err := svc.ListTasks(caller, "", 20, 0, "", "", []string{teamB}, nil); err != nil {
+		t.Fatalf("list disjoint tasks: %v", err)
+	} else if len(tasks) != 0 {
+		t.Fatalf("disjoint task filter returned %d rows, want 0", len(tasks))
+	}
+	if tasks, err := svc.ListTasks(caller, "", 20, 0, "team b", "", []string{teamB}, []string{"org/team-b"}); err != nil {
+		t.Fatalf("list disjoint raw tasks: %v", err)
+	} else if len(tasks) != 0 {
+		t.Fatalf("disjoint raw task filter returned %d rows, want 0", len(tasks))
+	}
+	if sessions, err := svc.ListAgentSessions(caller, "", 20, 0, "", []string{teamB}, nil); err != nil {
+		t.Fatalf("list disjoint sessions: %v", err)
+	} else if len(sessions) != 0 {
+		t.Fatalf("disjoint session filter returned %d rows, want 0", len(sessions))
+	}
+	if sessions, err := svc.ListAgentSessions(caller, "", 20, 0, "team b", []string{teamB}, []string{"org/team-b"}); err != nil {
+		t.Fatalf("list disjoint raw sessions: %v", err)
+	} else if len(sessions) != 0 {
+		t.Fatalf("disjoint raw session filter returned %d rows, want 0", len(sessions))
+	}
+	if triggers, err := svc.ListTriggers(caller, false, "", []string{teamB}, nil); err != nil {
+		t.Fatalf("list disjoint triggers: %v", err)
+	} else if len(triggers) != 0 {
+		t.Fatalf("disjoint trigger filter returned %d rows, want 0", len(triggers))
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	now := time.Now().UTC()
+	if err := q.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
+		ID: "artifact_scope_a", TaskID: taskA.ID, ArtifactType: "pr", Repo: "org/team-a",
+		CreatedAt: now, DiscoveredAt: now, DiscoverySource: "test",
+	}); err != nil {
+		t.Fatalf("insert team a artifact: %v", err)
+	}
+	if err := q.InsertTaskArtifact(ctx, repository.InsertTaskArtifactParams{
+		ID: "artifact_scope_b", TaskID: taskB.ID, ArtifactType: "pr", Repo: "org/team-b",
+		CreatedAt: now, DiscoveredAt: now, DiscoverySource: "test",
+	}); err != nil {
+		t.Fatalf("insert team b artifact: %v", err)
+	}
+	if repos, err := svc.ListRepos(caller); err != nil {
+		t.Fatalf("list scoped repos: %v", err)
+	} else if len(repos) != 1 || repos[0] != "org/team-a" {
+		t.Fatalf("scoped repo list returned %#v, want [org/team-a]", repos)
+	}
+}
+
+func TestTeamRunnerHealthHidesFleetDetails(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	teamID, _ := seedTeam(t, tdb.DB, "health-scope", "alice")
+	now := time.Now().UTC()
+	q := data.New(tdb.DB, tdb.Dialect())
+	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
+		ID: "runner-health", Status: "active", MaxConcurrent: 1,
+		FirstSeenAt: now, LastSeenAt: now, UpdatedAt: now, Metadata: json.RawMessage(`{}`),
+	}); err != nil {
+		t.Fatalf("upsert runner: %v", err)
+	}
+
+	health, err := svc.GetRunnerHealth(ctxWithTeam(ctx, teamID), true)
+	if err != nil {
+		t.Fatalf("get team runner health: %v", err)
+	}
+	if len(health.Runners) != 0 || len(health.RunnerImages) != 0 || len(health.RunningTaskInfos) != 0 {
+		t.Fatalf("team runner health exposed fleet details: %+v", health)
+	}
+}
+
 func TestTaskPerIDToolsRejectCrossTeamAccess(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

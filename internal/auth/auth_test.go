@@ -96,3 +96,37 @@ func TestScopeTeamsAndHasTeam(t *testing.T) {
 		t.Fatalf("multi HasTeam mismatch")
 	}
 }
+
+func TestResolveTeamFilter(t *testing.T) {
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		requested   []string
+		wantIDs     []string
+		constrained bool
+		empty       bool
+	}{
+		{name: "unscoped without request", ctx: context.Background()},
+		{name: "unscoped requested", ctx: context.Background(), requested: []string{"team-a"}, wantIDs: []string{"team-a"}, constrained: true},
+		{name: "admin without request", ctx: WithScope(context.Background(), Scope{Admin: true})},
+		{name: "admin requested", ctx: WithScope(context.Background(), Scope{Admin: true}), requested: []string{"team-a"}, wantIDs: []string{"team-a"}, constrained: true},
+		{name: "scoped without request", ctx: WithScope(context.Background(), Scope{TeamIDs: []string{"team-a", "team-b"}}), wantIDs: []string{"team-a", "team-b"}, constrained: true},
+		{name: "scoped intersection", ctx: WithScope(context.Background(), Scope{TeamIDs: []string{"team-a", "team-b"}}), requested: []string{"team-b", "team-c"}, wantIDs: []string{"team-b"}, constrained: true},
+		{name: "scoped disjoint intersection", ctx: WithScope(context.Background(), Scope{TeamID: "team-a"}), requested: []string{"team-b"}, constrained: true, empty: true},
+		{name: "scoped with no teams", ctx: WithScope(context.Background(), Scope{}), constrained: true, empty: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ResolveTeamFilter(test.ctx, test.requested)
+			if !reflect.DeepEqual(got.TeamIDs, test.wantIDs) {
+				t.Errorf("TeamIDs = %#v, want %#v", got.TeamIDs, test.wantIDs)
+			}
+			if got.Constrained != test.constrained {
+				t.Errorf("Constrained = %v, want %v", got.Constrained, test.constrained)
+			}
+			if got.Empty != test.empty {
+				t.Errorf("Empty = %v, want %v", got.Empty, test.empty)
+			}
+		})
+	}
+}

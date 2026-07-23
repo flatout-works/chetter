@@ -44,11 +44,11 @@ The recent execution hierarchy, artifact attribution, and runner-cleanups work i
 
 | ID | Status | Current conclusion | Plan action |
 |---|---|---|---|
-| S1 | Still relevant | Empty team-filter intersections become unfiltered task, session, and trigger queries. `internal/service/api.go:76-129,646-693,783-808`; `internal/service/fts.go:60-70`. | P0 authorization scope fix. |
+| S1 | Fixed (2026-07-23) | `auth.ResolveTeamFilter` distinguishes unrestricted, scoped, and empty-intersection filters; task, session, trigger, and raw repository-filtered queries return no rows for disjoint filters. `internal/auth/auth.go:14-106`; `internal/service/api.go:69-121,637-677,768-805`. | Keep disjoint-team regression coverage. |
 | S2 | Partially fixed | GitHub RPCs now validate task/execution hierarchy, but not active status, runner ownership, or caller runner identity. `internal/service/runner_github_rpc.go:38-126`; `internal/service/github_tools.go:42-67`. | P0 runner claim authentication. |
 | S3 | Partially fixed | Agent listing has team filtering, but definition get/list and runner materialization remain name-only. `internal/service/model_catalog_tools.go:140-163,256-293`; `internal/service/runner_rpc.go:254-310`. | P0 scoped definition resolver. |
 | S4 | Fixed (2026-07-23) | `drainRunnerTool` now requires admin access and records a `runner_drain_requested` audit event. `internal/service/tools.go:1326-1344`. | Keep regression coverage. |
-| S5 | Still relevant | Fleet health aggregates all runners/tasks for team tokens. `internal/service/api.go:948-957`; `internal/store/store.go:1137-1286`. | P0 scope filtering and task-detail redaction. |
+| S5 | Fixed (2026-07-23) | Team-token fleet health is aggregate-only; runner, runner-image, and running-task detail arrays are redacted. `internal/service/api.go:933-946`. | Keep team health redaction coverage. |
 | S6 | Partially fixed | GitHub writes moved server-side, but webhook review tasks still receive redacted/unusable GitHub credentials. `internal/webhook/handler.go:490-529`; `internal/service/service.go:1307-1317`. | P1 replace CLI credential delivery with runner-scoped server operations. |
 | S7 | Still relevant | Team deletion is not a transactional cascade and does not remove the full task/session/attempt/artifact graph. `internal/service/api.go:1193-1230`; `db/queries/triggers.sql:102-108`. | P1 transactional deletion and migration-backed cascade. |
 | S8 | Partially fixed (2026-07-23) | The trigger-execution read of `cronEntries` now uses `cronMu`; scheduler behavior still needs dedicated regression coverage. `internal/service/service.go:1615-1632,1682-1697`. | Add scheduler tests and retain the shared lock discipline. |
@@ -59,11 +59,11 @@ The recent execution hierarchy, artifact attribution, and runner-cleanups work i
 | S13 | Still relevant | Reaper, definition sync, callback, and shutdown goroutines are not joined. `internal/service/service.go:205-267`; `internal/service/runner_rpc.go:824-828,1088-1092`. | P1 service-owned context and wait group. |
 | S14 | Partially fixed | Historical task IDs are now populated, but replay still subscribes after querying history and uses timestamp-only cursors. `internal/webapi/streaming.go:26-46`; `db/queries/task_events.sql:12-15`. | P1 cursor-safe replay protocol. |
 | S15 | Fixed (2026-07-23) | Subscriber shutdown and unsubscribe now share `sync.Once`, so deferred cleanup after `CloseAll` is idempotent. `internal/webapi/eventbus.go:19-39,71-145`. | Keep regression coverage. |
-| S16 | Still relevant | Repository enumeration and artifact repository lists are not consistently team-scoped. `internal/service/api.go:1554-1568`; `internal/webapi/handlers.go:817-822`. | P0 authorization and scoped repository queries. |
+| S16 | Fixed (2026-07-23) | Repository enumeration is filtered through task team ownership; task-artifact listing remains admin-only. `internal/service/api.go:1538-1570`; `internal/webapi/handlers.go:817-822`. | Keep repository scope coverage. |
 | S17 | Still relevant | Callback webhooks accept arbitrary destinations through `http.DefaultClient`. `internal/service/event_callbacks.go:313-345,400-413`. | P1 SSRF-safe destination policy. |
 | S18 | Partially fixed | PostgreSQL DSNs are detected, but failed probes still operationally fall back to TiDB. `internal/store/store.go:207-210,309-316`. | P1 fail-closed dialect selection. |
 | S19 | Still relevant | Definition sync lacks service-level and Git-worktree serialization. `internal/service/model_catalog_tools.go:314-424`; `pkg/definitions/manager.go:90-112`. | P1 one sync coordinator. |
-| S20 | Still relevant | Definition proposals lack source/team authorization. `internal/service/definition_proposal_tools.go:94-140`; `internal/service/model_catalog_tools.go:296-311`. | P0 admin/source ownership checks. |
+| S20 | Fixed (2026-07-23) | Definition proposal reads and writes now authorize through the definition source; global source writes require admin access and team-scoped sources require ownership. `internal/service/definition_proposal_tools.go:94-225,249-273`; `internal/service/model_catalog_tools.go:334-351`. | Keep source ownership regression coverage. |
 
 ### Runner Findings
 
