@@ -37,7 +37,7 @@
           <p>This split keeps the control plane understandable and lets you scale execution by adding runner containers or Kubernetes workloads.</p>
         </div>
         <div class="map">
-          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, managed Git identities, model catalog, definitions sync (scoped to <code>global/</code>, <code>groups/</code>, <code>repos/</code>), MCP endpoint resolution, agent catalog API, audit log, and embedded SvelteKit UI.</p></article>
+          <article class="card"><small>Server</small><h3>Go MCP + web UI</h3><p>Exposes <code>/mcp</code>, GitHub webhooks, ConnectRPC endpoints, trigger scheduling, event callbacks, managed Git identities, model catalog, definitions sync (scoped to <code>global/</code>, <code>groups/</code>, <code>repos/</code>), MCP endpoint resolution, agent catalog API, execution attempt tracking, audit log, and embedded SvelteKit UI.</p></article>
           <article class="card"><small>Database</small><h3>TiDB, MySQL &amp; PostgreSQL</h3><p>Stores tasks, leases, events, triggers, sessions, checkpoints, runners, teams, API tokens, git identities, definitions, audit events, artifacts, and searchable text.</p></article>
           <article class="card"><small>Runner</small><h3>Harness controller</h3><p>Claims work, prepares a workspace, starts the chosen harness, supervises timeouts, streams events, and cleans up containers and workspaces.</p></article>
           <article class="card"><small>Agent image</small><h3>Project runtime</h3><p>Language/tooling images inherit from the agent base and run OpenCode, Claude Code, Codex, Pi, or CodeWhale against the mounted workspace.</p></article>
@@ -59,9 +59,9 @@
         <div class="story-flow">
           <article class="card story-row"><span class="num">A</span><div><b>Claim safely</b><p><code>SELECT ... FOR UPDATE SKIP LOCKED</code> finds claimable work. The winner sets <code>status=running</code>, <code>runner_id</code>, <code>claimed_at</code>, <code>started_at</code>, and a lease expiry.</p></div></article>
           <article class="card story-row"><span class="num">B</span><div><b>Renew cheaply</b><p>Heartbeats refresh leases for the runner's current task ids and return commands such as cancel or drain.</p></div></article>
-          <article class="card story-row"><span class="num">C</span><div><b>Recover predictably</b><p>The reaper runs every 30 seconds. Expired leases are reclaimed to <code>pending</code> while attempts remain; otherwise they become <code>error</code> with a timeout category. Each cycle recovers from panics so one bad pass never kills the loop, and it stamps a <code>lastReapAt</code> health signal on <code>/api/server-info</code> so operators can spot a stalled reaper.</p></div></article>
+          <article class="card story-row"><span class="num">C</span><div><b>Recover predictably</b><p>The reaper runs every 30 seconds. Expired leases create a fresh execution attempt on reclaim, restarting the agent session with the previous attempt's context. Tasks that exhaust <code>max_attempts</code> (default 5) are marked <code>error</code> with a timeout category. Each execution attempt is a separate row in the <code>execution_attempts</code> table, giving operators a clear retry trail. The reaper recovers from panics so one bad pass never kills the loop, and it stamps a <code>lastReapAt</code> health signal on <code>/api/server-info</code> so operators can spot a stalled reaper.</p></div></article>
           <article class="card story-row"><span class="num">D</span><div><b>Extend deadlines</b><p>Operators can add time to a pending or running task from the web UI. <code>ExtendTask</code> bumps <code>timeout_sec</code> in place and records a <code>task_timeout_extended</code> audit event — no restart or resubmission required.</p></div></article>
-          <article class="card story-row"><span class="num">E</span><div><b>Pause and resume</b><p>Tasks with <code>session_mode: resumable</code> create a checkpoint-backed session pinned to the runner that produced it. <code>chetter_resume_agent_session</code> queues a follow-up run that continues the same session instead of starting from scratch.</p></div></article>
+          <article class="card story-row"><span class="num">E</span><div><b>Pause and resume</b><p>Tasks with <code>session_mode: resumable</code> create a checkpoint-backed session. Sessions are task-owned and track each user prompt in sequence. <code>chetter_resume_agent_session</code> appends a follow-up prompt and queues a new execution attempt in the same session. <code>chetter_recover_task</code> recovers terminal tasks in fresh agent sessions using the previous session export as context — each recovery creates a new execution attempt, preserving the full retry history.</p></div></article>
         </div>
       </section>
 
@@ -100,7 +100,8 @@
   "git_author_name": "Chetter Agent",
   "git_author_email": "agent@chetter.dev",
   "timeout_seconds": 7200,
-  "attempt": 1
+  "attempt": 1,
+  "execution_attempt_id": "exec_..."
 }</code></pre>
       </section>
 
