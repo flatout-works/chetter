@@ -348,6 +348,14 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 	if err != nil {
 		return ModelCatalogRecord{}, fmt.Errorf("parse trigger definitions: %w", err)
 	}
+	existingTriggers, err := s.repo.ListTriggers(ctx)
+	if err != nil {
+		return ModelCatalogRecord{}, fmt.Errorf("list existing triggers: %w", err)
+	}
+	desiredTriggerNames := make(map[string]struct{}, len(triggerEntries))
+	for _, entry := range triggerEntries {
+		desiredTriggerNames[entry.def.Name] = struct{}{}
+	}
 	var row repository.InsertModelCatalogParams
 	if yamlText != "" {
 		checksumBytes := sha256.Sum256([]byte(yamlText))
@@ -400,9 +408,18 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 				return err
 			}
 		}
-		// Remove triggers that no longer have a definition file (renamed or deleted in git).
-		if err := q.DeleteTriggersBySource(ctx, nullString(defaultDefinitionSourceID)); err != nil {
-			return fmt.Errorf("delete orphan triggers: %w", err)
+		// Remove only triggers that no longer have a definition file. Keeping
+		// existing rows preserves trigger IDs and their run history across syncs.
+		for _, trigger := range existingTriggers {
+			if !trigger.SourceID.Valid || trigger.SourceID.String != defaultDefinitionSourceID {
+				continue
+			}
+			if _, ok := desiredTriggerNames[trigger.Name]; ok {
+				continue
+			}
+			if err := q.DeleteTrigger(ctx, trigger.Name); err != nil {
+				return fmt.Errorf("delete orphan trigger %q: %w", trigger.Name, err)
+			}
 		}
 		for _, t := range triggerEntries {
 			if err := q.UpsertTrigger(ctx, t.params); err != nil {

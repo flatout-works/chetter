@@ -86,6 +86,20 @@ func TestSyncDefinitionsMaterializesRegistry(t *testing.T) {
 	if len(agents) != 1 || agents[0].Name != "pr-reviewer" {
 		t.Fatalf("unexpected agent definitions: %#v", agents)
 	}
+	triggerBefore, err := svc.repo.GetTriggerByName(context.Background(), "nightly")
+	if err != nil {
+		t.Fatalf("get trigger before resync: %v", err)
+	}
+	if _, err := svc.SyncDefinitions(context.Background()); err != nil {
+		t.Fatalf("resync definitions: %v", err)
+	}
+	triggerAfter, err := svc.repo.GetTriggerByName(context.Background(), "nightly")
+	if err != nil {
+		t.Fatalf("get trigger after resync: %v", err)
+	}
+	if triggerBefore.ID != triggerAfter.ID {
+		t.Fatalf("trigger ID changed across definition sync: %q -> %q", triggerBefore.ID, triggerAfter.ID)
+	}
 
 	_, defOut, err := svc.getDefinitionTool(context.Background(), nil, GetDefinitionInput{DefinitionType: definitions.DefinitionTypeSkill, Name: "chetter"})
 	if err != nil {

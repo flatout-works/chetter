@@ -137,7 +137,13 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 		if sessionErr != nil {
 			return nil, fmt.Errorf("get latest agent session for task %s: %w", task.ID, sessionErr)
 		}
-		out = append(out, repoTaskToToolRecord(task, session))
+		record := repoTaskToToolRecord(task, session)
+		if prompt, promptErr := s.repo.GetUserPromptByTaskID(ctx, task.ID); promptErr == nil {
+			if attempts, attemptErr := s.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID); attemptErr == nil && len(attempts) > 0 {
+				record.StartedAt = nullTimePtr(attempts[len(attempts)-1].StartedAt)
+			}
+		}
+		out = append(out, record)
 	}
 	return out, nil
 }
