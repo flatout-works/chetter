@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-23
+
+### Added
+
+- Execution attempt model: tasks now track execution attempts with independent lifecycle (pending, running, succeeded, failed), per-attempt runtime metadata, token usage, workspace path, and error categorization. Agent sessions persisted with lifecycle states enabling proper session resumption on cold reclaim. Workspace pruning fenced per execution, preventing cross-attempt interference. Task artifacts attributed to specific user prompts and execution attempts.
+- Task reclaim history exposed via the `chetter_task_progress` MCP tool with pagination (`has_more`, `next_offset`) and web UI timeline.
+- `user_prompt_id` and `execution_attempt_id` filter fields on the `chetter_list_task_artifacts` MCP tool for precise artifact scoping.
+- Database migrations run automatically on server startup: the Docker image now includes `chetter-migrate` and runs Goose migrations via `chetter-entrypoint.sh` before the server starts. Deployments no longer need a separate migration step.
+
+### Changed
+
+- Task usage (tokens, cost) aggregated from execution attempts instead of legacy per-task columns. The `total_*_tokens` and `cost_cents` columns removed from the task schema — usage data is now sourced per-attempt.
+- Agent detail page loading optimized with a batch-definition query that fetches agent metadata in a single scan.
+- Runner shutdown sequence hardened: process group signaling, progress watchdog recovery, MCP server graceful shutdown, and workspace manager cleanup. Superseded harness-helper code removed.
+
+### Fixed
+
+- Database migration chain made portable across MySQL/TiDB and PostgreSQL: file numbering corrected, SQL syntax adjusted, and backfill migrations created for legacy execution attempts on existing deployments.
+- Trigger run history and task durations preserved and relinked after definition sync, with a migration to reconnect orphaned trigger runs.
+- Artifact-creation MCP tools (`chetter_create_issue`, `chetter_create_pr`, `chetter_issue_comment`, `chetter_pr_review`) removed from server-side tool list where they were inaccessible — remain available through the runner bridge.
+- Web UI: session resume mode labels clarified; agent and artifact navigation links improved across task list, session list, agent detail, and trigger pages.
+
+### Documentation
+
+- Database separation plan added to `docs/plans/2026-07-23-002-ops-separate-chetter-database-plan.md`.
+- Quality hardening plan added to `docs/plans/2026-07-23-001-quality-hardening-plan.md`.
+- PostgreSQL included in the database list on the how-it-works website page.
+
 ## 2026-07-22
 
 ### Added
