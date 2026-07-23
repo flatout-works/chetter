@@ -5,8 +5,9 @@ AGENT_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-agent-base:local
 RUNNER_IMAGE ?= ghcr.io/flatout-works/chetter-runner:local
 DB_DSN ?= root@tcp(127.0.0.1:4000)/chetter?parseTime=true
 CHETTER_DB_DIALECT ?= tidb
-GOOSE_DIALECT := $(if $(filter postgres postgresql,$(CHETTER_DB_DIALECT)),postgres,mysql)
+GOOSE_DIALECT := $(if $(filter postgres postgresql,$(CHETTER_DB_DIALECT)),postgres,$(if $(filter tidb,$(CHETTER_DB_DIALECT)),tidb,mysql))
 GOOSE_MIGRATIONS := $(if $(filter postgres postgresql,$(CHETTER_DB_DIALECT)),db/postgres/migrations,db/migrations)
+GOOSE_DSN := $(subst tls=tidb,tls=true,$(DB_DSN))
 BIN_DIR := $(CURDIR)/bin
 WEB_EMBED_DIR := internal/webui/dist
 BUF := $(BIN_DIR)/buf
@@ -49,13 +50,13 @@ web-check:
 	npm --prefix web run check
 
 migrate:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(DB_DSN)" up
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(GOOSE_DSN)" up
 
 migrate-status:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(DB_DSN)" status
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(GOOSE_DSN)" status
 
 migrate-down:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(DB_DSN)" down
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(GOOSE_DSN)" down
 
 migrate-create:
 	@read -p "Migration name: " name; \
