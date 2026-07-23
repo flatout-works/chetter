@@ -55,11 +55,18 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// A second SIGTERM/SIGINT during the drain period force-exits
+	// immediately. This lets operators (or Kubernetes after
+	// terminationGracePeriodSeconds) escalate a stuck shutdown. See issue
+	// #99 criterion 2.
+	forceExitCh := make(chan os.Signal, 1)
+	signal.Notify(forceExitCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(forceExitCh)
+
 	st, err := store.Open(cfg.DatabaseDSN, store.ParseDialect(cfg.DBDialect))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer st.Close()
 
 	initCtx, cancel := context.WithTimeout(ctx, initTimeout)
 	defer cancel()
@@ -95,8 +102,6 @@ func run() error {
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
 	}
-	defer svc.Stop()
-	defer eventBus.CloseAll()
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: mcpServerName, Version: mcpServerVersion}, nil)
 	service.RegisterTools(mcpServer, svc)
@@ -108,7 +113,17 @@ func run() error {
 		Logger:       slog.Default(),
 	})
 
-	whHandler := buildWebhookHandler(cfg, svc)
+	whHandler := buildWebhookHandler(cfg, svc, service.NewWebhookDeliveryStoreAdapter(st.DB(), st.Dialect()))
+
+	// Start the webhook delivery retry worker. It retries failed deliveries
+	// with exponential backoff (1s/5s/15s) and dead-letters them after 3
+	// attempts. The worker runs until the service's reaperStop channel is
+	// closed (on shutdown). See issue #102.
+	if whHandler != nil {
+		worker := service.NewWebhookDeliveryWorker(st.DB(), st.Dialect(), whHandler, svc.ReaperStopCh())
+		worker.Start()
+		slog.Info("webhook delivery retry worker started")
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -129,16 +144,14 @@ func run() error {
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
+	// Trigger MCP/runner server shutdown when the signal context is
+	// cancelled. This causes server.ListenAndServe below to return
+	// (http.ErrServerClosed) so the explicit shutdown sequence can proceed.
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Warn("http shutdown", "error", err)
-		}
+		slog.Info("graceful shutdown: signal received, stopping MCP server")
+		server.Shutdown(context.Background())
 	}()
-
-	slog.Info("chetter MCP server listening", "addr", cfg.HTTPAddr)
 
 	// Web API + UI server
 	webMux := http.NewServeMux()
@@ -173,15 +186,7 @@ func run() error {
 		return fmt.Errorf("listen web api: %w", err)
 	}
 
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := webServer.Shutdown(shutdownCtx); err != nil {
-			slog.Warn("web server shutdown", "error", err)
-		}
-	}()
-
+	slog.Info("chetter MCP server listening", "addr", cfg.HTTPAddr)
 	slog.Info("chetter web API listening", "addr", cfg.WebAddr)
 	go func() {
 		if err := webServer.Serve(webListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -189,24 +194,62 @@ func run() error {
 		}
 	}()
 
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serve http: %w", err)
+	// Block until SIGTERM/SIGINT or a fatal serve error.
+	serveErr := server.ListenAndServe()
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		return fmt.Errorf("serve http: %w", serveErr)
 	}
 
-	// Drain in-flight webhook processing goroutines before defers close the
-	// database. The HTTP handler goroutines have already returned (they
-	// respond 200 immediately then spawn an untracked goroutine), so
+	// ── Graceful shutdown sequence (issue #99) ───────────────────────────
+	// The signal context (ctx) was cancelled by the first SIGTERM/SIGINT.
+	// server.Shutdown was triggered by the context-cancellation goroutine
+	// above and has already returned (ListenAndServe returned). Now we
+	// perform the remaining steps in order, with a deadline and logging at
+	// each stage so operators can observe progress.
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer shutdownCancel()
+
+	// Step 1: Stop accepting new web API connections.
+	slog.Info("graceful shutdown: stopping web server")
+	if err := webServer.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("graceful shutdown: web server drain incomplete", "error", err)
+	}
+
+	// Step 2: Drain in-flight webhook processing goroutines before closing
+	// the database. The HTTP handler goroutines have already returned
+	// (they respond 200 immediately then spawn a tracked goroutine), so
 	// server.Shutdown only waited for the handler itself — not the async
-	// event processing. Without this drain, events being processed when
-	// SIGTERM arrived would be silently dropped. See issue #57.
+	// event processing. See issue #57.
 	if whHandler != nil {
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		if err := whHandler.Shutdown(drainCtx); err != nil {
-			slog.Warn("webhook handler drain incomplete", "error", err)
+		slog.Info("graceful shutdown: draining webhook handler")
+		if err := whHandler.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("graceful shutdown: webhook handler drain incomplete", "error", err)
 		}
-		drainCancel()
 	}
 
+	// Step 3: Stop the reaper, cron, and definitions sync loop. The reaper
+	// uses the shutdown context for its DB operations, so in-flight cycles
+	// abort early. See issue #99 criterion 4.
+	slog.Info("graceful shutdown: stopping service (reaper, cron, sync)")
+	svc.Stop()
+	eventBus.CloseAll()
+
+	// Step 4: Close the database connection pool.
+	slog.Info("graceful shutdown: closing database")
+	if err := st.Close(); err != nil {
+		slog.Warn("graceful shutdown: database close error", "error", err)
+	}
+
+	// Watch for a second signal during the drain; if received, force-exit.
+	select {
+	case <-forceExitCh:
+		slog.Warn("graceful shutdown: second signal received, force-exiting")
+		os.Exit(1)
+	default:
+	}
+
+	slog.Info("graceful shutdown: complete")
 	return nil
 }
 
@@ -250,8 +293,9 @@ func runnerRPCAuthMiddleware(runnerToken string, next http.Handler) http.Handler
 
 // buildWebhookHandler constructs the GitHub webhook handler. Returns nil if
 // the GitHub App is not configured (in which case the route is not
-// registered).
-func buildWebhookHandler(cfg config.Config, svc *service.Service) *webhook.Handler {
+// registered). When deliveryStore is non-nil, deliveries are persisted for
+// idempotency, retry, and status tracking. See issue #102.
+func buildWebhookHandler(cfg config.Config, svc *service.Service, deliveryStore webhook.DeliveryStore) *webhook.Handler {
 	if !cfg.GitHubConfigured() {
 		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, GITHUB_INSTALLATION_ID, or GITHUB_WEBHOOK_SECRET); skipping /webhook/github route")
 		return nil
@@ -266,7 +310,7 @@ func buildWebhookHandler(cfg config.Config, svc *service.Service) *webhook.Handl
 	return webhook.NewHandler(webhook.HandlerConfig{
 		Disabled:      cfg.GitHubWebhookDisabled,
 		WebhookSecret: cfg.GitHubWebhookSecret,
-	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc}, resumer)
+	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc}, resumer, deliveryStore)
 }
 
 type auditLoggerAdapter struct{ svc *service.Service }

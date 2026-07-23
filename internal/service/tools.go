@@ -695,6 +695,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_trigger_runs", Description: "List trigger runs for the current team, optionally filtered by trigger name."}, svc.listTriggerRunsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_webhook_deliveries", Description: "List recent webhook delivery records with status (received, completed, failed, dead_letter), retry attempts, and error details. Admin only."}, svc.listWebhookDeliveriesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_usage_summary", Description: "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data."}, svc.usageSummaryTool)
 }
 
@@ -1795,4 +1796,25 @@ func (s *Service) usageSummaryTool(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, UsageSummaryOutput{}, fmt.Errorf("usage summary: %w", err)
 	}
 	return nil, out, nil
+}
+
+// WebhookDeliveryFilterInput is the input for the chetter_list_webhook_deliveries
+// MCP tool. See issue #102.
+type WebhookDeliveryFilterInput struct {
+	Limit  int `json:"limit,omitempty" jsonschema:"Maximum deliveries to return (default 50)"`
+	Offset int `json:"offset,omitempty" jsonschema:"Number of deliveries to skip (default 0)"`
+}
+
+// WebhookDeliveryOutput is the output for the chetter_list_webhook_deliveries
+// MCP tool.
+type WebhookDeliveryOutput struct {
+	Deliveries []WebhookDeliveryRecord `json:"deliveries"`
+}
+
+func (s *Service) listWebhookDeliveriesTool(ctx context.Context, _ *mcp.CallToolRequest, in WebhookDeliveryFilterInput) (*mcp.CallToolResult, WebhookDeliveryOutput, error) {
+	deliveries, err := s.ListWebhookDeliveries(ctx, in.Limit, in.Offset)
+	if err != nil {
+		return nil, WebhookDeliveryOutput{}, err
+	}
+	return nil, WebhookDeliveryOutput{Deliveries: deliveries}, nil
 }

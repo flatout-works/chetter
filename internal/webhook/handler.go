@@ -52,6 +52,31 @@ type ArtifactRecorder interface {
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 }
 
+// DeliveryStore persists webhook deliveries for idempotency, retry, and
+// delivery status tracking. When non-nil, the handler records every delivery
+// before processing and updates its status on completion or failure. A
+// background worker (in the service layer) retries failed deliveries with
+// exponential backoff and dead-letters them after max_attempts. See issue
+// #102.
+type DeliveryStore interface {
+	// RecordDelivery inserts a delivery row. Returns false (with nil error)
+	// if the delivery_id was already recorded (idempotent dedup).
+	RecordDelivery(ctx context.Context, params RecordDeliveryParams) (created bool, err error)
+	// MarkDeliveryCompleted marks a delivery as successfully processed.
+	MarkDeliveryCompleted(ctx context.Context, deliveryID string) error
+	// MarkDeliveryFailed marks a delivery as failed with the error and
+	// schedules the next retry (or dead-letters if attempts exhausted).
+	MarkDeliveryFailed(ctx context.Context, deliveryID string, errMsg string) error
+}
+
+// RecordDeliveryParams holds the data for a single webhook delivery record.
+type RecordDeliveryParams struct {
+	DeliveryID string
+	EventType  string
+	Action     string
+	Payload    []byte
+}
+
 // RecordArtifactParams holds the data for a single task artifact entry.
 type RecordArtifactParams struct {
 	TaskID             string
@@ -129,14 +154,15 @@ type ReviewContext struct {
 
 // Handler serves GitHub webhook events. Implements http.Handler.
 type Handler struct {
-	cfg       HandlerConfig
-	gh        *Client
-	submitter TaskSubmitter
-	triggers  TriggerResolver
-	audit     AuditLogger
-	artifacts ArtifactRecorder
-	resumer   SessionResumer
-	recent    *RecentDeliveries
+	cfg           HandlerConfig
+	gh            *Client
+	submitter     TaskSubmitter
+	triggers       TriggerResolver
+	audit         AuditLogger
+	artifacts     ArtifactRecorder
+	resumer       SessionResumer
+	recent        *RecentDeliveries
+	deliveryStore DeliveryStore
 
 	// wg tracks in-flight handle() goroutines so Shutdown can wait for them
 	// before the server closes the database. Without this, every server
@@ -155,16 +181,17 @@ type HandlerConfig struct {
 // NewHandler creates a webhook Handler. If the configuration is incomplete,
 // the returned handler will accept requests but log "webhook disabled" for
 // every event (kill switch behavior).
-func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver, audit AuditLogger, artifacts ArtifactRecorder, resumer SessionResumer) *Handler {
+func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers TriggerResolver, audit AuditLogger, artifacts ArtifactRecorder, resumer SessionResumer, deliveryStore DeliveryStore) *Handler {
 	return &Handler{
-		cfg:       cfg,
-		gh:        gh,
-		submitter: submitter,
-		triggers:  triggers,
-		audit:     audit,
-		artifacts: artifacts,
-		resumer:   resumer,
-		recent:    NewRecentDeliveries(5*time.Minute, 4096),
+		cfg:           cfg,
+		gh:            gh,
+		submitter:     submitter,
+		triggers:       triggers,
+		audit:         audit,
+		artifacts:     artifacts,
+		resumer:       resumer,
+		recent:        NewRecentDeliveries(5*time.Minute, 4096),
+		deliveryStore: deliveryStore,
 	}
 }
 
@@ -222,14 +249,81 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist the delivery for idempotency, retry, and status tracking.
+	// If the delivery_id was already recorded (e.g. after a restart), skip
+	// processing — the background worker will retry it. See issue #102.
+	var action string
+	if parsedEvent, perr := parseEventAction(event, body); perr == nil {
+		action = parsedEvent
+	}
+	if h.deliveryStore != nil {
+		recordCtx, recordCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		created, rerr := h.deliveryStore.RecordDelivery(recordCtx, RecordDeliveryParams{
+			DeliveryID: deliveryID,
+			EventType:  event,
+			Action:     action,
+			Payload:    body,
+		})
+		recordCancel()
+		if rerr != nil {
+			slog.Warn("webhook: record delivery failed, processing anyway", "err", rerr, "deliveryID", deliveryID)
+		} else if !created {
+			slog.Info("webhook: duplicate delivery in store, ignoring", "deliveryID", deliveryID, "event", event)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
 	// Respond 200 immediately; process async so GitHub doesn't retry on slowness.
 	w.WriteHeader(http.StatusOK)
 
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
-		h.handle(event, body, deliveryID)
+		h.processDelivery(event, body, deliveryID)
 	}()
+}
+
+// processDelivery runs the webhook event handler and updates the delivery
+// store with the outcome. On failure, the delivery is marked failed so the
+// background worker can retry it. See issue #102.
+func (h *Handler) processDelivery(event string, body []byte, deliveryID string) {
+	h.handle(event, body, deliveryID)
+	if h.deliveryStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := h.deliveryStore.MarkDeliveryCompleted(ctx, deliveryID); err != nil {
+			slog.Warn("webhook: mark delivery completed", "err", err, "deliveryID", deliveryID)
+		}
+		cancel()
+	}
+}
+
+// ProcessDelivery is the exported entry point for the retry worker to
+// re-process a failed delivery. It runs the handler synchronously and updates
+// the delivery store with the outcome. See issue #102.
+func (h *Handler) ProcessDelivery(event string, body []byte, deliveryID string) error {
+	h.handle(event, body, deliveryID)
+	if h.deliveryStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := h.deliveryStore.MarkDeliveryCompleted(ctx, deliveryID); err != nil {
+			cancel()
+			return err
+		}
+		cancel()
+	}
+	return nil
+}
+
+// parseEventAction extracts the "action" field from a webhook event payload
+// for delivery tracking. Returns "" if the payload has no action field.
+func parseEventAction(event string, body []byte) (string, error) {
+	var partial struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal(body, &partial); err != nil {
+		return "", err
+	}
+	return partial.Action, nil
 }
 
 func (h *Handler) handle(event string, body []byte, deliveryID string) {

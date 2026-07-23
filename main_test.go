@@ -323,7 +323,7 @@ func TestRegisterToolsDoesNotPanicWithNilSvc(t *testing.T) {
 
 func TestBuildWebhookHandlerReturnsNilWhenNotConfigured(t *testing.T) {
 	cfg := config.Config{}
-	handler := buildWebhookHandler(cfg, nil)
+	handler := buildWebhookHandler(cfg, nil, nil)
 	if handler != nil {
 		t.Error("expected nil handler when GitHub not configured")
 	}
@@ -336,7 +336,7 @@ func TestBuildWebhookHandlerReturnsNilWithBadCredentials(t *testing.T) {
 		GitHubAppPrivateKeyB64: "aW52YWxpZC1rZXk=",
 		GitHubWebhookSecret:    "secret",
 	}
-	handler := buildWebhookHandler(cfg, nil)
+	handler := buildWebhookHandler(cfg, nil, nil)
 	if handler != nil {
 		t.Error("expected nil handler when GitHub client creation fails")
 	}
