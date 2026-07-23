@@ -25,6 +25,7 @@
         return { color: "orange", dot: "bg-orange-500" };
       case "done":
       case "completed":
+      case "succeeded":
         return { color: "blue", dot: "bg-blue-500" };
       case "error":
       case "failed":
