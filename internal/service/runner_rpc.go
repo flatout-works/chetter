@@ -25,8 +25,10 @@ import (
 )
 
 const (
-	defaultClaimWaitSec       = 30
-	defaultTaskLeaseSec       = 60
+	defaultClaimWaitSec = 30
+	// Keep the event lease longer than the runner's bounded terminal cleanup
+	// (container stop plus session export).
+	defaultTaskLeaseSec       = 120
 	claimPollInterval         = time.Second
 	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second

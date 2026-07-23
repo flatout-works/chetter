@@ -124,10 +124,6 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 						publishFn("running", "opencode: "+detail)
 					}
 				case "message.updated":
-					if onIdle != nil && isTerminalAssistantMessage(props, sessionID) {
-						slog.Info("terminal assistant message received", "taskID", taskID, "sessionID", sessionID)
-						onIdle()
-					}
 					detail := summarizeEvent(raw)
 					if detail != "" {
 						flush(true)
@@ -293,22 +289,6 @@ func isSessionIdleEvent(props map[string]any, sessionID string) bool {
 	return eventBelongsToSession(props, sessionID)
 }
 
-func isTerminalAssistantMessage(props map[string]any, sessionID string) bool {
-	if props == nil {
-		return false
-	}
-	info, _ := props["info"].(map[string]any)
-	if info == nil || !eventBelongsToSession(info, sessionID) {
-		return false
-	}
-	role, _ := info["role"].(string)
-	if role != "assistant" {
-		return false
-	}
-	finish, _ := info["finish"].(string)
-	return finish == "stop" || finish == "end_turn"
-}
-
 func eventBelongsToSession(props map[string]any, sessionID string) bool {
 	if props == nil {
 		return false
@@ -317,7 +297,7 @@ func eventBelongsToSession(props map[string]any, sessionID string) bool {
 	if id == "" {
 		id, _ = props["id"].(string)
 	}
-	return id == "" || id == sessionID
+	return id != "" && id == sessionID
 }
 
 // isSessionIdleStatus checks whether a session.status SSE event indicates the

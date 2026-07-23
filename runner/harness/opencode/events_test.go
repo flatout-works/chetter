@@ -21,13 +21,13 @@ func TestIsSessionIdleStatus(t *testing.T) {
 			name:      "idle type flat",
 			props:     map[string]any{"type": "idle"},
 			sessionID: "ses_123",
-			want:      true,
+			want:      false,
 		},
 		{
 			name:      "completed type",
 			props:     map[string]any{"type": "completed"},
 			sessionID: "ses_123",
-			want:      true,
+			want:      false,
 		},
 		{
 			name:      "busy type",
@@ -81,7 +81,7 @@ func TestIsSessionIdleStatus(t *testing.T) {
 			name:      "status as string",
 			props:     map[string]any{"status": "idle"},
 			sessionID: "ses_123",
-			want:      true,
+			want:      false,
 		},
 		{
 			name:      "id field matches session",
@@ -90,10 +90,10 @@ func TestIsSessionIdleStatus(t *testing.T) {
 			want:      true,
 		},
 		{
-			name:      "no sessionID in props matches any session",
+			name:      "no sessionID does not complete a session",
 			props:     map[string]any{"type": "done"},
 			sessionID: "ses_123",
-			want:      true,
+			want:      false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -124,7 +124,7 @@ func TestIsSessionIdleEvent(t *testing.T) {
 			name:      "missing session ID",
 			props:     map[string]any{},
 			sessionID: "ses_123",
-			want:      true,
+			want:      false,
 		},
 		{
 			name:      "different session",
@@ -147,71 +147,6 @@ func TestIsSessionIdleEvent(t *testing.T) {
 	}
 }
 
-func TestIsTerminalAssistantMessage(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name      string
-		props     map[string]any
-		sessionID string
-		want      bool
-	}{
-		{
-			name: "stop finish",
-			props: map[string]any{"info": map[string]any{
-				"role": "assistant", "sessionID": "ses_123", "finish": "stop",
-			}},
-			sessionID: "ses_123",
-			want:      true,
-		},
-		{
-			name: "end turn finish",
-			props: map[string]any{"info": map[string]any{
-				"role": "assistant", "sessionID": "ses_123", "finish": "end_turn",
-			}},
-			sessionID: "ses_123",
-			want:      true,
-		},
-		{
-			name: "tool calls are not terminal",
-			props: map[string]any{"info": map[string]any{
-				"role": "assistant", "sessionID": "ses_123", "finish": "tool-calls",
-			}},
-			sessionID: "ses_123",
-			want:      false,
-		},
-		{
-			name: "user message is not terminal",
-			props: map[string]any{"info": map[string]any{
-				"role": "user", "sessionID": "ses_123", "finish": "stop",
-			}},
-			sessionID: "ses_123",
-			want:      false,
-		},
-		{
-			name: "different session",
-			props: map[string]any{"info": map[string]any{
-				"role": "assistant", "sessionID": "ses_other", "finish": "stop",
-			}},
-			sessionID: "ses_123",
-			want:      false,
-		},
-		{
-			name:      "missing info",
-			props:     map[string]any{},
-			sessionID: "ses_123",
-			want:      false,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := isTerminalAssistantMessage(tc.props, tc.sessionID); got != tc.want {
-				t.Fatalf("isTerminalAssistantMessage() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestWatchEventsSignalsTerminalEvents(t *testing.T) {
 	t.Parallel()
 
@@ -222,10 +157,6 @@ func TestWatchEventsSignalsTerminalEvents(t *testing.T) {
 		{
 			name:  "session idle",
 			event: `{"type":"session.idle","properties":{"sessionID":"ses_123"}}`,
-		},
-		{
-			name:  "terminal assistant message",
-			event: `{"type":"message.updated","properties":{"info":{"role":"assistant","sessionID":"ses_123","finish":"stop"}}}`,
 		},
 	} {
 		tc := tc
@@ -267,5 +198,40 @@ func TestWatchEventsSignalsTerminalEvents(t *testing.T) {
 				t.Fatal("event watcher did not stop")
 			}
 		})
+	}
+}
+
+func TestWatchEventsDoesNotCompleteOnAssistantStop(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"message.updated","properties":{"info":{"role":"assistant","sessionID":"ses_123","finish":"stop"}}}` + "\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idle := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		watchEvents(ctx, "task", server.URL, "", func(string, string) {}, nil, "ses_123", func() {
+			close(idle)
+		})
+		close(done)
+	}()
+
+	select {
+	case <-idle:
+		t.Fatal("assistant message stop must not complete the session")
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("event watcher did not stop")
 	}
 }

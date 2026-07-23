@@ -547,6 +547,9 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
+	// Keep the server-side lease alive while bounded cleanup and session export
+	// collection run before the terminal event is reported.
+	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if sid != "" {
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
@@ -654,6 +657,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
+	// Keep the server-side lease alive while bounded cleanup and session export
+	// collection run before the terminal event is reported.
+	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
@@ -791,6 +797,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if watchdog.isStuck() {
 		err = fmt.Errorf("stuck harness: no progress")
 	}
+	// Keep the server-side lease alive while bounded cleanup and session export
+	// collection run before the terminal event is reported.
+	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if err != nil {
 		workspacePath := ""
