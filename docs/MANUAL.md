@@ -580,6 +580,14 @@ For production Kubernetes deployment (EKS or similar), see [docs/EKS.md](EKS.md)
 
 See [Sandbox Isolation](#sandbox-isolation) below for the gVisor DaemonSet and RuntimeClass registration. On GKE, use [GKE Sandbox](https://cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) instead.
 
+### Graceful Shutdown
+
+Both the server and runner handle SIGTERM/SIGINT gracefully for zero-downtime rolling deployments.
+
+**Server**: On SIGTERM, the server stops accepting new connections (MCP + web API), drains in-flight webhook processing goroutines, stops the reaper/cron/sync loops (aborting the current cycle early), closes the database, and exits 0. A second SIGTERM during the drain force-exits with code 1. The drain timeout is configurable via `CHETTER_SHUTDOWN_TIMEOUT` (default `15s`).
+
+**Runner**: On SIGTERM, the runner marks itself `draining`, sends a final heartbeat, stops claiming new tasks, waits for in-flight tasks to finish (up to `CHETTER_DRAIN_TIMEOUT_SEC`, default 30s), and force-cancels any that overrun. Exits 0 on a clean drain, 1 if tasks were force-cancelled. See [Runner Drain](#runner-drain) below for timeout-aware drain behavior.
+
 ## Deploying With Docker + gVisor
 
 Install `runsc` on the host and set `USE_GVISOR=true` to enable gVisor for agent containers.

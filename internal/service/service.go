@@ -111,6 +111,7 @@ type Service struct {
 	cronEntries    map[string]cron.EntryID
 	reaperStop     chan struct{}
 	reaperSteps    []func()
+	shutdownCtx    context.Context
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
@@ -131,7 +132,7 @@ func isQuotaExhaustedError(err error) bool {
 }
 
 func (s *Service) checkDBQuota() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	err := s.rawDB.PingContext(ctx)
 	if err != nil {
@@ -190,7 +191,10 @@ func New(cfg config.Config, st *store.Store) *Service {
 }
 
 // Start loads triggers, starts cron, and starts the stale-task reaper.
+// The ctx is stored so long-running goroutines (reaper, sync loop) can abort
+// early on shutdown rather than blocking until their next tick. See issue #99.
 func (s *Service) Start(ctx context.Context) error {
+	s.shutdownCtx = ctx
 	s.cron.Start()
 	if err := s.loadTriggers(ctx); err != nil {
 		return err
@@ -202,11 +206,16 @@ func (s *Service) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the cron scheduler and the reaper.
+// Stop stops the cron scheduler and signals the reaper and sync loop to exit.
+// The reaper's current cycle may still be in progress; its DB operations use
+// s.shutdownCtx (cancelled when the server's signal context is cancelled) so
+// they abort early rather than blocking for the full eventHandlerTimeout. See
+// issue #99.
 func (s *Service) Stop() {
 	close(s.reaperStop)
 	ctx := s.cron.Stop()
 	<-ctx.Done()
+	slog.Info("service stopped — cron, reaper, and sync loops shut down")
 }
 
 // taskReaper periodically scans for tasks that have been running without a
@@ -250,6 +259,26 @@ func (s *Service) LastReapAt() time.Time {
 	return time.Time{}
 }
 
+// ReaperStopCh returns the channel that is closed when the service stops.
+// Background workers (e.g. the webhook delivery retry worker) listen on this
+// channel to exit on shutdown. See issue #102.
+func (s *Service) ReaperStopCh() <-chan struct{} {
+	return s.reaperStop
+}
+
+// reaperCtx returns a timeout context derived from the server's shutdown
+// context, so reaper DB operations abort early when the server is shutting
+// down rather than blocking for the full eventHandlerTimeout. Falls back to
+// context.Background() if the shutdown context was never set (e.g. in unit
+// tests). See issue #99 criterion 4.
+func (s *Service) reaperCtx() (context.Context, context.CancelFunc) {
+	parent := s.shutdownCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, eventHandlerTimeout)
+}
+
 func (s *Service) definitionsSyncLoop() {
 	ticker := time.NewTicker(definitionsSyncInterval)
 	defer ticker.Stop()
@@ -290,7 +319,7 @@ func (s *Service) runnerIsDeliberatelyDrained(ctx context.Context, runnerID stri
 }
 
 func (s *Service) reapExpiredLeases() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	now := time.Now().UTC()
 	expiredBefore := sql.NullTime{Time: now, Valid: true}
@@ -577,7 +606,7 @@ func (s *Service) reapExpiredLeases() {
 	// Log task_recovered audit events for auto-reclaimed tasks. See issue #96
 	// criterion 3.
 	for _, audit := range recoveryAudits {
-		auditCtx, auditCancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+		auditCtx, auditCancel := s.reaperCtx()
 		if err := s.LogAuditEvent(auditCtx, audit); err != nil {
 			slog.Warn("reaper: log task_recovered audit event", "err", err, "task_id", audit.TargetID)
 		}
@@ -586,7 +615,7 @@ func (s *Service) reapExpiredLeases() {
 }
 
 func (s *Service) reapUnavailablePinnedResumeTasks() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	now := time.Now().UTC()
 	var failedAttempts, failedTasks, failedRuns, failedSessions int64
@@ -628,7 +657,7 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 }
 
 func (s *Service) reapStaleTasks() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	n, err := s.store.ReapStaleTasks(ctx, reaperGrace)
 	if err != nil {
@@ -644,7 +673,7 @@ func (s *Service) reapStaleTasks() {
 }
 
 func (s *Service) reapStaleUserPrompts() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	n, err := s.repo.ReapStaleUserPrompts(ctx)
 	if err != nil {
@@ -682,7 +711,7 @@ func (s *Service) reapStaleUserPrompts() {
 }
 
 func (s *Service) reapExpiredSessions() {
-	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+	ctx, cancel := s.reaperCtx()
 	defer cancel()
 	now := time.Now().UTC()
 	n, err := s.repo.ExpirePausedSessions(ctx, repository.ExpirePausedSessionsParams{
