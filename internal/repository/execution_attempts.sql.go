@@ -107,6 +107,32 @@ func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg E
 	return result.RowsAffected()
 }
 
+const failAllExpiredExecutionAttempts = `-- name: FailAllExpiredExecutionAttempts :execrows
+UPDATE chetter_execution_attempts attempt
+SET attempt.status = 'error',
+    attempt.error = 'runner lease expired; auto-recovery disabled',
+    attempt.error_category = 'timeout',
+    attempt.ended_at = ?,
+    attempt.updated_at = ?
+WHERE attempt.status = 'running'
+  AND attempt.lease_expires_at IS NOT NULL
+  AND attempt.lease_expires_at < ?
+`
+
+type FailAllExpiredExecutionAttemptsParams struct {
+	EndedAt        sql.NullTime `json:"ended_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	LeaseExpiresAt sql.NullTime `json:"lease_expires_at"`
+}
+
+func (q *Queries) FailAllExpiredExecutionAttempts(ctx context.Context, arg FailAllExpiredExecutionAttemptsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failAllExpiredExecutionAttempts, arg.EndedAt, arg.UpdatedAt, arg.LeaseExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const failExpiredExecutionAttempts = `-- name: FailExpiredExecutionAttempts :execrows
 UPDATE chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id

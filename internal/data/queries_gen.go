@@ -44,6 +44,7 @@ type Repository interface {
 	DeleteUsersByTeam(ctx context.Context, teamID string) error
 	ExpirePausedSessions(ctx context.Context, arg repository.ExpirePausedSessionsParams) (int64, error)
 	ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg repository.ExtendActiveExecutionAttemptTimeoutParams) (int64, error)
+	FailAllExpiredExecutionAttempts(ctx context.Context, arg repository.FailAllExpiredExecutionAttemptsParams) (int64, error)
 	FailExpiredExecutionAttempts(ctx context.Context, arg repository.FailExpiredExecutionAttemptsParams) (int64, error)
 	FailExpiredLeases(ctx context.Context, arg repository.FailExpiredLeasesParams) (int64, error)
 	FailPendingExecutionAttemptsForMissingRunner(ctx context.Context, arg repository.FailPendingExecutionAttemptsForMissingRunnerParams) (int64, error)
@@ -279,6 +280,11 @@ func (q *Queries) ExpirePausedSessions(ctx context.Context, arg repository.Expir
 
 func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg repository.ExtendActiveExecutionAttemptTimeoutParams) (int64, error) {
 	value, err := q.postgres.ExtendActiveExecutionAttemptTimeout(ctx, convert[repositorypostgres.ExtendActiveExecutionAttemptTimeoutParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) FailAllExpiredExecutionAttempts(ctx context.Context, arg repository.FailAllExpiredExecutionAttemptsParams) (int64, error) {
+	value, err := q.postgres.FailAllExpiredExecutionAttempts(ctx, convert[repositorypostgres.FailAllExpiredExecutionAttemptsParams](arg))
 	return convert[int64](value), err
 }
 

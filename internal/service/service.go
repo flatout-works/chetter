@@ -566,7 +566,15 @@ func (s *Service) reapExpiredLeases() {
 			}
 			reclaimEvents = append(reclaimEvents, restartEvent)
 		}
-		if _, err := q.FailExpiredExecutionAttempts(ctx, repository.FailExpiredExecutionAttemptsParams{
+		if s.cfg.AutoRecovery {
+			if _, err := q.FailExpiredExecutionAttempts(ctx, repository.FailExpiredExecutionAttemptsParams{
+				EndedAt:        sql.NullTime{Time: now, Valid: true},
+				UpdatedAt:      now,
+				LeaseExpiresAt: expiredBefore,
+			}); err != nil {
+				return err
+			}
+		} else if _, err := q.FailAllExpiredExecutionAttempts(ctx, repository.FailAllExpiredExecutionAttemptsParams{
 			EndedAt:        sql.NullTime{Time: now, Valid: true},
 			UpdatedAt:      now,
 			LeaseExpiresAt: expiredBefore,

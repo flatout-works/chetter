@@ -110,6 +110,32 @@ func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg E
 	return result.RowsAffected()
 }
 
+const failAllExpiredExecutionAttempts = `-- name: FailAllExpiredExecutionAttempts :execrows
+UPDATE chetter_execution_attempts
+SET status = 'error',
+    error = 'runner lease expired; auto-recovery disabled',
+    error_category = 'timeout',
+    ended_at = $1,
+    updated_at = $2
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < $3
+`
+
+type FailAllExpiredExecutionAttemptsParams struct {
+	EndedAt        sql.NullTime `json:"ended_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	LeaseExpiresAt sql.NullTime `json:"lease_expires_at"`
+}
+
+func (q *Queries) FailAllExpiredExecutionAttempts(ctx context.Context, arg FailAllExpiredExecutionAttemptsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failAllExpiredExecutionAttempts, arg.EndedAt, arg.UpdatedAt, arg.LeaseExpiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const failExpiredExecutionAttempts = `-- name: FailExpiredExecutionAttempts :execrows
 UPDATE chetter_execution_attempts attempt
 SET status = 'error',

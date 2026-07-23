@@ -41,6 +41,7 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	cfg := config.Config{
 		DefaultAgentImage:     "runner:latest",
 		DefaultTaskTimeoutSec: 600,
+		AutoRecovery:          true,
 	}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
@@ -337,6 +338,54 @@ func TestReapExpiredLeasesFailsExhaustedExecutionAttempt(t *testing.T) {
 		t.Fatalf("task status/category = %s/%s, want error/timeout", failedTask.Status, failedTask.ErrorCategory.String)
 	}
 	failedAttempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
+	if err != nil {
+		t.Fatalf("GetExecutionAttemptByID: %v", err)
+	}
+	if failedAttempt.Status != "error" || failedAttempt.ErrorCategory.String != "timeout" || !failedAttempt.EndedAt.Valid {
+		t.Fatalf("attempt status/category/ended_at = %s/%s/%v, want error/timeout/set", failedAttempt.Status, failedAttempt.ErrorCategory.String, failedAttempt.EndedAt.Valid)
+	}
+}
+
+func TestReapExpiredLeasesFailsImmediatelyWhenAutoRecoveryDisabled(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	svc.cfg.AutoRecovery = false
+	ctx := context.Background()
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "do not reclaim me", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+	attempts, err := svc.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListExecutionAttemptsByPrompt: %v, attempts=%+v", err, attempts)
+	}
+	past := time.Now().UTC().Add(-time.Minute)
+	markTaskRunning(t, svc.repo, task.ID, past)
+	if rows, err := svc.repo.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
+		RunnerID:       nullString("runner_no_recovery"),
+		ClaimedAt:      sql.NullTime{Time: past, Valid: true},
+		LeaseExpiresAt: sql.NullTime{Time: past, Valid: true},
+		StartedAt:      sql.NullTime{Time: past, Valid: true},
+		UpdatedAt:      past,
+		ID:             attempts[0].ID,
+	}); err != nil || rows != 1 {
+		t.Fatalf("MarkExecutionAttemptClaimed: rows=%d err=%v", rows, err)
+	}
+
+	svc.reapExpiredLeases()
+
+	failedTask, err := svc.repo.GetTaskByID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID: %v", err)
+	}
+	if failedTask.Status != "error" || failedTask.ErrorCategory.String != "timeout" {
+		t.Fatalf("task status/category = %s/%s, want error/timeout", failedTask.Status, failedTask.ErrorCategory.String)
+	}
+	failedAttempt, err := svc.repo.GetExecutionAttemptByID(ctx, attempts[0].ID)
 	if err != nil {
 		t.Fatalf("GetExecutionAttemptByID: %v", err)
 	}

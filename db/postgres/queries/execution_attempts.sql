@@ -126,6 +126,17 @@ WHERE prompt.id = attempt.user_prompt_id
   AND attempt.lease_expires_at < sqlc.arg(lease_expires_at)
   AND counts.attempt_count >= task.max_attempts;
 
+-- name: FailAllExpiredExecutionAttempts :execrows
+UPDATE chetter_execution_attempts
+SET status = 'error',
+    error = 'runner lease expired; auto-recovery disabled',
+    error_category = 'timeout',
+    ended_at = sqlc.arg(ended_at),
+    updated_at = sqlc.arg(updated_at)
+WHERE status = 'running'
+  AND lease_expires_at IS NOT NULL
+  AND lease_expires_at < sqlc.arg(lease_expires_at);
+
 -- name: CancelExecutionAttemptsByTask :execrows
 UPDATE chetter_execution_attempts attempt
 SET status = 'cancelled',
