@@ -257,7 +257,7 @@
       await loadTaskSession();
       await loadActiveRunners();
       loading = false;
-		await loadTaskArtifacts(taskId);
+      await loadTaskArtifacts(taskId);
 
       if (task?.status === "running" || task?.status === "pending") {
         const streamSince = new Date().toISOString();
@@ -300,7 +300,7 @@
       task = resp.task ?? null;
       await loadTaskSession();
       await loadActiveRunners();
-		await loadTaskArtifacts(params.id);
+      await loadTaskArtifacts(params.id);
       await refreshTaskProgress(params.id);
       if (unsub) { unsub(); unsub = null; }
     } catch (e) {
@@ -308,16 +308,16 @@
     }
   }
 
-	async function loadTaskArtifacts(taskId: string) {
-		try {
-			const adminClient = createClient(AdminService, getTransport());
-			const artResp = await adminClient.listTaskArtifacts({ taskId });
-			artifacts = artResp.artifacts ?? [];
-		} catch {
-			// Artifact visibility is supplemental; task loading should still work
-			// when the current user cannot access the admin endpoint.
-		}
-	}
+  async function loadTaskArtifacts(taskId: string) {
+    try {
+      const adminClient = createClient(AdminService, getTransport());
+      const artResp = await adminClient.listTaskArtifacts({ taskId });
+      artifacts = artResp.artifacts ?? [];
+    } catch {
+      // Artifact visibility is supplemental; task loading should still work
+      // when the current user cannot access the admin endpoint.
+    }
+  }
 
   async function loadOlderProgress() {
     if (loadingOlderProgress || !progressHasMore) return;
