@@ -17,12 +17,13 @@ import (
 // using direct database/sql queries, similar to store.ReapStaleTasks. See
 // issue #102.
 type webhookDeliveryStore struct {
-	db      *sql.DB
-	dialect store.Dialect
+	db          *sql.DB
+	dialect     store.Dialect
+	auditLogger func(context.Context, AuditEventParams) error
 }
 
-func newWebhookDeliveryStore(db *sql.DB, dialect store.Dialect) *webhookDeliveryStore {
-	return &webhookDeliveryStore{db: db, dialect: dialect}
+func newWebhookDeliveryStore(db *sql.DB, dialect store.Dialect, auditLogger func(context.Context, AuditEventParams) error) *webhookDeliveryStore {
+	return &webhookDeliveryStore{db: db, dialect: dialect, auditLogger: auditLogger}
 }
 
 func (d *webhookDeliveryStore) placeholder(n int) string {
@@ -50,6 +51,7 @@ func (d *webhookDeliveryStore) RecordDelivery(ctx context.Context, params webhoo
 		}
 		return false, fmt.Errorf("insert webhook delivery: %w", err)
 	}
+	d.audit(ctx, params.DeliveryID, "webhook_delivery_received", "delivery received")
 	return true, nil
 }
 
@@ -60,6 +62,19 @@ func (d *webhookDeliveryStore) MarkDeliveryCompleted(ctx context.Context, delive
 		d.placeholder(1), d.placeholder(2), d.placeholder(3),
 	)
 	_, err := d.db.ExecContext(ctx, query, now, now, deliveryID)
+	if err == nil {
+		d.audit(ctx, deliveryID, "webhook_delivery_completed", "delivery completed")
+	}
+	return err
+}
+
+func (d *webhookDeliveryStore) MarkDeliveryProcessing(ctx context.Context, deliveryID string) error {
+	now := time.Now().UTC()
+	query := fmt.Sprintf(
+		`UPDATE chetter_webhook_deliveries SET status = 'processing', updated_at = %s WHERE delivery_id = %s`,
+		d.placeholder(1), d.placeholder(2),
+	)
+	_, err := d.db.ExecContext(ctx, query, now, deliveryID)
 	return err
 }
 
@@ -67,37 +82,69 @@ func (d *webhookDeliveryStore) MarkDeliveryFailed(ctx context.Context, deliveryI
 	now := time.Now().UTC()
 	// Exponential backoff: 1s, 5s, 15s for attempts 1, 2, 3. After 3 attempts,
 	// mark as dead_letter. See issue #102 criterion 1 and 4.
-	backoffs := []time.Duration{1 * time.Second, 5 * time.Second, 15 * time.Second}
+	var attempts, maxAttempts int
+	selectQuery := fmt.Sprintf(`SELECT attempts, max_attempts FROM chetter_webhook_deliveries WHERE delivery_id = %s`, d.placeholder(1))
+	if err := d.db.QueryRowContext(ctx, selectQuery, deliveryID).Scan(&attempts, &maxAttempts); err != nil {
+		return err
+	}
+	backoff := 15 * time.Second
+	if attempts == 0 {
+		backoff = 1 * time.Second
+	} else if attempts == 1 {
+		backoff = 5 * time.Second
+	}
+	newAttempts := attempts + 1
+	status := "failed"
+	var nextAttempt any = sql.NullTime{Time: now.Add(backoff), Valid: true}
+	if newAttempts >= maxAttempts {
+		status = "dead_letter"
+		nextAttempt = nil
+	}
 	query := fmt.Sprintf(
 		`UPDATE chetter_webhook_deliveries
-		 SET status = CASE WHEN attempts + 1 >= max_attempts THEN 'dead_letter' ELSE 'failed' END,
-		     attempts = attempts + 1,
+		 SET status = %s,
+		     attempts = %s,
 		     error = %s,
-		     next_attempt_at = CASE WHEN attempts + 1 >= max_attempts THEN NULL ELSE %s END,
+		     next_attempt_at = %s,
 		     updated_at = %s
 		 WHERE delivery_id = %s`,
-		d.placeholder(1), d.placeholder(2), d.placeholder(3), d.placeholder(4),
+		d.placeholder(1), d.placeholder(2), d.placeholder(3), d.placeholder(4), d.placeholder(5), d.placeholder(6),
 	)
-	var nextAttempt sql.NullTime
-	if len(backoffs) > 0 {
-		nextAttempt = sql.NullTime{Time: now.Add(backoffs[0]), Valid: true}
+	_, err := d.db.ExecContext(ctx, query, status, newAttempts, errMsg, nextAttempt, now, deliveryID)
+	if err == nil {
+		d.audit(ctx, deliveryID, "webhook_delivery_"+status, errMsg)
 	}
-	_, err := d.db.ExecContext(ctx, query, errMsg, nextAttempt, now, deliveryID)
 	return err
+}
+
+func (d *webhookDeliveryStore) audit(ctx context.Context, deliveryID, eventType, detail string) {
+	if d.auditLogger == nil {
+		return
+	}
+	if err := d.auditLogger(ctx, AuditEventParams{
+		EventType:  eventType,
+		SourceType: "webhook",
+		SourceID:   deliveryID,
+		TargetType: "webhook_delivery",
+		TargetID:   deliveryID,
+		Detail:     detail,
+	}); err != nil {
+		slog.Warn("webhook delivery: audit log failed", "err", err, "delivery_id", deliveryID, "event_type", eventType)
+	}
 }
 
 // WebhookDeliveryRecord represents a webhook delivery for the MCP tool.
 type WebhookDeliveryRecord struct {
-	ID           string
-	DeliveryID   string
-	EventType    string
-	EventAction  string
-	Status       string
-	Attempts     int
-	MaxAttempts  int
-	Error        string
-	CreatedAt    time.Time
-	ProcessedAt  *time.Time
+	ID          string
+	DeliveryID  string
+	EventType   string
+	EventAction string
+	Status      string
+	Attempts    int
+	MaxAttempts int
+	Error       string
+	CreatedAt   time.Time
+	ProcessedAt *time.Time
 }
 
 // ListWebhookDeliveries returns recent webhook deliveries for the MCP tool.
@@ -145,25 +192,38 @@ func (s *Service) ListWebhookDeliveries(ctx context.Context, limit, offset int) 
 
 // webhookDeliveryWorker is a background goroutine that retries failed webhook
 // deliveries with exponential backoff. See issue #102 criterion 1 and 5.
-type webhookDeliveryWorker struct {
+type WebhookDeliveryWorker struct {
 	db      *sql.DB
 	dialect store.Dialect
 	handler *webhook.Handler
 	stopCh  <-chan struct{}
+	done    chan struct{}
 }
 
 // NewWebhookDeliveryWorker creates a background worker that retries failed
 // webhook deliveries. The worker runs until stopCh is closed. See issue #102.
-func NewWebhookDeliveryWorker(db *sql.DB, dialect store.Dialect, handler *webhook.Handler, stopCh <-chan struct{}) *webhookDeliveryWorker {
-	return &webhookDeliveryWorker{db: db, dialect: dialect, handler: handler, stopCh: stopCh}
+func NewWebhookDeliveryWorker(db *sql.DB, dialect store.Dialect, handler *webhook.Handler, stopCh <-chan struct{}) *WebhookDeliveryWorker {
+	return &WebhookDeliveryWorker{db: db, dialect: dialect, handler: handler, stopCh: stopCh, done: make(chan struct{})}
 }
 
 // Start begins the retry loop in a background goroutine. See issue #102.
-func (w *webhookDeliveryWorker) Start() {
+func (w *WebhookDeliveryWorker) Start() {
 	go w.run()
 }
 
-func (w *webhookDeliveryWorker) run() {
+// Shutdown waits for the retry worker to observe the service stop signal.
+// This keeps delivery processing from using the database after it closes.
+func (w *WebhookDeliveryWorker) Shutdown(ctx context.Context) error {
+	select {
+	case <-w.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *WebhookDeliveryWorker) run() {
+	defer close(w.done)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -183,7 +243,7 @@ type pendingDelivery struct {
 	payload    string
 }
 
-func (w *webhookDeliveryWorker) retryFailedDeliveries() {
+func (w *WebhookDeliveryWorker) retryFailedDeliveries() {
 	if w.db == nil || w.handler == nil {
 		return
 	}
@@ -251,9 +311,9 @@ var _ json.RawMessage
 // NewWebhookDeliveryStoreAdapter returns a webhook.DeliveryStore backed by the
 // chetter_webhook_deliveries table. Returns nil if db is nil (delivery tracking
 // is disabled). See issue #102.
-func NewWebhookDeliveryStoreAdapter(db *sql.DB, dialect store.Dialect) webhook.DeliveryStore {
+func NewWebhookDeliveryStoreAdapter(db *sql.DB, dialect store.Dialect, auditLogger func(context.Context, AuditEventParams) error) webhook.DeliveryStore {
 	if db == nil {
 		return nil
 	}
-	return newWebhookDeliveryStore(db, dialect)
+	return newWebhookDeliveryStore(db, dialect, auditLogger)
 }

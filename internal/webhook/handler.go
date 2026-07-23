@@ -62,6 +62,8 @@ type DeliveryStore interface {
 	// RecordDelivery inserts a delivery row. Returns false (with nil error)
 	// if the delivery_id was already recorded (idempotent dedup).
 	RecordDelivery(ctx context.Context, params RecordDeliveryParams) (created bool, err error)
+	// MarkDeliveryProcessing marks a delivery as currently being handled.
+	MarkDeliveryProcessing(ctx context.Context, deliveryID string) error
 	// MarkDeliveryCompleted marks a delivery as successfully processed.
 	MarkDeliveryCompleted(ctx context.Context, deliveryID string) error
 	// MarkDeliveryFailed marks a delivery as failed with the error and
@@ -157,7 +159,7 @@ type Handler struct {
 	cfg           HandlerConfig
 	gh            *Client
 	submitter     TaskSubmitter
-	triggers       TriggerResolver
+	triggers      TriggerResolver
 	audit         AuditLogger
 	artifacts     ArtifactRecorder
 	resumer       SessionResumer
@@ -186,7 +188,7 @@ func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers
 		cfg:           cfg,
 		gh:            gh,
 		submitter:     submitter,
-		triggers:       triggers,
+		triggers:      triggers,
 		audit:         audit,
 		artifacts:     artifacts,
 		resumer:       resumer,
@@ -266,7 +268,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		recordCancel()
 		if rerr != nil {
-			slog.Warn("webhook: record delivery failed, processing anyway", "err", rerr, "deliveryID", deliveryID)
+			slog.Error("webhook: record delivery failed", "err", rerr, "deliveryID", deliveryID)
+			http.Error(w, "delivery queue unavailable", http.StatusServiceUnavailable)
+			return
 		} else if !created {
 			slog.Info("webhook: duplicate delivery in store, ignoring", "deliveryID", deliveryID, "event", event)
 			w.WriteHeader(http.StatusOK)
@@ -288,13 +292,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // store with the outcome. On failure, the delivery is marked failed so the
 // background worker can retry it. See issue #102.
 func (h *Handler) processDelivery(event string, body []byte, deliveryID string) {
-	h.handle(event, body, deliveryID)
-	if h.deliveryStore != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := h.deliveryStore.MarkDeliveryCompleted(ctx, deliveryID); err != nil {
-			slog.Warn("webhook: mark delivery completed", "err", err, "deliveryID", deliveryID)
-		}
-		cancel()
+	if err := h.ProcessDelivery(event, body, deliveryID); err != nil {
+		slog.Warn("webhook: delivery processing failed", "err", err, "deliveryID", deliveryID)
 	}
 }
 
@@ -302,7 +301,26 @@ func (h *Handler) processDelivery(event string, body []byte, deliveryID string) 
 // re-process a failed delivery. It runs the handler synchronously and updates
 // the delivery store with the outcome. See issue #102.
 func (h *Handler) ProcessDelivery(event string, body []byte, deliveryID string) error {
-	h.handle(event, body, deliveryID)
+	if h.deliveryStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := h.deliveryStore.MarkDeliveryProcessing(ctx, deliveryID); err != nil {
+			cancel()
+			return err
+		}
+		cancel()
+	}
+
+	processingErr := h.runDelivery(event, body, deliveryID)
+	if processingErr != nil {
+		if h.deliveryStore != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := h.deliveryStore.MarkDeliveryFailed(ctx, deliveryID, processingErr.Error()); err != nil {
+				slog.Warn("webhook: mark delivery failed", "err", err, "deliveryID", deliveryID)
+			}
+			cancel()
+		}
+		return processingErr
+	}
 	if h.deliveryStore != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := h.deliveryStore.MarkDeliveryCompleted(ctx, deliveryID); err != nil {
@@ -311,6 +329,16 @@ func (h *Handler) ProcessDelivery(event string, body []byte, deliveryID string) 
 		}
 		cancel()
 	}
+	return nil
+}
+
+func (h *Handler) runDelivery(event string, body []byte, deliveryID string) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("webhook processing panic: %v", recovered)
+		}
+	}()
+	h.handle(event, body, deliveryID)
 	return nil
 }
 
@@ -326,56 +354,57 @@ func parseEventAction(event string, body []byte) (string, error) {
 	return partial.Action, nil
 }
 
-func (h *Handler) handle(event string, body []byte, deliveryID string) {
+func (h *Handler) handle(event string, body []byte, deliveryID string) error {
 	switch event {
 	case EventTypePullRequest:
-		h.handlePullRequest(body, deliveryID)
+		return h.handlePullRequest(body, deliveryID)
 	case EventTypeIssueComment:
-		h.handleIssueComment(body, deliveryID)
+		return h.handleIssueComment(body, deliveryID)
 	case EventTypeIssues:
-		h.handleIssues(body, deliveryID)
+		return h.handleIssues(body, deliveryID)
 	case EventTypePullRequestReview:
-		h.handlePullRequestReview(body, deliveryID)
+		return h.handlePullRequestReview(body, deliveryID)
 	case EventTypePullRequestReviewComment:
-		h.handlePullRequestReviewComment(body, deliveryID)
+		return h.handlePullRequestReviewComment(body, deliveryID)
 	default:
 		slog.Debug("webhook: ignoring unsupported event", "event", event)
 	}
+	return nil
 }
 
-func (h *Handler) handlePullRequestReview(body []byte, deliveryID string) {
+func (h *Handler) handlePullRequestReview(body []byte, deliveryID string) error {
 	var ev PullRequestReviewEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse pull_request_review", "err", err)
-		return
+		return fmt.Errorf("parse pull_request_review: %w", err)
 	}
 	if ev.Action != "submitted" {
-		return
+		return nil
 	}
-	h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Review.User.Login, deliveryID, EventTypePullRequestReview, ev.Action)
+	return h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Review.User.Login, deliveryID, EventTypePullRequestReview, ev.Action)
 }
 
-func (h *Handler) handlePullRequestReviewComment(body []byte, deliveryID string) {
+func (h *Handler) handlePullRequestReviewComment(body []byte, deliveryID string) error {
 	var ev PullRequestReviewCommentEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse pull_request_review_comment", "err", err)
-		return
+		return fmt.Errorf("parse pull_request_review_comment: %w", err)
 	}
 	if ev.Action != "created" {
-		return
+		return nil
 	}
-	h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Comment.User.Login, deliveryID, EventTypePullRequestReviewComment, ev.Action)
+	return h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Comment.User.Login, deliveryID, EventTypePullRequestReviewComment, ev.Action)
 }
 
-func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, deliveryID, eventType, action string) {
+func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, deliveryID, eventType, action string) error {
 	if h.resumer == nil || repo == "" || prNumber <= 0 {
-		return
+		return nil
 	}
 	if author != "" {
 		appLogin, _ := h.gh.GetAppLogin(asyncCtx(15 * time.Second))
 		if appLogin != "" && author == appLogin {
 			slog.Info("webhook: skipping Chetter app review feedback", "repo", repo, "pr", prNumber, "event", eventType)
-			return
+			return nil
 		}
 	}
 	h.logAudit(AuditEventParams{
@@ -392,7 +421,9 @@ func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, 
 	})
 	if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, prNumber); err != nil {
 		slog.Warn("webhook: resume session for pr feedback", "err", err, "repo", repo, "pr", prNumber, "event", eventType)
+		return err
 	}
+	return nil
 }
 
 // verifySignature checks the HMAC-SHA256 signature from GitHub.
@@ -409,11 +440,11 @@ func verifySignature(secret string, body []byte, header string) bool {
 	return hmac.Equal([]byte(expected), []byte(header))
 }
 
-func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
+func (h *Handler) handlePullRequest(body []byte, deliveryID string) error {
 	var ev PullRequestEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse pull_request", "err", err)
-		return
+		return fmt.Errorf("parse pull_request: %w", err)
 	}
 
 	// Only act on the actions that change reviewable state.
@@ -425,19 +456,19 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 		// continue
 	default:
 		slog.Debug("webhook: ignoring pull_request action", "action", ev.Action)
-		return
+		return nil
 	}
 
 	// For "labeled" events, only proceed if the label added is ours.
 	if ev.Action == PullRequestActionLabeled && (ev.Label == nil || ev.Label.Name != ChetterReviewLabel) {
-		return
+		return nil
 	}
 
 	repo := ev.Repository.FullName
 	triggerAction := triggerActionFromPR(ev, repo)
 	if triggerAction == "" {
 		slog.Debug("webhook: PR not eligible for review", "repo", repo, "pr", ev.Number)
-		return
+		return nil
 	}
 
 	// Gate fork and opened triggers on author write access. Skip the gate
@@ -448,7 +479,7 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if !h.checkAuthorWriteAccess(ctx, repo, ev.PullRequest.User.Login, deliveryID) {
-				return
+				return nil
 			}
 		}
 	}
@@ -456,10 +487,10 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) {
 	triggers, err := h.triggers.ListEnabledPRReviewTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list pr review triggers", "err", err, "repo", repo)
-		return
+		return fmt.Errorf("list pr review triggers: %w", err)
 	}
 
-	h.submitReviewForTrigger(ReviewContext{
+	return h.submitReviewForTrigger(ReviewContext{
 		Trigger:      triggerAction,
 		Repo:         repo,
 		PRNumber:     ev.Number,
@@ -488,14 +519,14 @@ func triggerActionFromPR(ev PullRequestEvent, repo string) string {
 	return ""
 }
 
-func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
+func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 	var ev IssueCommentEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse issue_comment", "err", err)
-		return
+		return fmt.Errorf("parse issue_comment: %w", err)
 	}
 	if ev.Action != "created" {
-		return
+		return nil
 	}
 
 	repo := ev.Repository.FullName
@@ -518,32 +549,33 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 	if ev.IsPullRequest() && h.resumer != nil {
 		if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
 			slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
+			return err
 		}
 	}
 
 	if ev.IsPullRequest() {
 		// PR comment — handle /chetter-review trigger.
 		if strings.TrimSpace(ev.Comment.Body) != ReviewTriggerCommand {
-			return
+			return nil
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		hasAccess, err := h.gh.CheckUserHasWriteAccess(ctx, repo, ev.Comment.User.Login)
 		if err != nil {
 			slog.Warn("webhook: check write access", "user", ev.Comment.User.Login, "err", err)
-			return
+			return err
 		}
 		if !hasAccess {
 			slog.Info("webhook: ignoring /chetter-review from non-writer",
 				"user", ev.Comment.User.Login, "repo", repo)
-			return
+			return nil
 		}
 		prCtx, prCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer prCancel()
 		head, base, cloneURL, err := h.gh.GetPullRequest(prCtx, repo, ev.Issue.Number)
 		if err != nil {
 			slog.Warn("webhook: fetch PR", "err", err)
-			return
+			return fmt.Errorf("fetch pull request: %w", err)
 		}
 		ackCtx, ackCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer ackCancel()
@@ -551,7 +583,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		if err := h.gh.CreateIssueComment(ackCtx, repo, ev.Issue.Number, ackComment); err != nil {
 			slog.Warn("webhook: post ack comment for comment trigger", "repo", repo, "pr", ev.Issue.Number, "err", err)
 		}
-		h.submitReviewForTrigger(ReviewContext{
+		return h.submitReviewForTrigger(ReviewContext{
 			Trigger:       "comment",
 			Repo:          repo,
 			PRNumber:      ev.Issue.Number,
@@ -560,14 +592,13 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			HeadCloneURL:  cloneURL,
 			CommentAuthor: ev.Comment.User.Login,
 		}, nil, "comment")
-		return
 	}
 
 	// Issue comment — check for issue triggers with event "comment".
 	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list issue triggers for comment", "err", err, "repo", repo)
-		return
+		return fmt.Errorf("list issue triggers for comment: %w", err)
 	}
 	// Extract issue label names.
 	issueLabels := make([]string, len(ev.Issue.Labels))
@@ -586,7 +617,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		matching = append(matching, t)
 	}
 	if len(matching) == 0 {
-		return
+		return nil
 	}
 
 	// Bot-comment filtering: skip comments from the Chetter App itself unless
@@ -602,22 +633,23 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 		}
 		if len(botMatch) == 0 {
 			slog.Debug("webhook: skipping bot comment (no triggers with bot_comments:true)", "repo", repo, "issue", ev.Issue.Number)
-			return
+			return nil
 		}
 		matching = botMatch
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if !h.checkAuthorWriteAccess(ctx, repo, ev.Comment.User.Login, deliveryID) {
-			return
+			return nil
 		}
 	}
 
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token for issue comment", "err", err)
-		return
+		return fmt.Errorf("get github token for issue comment: %w", err)
 	}
+	var firstErr error
 	for _, t := range matching {
 		prompt := t.Prompt
 		if prompt == "" {
@@ -655,6 +687,9 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			},
 		}
 		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			slog.Error("webhook: submit issue comment task", "err", err,
 				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
 			h.logAudit(AuditEventParams{
@@ -682,17 +717,18 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) {
 			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s (bot_comment=%v)", ev.Issue.Number, t.Name, isBotComment),
 		})
 	}
+	return firstErr
 }
 
 // submitReviewForTrigger gets an installation token, filters triggers by event,
 // and forwards the review context to the TaskSubmitter for each match.
 // If triggers is nil, it fetches them from the resolver.
-func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTrigger, event string) {
+func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTrigger, event string) error {
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token", "err", err)
 		h.postCommentOnFailure(ctx, fmt.Sprintf("Chetter could not authenticate: %v", err))
-		return
+		return err
 	}
 	ctx.GitHubToken = token
 
@@ -701,7 +737,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		if err != nil {
 			slog.Error("webhook: list pr review triggers", "err", err, "repo", ctx.Repo)
 			h.postCommentOnFailure(ctx, CommentReviewFailed)
-			return
+			return err
 		}
 	}
 
@@ -715,7 +751,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 
 	if len(matching) == 0 {
 		slog.Info("webhook: no triggers match event", "event", event, "repo", ctx.Repo, "pr", ctx.PRNumber)
-		return
+		return nil
 	}
 
 	// Add the review label to indicate a review is in progress.
@@ -732,6 +768,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		}
 	}
 
+	var firstErr error
 	for _, t := range matching {
 		rc := ctx
 		if t.Prompt != "" {
@@ -766,6 +803,9 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		rc.PauseReason = t.PauseReason
 		rc.TTLHours = t.TTLHours
 		if err := h.submitter.SubmitReviewTask(asyncCtx(30*time.Second), rc); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			slog.Error("webhook: submit review task", "err", err,
 				"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
 			h.postCommentOnFailure(rc, CommentReviewFailed)
@@ -774,14 +814,15 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, triggers []ReviewTri
 		slog.Info("webhook: review task submitted",
 			"trigger", t.Name, "repo", rc.Repo, "pr", rc.PRNumber, "triggerType", rc.Trigger)
 	}
+	return firstErr
 }
 
 // handleIssues handles an issues webhook event.
-func (h *Handler) handleIssues(body []byte, deliveryID string) {
+func (h *Handler) handleIssues(body []byte, deliveryID string) error {
 	var ev IssueEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		slog.Warn("webhook: parse issues", "err", err)
-		return
+		return fmt.Errorf("parse issues: %w", err)
 	}
 
 	// Only act on the actions we care about.
@@ -790,7 +831,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 		// continue
 	default:
 		slog.Debug("webhook: ignoring issues action", "action", ev.Action)
-		return
+		return nil
 	}
 
 	repo := ev.Repository.FullName
@@ -818,7 +859,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 	triggers, err := h.triggers.ListEnabledIssueTriggersByRepo(asyncCtx(30*time.Second), repo)
 	if err != nil {
 		slog.Error("webhook: list issue triggers", "err", err, "repo", repo)
-		return
+		return fmt.Errorf("list issue triggers: %w", err)
 	}
 
 	// Extract issue label names. For labeled events, compare against the label
@@ -843,13 +884,13 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 		matching = append(matching, t)
 	}
 	if len(matching) == 0 {
-		return
+		return nil
 	}
 
 	token, err := h.gh.tokenCache.get(h.gh)
 	if err != nil {
 		slog.Error("webhook: get GitHub token", "err", err)
-		return
+		return fmt.Errorf("get github token: %w", err)
 	}
 
 	for _, t := range matching {
@@ -913,6 +954,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) {
 			Detail:           fmt.Sprintf("task submitted for issue #%d via trigger %s on action %s", ev.Issue.Number, t.Name, ev.Action),
 		})
 	}
+	return nil
 }
 
 func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {

@@ -55,13 +55,23 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// A second SIGTERM/SIGINT during the drain period force-exits
-	// immediately. This lets operators (or Kubernetes after
-	// terminationGracePeriodSeconds) escalate a stuck shutdown. See issue
-	// #99 criterion 2.
+	// Register the second-signal watcher only after the first signal cancels
+	// ctx. This prevents the first signal from being mistaken for the force
+	// exit signal. See issue #99 criterion 2.
 	forceExitCh := make(chan os.Signal, 1)
-	signal.Notify(forceExitCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(forceExitCh)
+	shutdownDone := make(chan struct{})
+	go func() {
+		<-ctx.Done()
+		signal.Notify(forceExitCh, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(forceExitCh)
+		select {
+		case <-forceExitCh:
+			slog.Warn("graceful shutdown: second signal received, force-exiting")
+			os.Exit(1)
+		case <-shutdownDone:
+		}
+	}()
+	defer close(shutdownDone)
 
 	st, err := store.Open(cfg.DatabaseDSN, store.ParseDialect(cfg.DBDialect))
 	if err != nil {
@@ -113,15 +123,16 @@ func run() error {
 		Logger:       slog.Default(),
 	})
 
-	whHandler := buildWebhookHandler(cfg, svc, service.NewWebhookDeliveryStoreAdapter(st.DB(), st.Dialect()))
+	whHandler := buildWebhookHandler(cfg, svc, service.NewWebhookDeliveryStoreAdapter(st.DB(), st.Dialect(), svc.LogAuditEvent))
 
 	// Start the webhook delivery retry worker. It retries failed deliveries
 	// with exponential backoff (1s/5s/15s) and dead-letters them after 3
 	// attempts. The worker runs until the service's reaperStop channel is
 	// closed (on shutdown). See issue #102.
+	var deliveryWorker *service.WebhookDeliveryWorker
 	if whHandler != nil {
-		worker := service.NewWebhookDeliveryWorker(st.DB(), st.Dialect(), whHandler, svc.ReaperStopCh())
-		worker.Start()
+		deliveryWorker = service.NewWebhookDeliveryWorker(st.DB(), st.Dialect(), whHandler, svc.ReaperStopCh())
+		deliveryWorker.Start()
 		slog.Info("webhook delivery retry worker started")
 	}
 
@@ -150,7 +161,11 @@ func run() error {
 	go func() {
 		<-ctx.Done()
 		slog.Info("graceful shutdown: signal received, stopping MCP server")
-		server.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("graceful shutdown: MCP server drain incomplete", "error", err)
+		}
+		cancel()
 	}()
 
 	// Web API + UI server
@@ -234,19 +249,17 @@ func run() error {
 	slog.Info("graceful shutdown: stopping service (reaper, cron, sync)")
 	svc.Stop()
 	eventBus.CloseAll()
+	if deliveryWorker != nil {
+		slog.Info("graceful shutdown: waiting for webhook delivery worker")
+		if err := deliveryWorker.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("graceful shutdown: webhook delivery worker did not stop", "error", err)
+		}
+	}
 
 	// Step 4: Close the database connection pool.
 	slog.Info("graceful shutdown: closing database")
 	if err := st.Close(); err != nil {
 		slog.Warn("graceful shutdown: database close error", "error", err)
-	}
-
-	// Watch for a second signal during the drain; if received, force-exit.
-	select {
-	case <-forceExitCh:
-		slog.Warn("graceful shutdown: second signal received, force-exiting")
-		os.Exit(1)
-	default:
 	}
 
 	slog.Info("graceful shutdown: complete")
