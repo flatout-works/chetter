@@ -131,17 +131,19 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
+	sessions, startedAt, err := s.batchTaskDetails(ctx, tasks)
+	if err != nil {
+		return nil, fmt.Errorf("load task details: %w", err)
+	}
 	out := make([]TaskToolRecord, 0, len(tasks))
 	for _, task := range tasks {
-		session, sessionErr := s.repo.GetAgentSessionByTaskID(ctx, task.ID)
-		if sessionErr != nil {
-			return nil, fmt.Errorf("get latest agent session for task %s: %w", task.ID, sessionErr)
+		session, ok := sessions[task.ID]
+		if !ok {
+			return nil, fmt.Errorf("get latest agent session for task %s: %w", task.ID, sql.ErrNoRows)
 		}
 		record := repoTaskToToolRecord(task, session)
-		if prompt, promptErr := s.repo.GetUserPromptByTaskID(ctx, task.ID); promptErr == nil {
-			if attempts, attemptErr := s.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID); attemptErr == nil && len(attempts) > 0 {
-				record.StartedAt = nullTimePtr(attempts[len(attempts)-1].StartedAt)
-			}
+		if taskStartedAt, ok := startedAt[task.ID]; ok {
+			record.StartedAt = nullTimePtr(taskStartedAt)
 		}
 		out = append(out, record)
 	}

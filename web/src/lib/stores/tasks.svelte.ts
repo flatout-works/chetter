@@ -28,10 +28,14 @@ export const fleetHealth = writable<{
 
 export const statusFilter = writable("");
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 let fleetStream: AbortController | null = null;
+let taskRefreshGeneration = 0;
+let fleetHealthRefreshGeneration = 0;
+let liveUpdateGeneration = 0;
 
 export async function refreshTasks(status = "", limit = 100, search = "") {
+  const generation = ++taskRefreshGeneration;
   try {
     const client = createClient(TaskService, getTransport());
     const teamIds = effectiveTeamIDs();
@@ -41,18 +45,21 @@ export async function refreshTasks(status = "", limit = 100, search = "") {
       ...(teamIds.length > 0 ? { teamIds } : {}),
       ...(repos.length > 0 ? { repos } : {}),
     });
-    tasks.set(resp.tasks);
+    if (generation === taskRefreshGeneration) {
+      tasks.set(resp.tasks);
+    }
   } catch (e) {
     console.error("Failed to refresh tasks:", e);
   }
 }
 
 export async function refreshFleetHealth() {
+  const generation = ++fleetHealthRefreshGeneration;
   try {
     const client = createClient(FleetService, getTransport());
     const resp = await client.getRunnerHealth({ includeTasks: false });
     const h = resp.health;
-    if (h) {
+    if (h && generation === fleetHealthRefreshGeneration) {
       fleetHealth.set({
         totalTasks: h.totalTasks,
         pendingTasks: h.pendingTasks,
@@ -71,19 +78,24 @@ export async function refreshFleetHealth() {
 
 export function startLiveUpdates() {
   stopLiveUpdates();
-  refreshTasks(get(statusFilter));
-  refreshFleetHealth();
-  pollInterval = setInterval(() => {
-    refreshTasks(get(statusFilter));
-    refreshFleetHealth();
-  }, 5000);
+  const generation = liveUpdateGeneration;
+  const refresh = async () => {
+    if (generation !== liveUpdateGeneration) return;
+    const started = Date.now();
+    await Promise.all([refreshTasks(get(statusFilter)), refreshFleetHealth()]);
+    if (generation === liveUpdateGeneration) {
+      pollTimeout = setTimeout(refresh, Math.max(0, 5000 - (Date.now() - started)));
+    }
+  };
+  void refresh();
 }
 
 export function stopLiveUpdates() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-  }
+  liveUpdateGeneration++;
+  taskRefreshGeneration++;
+  fleetHealthRefreshGeneration++;
+  if (pollTimeout) clearTimeout(pollTimeout);
+  pollTimeout = null;
   if (fleetStream) {
     fleetStream.abort();
     fleetStream = null;
