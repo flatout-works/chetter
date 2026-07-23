@@ -883,6 +883,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport, checkpointPath, workspacePath string, tokenUsage task.TokenUsage) {
 	resp := task.TaskResponse{
 		TaskID:         req.TaskID,
+		ExecutionID:    req.ExecutionID,
 		Status:         status,
 		Artifacts:      artifacts,
 		SessionExport:  sessionExport,
@@ -1023,6 +1024,7 @@ func probeHTTP(ctx context.Context, url string) string {
 func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string, tokenUsage task.TokenUsage) {
 	resp := task.TaskResponse{
 		TaskID:        req.TaskID,
+		ExecutionID:   req.ExecutionID,
 		Status:        status,
 		Artifacts:     artifacts,
 		SessionExport: sessionExport,
