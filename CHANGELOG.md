@@ -55,6 +55,12 @@ All notable changes to this project will be documented in this file.
 - Migration chain made portable: MySQL migrations renumbered to produce a clean chain from migration 001, fixing deployment on fresh databases.
 - MCP artifact tools (`chetter_create_issue`, `chetter_create_pr`, `chetter_issue_comment`, `chetter_pr_review`) removed from server-side MCP tool list — they remain available only through the runner bridge.
 - Web UI: session resume modes clarified with helper text; agent and artifact navigation improved with clearer labels and links; agent detail page loading streamlined.
+- Runner: execution IDs now included in terminal task reports, enabling correct execution attempt tracking downstream.
+- Runner: terminal task reports now block synchronously with retries instead of fire-and-forget, preventing silent loss of final task status when the server is temporarily unreachable.
+- Runner: lease renewed during task finalization via periodic heartbeats, preventing premature lease expiry while container cleanup, session export, and terminal reporting are in progress.
+- Runner: OpenCode completion statuses normalized into a shared helper, fixing edge cases where non-standard status values were not recognized as completion.
+- OpenCode harness: terminal assistant messages confirmed by polling session status before signaling harness completion, improving detection reliability.
+- Task detail page: artifacts now loaded during task runs (not only after terminal status), showing created issues/PRs/comments while the task is still running.
 
 ### Documentation
 
