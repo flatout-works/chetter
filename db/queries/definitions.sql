@@ -55,6 +55,7 @@ ON DUPLICATE KEY UPDATE
 SELECT * FROM definitions
 WHERE (? = '' OR definition_type = ?)
   AND (? = '' OR source_id = ?)
+  AND (sqlc.arg(name_filter) = '' OR name = sqlc.arg(name_filter))
   AND active = true
 ORDER BY definition_type ASC, name ASC, scope ASC;
 

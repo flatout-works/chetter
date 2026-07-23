@@ -118,6 +118,8 @@ type DefinitionToolRecord struct {
 	Repo           string    `json:"repo,omitempty"`
 	Path           string    `json:"path"`
 	SourceCommit   string    `json:"source_commit"`
+	SourceRepoURL  string    `json:"source_repo_url,omitempty"`
+	SourceBranch   string    `json:"source_branch,omitempty"`
 	ContentHash    string    `json:"content_hash"`
 	Content        string    `json:"content,omitempty"`
 	Active         bool      `json:"active"`
@@ -126,12 +128,13 @@ type DefinitionToolRecord struct {
 }
 
 // ListAgentDefinitions returns active agent definitions visible in the current scope.
-func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos []string) ([]DefinitionToolRecord, error) {
+func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos []string, name string) ([]DefinitionToolRecord, error) {
 	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
 		Column1:        definitions.DefinitionTypeAgent,
 		DefinitionType: definitions.DefinitionTypeAgent,
 		Column3:        "",
 		SourceID:       "",
+		NameFilter:     name,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list agent definitions: %w", err)
@@ -147,6 +150,7 @@ func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos [
 	}
 	teamSet := stringSet(allowedTeams)
 	repoSet := stringSet(uiRepos)
+	sourceCache := map[string]repository.DefinitionSource{}
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
 		if def.Scope == definitionScopeTeam && len(teamSet) > 0 && (!def.TeamID.Valid || !teamSet[def.TeamID.String]) {
@@ -158,7 +162,23 @@ func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos [
 		if def.Scope == definitionScopeRepo && len(repoSet) > 0 && (!def.Repo.Valid || !repoSet[def.Repo.String]) {
 			continue
 		}
-		out = append(out, definitionToolRecord(def))
+		record := definitionToolRecord(def)
+		if def.SourceID != "" {
+			source, ok := sourceCache[def.SourceID]
+			if !ok {
+				source, err = s.repo.GetDefinitionSource(ctx, def.SourceID)
+				if err != nil {
+					slog.DebugContext(ctx, "get agent definition source", "source_id", def.SourceID, "err", err)
+				} else {
+					sourceCache[def.SourceID] = source
+				}
+			}
+			if source.ID != "" {
+				record.SourceRepoURL = source.RepoUrl
+				record.SourceBranch = source.Branch
+			}
+		}
+		out = append(out, record)
 	}
 	return out, nil
 }

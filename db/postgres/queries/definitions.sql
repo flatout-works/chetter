@@ -48,6 +48,7 @@ ON CONFLICT (source_id, definition_type, name, path) DO UPDATE SET
 SELECT * FROM definitions
 WHERE (sqlc.arg(definition_type_filter) = '' OR definition_type = sqlc.arg(definition_type_filter))
   AND (sqlc.arg(source_id_filter) = '' OR source_id = sqlc.arg(source_id_filter))
+  AND (sqlc.arg(name_filter) = '' OR name = sqlc.arg(name_filter))
   AND active = true
 ORDER BY definition_type ASC, name ASC, scope ASC;
 

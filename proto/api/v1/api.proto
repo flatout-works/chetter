@@ -926,6 +926,7 @@ message GetModelCatalogResponse {
 message ListAgentDefinitionsRequest {
   repeated string team_ids = 1;
   repeated string repos = 2;
+  string name = 3;
 }
 
 message AgentDefinition {
@@ -945,6 +946,8 @@ message AgentDefinition {
   string source_commit = 14;
   string content = 15;
   string updated_at = 16;
+  string source_repo_url = 17;
+  string source_branch = 18;
 }
 
 message ListAgentDefinitionsResponse {

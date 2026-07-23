@@ -8066,6 +8066,7 @@ type ListAgentDefinitionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TeamIds       []string               `protobuf:"bytes,1,rep,name=team_ids,json=teamIds,proto3" json:"team_ids,omitempty"`
 	Repos         []string               `protobuf:"bytes,2,rep,name=repos,proto3" json:"repos,omitempty"`
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8114,6 +8115,13 @@ func (x *ListAgentDefinitionsRequest) GetRepos() []string {
 	return nil
 }
 
+func (x *ListAgentDefinitionsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type AgentDefinition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -8132,6 +8140,8 @@ type AgentDefinition struct {
 	SourceCommit  string                 `protobuf:"bytes,14,opt,name=source_commit,json=sourceCommit,proto3" json:"source_commit,omitempty"`
 	Content       string                 `protobuf:"bytes,15,opt,name=content,proto3" json:"content,omitempty"`
 	UpdatedAt     string                 `protobuf:"bytes,16,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	SourceRepoUrl string                 `protobuf:"bytes,17,opt,name=source_repo_url,json=sourceRepoUrl,proto3" json:"source_repo_url,omitempty"`
+	SourceBranch  string                 `protobuf:"bytes,18,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8274,6 +8284,20 @@ func (x *AgentDefinition) GetContent() string {
 func (x *AgentDefinition) GetUpdatedAt() string {
 	if x != nil {
 		return x.UpdatedAt
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetSourceRepoUrl() string {
+	if x != nil {
+		return x.SourceRepoUrl
+	}
+	return ""
+}
+
+func (x *AgentDefinition) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
 	}
 	return ""
 }
@@ -9063,10 +9087,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x10default_provider\x18\x01 \x01(\tR\x0fdefaultProvider\x12#\n" +
 	"\rdefault_model\x18\x02 \x01(\tR\fdefaultModel\x129\n" +
 	"\bdefaults\x18\x03 \x03(\v2\x1d.api.v1.CatalogHarnessDefaultR\bdefaults\x125\n" +
-	"\tproviders\x18\x04 \x03(\v2\x17.api.v1.CatalogProviderR\tproviders\"N\n" +
+	"\tproviders\x18\x04 \x03(\v2\x17.api.v1.CatalogProviderR\tproviders\"b\n" +
 	"\x1bListAgentDefinitionsRequest\x12\x19\n" +
 	"\bteam_ids\x18\x01 \x03(\tR\ateamIds\x12\x14\n" +
-	"\x05repos\x18\x02 \x03(\tR\x05repos\"\xb0\x03\n" +
+	"\x05repos\x18\x02 \x03(\tR\x05repos\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\"\xfd\x03\n" +
 	"\x0fAgentDefinition\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -9085,7 +9110,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\rsource_commit\x18\x0e \x01(\tR\fsourceCommit\x12\x18\n" +
 	"\acontent\x18\x0f \x01(\tR\acontent\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x10 \x01(\tR\tupdatedAt\"O\n" +
+	"updated_at\x18\x10 \x01(\tR\tupdatedAt\x12&\n" +
+	"\x0fsource_repo_url\x18\x11 \x01(\tR\rsourceRepoUrl\x12#\n" +
+	"\rsource_branch\x18\x12 \x01(\tR\fsourceBranch\"O\n" +
 	"\x1cListAgentDefinitionsResponse\x12/\n" +
 	"\x06agents\x18\x01 \x03(\v2\x17.api.v1.AgentDefinitionR\x06agents2\xb5\x05\n" +
 	"\vTaskService\x12C\n" +

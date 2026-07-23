@@ -244,6 +244,7 @@ const listDefinitions = `-- name: ListDefinitions :many
 SELECT id, source_id, definition_type, name, scope, team_id, repo, path, source_commit, content_hash, content, metadata, active, created_at, updated_at FROM definitions
 WHERE ($1 = '' OR definition_type = $1)
   AND ($2 = '' OR source_id = $2)
+  AND ($3 = '' OR name = $3)
   AND active = true
 ORDER BY definition_type ASC, name ASC, scope ASC
 `
@@ -251,10 +252,11 @@ ORDER BY definition_type ASC, name ASC, scope ASC
 type ListDefinitionsParams struct {
 	DefinitionTypeFilter interface{} `json:"definition_type_filter"`
 	SourceIDFilter       interface{} `json:"source_id_filter"`
+	NameFilter           interface{} `json:"name_filter"`
 }
 
 func (q *Queries) ListDefinitions(ctx context.Context, arg ListDefinitionsParams) ([]Definition, error) {
-	rows, err := q.db.QueryContext(ctx, listDefinitions, arg.DefinitionTypeFilter, arg.SourceIDFilter)
+	rows, err := q.db.QueryContext(ctx, listDefinitions, arg.DefinitionTypeFilter, arg.SourceIDFilter, arg.NameFilter)
 	if err != nil {
 		return nil, err
 	}

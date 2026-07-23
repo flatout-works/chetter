@@ -17,6 +17,7 @@
   let error = $state<string | null>(null);
   let page = $state(0);
   const pageSize = 10;
+  const recentTaskLimit = pageSize * 2;
   let totalPages = $derived(Math.max(1, Math.ceil(tasks.length / pageSize)));
   let pagedTasks = $derived(tasks.slice(page * pageSize, (page + 1) * pageSize));
   let completedTasks = $derived(tasks.filter((task) => task.status === "done").length);
@@ -44,6 +45,13 @@
     return (usage?.inputTokens ?? 0n) + (usage?.outputTokens ?? 0n) + (usage?.reasoningTokens ?? 0n);
   }
 
+  function sourceFileUrl(): string | null {
+    if (!agent?.sourceRepoUrl || !agent.path) return null;
+    const branch = agent.sourceBranch || "main";
+    const base = agent.sourceRepoUrl.replace(/\.git$/, "").replace(/\/$/, "");
+    return `${base}/blob/${branch}/${agent.path}`;
+  }
+
   async function load() {
     loading = true;
     error = null;
@@ -55,8 +63,8 @@
       const catalogClient = createClient(CatalogService, getTransport());
       const taskClient = createClient(TaskService, getTransport());
       const [agentResponse, taskResponse] = await Promise.all([
-        catalogClient.listAgentDefinitions(filters),
-        taskClient.listTasks({ ...filters, agent: params.name, limit: 100 }),
+        catalogClient.listAgentDefinitions({ ...filters, name: params.name }),
+        taskClient.listTasks({ ...filters, agent: params.name, limit: recentTaskLimit }),
       ]);
       agent = (agentResponse.agents ?? []).find((item) => item.name === params.name) ?? null;
       tasks = taskResponse.tasks ?? [];
@@ -106,7 +114,14 @@
         <div><span class="text-xs text-gray-400 dark:text-gray-500">Provider</span><p class="text-gray-900 dark:text-white">{agent.provider || "Default"}</p></div>
         <div><span class="text-xs text-gray-400 dark:text-gray-500">Model</span><p class="font-mono text-gray-900 dark:text-white">{agent.model || "Default"}</p></div>
         <div><span class="text-xs text-gray-400 dark:text-gray-500">Updated</span><p class="text-gray-900 dark:text-white">{formatTime(agent.updatedAt)}</p></div>
-        <div><span class="text-xs text-gray-400 dark:text-gray-500">Source path</span><p class="font-mono text-xs text-gray-900 dark:text-white">{agent.path}</p></div>
+        <div>
+          <span class="text-xs text-gray-400 dark:text-gray-500">Source</span>
+          {#if sourceFileUrl()}
+            <p><a href={sourceFileUrl()} target="_blank" rel="noopener noreferrer" class="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline">{agent.path}</a></p>
+          {:else}
+            <p class="font-mono text-xs text-gray-900 dark:text-white">{agent.path || agent.sourceId}</p>
+          {/if}
+        </div>
         <div><span class="text-xs text-gray-400 dark:text-gray-500">Commit</span><p class="font-mono text-xs text-gray-900 dark:text-white">{agent.sourceCommit.slice(0, 12)}</p></div>
         {#if agent.repo}<div><span class="text-xs text-gray-400 dark:text-gray-500">Repository scope</span><p class="text-gray-900 dark:text-white">{agent.repo}</p></div>{/if}
         {#if agent.mcpEndpoints.length > 0}<div><span class="text-xs text-gray-400 dark:text-gray-500">MCP endpoints</span><p class="text-gray-900 dark:text-white">{agent.mcpEndpoints.join(", ")}</p></div>{/if}
