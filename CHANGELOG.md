@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-23
+
+### Added
+
+- Migration-runner entrypoint: new `chetter-entrypoint.sh` script and `cmd/chetter-migrate/` binary that runs Goose migrations before the server starts, ensuring the database schema is current before accepting connections.
+- UI clarification of session resume modes: dedicated labels and visual cues distinguish `paused`, `recoverable`, and terminal session states on task and session detail pages.
+- Perf improvement: agent detail loading streamlined with a dedicated proto field, reducing redundant `GetDefinition` lookups on agent catalog pages.
+
+### Fixed
+
+- Database migrations now run before server startup (not in parallel with it), preventing race conditions where the server could accept requests before the schema was fully applied.
+- Trigger run history re-linked after definition sync: a rogue `DELETE` on sync could lose `trigger_run` rows. New migrations (`042`/`018`) re-establish the foreign key relationship; subsequent migration `043`/`019` backfills orphaned runs and preserves existing task durations.
+- Legacy execution attempts backfilled: existing tasks that completed before the execution-attempt hierarchy was introduced now get synthetic `ExecutionAttempt` rows (migration `044`/`020`), fixing status badges and timeline display for historical tasks.
+- Agent and artifact navigation clarified: breadcrumb labels, page titles, and link destinations across task, session, trigger, and artifact pages updated for consistency with the renamed AgentSession/UserPrompt/ExecutionAttempt hierarchy.
+- Runner: superseded task helpers removed (`240+` lines of dead code from `runner_task.go`), reducing maintenance surface.
+
+### Documentation
+
+- New quality hardening plan (`docs/plans/2026-07-23-001-quality-hardening-plan.md`) covering authorization scope, runner credential isolation, execution lifecycle barriers, and systematic test coverage across 4 priority phases.
+- New database separation plan (`docs/plans/2026-07-23-002-ops-separate-chetter-database-plan.md`) documenting the phased migration of Chetter state out of the shared `flatoutdev` database into a dedicated `chetter` database.
+
 ## 2026-07-22
 
 ### Added
