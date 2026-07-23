@@ -34,7 +34,6 @@ const (
 	mcpServerName     = "chetter"
 	mcpServerVersion  = "v0.1.0"
 	initTimeout       = 30 * time.Second
-	shutdownTimeout   = 15 * time.Second
 	readHeaderTimeout = 10 * time.Second
 )
 
@@ -50,6 +49,8 @@ func run() error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+
+	shutdownTimeout := envDuration("CHETTER_SHUTDOWN_TIMEOUT", 15*time.Second)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -191,6 +192,21 @@ func run() error {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve http: %w", err)
 	}
+
+	// Drain in-flight webhook processing goroutines before defers close the
+	// database. The HTTP handler goroutines have already returned (they
+	// respond 200 immediately then spawn an untracked goroutine), so
+	// server.Shutdown only waited for the handler itself — not the async
+	// event processing. Without this drain, events being processed when
+	// SIGTERM arrived would be silently dropped. See issue #57.
+	if whHandler != nil {
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := whHandler.Shutdown(drainCtx); err != nil {
+			slog.Warn("webhook handler drain incomplete", "error", err)
+		}
+		drainCancel()
+	}
+
 	return nil
 }
 
@@ -235,7 +251,7 @@ func runnerRPCAuthMiddleware(runnerToken string, next http.Handler) http.Handler
 // buildWebhookHandler constructs the GitHub webhook handler. Returns nil if
 // the GitHub App is not configured (in which case the route is not
 // registered).
-func buildWebhookHandler(cfg config.Config, svc *service.Service) http.Handler {
+func buildWebhookHandler(cfg config.Config, svc *service.Service) *webhook.Handler {
 	if !cfg.GitHubConfigured() {
 		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, GITHUB_INSTALLATION_ID, or GITHUB_WEBHOOK_SECRET); skipping /webhook/github route")
 		return nil
@@ -324,4 +340,19 @@ func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.Su
 		PauseReason:      req.PauseReason,
 		TTLHours:         req.TTLHours,
 	})
+}
+
+// envDuration reads a duration from an environment variable, falling back to
+// the provided default if unset or unparseable.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		slog.Warn("invalid duration, using default", "key", key, "value", v, "default", fallback)
+		return fallback
+	}
+	return d
 }

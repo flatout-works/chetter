@@ -465,3 +465,50 @@ func TestAsyncCtxDoesNotLeakGoroutine(t *testing.T) {
 		t.Fatalf("ctx.Err() = %v, want DeadlineExceeded", err)
 	}
 }
+
+// TestHandlerShutdownWaitsForInflightGoroutines is a regression test for issue
+// #57. Shutdown must block until all in-flight handle() goroutines finish, so
+// the server does not close the database while webhook events are still being
+// processed.
+func TestHandlerShutdownWaitsForInflightGoroutines(t *testing.T) {
+	h := &Handler{}
+
+	// Simulate an in-flight goroutine that takes 50ms.
+	h.wg.Add(1)
+	start := time.Now()
+	go func() {
+		defer h.wg.Done()
+		time.Sleep(50 * time.Millisecond)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+	elapsed := time.Since(start)
+	if elapsed < 40*time.Millisecond {
+		t.Fatalf("Shutdown returned before goroutine finished, elapsed=%v", elapsed)
+	}
+}
+
+// TestHandlerShutdownTimesOut verifies that Shutdown returns ctx.Err() when
+// in-flight goroutines exceed the deadline, rather than blocking forever. See
+// issue #57 acceptance criteria.
+func TestHandlerShutdownTimesOut(t *testing.T) {
+	h := &Handler{}
+
+	// Simulate a long-running goroutine that never finishes within the drain.
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		time.Sleep(10 * time.Second)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := h.Shutdown(ctx)
+	if err == nil {
+		t.Fatal("Shutdown should have timed out, but returned nil")
+	}
+}

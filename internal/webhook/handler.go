@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -136,6 +137,12 @@ type Handler struct {
 	artifacts ArtifactRecorder
 	resumer   SessionResumer
 	recent    *RecentDeliveries
+
+	// wg tracks in-flight handle() goroutines so Shutdown can wait for them
+	// before the server closes the database. Without this, every server
+	// restart risks silently dropping webhook events that were being processed
+	// when SIGTERM arrived. See issue #57.
+	wg sync.WaitGroup
 }
 
 // HandlerConfig is the configuration for the webhook handler.
@@ -158,6 +165,27 @@ func NewHandler(cfg HandlerConfig, gh *Client, submitter TaskSubmitter, triggers
 		artifacts: artifacts,
 		resumer:   resumer,
 		recent:    NewRecentDeliveries(5*time.Minute, 4096),
+	}
+}
+
+// Shutdown waits for in-flight webhook processing goroutines to finish, or
+// until ctx expires. It must be called after the HTTP server has stopped
+// accepting new requests but before the database is closed, so that
+// in-flight events can complete their DB operations. If the deadline
+// expires, remaining goroutines are abandoned (they continue running but
+// the server proceeds with shutdown); the event is logged. See issue #57.
+func (h *Handler) Shutdown(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		h.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		slog.Warn("webhook handler drain timed out, in-flight events may be dropped", "err", ctx.Err())
+		return ctx.Err()
 	}
 }
 
@@ -197,7 +225,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Respond 200 immediately; process async so GitHub doesn't retry on slowness.
 	w.WriteHeader(http.StatusOK)
 
-	go h.handle(event, body, deliveryID)
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		h.handle(event, body, deliveryID)
+	}()
 }
 
 func (h *Handler) handle(event string, body []byte, deliveryID string) {
