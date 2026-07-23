@@ -168,6 +168,9 @@ func TestLoad(t *testing.T) {
 		if cfg.DefaultTaskTimeoutSec != 600 {
 			t.Errorf("expected 600, got %d", cfg.DefaultTaskTimeoutSec)
 		}
+		if !cfg.AutoRecovery {
+			t.Errorf("expected AutoRecovery default true, got false")
+		}
 	})
 	t.Run("env overrides", func(t *testing.T) {
 		t.Setenv("HTTP_ADDR", ":9090")
@@ -186,6 +189,11 @@ func TestLoad(t *testing.T) {
 		}
 		if cfg.DefaultTaskTimeoutSec != 300 {
 			t.Errorf("expected 300, got %d", cfg.DefaultTaskTimeoutSec)
+		}
+		t.Setenv("DEFAULT_AUTO_RECOVERY", "false")
+		cfg = Load()
+		if cfg.AutoRecovery {
+			t.Errorf("expected AutoRecovery false, got true")
 		}
 	})
 	t.Run("github fields", func(t *testing.T) {

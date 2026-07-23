@@ -267,6 +267,28 @@ func (s *Service) definitionsSyncLoop() {
 	}
 }
 
+// runnerIsDeliberatelyDrained returns true if the runner's last known status
+// indicates it was deliberately drained (status "draining" or "stopping")
+// rather than crashing or going silent. Tasks from deliberately drained
+// runners are not auto-recovered by the reaper. See issue #96 criterion 5.
+func (s *Service) runnerIsDeliberatelyDrained(ctx context.Context, runnerID string) bool {
+	if runnerID == "" || s.rawDB == nil {
+		return false
+	}
+	var query string
+	if s.dialect == store.DialectPostgres {
+		query = "SELECT status FROM chetter_runners WHERE id = $1"
+	} else {
+		query = "SELECT status FROM chetter_runners WHERE id = ?"
+	}
+	var status string
+	err := s.rawDB.QueryRowContext(ctx, query, runnerID).Scan(&status)
+	if err != nil {
+		return false
+	}
+	return status == "draining" || status == "stopping"
+}
+
 func (s *Service) reapExpiredLeases() {
 	ctx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 	defer cancel()
@@ -275,13 +297,22 @@ func (s *Service) reapExpiredLeases() {
 	var reclaimed int64
 	var failed int64
 	var reclaimEvents []TaskEventCallbackContext
+	var recoveryAudits []AuditEventParams
 	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		reclaimed = 0
 		failed = 0
 		reclaimEvents = reclaimEvents[:0]
+		recoveryAudits = recoveryAudits[:0]
 		candidates, err := q.ListReclaimableExecutionAttemptsForUpdate(ctx, expiredBefore)
 		if err != nil {
 			return err
+		}
+		// When auto-recovery is disabled (DEFAULT_AUTO_RECOVERY=false), skip
+		// the requeue loop entirely — all expired leases fall through to
+		// FailExpiredLeases and are marked failed for manual inspection. See
+		// issue #96 criterion 4.
+		if !s.cfg.AutoRecovery {
+			candidates = nil
 		}
 		for _, task := range candidates {
 			attemptCount, err := q.CountExecutionAttemptsByTask(ctx, task.TaskID)
@@ -289,6 +320,14 @@ func (s *Service) reapExpiredLeases() {
 				return err
 			}
 			if attemptCount >= int64(task.MaxAttempts) {
+				continue
+			}
+			// Tasks from a deliberately drained runner (status "draining" or
+			// "stopping") are not auto-recovered. The operator drained the
+			// runner intentionally; its tasks should remain failed for
+			// inspection rather than being silently re-queued. See issue #96
+			// criterion 5.
+			if s.runnerIsDeliberatelyDrained(ctx, task.RunnerID.String) {
 				continue
 			}
 			task.Attempt = int32(attemptCount)
@@ -340,6 +379,17 @@ func (s *Service) reapExpiredLeases() {
 				return fmt.Errorf("task %s is no longer running execution attempt %s", task.TaskID, task.ExecutionAttemptID)
 			}
 			reclaimed++
+			// Collect a task_recovered audit event for this auto-recovery.
+			// The event is logged after the transaction commits. See issue #96
+			// criterion 3.
+			recoveryAudits = append(recoveryAudits, AuditEventParams{
+				EventType:  "task_recovered",
+				SourceType: "reaper",
+				SourceID:   task.RunnerID.String,
+				TargetType: "task",
+				TargetID:   task.TaskID,
+				Detail:     fmt.Sprintf("task %s auto-recovered after runner %s lease expired (attempt %d/%d)", task.TaskID, task.RunnerID.String, task.Attempt, task.MaxAttempts),
+			})
 			if _, err := q.AbandonUserPrompt(ctx, repository.AbandonUserPromptParams{
 				Error:     nullString(reclaimError),
 				EndedAt:   sql.NullTime{Time: now, Valid: true},
@@ -523,6 +573,15 @@ func (s *Service) reapExpiredLeases() {
 	}
 	if reclaimed > 0 || failed > 0 {
 		slog.Info("reaped expired task leases", "reclaimed", reclaimed, "failed", failed)
+	}
+	// Log task_recovered audit events for auto-reclaimed tasks. See issue #96
+	// criterion 3.
+	for _, audit := range recoveryAudits {
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
+		if err := s.LogAuditEvent(auditCtx, audit); err != nil {
+			slog.Warn("reaper: log task_recovered audit event", "err", err, "task_id", audit.TargetID)
+		}
+		auditCancel()
 	}
 }
 

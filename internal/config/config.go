@@ -19,6 +19,7 @@ type Config struct {
 	DefaultAgentImage      string
 	AgentImagePrefix       string
 	DefaultTaskTimeoutSec  int
+	AutoRecovery          bool
 	ArcaneServerURL        string
 	ArcaneAPIKey           string
 	GitHubAppID            int64
@@ -43,6 +44,7 @@ func Load() Config {
 		DefaultAgentImage:      env("DEFAULT_AGENT_IMAGE", "ghcr.io/flatout-works/chetter-agent-base:latest"),
 		AgentImagePrefix:       os.Getenv("AGENT_IMAGE_PREFIX"),
 		DefaultTaskTimeoutSec:  envInt("DEFAULT_TASK_TIMEOUT_SEC", 600),
+		AutoRecovery:           envBool("DEFAULT_AUTO_RECOVERY", true),
 		ArcaneServerURL:        env("ARCANE_SERVER_URL", ""),
 		ArcaneAPIKey:           env("ARCANE_API_KEY", ""),
 		GitHubAppID:            envInt64("GITHUB_APP_ID", 0),

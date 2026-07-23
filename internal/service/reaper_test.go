@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/flatout-works/chetter/internal/config"
 )
 
 func TestRunReaperCycleRecoversFromPanicAndContinues(t *testing.T) {
@@ -75,5 +78,40 @@ func TestTaskReaperSurvivesInitialPanic(t *testing.T) {
 	}
 	if !s.LastReapAt().IsZero() {
 		t.Fatalf("lastReapAt should remain zero because the only cycle panicked")
+	}
+}
+
+// TestRunnerIsDeliberatelyDrained verifies the drain-state check used by the
+// reaper to skip auto-recovery for deliberately drained runners. Without a
+// database, the query fails and returns false (safe default — requeue). See
+// issue #96 criterion 5.
+func TestRunnerIsDeliberatelyDrained(t *testing.T) {
+	s := &Service{}
+	// No DB connected — query returns error, so the helper returns false
+	// (safe default: treat as not deliberately drained, so the task is
+	// auto-recovered rather than silently left failed).
+	if s.runnerIsDeliberatelyDrained(context.Background(), "runner-1") {
+		t.Fatal("runnerIsDeliberatelyDrained should return false when DB is unavailable")
+	}
+	if s.runnerIsDeliberatelyDrained(context.Background(), "") {
+		t.Fatal("runnerIsDeliberatelyDrained should return false for empty runner ID")
+	}
+}
+
+// TestAutoRecoveryConfig verifies the opt-out mechanism is wired correctly.
+// When DEFAULT_AUTO_RECOVERY=false, the reaper should skip the requeue loop
+// so all expired leases are marked failed. See issue #96 criterion 4.
+func TestAutoRecoveryConfig(t *testing.T) {
+	t.Setenv("DEFAULT_AUTO_RECOVERY", "false")
+	cfg := config.Load()
+	if cfg.AutoRecovery {
+		t.Fatal("AutoRecovery should be false when DEFAULT_AUTO_RECOVERY=false")
+	}
+
+	// Default should be true (auto-recovery enabled).
+	t.Setenv("DEFAULT_AUTO_RECOVERY", "")
+	cfg = config.Load()
+	if !cfg.AutoRecovery {
+		t.Fatal("AutoRecovery should default to true")
 	}
 }
