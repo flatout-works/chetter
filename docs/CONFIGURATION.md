@@ -163,7 +163,7 @@ Git.
 
 ## MCP Surface
 
-Initial read/sync tools:
+Read/sync tools:
 
 ```text
 chetter_list_definition_sources
@@ -173,7 +173,7 @@ chetter_list_definitions
 chetter_get_definition
 ```
 
-Later proposal tools:
+Proposal tools:
 
 ```text
 chetter_create_definition_proposal
@@ -181,14 +181,8 @@ chetter_list_definition_proposals
 chetter_get_definition_proposal
 ```
 
-The first meta-improver can work without all of these tools because the runner
-already clones a repository and has Chetter MCP access to tasks, exports, and
-triggers. These tools make the model explicit and usable from any MCP client.
-
 ## Open Questions
 
-- Whether a repository-specific source should always be the task repository, or
-  whether each team can map arbitrary repositories to definition sources.
 - Whether trigger sync should replace existing DB trigger updates entirely or
   coexist with manual `chetter_update_trigger` as an override path.
 - How strict validation should be for unknown agent frontmatter fields and skill
@@ -196,13 +190,15 @@ triggers. These tools make the model explicit and usable from any MCP client.
 - Whether definition sources should also support GitHub webhook sync in addition
   to the current five-minute polling and manual sync.
 
-## Implementation Phases
+## Implementation Status
 
-1. Add task attribution fields, starting with `trigger_name`. &#10003;
-2. Add definition source schema and read-only sync/indexing. &#10003;
-3. Add definition MCP read/sync tools. &#10003;
-4. Add the weekly meta-improver agent and trigger. &#10003;
-5. Add PR proposal tooling for definition changes. &#10003;
+All five phases are shipped:
+
+1. Task attribution fields including `trigger_name`. &#10003;
+2. Definition source schema and read-only sync/indexing. &#10003;
+3. Definition MCP read/sync tools. &#10003;
+4. The weekly meta-improver agent and trigger. &#10003;
+5. PR proposal tooling for definition changes. &#10003;
 
 ---
 

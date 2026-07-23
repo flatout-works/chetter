@@ -159,18 +159,16 @@ Managed Git identities control commit attribution for agent work. Identities sto
 
 Chetter can sync definitions from a Git repository configured by `DEFINITIONS_REPO` and `DEFINITIONS_BRANCH`.
 
-Implemented today:
+Implemented:
 
 - Git-backed model catalog loading.
+- Git-backed agents, skills, triggers, task templates, and MCP endpoints.
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
 - Read access via `chetter_get_model_catalog`.
-
-Planned next:
-
-- Git-backed agents, skills, triggers, and task templates.
-- Definition read tools and proposal workflow.
-- Immutable definition hashes recorded on task/user prompts.
+- Definition read tools: `chetter_list_definitions`, `chetter_get_definition`.
+- Definition sources: `chetter_list_definition_sources`, `chetter_get_definition_source`, `chetter_sync_definition_source`.
+- Definition change proposals: `chetter_create_definition_proposal`, `chetter_list_definition_proposals`, `chetter_get_definition_proposal` create GitHub PRs for definition changes with review flow.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the definitions repo, model catalog, and configuration-as-code architecture.
 
@@ -183,7 +181,7 @@ Chetter has two listen addresses:
 
 The Compose deployment maps these to host ports `18088` and `18090` respectively.
 
-The web UI includes task views, trigger run history, and an admin artifact browser.
+The web UI includes task views, trigger run history, an agent catalog (list and detail pages for git-managed agent definitions), activity timelines, and an admin artifact browser.
 
 ## Arcane Vulnerability Scanning
 
