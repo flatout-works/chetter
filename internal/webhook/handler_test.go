@@ -3,6 +3,7 @@ package webhook
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -427,5 +428,40 @@ func TestBuildReviewTaskRequest_CustomPromptGetsContextBlock(t *testing.T) {
 		if !strings.Contains(req.Prompt, want) {
 			t.Errorf("Prompt should contain %q, got prompt with %d chars", want, len(req.Prompt))
 		}
+	}
+}
+
+// TestAsyncCtxDoesNotLeakGoroutine is a regression test for issue #52. The old
+// asyncCtx spawned a goroutine per call that blocked for the full timeout
+// duration before calling cancel (a no-op). A burst of webhook events would
+// therefore accumulate one idle goroutine per event. After the fix, asyncCtx
+// allocates only a deadline context (with an internal timer, no goroutine), so
+// the goroutine count must not grow with the number of calls.
+func TestAsyncCtxDoesNotLeakGoroutine(t *testing.T) {
+	// Force any prior GC/runtime noise to settle and snapshot a baseline.
+	runtime.GC()
+	before := runtime.NumGoroutine()
+
+	const calls = 200
+	for i := 0; i < calls; i++ {
+		_ = asyncCtx(500 * time.Millisecond)
+	}
+
+	after := runtime.NumGoroutine()
+	// The old implementation would have added ~200 idle goroutines here. Allow a
+	// small margin for unrelated runtime/test scheduler goroutines.
+	if after > before+8 {
+		t.Fatalf("asyncCtx leaked goroutines: before=%d after=%d (expected ~%d)", before, after, before)
+	}
+
+	// The returned contexts must still be valid, deadline-bounded contexts.
+	ctx := asyncCtx(50 * time.Millisecond)
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("asyncCtx context did not expire by its deadline")
+	}
+	if err := ctx.Err(); err != context.DeadlineExceeded {
+		t.Fatalf("ctx.Err() = %v, want DeadlineExceeded", err)
 	}
 }

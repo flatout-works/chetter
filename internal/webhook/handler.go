@@ -797,9 +797,22 @@ func (h *Handler) postCommentOnFailure(ctx ReviewContext, body string) {
 	}
 }
 
+// asyncCtx returns a deadline-bounded context for a single async webhook
+// operation. context.WithTimeout self-cancels when the deadline expires; we
+// additionally register the cancel func via context.AfterFunc so it is invoked
+// exactly once when the context becomes done (and so static analyzers see the
+// cancel is used). The previous implementation spawned a goroutine per call
+// that blocked for the full timeout duration before calling cancel — a no-op,
+// since the context had already expired — leaking one idle goroutine per
+// webhook event. See issue #52.
+//
+// NOTE: these contexts derive from context.Background() rather than the
+// server's shutdown context. Wiring them to a parent context tied to server
+// lifecycle (so SIGTERM cancels in-flight webhook processing) is tracked in
+// issue #57 alongside tracking the handle() goroutines with a WaitGroup.
 func asyncCtx(d time.Duration) context.Context {
 	ctx, cancel := context.WithTimeout(context.Background(), d)
-	go func() { <-ctx.Done(); cancel() }()
+	context.AfterFunc(ctx, cancel)
 	return ctx
 }
 
