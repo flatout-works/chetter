@@ -223,3 +223,127 @@ func TestForcedExitDefaultFalse(t *testing.T) {
 		t.Fatal("ForcedExit should default to false on a fresh runner")
 	}
 }
+
+// TestComputeDrainDeadlineNoTasks verifies that with no in-flight tasks, the
+// drain deadline falls back to the configured ceiling. See issue #160.
+func TestComputeDrainDeadlineNoTasks(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	t.Setenv("CHETTER_DRAIN_TIMEOUT_SEC", "120")
+	if got := r.computeDrainDeadline(); got != 120*time.Second {
+		t.Fatalf("computeDrainDeadline with no tasks = %v, want 120s (ceiling)", got)
+	}
+}
+
+// TestComputeDrainDeadlineDerivedFromTaskTimeouts verifies that the drain
+// deadline is derived from the maximum remaining timeout of in-flight tasks,
+// clamped by the configured ceiling. A task with 60s timeout that just started
+// should produce a deadline near 60s (not the 30s ceiling). See issue #160
+// criterion 1.
+func TestComputeDrainDeadlineDerivedFromTaskTimeouts(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	t.Setenv("CHETTER_DRAIN_TIMEOUT_SEC", "600") // 10 min ceiling
+
+	r.mu.Lock()
+	r.tasks["exec-1"] = &task.TaskSession{
+		TaskID:      "task-1",
+		ExecutionID: "exec-1",
+		StartedAt:   time.Now().Add(-5 * time.Second), // 5s elapsed
+		Request:     task.TaskRequest{TimeoutSec: 60}, // 60s timeout
+	}
+	r.mu.Unlock()
+
+	got := r.computeDrainDeadline()
+	// remaining ≈ 55s, should be between 50s and 60s
+	if got < 50*time.Second || got > 60*time.Second {
+		t.Fatalf("computeDrainDeadline = %v, want ~55s (60s timeout - 5s elapsed)", got)
+	}
+}
+
+// TestComputeDrainDeadlineClampedByCeiling verifies that a long-running task
+// does not extend the drain beyond the configured ceiling. See issue #160
+// criterion 1.
+func TestComputeDrainDeadlineClampedByCeiling(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	t.Setenv("CHETTER_DRAIN_TIMEOUT_SEC", "30") // 30s ceiling
+
+	r.mu.Lock()
+	r.tasks["exec-1"] = &task.TaskSession{
+		TaskID:      "task-1",
+		ExecutionID: "exec-1",
+		StartedAt:   time.Now().Add(-5 * time.Second),
+		Request:     task.TaskRequest{TimeoutSec: 3600}, // 1 hour timeout
+	}
+	r.mu.Unlock()
+
+	got := r.computeDrainDeadline()
+	if got != 30*time.Second {
+		t.Fatalf("computeDrainDeadline = %v, want 30s (ceiling clamp)", got)
+	}
+}
+
+// TestWaitDrainPreservesResumableTaskWorkspace verifies that the force-cancel
+// path preserves the workspace for tasks with CheckpointAfterSuccess, so the
+// session can be resumed on a fresh runner. See issue #160 criterion 3.
+func TestWaitDrainPreservesResumableTaskWorkspace(t *testing.T) {
+	var cancelled atomic.Bool
+	r, _ := newDrainTestRunner(t)
+	r.draining.Store(true)
+
+	r.mu.Lock()
+	r.tasks["exec-1"] = &task.TaskSession{
+		TaskID:      "task-1",
+		ExecutionID: "exec-1",
+		StartedAt:   time.Now(),
+		Request:     task.TaskRequest{TimeoutSec: 60, CheckpointAfterSuccess: true},
+		Cancel:      func() { cancelled.Store(true) },
+	}
+	r.mu.Unlock()
+
+	r.waitDrain(10 * time.Millisecond)
+
+	if !cancelled.Load() {
+		t.Fatal("drain did not cancel the task")
+	}
+
+	r.mu.Lock()
+	session := r.tasks["exec-1"]
+	r.mu.Unlock()
+	if session == nil {
+		t.Fatal("task session was removed from r.tasks — should still be present during force-cancel")
+	}
+	if !session.PreserveWorkspace {
+		t.Fatal("PreserveWorkspace should be true for resumable tasks on drain force-cancel")
+	}
+}
+
+// TestWaitDrainDoesNotPreserveNonResumableTaskWorkspace verifies that
+// non-resumable tasks (CheckpointAfterSuccess=false) do NOT get their workspace
+// preserved — they are cancelled normally. See issue #160 criterion 2.
+func TestWaitDrainDoesNotPreserveNonResumableTaskWorkspace(t *testing.T) {
+	var cancelled atomic.Bool
+	r, _ := newDrainTestRunner(t)
+	r.draining.Store(true)
+
+	r.mu.Lock()
+	r.tasks["exec-1"] = &task.TaskSession{
+		TaskID:      "task-1",
+		ExecutionID: "exec-1",
+		StartedAt:   time.Now(),
+		Request:     task.TaskRequest{TimeoutSec: 60, CheckpointAfterSuccess: false},
+		Cancel:      func() { cancelled.Store(true) },
+	}
+	r.mu.Unlock()
+
+	r.waitDrain(10 * time.Millisecond)
+
+	if !cancelled.Load() {
+		t.Fatal("drain did not cancel the task")
+	}
+
+	r.mu.Lock()
+	session := r.tasks["exec-1"]
+	r.mu.Unlock()
+	if session != nil && session.PreserveWorkspace {
+		t.Fatal("PreserveWorkspace should be false for non-resumable tasks")
+	}
+}

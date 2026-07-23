@@ -229,6 +229,11 @@ func (r *Runner) ForcedExit() bool {
 // tasks completed cleanly within the grace period. Callers (the SIGTERM/SIGINT
 // path in startConnectRPC) use the result to set the process exit code. See
 // issue #97.
+//
+// For tasks with CheckpointAfterSuccess (resumable sessions), the
+// force-cancel path preserves the workspace and session export so the task
+// can be resumed on a fresh runner — the workspace is not destroyed and the
+// session ID is included in the terminal report. See issue #160.
 func (r *Runner) waitDrain(deadline time.Duration) bool {
 	if !r.draining.Load() {
 		return false
@@ -255,7 +260,17 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 				"runner_id", r.runnerID, "remaining_tasks", count)
 			r.mu.Lock()
 			for executionID, session := range r.tasks {
-				slog.Warn("cancelling remaining task", "runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID)
+				// For resumable tasks (CheckpointAfterSuccess), preserve the
+				// workspace on disk so a fresh runner can resume from where the
+				// session left off. The task's error handler checks
+				// session.PreserveWorkspace to include the workspace path in
+				// the terminal report. See issue #160.
+				if session.Request.CheckpointAfterSuccess {
+					session.PreserveWorkspace = true
+					slog.Info("preserving workspace for resumable task on drain",
+						"runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID, "workspace", session.WorkspaceDir)
+				}
+				slog.Warn("cancelling remaining task", "runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID, "resumable", session.Request.CheckpointAfterSuccess)
 				session.Cancel()
 			}
 			r.mu.Unlock()
@@ -266,6 +281,43 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 			slog.Info("drain waiting", "runner_id", r.runnerID, "remaining_tasks", count)
 		}
 	}
+}
+
+// computeDrainDeadline derives the drain wait deadline from the in-flight
+// tasks' remaining timeouts, clamped by the configured ceiling
+// (CHETTER_DRAIN_TIMEOUT_SEC). Instead of a fixed cap, short tasks finish
+// cleanly; only genuinely long-running tasks approach the ceiling. See issue
+// #160 criterion 1.
+func (r *Runner) computeDrainDeadline() time.Duration {
+	ceiling := drainTimeout()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.tasks) == 0 {
+		return ceiling
+	}
+
+	maxRemaining := time.Duration(0)
+	now := time.Now()
+	for _, session := range r.tasks {
+		timeout := time.Duration(session.Request.TimeoutSec) * time.Second
+		if timeout <= 0 {
+			timeout = time.Duration(defaultTaskTimeoutSec) * time.Second
+		}
+		elapsed := now.Sub(session.StartedAt)
+		remaining := timeout - elapsed
+		if remaining > maxRemaining {
+			maxRemaining = remaining
+		}
+	}
+
+	if maxRemaining > ceiling {
+		return ceiling
+	}
+	if maxRemaining < 30*time.Second {
+		return 30 * time.Second
+	}
+	return maxRemaining
 }
 
 func drainTimeout() time.Duration {

@@ -673,7 +673,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
 		}
-		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
+		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
 			workspacePath = session.WorkspaceDir
 			session.PreserveWorkspace = true
 			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
@@ -813,7 +813,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
 		}
-		if req.CheckpointAfterSuccess && shouldPreserveWorkspaceOnPromptError(errorCategory) {
+		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
 			workspacePath = session.WorkspaceDir
 			session.PreserveWorkspace = true
 			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
