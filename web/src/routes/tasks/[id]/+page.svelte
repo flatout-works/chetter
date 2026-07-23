@@ -10,7 +10,7 @@
     loadTaskEvents, loadTaskProgress, loadOlderTaskProgress, refreshTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, taskProgressHasMore, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
+  import { formatDuration, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
@@ -181,7 +181,7 @@
   let visibleEnv = $derived.by(() =>
     Object.entries(task?.env ?? {}).filter(([key]) => key !== "__chetter_harness")
   );
-  let sessionMode = $derived(taskSession ? (taskSession.resumeMode === "harness_session" ? "resumable" : "none") : "—");
+  let sessionMode = $derived(taskSession ? formatResumeMode(taskSession.resumeMode) : "—");
 
   function submissionSourceLabel(source: string): string {
     switch (source) {

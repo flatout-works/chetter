@@ -6,7 +6,7 @@
   import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, UserPrompt, Task } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { formatTime } from "$lib/utils.svelte";
+  import { formatResumeMode, formatTime } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
@@ -179,7 +179,7 @@
       </Card>
       <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Resume Mode</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{session.resumeMode || "none"}</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{formatResumeMode(session.resumeMode)}</p>
       </Card>
       <Card size="sm" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Pinned Runner</p>

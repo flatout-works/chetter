@@ -69,6 +69,19 @@ export function formatTimeShort(ts: string): string {
   }
 }
 
+export function formatResumeMode(mode: string): string {
+  switch (mode) {
+    case "none":
+      return "One-shot (non-resumable)";
+    case "harness_session":
+      return "Resumable (harness session)";
+    case "gvisor_checkpoint":
+      return "Resumable (checkpoint)";
+    default:
+      return mode || "—";
+  }
+}
+
 export function humanReadableStatus(status: string, summary: string): string {
   if (summary && summary !== status) return summary;
   switch (status) {
