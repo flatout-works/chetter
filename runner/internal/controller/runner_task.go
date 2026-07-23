@@ -668,6 +668,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		if ctx.Err() != nil && !watchdog.isStuck() {
 			status, statusMessage = cancellationStatus(ctx, h.Name())
 		}
+		if session.PauseOnDrain {
+			status, statusMessage = "error", "task timeout during drain; resumable session preserved"
+		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
@@ -807,6 +810,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		status, statusMessage := "error", errorMessage
 		if ctx.Err() != nil && !watchdog.isStuck() {
 			status, statusMessage = cancellationStatus(ctx, h.Name())
+		}
+		if session.PauseOnDrain {
+			status, statusMessage = "error", "task timeout during drain; resumable session preserved"
 		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {

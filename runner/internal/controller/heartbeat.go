@@ -267,6 +267,7 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 				// the terminal report. See issue #160.
 				if session.Request.CheckpointAfterSuccess {
 					session.PreserveWorkspace = true
+					session.PauseOnDrain = true
 					slog.Info("preserving workspace for resumable task on drain",
 						"runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID, "workspace", session.WorkspaceDir)
 				}
@@ -290,6 +291,12 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 // #160 criterion 1.
 func (r *Runner) computeDrainDeadline() time.Duration {
 	ceiling := drainTimeout()
+	ceilingConfigured := false
+	if value := strings.TrimSpace(os.Getenv("CHETTER_DRAIN_TIMEOUT_SEC")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+			ceilingConfigured = true
+		}
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -311,7 +318,10 @@ func (r *Runner) computeDrainDeadline() time.Duration {
 		}
 	}
 
-	if maxRemaining > ceiling {
+	// An explicitly configured value is an operator ceiling. With no explicit
+	// ceiling, derive the deadline entirely from the in-flight task timeouts;
+	// this is the default behavior required for long-running tasks by #160.
+	if ceilingConfigured && maxRemaining > ceiling {
 		return ceiling
 	}
 	if maxRemaining < 30*time.Second {

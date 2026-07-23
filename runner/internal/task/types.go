@@ -97,6 +97,7 @@ type TaskSession struct {
 	Request           TaskRequest
 	WorkspaceDir      string
 	PreserveWorkspace bool
+	PauseOnDrain      bool
 	SocketPath        string
 	StartedAt         time.Time
 	Ctx               context.Context

@@ -139,7 +139,7 @@ func TestDefaultDrainTimeoutAlignsWithK8sGrace(t *testing.T) {
 // if called (they are not exercised here).
 type mockHeartbeatClient struct {
 	runnerRPCClient
-	mu      sync.Mutex
+	mu       sync.Mutex
 	statuses []string
 }
 
@@ -278,6 +278,24 @@ func TestComputeDrainDeadlineClampedByCeiling(t *testing.T) {
 	got := r.computeDrainDeadline()
 	if got != 30*time.Second {
 		t.Fatalf("computeDrainDeadline = %v, want 30s (ceiling clamp)", got)
+	}
+}
+
+func TestComputeDrainDeadlineUsesTaskTimeoutByDefault(t *testing.T) {
+	t.Setenv("CHETTER_DRAIN_TIMEOUT_SEC", "")
+	r, _ := newDrainTestRunner(t)
+	r.mu.Lock()
+	r.tasks["exec-1"] = &task.TaskSession{
+		TaskID:      "task-1",
+		ExecutionID: "exec-1",
+		StartedAt:   time.Now().Add(-5 * time.Second),
+		Request:     task.TaskRequest{TimeoutSec: 120},
+	}
+	r.mu.Unlock()
+
+	got := r.computeDrainDeadline()
+	if got < 110*time.Second || got > 120*time.Second {
+		t.Fatalf("computeDrainDeadline = %v, want ~115s from task timeout", got)
 	}
 }
 
