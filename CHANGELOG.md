@@ -2,48 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
-## 2026-07-22
+## 2026-07-23
 
 ### Added
 
-- Agent definitions API: new `ListAgentDefinitions` ConnectRPC endpoint exposing agent metadata (description, provider, model, mode, identity, MCP endpoints) parsed from definition frontmatter, scoped by team and repo.
-- Web agent catalog: new `/agents` list page and `/agents/[name]` detail page for browsing git-managed agent definitions.
-- Task list filtering by agent name: `agent` filter parameter on `ListTasks` API, MCP tool, and web UI, supporting server-side filtering of tasks by the agent definition that ran them.
-- MCP endpoint definitions: new `mcp_endpoints` JSON column on tasks with DB migration, proto fields, and sqlc codegen. Supports global and team-scoped endpoint definitions from scoped `mcp-endpoints/*.yaml` paths in the definitions repo, with agent frontmatter declarations and JSON schema validation.
-- MCP endpoints wired through service, RPC, and web API: endpoints loaded at submit and claim time with scope filtering, merged with agent-declared endpoints from frontmatter, and delivered to runners in the task proto.
-- Runner MCP endpoint support: bearer-token environments validated and protected from task overrides, injected into containers without embedding values in arguments. Native MCP configuration generated for OpenCode, Claude Code, CodeWhale, Pi, and Codex harnesses.
-- Chetter MCP tools allowlist in gVisor task containers: 32 read/management Chetter MCP tools explicitly permitted for agents when the Chetter MCP server is injected; admin-only tools excluded to limit blast radius.
-- `CompletionAwareHarness` interface for the opencode harness, detecting session completion via SSE `session.status` idle events and breaking the single-point-of-failure in poll-only completion detection.
-- `UpdateTriggerRunStatusByTask` query that updates trigger run status on task status transitions and cancellations, so the Recent Runs list reflects actual task lifecycle.
+- Execution attempts: new `chetter_execution_attempts` table, DB migrations, sqlc queries, and facade methods. Attempts are queued before claim, persisted with runtime state, and exposed via API and web UI as execution attempt history on task detail pages.
+- Agent session lifecycle: new `lifecycle` column on agent sessions tracking session state transitions (created, started, completed, failed), persisted via DB migration and exposed in the API proto.
+- Task event hierarchy: events attributed to execution attempts and user prompts via `execution_attempt_id` and `user_prompt_id` foreign keys, with DB migration and API exposure.
+- Task reclaim history: `reclaim_count` and `last_reclaim_reason` columns on tasks, exposed via API and MCP tools.
+- Fenced workspace pruning: workspace directories are now pruned per execution attempt rather than per task, preventing premature cleanup of active execution workspaces.
+- Artifact attempt attribution: GitHub artifacts linked to execution attempts via `execution_attempt_id`, with DB migration, API exposure, and web UI display.
+- Agent session lifecycle persisted: new `lifecycle` column on agent sessions tracking state transitions, with DB migration and API exposure.
+- Session restart on cold reclaim: when a runner reclaims a task with a stale session, the session is restarted in a fresh container instead of failing.
+- Database migrations run before server startup: new `chetter-migrate` binary and entrypoint script that applies pending Goose migrations before the MCP server starts.
+- Backfill migration for legacy execution attempts: populates `execution_attempts` for tasks created before the attempts table existed.
+- Trigger run relink after definition sync: migration that re-links trigger runs to their tasks after a definition sync, preserving trigger run history.
 
 ### Changed
 
-- Definition scope requirements: config repo definitions must now be placed under explicit scope directories (`global/`, `groups/<team>/`, `repos/<owner>/<repo>/`). Root-level `agents/`, `skills/`, `triggers/`, `mcp-endpoints/`, and `task-templates/` directories are no longer scanned — only `model-catalog.yaml` remains at the repository root.
+- Task session model refactored: execution config moved from tasks to agent sessions, execution runtime state moved to execution attempts, task usage aggregated from execution attempts instead of task-level columns. Session runs renamed to user prompts. Agent sessions made task-owned. Remaining execution ownership columns dropped from tasks.
+- Runner harness capabilities split: `ServeCommand`, `DockerConfigPath`, `CompletionAwareHarness` extracted into separate interfaces per harness, reducing per-harness boilerplate.
+- Runner Docker serve setup shared across harnesses via `docker_args.go`, eliminating duplicated container argument construction.
+- Agent environment policy isolated into `runner/internal/agentenv/` package with dedicated tests.
+- Harness transport helpers (HTTP serve, readiness polling) shared via `runner/harness/transport/` package, reducing duplication across opencode, claude, codewhale, and codex harnesses.
+- Task usage aggregated from execution attempts instead of task-level columns; old task-level usage columns dropped.
+- Task session data sourced from the execution attempt hierarchy instead of task-level columns; old session runtime columns dropped.
+- Runner MCP artifact tools (`chetter_create_issue`, `chetter_create_pr`, `chetter_issue_comment`, `chetter_pr_review`) removed from server-side MCP tool list — they remain available only through the runner bridge.
 
 ### Fixed
 
-- Harness completion detection hardened across all harnesses: token usage accumulator with mutex protection prevents concurrent writes, `stopWatching` guard prevents double-stop, and stuck-harness detection catches harnesses that stop producing progress events.
-- Claude Code harness: session export rewritten to use native session ID mapping (`chetter-sessions/` directory) instead of scanning project directories; serve proxy refactored for reliable completion and resume lifecycle.
-- Chetter MCP traffic now routes through a runner-local reverse proxy (MCP relay) instead of requiring task containers to resolve Docker service names. The relay exposes a consistent endpoint on the runner IP, eliminating gVisor DNS resolution failures for MCP requests without `--add-host` entries.
-- Runner MCP config precedence: `OPENCODE_CONFIG_CONTENT` environment variable re-applies the runner-configured Chetter MCP server URL, auth token, and OAuth settings after the cloned project's `.opencode.json` is loaded, preventing a repository from redirecting or impersonating the Chetter MCP server.
-- OAuth disabled for Chetter MCP in OpenCode config (`oauth: false`) to prevent interactive OAuth flows in non-interactive agent runners.
-- MCP server returns proper `JSONResponse` flag so SSE streaming clients correctly handle the response as streamable JSON.
-- gVisor task containers can now reach the Chetter MCP server: `chetter-mcp` removed from `NO_PROXY` so traffic routes through the runner HTTP proxy which can resolve Docker service names; proxy allowlist port stripping fixed by using `url.Hostname()`.
-- Compose files (`compose.yaml`, `deploy/compose.yaml`) had `CHETTER_MCP_URL` missing the `/mcp` path prefix, causing MCP connection failures from runners.
-- PR review triggers: head branch no longer overridden by trigger `git_url`/`git_ref` — PR reviews always check out the PR's actual head branch.
-- Custom review prompts now receive the PR context block (repo, PR number, branch context, review procedure), ensuring the agent knows which PR to review regardless of what custom prompt the trigger configured.
-- Webhook `handlePullRequest` author gate skips the Chetter App's own bot login, preventing noisy `webhook_author_gate_denied` entries for the bot's own PRs.
-- Trigger run inserts: `INSERT IGNORE` replaced with `ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE` so real insert errors propagate instead of being silently swallowed.
-- Nullable MCP endpoint task data: generated as pointers so legacy and directly inserted tasks with NULL endpoint data remain readable; nullable JSON normalized at service boundaries.
-- Team-scoped MCP endpoint definitions now correctly override global definitions with the same name (previously caused a "multiple active" error).
+- Database migrations made portable: renumbered and adjusted MySQL/TiDB migrations to produce a clean chain from migration 001, fixing deployment issues on fresh databases.
+- Trigger run history preserved after definition sync: new migration re-links trigger runs to their tasks when a definition sync changes task IDs.
+- Legacy execution attempts backfilled: migration populates `execution_attempts` for tasks created before the attempts table existed.
+- Runner service shutdown cleaned up: MCP server, proxy, and workspace manager now shut down cleanly without resource leaks.
+- Runner task lifecycle shutdown hardened: heartbeat, progress watchdog, and process management handle shutdown more reliably.
+- Runner superseded helpers removed: 241 lines of dead code from `runner_task.go` deleted.
+- Claude Code and CodeWhale harness completion detection hardened: codex-serve-proxy and claude-serve-proxy handle edge cases in completion detection, with comprehensive test coverage.
+- Migration chain made portable: MySQL migrations renumbered to produce a clean chain from migration 001, fixing deployment on fresh databases.
+- MCP artifact tools (`chetter_create_issue`, `chetter_create_pr`, `chetter_issue_comment`, `chetter_pr_review`) removed from server-side MCP tool list — they remain available only through the runner bridge.
+- Web UI: session resume modes clarified with helper text; agent and artifact navigation improved with clearer labels and links; agent detail page loading streamlined.
 
 ### Documentation
 
-- MCP endpoint definitions and trust boundaries documented in `docs/HARNESSES.md`, `docs/MANUAL.md`, `docs/FEATURES.md`, with a config-repo example and schema reference.
-- Completion detection per harness documented in `docs/HARNESSES.md`.
-- New `docs/LITELLM.md` documenting LiteLLM provider configuration, API transport mapping, and harness-specific model routing.
-- `AGENTS.md` expanded with dual-dialect SQL workflow guide: table comparing MySQL vs PostgreSQL placeholder syntax, query checklist, and common mistakes.
-- Website (`website/index.html`, `website/technical.html`) updated with PostgreSQL support and managed Git identities documentation.
+- New `docs/plans/2026-07-23-002-ops-separate-chetter-database-plan.md` — plan for separating Chetter's database from the application database.
+- New `docs/plans/2026-07-23-001-quality-hardening-plan.md` — quality hardening roadmap.
+- Task session model refactor documentation closed: `docs/TASK_SESSION_MODEL_REFACTOR.md`, `docs/HARNESSES.md`, `docs/MANUAL.md`, `docs/PAUSED_SESSIONS.md`, `docs/PLAN.md` updated to reflect the new execution attempt and agent session architecture.
+- Bundled Chetter skill (`SKILL.md`) updated to reflect current MCP tool set and workflow.
+- Website how-it-works page now lists PostgreSQL alongside TiDB and MySQL as supported database backends.
+- Agent credential forwarder plan simplified in `docs/plans/`.
+
+## 2026-07-22
+
+### Added
 
 ## 2026-07-21
 
