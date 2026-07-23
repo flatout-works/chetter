@@ -235,3 +235,43 @@ func TestWatchEventsDoesNotCompleteOnAssistantStop(t *testing.T) {
 		t.Fatal("event watcher did not stop")
 	}
 }
+
+func TestWatchEventsConfirmsTerminalAssistantMessageWithIdleStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/session/status" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ses_123":{"type":"idle"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"message.updated","properties":{"info":{"role":"assistant","sessionID":"ses_123","finish":"stop"}}}` + "\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idle := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		watchEvents(ctx, "task", server.URL, "", func(string, string) {}, nil, "ses_123", func() {
+			close(idle)
+		})
+		close(done)
+	}()
+
+	select {
+	case <-idle:
+		cancel()
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for confirmed terminal message")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("event watcher did not stop")
+	}
+}

@@ -124,6 +124,15 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 						publishFn("running", "opencode: "+detail)
 					}
 				case "message.updated":
+					if onIdle != nil && isTerminalAssistantMessage(props, sessionID) {
+						confirmCtx, confirmCancel := context.WithTimeout(ctx, 5*time.Second)
+						status, statusErr := getSessionStatus(confirmCtx, baseURL, sessionID, secret)
+						confirmCancel()
+						if statusErr == nil && isCompletedSessionStatus(status) {
+							slog.Info("terminal assistant message confirmed by session status", "taskID", taskID, "sessionID", sessionID, "status", status)
+							onIdle()
+						}
+					}
 					detail := summarizeEvent(raw)
 					if detail != "" {
 						flush(true)
@@ -289,6 +298,22 @@ func isSessionIdleEvent(props map[string]any, sessionID string) bool {
 	return eventBelongsToSession(props, sessionID)
 }
 
+func isTerminalAssistantMessage(props map[string]any, sessionID string) bool {
+	if props == nil {
+		return false
+	}
+	info, _ := props["info"].(map[string]any)
+	if info == nil || !eventBelongsToSession(info, sessionID) {
+		return false
+	}
+	role, _ := info["role"].(string)
+	if role != "assistant" {
+		return false
+	}
+	finish, _ := info["finish"].(string)
+	return finish == "stop" || finish == "end_turn"
+}
+
 func eventBelongsToSession(props map[string]any, sessionID string) bool {
 	if props == nil {
 		return false
@@ -321,4 +346,13 @@ func isSessionIdleStatus(props map[string]any, sessionID string) bool {
 		return true
 	}
 	return false
+}
+
+func isCompletedSessionStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "idle", "completed", "finished", "done":
+		return true
+	default:
+		return false
+	}
 }

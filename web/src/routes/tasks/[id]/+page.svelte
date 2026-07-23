@@ -257,14 +257,7 @@
       await loadTaskSession();
       await loadActiveRunners();
       loading = false;
-
-      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
-        try {
-          const adminClient = createClient(AdminService, getTransport());
-          const artResp = await adminClient.listTaskArtifacts({ taskId });
-          artifacts = artResp.artifacts ?? [];
-        } catch { /* silently skip */ }
-      }
+		await loadTaskArtifacts(taskId);
 
       if (task?.status === "running" || task?.status === "pending") {
         const streamSince = new Date().toISOString();
@@ -307,19 +300,24 @@
       task = resp.task ?? null;
       await loadTaskSession();
       await loadActiveRunners();
-      if (task?.status === "done" || task?.status === "error" || task?.status === "cancelled") {
-        try {
-          const adminClient = createClient(AdminService, getTransport());
-          const artResp = await adminClient.listTaskArtifacts({ taskId: params.id });
-          artifacts = artResp.artifacts ?? [];
-        } catch { /* silently skip */ }
-      }
+		await loadTaskArtifacts(params.id);
       await refreshTaskProgress(params.id);
       if (unsub) { unsub(); unsub = null; }
     } catch (e) {
       console.error("Failed to refresh task after completion:", e);
     }
   }
+
+	async function loadTaskArtifacts(taskId: string) {
+		try {
+			const adminClient = createClient(AdminService, getTransport());
+			const artResp = await adminClient.listTaskArtifacts({ taskId });
+			artifacts = artResp.artifacts ?? [];
+		} catch {
+			// Artifact visibility is supplemental; task loading should still work
+			// when the current user cannot access the admin endpoint.
+		}
+	}
 
   async function loadOlderProgress() {
     if (loadingOlderProgress || !progressHasMore) return;
