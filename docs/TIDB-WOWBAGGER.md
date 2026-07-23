@@ -33,7 +33,7 @@ export TIDB_VERSION=v8.5.1
 export TIDB_DATABASE=chetter
 export TIDB_APP_USER=chetter
 export TIDB_APP_PASSWORD='use-a-random-password-from-a-secret-manager'
-./ops/tidb-bootstrap.sh
+./ops/tidb-bootstrap.sh --generate-only
 ```
 
 For an existing root password, set `TIDB_ADMIN_PASSWORD`. On a new cluster,
@@ -47,7 +47,14 @@ The generated topology is retained at:
 ~/.config/chetter/chetter-tidb.yaml
 ```
 
-Review it before deployment. The script does not overwrite an existing topology.
+Review the generated topology before deployment. The script does not overwrite an
+existing topology.
+
+```bash
+less ~/.config/chetter/chetter-tidb.yaml
+./ops/tidb-bootstrap.sh
+```
+
 Use `TIDB_APPLY_CHECK=1` only after reviewing the precheck output.
 
 ## 2. Prepare migration credentials

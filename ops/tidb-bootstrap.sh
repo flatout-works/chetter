@@ -29,7 +29,7 @@ TIDB_APP_PASSWORD=${TIDB_APP_PASSWORD:-}
 
 usage() {
   cat <<'EOF'
-Usage: tidb-bootstrap.sh [--dry-run]
+Usage: tidb-bootstrap.sh [--dry-run|--generate-only]
 
 Deploy or start a persistent, single-host TiDB cluster using TiUP Cluster,
 then create the configured application database. Existing TiUP clusters are
@@ -45,6 +45,8 @@ Important environment variables:
   TIDB_APPLY_CHECK=1   Run tiup cluster check --apply before deployment
   TIDB_SKIP_TIUP=1     Do not install/update TiUP components
 
+  --generate-only      Write the topology and stop before requiring TiUP
+
 The default topology runs one PD, one TiDB, and three TiKV processes on one
 host. It is not host-level HA. Use TIDB_NODE_HOST as a private address when
 Chetter runs outside the host network, and firewall port 4000 accordingly.
@@ -52,9 +54,11 @@ EOF
 }
 
 DRY_RUN=0
+GENERATE_ONLY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
+    --generate-only) GENERATE_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) tidb_die "unknown argument: $1" ;;
   esac
@@ -79,28 +83,7 @@ if [[ "$TIDB_NODE_HOST" == "127.0.0.1" && "$TIDB_CONNECT_HOST" != "127.0.0.1" ]]
   printf 'NOTE: TiDB advertises %s but Chetter connects to %s.\n' "$TIDB_NODE_HOST" "$TIDB_CONNECT_HOST"
 fi
 
-tidb_need_cmd curl
-tidb_need_cmd mysql
-
-if [[ "$TIDB_INSTALL_TIUP" != 0 ]] && ! command -v tiup >/dev/null 2>&1; then
-  if [[ "$DRY_RUN" == 1 ]]; then
-    printf 'Would install TiUP from the official PingCAP installer.\n'
-  else
-    printf 'Installing TiUP from the official PingCAP installer.\n'
-    curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
-  fi
-fi
-export PATH="${HOME}/.tiup/bin:${PATH}"
-if [[ "$DRY_RUN" == 0 ]]; then
-  tidb_need_cmd tiup
-fi
-
-if [[ "$TIDB_INSTALL_TIUP" != 0 ]]; then
-  run tiup update --self
-  run tiup update cluster
-fi
-
-if [[ "$DRY_RUN" == 0 ]]; then
+write_topology() {
   mkdir -p "$(dirname -- "$TIDB_TOPOLOGY")"
   if [[ ! -e "$TIDB_TOPOLOGY" ]]; then
     cat >"$TIDB_TOPOLOGY" <<EOF
@@ -144,6 +127,33 @@ EOF
   else
     printf 'Using existing topology: %s\n' "$TIDB_TOPOLOGY"
   fi
+}
+
+if [[ "$GENERATE_ONLY" == 1 ]]; then
+  write_topology
+  printf 'Review %s, then rerun without --generate-only to deploy.\n' "$TIDB_TOPOLOGY"
+  exit 0
+fi
+
+tidb_need_cmd curl
+tidb_need_cmd mysql
+
+if [[ "$TIDB_INSTALL_TIUP" != 0 ]] && ! command -v tiup >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf 'Would install TiUP from the official PingCAP installer.\n'
+  else
+    printf 'Installing TiUP from the official PingCAP installer.\n'
+    curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+  fi
+fi
+export PATH="${HOME}/.tiup/bin:${PATH}"
+if [[ "$DRY_RUN" == 0 ]]; then
+  tidb_need_cmd tiup
+fi
+
+if [[ "$TIDB_INSTALL_TIUP" != 0 ]]; then
+  run tiup update --self
+  run tiup update cluster
 fi
 
 TIUP_AUTH=()
