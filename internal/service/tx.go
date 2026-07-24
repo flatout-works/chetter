@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -24,6 +25,18 @@ func withTxRetry(ctx context.Context, db *sql.DB, dialect store.Dialect, fn func
 
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
+			if store.IsTransientError(err) && attempt < txMaxAttempts-1 {
+				lastErr = err
+				delay := time.Duration(attempt+1) * 25 * time.Millisecond
+				slog.Warn("database begin transient error, retrying",
+					"attempt", attempt+1,
+					"maxAttempts", txMaxAttempts,
+					"delay", delay,
+					"error", err,
+				)
+				time.Sleep(delay)
+				continue
+			}
 			return err
 		}
 

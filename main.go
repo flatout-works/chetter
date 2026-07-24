@@ -27,6 +27,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+const (
+	startupPingTimeout  = 60 * time.Second
+	startupRetryBackoff = 2 * time.Second
+)
+
 var _gitHash = "unknown"
 
 const (
@@ -78,9 +83,13 @@ func run() error {
 		return fmt.Errorf("open store: %w", err)
 	}
 
+	// Ping the database with retry on transient errors for up to
+	// startupPingTimeout. This lets the server ride through brief TiDB
+	// leader transfers or PostgreSQL restart without manual recovery.
+	// Non-transient errors (bad credentials, missing database) fail fast.
 	initCtx, cancel := context.WithTimeout(ctx, initTimeout)
 	defer cancel()
-	if err := st.Ping(initCtx); err != nil {
+	if err := pingWithRetry(ctx, st); err != nil {
 		return fmt.Errorf("ping database: %w", err)
 	}
 	if err := st.ApplySchema(initCtx); err != nil {
@@ -264,6 +273,59 @@ func run() error {
 
 	slog.Info("graceful shutdown: complete")
 	return nil
+}
+
+// pingWithRetry pings the database with exponential backoff for transient
+// errors (connection refused, leader change, etc.) for up to
+// startupPingTimeout. Non-transient errors are returned immediately.
+func pingWithRetry(ctx context.Context, st *store.Store) error {
+	deadline := time.Now().Add(startupPingTimeout)
+	var lastErr error
+	backoff := startupRetryBackoff
+	for attempt := 0; ; attempt++ {
+		if time.Now().After(deadline) {
+			if lastErr != nil {
+				return fmt.Errorf("database startup ping failed after %v: %w", startupPingTimeout, lastErr)
+			}
+			return fmt.Errorf("database startup ping timed out after %v", startupPingTimeout)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := st.Ping(pingCtx)
+		cancel()
+		if err == nil {
+			if attempt > 0 {
+				slog.Info("database startup ping recovered after transient errors",
+					"attempt", attempt)
+			}
+			return nil
+		}
+
+		if !store.IsTransientError(err) {
+			return fmt.Errorf("database startup ping failed (non-transient): %w", err)
+		}
+
+		lastErr = err
+		slog.Warn("database startup ping transient error, retrying",
+			"attempt", attempt+1,
+			"backoff", backoff,
+			"deadline", deadline.Format(time.RFC3339),
+			"error", err,
+		)
+
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		// Cap exponential growth at 15 seconds.
+		if backoff < 15*time.Second {
+			backoff *= 2
+		}
+	}
 }
 
 func authMiddleware(adminToken string, db *sql.DB, next http.Handler) http.Handler {
