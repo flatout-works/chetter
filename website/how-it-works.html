@@ -57,7 +57,7 @@
       </section>
 
       <section class="section detail-grid">
-        <article class="card detail-card"><span>Reliability</span><h3>Leases, not hope</h3><p>Heartbeats renew leases while work is active. If a runner disappears, the reaper reclaims expired leases back to <code>pending</code> until attempts are exhausted, then fails the task with a timeout category.</p></article>
+        <article class="card detail-card"><span>Reliability</span><h3>Leases, not hope</h3><p>Heartbeats renew leases while work is active. If a runner disappears, the reaper reclaims expired leases back to <code>pending</code> until attempts are exhausted, then fails the task. Auto-recovery can be disabled via <code>DEFAULT_AUTO_RECOVERY</code> and drained runners' tasks are never reclaimed, preventing silent re-queue during maintenance. Both server and runner handle SIGTERM gracefully for zero-downtime rolling deployments.</p></article>
         <article class="card detail-card"><span>GitHub</span><h3>Artifacts are tracked</h3><p>Agents create issues, comments, PRs, and reviews through Chetter MCP tools. The server adds canonical signatures and records audit/artifact metadata.</p></article>
         <article class="card detail-card"><span>Definitions</span><h3>Behavior can live in Git</h3><p>Model catalogs, agents, skills, triggers, and task templates can be synced from a definitions repository. Invalid definitions fail validation instead of silently becoming active.</p></article>
       </section>
