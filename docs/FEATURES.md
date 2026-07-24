@@ -96,6 +96,21 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 
 Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side). Compose currently passes it to runner containers through `CHETTER_RUNNER_AUTH_TOKEN` for compatibility with runner config fallback order.
 
+## Data Retention And Storage Pruning
+
+The reaper can prune historical data from high-growth tables to keep long-running
+deployments bounded:
+
+- `EVENTS_RETENTION_DAYS` controls `chetter_task_events`.
+- `AUDIT_RETENTION_DAYS` controls `chetter_audit_log`.
+- `ARTIFACT_RETENTION_DAYS` controls `chetter_task_artifacts` and `chetter_agent_sessions`.
+- Rows are selected by `created_at` and deleted in batches of up to 1,000.
+- `0` or an unset variable disables pruning for that table; all three settings default to `0`.
+- The implementation is application-level and supports TiDB, MySQL, and PostgreSQL.
+
+See [MANUAL.md](MANUAL.md#data-retention-and-storage-pruning) for configuration
+examples and operational guidance.
+
 ## Agent Harnesses
 
 The runner drives agent CLIs through harness implementations. Five harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), Pi (RPC subprocess), CodeWhale (HTTP/SSE runtime API), and Codex (App Server proxy via codex-serve-proxy). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).

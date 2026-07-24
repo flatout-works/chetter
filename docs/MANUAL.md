@@ -124,6 +124,9 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `DEFAULT_AGENT_IMAGE` | No | `ghcr.io/flatout-works/chetter-agent-base:latest` | Default agent dev container image used when task or trigger config omits `agent_image`. |
 | `AGENT_IMAGE_PREFIX` | No | empty | Registry/namespace prefix prepended to unqualified `agent_image` values. For chetter-config images, set `ghcr.io/flatout-works` so `chetter-agent:golang` resolves to `ghcr.io/flatout-works/chetter-agent:golang`. Fully qualified image refs are left unchanged. |
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
+| `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `chetter_task_events`. A positive value enables reaper pruning; `0` disables it. |
+| `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `chetter_audit_log`. A positive value enables reaper pruning; `0` disables it. |
+| `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `chetter_task_artifacts` and `chetter_agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and future definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
 | `ARCANE_SERVER_URL` | No | empty | Optional Arcane scanner URL. |
@@ -153,6 +156,35 @@ chetterctl token create --team engineering --user alice --name alice-cli
 | `GITHUB_TOKEN` | GitHub token for cloning private repos and read operations inside tasks. |
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
+
+### Data Retention And Storage Pruning
+
+The server reaper can bound growth in the high-volume historical tables. It
+deletes rows whose `created_at` is older than the configured number of days:
+
+| Variable | Tables | Example |
+|---|---|---|
+| `EVENTS_RETENTION_DAYS` | `chetter_task_events` | `30` |
+| `AUDIT_RETENTION_DAYS` | `chetter_audit_log` | `90` |
+| `ARTIFACT_RETENTION_DAYS` | `chetter_task_artifacts`, `chetter_agent_sessions` | `180` |
+
+Retention is disabled by default. An unset variable and an explicit value of
+`0` both preserve rows indefinitely, so existing deployments are not affected
+until an operator opts in. Each setting is independent; configure only the
+tables that should be pruned. For example:
+
+```dotenv
+EVENTS_RETENTION_DAYS=30
+AUDIT_RETENTION_DAYS=90
+ARTIFACT_RETENTION_DAYS=180
+```
+
+The cleanup is application-level and works with TiDB, MySQL, and PostgreSQL.
+The reaper deletes rows in batches of up to 1,000 to limit transaction size and
+lock contention, and reports deleted counts in the server log. Changes to these
+variables take effect after restarting the server. Retention deletes data
+permanently, so choose values that satisfy operational, audit, and compliance
+requirements before enabling it.
 
 ## YAML Configuration And Validation
 
