@@ -1,0 +1,13 @@
+schemaVersion: 1
+owner: "team-tech-enablement"
+description: "MCP control plane for running isolated coding agents"
+
+configRepository: "devtools-k8s-config"
+defaultDeployEnv:
+  - "tools-staging"
+
+projects:
+  - name: "chetter-service"
+    namespace: "chetter"
+    workingDirectory: "."
+    skipCodeAnalysis: true

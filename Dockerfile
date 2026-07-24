@@ -27,6 +27,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -o /out/chetter-migrate ./cmd/chetter-migrate
 
 FROM debian:bookworm-slim
+ENV DD_SOURCE=go
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \

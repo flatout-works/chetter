@@ -1,0 +1,8 @@
+name: Build and Test pull request
+on:
+  pull_request:
+
+jobs:
+  build:
+    uses: TrustlyDev/workflows/.github/workflows/pr-flow.yaml@v7
+    secrets: inherit

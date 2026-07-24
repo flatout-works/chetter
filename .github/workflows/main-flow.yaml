@@ -1,0 +1,11 @@
+name: Build, test and deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  main-build-and-deploy:
+    uses: TrustlyDev/workflows/.github/workflows/main-flow.yaml@v7
+    secrets: inherit
