@@ -1085,7 +1085,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	slog.Info("starting RPC harness", "taskID", req.TaskID, "harness", name, "args", args)
 	r.publishStatusForRequest(req, "running", "Starting agent (RPC mode)...", nil)
 
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	configureProcess(cmd)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
@@ -1121,7 +1121,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
 
-	cmd := exec.Command("docker", dockerArgs...)
+	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	configureProcess(cmd)
 	r.runRPCAgentCommand(ctx, session, req, h, cmd)
 }
