@@ -268,3 +268,40 @@ func TestGitHubConfigured(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadRetention(t *testing.T) {
+	t.Run("defaults to zero (pruning disabled)", func(t *testing.T) {
+		cfg := Load()
+		if cfg.EventsRetentionDays != 0 {
+			t.Errorf("expected EventsRetentionDays 0, got %d", cfg.EventsRetentionDays)
+		}
+		if cfg.AuditRetentionDays != 0 {
+			t.Errorf("expected AuditRetentionDays 0, got %d", cfg.AuditRetentionDays)
+		}
+		if cfg.ArtifactRetentionDays != 0 {
+			t.Errorf("expected ArtifactRetentionDays 0, got %d", cfg.ArtifactRetentionDays)
+		}
+	})
+	t.Run("env overrides enable pruning", func(t *testing.T) {
+		t.Setenv("EVENTS_RETENTION_DAYS", "30")
+		t.Setenv("AUDIT_RETENTION_DAYS", "90")
+		t.Setenv("ARTIFACT_RETENTION_DAYS", "180")
+		cfg := Load()
+		if cfg.EventsRetentionDays != 30 {
+			t.Errorf("expected EventsRetentionDays 30, got %d", cfg.EventsRetentionDays)
+		}
+		if cfg.AuditRetentionDays != 90 {
+			t.Errorf("expected AuditRetentionDays 90, got %d", cfg.AuditRetentionDays)
+		}
+		if cfg.ArtifactRetentionDays != 180 {
+			t.Errorf("expected ArtifactRetentionDays 180, got %d", cfg.ArtifactRetentionDays)
+		}
+	})
+	t.Run("invalid value falls back to zero", func(t *testing.T) {
+		t.Setenv("EVENTS_RETENTION_DAYS", "notanumber")
+		cfg := Load()
+		if cfg.EventsRetentionDays != 0 {
+			t.Errorf("expected 0 for invalid value, got %d", cfg.EventsRetentionDays)
+		}
+	})
+}

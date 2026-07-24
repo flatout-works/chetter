@@ -19,7 +19,7 @@ type Config struct {
 	DefaultAgentImage      string
 	AgentImagePrefix       string
 	DefaultTaskTimeoutSec  int
-	AutoRecovery          bool
+	AutoRecovery           bool
 	ArcaneServerURL        string
 	ArcaneAPIKey           string
 	GitHubAppID            int64
@@ -30,6 +30,12 @@ type Config struct {
 	DefinitionsRepo        string
 	DefinitionsBranch      string
 	WebURL                 string
+	// Retention TTLs (in days) for the reaper's storage pruner. A value of 0
+	// disables pruning for that table, so existing deployments are unaffected
+	// until an operator opts in. See issue #112.
+	EventsRetentionDays   int
+	AuditRetentionDays    int
+	ArtifactRetentionDays int
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -55,6 +61,9 @@ func Load() Config {
 		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
 		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
 		WebURL:                 env("CHETTER_WEB_URL", ""),
+		EventsRetentionDays:    envInt("EVENTS_RETENTION_DAYS", 0),
+		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
+		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
 	}
 }
 

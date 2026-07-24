@@ -1074,6 +1074,64 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 	return int(affected), nil
 }
 
+// pruneBatchSize limits each DELETE in PruneOldRows to avoid long-running
+// transactions and lock contention on TiDB/MySQL. See issue #112 criterion 5.
+const pruneBatchSize = 1000
+
+// retentionTables is the allowlist of tables eligible for TTL pruning. It both
+// documents the retention-managed tables and guards PruneOldRows against
+// arbitrary table names: the table is interpolated into the SQL string (database
+// placeholders cannot be used for identifiers), so it must be a known value. See
+// issue #112.
+var retentionTables = map[string]bool{
+	"chetter_task_events":    true,
+	"chetter_audit_log":      true,
+	"chetter_task_artifacts": true,
+	"chetter_agent_sessions": true,
+}
+
+// PruneOldRows deletes rows older than ttl from table in batches of
+// pruneBatchSize, looping until fewer than a full batch is removed. A ttl <= 0
+// disables pruning for that table and returns 0 without touching the database
+// (safe zero-value default; see issue #112 criterion 6 and 7). Rows are selected
+// by the created_at column, which every retention table has. Returns the total
+// number of rows deleted. See issue #112.
+func (s *Store) PruneOldRows(ctx context.Context, table string, ttl time.Duration) (int, error) {
+	if ttl <= 0 {
+		return 0, nil
+	}
+	if !retentionTables[table] {
+		return 0, fmt.Errorf("prune: unknown retention table %q", table)
+	}
+	cutoff := time.Now().UTC().Add(-ttl)
+	var deleteSQL string
+	if s.IsPostgres() {
+		// PostgreSQL does not support LIMIT in DELETE; batch via the primary key.
+		deleteSQL = fmt.Sprintf("DELETE FROM %s WHERE id IN (SELECT id FROM %s WHERE created_at < $1 LIMIT $2)", table, table)
+	} else {
+		deleteSQL = fmt.Sprintf("DELETE FROM %s WHERE created_at < ? LIMIT ?", table)
+	}
+	var total int
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		result, err := s.db.ExecContext(ctx, deleteSQL, cutoff, pruneBatchSize)
+		if err != nil {
+			return total, fmt.Errorf("prune %s: %w", table, err)
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return total, fmt.Errorf("prune %s rows affected: %w", table, err)
+		}
+		total += int(n)
+		if n < pruneBatchSize {
+			break
+		}
+	}
+	return total, nil
+}
+
 // RunnerFleetHealth holds aggregate health metrics derived from task activity.
 type RunnerFleetHealth struct {
 	TotalTasks       int               `json:"total_tasks"`
