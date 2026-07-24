@@ -1,4 +1,4 @@
-.PHONY: generate tools build web-build web-check test test-postgres vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-agent-base docker-build-runner
+.PHONY: install generate tools build web-build web-check test test-postgres vet lint check runner-test runner-vet runner-lint runner-check migrate migrate-status migrate-down migrate-create docker-build-mcp docker-build-agent-base docker-build-runner
 
 MCP_IMAGE ?= ghcr.io/flatout-works/chetter-mcp:local
 AGENT_BASE_IMAGE ?= ghcr.io/flatout-works/chetter-agent-base:local
@@ -16,6 +16,9 @@ STATICCHECK := $(BIN_DIR)/staticcheck
 BUF_VERSION := v1.69.0
 SQLC_VERSION := v1.31.1
 STATICCHECK_VERSION := 2025.1.1
+
+install:
+	go mod download
 
 generate: tools
 	$(BUF) dep update
