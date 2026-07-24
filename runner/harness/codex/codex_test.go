@@ -21,6 +21,11 @@ func TestGenerateConfig(t *testing.T) {
 		ModelID:           "gpt-5.4",
 		ProviderBaseURL:   "https://api.example.test/v1",
 		ProviderAPIKeyEnv: "EXAMPLE_API_KEY",
+		McpEndpoints: []task.MCPEndpoint{{
+			Name:           "docs",
+			URL:            "https://docs.example.test/mcp",
+			BearerTokenEnv: "DOCS_MCP_TOKEN",
+		}},
 	}
 	if err := GenerateConfig(wsDir, "http://runner.test/mcp", "https://chetter.test/mcp", "secret", req); err != nil {
 		t.Fatalf("GenerateConfig: %v", err)
@@ -41,10 +46,15 @@ func TestGenerateConfig(t *testing.T) {
 		`[mcp_servers.runner-bridge]`,
 		`[mcp_servers.chetter]`,
 		`Authorization = "Bearer secret"`,
+		`[mcp_servers.docs]`,
+		`bearer_token_env_var = "DOCS_MCP_TOKEN"`,
 	} {
 		if !strings.Contains(config, want) {
 			t.Fatalf("config missing %q:\n%s", want, config)
 		}
+	}
+	if strings.Contains(config, `[mcp_servers.docs.http_headers]`) {
+		t.Fatal("Codex endpoint bearer token must not be materialized as a static header")
 	}
 }
 

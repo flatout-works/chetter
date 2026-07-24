@@ -16,11 +16,10 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		return err
 	}
 
-	mcpServers := map[string]any{}
+	servers := map[string]any{}
 
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
-			"type":    "remote",
+		servers["runner-bridge"] = map[string]any{
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
@@ -28,7 +27,6 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 
 	if chetterMCPURL != "" {
 		chetterMCP := map[string]any{
-			"type":    "http",
 			"url":     chetterMCPURL,
 			"enabled": true,
 		}
@@ -37,18 +35,18 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 				"Authorization": "Bearer " + chetterMCPToken,
 			}
 		}
-		mcpServers["chetter"] = chetterMCP
+		servers["chetter"] = chetterMCP
 	}
 
 	if len(req.McpEndpoints) > 0 {
-		if err := mcpconfig.AddCodeWhaleServers(mcpServers, req.McpEndpoints); err != nil {
+		if err := mcpconfig.AddCodeWhaleServers(servers, req.McpEndpoints); err != nil {
 			return err
 		}
 	}
 
-	if len(mcpServers) > 0 {
+	if len(servers) > 0 {
 		agentMCP := map[string]any{
-			"mcpServers": mcpServers,
+			"servers": servers,
 		}
 		agentMCPData, err := json.MarshalIndent(agentMCP, "", "  ")
 		if err != nil {

@@ -50,8 +50,17 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		"Grep",
 		"Write",
 	}
+	enabledMCPServers := make([]string, 0, len(req.McpEndpoints)+2)
 	for _, endpoint := range req.McpEndpoints {
 		allow = append(allow, "mcp__"+endpoint.Name+"__*")
+		enabledMCPServers = append(enabledMCPServers, endpoint.Name)
+	}
+	if runnerMCPURL != "" {
+		allow = append(allow, "mcp__runner-bridge__*")
+		enabledMCPServers = append(enabledMCPServers, "runner-bridge")
+	}
+	if chetterMCPURL != "" {
+		enabledMCPServers = append(enabledMCPServers, "chetter")
 	}
 
 	settings := map[string]any{
@@ -69,6 +78,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		},
 		"skipPermissionsOnAllowed": true,
 	}
+	if len(enabledMCPServers) > 0 {
+		// Project MCP servers otherwise wait for interactive approval, which is
+		// unavailable to the headless serve proxy.
+		settings["enabledMcpjsonServers"] = enabledMCPServers
+	}
 
 	settingsPath := claudeDir + "/settings.json"
 	settingsData, err := json.MarshalIndent(settings, "", "  ")
@@ -84,17 +98,15 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 
 	if runnerMCPURL != "" {
 		mcpServers["runner-bridge"] = map[string]any{
-			"type":    "remote",
-			"url":     runnerMCPURL,
-			"enabled": true,
+			"type": "http",
+			"url":  runnerMCPURL,
 		}
 	}
 
 	if chetterMCPURL != "" {
 		chetterMCP := map[string]any{
-			"type":    "http",
-			"url":     chetterMCPURL,
-			"enabled": true,
+			"type": "http",
+			"url":  chetterMCPURL,
 		}
 		if chetterMCPToken != "" {
 			chetterMCP["headers"] = map[string]string{
@@ -118,7 +130,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		if err != nil {
 			return err
 		}
-		agentMCPPath := claudeDir + "/mcp.json"
+		agentMCPPath := filepath.Join(wsDir, ".mcp.json")
 		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
 			return err
 		}

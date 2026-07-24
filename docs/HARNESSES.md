@@ -126,7 +126,7 @@ Each harness uses its native environment-variable reference syntax for the Autho
 | Claude Code | `Bearer ${NAME}` | `.mcp.json` `mcpServers` map |
 | CodeWhale | `bearer_token_env_var: NAME` | `.codewhale/mcp.json` `servers` map |
 | Pi | Native `bearerTokenEnv: NAME` | `.mcp.json` `mcpServers` map |
-| Codex | `Bearer ${NAME}` | `.codex/config.toml` `[mcp_servers.NAME]` |
+| Codex | Native `bearer_token_env_var: NAME` | `.codex/config.toml` `[mcp_servers.NAME]` |
 
 CodeWhale and Pi use native fields (`bearer_token_env_var` / `bearerTokenEnv`) instead of header interpolation. OpenCode and Claude Code use their respective env-reference syntaxes in the `Authorization` header value.
 
@@ -277,7 +277,7 @@ SSE, session export, and resume support.
 - Session export from JSONL files
 - Clean stream-json output format
 - Permission system (allow/deny lists in settings.json)
-- MCP support built-in (.claude/mcp.json)
+- MCP support built-in (`.mcp.json`)
 
 ### Cons
 

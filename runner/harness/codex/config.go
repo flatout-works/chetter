@@ -102,9 +102,7 @@ func writeEndpointMCPServers(b *strings.Builder, endpoints []task.MCPEndpoint) {
 		fmt.Fprintf(b, "url = %s\n", tomlString(endpoint.URL))
 		b.WriteString("default_tools_approval_mode = \"approve\"\n")
 		if endpoint.BearerTokenEnv != "" {
-			if token := os.Getenv(endpoint.BearerTokenEnv); token != "" {
-				fmt.Fprintf(b, "http_headers = { Authorization = %s }\n", tomlString("Bearer "+token))
-			}
+			fmt.Fprintf(b, "bearer_token_env_var = %s\n", tomlString(endpoint.BearerTokenEnv))
 		}
 		b.WriteByte('\n')
 	}
