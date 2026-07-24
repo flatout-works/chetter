@@ -180,6 +180,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		svc.reapStaleUserPrompts,
 		svc.reapUnavailablePinnedResumeTasks,
 		svc.reapExpiredSessions,
+		svc.pruneRetainedRows,
 		svc.checkDBQuota,
 		func() {
 			if svc.runnerRPC != nil {
@@ -277,6 +278,59 @@ func (s *Service) reaperCtx() (context.Context, context.CancelFunc) {
 		parent = context.Background()
 	}
 	return context.WithTimeout(parent, eventHandlerTimeout)
+}
+
+// pruneJob pairs a retention-managed table with its configured TTL.
+type pruneJob struct {
+	table string
+	ttl   time.Duration
+}
+
+// pruneJobs builds the list of enabled prune jobs from configuration. Tables
+// whose TTL is 0 are omitted, so pruning is opt-in and existing deployments are
+// unaffected until an operator sets a retention window. The artifact TTL also
+// governs agent sessions per issue #112 criterion 3. See issue #112.
+func (s *Service) pruneJobs() []pruneJob {
+	var jobs []pruneJob
+	if d := s.cfg.EventsRetentionDays; d > 0 {
+		jobs = append(jobs, pruneJob{"chetter_task_events", time.Duration(d) * 24 * time.Hour})
+	}
+	if d := s.cfg.AuditRetentionDays; d > 0 {
+		jobs = append(jobs, pruneJob{"chetter_audit_log", time.Duration(d) * 24 * time.Hour})
+	}
+	if d := s.cfg.ArtifactRetentionDays; d > 0 {
+		jobs = append(jobs, pruneJob{"chetter_task_artifacts", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{"chetter_agent_sessions", time.Duration(d) * 24 * time.Hour})
+	}
+	return jobs
+}
+
+// pruneRetainedRows is the reaper step that deletes rows older than their
+// configured retention TTLs from the event, audit-log, artifact, and
+// agent-session tables. Each table is pruned independently; a failure on one
+// table is logged and does not abort the others. Rows pruned per table are
+// logged each cycle. With all TTLs at their zero default this is a no-op. See
+// issue #112.
+func (s *Service) pruneRetainedRows() {
+	ctx, cancel := s.reaperCtx()
+	defer cancel()
+	jobs := s.pruneJobs()
+	if len(jobs) == 0 {
+		return
+	}
+	for _, job := range jobs {
+		n, err := s.store.PruneOldRows(ctx, job.table, job.ttl)
+		if err != nil {
+			slog.Error("retention prune failed", "table", job.table, "error", err)
+			if isQuotaExhaustedError(err) {
+				s.quotaExhausted.Store(true)
+			}
+			continue
+		}
+		if n > 0 {
+			slog.Info("pruned retained rows", "table", job.table, "count", n)
+		}
+	}
 }
 
 func (s *Service) definitionsSyncLoop() {
