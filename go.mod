@@ -2,7 +2,7 @@ module github.com/flatout-works/chetter
 
 go 1.26
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
@@ -35,5 +35,5 @@ require (
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 )
