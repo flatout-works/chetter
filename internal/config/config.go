@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/flatout-works/chetter/internal/validation"
 )
 
 // Config holds all runtime settings for the chetter MCP service.
@@ -36,6 +38,9 @@ type Config struct {
 	EventsRetentionDays   int
 	AuditRetentionDays    int
 	ArtifactRetentionDays int
+	// EnvValidation configures task environment variable validation at submission
+	// time. See env var CHETTER_ENV_* and internal/validation.
+	EnvValidation validation.Config
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -64,6 +69,7 @@ func Load() Config {
 		EventsRetentionDays:    envInt("EVENTS_RETENTION_DAYS", 0),
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
+		EnvValidation:          envValidationConfig(),
 	}
 }
 
@@ -147,4 +153,33 @@ func envInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	return parsed
+}
+
+func envSlice(key string, fallback []string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parts := strings.Split(value, ",")
+	var out []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
+}
+
+func envValidationConfig() validation.Config {
+	cfg := validation.Defaults()
+	cfg.BlockedPrefixes = envSlice("CHETTER_ENV_BLOCKED_PREFIXES", cfg.BlockedPrefixes)
+	cfg.BlockedNames = envSlice("CHETTER_ENV_BLOCKED_NAMES", cfg.BlockedNames)
+	cfg.MaxCount = envInt("CHETTER_ENV_MAX_COUNT", cfg.MaxCount)
+	cfg.MaxNameLength = envInt("CHETTER_ENV_MAX_NAME_LENGTH", cfg.MaxNameLength)
+	cfg.MaxValueLength = envInt("CHETTER_ENV_MAX_VALUE_LENGTH", cfg.MaxValueLength)
+	return cfg
 }
