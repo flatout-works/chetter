@@ -21,6 +21,7 @@ import (
 	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/internal/validation"
 	"github.com/flatout-works/chetter/internal/webhook"
 	"github.com/flatout-works/chetter/pkg/definitions"
 	"github.com/robfig/cron/v3"
@@ -797,6 +798,15 @@ func (s *Service) reapExpiredSessions() {
 func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.TaskRecord, error) {
 	if in.Prompt == "" {
 		return store.TaskRecord{}, fmt.Errorf("prompt is required")
+	}
+	if err := validation.ValidateTaskEnv(in.Env, s.cfg.EnvValidation); err != nil {
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "task.validation_failed",
+			SourceType: "api",
+			TargetType: "task",
+			Detail:     err.Error(),
+		})
+		return store.TaskRecord{}, err
 	}
 	if in.AgentImage == "" {
 		if s.cfg.DefaultAgentImage == "" {
