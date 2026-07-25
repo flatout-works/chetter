@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-24
+
+### Added
+
+- Configurable storage pruning: TTL-based pruning for `chetter_task_events`, `chetter_audit_log`, `chetter_task_artifacts`, and `chetter_agent_sessions`, configurable via `EVENTS_RETENTION_DAYS`, `AUDIT_RETENTION_DAYS`, and `ARTIFACT_RETENTION_DAYS`. All default to 0 (disabled). Deletes run in batches of 1000 to avoid long-running transactions (#112).
+- Database connection resilience: transient error detection (connection refused, broken pipe, leader change) with exponential backoff retry (100ms → 5s, up to 3 retries) and ping-based startup health check with up to 60s of backoff (#103).
+- TiDB migration tooling for the wowbagger deployment: `ops/tidb-bootstrap.sh`, `ops/tidb-cloud-migrate.sh`, and `ops/tidb-common.sh` with topology review before deployment.
+
+### Fixed
+
+- Runner: RPC harnesses now use context commands (`docker exec` with signal handling) instead of raw commands, enabling proper shutdown signaling for OpenCode, Claude Code, CodeWhale, and Codex.
+- Runner: Claude Code, CodeWhale, and Codex harness MCP configs aligned — each now generates consistent `mcp.json` configurations inside the agent container.
+
+### Documentation
+
+- Retention pruning documented in `docs/FEATURES.md` and `docs/MANUAL.md` with env var reference and default-behavior notes.
+- TiDB wowbagger migration tooling documented in `docs/TIDB-WOWBAGGER.md` (new), covering bootstrap, cloud migration, and common setup scripts.
+- TiDB deployment prerequisite: topology review step added before bootstrap.
+- Website updated: technical.html and how-it-works.html cover graceful shutdown, time-aware drain (`CHETTER_DRAIN_TIMEOUT_SEC`), webhook delivery queue with retry/backoff/dead-lettering, and auto-recovery opt-out (`DEFAULT_AUTO_RECOVERY`).
+
 ## 2026-07-23
 
 ### Added
