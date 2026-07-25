@@ -111,7 +111,12 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 	var query string
 	var args []any
 	agentClause := ` AND (? = '' OR EXISTS (SELECT 1 FROM chetter_agent_sessions session WHERE session.task_id = chetter_tasks.id AND session.agent = ?))`
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		args = append([]any{status, status, agent, agent}, teamArgs...)
+		args = append(args, repoArgs...)
+		args = append(args, search, limit, offset)
+	} else if s.dialect == store.DialectMySQL {
 		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY created_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
@@ -173,7 +178,12 @@ func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []s
 	repoClause, repoArgs := repoMatchClause(repos)
 	var query string
 	var args []any
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		query = `SELECT id FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+		args = append([]any{status, status}, teamArgs...)
+		args = append(args, repoArgs...)
+		args = append(args, search, limit, offset)
+	} else if s.dialect == store.DialectMySQL {
 		query = `SELECT id FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status}, teamArgs...)
 		args = append(args, repoArgs...)
@@ -237,7 +247,8 @@ func (s *Service) scanAgentSessions(ctx context.Context, query string, args []an
 }
 
 // searchTasksFTS attempts a real full-text search. On TiDB it uses
-// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
+// on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
 // If the FTS index is unavailable it falls back to the sqlc LIKE query.
 func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
 	safe := sanitizeFTS(search)
@@ -246,7 +257,17 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 	}
 	var query string
 	var args []any
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		query = `
+			SELECT id FROM chetter_tasks
+			WHERE ($1 = '' OR team_id = $1)
+			  AND ($2 = '' OR status = $2)
+			  AND ($3 = '' OR agent = $3)
+			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $4)
+			ORDER BY created_at DESC
+			LIMIT $5 OFFSET $6`
+		args = []any{teamFilter, status, agent, search, limit, offset}
+	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id FROM chetter_tasks
 			WHERE (? = '' OR team_id = ?)
@@ -303,7 +324,8 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 }
 
 // searchAgentSessionsFTS attempts a real full-text search. On TiDB it uses
-// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
+// on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
 func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
@@ -311,7 +333,16 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 	}
 	var query string
 	var args []any
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		query = `
+			SELECT id FROM chetter_agent_sessions
+			WHERE ($1 = '' OR COALESCE(team_id, '') = $1)
+			  AND ($2 = '' OR status = $2)
+			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $3)
+			ORDER BY updated_at DESC
+			LIMIT $4 OFFSET $5`
+		args = []any{teamFilter, status, search, limit, offset}
+	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id FROM chetter_agent_sessions
 			WHERE (? = '' OR COALESCE(team_id, '') = ?)
@@ -447,7 +478,8 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 }
 
 // searchAuditLogFTS attempts a real full-text search. On TiDB it uses
-// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
+// on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
 func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilterInput, limit, offset int32, sinceTime sql.NullTime) ([]repository.ListAuditLogRow, error) {
 	safe := sanitizeFTS(filter.Search)
 	if safe == "" {
@@ -463,7 +495,45 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 	}
 	var query string
 	var args []any
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		// Build a $N-style exclude clause if needed.
+		pgExcludeClause := ""
+		if len(filter.ExcludeTypes) > 0 {
+			pgPlaceholders := make([]string, len(filter.ExcludeTypes))
+			// Base params are $1–$16; exclude types start at $17.
+			for i := range filter.ExcludeTypes {
+				pgPlaceholders[i] = fmt.Sprintf("$%d", 17+i)
+			}
+			pgExcludeClause = fmt.Sprintf(" AND event_type NOT IN (%s)", strings.Join(pgPlaceholders, ","))
+		}
+		query = `
+			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
+			FROM chetter_audit_log
+			WHERE (event_type = $1 OR $2 = '')
+			  AND ($3 IS NOT DISTINCT FROM source_type OR $4 = '')
+			  AND ($5 IS NOT DISTINCT FROM source_id OR $6 = '')
+			  AND ($7 IS NOT DISTINCT FROM target_type OR $8 = '')
+			  AND ($9 IS NOT DISTINCT FROM target_id OR $10 = '')
+			  AND ($11 IS NOT DISTINCT FROM repo OR $12 = '')
+			  AND (created_at >= COALESCE($13, '-infinity'::timestamptz))` + pgExcludeClause + `
+			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $14)
+			ORDER BY created_at DESC
+			LIMIT $15 OFFSET $16`
+		args = []any{
+			filter.EventType, filter.EventType,
+			nullString(filter.SourceType), filter.SourceType,
+			nullString(filter.SourceID), filter.SourceID,
+			nullString(filter.TargetType), filter.TargetType,
+			nullString(filter.TargetID), filter.TargetID,
+			nullString(filter.Repo), filter.Repo,
+			sinceTime,
+			filter.Search,
+			limit, offset,
+		}
+		for _, t := range filter.ExcludeTypes {
+			args = append(args, t)
+		}
+	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
 			FROM chetter_audit_log
@@ -589,7 +659,8 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 }
 
 // searchTaskArtifactsFTS attempts a real full-text search. On TiDB it uses
-// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE.
+// FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
+// on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
 func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifactFilterInput, limit, offset int32) ([]repository.ListTaskArtifactsRow, error) {
 	safe := sanitizeFTS(filter.Search)
 	if safe == "" {
@@ -597,7 +668,30 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	}
 	var query string
 	var args []any
-	if s.dialect == store.DialectMySQL {
+	if s.dialect == store.DialectPostgres {
+		query = `
+			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
+			FROM chetter_task_artifacts
+			WHERE (task_id = $1 OR $2 = '')
+			  AND ($3 IS NOT DISTINCT FROM agent_session_id OR $4 = '')
+			  AND ($5 IS NOT DISTINCT FROM user_prompt_id OR $6 = '')
+			  AND (execution_attempt_id = $7 OR $8 = '')
+			  AND (artifact_type = $9 OR $10 = '')
+			  AND (repo = $11 OR $12 = '')
+			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $13)
+			ORDER BY discovered_at DESC
+			LIMIT $14 OFFSET $15`
+		args = []any{
+			filter.TaskID, filter.TaskID,
+			nullString(filter.AgentSessionID), filter.AgentSessionID,
+			nullString(filter.UserPromptID), filter.UserPromptID,
+			filter.ExecutionAttemptID, filter.ExecutionAttemptID,
+			filter.ArtifactType, filter.ArtifactType,
+			filter.Repo, filter.Repo,
+			filter.Search,
+			limit, offset,
+		}
+	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
 			FROM chetter_task_artifacts
