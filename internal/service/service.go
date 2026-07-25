@@ -1216,6 +1216,143 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 	return s.GetTask(ctx, taskID)
 }
 
+// RerunTask creates a new task with the same parameters as an existing terminal task.
+func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
+	orig, err := s.taskForToolAccess(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get original task: %w", err)
+	}
+	if orig.Status != "error" && orig.Status != "done" && orig.Status != "cancelled" {
+		return TaskToolRecord{}, fmt.Errorf("task %s is %s, not a terminal state", taskID, orig.Status)
+	}
+
+	session, err := s.repo.GetAgentSessionByTaskID(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get source agent session: %w", err)
+	}
+
+	prompt, err := s.repo.GetUserPromptByTaskID(ctx, taskID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get source user prompt: %w", err)
+	}
+
+	attempts, err := s.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("get source attempts: %w", err)
+	}
+
+	timeoutSec := s.cfg.DefaultTaskTimeoutSec
+	if len(attempts) > 0 {
+		timeoutSec = int(attempts[len(attempts)-1].TimeoutSec)
+	}
+
+	now := time.Now().UTC()
+	newTaskID, err := randomID("task")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate new task id: %w", err)
+	}
+	newSessionID, err := randomID("sess")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate new session id: %w", err)
+	}
+	newPromptID, err := randomID("prompt")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate new prompt id: %w", err)
+	}
+	newAttemptID, err := randomID("exec")
+	if err != nil {
+		return TaskToolRecord{}, fmt.Errorf("generate new attempt id: %w", err)
+	}
+
+	teamID := orig.TeamID.String
+
+	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		taskSearchText := strings.Join(strings.Fields(orig.Prompt+" "+session.Agent.String+" "+session.ModelID.String+" "+orig.GitUrl.String), " ")
+		if err := q.InsertTask(ctx, repository.InsertTaskParams{
+			ID:               newTaskID,
+			TeamID:           nullString(teamID),
+			Prompt:           orig.Prompt,
+			GitUrl:           orig.GitUrl,
+			GitRef:           orig.GitRef,
+			SubmissionSource: "rerun",
+			SearchText:       nullString(taskSearchText),
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}); err != nil {
+			return fmt.Errorf("insert rerun task: %w", err)
+		}
+
+		sessionSearchText := strings.Join(strings.Fields(newSessionID+" "+session.Agent.String+" "+session.ModelID.String+" "+orig.GitUrl.String), " ")
+		if err := q.InsertAgentSession(ctx, repository.InsertAgentSessionParams{
+			ID:                newSessionID,
+			TaskID:            newTaskID,
+			Sequence:          1,
+			TeamID:            session.TeamID,
+			Status:            "running",
+			ResumeMode:        session.ResumeMode,
+			PauseReason:       session.PauseReason,
+			ExpiresAt:         sql.NullTime{},
+			GitUrl:            session.GitUrl,
+			GitRef:            session.GitRef,
+			AgentImage:        session.AgentImage,
+			Agent:             session.Agent,
+			ProviderID:        session.ProviderID,
+			ModelID:           session.ModelID,
+			VariantID:         session.VariantID,
+			Harness:           session.Harness,
+			Skills:            session.Skills,
+			McpEndpoints:      session.McpEndpoints,
+			Env:               session.Env,
+			CommitAuthorName:  session.CommitAuthorName,
+			CommitAuthorEmail: session.CommitAuthorEmail,
+			GitIdentityID:     session.GitIdentityID,
+			SearchText:        nullString(sessionSearchText),
+			CreatedAt:         now,
+			UpdatedAt:         now,
+			StartedAt:         sql.NullTime{Time: now, Valid: true},
+		}); err != nil {
+			return fmt.Errorf("insert rerun agent session: %w", err)
+		}
+
+		if err := q.InsertUserPrompt(ctx, repository.InsertUserPromptParams{
+			ID:             newPromptID,
+			AgentSessionID: newSessionID,
+			TaskID:         newTaskID,
+			Sequence:       1,
+			Status:         "pending",
+			Prompt:         orig.Prompt,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}); err != nil {
+			return fmt.Errorf("insert rerun user prompt: %w", err)
+		}
+
+		if err := q.InsertPendingExecutionAttempt(ctx, repository.InsertPendingExecutionAttemptParams{
+			ID: newAttemptID, UserPromptID: newPromptID, Sequence: 1, TimeoutSec: int32(timeoutSec), CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("insert rerun execution attempt: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return TaskToolRecord{}, err
+	}
+
+	slog.Info("task rerun queued", "task_id", newTaskID, "source_task_id", taskID, "agent_session_id", newSessionID, "user_prompt_id", newPromptID)
+
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "task_rerun",
+		SourceType: "task",
+		SourceID:   taskID,
+		TargetType: "task",
+		TargetID:   newTaskID,
+		Detail:     fmt.Sprintf("task %s rerun as %s", taskID, newTaskID),
+	})
+
+	return s.GetTask(ctx, newTaskID)
+}
+
 // ResumeAgentSession creates a follow-up prompt for a paused or recoverable agent session.
 func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt string, timeoutSec int) (ResumeAgentSessionOutput, error) {
 	session, err := s.repo.GetAgentSessionByID(ctx, sessionID)

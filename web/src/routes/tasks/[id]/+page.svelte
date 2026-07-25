@@ -41,6 +41,7 @@
   let showExportViewer = $state(false);
 
   let recovering = $state(false);
+  let rerunning = $state(false);
 
   let totalTokens = $derived.by(() => {
     const tu = task?.tokenUsage;
@@ -430,6 +431,18 @@
     }
   }
 
+  async function rerunTask() {
+    rerunning = true;
+    try {
+      const client = createClient(TaskService, getTransport());
+      await client.rerunTask({ taskId: params.id });
+      window.location.href = resolve("/tasks");
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to rerun task";
+      rerunning = false;
+    }
+  }
+
   async function viewExport() {
     viewLoading = true;
     try {
@@ -491,6 +504,9 @@
         {#if task.status === "done" || task.status === "error" || task.status === "cancelled"}
           <Button color="green" size="sm" onclick={recoverTask} disabled={recovering}>
             {recovering ? "Recovering…" : "Recover"}
+          </Button>
+          <Button color="blue" size="sm" onclick={rerunTask} disabled={rerunning}>
+            {rerunning ? "Re-running…" : "Re-run"}
           </Button>
           <Button size="sm" onclick={viewExport} disabled={viewLoading}>
             {viewLoading ? "Loading…" : "View"}

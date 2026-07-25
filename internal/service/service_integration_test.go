@@ -719,6 +719,103 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 	}
 }
 
+func TestRerunTaskCreatesNewTaskWithSameParameters(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "run this task again",
+		AgentImage: "runner:latest",
+		Agent:      "test-agent",
+		ModelID:    "test-model",
+	})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	// Move the task to terminal state
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_rerun", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_rerun",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         task.ID,
+			ExecutionId:    claim.Msg.Task.ExecutionId,
+			AgentSessionId: claim.Msg.Task.AgentSessionId,
+			UserPromptId:   claim.Msg.Task.UserPromptId,
+			Status:         "error",
+			Error:          "something went wrong",
+		}},
+	})); err != nil {
+		t.Fatalf("report failure: %v", err)
+	}
+
+	// Rerun the terminal task
+	newTask, err := svc.RerunTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+
+	// Verify new task has a different ID
+	if newTask.ID == task.ID {
+		t.Fatalf("rerun task ID = %s, want different from source %s", newTask.ID, task.ID)
+	}
+
+	// Verify new task is pending
+	if newTask.Status != "pending" {
+		t.Fatalf("rerun task status = %s, want pending", newTask.Status)
+	}
+
+	// Verify parameters are copied
+	if newTask.Prompt != task.Prompt {
+		t.Fatalf("rerun prompt = %q, want %q", newTask.Prompt, task.Prompt)
+	}
+	if newTask.Agent != task.Agent {
+		t.Fatalf("rerun agent = %s, want %s", newTask.Agent, task.Agent)
+	}
+	if newTask.ModelID != task.ModelID {
+		t.Fatalf("rerun model = %s, want %s", newTask.ModelID, task.ModelID)
+	}
+	if newTask.SubmissionSource != "rerun" {
+		t.Fatalf("rerun submission_source = %s, want rerun", newTask.SubmissionSource)
+	}
+
+	// Verify new task can be claimed
+	newClaim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_rerun_2", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim rerun: %v", err)
+	}
+	if newClaim.Msg.Task.TaskId != newTask.ID {
+		t.Fatalf("claimed rerun task ID = %s, want %s", newClaim.Msg.Task.TaskId, newTask.ID)
+	}
+	if string(newClaim.Msg.Task.Prompt) != task.Prompt {
+		t.Fatalf("claimed rerun prompt = %q, want %q", string(newClaim.Msg.Task.Prompt), task.Prompt)
+	}
+}
+
+func TestRerunTaskRejectsNonTerminalTask(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "still running", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	_, err = svc.RerunTask(ctx, task.ID)
+	if err == nil {
+		t.Fatal("expected error rerunning pending task, got nil")
+	}
+	if !strings.Contains(err.Error(), "not a terminal state") {
+		t.Fatalf("error = %v, want 'not a terminal state'", err)
+	}
+}
+
 func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	svc, tdb, cleanup := newServiceForTest(t)
 	defer cleanup()

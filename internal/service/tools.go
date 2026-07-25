@@ -527,6 +527,16 @@ type TaskRecoverOutput struct {
 	Task TaskToolRecord `json:"task"`
 }
 
+// TaskRerunInput is the input for chetter_rerun_task.
+type TaskRerunInput struct {
+	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
+}
+
+// TaskRerunOutput is the output for chetter_rerun_task.
+type TaskRerunOutput struct {
+	Task TaskToolRecord `json:"task"`
+}
+
 type ListAgentSessionsInput struct {
 	Status string `json:"status,omitempty" jsonschema:"Optional agent session status filter"`
 	Search string `json:"search,omitempty" jsonschema:"Free-text search across session ID, agent, model"`
@@ -662,6 +672,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_drain_runner", Description: "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically."}, svc.drainRunnerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_export", Description: "Get the session export (markdown transcript) for a completed chetter task."}, svc.taskExportTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a terminal task in a fresh agent session using the previous session export."}, svc.taskRecoverTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_rerun_task", Description: "Create a new task with the same parameters as an existing terminal task (done, error, or cancelled)."}, svc.taskRerunTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true."}, svc.clearQueueTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)
@@ -749,6 +760,14 @@ func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, TaskRecoverOutput{}, err
 	}
 	return nil, TaskRecoverOutput{Task: task}, nil
+}
+
+func (s *Service) taskRerunTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskRerunInput) (*mcp.CallToolResult, TaskRerunOutput, error) {
+	task, err := s.RerunTask(ctx, in.TaskID)
+	if err != nil {
+		return nil, TaskRerunOutput{}, err
+	}
+	return nil, TaskRerunOutput{Task: task}, nil
 }
 
 func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in ListTasksInput) (*mcp.CallToolResult, ListTasksOutput, error) {
