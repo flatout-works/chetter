@@ -62,7 +62,7 @@ func (e ValidationError) Error() string {
 // blocked patterns in cfg. It returns nil if all vars pass, or an error
 // wrapping all violations.
 func ValidateTaskEnv(env map[string]string, cfg Config) error {
-	if env == nil || len(env) == 0 {
+	if len(env) == 0 {
 		return nil
 	}
 	var errs []ValidationError
