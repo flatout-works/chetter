@@ -34,6 +34,7 @@ var chetterMCPAllowedTools = []string{
 	// Task lifecycle — write
 	"chetter_submit_task",
 	"chetter_recover_task",
+	"chetter_rerun_task",
 	"chetter_resume_agent_session",
 	// Agent sessions
 	"chetter_list_agent_sessions",
