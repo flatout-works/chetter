@@ -12,6 +12,8 @@ SET status = 'pending',
     summary = NULL,
     error = NULL,
     error_category = NULL,
+    failure_category = NULL,
+    failure_message = NULL,
     ended_at = NULL,
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
@@ -53,6 +55,8 @@ SET status = sqlc.arg(status),
     summary = sqlc.narg(summary),
     error = sqlc.narg(error),
     error_category = COALESCE(NULLIF(sqlc.arg(error_category), ''), error_category),
+    failure_category = COALESCE(NULLIF(sqlc.arg(failure_category), ''), failure_category),
+    failure_message = COALESCE(sqlc.narg(failure_message), failure_message),
     ended_at = COALESCE(sqlc.narg(ended_at), ended_at),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
@@ -63,6 +67,8 @@ UPDATE chetter_tasks task
 SET status = 'error',
     error = attempt.error,
     error_category = 'timeout',
+    failure_category = 'timeout',
+    failure_message = 'Task timed out after ' || COALESCE(attempt.error, 'lease expiry'),
     ended_at = $1,
     updated_at = $2
 FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
@@ -79,17 +85,21 @@ UPDATE chetter_tasks
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
-    ended_at = COALESCE(ended_at, $2),
-    updated_at = $3
-WHERE id = $4 AND status IN ('pending', 'running');
+    failure_category = 'user_cancelled',
+    failure_message = $2,
+    ended_at = COALESCE(ended_at, $3),
+    updated_at = $4
+WHERE id = $5 AND status IN ('pending', 'running');
 
 -- name: ClearPendingTasks :execrows
 UPDATE chetter_tasks
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
-    ended_at = COALESCE(ended_at, $2),
-    updated_at = $3
+    failure_category = 'user_cancelled',
+    failure_message = $2,
+    ended_at = COALESCE(ended_at, $3),
+    updated_at = $4
 WHERE status = 'pending';
 
 -- name: GetLatestTaskEvent :one

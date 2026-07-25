@@ -714,10 +714,15 @@
       <Alert color="red" class="mb-6">
         <div class="flex items-center gap-2 mb-1">
           <h2 class="text-sm font-semibold">Error</h2>
-          {#if task.errorCategory}
+          {#if task.failureCategory}
+            <StatusBadge status={task.failureCategory} label={task.failureCategory.replace(/_/g, " ")} />
+          {:else if task.errorCategory}
             <Badge color="red">{task.errorCategory}</Badge>
           {/if}
         </div>
+        {#if task.failureMessage}
+          <p class="text-sm font-semibold text-red-800 dark:text-red-200 mb-1">{task.failureMessage}</p>
+        {/if}
         <p class="text-sm font-mono">{task.error}</p>
       </Alert>
     {/if}

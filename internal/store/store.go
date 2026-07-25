@@ -105,6 +105,8 @@ type TaskRecord struct {
 	Summary               string            `json:"summary,omitempty"`
 	Error                 string            `json:"error,omitempty"`
 	ErrorCategory         string            `json:"error_category,omitempty"`
+	FailureCategory       string            `json:"failure_category,omitempty"`
+	FailureMessage        string            `json:"failure_message,omitempty"`
 	CreatedAt             time.Time         `json:"created_at"`
 	UpdatedAt             time.Time         `json:"updated_at"`
 	StartedAt             *time.Time        `json:"started_at,omitempty"`
@@ -505,6 +507,8 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
+		{"failure_category", "ALTER TABLE chetter_tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
+		{"failure_message", "ALTER TABLE chetter_tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)

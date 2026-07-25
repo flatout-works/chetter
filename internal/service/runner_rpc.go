@@ -881,14 +881,24 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		Payload:            payload,
 		CreatedAt:          now,
 	}
+	failureCategory := ""
+	failureMessage := sql.NullString{}
+	if statusIsErrorCategoryCandidate(status) {
+		failureCategory = classifyFailureCategory(errorCategory)
+		if event.Error != "" {
+			failureMessage = sql.NullString{String: truncateTo500(event.Error), Valid: true}
+		}
+	}
 	updateParams := repository.UpdateTaskAggregateFromRunnerEventParams{
-		Status:        status,
-		Summary:       nullString(event.Summary),
-		Error:         nullString(event.Error),
-		ErrorCategory: errorCategory,
-		EndedAt:       parseOptionalTime(event.EndedAt),
-		UpdatedAt:     now,
-		ID:            event.TaskId,
+		Status:          status,
+		Summary:         nullString(event.Summary),
+		Error:           nullString(event.Error),
+		ErrorCategory:   errorCategory,
+		FailureCategory: failureCategory,
+		FailureMessage:  failureMessage,
+		EndedAt:         parseOptionalTime(event.EndedAt),
+		UpdatedAt:       now,
+		ID:              event.TaskId,
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
@@ -1163,6 +1173,34 @@ func classifyTaskErrorCategory(status, message string) string {
 	default:
 		return "runtime_error"
 	}
+}
+
+// classifyFailureCategory maps a per-attempt error_category to a task-level failure_category.
+// Values per the issue #98 specification: timeout, harness_error, runner_lost,
+// internal_error, user_cancelled, quota_exceeded, unknown.
+func classifyFailureCategory(errorCategory string) string {
+	switch errorCategory {
+	case "timeout":
+		return "timeout"
+	case "cancelled":
+		return "user_cancelled"
+	case "budget_exceeded":
+		return "quota_exceeded"
+	case "model_error":
+		return "internal_error"
+	case "runtime_error", "transport_error", "stuck":
+		return "harness_error"
+	default:
+		return "unknown"
+	}
+}
+
+// truncateTo500 truncates a string to at most 500 characters.
+func truncateTo500(s string) string {
+	if len(s) <= 500 {
+		return s
+	}
+	return s[:497] + "..."
 }
 
 func isPromptTransportFailureMessage(lower string) bool {

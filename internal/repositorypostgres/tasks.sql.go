@@ -18,21 +18,25 @@ UPDATE chetter_tasks
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
-    ended_at = COALESCE(ended_at, $2),
-    updated_at = $3
-WHERE id = $4 AND status IN ('pending', 'running')
+    failure_category = 'user_cancelled',
+    failure_message = $2,
+    ended_at = COALESCE(ended_at, $3),
+    updated_at = $4
+WHERE id = $5 AND status IN ('pending', 'running')
 `
 
 type CancelTaskParams struct {
-	Error     sql.NullString `json:"error"`
-	EndedAt   sql.NullTime   `json:"ended_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	ID        string         `json:"id"`
+	Error          sql.NullString `json:"error"`
+	FailureMessage sql.NullString `json:"failure_message"`
+	EndedAt        sql.NullTime   `json:"ended_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	ID             string         `json:"id"`
 }
 
 func (q *Queries) CancelTask(ctx context.Context, arg CancelTaskParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, cancelTask,
 		arg.Error,
+		arg.FailureMessage,
 		arg.EndedAt,
 		arg.UpdatedAt,
 		arg.ID,
@@ -48,19 +52,27 @@ UPDATE chetter_tasks
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
-    ended_at = COALESCE(ended_at, $2),
-    updated_at = $3
+    failure_category = 'user_cancelled',
+    failure_message = $2,
+    ended_at = COALESCE(ended_at, $3),
+    updated_at = $4
 WHERE status = 'pending'
 `
 
 type ClearPendingTasksParams struct {
-	Error     sql.NullString `json:"error"`
-	EndedAt   sql.NullTime   `json:"ended_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	Error          sql.NullString `json:"error"`
+	FailureMessage sql.NullString `json:"failure_message"`
+	EndedAt        sql.NullTime   `json:"ended_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) ClearPendingTasks(ctx context.Context, arg ClearPendingTasksParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, clearPendingTasks, arg.Error, arg.EndedAt, arg.UpdatedAt)
+	result, err := q.db.ExecContext(ctx, clearPendingTasks,
+		arg.Error,
+		arg.FailureMessage,
+		arg.EndedAt,
+		arg.UpdatedAt,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -72,6 +84,8 @@ UPDATE chetter_tasks task
 SET status = 'error',
     error = attempt.error,
     error_category = 'timeout',
+    failure_category = 'timeout',
+    failure_message = 'Task timed out after ' || COALESCE(attempt.error, 'lease expiry'),
     ended_at = $1,
     updated_at = $2
 FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
@@ -124,7 +138,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks WHERE id = $1
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks WHERE id = $1
 `
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, error) {
@@ -148,6 +162,8 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.UpdatedAt,
 		&i.EndedAt,
 		&i.SearchText,
+		&i.FailureCategory,
+		&i.FailureMessage,
 	)
 	return i, err
 }
@@ -190,7 +206,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks
 WHERE ($1 = '' OR chetter_tasks.status = $1)
   AND (COALESCE($2, '') = '' OR chetter_tasks.trigger_name = $2)
   AND (COALESCE($3, '') = '' OR EXISTS (
@@ -242,6 +258,8 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.UpdatedAt,
 			&i.EndedAt,
 			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -257,7 +275,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks
 WHERE chetter_tasks.team_id = $1
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -312,6 +330,8 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.UpdatedAt,
 			&i.EndedAt,
 			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -327,7 +347,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks
 WHERE chetter_tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -382,6 +402,8 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.UpdatedAt,
 			&i.EndedAt,
 			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -422,6 +444,8 @@ SET status = 'pending',
     summary = NULL,
     error = NULL,
     error_category = NULL,
+    failure_category = NULL,
+    failure_message = NULL,
     ended_at = NULL,
     updated_at = $1
 WHERE id = $2
@@ -442,7 +466,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks
 WHERE ($1 = '' OR chetter_tasks.team_id = $1)
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -500,6 +524,8 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 			&i.UpdatedAt,
 			&i.EndedAt,
 			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -515,7 +541,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message FROM chetter_tasks
 WHERE chetter_tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -573,6 +599,8 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.UpdatedAt,
 			&i.EndedAt,
 			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
 		); err != nil {
 			return nil, err
 		}
@@ -593,20 +621,24 @@ SET status = $1,
     summary = $2,
     error = $3,
     error_category = COALESCE(NULLIF($4, ''), error_category),
-    ended_at = COALESCE($5, ended_at),
-    updated_at = $6
-WHERE id = $7
+    failure_category = COALESCE(NULLIF($5, ''), failure_category),
+    failure_message = COALESCE($6, failure_message),
+    ended_at = COALESCE($7, ended_at),
+    updated_at = $8
+WHERE id = $9
   AND (status = 'running' OR status = $1)
 `
 
 type UpdateTaskAggregateFromRunnerEventParams struct {
-	Status        string         `json:"status"`
-	Summary       sql.NullString `json:"summary"`
-	Error         sql.NullString `json:"error"`
-	ErrorCategory interface{}    `json:"error_category"`
-	EndedAt       sql.NullTime   `json:"ended_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	ID            string         `json:"id"`
+	Status          string         `json:"status"`
+	Summary         sql.NullString `json:"summary"`
+	Error           sql.NullString `json:"error"`
+	ErrorCategory   interface{}    `json:"error_category"`
+	FailureCategory interface{}    `json:"failure_category"`
+	FailureMessage  sql.NullString `json:"failure_message"`
+	EndedAt         sql.NullTime   `json:"ended_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	ID              string         `json:"id"`
 }
 
 func (q *Queries) UpdateTaskAggregateFromRunnerEvent(ctx context.Context, arg UpdateTaskAggregateFromRunnerEventParams) (int64, error) {
@@ -615,6 +647,8 @@ func (q *Queries) UpdateTaskAggregateFromRunnerEvent(ctx context.Context, arg Up
 		arg.Summary,
 		arg.Error,
 		arg.ErrorCategory,
+		arg.FailureCategory,
+		arg.FailureMessage,
 		arg.EndedAt,
 		arg.UpdatedAt,
 		arg.ID,
