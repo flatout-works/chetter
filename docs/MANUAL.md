@@ -87,6 +87,15 @@ Set `CHETTER_DB_DIALECT=mysql` for MySQL/Aurora, `CHETTER_DB_DIALECT=tidb` for T
 
 Use a PostgreSQL URL such as `postgres://chetter:password@db.example:5432/chetter?sslmode=require`. PostgreSQL uses the native `pgx` driver. Chetter creates a missing database when the connecting role has `CREATE DATABASE`; otherwise, pre-create it before starting Chetter.
 
+### Connection Resilience
+
+The server retries transient database errors — connection refused, broken pipe, TiDB leader
+change — at startup and during transactions using exponential backoff (100ms → 500ms → 1s → 2s → 5s,
+up to 3 retries for transactions, up to 60s at startup). Non-transient errors such as bad
+credentials, missing databases, and constraint violations fail immediately. This lets the server
+ride through brief TiDB leader transfers or PostgreSQL restarts without manual operator
+intervention.
+
 > **Local vs. real TiDB.** The bundled database in `deploy/compose.local.yaml` runs TiDB's single-container `unistore` *test* engine — convenient for local dev (it serves Chetter's plain MySQL-protocol workload), but it has no TiFlash, so vector search and HTAP do not run on it. Connect to a real TiDB via `DATABASE_DSN` for those features and for production.
 
 ## Authentication
