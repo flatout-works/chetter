@@ -263,7 +263,7 @@ func (r *Runner) startFinalizationHeartbeat(req task.TaskRequest) func() {
 	}
 }
 
-func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, onToken func(task.TokenUsage)) (context.Context, func(), *progressWatchdog) {
+func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarness, req task.TaskRequest, baseURL, sessionID, secret, wsDir string, acc *tokenUsageAccumulator) (context.Context, func(), *progressWatchdog) {
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 
 	idleCh := make(chan struct{})
@@ -291,15 +291,15 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarnes
 		}
 	}
 	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
-		r.publishStatusForRequest(req, "running", message, nil)
+		r.publishStatusWithToken(req, "running", message, nil, acc.delta())
 	}, isIdle)
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
 		h.WatchEvents(agentCtx, req.TaskID, baseURL, secret, func(status, message string) {
 			watchdog.record(message)
-			r.publishStatusForRequest(req, status, message, nil)
-		}, onToken)
+			r.publishStatusWithToken(req, status, message, nil, acc.delta())
+		}, acc.add)
 	}()
 	var stopOnce sync.Once
 	return agentCtx, func() {
@@ -312,8 +312,9 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarnes
 }
 
 type tokenUsageAccumulator struct {
-	mu    sync.Mutex
-	usage task.TokenUsage
+	mu           sync.Mutex
+	usage        task.TokenUsage
+	lastFlushed  task.TokenUsage
 }
 
 func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
@@ -325,6 +326,24 @@ func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
 	a.usage.CacheWriteTokens += usage.CacheWriteTokens
 	a.usage.ReasoningTokens += usage.ReasoningTokens
 	a.usage.CostCents += usage.CostCents
+}
+
+// delta returns the token delta since the last call to delta, and resets the
+// accounting so each delta is emitted exactly once. Callers that need the
+// full accumulated total without resetting should use snapshot.
+func (a *tokenUsageAccumulator) delta() task.TokenUsage {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	d := task.TokenUsage{
+		InputTokens:      max(a.usage.InputTokens-a.lastFlushed.InputTokens, 0),
+		OutputTokens:     max(a.usage.OutputTokens-a.lastFlushed.OutputTokens, 0),
+		CacheReadTokens:  max(a.usage.CacheReadTokens-a.lastFlushed.CacheReadTokens, 0),
+		CacheWriteTokens: max(a.usage.CacheWriteTokens-a.lastFlushed.CacheWriteTokens, 0),
+		ReasoningTokens:  max(a.usage.ReasoningTokens-a.lastFlushed.ReasoningTokens, 0),
+		CostCents:        max(a.usage.CostCents-a.lastFlushed.CostCents, 0),
+	}
+	a.lastFlushed = a.usage
+	return d
 }
 
 func (a *tokenUsageAccumulator) snapshot() task.TokenUsage {
@@ -561,7 +580,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	slog.Info("session", "taskID", req.TaskID, "sessionID", sid)
 
 	var tokenUsage tokenUsageAccumulator
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, tokenUsage.add)
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, &tokenUsage)
 	defer stopWatching()
 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
@@ -584,12 +603,12 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 		if ctx.Err() != nil && !watchdog.isStuck() {
 			status, message = cancellationStatus(ctx, h.Name())
 		}
-		r.publishStatusWithMetadata(req, status, message, nil, sid, sessionExport, tokenUsage.snapshot())
+		r.publishStatusWithMetadata(req, status, message, nil, sid, sessionExport, tokenUsage.delta())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed (local)", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
 	slog.Info("agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport, tokenUsage.snapshot())
+	r.publishStatusWithMetadata(req, "done", truncateSummary(summary), nil, sid, sessionExport, tokenUsage.delta())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (local)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -674,7 +693,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 
 	var tokenUsage tokenUsageAccumulator
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, tokenUsage.add)
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, session.WorkspaceDir, &tokenUsage)
 	defer stopWatching()
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
@@ -716,7 +735,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -731,7 +750,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -819,7 +838,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	r.publishStatusForRequest(req, "running", "Sending follow-up prompt to agent...", nil)
 
 	var tokenUsage tokenUsageAccumulator
-	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, workspaceDir, tokenUsage.add)
+	agentCtx, stopWatching, watchdog := r.watchHarnessProgress(ctx, h, req, baseURL, sid, secret, workspaceDir, &tokenUsage)
 	defer stopWatching()
 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
@@ -861,7 +880,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
-		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -876,7 +895,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
-	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.snapshot())
+	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker resume)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
 }
 

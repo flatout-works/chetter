@@ -28,9 +28,9 @@ type sqlRowScanner interface {
 // batchTaskDetails loads the same session and execution data that ListTasks
 // used to fetch one task at a time. The task list is refreshed frequently, so
 // keeping these lookups batched avoids exhausting the database connection pool.
-func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.ChetterTask) (map[string]repository.ChetterAgentSession, map[string]sql.NullTime, error) {
+func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.ChetterTask) (map[string]repository.ChetterAgentSession, map[string]sql.NullTime, map[string]taskTokenUsage, error) {
 	if len(tasks) == 0 {
-		return map[string]repository.ChetterAgentSession{}, map[string]sql.NullTime{}, nil
+		return map[string]repository.ChetterAgentSession{}, map[string]sql.NullTime{}, map[string]taskTokenUsage{}, nil
 	}
 	ids := make([]string, len(tasks))
 	args := make([]any, len(tasks))
@@ -41,7 +41,7 @@ func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.Chett
 
 	sessions, err := s.batchTaskSessions(ctx, ids, args)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	startedAt, err := s.batchTaskStartedAt(ctx, ids, args)
@@ -50,7 +50,23 @@ func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.Chett
 		// older or partially migrated database cannot provide it.
 		startedAt = make(map[string]sql.NullTime)
 	}
-	return sessions, startedAt, nil
+
+	tokenUsage, err := s.batchTaskTokenUsage(ctx, ids, args)
+	if err != nil {
+		// Token usage is supplementary list data. Preserve the list response
+		// if the query fails.
+		tokenUsage = make(map[string]taskTokenUsage)
+	}
+	return sessions, startedAt, tokenUsage, nil
+}
+
+type taskTokenUsage struct {
+	TotalInputTokens      int64
+	TotalOutputTokens     int64
+	TotalCacheReadTokens  int64
+	TotalCacheWriteTokens int64
+	TotalReasoningTokens  int64
+	CostCents             int64
 }
 
 func (s *Service) batchTaskSessions(ctx context.Context, ids []string, args []any) (map[string]repository.ChetterAgentSession, error) {
@@ -128,6 +144,48 @@ ORDER BY prompt.task_id, attempt.sequence DESC, attempt.created_at DESC`
 		return nil, fmt.Errorf("read batched task start times: %w", err)
 	}
 	return startedAt, nil
+}
+
+// batchTaskTokenUsage loads token usage summaries for a batch of task IDs.
+// It aggregates across all execution attempts for each task.
+func (s *Service) batchTaskTokenUsage(ctx context.Context, ids []string, args []any) (map[string]taskTokenUsage, error) {
+	db := s.repo.DB()
+	if db == nil {
+		return nil, fmt.Errorf("repository database is unavailable")
+	}
+	placeholders := strings.Join(sqlPlaceholders(s.dialect, len(ids)), ",")
+	query := `SELECT prompt.task_id,
+		COALESCE(SUM(attempt.total_input_tokens), 0) AS total_input_tokens,
+		COALESCE(SUM(attempt.total_output_tokens), 0) AS total_output_tokens,
+		COALESCE(SUM(attempt.total_cache_read_tokens), 0) AS total_cache_read_tokens,
+		COALESCE(SUM(attempt.total_cache_write_tokens), 0) AS total_cache_write_tokens,
+		COALESCE(SUM(attempt.total_reasoning_tokens), 0) AS total_reasoning_tokens,
+		COALESCE(SUM(attempt.cost_cents), 0) AS cost_cents
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE prompt.task_id IN (` + placeholders + `)
+GROUP BY prompt.task_id`
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("batch task token usage: %w", err)
+	}
+	defer rows.Close()
+
+	usage := make(map[string]taskTokenUsage, len(ids))
+	for rows.Next() {
+		var taskID string
+		var u taskTokenUsage
+		if err := rows.Scan(&taskID, &u.TotalInputTokens, &u.TotalOutputTokens,
+			&u.TotalCacheReadTokens, &u.TotalCacheWriteTokens,
+			&u.TotalReasoningTokens, &u.CostCents); err != nil {
+			return nil, fmt.Errorf("scan batched task token usage: %w", err)
+		}
+		usage[taskID] = u
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read batched task token usage: %w", err)
+	}
+	return usage, nil
 }
 
 func scanTaskListAgentSession(row sqlRowScanner) (repository.ChetterAgentSession, error) {

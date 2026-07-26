@@ -59,6 +59,44 @@ func TestTokenUsageAccumulatorConcurrentAdds(t *testing.T) {
 	}
 }
 
+func TestTokenUsageAccumulatorDelta(t *testing.T) {
+	var a tokenUsageAccumulator
+
+	// Initial delta should be zero.
+	d := a.delta()
+	if d != (task.TokenUsage{}) {
+		t.Fatalf("initial delta = %+v, want zero", d)
+	}
+
+	// Add some tokens.
+	a.add(task.TokenUsage{InputTokens: 10, OutputTokens: 5, CostCents: 1})
+
+	// First delta should reflect the added tokens.
+	d = a.delta()
+	if d.InputTokens != 10 || d.OutputTokens != 5 || d.CostCents != 1 {
+		t.Fatalf("first delta = %+v", d)
+	}
+
+	// Second delta should be zero since nothing new was added.
+	d = a.delta()
+	if d != (task.TokenUsage{}) {
+		t.Fatalf("second delta = %+v, want zero", d)
+	}
+
+	// Add more and check delta is only the increment.
+	a.add(task.TokenUsage{InputTokens: 3, OutputTokens: 2})
+	d = a.delta()
+	if d.InputTokens != 3 || d.OutputTokens != 2 || d.CostCents != 0 {
+		t.Fatalf("incremental delta = %+v", d)
+	}
+
+	// Snapshot still returns the total.
+	got := a.snapshot()
+	if got.InputTokens != 13 || got.OutputTokens != 7 || got.CostCents != 1 {
+		t.Fatalf("snapshot = %+v", got)
+	}
+}
+
 func TestGitCloneCredentialDirLeavesWorkspaceEmpty(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "task", "workspace")
 	if err := os.MkdirAll(workspace, 0750); err != nil {

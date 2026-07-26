@@ -227,6 +227,12 @@ func (r *Runner) Start(ctx context.Context) error {
 }
 
 func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message string, artifacts []string) {
+	r.publishStatusWithToken(req, status, message, artifacts, task.TokenUsage{})
+}
+
+// publishStatusWithToken is like publishStatusForRequest but carries a token
+// usage delta that the server accumulates into the running task totals.
+func (r *Runner) publishStatusWithToken(req task.TaskRequest, status, message string, artifacts []string, tokenUsage task.TokenUsage) {
 	resp := task.TaskResponse{
 		TaskID:         req.TaskID,
 		ExecutionID:    req.ExecutionID,
@@ -234,6 +240,7 @@ func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message s
 		UserPromptID:   req.UserPromptID,
 		Status:         status,
 		Artifacts:      artifacts,
+		TokenUsage:     tokenUsage,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, "")
 	r.finishStatusResponse(&resp, status, message)
