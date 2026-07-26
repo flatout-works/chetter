@@ -494,3 +494,128 @@ func postgresMigrationsDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../db/postgres/migrations"))
 }
+
+// PostgresSchemaParityDBs creates two PostgreSQL databases on the same server:
+// one with the runtime bootstrap schema (via store.ApplySchema) and one with
+// Goose migrations. Use this to compare the two schema paths for drift.
+func PostgresSchemaParityDBs(t testing.TB) (bootstrapDB, gooseDB *TestDB, cleanup func()) {
+	t.Helper()
+
+	dialect := store.DialectPostgres
+	dsn := os.Getenv("CHETTER_TEST_DSN")
+	ownsContainer := false
+	containerName := ""
+
+	if dsn == "" {
+		containerName = "chetter-test-db-" + randHex(6)
+		port, err := freePort()
+		if err != nil {
+			t.Fatalf("find free port: %v", err)
+		}
+		startCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		ownsContainer = startDBContainer(startCtx, containerName, port, dialect)
+		if ownsContainer {
+			dsn = testDSN(dialect, port)
+		} else if local := os.Getenv("CHETTER_TEST_LOCAL_POSTGRES"); local != "" {
+			dsn = "postgres://postgres:postgres@" + local + "/postgres?sslmode=disable&timezone=UTC"
+		} else {
+			t.Skip("no PostgreSQL DSN available; skipping schema parity test")
+			return nil, nil, func() {}
+		}
+	}
+
+	admin, err := sql.Open(driverName(dialect), dsn)
+	if err != nil {
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("open admin db: %v", err)
+	}
+	configureTestDB(admin)
+	waitForReady(t, admin)
+
+	// Create bootstrap database.
+	bootstrapName := "chetter_parity_bootstrap_" + randHex(6)
+	if err := createDatabase(admin, bootstrapName, dialect); err != nil {
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("create bootstrap database: %v", err)
+	}
+	bootstrapDSN := replaceDBName(dsn, bootstrapName, dialect)
+	bootstrapSQL, err := sql.Open(driverName(dialect), bootstrapDSN)
+	if err != nil {
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("open bootstrap db: %v", err)
+	}
+	configureTestDB(bootstrapSQL)
+	st, err := store.Open(bootstrapDSN, dialect)
+	if err != nil {
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("open store for bootstrap: %v", err)
+	}
+	if err := st.ApplySchema(context.Background()); err != nil {
+		st.Close()
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("apply bootstrap schema: %v", err)
+	}
+	st.Close()
+
+	// Create goose migrations database.
+	gooseName := "chetter_parity_goose_" + randHex(6)
+	if err := createDatabase(admin, gooseName, dialect); err != nil {
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("create goose database: %v", err)
+	}
+	gooseDSN := replaceDBName(dsn, gooseName, dialect)
+	gooseSQL, err := sql.Open(driverName(dialect), gooseDSN)
+	if err != nil {
+		dropDatabase(admin, gooseName, dialect)
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("open goose db: %v", err)
+	}
+	configureTestDB(gooseSQL)
+	if err := goose.SetDialect("postgres"); err != nil {
+		_ = gooseSQL.Close()
+		dropDatabase(admin, gooseName, dialect)
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("set goose dialect: %v", err)
+	}
+	if err := goose.UpContext(context.Background(), gooseSQL, postgresMigrationsDir()); err != nil {
+		_ = gooseSQL.Close()
+		dropDatabase(admin, gooseName, dialect)
+		_ = bootstrapSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+		t.Fatalf("apply goose migrations: %v", err)
+	}
+
+	bootstrapTestDB := &TestDB{DB: bootstrapSQL, DSN: bootstrapDSN, database: bootstrapName, dialect: dialect}
+	gooseTestDB := &TestDB{DB: gooseSQL, DSN: gooseDSN, database: gooseName, dialect: dialect}
+
+	cleanup = func() {
+		_ = bootstrapSQL.Close()
+		_ = gooseSQL.Close()
+		dropDatabase(admin, bootstrapName, dialect)
+		dropDatabase(admin, gooseName, dialect)
+		_ = admin.Close()
+		cleanupContainer(ownsContainer, containerName)
+	}
+	return bootstrapTestDB, gooseTestDB, cleanup
+}
