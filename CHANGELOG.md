@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-25
+
+### Added
+
+- Task re-execution (re-run) support: `chetter_rerun_task` MCP tool, ConnectRPC `RerunTask` endpoint, and "Re-run" button on task detail page for terminal tasks (done, error, cancelled). Clones the source task's prompt, model, image, env vars, and timeout. Emits `task_rerun` audit event (#107).
+
+### Fixed
+
+- Removed unnecessary nil check on env map (`internal/validation/env.go`), fixing staticcheck S1009.
+
 ## 2026-07-24
 
 ### Added

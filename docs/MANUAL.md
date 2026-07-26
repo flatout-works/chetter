@@ -506,6 +506,7 @@ For a resumable session:
 | `chetter_task_progress` | Distilled task progress timeline. |
 | `chetter_task_latest_event` | Latest task event. |
 | `chetter_task_export` | Markdown transcript for a completed task. |
+| `chetter_rerun_task` | Create a new task with the same parameters as an existing terminal task (done, error, or cancelled). |
 
 ### Sessions
 
