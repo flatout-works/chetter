@@ -82,6 +82,23 @@ export function formatResumeMode(mode: string): string {
   }
 }
 
+export function formatHarness(harness: string): string {
+  switch (harness) {
+    case "opencode":
+      return "OpenCode";
+    case "claude-code":
+      return "Claude Code";
+    case "pi":
+      return "Pi";
+    case "codewhale":
+      return "CodeWhale";
+    case "codex":
+      return "Codex";
+    default:
+      return harness || "OpenCode";
+  }
+}
+
 export function humanReadableStatus(status: string, summary: string): string {
   if (summary && summary !== status) return summary;
   switch (status) {

@@ -139,6 +139,7 @@ type Task struct {
 	GitIdentityId    string                 `protobuf:"bytes,27,opt,name=git_identity_id,json=gitIdentityId,proto3" json:"git_identity_id,omitempty"`
 	McpEndpoints     []string               `protobuf:"bytes,28,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
 	ExecutionId      string                 `protobuf:"bytes,29,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Harness          string                 `protobuf:"bytes,32,opt,name=harness,proto3" json:"harness,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -386,6 +387,13 @@ func (x *Task) GetMcpEndpoints() []string {
 func (x *Task) GetExecutionId() string {
 	if x != nil {
 		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *Task) GetHarness() string {
+	if x != nil {
+		return x.Harness
 	}
 	return ""
 }
@@ -8463,7 +8471,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xc8\b\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xe2\b\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -8504,7 +8512,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x11submission_source\x18\x1a \x01(\tR\x10submissionSource\x12&\n" +
 	"\x0fgit_identity_id\x18\x1b \x01(\tR\rgitIdentityId\x12#\n" +
 	"\rmcp_endpoints\x18\x1c \x03(\tR\fmcpEndpoints\x12!\n" +
-	"\fexecution_id\x18\x1d \x01(\tR\vexecutionId\x1a6\n" +
+	"\fexecution_id\x18\x1d \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aharness\x18  \x01(\tR\aharness\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +

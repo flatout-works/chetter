@@ -10,7 +10,7 @@
     loadTaskEvents, loadTaskProgress, loadOlderTaskProgress, refreshTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, taskProgressHasMore, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
+  import { formatDuration, formatHarness, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
   import { marked } from "marked";
@@ -178,7 +178,6 @@
   let ghIssueTitle = $derived(task?.env?.ISSUE_TITLE || (task?.env && task.env["ISSUE_TITLE"]));
   let ghIssueUrl = $derived(task?.env?.ISSUE_URL || (task?.env && task.env["ISSUE_URL"]));
   let ghPrNum = $derived(task?.env?.PR_NUMBER || (task?.env && task.env["PR_NUMBER"]));
-  let taskHarness = $derived(task?.env?.__chetter_harness || "");
   let visibleEnv = $derived.by(() =>
     Object.entries(task?.env ?? {}).filter(([key]) => key !== "__chetter_harness")
   );
@@ -533,24 +532,24 @@
         {#if task.agent}
           <a href={resolve("/agents/[name]", { name: task.agent })} class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline truncate">{task.agent}</a>
         {:else}
-          <p class="text-sm font-medium text-gray-900 dark:text-white">default</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">Built-in agent</p>
         {/if}
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Provider</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.providerId || "default"}</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.providerId || "Not specified"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Model</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "default"}</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.modelId || "Not specified"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Variant</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.variantId || "default"}</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{task.variantId || "Not specified"}</p>
       </Card>
       <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Harness</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white">{taskHarness || "default"}</p>
+        <p class="text-sm font-medium text-gray-900 dark:text-white">{formatHarness(task.harness)}</p>
       </Card>
        <Card size="md" shadow="sm" class="!p-4">
          <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Session Mode</p>
@@ -573,7 +572,7 @@
        </Card>
        <Card size="md" shadow="sm" class="!p-4">
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Agent Image</p>
-        <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "default"}</p>
+         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{task.agentImage || "Server default image"}</p>
       </Card>
        <Card size="md" shadow="sm" class="!p-4">
          <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Timeout</p>

@@ -168,7 +168,7 @@ func TestProtoTask(t *testing.T) {
 	task := service.TaskToolRecord{
 		ID: "task_1", TeamID: "team_1", Status: "pending", Prompt: "do something",
 		GitURL: "https://github.com/org/repo", GitRef: "main",
-		AgentImage: "img:latest", Agent: "opencode", ProviderID: "p", ModelID: "m", VariantID: "v",
+		AgentImage: "img:latest", Agent: "opencode", ProviderID: "p", ModelID: "m", VariantID: "v", Harness: "opencode",
 		Skills: []string{"go"}, Env: map[string]string{"K": "V"},
 		TimeoutSec: 600, Summary: "summary", Error: "err", AgentSessionID: "sess_1",
 		CreatedAt: now, UpdatedAt: now, StartedAt: &now, EndedAt: nil,
@@ -188,6 +188,9 @@ func TestProtoTask(t *testing.T) {
 	}
 	if got.AgentSessionId != "sess_1" {
 		t.Errorf("AgentSessionId = %q, want sess_1", got.AgentSessionId)
+	}
+	if got.Harness != "opencode" {
+		t.Errorf("Harness = %q, want opencode", got.Harness)
 	}
 }
 

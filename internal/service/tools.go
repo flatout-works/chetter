@@ -83,6 +83,7 @@ type TaskToolRecord struct {
 	ProviderID            string            `json:"provider_id,omitempty"`
 	ModelID               string            `json:"model_id,omitempty"`
 	VariantID             string            `json:"variant_id,omitempty"`
+	Harness               string            `json:"harness,omitempty"`
 	ExecutionID           string            `json:"execution_id,omitempty"`
 	GitIdentityID         string            `json:"git_identity_id,omitempty"`
 	TriggerName           string            `json:"trigger_name,omitempty"`
@@ -947,6 +948,7 @@ func repoTaskToToolRecord(task repository.ChetterTask, session repository.Chette
 		ProviderID:       session.ProviderID.String,
 		ModelID:          session.ModelID.String,
 		VariantID:        session.VariantID.String,
+		Harness:          session.Harness.String,
 		GitIdentityID:    session.GitIdentityID.String,
 		AgentSessionID:   session.ID,
 		TriggerName:      task.TriggerName.String,

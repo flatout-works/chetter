@@ -49,6 +49,7 @@ message Task {
   string git_identity_id = 27;
   repeated string mcp_endpoints = 28;
   string execution_id = 29;
+  string harness = 32;
 }
 
 message AgentSession {

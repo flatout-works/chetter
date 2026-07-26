@@ -31,6 +31,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		ProviderId:       t.ProviderID,
 		ModelId:          t.ModelID,
 		VariantId:        t.VariantID,
+		Harness:          t.Harness,
 		ExecutionId:      t.ExecutionID,
 		Skills:           t.Skills,
 		McpEndpoints:     t.McpEndpoints,
@@ -274,6 +275,10 @@ type taskHandler struct {
 }
 
 func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1.SubmitTaskRequest]) (*connect.Response[apiv1.SubmitTaskResponse], error) {
+	harness := req.Msg.Harness
+	if harness == "" {
+		harness = "opencode"
+	}
 	task, err := h.svc.SubmitTask(ctx, service.SubmitTaskRequest{
 		Prompt:           req.Msg.Prompt,
 		GitURL:           req.Msg.GitUrl,
@@ -300,7 +305,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
 		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
-		VariantID: task.VariantID, Skills: task.Skills, McpEndpoints: task.McpEndpoints, Env: task.Env,
+		VariantID: task.VariantID, Harness: harness, Skills: task.Skills, McpEndpoints: task.McpEndpoints, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
 		StartedAt: task.StartedAt, EndedAt: task.EndedAt,
 		TriggerName: task.TriggerName, TriggerType: task.TriggerType, SubmissionSource: task.SubmissionSource,

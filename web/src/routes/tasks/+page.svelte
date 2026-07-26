@@ -5,7 +5,7 @@
   import { get } from "svelte/store";
   import { createClient } from "@connectrpc/connect";
   import { TaskService, CatalogService } from "$gen/proto/api/v1/api_pb";
-  import type { CatalogProvider } from "$gen/proto/api/v1/api_pb";
+  import type { CatalogHarnessDefault, CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
@@ -43,17 +43,17 @@
   let agent = $state("");
   let providerId = $state("");
   let modelId = $state("");
-  let harness = $state("");
+  let harness = $state("opencode");
   let sessionMode = $state("");
   let pauseReason = $state("");
   let ttlHours = $state(72);
 
   let providers = $state.raw<CatalogProvider[]>([]);
+  let harnessDefaults = $state.raw<CatalogHarnessDefault[]>([]);
   let defaultProvider = $state("");
   let defaultModel = $state("");
 
   const harnessOptions = [
-    { value: "", label: "Default" },
     { value: "opencode", label: "OpenCode" },
     { value: "claude-code", label: "Claude Code" },
     { value: "pi", label: "Pi" },
@@ -62,6 +62,20 @@
   ];
 
   let selectedProvider = $derived(providers.find((p) => p.id === providerId));
+
+  function defaultsForHarness(harnessName: string): { provider: string; model: string } {
+    const harnessDefault = harnessDefaults.find((item) => item.harness === harnessName);
+    return {
+      provider: harnessDefault?.provider || defaultProvider,
+      model: harnessDefault?.model || defaultModel,
+    };
+  }
+
+  function applyHarnessDefaults(harnessName: string) {
+    const defaults = defaultsForHarness(harnessName);
+    providerId = defaults.provider;
+    modelId = defaults.model;
+  }
 
   let page = $state(Number(param("page", "0")));
   let pageSize = $state(Number(param("size", "25")));
@@ -160,10 +174,10 @@
       const client = createClient(CatalogService, getTransport());
       const resp = await client.getModelCatalog({});
       providers = resp.providers ?? [];
+      harnessDefaults = resp.defaults ?? [];
       defaultProvider = resp.defaultProvider;
       defaultModel = resp.defaultModel;
-      if (!providerId) providerId = defaultProvider;
-      if (!modelId) modelId = defaultModel;
+      if (!providerId || !modelId) applyHarnessDefaults(harness);
     } catch (e) {
       console.error("Failed to load model catalog:", e);
     }
@@ -184,6 +198,10 @@
     }
   }
 
+  function onHarnessChange() {
+    applyHarnessDefaults(harness);
+  }
+
   async function submitTask(e: Event) {
     e.preventDefault();
     formError = null;
@@ -201,7 +219,7 @@
         ttlHours: sessionMode === "resumable" ? ttlHours : 0,
       });
       prompt = ""; gitUrl = ""; gitRef = ""; agentImage = ""; agent = "";
-      providerId = defaultProvider; modelId = defaultModel; harness = "";
+      harness = "opencode"; applyHarnessDefaults(harness);
       sessionMode = ""; pauseReason = ""; ttlHours = 72;
       showSubmitForm = false;
       await refreshTasks(selectedStatus, 100);
@@ -312,7 +330,7 @@
           </div>
           <div>
             <Label for="task-harness" class="mb-1">Harness</Label>
-            <Select id="task-harness" bind:value={harness}>
+            <Select id="task-harness" bind:value={harness} onchange={onHarnessChange}>
               {#each harnessOptions as opt (opt.value)}
                 <option value={opt.value}>{opt.label}</option>
               {/each}
