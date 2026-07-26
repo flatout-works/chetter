@@ -123,7 +123,7 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
-	sessions, startedAt, err := s.batchTaskDetails(ctx, tasks)
+	sessions, startedAt, tokenUsage, err := s.batchTaskDetails(ctx, tasks)
 	if err != nil {
 		return nil, fmt.Errorf("load task details: %w", err)
 	}
@@ -136,6 +136,14 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 		record := repoTaskToToolRecord(task, session)
 		if taskStartedAt, ok := startedAt[task.ID]; ok {
 			record.StartedAt = nullTimePtr(taskStartedAt)
+		}
+		if usage, ok := tokenUsage[task.ID]; ok {
+			record.TotalInputTokens = usage.TotalInputTokens
+			record.TotalOutputTokens = usage.TotalOutputTokens
+			record.TotalCacheReadTokens = usage.TotalCacheReadTokens
+			record.TotalCacheWriteTokens = usage.TotalCacheWriteTokens
+			record.TotalReasoningTokens = usage.TotalReasoningTokens
+			record.CostCents = usage.CostCents
 		}
 		out = append(out, record)
 	}
