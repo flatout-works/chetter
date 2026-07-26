@@ -66,6 +66,66 @@ func (q *Queries) AbandonUserPrompt(ctx context.Context, arg AbandonUserPromptPa
 	return result.RowsAffected()
 }
 
+const clearExpiredExecutionAttemptExports = `-- name: ClearExpiredExecutionAttemptExports :execrows
+UPDATE chetter_execution_attempts
+SET session_export = NULL, updated_at = NOW()
+WHERE user_prompt_id IN (
+  SELECT id FROM chetter_user_prompts
+  WHERE agent_session_id IN (
+    SELECT id FROM chetter_agent_sessions
+    WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+      AND updated_at < NOW() - ($1 * INTERVAL '1 second')
+  )
+)
+AND session_export IS NOT NULL
+`
+
+func (q *Queries) ClearExpiredExecutionAttemptExports(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearExpiredExecutionAttemptExports, ttlSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const clearExpiredSessionCheckpoints = `-- name: ClearExpiredSessionCheckpoints :execrows
+UPDATE chetter_agent_session_checkpoints
+SET checkpoint_path = '', updated_at = NOW()
+WHERE agent_session_id IN (
+  SELECT id FROM chetter_agent_sessions
+  WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+    AND updated_at < NOW() - ($1 * INTERVAL '1 second')
+)
+AND checkpoint_path != ''
+`
+
+func (q *Queries) ClearExpiredSessionCheckpoints(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearExpiredSessionCheckpoints, ttlSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const clearExpiredUserPromptExports = `-- name: ClearExpiredUserPromptExports :execrows
+UPDATE chetter_user_prompts
+SET session_export = NULL, updated_at = NOW()
+WHERE agent_session_id IN (
+  SELECT id FROM chetter_agent_sessions
+  WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+    AND updated_at < NOW() - ($1 * INTERVAL '1 second')
+)
+AND session_export IS NOT NULL
+`
+
+func (q *Queries) ClearExpiredUserPromptExports(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearExpiredUserPromptExports, ttlSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const expirePausedSessions = `-- name: ExpirePausedSessions :execrows
 UPDATE chetter_agent_sessions
 SET status = 'expired', ended_at = $1, updated_at = $2

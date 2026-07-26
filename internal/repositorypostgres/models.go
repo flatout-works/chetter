@@ -279,6 +279,22 @@ type ChetterUserPrompt struct {
 	SourceUserPromptID sql.NullString `json:"source_user_prompt_id"`
 }
 
+type ChetterWebhookDelivery struct {
+	ID            string         `json:"id"`
+	DeliveryID    string         `json:"delivery_id"`
+	EventType     string         `json:"event_type"`
+	EventAction   string         `json:"event_action"`
+	Payload       string         `json:"payload"`
+	Status        string         `json:"status"`
+	Attempts      int32          `json:"attempts"`
+	MaxAttempts   int32          `json:"max_attempts"`
+	Error         sql.NullString `json:"error"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+	NextAttemptAt sql.NullTime   `json:"next_attempt_at"`
+	ProcessedAt   sql.NullTime   `json:"processed_at"`
+}
+
 type Definition struct {
 	ID             string           `json:"id"`
 	SourceID       string           `json:"source_id"`

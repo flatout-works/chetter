@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/validation"
 )
@@ -41,6 +42,11 @@ type Config struct {
 	// EnvValidation configures task environment variable validation at submission
 	// time. See env var CHETTER_ENV_* and internal/validation.
 	EnvValidation validation.Config
+
+	// SessionArtifactTTL is the duration after which terminal-session on-disk
+	// artifacts (checkpoints, session exports) are eligible for garbage
+	// collection by the reaper. A value of 0 disables GC. Default: 24h.
+	SessionArtifactTTL time.Duration
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -70,6 +76,7 @@ func Load() Config {
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
 		EnvValidation:          envValidationConfig(),
+		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
 	}
 }
 
@@ -149,6 +156,18 @@ func envInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
 	if err != nil {
 		return fallback
 	}

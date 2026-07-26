@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 )
 
 func TestValidate(t *testing.T) {
@@ -265,6 +266,59 @@ func TestGitHubConfigured(t *testing.T) {
 		}
 		if cfg.GitHubConfigured() {
 			t.Error("expected not configured when disabled")
+		}
+	})
+}
+
+func TestEnvDuration(t *testing.T) {
+	t.Run("valid duration", func(t *testing.T) {
+		t.Setenv("TEST_DUR_KEY", "2h30m")
+		got := envDuration("TEST_DUR_KEY", 0)
+		if got != 2*time.Hour+30*time.Minute {
+			t.Errorf("expected 2h30m, got %v", got)
+		}
+	})
+	t.Run("zero value", func(t *testing.T) {
+		t.Setenv("TEST_DUR_KEY2", "0s")
+		got := envDuration("TEST_DUR_KEY2", 24*time.Hour)
+		if got != 0 {
+			t.Errorf("expected 0s, got %v", got)
+		}
+	})
+	t.Run("not set returns fallback", func(t *testing.T) {
+		got := envDuration("TEST_DUR_MISSING_XYZ", 24*time.Hour)
+		if got != 24*time.Hour {
+			t.Errorf("expected fallback 24h, got %v", got)
+		}
+	})
+	t.Run("invalid value returns fallback", func(t *testing.T) {
+		t.Setenv("TEST_DUR_KEY3", "notaduration")
+		got := envDuration("TEST_DUR_KEY3", 24*time.Hour)
+		if got != 24*time.Hour {
+			t.Errorf("expected fallback 24h for invalid, got %v", got)
+		}
+	})
+}
+
+func TestLoadSessionArtifactTTL(t *testing.T) {
+	t.Run("defaults to 24h", func(t *testing.T) {
+		cfg := Load()
+		if cfg.SessionArtifactTTL != 24*time.Hour {
+			t.Errorf("expected SessionArtifactTTL 24h, got %v", cfg.SessionArtifactTTL)
+		}
+	})
+	t.Run("env override", func(t *testing.T) {
+		t.Setenv("SESSION_ARTIFACT_TTL", "12h")
+		cfg := Load()
+		if cfg.SessionArtifactTTL != 12*time.Hour {
+			t.Errorf("expected SessionArtifactTTL 12h, got %v", cfg.SessionArtifactTTL)
+		}
+	})
+	t.Run("zero disables GC", func(t *testing.T) {
+		t.Setenv("SESSION_ARTIFACT_TTL", "0s")
+		cfg := Load()
+		if cfg.SessionArtifactTTL != 0 {
+			t.Errorf("expected SessionArtifactTTL 0, got %v", cfg.SessionArtifactTTL)
 		}
 	})
 }

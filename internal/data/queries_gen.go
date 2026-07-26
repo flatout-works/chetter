@@ -25,6 +25,9 @@ type Repository interface {
 	CancelExecutionAttemptsByTask(ctx context.Context, arg repository.CancelExecutionAttemptsByTaskParams) (int64, error)
 	CancelPendingExecutionAttempts(ctx context.Context, arg repository.CancelPendingExecutionAttemptsParams) (int64, error)
 	CancelTask(ctx context.Context, arg repository.CancelTaskParams) (int64, error)
+	ClearExpiredExecutionAttemptExports(ctx context.Context, ttlSeconds interface{}) (int64, error)
+	ClearExpiredSessionCheckpoints(ctx context.Context, ttlSeconds interface{}) (int64, error)
+	ClearExpiredUserPromptExports(ctx context.Context, ttlSeconds interface{}) (int64, error)
 	ClearPendingTasks(ctx context.Context, arg repository.ClearPendingTasksParams) (int64, error)
 	CountExecutionAttemptsByTask(ctx context.Context, taskID string) (int64, error)
 	CreateTeam(ctx context.Context, arg repository.CreateTeamParams) error
@@ -199,6 +202,21 @@ func (q *Queries) CancelPendingExecutionAttempts(ctx context.Context, arg reposi
 
 func (q *Queries) CancelTask(ctx context.Context, arg repository.CancelTaskParams) (int64, error) {
 	value, err := q.postgres.CancelTask(ctx, convert[repositorypostgres.CancelTaskParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) ClearExpiredExecutionAttemptExports(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	value, err := q.postgres.ClearExpiredExecutionAttemptExports(ctx, convert[interface{}](ttlSeconds))
+	return convert[int64](value), err
+}
+
+func (q *Queries) ClearExpiredSessionCheckpoints(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	value, err := q.postgres.ClearExpiredSessionCheckpoints(ctx, convert[interface{}](ttlSeconds))
+	return convert[int64](value), err
+}
+
+func (q *Queries) ClearExpiredUserPromptExports(ctx context.Context, ttlSeconds interface{}) (int64, error) {
+	value, err := q.postgres.ClearExpiredUserPromptExports(ctx, convert[interface{}](ttlSeconds))
 	return convert[int64](value), err
 }
 

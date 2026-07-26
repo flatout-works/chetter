@@ -2772,3 +2772,253 @@ func testQuery(dialect store.Dialect, mysql, postgres string) string {
 	}
 	return mysql
 }
+
+// TestReapExpiredSessionArtifacts verifies that the reaper clears checkpoint
+// paths and session exports for terminal sessions whose updated_at exceeds the
+// configured SessionArtifactTTL.
+func TestReapExpiredSessionArtifacts(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Enable GC with a very short TTL (1 second).
+	svc.cfg.SessionArtifactTTL = 1 * time.Second
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "gc me", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	// Get the session and prompt that were auto-created by SubmitTask.
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+	attempts, err := svc.repo.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+	if err != nil || len(attempts) != 1 {
+		t.Fatalf("ListExecutionAttemptsByPrompt: %v, attempts=%+v", err, attempts)
+	}
+	executionID := attempts[0].ID
+
+	// Seed checkpoint with a non-empty path.
+	now := time.Now().UTC()
+	chkID := "chk_gc_test"
+	if err := svc.repo.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
+		ID:             chkID,
+		AgentSessionID: session.ID,
+		UserPromptID:   sql.NullString{String: prompt.ID, Valid: true},
+		RunnerID:       "runner_gc",
+		CheckpointPath: "/data/checkpoints/old-session",
+		WorkspacePath:  "/data/workspace/old-session",
+		SizeBytes:      1024,
+		Status:         "completed",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("InsertAgentSessionCheckpoint: %v", err)
+	}
+
+	// Seed session exports on user prompts and execution attempts.
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_user_prompts SET session_export = ?, updated_at = ? WHERE id = ?",
+		"UPDATE chetter_user_prompts SET session_export = $1, updated_at = $2 WHERE id = $3"),
+		"session export blob", now, prompt.ID); err != nil {
+		t.Fatalf("set user-prompt session_export: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_execution_attempts SET session_export = ?, updated_at = ? WHERE id = ?",
+		"UPDATE chetter_execution_attempts SET session_export = $1, updated_at = $2 WHERE id = $3"),
+		"attempt export blob", now, executionID); err != nil {
+		t.Fatalf("set execution-attempt session_export: %v", err)
+	}
+
+	// Mark the session terminal with an updated_at far in the past.
+	past := now.Add(-2 * time.Minute)
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_agent_sessions SET status = ?, updated_at = ? WHERE id = ?",
+		"UPDATE chetter_agent_sessions SET status = $1, updated_at = $2 WHERE id = $3"),
+		"completed", past, session.ID); err != nil {
+		t.Fatalf("mark session terminal: %v", err)
+	}
+
+	// Trigger the GC reaper step.
+	svc.reapExpiredSessionArtifacts()
+
+	// Verify checkpoint path was cleared.
+	chk, err := svc.repo.GetLatestAgentSessionCheckpoint(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetLatestAgentSessionCheckpoint: %v", err)
+	}
+	if chk.CheckpointPath != "" {
+		t.Fatalf("checkpoint_path = %q, want empty after GC", chk.CheckpointPath)
+	}
+
+	// Verify user-prompt session_export was cleared.
+	updatedPrompt, err := svc.repo.GetUserPromptByID(ctx, prompt.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByID: %v", err)
+	}
+	if updatedPrompt.SessionExport.Valid {
+		t.Fatalf("user-prompt session_export = %q, want NULL after GC", updatedPrompt.SessionExport.String)
+	}
+
+	// Verify execution-attempt session_export was cleared.
+	updatedAttempt, err := svc.repo.GetExecutionAttemptByID(ctx, executionID)
+	if err != nil {
+		t.Fatalf("GetExecutionAttemptByID: %v", err)
+	}
+	if updatedAttempt.SessionExport.Valid {
+		t.Fatalf("execution-attempt session_export = %q, want NULL after GC", updatedAttempt.SessionExport.String)
+	}
+}
+
+// TestReapExpiredSessionArtifactsSkipsFreshSessions verifies that terminal
+// sessions whose updated_at is within the TTL are NOT garbage collected.
+func TestReapExpiredSessionArtifactsSkipsFreshSessions(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Set a long TTL so the fresh session won't be collected.
+	svc.cfg.SessionArtifactTTL = 1 * time.Hour
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "keep me", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := svc.repo.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
+		ID:             "chk_keep",
+		AgentSessionID: session.ID,
+		RunnerID:       "runner_keep",
+		CheckpointPath: "/data/keep/checkpoint",
+		WorkspacePath:  "/data/keep/workspace",
+		SizeBytes:      512,
+		Status:         "completed",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("InsertAgentSessionCheckpoint: %v", err)
+	}
+
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_user_prompts SET session_export = ? WHERE id = ?",
+		"UPDATE chetter_user_prompts SET session_export = $1 WHERE id = $2"),
+		"keep me", prompt.ID); err != nil {
+		t.Fatalf("set user-prompt session_export: %v", err)
+	}
+
+	// Mark session terminal with a recent updated_at (still within TTL).
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_agent_sessions SET status = ?, updated_at = ? WHERE id = ?",
+		"UPDATE chetter_agent_sessions SET status = $1, updated_at = $2 WHERE id = $3"),
+		"completed", now, session.ID); err != nil {
+		t.Fatalf("mark session terminal: %v", err)
+	}
+
+	svc.reapExpiredSessionArtifacts()
+
+	// Verify checkpoint and export were NOT cleared.
+	chk, err := svc.repo.GetLatestAgentSessionCheckpoint(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetLatestAgentSessionCheckpoint: %v", err)
+	}
+	if chk.CheckpointPath == "" {
+		t.Fatal("checkpoint_path was cleared but session is still fresh")
+	}
+
+	updatedPrompt, err := svc.repo.GetUserPromptByID(ctx, prompt.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByID: %v", err)
+	}
+	if !updatedPrompt.SessionExport.Valid || updatedPrompt.SessionExport.String != "keep me" {
+		t.Fatalf("user-prompt session_export was cleared but session is still fresh: valid=%v val=%q",
+			updatedPrompt.SessionExport.Valid, updatedPrompt.SessionExport.String)
+	}
+}
+
+// TestReapExpiredSessionArtifactsDisabledByZeroTTL verifies that a TTL of 0
+// causes the GC step to return immediately without touching any data.
+func TestReapExpiredSessionArtifactsDisabledByZeroTTL(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	svc.cfg.SessionArtifactTTL = 0
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "keep all", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+	prompt, err := svc.repo.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+	past := now.Add(-48 * time.Hour)
+	if err := svc.repo.InsertAgentSessionCheckpoint(ctx, repository.InsertAgentSessionCheckpointParams{
+		ID:             "chk_disabled",
+		AgentSessionID: session.ID,
+		RunnerID:       "runner_disabled",
+		CheckpointPath: "/data/disabled/checkpoint",
+		WorkspacePath:  "/data/disabled/workspace",
+		SizeBytes:      256,
+		Status:         "completed",
+		CreatedAt:      past,
+		UpdatedAt:      past,
+	}); err != nil {
+		t.Fatalf("InsertAgentSessionCheckpoint: %v", err)
+	}
+
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_user_prompts SET session_export = ? WHERE id = ?",
+		"UPDATE chetter_user_prompts SET session_export = $1 WHERE id = $2"),
+		"should stay", prompt.ID); err != nil {
+		t.Fatalf("set user-prompt session_export: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE chetter_agent_sessions SET status = ?, updated_at = ? WHERE id = ?",
+		"UPDATE chetter_agent_sessions SET status = $1, updated_at = $2 WHERE id = $3"),
+		"completed", past, session.ID); err != nil {
+		t.Fatalf("mark session terminal: %v", err)
+	}
+
+	svc.reapExpiredSessionArtifacts()
+
+	// Verify nothing was cleared.
+	chk, err := svc.repo.GetLatestAgentSessionCheckpoint(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetLatestAgentSessionCheckpoint: %v", err)
+	}
+	if chk.CheckpointPath == "" {
+		t.Fatal("checkpoint_path was cleared even though GC is disabled")
+	}
+
+	updatedPrompt, err := svc.repo.GetUserPromptByID(ctx, prompt.ID)
+	if err != nil {
+		t.Fatalf("GetUserPromptByID: %v", err)
+	}
+	if !updatedPrompt.SessionExport.Valid {
+		t.Fatal("user-prompt session_export was cleared even though GC is disabled")
+	}
+}
