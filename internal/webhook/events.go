@@ -41,6 +41,9 @@ type PullRequestEvent struct {
 	PullRequest PullRequest `json:"pull_request"`
 	Label       *Label      `json:"label,omitempty"`
 	Repository  Repository  `json:"repository"`
+	Sender      struct {
+		Login string `json:"login"`
+	} `json:"sender"`
 }
 
 // PullRequestReviewEvent is the top-level payload for pull_request_review.

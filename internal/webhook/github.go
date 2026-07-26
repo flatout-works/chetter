@@ -34,7 +34,7 @@ type Client struct {
 	PrivateKey     *rsa.PrivateKey
 	HTTPClient     *http.Client
 	tokenCache     *tokenCache
-	appLoginOnce   sync.Once
+	appLoginMu     sync.Mutex
 	appLogin       string
 }
 
@@ -475,24 +475,53 @@ func (c *Client) CheckUserHasWriteAccess(ctx context.Context, repo, username str
 // GetAppLogin returns the GitHub App's bot login (e.g. "chetter[bot]").
 // The result is cached on first call.
 func (c *Client) GetAppLogin(ctx context.Context) (string, error) {
-	c.appLoginOnce.Do(func() {
-		url := fmt.Sprintf("%s/app", githubAPIBase)
-		req, err := c.newRequest(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return
-		}
-		var resp struct {
-			Slug string `json:"slug"`
-		}
-		if err := c.do(req, &resp); err != nil {
-			return
-		}
-		c.appLogin = resp.Slug + "[bot]"
-	})
-	if c.appLogin == "" {
-		return "", fmt.Errorf("could not determine app login")
+	c.appLoginMu.Lock()
+	if c.appLogin != "" {
+		login := c.appLogin
+		c.appLoginMu.Unlock()
+		return login, nil
 	}
-	return c.appLogin, nil
+	c.appLoginMu.Unlock()
+
+	appToken, err := c.appJWT()
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIBase+"/app", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("get app: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("get app: %d: %s", resp.StatusCode, string(body))
+	}
+	var body struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("decode app: %w", err)
+	}
+	if body.Slug == "" {
+		return "", fmt.Errorf("get app: empty slug")
+	}
+
+	login := body.Slug + "[bot]"
+	c.appLoginMu.Lock()
+	if c.appLogin == "" {
+		c.appLogin = login
+	} else {
+		login = c.appLogin
+	}
+	c.appLoginMu.Unlock()
+	return login, nil
 }
 
 func escapeGitHubPath(path string) string {
@@ -532,16 +561,9 @@ func (c *tokenCache) get(client *Client) (string, error) {
 
 // fetchInstallationToken signs a JWT and exchanges it for an installation token.
 func fetchInstallationToken(client *Client) (string, time.Time, error) {
-	now := time.Now()
-	claims := jwt.RegisteredClaims{
-		Issuer:    strconv.FormatInt(client.AppID, 10),
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	signed, err := token.SignedString(client.PrivateKey)
+	signed, err := client.appJWT()
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("sign JWT: %w", err)
+		return "", time.Time{}, err
 	}
 
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", githubAPIBase, client.InstallationID)
@@ -577,6 +599,20 @@ func fetchInstallationToken(client *Client) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("empty token in response")
 	}
 	return body.Token, body.ExpiresAt, nil
+}
+
+func (c *Client) appJWT() (string, error) {
+	now := time.Now()
+	claims := jwt.RegisteredClaims{
+		Issuer:    strconv.FormatInt(c.AppID, 10),
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),
+	}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(c.PrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("sign JWT: %w", err)
+	}
+	return signed, nil
 }
 
 // CommentReviewFailed is posted on a PR when Chetter fails to start a review.

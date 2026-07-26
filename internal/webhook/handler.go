@@ -463,6 +463,13 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) error {
 	if ev.Action == PullRequestActionLabeled && (ev.Label == nil || ev.Label.Name != ChetterReviewLabel) {
 		return nil
 	}
+	// The label is added by Chetter when a review starts. Do not treat the
+	// resulting webhook as a second review request when the trigger matches all
+	// reviewable PR events.
+	if ev.Action == PullRequestActionLabeled && h.isOwnBotLogin(ev.Sender.Login) {
+		slog.Debug("webhook: ignoring Chetter review label event", "repo", ev.Repository.FullName, "pr", ev.Number)
+		return nil
+	}
 
 	repo := ev.Repository.FullName
 	triggerAction := triggerActionFromPR(ev, repo)
@@ -502,19 +509,20 @@ func (h *Handler) handlePullRequest(body []byte, deliveryID string) error {
 
 // triggerActionFromPR returns the trigger action string for a PR event, or empty if not eligible.
 func triggerActionFromPR(ev PullRequestEvent, repo string) string {
-	// Label trigger.
-	for _, l := range ev.PullRequest.Labels {
-		if l.Name == ChetterReviewLabel {
-			return TriggerEventLabeled
-		}
+	// Label triggers are based on the label that was just added. The caller
+	// already filters out unrelated label events, so labels present on an
+	// opened or synchronized PR must not turn those actions into duplicates.
+	if ev.Action == PullRequestActionLabeled {
+		return TriggerEventLabeled
 	}
 	// Fork trigger.
 	if ev.PullRequest.Head.Repo.FullName != "" && ev.PullRequest.Head.Repo.FullName != repo {
 		return TriggerEventFork
 	}
-	// Opened trigger.
-	if ev.Action == PullRequestActionOpened {
-		return TriggerEventOpened
+	// Internal PR lifecycle triggers.
+	switch ev.Action {
+	case PullRequestActionOpened, PullRequestActionSynchronize, PullRequestActionReopened:
+		return ev.Action
 	}
 	return ""
 }
@@ -546,14 +554,21 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 
 	h.discoverArtifacts(ev.Comment.Body, repo, ev.Issue.Number, ev.Issue.HTMLURL, "issue_comment")
 
-	if ev.IsPullRequest() && h.resumer != nil {
-		if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
-			slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
-			return err
-		}
-	}
-
 	if ev.IsPullRequest() {
+		// Chetter's own PR comments can contain review output or acknowledgements.
+		// They must not resume the reviewed session or recursively request another
+		// review. Artifact discovery above still records any Chetter footer.
+		if h.isOwnBotLogin(ev.Comment.User.Login) {
+			slog.Debug("webhook: ignoring Chetter PR comment", "repo", repo, "pr", ev.Issue.Number)
+			return nil
+		}
+		if h.resumer != nil {
+			if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
+				slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
+				return err
+			}
+		}
+
 		// PR comment — handle /chetter-review trigger.
 		if strings.TrimSpace(ev.Comment.Body) != ReviewTriggerCommand {
 			return nil

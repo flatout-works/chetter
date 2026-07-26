@@ -143,6 +143,26 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			repo:   "org/repo",
 			wantOK: true, wantTrigger: "opened",
 		},
+		{
+			name:   "synchronize triggers review",
+			pr:     PullRequest{},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "synchronize",
+		},
+		{
+			name: "existing review label does not override synchronize",
+			pr: PullRequest{
+				Labels: []Label{{Name: ChetterReviewLabel}},
+			},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "synchronize",
+		},
+		{
+			name:   "reopened triggers review",
+			pr:     PullRequest{},
+			repo:   "org/repo",
+			wantOK: true, wantTrigger: "reopened",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,6 +175,15 @@ func TestShouldReview_FilterLogic(t *testing.T) {
 			}
 			if tc.name == "label triggers review" {
 				ev.Action = "labeled"
+			}
+			if tc.name == "synchronize triggers review" {
+				ev.Action = "synchronize"
+			}
+			if tc.name == "existing review label does not override synchronize" {
+				ev.Action = "synchronize"
+			}
+			if tc.name == "reopened triggers review" {
+				ev.Action = "reopened"
 			}
 			trigger := triggerActionFromPR(ev, tc.repo)
 			ok := trigger != ""
