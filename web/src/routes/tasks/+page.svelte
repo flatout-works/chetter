@@ -4,7 +4,7 @@
   import { onMount } from "svelte";
   import { get } from "svelte/store";
   import { createClient } from "@connectrpc/connect";
-  import { TaskService, CatalogService } from "$gen/proto/api/v1/api_pb";
+  import { AdminService, TaskService, CatalogService } from "$gen/proto/api/v1/api_pb";
   import type { CatalogHarnessDefault, CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
@@ -25,6 +25,7 @@
     s("size", String(pageSize), "25");
     s("sort", sortColumn, "created");
     s("dir", sortDirection, "desc");
+    u.searchParams.delete("template");
     if (u.href !== window.location.href) goto(u, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
@@ -39,10 +40,12 @@
   let prompt = $state("");
   let gitUrl = $state("");
   let gitRef = $state("");
+  let repoChoice = $state("");
   let agentImage = $state("");
   let agent = $state("");
   let providerId = $state("");
   let modelId = $state("");
+  let variantId = $state("");
   let harness = $state("opencode");
   let sessionMode = $state("");
   let pauseReason = $state("");
@@ -50,8 +53,10 @@
 
   let providers = $state.raw<CatalogProvider[]>([]);
   let harnessDefaults = $state.raw<CatalogHarnessDefault[]>([]);
+  let knownRepos = $state.raw<string[]>([]);
   let defaultProvider = $state("");
   let defaultModel = $state("");
+  let templateSourceId = $state("");
 
   const harnessOptions = [
     { value: "opencode", label: "OpenCode" },
@@ -75,6 +80,33 @@
     const defaults = defaultsForHarness(harnessName);
     providerId = defaults.provider;
     modelId = defaults.model;
+  }
+
+  function repositoryUrl(repo: string): string {
+    return repo.startsWith("http://") || repo.startsWith("https://")
+      ? repo
+      : `https://github.com/${repo}`;
+  }
+
+  function syncRepoChoice() {
+    const match = knownRepos.find((repo) => repositoryUrl(repo) === gitUrl.trim());
+    repoChoice = match ?? (gitUrl.trim() ? "__custom" : "");
+  }
+
+  function onRepoChoice() {
+    if (!repoChoice) {
+      gitUrl = "";
+      return;
+    }
+    if (repoChoice === "__custom") {
+      gitUrl = "";
+      return;
+    }
+    if (repoChoice) gitUrl = repositoryUrl(repoChoice);
+  }
+
+  function onGitUrlInput() {
+    syncRepoChoice();
   }
 
   let page = $state(Number(param("page", "0")));
@@ -183,10 +215,50 @@
     }
   }
 
+  async function loadKnownRepos() {
+    try {
+      const client = createClient(AdminService, getTransport());
+      const resp = await client.listRepos({});
+      knownRepos = resp.repos ?? [];
+      syncRepoChoice();
+    } catch (e) {
+      console.error("Failed to load known repositories:", e);
+    }
+  }
+
+  async function loadTaskTemplate(taskId: string) {
+    showSubmitForm = true;
+    try {
+      const client = createClient(TaskService, getTransport());
+      const resp = await client.getTask({ taskId });
+      const source = resp.task;
+      if (!source) throw new Error("Template task not found.");
+      prompt = source.prompt;
+      gitUrl = source.gitUrl;
+      gitRef = source.gitRef;
+      syncRepoChoice();
+      agentImage = source.agentImage;
+      agent = source.agent;
+      providerId = source.providerId;
+      modelId = source.modelId;
+      variantId = source.variantId;
+      harness = source.harness || "opencode";
+      sessionMode = "";
+      pauseReason = "";
+      ttlHours = 72;
+      templateSourceId = source.id;
+    } catch (e) {
+      formError = e instanceof Error ? e.message : "Failed to load task template.";
+    }
+  }
+
   onMount(() => {
     selectedStatus = get(statusFilter);
     if (selectedStatus) refreshTasks(selectedStatus, 100);
     loadCatalog();
+    loadKnownRepos();
+    const templateId = param("template");
+    if (templateId) loadTaskTemplate(templateId);
   });
 
   function onProviderChange() {
@@ -213,14 +285,17 @@
         prompt: prompt.trim(), gitUrl: gitUrl.trim(), gitRef: gitRef.trim(),
         agentImage: agentImage.trim(), agent: agent.trim(),
         providerId: providerId.trim(), modelId: modelId.trim(),
+        variantId: variantId.trim(),
         harness: harness.trim(),
         sessionMode: sessionMode || "",
         pauseReason: sessionMode === "resumable" ? pauseReason.trim() || "" : "",
         ttlHours: sessionMode === "resumable" ? ttlHours : 0,
       });
-      prompt = ""; gitUrl = ""; gitRef = ""; agentImage = ""; agent = "";
+      prompt = ""; gitUrl = ""; gitRef = ""; repoChoice = ""; agentImage = ""; agent = "";
       harness = "opencode"; applyHarnessDefaults(harness);
+      variantId = "";
       sessionMode = ""; pauseReason = ""; ttlHours = 72;
+      templateSourceId = "";
       showSubmitForm = false;
       await refreshTasks(selectedStatus, 100);
     } catch (err) {
@@ -303,6 +378,9 @@
   {#if showSubmitForm}
     <Card class="mb-6 w-full !p-5" size="xl" shadow="sm">
       <form onsubmit={submitTask} class="space-y-4">
+        {#if templateSourceId}
+          <Alert color="blue">Using task <span class="font-mono">{templateSourceId}</span> as a template. Adjust the values below before submitting.</Alert>
+        {/if}
         <div>
           <Label for="task-prompt" class="mb-1">Prompt</Label>
           <Textarea id="task-prompt" bind:value={prompt} placeholder="Describe the task for the agent" rows={4} class="w-full" />
@@ -357,10 +435,24 @@
           {/if}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input bind:value={gitUrl} placeholder="Git URL (optional)" />
+          <div>
+            <Label for="task-repository" class="mb-1">Repository</Label>
+            <Select id="task-repository" bind:value={repoChoice} onchange={onRepoChoice}>
+              <option value="">Choose a known repository…</option>
+              {#each knownRepos as repo (repo)}
+                <option value={repo}>{repo}</option>
+              {/each}
+              <option value="__custom">Custom Git URL…</option>
+            </Select>
+          </div>
+          <div>
+            <Label for="task-git-url" class="mb-1">Git URL</Label>
+            <Input id="task-git-url" bind:value={gitUrl} oninput={onGitUrlInput} placeholder="Git URL (optional)" />
+          </div>
           <Input bind:value={gitRef} placeholder="Git ref (optional)" />
           <Input bind:value={agentImage} placeholder="Agent image override (optional)" />
           <Input bind:value={agent} placeholder="Agent (optional)" />
+          <Input bind:value={variantId} placeholder="Variant (optional, e.g. high)" />
         </div>
       {#if formError}
         <Alert color="red">{formError}</Alert>

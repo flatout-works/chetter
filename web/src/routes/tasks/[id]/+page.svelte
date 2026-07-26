@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import { createClient } from "@connectrpc/connect";
@@ -442,6 +443,10 @@
     }
   }
 
+  async function useAsTemplate() {
+    await goto(`${resolve("/tasks")}?template=${encodeURIComponent(params.id)}`);
+  }
+
   async function viewExport() {
     viewLoading = true;
     try {
@@ -512,6 +517,7 @@
           </Button>
           <Button color="alternative" size="sm" onclick={exportTask}>Export</Button>
         {/if}
+        <Button color="alternative" size="sm" onclick={useAsTemplate}>Use as template</Button>
       </div>
     </div>
 
