@@ -165,10 +165,11 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 			return fmt.Errorf("task %s is not pending or running", taskID)
 		}
 		rows, err = q.CancelTask(ctx, repository.CancelTaskParams{
-			Error:     sql.NullString{String: reason, Valid: true},
-			EndedAt:   sql.NullTime{Time: now, Valid: true},
-			UpdatedAt: now,
-			ID:        taskID,
+			Error:          sql.NullString{String: reason, Valid: true},
+			FailureMessage: sql.NullString{String: reason, Valid: true},
+			EndedAt:        sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:      now,
+			ID:             taskID,
 		})
 		if err != nil {
 			return fmt.Errorf("cancel task aggregate: %w", err)
@@ -192,7 +193,7 @@ func (s *Service) CancelTask(ctx context.Context, taskID, reason string) (TaskTo
 		SourceType: "api",
 		TargetType: "task",
 		TargetID:   taskID,
-		Detail:     fmt.Sprintf("task cancelled: %s", reason),
+		Detail:     fmt.Sprintf("task cancelled (failure_category=user_cancelled): %s", reason),
 	})
 	return s.GetTask(ctx, taskID)
 }
@@ -246,9 +247,10 @@ func (s *Service) ClearQueue(ctx context.Context) (int, error) {
 		}
 		var err error
 		cancelled, err = q.ClearPendingTasks(ctx, repository.ClearPendingTasksParams{
-			Error:     reason,
-			EndedAt:   endedAt,
-			UpdatedAt: now,
+			Error:          reason,
+			FailureMessage: reason,
+			EndedAt:        endedAt,
+			UpdatedAt:      now,
 		})
 		if err != nil {
 			return fmt.Errorf("cancel pending task aggregates: %w", err)

@@ -39,6 +39,8 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		Summary:          t.Summary,
 		Error:            t.Error,
 		ErrorCategory:    t.ErrorCategory,
+		FailureCategory:  t.FailureCategory,
+		FailureMessage:   t.FailureMessage,
 		CreatedAt:        t.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        t.UpdatedAt.Format(time.RFC3339),
 		StartedAt:        optTimeStr(t.StartedAt),

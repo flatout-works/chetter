@@ -93,6 +93,8 @@ UPDATE chetter_tasks t
 SET status = 'error',
     error = attempt.error,
     error_category = 'runner_unavailable',
+    failure_category = 'runner_lost',
+    failure_message = 'Runner unavailable: ' || COALESCE(attempt.error, 'unknown'),
     ended_at = $1,
     updated_at = $2
 FROM chetter_user_prompts prompt, chetter_execution_attempts attempt

@@ -19,6 +19,7 @@
     const u = new URL(window.location.href);
     const s = (k: string, v: string, def = "") => v && v !== def ? u.searchParams.set(k, v) : u.searchParams.delete(k);
     s("status", selectedStatus);
+    s("failure", selectedFailureCategory);
     s("q", search.trim());
     s("page", String(page), "0");
     s("size", String(pageSize), "25");
@@ -29,6 +30,7 @@
 
   type SortColumn = "id" | "status" | "agent" | "model" | "prompt" | "created" | "duration";
   let selectedStatus = $state(param("status"));
+  let selectedFailureCategory = $state(param("failure"));
   let search = $state(param("q"));
   let taskList = $derived($tasks);
   let showSubmitForm = $state(false);
@@ -66,7 +68,7 @@
   let sortColumn = $state<SortColumn>((param("sort", "created")) as SortColumn);
   let sortDirection = $state<"asc" | "desc">((param("dir", "desc")) as "asc" | "desc");
 
-  $effect(() => { selectedStatus; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
+  $effect(() => { selectedStatus; selectedFailureCategory; search; page; pageSize; sortColumn; sortDirection; syncURL(); });
 
   let sortedTasks = $derived.by(() => {
     function durationMs(t: typeof taskList[number]): number {
@@ -91,8 +93,12 @@
     return sorted;
   });
 
-  let totalPages = $derived(Math.max(1, Math.ceil(sortedTasks.length / pageSize)));
-  let pagedTasks = $derived(sortedTasks.slice(page * pageSize, (page + 1) * pageSize));
+  let filteredTasks = $derived.by(() => {
+    if (!selectedFailureCategory) return sortedTasks;
+    return sortedTasks.filter(t => t.failureCategory === selectedFailureCategory);
+  });
+  let totalPages = $derived(Math.max(1, Math.ceil(filteredTasks.length / pageSize)));
+  let pagedTasks = $derived(filteredTasks.slice(page * pageSize, (page + 1) * pageSize));
 
   function toggleSort(col: SortColumn) {
     if (sortColumn === col) { sortDirection = sortDirection === "asc" ? "desc" : "asc"; }
@@ -118,6 +124,19 @@
 
   function hasTriggerOrigin(task: typeof taskList[number]): boolean {
     return !!task.triggerName && task.triggerType !== "event_callback";
+  }
+
+  function failureLabel(cat: string): string {
+    switch (cat) {
+      case "timeout": return "Timeout";
+      case "harness_error": return "Harness error";
+      case "runner_lost": return "Runner lost";
+      case "internal_error": return "Internal error";
+      case "user_cancelled": return "User cancelled";
+      case "quota_exceeded": return "Quota exceeded";
+      case "unknown": return "Unknown";
+      default: return cat;
+    }
   }
 
   function applyFilter() {
@@ -237,6 +256,20 @@
         <option value="cancelled">Cancelled</option>
       </Select>
       <Select
+        bind:value={selectedFailureCategory}
+        onchange={applyFilter}
+        class="!w-auto"
+      >
+        <option value="">All failures</option>
+        <option value="timeout">Timeout</option>
+        <option value="harness_error">Harness error</option>
+        <option value="runner_lost">Runner lost</option>
+        <option value="internal_error">Internal error</option>
+        <option value="user_cancelled">User cancelled</option>
+        <option value="quota_exceeded">Quota exceeded</option>
+        <option value="unknown">Unknown</option>
+      </Select>
+      <Select
         bind:value={pageSize}
         onchange={() => { page = 0; }}
         class="!w-auto"
@@ -330,6 +363,7 @@
       <TableHeadCell onclick={() => toggleSort("status")} class="cursor-pointer select-none">
         Status {sortIcon("status")}
       </TableHeadCell>
+      <TableHeadCell>Failure</TableHeadCell>
       <TableHeadCell onclick={() => toggleSort("agent")} class="cursor-pointer select-none">
         Agent {sortIcon("agent")}
       </TableHeadCell>
@@ -362,6 +396,13 @@
             <StatusBadge status={task.status} />
           </TableBodyCell>
           <TableBodyCell>
+            {#if task.failureCategory}
+              <StatusBadge status={task.failureCategory} label={failureLabel(task.failureCategory)} />
+            {:else}
+              <span class="text-gray-400">—</span>
+            {/if}
+          </TableBodyCell>
+          <TableBodyCell>
             {#if task.agent}
               <a href={resolve("/agents/[name]", { name: task.agent })} class="text-blue-600 dark:text-blue-400 hover:underline">{task.agent}</a>
             {:else}
@@ -391,7 +432,7 @@
         </TableBodyRow>
       {:else}
         <TableBodyRow>
-           <TableBodyCell colspan={9}>
+           <TableBodyCell colspan={10}>
             <div class="text-center text-gray-500 dark:text-gray-400 py-8">No tasks found</div>
           </TableBodyCell>
         </TableBodyRow>

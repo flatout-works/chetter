@@ -14,6 +14,8 @@ var schemaStatements = []string{
 		summary TEXT NULL,
 		error TEXT NULL,
 		error_category VARCHAR(32) NULL,
+		failure_category VARCHAR(32) NULL,
+		failure_message VARCHAR(500) NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		ended_at DATETIME(6) NULL,

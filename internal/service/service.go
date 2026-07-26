@@ -666,6 +666,18 @@ func (s *Service) reapExpiredLeases() {
 	if reclaimed > 0 || failed > 0 {
 		slog.Info("reaped expired task leases", "reclaimed", reclaimed, "failed", failed)
 	}
+	if failed > 0 {
+		auditCtx, auditCancel := s.reaperCtx()
+		if err := s.LogAuditEvent(auditCtx, AuditEventParams{
+			EventType:  "task_failed",
+			SourceType: "reaper",
+			TargetType: "task",
+			Detail:     fmt.Sprintf("reaper marked %d tasks as failed (timeout)", failed),
+		}); err != nil {
+			slog.Warn("reaper: log task_failed audit event", "err", err)
+		}
+		auditCancel()
+	}
 	// Log task_recovered audit events for auto-reclaimed tasks. See issue #96
 	// criterion 3.
 	for _, audit := range recoveryAudits {
@@ -1570,6 +1582,8 @@ func repoTaskToStoreRecord(task repository.ChetterTask, session repository.Chett
 		Summary:           task.Summary.String,
 		Error:             task.Error.String,
 		ErrorCategory:     task.ErrorCategory.String,
+		FailureCategory:   task.FailureCategory.String,
+		FailureMessage:    task.FailureMessage.String,
 		CreatedAt:         task.CreatedAt,
 		UpdatedAt:         task.UpdatedAt,
 		EndedAt:           endedAt,

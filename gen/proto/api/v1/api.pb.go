@@ -129,6 +129,8 @@ type Task struct {
 	StartedAt        *string                `protobuf:"bytes,19,opt,name=started_at,json=startedAt,proto3,oneof" json:"started_at,omitempty"`
 	EndedAt          *string                `protobuf:"bytes,20,opt,name=ended_at,json=endedAt,proto3,oneof" json:"ended_at,omitempty"`
 	ErrorCategory    string                 `protobuf:"bytes,21,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
+	FailureCategory  string                 `protobuf:"bytes,30,opt,name=failure_category,json=failureCategory,proto3" json:"failure_category,omitempty"`
+	FailureMessage   string                 `protobuf:"bytes,31,opt,name=failure_message,json=failureMessage,proto3" json:"failure_message,omitempty"`
 	AgentSessionId   string                 `protobuf:"bytes,22,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	TokenUsage       *TokenUsage            `protobuf:"bytes,23,opt,name=token_usage,json=tokenUsage,proto3" json:"token_usage,omitempty"`
 	TriggerName      string                 `protobuf:"bytes,24,opt,name=trigger_name,json=triggerName,proto3" json:"trigger_name,omitempty"`
@@ -314,6 +316,20 @@ func (x *Task) GetEndedAt() string {
 func (x *Task) GetErrorCategory() string {
 	if x != nil {
 		return x.ErrorCategory
+	}
+	return ""
+}
+
+func (x *Task) GetFailureCategory() string {
+	if x != nil {
+		return x.FailureCategory
+	}
+	return ""
+}
+
+func (x *Task) GetFailureMessage() string {
+	if x != nil {
+		return x.FailureMessage
 	}
 	return ""
 }
@@ -8447,7 +8463,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xf4\a\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xc8\b\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -8477,7 +8493,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\x13 \x01(\tH\x00R\tstartedAt\x88\x01\x01\x12\x1e\n" +
 	"\bended_at\x18\x14 \x01(\tH\x01R\aendedAt\x88\x01\x01\x12%\n" +
-	"\x0eerror_category\x18\x15 \x01(\tR\rerrorCategory\x12(\n" +
+	"\x0eerror_category\x18\x15 \x01(\tR\rerrorCategory\x12)\n" +
+	"\x10failure_category\x18\x1e \x01(\tR\x0ffailureCategory\x12'\n" +
+	"\x0ffailure_message\x18\x1f \x01(\tR\x0efailureMessage\x12(\n" +
 	"\x10agent_session_id\x18\x16 \x01(\tR\x0eagentSessionId\x123\n" +
 	"\vtoken_usage\x18\x17 \x01(\v2\x12.api.v1.TokenUsageR\n" +
 	"tokenUsage\x12!\n" +

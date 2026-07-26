@@ -95,6 +95,8 @@ type TaskToolRecord struct {
 	Summary               string            `json:"summary,omitempty"`
 	Error                 string            `json:"error,omitempty"`
 	ErrorCategory         string            `json:"error_category,omitempty"`
+	FailureCategory       string            `json:"failure_category,omitempty"`
+	FailureMessage        string            `json:"failure_message,omitempty"`
 	AgentSessionID        string            `json:"agent_session_id,omitempty"`
 	CreatedAt             time.Time         `json:"created_at"`
 	UpdatedAt             time.Time         `json:"updated_at"`
@@ -956,6 +958,8 @@ func repoTaskToToolRecord(task repository.ChetterTask, session repository.Chette
 		Summary:          task.Summary.String,
 		Error:            task.Error.String,
 		ErrorCategory:    task.ErrorCategory.String,
+		FailureCategory:  task.FailureCategory.String,
+		FailureMessage:   task.FailureMessage.String,
 		CreatedAt:        task.CreatedAt,
 		UpdatedAt:        task.UpdatedAt,
 		EndedAt:          store.NullTimePtr(task.EndedAt),
