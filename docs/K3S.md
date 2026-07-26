@@ -4,7 +4,7 @@ Status: **Canonical local k3s guide**
 
 This guide shows how to run the Chetter server, web UI, runner, and local TiDB in a single-node k3s cluster for local validation.
 
-Current state: Chetter's Kubernetes manifests run the control plane and runner as Kubernetes workloads, but the runner still executes agent task containers through the host Docker socket with `RUNNER_LOCAL=true`. There is no Kubernetes pod executor in the runner yet. For sandboxing, install gVisor (`runsc`) into Docker and set `USE_GVISOR=true`; task containers then run with Docker's `--runtime=runsc`.
+Current state: Chetter's Kubernetes manifests run the control plane and runner as Kubernetes workloads, but the runner still executes agent task containers through the host Docker socket. There is no Kubernetes pod executor in the runner yet. Plain Docker task execution is for trusted or convenience workloads only. For sandboxing, install gVisor (`runsc`) into Docker and set `USE_GVISOR=true`; task containers then run with Docker's `--runtime=runsc`.
 
 Use [EKS.md](EKS.md) for production Kubernetes notes. Use this document for local k3s validation.
 

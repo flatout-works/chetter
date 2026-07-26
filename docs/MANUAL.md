@@ -427,7 +427,7 @@ copies the previous session's configuration snapshot, including `mcp_endpoints`.
 
 #### Local mode
 
-In local (non-Docker) execution, all runner environment variables are visible to every task process. MCP endpoint tokens from other teams are visible in local mode. Use Docker/gVisor mode for multi-team isolation. Local mode is intended for single-trust development environments only.
+In local (non-Docker) execution, all runner environment variables are visible to every task process. MCP endpoint tokens from other teams are visible in local mode. Local mode and plain Docker execution are intended for single-trust or convenience use only. Use gVisor for a task security boundary in multi-team or untrusted-workload deployments.
 
 Example trigger definition:
 
@@ -792,7 +792,7 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 | Git identity | The server resolves an agent definition's managed identity when present; otherwise it resolves the team default, then the global default. The runner sets repository-local `user.name` and `user.email` plus `GIT_AUTHOR_*` / `GIT_COMMITTER_*` for every harness mode. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
 | Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
-| Sandbox/network config | In gVisor mode the task container receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) and runs with `--runtime=runsc`. |
+| Sandbox/network config | In gVisor mode the task container runs with `--runtime=runsc` and receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). Proxy settings are operational controls, not a replacement for gVisor's sandbox boundary. |
 
 ### Trigger-Type Environment Variables
 
@@ -855,6 +855,8 @@ Each runner can handle multiple tasks simultaneously via `RUNNER_MAX_CONCURRENT`
 ## Sandbox Isolation
 
 Chetter uses [gVisor](https://gvisor.dev/) (`runsc`) as its sandboxed execution runtime. gVisor provides an application kernel (the Sentry) written in Go that intercepts every system call the container makes and implements the Linux ABI in userspace. The application never touches the host kernel directly.
+
+Plain Docker (`runc`) and local execution are convenience modes for trusted workloads. They are not task security boundaries, even if Docker containers, proxy settings, or DNS filtering are present. Enable `USE_GVISOR=true` for untrusted workloads or multi-tenant deployments.
 
 ### Why gVisor Over Alternatives
 

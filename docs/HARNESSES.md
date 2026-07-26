@@ -144,7 +144,7 @@ Chetter does not proxy remote MCP traffic, translate HTTP/SSE, or reimplement MC
 
 MCP endpoints support global and team scope. Team-scoped endpoints are only available to tasks owned by that team. In Docker/gVisor mode, only the selected task's endpoint tokens are imported into the container, so a shared runner cannot see other teams' tokens.
 
-**Local mode is single-trust:** in local (non-Docker) execution, all runner environment variables are visible to every task process. MCP endpoint tokens from other teams are visible in local mode. Use Docker/gVisor mode for multi-team isolation. Local mode is intended for single-trust development environments only.
+**Local and plain Docker modes are single-trust:** in local (non-Docker) execution, all runner environment variables are visible to every task process. Neither local nor plain Docker execution is a task security boundary. Use gVisor for multi-team or untrusted-workload isolation.
 
 ### Pinned harness versions
 
@@ -161,8 +161,9 @@ Two dispatch paths exist in `runner_task.go`:
 
 Dispatch order: **RPC → Serve**. All harnesses without RPC use serve mode.
 
-Per-task Docker isolation (gVisor, separate containers) is the standard execution
-model. RPC mode runs as a subprocess of the runner (no gVisor), available only for Pi.
+Per-task Docker containers are the standard execution model; gVisor provides the
+security boundary when isolation is required. RPC mode runs as a subprocess of
+the runner (no gVisor), available only for Pi.
 
 ## Selection
 

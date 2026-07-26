@@ -121,13 +121,13 @@ See [HARNESSES.md](HARNESSES.md) for the full capability matrix and guidance on 
 
 Chetter currently supports:
 
-- Docker task containers.
-- Optional gVisor isolation with `USE_GVISOR=true`.
+- Docker task containers for trusted or convenience execution.
+- gVisor sandboxing with `USE_GVISOR=true` for a task security boundary.
 - Local runner execution for development.
 
-gVisor uses Docker's `runsc` runtime to give agent containers stronger isolation. The runner can also create Docker checkpoints for resumable sessions when gVisor is enabled.
+Plain Docker and local execution are not security boundaries: a task can escape the assumptions made by the runner configuration and must be treated as trusted. gVisor uses Docker's `runsc` runtime to isolate agent containers and is required for untrusted workloads. The runner can also create Docker checkpoints for resumable sessions when gVisor is enabled.
 
-Networking uses Docker bridge networks plus optional proxy and DNS filtering. Legacy Kata/containerd execution and host network namespace management have been removed.
+Optional proxy and DNS filtering are operational controls, not a substitute for sandboxing. Legacy Kata/containerd execution and host network namespace management have been removed.
 
 ## Runner-Local MCP Tools
 

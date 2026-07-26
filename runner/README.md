@@ -1,6 +1,6 @@
 # Chetter Runner
 
-Runs agent harnesses (OpenCode) inside Docker containers with optional gVisor sandboxing for strong isolation, while proxying privileged operations (git and HTTP) through a runner-managed MCP server.
+Runs agent harnesses inside Docker containers. Plain Docker execution is for trusted or convenience workloads; enable gVisor for a task security boundary.
 
 ## Architecture
 
@@ -9,8 +9,7 @@ Worker Node (Docker installed, optional gVisor/runsc)
 │
 ├── Docker daemon (/var/run/docker.sock)
 ├── [optional] runsc runtime (gVisor, installed via DaemonSet)
-├── iptables kernel modules
-└── Runner Container (--privileged, mounts host resources)
+└── Runner Container (mounts the Docker socket and workspace storage)
     ├── ConnectRPC client → Chetter control plane
     ├── Git engine (SSH keys / PAT)
     ├── MCP Server (Unix socket per task)
@@ -24,7 +23,7 @@ Worker Node (Docker installed, optional gVisor/runsc)
                                    └─────────────┘
 ```
 
-> **Important:** The runner requires Docker on the host. In Kubernetes, mount the Docker socket from the node. For sandbox isolation, install gVisor (`runsc`) on worker nodes — the runner passes `--runtime=runsc` when `USE_GVISOR=true`.
+> **Security:** The runner requires Docker on the host. In Kubernetes, mount the Docker socket from the node. Plain Docker execution is not a security boundary, even when proxy or DNS filtering is configured. For untrusted tasks, install gVisor (`runsc`) on worker nodes and set `USE_GVISOR=true`; the runner then passes `--runtime=runsc`.
 
 ## Prerequisites
 
@@ -38,7 +37,7 @@ Worker Node (Docker installed, optional gVisor/runsc)
 
 ### Software Prerequisites (Host Installation)
 
-The following must be installed on the **host machine** (not inside the runner container). The runner must run as **root** (or with `CAP_NET_ADMIN` + access to `/var/run/docker.sock`).
+The following must be installed on the **host machine** (not inside the runner container). The runner needs access to `/var/run/docker.sock`.
 
 #### 1. Docker
 
@@ -74,13 +73,7 @@ docker run --runtime=runsc --rm alpine uname -a
 
 For Kubernetes, install gVisor via DaemonSet (see `deploy/k8s/gvisor-runtimeclass.yaml`).
 
-#### 3. Network Tools (for runner)
-
-```bash
-sudo apt-get install -y iptables iproute2 socat
-```
-
-#### 4. Chetter Control Plane
+#### 3. Chetter Control Plane
 
 Start the Chetter MCP server and configure `server.url` in `runner.yaml`, or set
 `CHETTER_SERVER_URL` when using the container entrypoint.
@@ -108,6 +101,9 @@ Useful for development and CI smoke tests where Docker is not available.
 
 ### Without gVisor (default)
 
+Use this mode only for trusted workloads or local convenience. A plain Docker
+container does not provide Chetter's task security boundary.
+
 ```bash
 sudo ./runner -config runner.yaml
 ```
@@ -131,6 +127,8 @@ docker run -d --name chetter-runner \
 ### With gVisor sandboxing
 
 Set `USE_GVISOR=true` to make the runner pass `--runtime=runsc` to Docker. This runs each agent container inside a gVisor sandbox with its own userspace kernel.
+
+Use this mode for untrusted workloads and when tasks need an isolation boundary.
 
 ```bash
 docker run -d --name chetter-runner \
@@ -167,18 +165,18 @@ Unmodified harnesses work for public workflows (HTTP through proxy, workspace ac
 | Mode | Runtime | Isolation | Interactive | Platform |
 |------|---------|-----------|-------------|----------|
 | `local` | Subprocess | None | Yes (opencode serve) | Any |
-| `docker` | Docker CLI + runc | Process | Yes (opencode serve) | Any |
-| `docker` + gVisor | Docker CLI + runsc | Kernel (syscall filter) | Yes (opencode serve) | Linux only |
+| `docker` | Docker CLI + runc | Convenience only; not a security boundary | Yes (opencode serve) | Any |
+| `docker` + gVisor | Docker CLI + runsc | Task security boundary (userspace kernel) | Yes (opencode serve) | Linux only |
 
 ## Security Model
 
 | Layer | Implementation |
 |-------|---------------|
-| Container Isolation | Docker (runc) or gVisor (runsc) |
-| Network Lockdown | iptables REDIRECT + DNS proxy |
+| Task security boundary | gVisor (`runsc`) only |
+| Plain Docker or local mode | Trusted/convenience execution only |
 | No Credentials in Container | Git/SSH keys stay in runner |
 | LLM Key | Inside container (known tradeoff: prompt exfiltration possible) |
-| Proxy Filtering | SNI-based allowlist/blocklist |
+| Proxy/DNS filtering | Operational controls; not a sandbox boundary |
 
 ## Runner Environment Variables
 
@@ -207,22 +205,13 @@ sudo runsc install
 sudo systemctl restart docker
 ```
 
-**`iptables: Permission denied` in runner**
-→ Runner must run as root or with `CAP_NET_ADMIN`.
-
-**Agent container cannot reach proxy**
-→ Check iptables rules and that the proxy is listening on `:18080`:
-```bash
-sudo iptables -t nat -L -n | grep 18080
-```
-
 ## Development Plan
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | 1 — Core + Proxy | Done | MCP server, workspace, proxy, config |
 | 2 — Docker execution | Done | Docker CLI, container spawn, interactive serve |
-| 3 — Network isolation | Done | Per-task bridge, iptables REDIRECT, DNS proxy |
+| 3 — Network controls | Done | Optional proxy and DNS filtering (not a security boundary) |
 | 4 — OpenCode Adapter | Done | `opencode serve` in local + Docker mode |
 | 5 — Skills + Backend Harness | Done | Agent skill injection, backend developer Docker image |
 | 6 — gVisor Sandbox | Done | `--runtime=runsc` flag, K8s DaemonSet installer |
