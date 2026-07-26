@@ -169,6 +169,37 @@
                     · Last HB: {formatAge(runner.lastHeartbeat)}
                   {/if}
                 </p>
+                {#if runner.resource}
+                  <div class="mt-2 space-y-1">
+                    {#if runner.resource.cpuPercent >= 0}
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="w-8 text-gray-500 dark:text-gray-400">CPU</span>
+                        <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div class="h-2 rounded-full {runner.resource.cpuPercent > 80 ? 'bg-red-500' : runner.resource.cpuPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'}" style="width: {Math.min(runner.resource.cpuPercent, 100)}%"></div>
+                        </div>
+                        <span class="w-10 text-right text-gray-500 dark:text-gray-400">{runner.resource.cpuPercent.toFixed(0)}%</span>
+                      </div>
+                    {/if}
+                    {#if runner.resource.memoryPercent >= 0}
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="w-8 text-gray-500 dark:text-gray-400">MEM</span>
+                        <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div class="h-2 rounded-full {runner.resource.memoryPercent > 80 ? 'bg-red-500' : runner.resource.memoryPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'}" style="width: {Math.min(runner.resource.memoryPercent, 100)}%"></div>
+                        </div>
+                        <span class="w-10 text-right text-gray-500 dark:text-gray-400">{runner.resource.memoryPercent.toFixed(0)}%</span>
+                      </div>
+                    {/if}
+                    {#if runner.resource.diskPercent >= 0}
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="w-8 text-gray-500 dark:text-gray-400">DSK</span>
+                        <div class="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div class="h-2 rounded-full {runner.resource.diskPercent > 80 ? 'bg-red-500' : runner.resource.diskPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'}" style="width: {Math.min(runner.resource.diskPercent, 100)}%"></div>
+                        </div>
+                        <span class="w-10 text-right text-gray-500 dark:text-gray-400">{runner.resource.diskPercent.toFixed(0)}%</span>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
               </div>
               <div class="flex items-center gap-3">
                 {#if runner.currentTaskIds?.length}
