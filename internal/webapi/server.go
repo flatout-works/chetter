@@ -14,27 +14,29 @@ import (
 
 // Handlers holds all ConnectRPC handler implementations.
 type Handlers struct {
-	Task    *taskHandler
-	Event   *eventHandler
-	Session *sessionHandler
-	Trigger *triggerHandler
-	Fleet   *fleetHandler
-	Admin   *adminHandler
-	Arcane  *arcaneHandler
-	Catalog *catalogHandler
+	Task          *taskHandler
+	Event         *eventHandler
+	Session       *sessionHandler
+	Trigger       *triggerHandler
+	EventCallback *eventCallbackHandler
+	Fleet         *fleetHandler
+	Admin         *adminHandler
+	Arcane        *arcaneHandler
+	Catalog       *catalogHandler
 }
 
 // NewHandlers creates all ConnectRPC handlers wrapping the shared service.
 func NewHandlers(svc *service.Service, bus *EventBus) *Handlers {
 	return &Handlers{
-		Task:    &taskHandler{svc: svc, bus: bus},
-		Event:   &eventHandler{svc: svc},
-		Session: &sessionHandler{svc: svc},
-		Trigger: &triggerHandler{svc: svc},
-		Fleet:   &fleetHandler{svc: svc, bus: bus},
-		Admin:   &adminHandler{svc: svc},
-		Arcane:  &arcaneHandler{svc: svc},
-		Catalog: &catalogHandler{svc: svc},
+		Task:          &taskHandler{svc: svc, bus: bus},
+		Event:         &eventHandler{svc: svc},
+		Session:       &sessionHandler{svc: svc},
+		Trigger:       &triggerHandler{svc: svc},
+		EventCallback: &eventCallbackHandler{svc: svc},
+		Fleet:         &fleetHandler{svc: svc, bus: bus},
+		Admin:         &adminHandler{svc: svc},
+		Arcane:        &arcaneHandler{svc: svc},
+		Catalog:       &catalogHandler{svc: svc},
 	}
 }
 
@@ -47,6 +49,7 @@ func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sq
 	mux.Handle(apiv1connect.NewEventServiceHandler(h.Event, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewSessionServiceHandler(h.Session, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewTriggerServiceHandler(h.Trigger, connect.WithInterceptors(interceptor)))
+	mux.Handle(apiv1connect.NewEventCallbackServiceHandler(h.EventCallback, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewFleetServiceHandler(h.Fleet, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewAdminServiceHandler(h.Admin, connect.WithInterceptors(interceptor)))
 	mux.Handle(apiv1connect.NewCatalogServiceHandler(h.Catalog, connect.WithInterceptors(interceptor)))
@@ -64,8 +67,9 @@ var (
 	_ apiv1connect.TaskServiceHandler    = (*taskHandler)(nil)
 	_ apiv1connect.EventServiceHandler   = (*eventHandler)(nil)
 	_ apiv1connect.SessionServiceHandler = (*sessionHandler)(nil)
-	_ apiv1connect.TriggerServiceHandler = (*triggerHandler)(nil)
-	_ apiv1connect.FleetServiceHandler   = (*fleetHandler)(nil)
+	_ apiv1connect.TriggerServiceHandler       = (*triggerHandler)(nil)
+	_ apiv1connect.EventCallbackServiceHandler = (*eventCallbackHandler)(nil)
+	_ apiv1connect.FleetServiceHandler         = (*fleetHandler)(nil)
 	_ apiv1connect.AdminServiceHandler   = (*adminHandler)(nil)
 	_ apiv1connect.ArcaneServiceHandler  = (*arcaneHandler)(nil)
 	_ apiv1connect.CatalogServiceHandler = (*catalogHandler)(nil)

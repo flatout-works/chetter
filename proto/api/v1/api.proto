@@ -815,6 +815,74 @@ message SetGitIdentityDefaultResponse {
   GitIdentity identity = 1;
 }
 
+// --- EventCallbackService ---
+
+message EventCallback {
+  string id = 1;
+  string team_id = 2;
+  string name = 3;
+  string event_type = 4;
+  string action_type = 5;
+  string action_config = 6;
+  bool enabled = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+service EventCallbackService {
+  rpc CreateEventCallback(CreateEventCallbackRequest) returns (CreateEventCallbackResponse);
+  rpc UpdateEventCallback(UpdateEventCallbackRequest) returns (UpdateEventCallbackResponse);
+  rpc ListEventCallbacks(ListEventCallbacksRequest) returns (ListEventCallbacksResponse);
+  rpc DeleteEventCallback(DeleteEventCallbackRequest) returns (DeleteEventCallbackResponse);
+}
+
+message CreateEventCallbackRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+  string event_type = 4 [(buf.validate.field).string.min_len = 1];
+  string action_type = 5 [(buf.validate.field).string.min_len = 1];
+  string action_config = 6;
+  optional bool enabled = 7;
+}
+
+message CreateEventCallbackResponse {
+  EventCallback callback = 1;
+}
+
+message UpdateEventCallbackRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+  optional string event_type = 4;
+  optional string action_type = 5;
+  optional string action_config = 6;
+  optional bool enabled = 7;
+}
+
+message UpdateEventCallbackResponse {
+  EventCallback callback = 1;
+}
+
+message ListEventCallbacksRequest {
+  bool enabled_only = 1;
+  string event_type = 2;
+}
+
+message ListEventCallbacksResponse {
+  repeated EventCallback callbacks = 1;
+}
+
+message DeleteEventCallbackRequest {
+  string team_id = 1;
+  string team_name = 2;
+  string name = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteEventCallbackResponse {
+  bool deleted = 1;
+}
+
 // --- ArcaneService (conditionally registered) ---
 
 service ArcaneService {

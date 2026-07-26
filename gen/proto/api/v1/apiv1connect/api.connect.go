@@ -33,6 +33,8 @@ const (
 	FleetServiceName = "api.v1.FleetService"
 	// AdminServiceName is the fully-qualified name of the AdminService service.
 	AdminServiceName = "api.v1.AdminService"
+	// EventCallbackServiceName is the fully-qualified name of the EventCallbackService service.
+	EventCallbackServiceName = "api.v1.EventCallbackService"
 	// ArcaneServiceName is the fully-qualified name of the ArcaneService service.
 	ArcaneServiceName = "api.v1.ArcaneService"
 	// CatalogServiceName is the fully-qualified name of the CatalogService service.
@@ -151,6 +153,18 @@ const (
 	// AdminServiceSetGitIdentityDefaultProcedure is the fully-qualified name of the AdminService's
 	// SetGitIdentityDefault RPC.
 	AdminServiceSetGitIdentityDefaultProcedure = "/api.v1.AdminService/SetGitIdentityDefault"
+	// EventCallbackServiceCreateEventCallbackProcedure is the fully-qualified name of the
+	// EventCallbackService's CreateEventCallback RPC.
+	EventCallbackServiceCreateEventCallbackProcedure = "/api.v1.EventCallbackService/CreateEventCallback"
+	// EventCallbackServiceUpdateEventCallbackProcedure is the fully-qualified name of the
+	// EventCallbackService's UpdateEventCallback RPC.
+	EventCallbackServiceUpdateEventCallbackProcedure = "/api.v1.EventCallbackService/UpdateEventCallback"
+	// EventCallbackServiceListEventCallbacksProcedure is the fully-qualified name of the
+	// EventCallbackService's ListEventCallbacks RPC.
+	EventCallbackServiceListEventCallbacksProcedure = "/api.v1.EventCallbackService/ListEventCallbacks"
+	// EventCallbackServiceDeleteEventCallbackProcedure is the fully-qualified name of the
+	// EventCallbackService's DeleteEventCallback RPC.
+	EventCallbackServiceDeleteEventCallbackProcedure = "/api.v1.EventCallbackService/DeleteEventCallback"
 	// ArcaneServiceGetScannerStatusProcedure is the fully-qualified name of the ArcaneService's
 	// GetScannerStatus RPC.
 	ArcaneServiceGetScannerStatusProcedure = "/api.v1.ArcaneService/GetScannerStatus"
@@ -1476,6 +1490,154 @@ func (UnimplementedAdminServiceHandler) DeleteGitIdentity(context.Context, *conn
 
 func (UnimplementedAdminServiceHandler) SetGitIdentityDefault(context.Context, *connect.Request[v1.SetGitIdentityDefaultRequest]) (*connect.Response[v1.SetGitIdentityDefaultResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.SetGitIdentityDefault is not implemented"))
+}
+
+// EventCallbackServiceClient is a client for the api.v1.EventCallbackService service.
+type EventCallbackServiceClient interface {
+	CreateEventCallback(context.Context, *connect.Request[v1.CreateEventCallbackRequest]) (*connect.Response[v1.CreateEventCallbackResponse], error)
+	UpdateEventCallback(context.Context, *connect.Request[v1.UpdateEventCallbackRequest]) (*connect.Response[v1.UpdateEventCallbackResponse], error)
+	ListEventCallbacks(context.Context, *connect.Request[v1.ListEventCallbacksRequest]) (*connect.Response[v1.ListEventCallbacksResponse], error)
+	DeleteEventCallback(context.Context, *connect.Request[v1.DeleteEventCallbackRequest]) (*connect.Response[v1.DeleteEventCallbackResponse], error)
+}
+
+// NewEventCallbackServiceClient constructs a client for the api.v1.EventCallbackService service. By
+// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
+// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
+// connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewEventCallbackServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) EventCallbackServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	eventCallbackServiceMethods := v1.File_proto_api_v1_api_proto.Services().ByName("EventCallbackService").Methods()
+	return &eventCallbackServiceClient{
+		createEventCallback: connect.NewClient[v1.CreateEventCallbackRequest, v1.CreateEventCallbackResponse](
+			httpClient,
+			baseURL+EventCallbackServiceCreateEventCallbackProcedure,
+			connect.WithSchema(eventCallbackServiceMethods.ByName("CreateEventCallback")),
+			connect.WithClientOptions(opts...),
+		),
+		updateEventCallback: connect.NewClient[v1.UpdateEventCallbackRequest, v1.UpdateEventCallbackResponse](
+			httpClient,
+			baseURL+EventCallbackServiceUpdateEventCallbackProcedure,
+			connect.WithSchema(eventCallbackServiceMethods.ByName("UpdateEventCallback")),
+			connect.WithClientOptions(opts...),
+		),
+		listEventCallbacks: connect.NewClient[v1.ListEventCallbacksRequest, v1.ListEventCallbacksResponse](
+			httpClient,
+			baseURL+EventCallbackServiceListEventCallbacksProcedure,
+			connect.WithSchema(eventCallbackServiceMethods.ByName("ListEventCallbacks")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteEventCallback: connect.NewClient[v1.DeleteEventCallbackRequest, v1.DeleteEventCallbackResponse](
+			httpClient,
+			baseURL+EventCallbackServiceDeleteEventCallbackProcedure,
+			connect.WithSchema(eventCallbackServiceMethods.ByName("DeleteEventCallback")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// eventCallbackServiceClient implements EventCallbackServiceClient.
+type eventCallbackServiceClient struct {
+	createEventCallback *connect.Client[v1.CreateEventCallbackRequest, v1.CreateEventCallbackResponse]
+	updateEventCallback *connect.Client[v1.UpdateEventCallbackRequest, v1.UpdateEventCallbackResponse]
+	listEventCallbacks  *connect.Client[v1.ListEventCallbacksRequest, v1.ListEventCallbacksResponse]
+	deleteEventCallback *connect.Client[v1.DeleteEventCallbackRequest, v1.DeleteEventCallbackResponse]
+}
+
+// CreateEventCallback calls api.v1.EventCallbackService.CreateEventCallback.
+func (c *eventCallbackServiceClient) CreateEventCallback(ctx context.Context, req *connect.Request[v1.CreateEventCallbackRequest]) (*connect.Response[v1.CreateEventCallbackResponse], error) {
+	return c.createEventCallback.CallUnary(ctx, req)
+}
+
+// UpdateEventCallback calls api.v1.EventCallbackService.UpdateEventCallback.
+func (c *eventCallbackServiceClient) UpdateEventCallback(ctx context.Context, req *connect.Request[v1.UpdateEventCallbackRequest]) (*connect.Response[v1.UpdateEventCallbackResponse], error) {
+	return c.updateEventCallback.CallUnary(ctx, req)
+}
+
+// ListEventCallbacks calls api.v1.EventCallbackService.ListEventCallbacks.
+func (c *eventCallbackServiceClient) ListEventCallbacks(ctx context.Context, req *connect.Request[v1.ListEventCallbacksRequest]) (*connect.Response[v1.ListEventCallbacksResponse], error) {
+	return c.listEventCallbacks.CallUnary(ctx, req)
+}
+
+// DeleteEventCallback calls api.v1.EventCallbackService.DeleteEventCallback.
+func (c *eventCallbackServiceClient) DeleteEventCallback(ctx context.Context, req *connect.Request[v1.DeleteEventCallbackRequest]) (*connect.Response[v1.DeleteEventCallbackResponse], error) {
+	return c.deleteEventCallback.CallUnary(ctx, req)
+}
+
+// EventCallbackServiceHandler is an implementation of the api.v1.EventCallbackService service.
+type EventCallbackServiceHandler interface {
+	CreateEventCallback(context.Context, *connect.Request[v1.CreateEventCallbackRequest]) (*connect.Response[v1.CreateEventCallbackResponse], error)
+	UpdateEventCallback(context.Context, *connect.Request[v1.UpdateEventCallbackRequest]) (*connect.Response[v1.UpdateEventCallbackResponse], error)
+	ListEventCallbacks(context.Context, *connect.Request[v1.ListEventCallbacksRequest]) (*connect.Response[v1.ListEventCallbacksResponse], error)
+	DeleteEventCallback(context.Context, *connect.Request[v1.DeleteEventCallbackRequest]) (*connect.Response[v1.DeleteEventCallbackResponse], error)
+}
+
+// NewEventCallbackServiceHandler builds an HTTP handler from the service implementation. It returns
+// the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewEventCallbackServiceHandler(svc EventCallbackServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	eventCallbackServiceMethods := v1.File_proto_api_v1_api_proto.Services().ByName("EventCallbackService").Methods()
+	eventCallbackServiceCreateEventCallbackHandler := connect.NewUnaryHandler(
+		EventCallbackServiceCreateEventCallbackProcedure,
+		svc.CreateEventCallback,
+		connect.WithSchema(eventCallbackServiceMethods.ByName("CreateEventCallback")),
+		connect.WithHandlerOptions(opts...),
+	)
+	eventCallbackServiceUpdateEventCallbackHandler := connect.NewUnaryHandler(
+		EventCallbackServiceUpdateEventCallbackProcedure,
+		svc.UpdateEventCallback,
+		connect.WithSchema(eventCallbackServiceMethods.ByName("UpdateEventCallback")),
+		connect.WithHandlerOptions(opts...),
+	)
+	eventCallbackServiceListEventCallbacksHandler := connect.NewUnaryHandler(
+		EventCallbackServiceListEventCallbacksProcedure,
+		svc.ListEventCallbacks,
+		connect.WithSchema(eventCallbackServiceMethods.ByName("ListEventCallbacks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	eventCallbackServiceDeleteEventCallbackHandler := connect.NewUnaryHandler(
+		EventCallbackServiceDeleteEventCallbackProcedure,
+		svc.DeleteEventCallback,
+		connect.WithSchema(eventCallbackServiceMethods.ByName("DeleteEventCallback")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/api.v1.EventCallbackService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case EventCallbackServiceCreateEventCallbackProcedure:
+			eventCallbackServiceCreateEventCallbackHandler.ServeHTTP(w, r)
+		case EventCallbackServiceUpdateEventCallbackProcedure:
+			eventCallbackServiceUpdateEventCallbackHandler.ServeHTTP(w, r)
+		case EventCallbackServiceListEventCallbacksProcedure:
+			eventCallbackServiceListEventCallbacksHandler.ServeHTTP(w, r)
+		case EventCallbackServiceDeleteEventCallbackProcedure:
+			eventCallbackServiceDeleteEventCallbackHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedEventCallbackServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedEventCallbackServiceHandler struct{}
+
+func (UnimplementedEventCallbackServiceHandler) CreateEventCallback(context.Context, *connect.Request[v1.CreateEventCallbackRequest]) (*connect.Response[v1.CreateEventCallbackResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.EventCallbackService.CreateEventCallback is not implemented"))
+}
+
+func (UnimplementedEventCallbackServiceHandler) UpdateEventCallback(context.Context, *connect.Request[v1.UpdateEventCallbackRequest]) (*connect.Response[v1.UpdateEventCallbackResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.EventCallbackService.UpdateEventCallback is not implemented"))
+}
+
+func (UnimplementedEventCallbackServiceHandler) ListEventCallbacks(context.Context, *connect.Request[v1.ListEventCallbacksRequest]) (*connect.Response[v1.ListEventCallbacksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.EventCallbackService.ListEventCallbacks is not implemented"))
+}
+
+func (UnimplementedEventCallbackServiceHandler) DeleteEventCallback(context.Context, *connect.Request[v1.DeleteEventCallbackRequest]) (*connect.Response[v1.DeleteEventCallbackResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.EventCallbackService.DeleteEventCallback is not implemented"))
 }
 
 // ArcaneServiceClient is a client for the api.v1.ArcaneService service.

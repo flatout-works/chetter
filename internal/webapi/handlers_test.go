@@ -194,6 +194,49 @@ func TestProtoTask(t *testing.T) {
 	}
 }
 
+func TestProtoEventCallback(t *testing.T) {
+	now := time.Date(2025, 3, 15, 12, 0, 0, 0, time.UTC)
+	rec := service.EventCallbackRecord{
+		ID:           "ecb_1",
+		TeamID:       "team_1",
+		Name:         "my-callback",
+		EventType:    "task.completed",
+		ActionType:   "webhook",
+		ActionConfig: []byte(`{"url":"https://example.com"}`),
+		Enabled:      true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	got := protoEventCallback(rec)
+	if got.Id != "ecb_1" {
+		t.Errorf("Id = %q, want ecb_1", got.Id)
+	}
+	if got.TeamId != "team_1" {
+		t.Errorf("TeamId = %q, want team_1", got.TeamId)
+	}
+	if got.Name != "my-callback" {
+		t.Errorf("Name = %q, want my-callback", got.Name)
+	}
+	if got.EventType != "task.completed" {
+		t.Errorf("EventType = %q, want task.completed", got.EventType)
+	}
+	if got.ActionType != "webhook" {
+		t.Errorf("ActionType = %q, want webhook", got.ActionType)
+	}
+	if got.ActionConfig != `{"url":"https://example.com"}` {
+		t.Errorf("ActionConfig = %q", got.ActionConfig)
+	}
+	if !got.Enabled {
+		t.Errorf("Enabled = false, want true")
+	}
+	if got.CreatedAt != "2025-03-15T12:00:00Z" {
+		t.Errorf("CreatedAt = %q", got.CreatedAt)
+	}
+	if got.UpdatedAt != "2025-03-15T12:00:00Z" {
+		t.Errorf("UpdatedAt = %q", got.UpdatedAt)
+	}
+}
+
 func TestProtoEvent(t *testing.T) {
 	now := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	e := service.TaskEventRecord{
