@@ -70,6 +70,25 @@ func teamInClause(teamIDs []string) (string, []any) {
 	return " AND team_id IN (" + strings.Join(placeholders, ",") + ")", args
 }
 
+// bindRawQuery converts database/sql's portable placeholders to PostgreSQL's
+// numbered placeholders. The raw query builders share SQL across dialects.
+func bindRawQuery(dialect store.Dialect, query string) string {
+	if dialect != store.DialectPostgres {
+		return query
+	}
+	var b strings.Builder
+	placeholder := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] != '?' {
+			b.WriteByte(query[i])
+			continue
+		}
+		fmt.Fprintf(&b, "$%d", placeholder)
+		placeholder++
+	}
+	return b.String()
+}
+
 // listTasksRaw queries tasks with team and repo filtering applied before
 // LIMIT/OFFSET, avoiding the client-side pagination bug.
 func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
@@ -80,6 +99,7 @@ func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, sta
 	args := append([]any{status, status, agent, agent}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
+	query = bindRawQuery(s.dialect, query)
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks raw: %w", err)
@@ -127,6 +147,7 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 		args = append(args, repoArgs...)
 		args = append(args, limit, offset)
 	}
+	query = bindRawQuery(s.dialect, query)
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.DebugContext(ctx, "raw FTS search tasks failed, falling back", "err", err)
@@ -165,6 +186,7 @@ func (s *Service) listAgentSessionsRaw(ctx context.Context, teamIDs, repos []str
 	args := append([]any{status, status}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
+	query = bindRawQuery(s.dialect, query)
 	return s.scanAgentSessions(ctx, query, args)
 }
 
@@ -194,6 +216,7 @@ func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []s
 		args = append(args, repoArgs...)
 		args = append(args, limit, offset)
 	}
+	query = bindRawQuery(s.dialect, query)
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.DebugContext(ctx, "raw FTS search sessions failed, falling back", "err", err)
@@ -456,6 +479,7 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 		args = append(args, limit, offset)
 	}
 
+	query = bindRawQuery(s.dialect, query)
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list audit log raw: %w", err)
