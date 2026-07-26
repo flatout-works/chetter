@@ -413,6 +413,9 @@ func StartPackageDB(m *testing.M) *PackageDB {
 
 // Close shuts down the shared TiDB container.
 func (p *PackageDB) Close() {
+	if p == nil {
+		return
+	}
 	if p.ownsContainer {
 		_ = exec.Command("docker", "stop", p.containerName).Run()
 	}
@@ -434,6 +437,10 @@ func (p *PackageDB) AdminDB(t testing.TB) *sql.DB {
 // applies the schema, and returns a TestDB ready for test use.
 func (p *PackageDB) NewTestDB(t testing.TB) (*TestDB, func()) {
 	t.Helper()
+	if p == nil {
+		t.Skip("database unavailable; skipping integration test")
+		return nil, func() {}
+	}
 
 	admin := p.AdminDB(t)
 
