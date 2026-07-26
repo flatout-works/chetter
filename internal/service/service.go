@@ -181,6 +181,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		svc.reapStaleUserPrompts,
 		svc.reapUnavailablePinnedResumeTasks,
 		svc.reapExpiredSessions,
+		svc.reapExpiredSessionArtifacts,
 		svc.pruneRetainedRows,
 		svc.checkDBQuota,
 		func() {
@@ -803,6 +804,55 @@ func (s *Service) reapExpiredSessions() {
 	}
 	if n > 0 {
 		slog.Info("expired paused sessions", "count", n)
+	}
+}
+
+// reapExpiredSessionArtifacts clears on-disk checkpoint paths and session
+// exports for terminal sessions whose updated_at exceeds the configured
+// SessionArtifactTTL. This prevents unbounded disk growth on runner hosts
+// and in the database from completed/failed session blobs. A TTL of 0
+// disables the GC pass entirely.
+func (s *Service) reapExpiredSessionArtifacts() {
+	if s.cfg.SessionArtifactTTL <= 0 {
+		return
+	}
+	ctx, cancel := s.reaperCtx()
+	defer cancel()
+	ttlSeconds := int64(s.cfg.SessionArtifactTTL.Seconds())
+	var total int64
+
+	n, err := s.repo.ClearExpiredSessionCheckpoints(ctx, ttlSeconds)
+	if err != nil {
+		slog.Error("session artifact GC: clear checkpoints failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	total += n
+
+	n, err = s.repo.ClearExpiredUserPromptExports(ctx, ttlSeconds)
+	if err != nil {
+		slog.Error("session artifact GC: clear user-prompt exports failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	total += n
+
+	n, err = s.repo.ClearExpiredExecutionAttemptExports(ctx, ttlSeconds)
+	if err != nil {
+		slog.Error("session artifact GC: clear execution-attempt exports failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	total += n
+
+	if total > 0 {
+		slog.Info("cleared expired session artifacts", "rows_cleared", total, "ttl", s.cfg.SessionArtifactTTL)
 	}
 }
 

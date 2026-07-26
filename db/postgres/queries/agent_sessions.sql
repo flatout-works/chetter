@@ -267,3 +267,36 @@ FROM chetter_tasks t
 WHERE t.id = sr.task_id
   AND sr.status = 'running'
   AND t.status = 'pending';
+
+-- name: ClearExpiredSessionCheckpoints :execrows
+UPDATE chetter_agent_session_checkpoints
+SET checkpoint_path = '', updated_at = NOW()
+WHERE agent_session_id IN (
+  SELECT id FROM chetter_agent_sessions
+  WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+    AND updated_at < NOW() - (sqlc.arg(ttl_seconds) * INTERVAL '1 second')
+)
+AND checkpoint_path != '';
+
+-- name: ClearExpiredUserPromptExports :execrows
+UPDATE chetter_user_prompts
+SET session_export = NULL, updated_at = NOW()
+WHERE agent_session_id IN (
+  SELECT id FROM chetter_agent_sessions
+  WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+    AND updated_at < NOW() - (sqlc.arg(ttl_seconds) * INTERVAL '1 second')
+)
+AND session_export IS NOT NULL;
+
+-- name: ClearExpiredExecutionAttemptExports :execrows
+UPDATE chetter_execution_attempts
+SET session_export = NULL, updated_at = NOW()
+WHERE user_prompt_id IN (
+  SELECT id FROM chetter_user_prompts
+  WHERE agent_session_id IN (
+    SELECT id FROM chetter_agent_sessions
+    WHERE status IN ('completed', 'failed', 'cancelled', 'timed_out', 'expired', 'abandoned', 'error')
+      AND updated_at < NOW() - (sqlc.arg(ttl_seconds) * INTERVAL '1 second')
+  )
+)
+AND session_export IS NOT NULL;
