@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-25
+
+### Added
+
+- Server-side task environment variable validation: blocks dangerous prefixes (`CHETTER_`, `RUNNER_`, `MCP_AUTH`, `DATABASE_`, `GITHUB_APP_`, `ARCANE_`, `LLM_`) and reserved system names (`PATH`, `HOME`, `SHELL`, `LD_PRELOAD`, `LD_LIBRARY_PATH`) at submission time. Enforces limits on count (default 64), name length (256), and value length (4096). Configurable via `CHETTER_ENV_*` env vars. Rejected submissions emit a `task.validation_failed` audit event (#101).
+- Task re-execution (re-run) support: `RerunTask` RPC endpoint, `chetter_rerun_task` MCP tool, and Re-run button on the task detail page for terminal tasks (done, error, cancelled). Creates a new task with the same prompt, model, image, env vars, and timeout as the source task. Emits a `task_rerun` audit event recording source and new task IDs. Available in the runner's OpenCode allowed tools and the `chetter-rerun` command template (#107).
+
+### Documentation
+
+- Connection resilience documented in `docs/MANUAL.md`: covers exponential backoff retry for transient errors and startup health checks.
+- Website technical page updated to cover storage pruning, DB resilience, and env var validation in the Resilience section.
+
 ## 2026-07-24
 
 ### Added
