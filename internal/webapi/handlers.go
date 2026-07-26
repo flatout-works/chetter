@@ -620,6 +620,89 @@ func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(&apiv1.ListTriggerRunsResponse{Runs: out}), nil
 }
 
+// --- EventCallbackServiceHandler ---
+
+type eventCallbackHandler struct {
+	svc *service.Service
+}
+
+func protoEventCallback(c service.EventCallbackRecord) *apiv1.EventCallback {
+	return &apiv1.EventCallback{
+		Id:           c.ID,
+		TeamId:       c.TeamID,
+		Name:         c.Name,
+		EventType:    c.EventType,
+		ActionType:   c.ActionType,
+		ActionConfig: string(c.ActionConfig),
+		Enabled:      c.Enabled,
+		CreatedAt:    c.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    c.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func (h *eventCallbackHandler) CreateEventCallback(ctx context.Context, req *connect.Request[apiv1.CreateEventCallbackRequest]) (*connect.Response[apiv1.CreateEventCallbackResponse], error) {
+	var enabled bool
+	if req.Msg.Enabled != nil {
+		enabled = *req.Msg.Enabled
+	} else {
+		enabled = true
+	}
+	callback, err := h.svc.CreateEventCallback(ctx, service.EventCallbackInput{
+		TeamID:       req.Msg.TeamId,
+		TeamName:     req.Msg.TeamName,
+		Name:         req.Msg.Name,
+		EventType:    req.Msg.EventType,
+		ActionType:   req.Msg.ActionType,
+		ActionConfig: json.RawMessage(req.Msg.ActionConfig),
+		Enabled:      enabled,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.CreateEventCallbackResponse{Callback: protoEventCallback(callback)}), nil
+}
+
+func (h *eventCallbackHandler) UpdateEventCallback(ctx context.Context, req *connect.Request[apiv1.UpdateEventCallbackRequest]) (*connect.Response[apiv1.UpdateEventCallbackResponse], error) {
+	in := service.EventCallbackInput{
+		TeamID:   req.Msg.TeamId,
+		TeamName: req.Msg.TeamName,
+	}
+	if req.Msg.EventType != nil {
+		in.EventType = *req.Msg.EventType
+	}
+	if req.Msg.ActionType != nil {
+		in.ActionType = *req.Msg.ActionType
+	}
+	if req.Msg.ActionConfig != nil {
+		in.ActionConfig = json.RawMessage(*req.Msg.ActionConfig)
+	}
+	callback, err := h.svc.UpdateEventCallback(ctx, req.Msg.Name, in, req.Msg.Enabled)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.UpdateEventCallbackResponse{Callback: protoEventCallback(callback)}), nil
+}
+
+func (h *eventCallbackHandler) ListEventCallbacks(ctx context.Context, req *connect.Request[apiv1.ListEventCallbacksRequest]) (*connect.Response[apiv1.ListEventCallbacksResponse], error) {
+	callbacks, err := h.svc.ListEventCallbacks(ctx, req.Msg.EnabledOnly, req.Msg.EventType, 0, 0)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out := make([]*apiv1.EventCallback, 0, len(callbacks))
+	for _, c := range callbacks {
+		out = append(out, protoEventCallback(c))
+	}
+	return connect.NewResponse(&apiv1.ListEventCallbacksResponse{Callbacks: out}), nil
+}
+
+func (h *eventCallbackHandler) DeleteEventCallback(ctx context.Context, req *connect.Request[apiv1.DeleteEventCallbackRequest]) (*connect.Response[apiv1.DeleteEventCallbackResponse], error) {
+	deleted, err := h.svc.DeleteEventCallback(ctx, req.Msg.Name, req.Msg.TeamId, req.Msg.TeamName)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.DeleteEventCallbackResponse{Deleted: deleted}), nil
+}
+
 // --- FleetServiceHandler (unary only; streaming in streaming.go) ---
 
 type fleetHandler struct {
