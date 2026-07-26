@@ -638,10 +638,20 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	secret := h.ServerPassword()
 
 	gvisor := r.cfg.Execution.UseGVisor
-	netName := runcNetwork()
+	netName := ""
 	runnerIP := ""
 	if gvisor {
+		netName = runcNetwork()
 		runnerIP = hostIP(netName)
+	} else {
+		isoNet := "chetter-" + executionKey(req)
+		if err := createIsolatedNetwork(isoNet); err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("create isolated network: %v", err), nil)
+			return
+		}
+		defer removeIsolatedNetwork(isoNet)
+		netName = isoNet
+		runnerIP = hostIP(isoNet)
 	}
 	serveCmd := h.ServeCommand(containerPortForServe)
 	if len(serveCmd) == 0 {
@@ -805,10 +815,20 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	secret := h.ServerPassword()
 	gvisor := r.cfg.Execution.UseGVisor
-	netName := runcNetwork()
+	netName := ""
 	runnerIP := ""
 	if gvisor {
+		netName = runcNetwork()
 		runnerIP = hostIP(netName)
+	} else {
+		isoNet := "chetter-" + executionKey(req)
+		if err := createIsolatedNetwork(isoNet); err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("create isolated network: %v", err), nil)
+			return
+		}
+		defer removeIsolatedNetwork(isoNet)
+		netName = isoNet
+		runnerIP = hostIP(isoNet)
 	}
 	serveCmd := h.ServeCommand(containerPortForServe)
 	if len(serveCmd) == 0 {
@@ -962,6 +982,38 @@ func removeTaskContainer(containerName string) {
 	defer cancel()
 	if out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerName).CombinedOutput(); err != nil && ctx.Err() != nil {
 		slog.Warn("timed out removing task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	}
+}
+
+// createIsolatedNetwork creates a per-execution Docker network and connects
+// the runner container to it so the runner's proxy and DNS are reachable.
+func createIsolatedNetwork(networkName string) error {
+	out, err := exec.Command("docker", "network", "create", networkName).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker network create %s: %w\n%s", networkName, err, string(out))
+	}
+	runnerHostname := os.Getenv("HOSTNAME")
+	if runnerHostname != "" {
+		out, err := exec.Command("docker", "network", "connect", networkName, runnerHostname).CombinedOutput()
+		if err != nil {
+			// Clean up the network we just created.
+			exec.Command("docker", "network", "rm", networkName).Run()
+			return fmt.Errorf("docker network connect %s %s: %w\n%s", networkName, runnerHostname, err, string(out))
+		}
+	}
+	return nil
+}
+
+// removeIsolatedNetwork disconnects the runner from a per-execution Docker
+// network and removes it. Errors are logged but not returned — network
+// cleanup is best-effort.
+func removeIsolatedNetwork(networkName string) {
+	runnerHostname := os.Getenv("HOSTNAME")
+	if runnerHostname != "" {
+		exec.Command("docker", "network", "disconnect", "-f", networkName, runnerHostname).Run()
+	}
+	if out, err := exec.Command("docker", "network", "rm", networkName).CombinedOutput(); err != nil {
+		slog.Warn("failed to remove isolated network", "network", networkName, "err", err, "output", strings.TrimSpace(string(out)))
 	}
 }
 
@@ -1133,6 +1185,15 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	if gvisor {
 		netName = runcNetwork()
 		runnerIP = hostIP(netName)
+	} else {
+		isoNet := "chetter-" + executionKey(req)
+		if err := createIsolatedNetwork(isoNet); err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("create isolated network: %v", err), nil)
+			return
+		}
+		defer removeIsolatedNetwork(isoNet)
+		netName = isoNet
+		runnerIP = hostIP(isoNet)
 	}
 
 	dockerArgs := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
@@ -1158,9 +1219,13 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
-		dockerArgs = append(dockerArgs, "--network", netName)
-		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	if netName != "" {
+		dockerArgs = append(dockerArgs, "--network", netName)
+	}
+	if runnerIP != "" {
+		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 	}
 	dockerArgs = append(dockerArgs,
 		"-v", agentenv.HostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
@@ -1183,9 +1248,8 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 	for _, value := range agentenv.GitIdentityEnv(req, containerWorkspaceDir) {
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
-	if gvisor {
+	if runnerIP != "" {
 		dockerArgs = append(dockerArgs,
-			"-e", "HOME="+containerWorkspaceDir,
 			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
 			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",
 			"-e", "http_proxy=http://"+runnerIP+":18080",
@@ -1195,6 +1259,9 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 			"-e", "NO_PROXY="+gvisorNoProxy(),
 			"-e", "no_proxy="+gvisorNoProxy(),
 		)
+	}
+	if gvisor {
+		dockerArgs = append(dockerArgs, "-e", "HOME="+containerWorkspaceDir)
 	} else {
 		dockerArgs = append(dockerArgs, "-e", "HOME=/opt/opencode")
 	}

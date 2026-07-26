@@ -23,8 +23,10 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
-		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	if runnerIP != "" {
+		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 	}
 	if mem := r.cfg.Execution.ContainerMemory; mem != "" {
 		dockerArgs = append(dockerArgs, "--memory", mem, "--memory-swap", mem)
@@ -53,7 +55,7 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 	dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")
-	if gvisor {
+	if runnerIP != "" {
 		dockerArgs = append(dockerArgs,
 			"-e", "HTTP_PROXY=http://"+runnerIP+":18080",
 			"-e", "HTTPS_PROXY=http://"+runnerIP+":18080",

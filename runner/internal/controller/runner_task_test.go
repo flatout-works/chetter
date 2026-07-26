@@ -1004,6 +1004,65 @@ func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	}
 }
 
+func TestDockerRPCArgsConfiguresIsolationForNonGVisor(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "chetter-exec-abc", "172.30.0.2")
+
+	if !hasAdjacentArgs(args, "--network", "chetter-exec-abc") {
+		t.Fatalf("expected isolated network in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--dns", "172.30.0.2") {
+		t.Fatalf("expected runner DNS in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local") {
+		t.Fatalf("expected no_proxy in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "NODE_USE_ENV_PROXY=1") {
+		t.Fatalf("expected Node proxy support in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "HTTP_PROXY=http://172.30.0.2:18080") {
+		t.Fatalf("expected HTTP_PROXY in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "HOME=/opt/opencode") {
+		t.Fatalf("expected non-gVisor HOME: %v", args)
+	}
+	// gVisor-specific args must not appear for non-gVisor isolation.
+	if hasAdjacentArgs(args, "--runtime", "runsc") {
+		t.Fatalf("unexpected --runtime runsc for non-gVisor: %v", args)
+	}
+}
+
+func TestDockerServeArgsConfiguresIsolationForNonGVisor(t *testing.T) {
+	r := &Runner{runnerID: "runner-test", cfg: &config.Config{}}
+	h := opencode.New()
+	req := task.TaskRequest{
+		TaskID:     "task-123",
+		AgentImage: "chetter-agent:latest",
+		Agent:      "test-agent",
+		ExecutionID: "exec-abc",
+	}
+	serveCmd := h.ServeCommand(9999)
+	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123-exec-abc", h, serveCmd, "127.0.0.1", 34133, false, "chetter-exec-abc", "172.30.0.2", "test-secret")
+
+	if !hasAdjacentArgs(args, "--network", "chetter-exec-abc") {
+		t.Fatalf("expected isolated network in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--dns", "172.30.0.2") {
+		t.Fatalf("expected runner DNS in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "NO_PROXY=localhost,127.0.0.1,0.0.0.0,.local") {
+		t.Fatalf("expected no_proxy in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "-e", "HTTP_PROXY=http://172.30.0.2:18080") {
+		t.Fatalf("expected HTTP_PROXY in args: %v", args)
+	}
+	// gVisor-specific args must not appear.
+	if hasAdjacentArgs(args, "--runtime", "runsc") {
+		t.Fatalf("unexpected --runtime runsc for non-gVisor: %v", args)
+	}
+}
+
 func TestShouldPullAgentImage(t *testing.T) {
 	for _, tc := range []struct {
 		image string
