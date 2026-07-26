@@ -18,6 +18,7 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/internal/validation"
 )
 
 var svcTestDB *testdb.PackageDB
@@ -42,6 +43,7 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 		DefaultAgentImage:     "runner:latest",
 		DefaultTaskTimeoutSec: 600,
 		AutoRecovery:          true,
+		EnvValidation:         validation.Defaults(),
 	}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
@@ -724,6 +726,13 @@ func TestRerunTaskCreatesNewTaskWithSameParameters(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+	now := time.Now().UTC()
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES (?, ?, 'agent', 'test-agent', 'global', ?, ?, ?, ?, true, ?, ?)`,
+		`INSERT INTO definitions (id, source_id, definition_type, name, scope, path, source_commit, content_hash, content, active, created_at, updated_at) VALUES ($1, $2, 'agent', 'test-agent', 'global', $3, $4, $5, $6, true, $7, $8)`),
+		"def_test_agent", "src_test", "agents/test-agent.md", "test", strings.Repeat("3", 64), "---\nidentity: primary-bot\n---\n# Test agent\n", now, now); err != nil {
+		t.Fatalf("seed test agent definition: %v", err)
+	}
 
 	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
 		Prompt:     "run this task again",

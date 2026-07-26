@@ -146,7 +146,7 @@ type indexInfo struct {
 }
 
 func (i indexInfo) key() string {
-	return i.Table + "." + i.Name
+	return i.Table + "." + i.Def
 }
 
 func queryIndexes(t *testing.T, db *TestDB, ctx context.Context) []indexInfo {
@@ -154,9 +154,10 @@ func queryIndexes(t *testing.T, db *TestDB, ctx context.Context) []indexInfo {
 
 	rows, err := db.DB.QueryContext(ctx, `
 		SELECT tablename, indexname,
-		       pg_get_indexdef(indexrelid) AS indexdef
+		       indexdef
 		FROM pg_indexes
 		WHERE schemaname = $1
+		  AND tablename <> 'goose_db_version'
 		ORDER BY tablename, indexname
 	`, "public")
 	if err != nil {
@@ -181,7 +182,17 @@ func queryIndexes(t *testing.T, db *TestDB, ctx context.Context) []indexInfo {
 
 // normalizeIndexDef normalizes index definitions for comparison.
 func normalizeIndexDef(def string) string {
-	return strings.Join(strings.Fields(def), " ")
+	fields := strings.Fields(def)
+	if len(fields) >= 4 && fields[0] == "CREATE" {
+		nameIndex := 2
+		if fields[1] == "UNIQUE" {
+			nameIndex = 3
+		}
+		if (fields[1] == "INDEX" || fields[1] == "UNIQUE") && nameIndex < len(fields) {
+			fields = append(fields[:nameIndex], fields[nameIndex+1:]...)
+		}
+	}
+	return strings.Join(fields, " ")
 }
 
 // constraintInfo holds metadata about one constraint.

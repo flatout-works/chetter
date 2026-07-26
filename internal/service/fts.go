@@ -255,6 +255,9 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 	if safe == "" {
 		return nil, nil
 	}
+	if !teamFilter.Valid {
+		teamFilter = sql.NullString{Valid: true}
+	}
 	var query string
 	var args []any
 	if s.dialect == store.DialectPostgres {
@@ -262,37 +265,46 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 			SELECT id FROM chetter_tasks
 			WHERE ($1 = '' OR team_id = $1)
 			  AND ($2 = '' OR status = $2)
-			  AND ($3 = '' OR agent = $3)
+			  AND ($3 = '' OR EXISTS (
+				  SELECT 1 FROM chetter_agent_sessions session
+				  WHERE session.task_id = chetter_tasks.id AND session.agent = $3
+			  ))
 			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $4)
 			ORDER BY created_at DESC
 			LIMIT $5 OFFSET $6`
-		args = []any{teamFilter, status, agent, search, limit, offset}
+		args = []any{teamFilter.String, status, agent, search, limit, offset}
 	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id FROM chetter_tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
-			  AND (? = '' OR agent = ?)
+			  AND (? = '' OR EXISTS (
+				  SELECT 1 FROM chetter_agent_sessions session
+				  WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+			  ))
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
 			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`
-		args = []any{teamFilter, teamFilter, status, status, agent, agent, search, limit, offset}
+		args = []any{teamFilter.String, teamFilter.String, status, status, agent, agent, search, limit, offset}
 	} else {
 		query = fmt.Sprintf(`
 			SELECT id FROM chetter_tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
-			  AND (? = '' OR agent = ?)
+			  AND (? = '' OR EXISTS (
+				  SELECT 1 FROM chetter_agent_sessions session
+				  WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+			  ))
 			  AND FTS_MATCH_WORD(search_text, '%s')
 			ORDER BY created_at DESC
 			LIMIT ? OFFSET ?`, safe)
-		args = []any{teamFilter, teamFilter, status, status, agent, agent, limit, offset}
+		args = []any{teamFilter.String, teamFilter.String, status, status, agent, agent, limit, offset}
 	}
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.DebugContext(ctx, "FTS search tasks failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		return s.repo.SearchTasks(ctx, repository.SearchTasksParams{
-			TeamFilter:   teamFilter,
+			TeamFilter:   sql.NullString{String: teamFilter.String, Valid: true},
 			StatusFilter: status,
 			AgentFilter:  sql.NullString{String: agent, Valid: true},
 			Search:       search,
@@ -331,6 +343,9 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 	if safe == "" {
 		return nil, nil
 	}
+	if !teamFilter.Valid {
+		teamFilter = sql.NullString{Valid: true}
+	}
 	var query string
 	var args []any
 	if s.dialect == store.DialectPostgres {
@@ -341,7 +356,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $3)
 			ORDER BY updated_at DESC
 			LIMIT $4 OFFSET $5`
-		args = []any{teamFilter, status, search, limit, offset}
+		args = []any{teamFilter.String, status, search, limit, offset}
 	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id FROM chetter_agent_sessions
@@ -350,7 +365,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
 			ORDER BY updated_at DESC
 			LIMIT ? OFFSET ?`
-		args = []any{teamFilter, teamFilter, status, status, search, limit, offset}
+		args = []any{teamFilter.String, teamFilter.String, status, status, search, limit, offset}
 	} else {
 		query = fmt.Sprintf(`
 			SELECT id FROM chetter_agent_sessions
@@ -359,13 +374,13 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 			  AND FTS_MATCH_WORD(search_text, '%s')
 			ORDER BY updated_at DESC
 			LIMIT ? OFFSET ?`, safe)
-		args = []any{teamFilter, teamFilter, status, status, limit, offset}
+		args = []any{teamFilter.String, teamFilter.String, status, status, limit, offset}
 	}
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.DebugContext(ctx, "FTS search sessions failed, falling back to LIKE", "err", err, "dialect", s.dialect)
 		return s.repo.SearchAgentSessions(ctx, repository.SearchAgentSessionsParams{
-			TeamFilter:   teamFilter,
+			TeamFilter:   sql.NullString{String: teamFilter.String, Valid: true},
 			StatusFilter: status,
 			Search:       search,
 			Limit:        limit,
