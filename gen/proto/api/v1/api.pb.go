@@ -1985,6 +1985,7 @@ type TokenInfo struct {
 	TeamName      string                 `protobuf:"bytes,3,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	TeamNames     []string               `protobuf:"bytes,5,rep,name=team_names,json=teamNames,proto3" json:"team_names,omitempty"`
+	ExpiresAt     string                 `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2052,6 +2053,13 @@ func (x *TokenInfo) GetTeamNames() []string {
 		return x.TeamNames
 	}
 	return nil
+}
+
+func (x *TokenInfo) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return ""
 }
 
 type TeamInfo struct {
@@ -5404,6 +5412,7 @@ type CreateTokenRequest struct {
 	TeamNames     []string               `protobuf:"bytes,4,rep,name=team_names,json=teamNames,proto3" json:"team_names,omitempty"`
 	UserName      string                 `protobuf:"bytes,2,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
 	TokenName     string                 `protobuf:"bytes,3,opt,name=token_name,json=tokenName,proto3" json:"token_name,omitempty"`
+	ExpiresIn     string                 `protobuf:"bytes,5,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5462,6 +5471,13 @@ func (x *CreateTokenRequest) GetUserName() string {
 func (x *CreateTokenRequest) GetTokenName() string {
 	if x != nil {
 		return x.TokenName
+	}
+	return ""
+}
+
+func (x *CreateTokenRequest) GetExpiresIn() string {
+	if x != nil {
+		return x.ExpiresIn
 	}
 	return ""
 }
@@ -9320,7 +9336,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\rlast_event_at\x18\b \x01(\tR\vlastEventAt\x12*\n" +
 	"\x11heartbeat_age_sec\x18\t \x01(\x05R\x0fheartbeatAgeSec\x12\x19\n" +
 	"\bis_stale\x18\n" +
-	" \x01(\bR\aisStale\"\x97\x01\n" +
+	" \x01(\bR\aisStale\"\xb6\x01\n" +
 	"\tTokenInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tuser_name\x18\x02 \x01(\tR\buserName\x12\x1b\n" +
@@ -9328,7 +9344,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"team_names\x18\x05 \x03(\tR\tteamNames\"M\n" +
+	"team_names\x18\x05 \x03(\tR\tteamNames\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x06 \x01(\tR\texpiresAt\"M\n" +
 	"\bTeamInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -9592,14 +9610,16 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\vFleetUpdate\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12 \n" +
 	"\x04task\x18\x02 \x01(\v2\f.api.v1.TaskR\x04task\x12*\n" +
-	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"\x9e\x01\n" +
+	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"\xbd\x01\n" +
 	"\x12CreateTokenRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\x12\x1d\n" +
 	"\n" +
 	"team_names\x18\x04 \x03(\tR\tteamNames\x12$\n" +
 	"\tuser_name\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\buserName\x12&\n" +
 	"\n" +
-	"token_name\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\ttokenName\"\xd1\x01\n" +
+	"token_name\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\ttokenName\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\x05 \x01(\tR\texpiresIn\"\xd1\x01\n" +
 	"\x13CreateTokenResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x1b\n" +

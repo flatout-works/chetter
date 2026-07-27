@@ -31,7 +31,8 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 		SELECT t.id, t.name, u.team_id
 		FROM api_tokens t
 		JOIN users u ON u.id = t.user_id
-		WHERE t.token_hash = ?`
+		WHERE t.token_hash = ?
+		  AND (t.expires_at IS NULL OR t.expires_at > NOW())`
 	err := db.QueryRowContext(ctx, tokenQuery, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
 	if err != nil {
 		// api_token_teams is not part of the generated repository surface. Use

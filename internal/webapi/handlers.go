@@ -743,7 +743,7 @@ func (h *adminHandler) CreateToken(ctx context.Context, req *connect.Request[api
 	if len(teamNames) == 0 && req.Msg.TeamName != "" {
 		teamNames = []string{req.Msg.TeamName}
 	}
-	out, err := h.svc.CreateToken(ctx, teamNames, req.Msg.UserName, req.Msg.TokenName)
+	out, err := h.svc.CreateToken(ctx, teamNames, req.Msg.UserName, req.Msg.TokenName, req.Msg.ExpiresIn)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -765,13 +765,17 @@ func (h *adminHandler) ListTokens(ctx context.Context, req *connect.Request[apiv
 	}
 	out := make([]*apiv1.TokenInfo, len(tokens))
 	for i, t := range tokens {
-		out[i] = &apiv1.TokenInfo{
+		info := &apiv1.TokenInfo{
 			Name:      t.Name,
 			UserName:  t.UserName,
 			TeamName:  t.TeamName,
 			TeamNames: t.TeamNames,
 			CreatedAt: t.CreatedAt.Format(time.RFC3339),
 		}
+		if t.ExpiresAt != nil {
+			info.ExpiresAt = t.ExpiresAt.Format(time.RFC3339)
+		}
+		out[i] = info
 	}
 	return connect.NewResponse(&apiv1.ListTokensResponse{Tokens: out}), nil
 }

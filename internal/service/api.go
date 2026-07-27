@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -958,7 +959,7 @@ func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store
 // --- Token Management ---
 
 // CreateToken creates a new API token for one or more teams and a user. Admin only.
-func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName, tokenName string) (CreateTokenOutput, error) {
+func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName, tokenName, expiresIn string) (CreateTokenOutput, error) {
 	if !isAdmin(ctx) {
 		return CreateTokenOutput{}, fmt.Errorf("admin access required")
 	}
@@ -984,6 +985,11 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 		return CreateTokenOutput{}, fmt.Errorf("generate token: %w", err)
 	}
 	hash := sha256.Sum256([]byte(rawToken))
+
+	expiresAt, err := parseExpiresIn(expiresIn)
+	if err != nil {
+		return CreateTokenOutput{}, fmt.Errorf("invalid expires_in: %w", err)
+	}
 	tokenID, err := randomID("tok")
 	if err != nil {
 		return CreateTokenOutput{}, fmt.Errorf("generate token id: %w", err)
@@ -1042,6 +1048,7 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 			Name:      tokenName,
 			TokenHash: hex.EncodeToString(hash[:]),
 			UserID:    userID,
+			ExpiresAt: expiresAt,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {
@@ -1101,13 +1108,17 @@ func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 	}
 	out := make([]TokenInfo, len(rows))
 	for i, r := range rows {
-		out[i] = TokenInfo{
+		ti := TokenInfo{
 			Name:      r.Name,
 			UserName:  r.UserName,
 			TeamName:  r.TeamName,
 			TeamNames: splitCSV(r.TeamNames),
 			CreatedAt: r.CreatedAt,
 		}
+		if r.ExpiresAt.Valid {
+			ti.ExpiresAt = &r.ExpiresAt.Time
+		}
+		out[i] = ti
 	}
 	return out, nil
 }
@@ -1578,4 +1589,27 @@ func (s *Service) ListRepos(ctx context.Context) ([]string, error) {
 		repos = append(repos, r)
 	}
 	return repos, nil
+}
+
+// parseExpiresIn parses a duration string like "30d", "90d", "1y", or "never"
+// and returns the corresponding expires_at time. Returns nil for "never" or empty.
+func parseExpiresIn(expiresIn string) (sql.NullTime, error) {
+	switch {
+	case expiresIn == "" || expiresIn == "never":
+		return sql.NullTime{}, nil
+	case strings.HasSuffix(expiresIn, "d"):
+		days, err := strconv.Atoi(strings.TrimSuffix(expiresIn, "d"))
+		if err != nil || days <= 0 {
+			return sql.NullTime{}, fmt.Errorf("invalid days: %q", expiresIn)
+		}
+		return sql.NullTime{Time: time.Now().UTC().AddDate(0, 0, days), Valid: true}, nil
+	case strings.HasSuffix(expiresIn, "y"):
+		years, err := strconv.Atoi(strings.TrimSuffix(expiresIn, "y"))
+		if err != nil || years <= 0 {
+			return sql.NullTime{}, fmt.Errorf("invalid years: %q", expiresIn)
+		}
+		return sql.NullTime{Time: time.Now().UTC().AddDate(years, 0, 0), Valid: true}, nil
+	default:
+		return sql.NullTime{}, fmt.Errorf("unsupported duration: %q (use 30d, 90d, 1y, never)", expiresIn)
+	}
 }

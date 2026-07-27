@@ -414,6 +414,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTeamAuthSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTokenExpiryColumns(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -492,6 +495,28 @@ func (s *Store) ensureTeamAuthSchema(ctx context.Context) error {
 		WHERE u.team_id IS NOT NULL AND u.team_id <> ''
 	`); err != nil {
 		return fmt.Errorf("backfill api token teams: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureTokenExpiryColumns(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "api_tokens", "expires_at")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE api_tokens ADD COLUMN expires_at DATETIME(6) NULL AFTER user_id"); err != nil {
+			return fmt.Errorf("add api_tokens.expires_at: %w", err)
+		}
+	}
+	indexExists, err := s.indexExists(ctx, "api_tokens", "idx_api_tokens_expires")
+	if err != nil {
+		return err
+	}
+	if !indexExists {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_api_tokens_expires ON api_tokens (expires_at)"); err != nil {
+			return fmt.Errorf("create api_tokens.expires_at index: %w", err)
+		}
 	}
 	return nil
 }

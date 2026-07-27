@@ -6,7 +6,7 @@
   import { getTransport } from "$lib/api/client";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
-  import { Alert, Badge, Button, Card, Input, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, Select, Spinner } from "flowbite-svelte";
 
   let tokens = $state<TokenInfo[]>([]);
   let teams = $state<TeamInfo[]>([]);
@@ -18,6 +18,7 @@
   let newTeam = $state("");
   let newUser = $state("");
   let newTokenName = $state("");
+  let newExpiresIn = $state("never");
   let createdToken = $state<string | null>(null);
   let newTeamName = $state("");
   let showIdentityForm = $state(false);
@@ -57,6 +58,7 @@
         teamNames,
         userName: newUser,
         tokenName: newTokenName,
+        expiresIn: newExpiresIn,
       });
       createdToken = resp.token;
       addToast("Token created successfully", "success");
@@ -64,6 +66,7 @@
       newTeam = "";
       newUser = "";
       newTokenName = "";
+      newExpiresIn = "never";
       await load();
     } catch (e) {
       actionError = e instanceof Error ? e.message : "Failed to create token.";
@@ -225,15 +228,34 @@
             <Input bind:value={newTeam} placeholder="Team name(s), comma-separated" />
             <Input bind:value={newUser} placeholder="User name" />
             <Input bind:value={newTokenName} placeholder="Token name" />
+            <Select bind:value={newExpiresIn} class="mb-2">
+              <option value="never">Never expires</option>
+              <option value="30d">30 days</option>
+              <option value="90d">90 days</option>
+              <option value="1y">1 year</option>
+            </Select>
             <Button color="blue" class="w-full" size="xs" onclick={createToken}>Create Token</Button>
           </div>
         {/if}
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each tokens as token (token.name)}
+            {@const expiry = token.expiresAt ? new Date(token.expiresAt) : null}
+            {@const isExpired = expiry && expiry < new Date()}
+            {@const expiringSoon = expiry && !isExpired && (expiry.getTime() - Date.now()) < 7 * 24 * 60 * 60 * 1000}
             <div class="px-4 py-3 flex items-center justify-between">
               <div>
-                <p class="text-sm font-medium text-gray-900 dark:text-white">{token.name}</p>
+                <div class="flex items-center gap-2">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">{token.name}</p>
+                  {#if isExpired}
+                    <Badge color="red" size="small">Expired</Badge>
+                  {:else if expiringSoon}
+                    <Badge color="yellow" size="small">Expiring soon</Badge>
+                  {/if}
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{token.userName} · {(token.teamNames ?? [token.teamName]).join(", ")}</p>
+                {#if expiry}
+                  <p class="text-xs text-gray-400 dark:text-gray-500">Expires {expiry.toLocaleDateString()}</p>
+                {/if}
               </div>
               <Button color="red" size="xs" outline onclick={() => deleteToken(token.name)}>Delete</Button>
             </div>

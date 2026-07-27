@@ -280,11 +280,13 @@ var schemaStatements = []string{
 		name VARCHAR(128) NOT NULL,
 		token_hash CHAR(64) NOT NULL,
 		user_id VARCHAR(64) NOT NULL,
+		expires_at DATETIME(6) NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),
 		UNIQUE KEY uq_api_tokens_hash (token_hash),
-		KEY idx_api_tokens_user (user_id)
+		KEY idx_api_tokens_user (user_id),
+		KEY idx_api_tokens_expires (expires_at)
 	)`,
 	`CREATE TABLE IF NOT EXISTS user_team_memberships (
 		user_id VARCHAR(64) NOT NULL,

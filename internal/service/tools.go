@@ -390,6 +390,7 @@ type CreateTokenInput struct {
 	TeamNames []string `json:"team_names,omitempty" jsonschema:"Names of teams this token should belong to; defaults to team_name"`
 	UserName  string   `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
 	TokenName string   `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
+	ExpiresIn string   `json:"expires_in,omitempty" jsonschema:"Token lifetime: 30d, 90d, 1y, never (default: never)"`
 }
 
 // CreateTokenOutput is the output for chetter_create_token.
@@ -408,11 +409,12 @@ type ListTokensInput struct{}
 
 // TokenInfo is a single token entry in the list.
 type TokenInfo struct {
-	Name      string    `json:"name"`
-	UserName  string    `json:"user_name"`
-	TeamName  string    `json:"team_name"`
-	TeamNames []string  `json:"team_names"`
-	CreatedAt time.Time `json:"created_at"`
+	Name      string     `json:"name"`
+	UserName  string     `json:"user_name"`
+	TeamName  string     `json:"team_name"`
+	TeamNames []string   `json:"team_names"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // ListTokensOutput is the output for chetter_list_tokens.
@@ -1395,7 +1397,7 @@ func (s *Service) createTokenTool(ctx context.Context, _ *mcp.CallToolRequest, i
 	if len(teamNames) == 0 && in.TeamName != "" {
 		teamNames = []string{in.TeamName}
 	}
-	out, err := s.CreateToken(ctx, teamNames, in.UserName, in.TokenName)
+	out, err := s.CreateToken(ctx, teamNames, in.UserName, in.TokenName, in.ExpiresIn)
 	if err != nil {
 		return nil, CreateTokenOutput{}, err
 	}

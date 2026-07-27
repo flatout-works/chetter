@@ -241,6 +241,7 @@ message TokenInfo {
   string team_name = 3;
   string created_at = 4;
   repeated string team_names = 5;
+  string expires_at = 6;
 }
 
 message TeamInfo {
@@ -653,6 +654,7 @@ message CreateTokenRequest {
   repeated string team_names = 4;
   string user_name = 2 [(buf.validate.field).string.min_len = 1];
   string token_name = 3 [(buf.validate.field).string.min_len = 1];
+  string expires_in = 5;
 }
 
 message CreateTokenResponse {

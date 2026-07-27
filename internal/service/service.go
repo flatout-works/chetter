@@ -182,6 +182,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		svc.reapUnavailablePinnedResumeTasks,
 		svc.reapExpiredSessions,
 		svc.reapExpiredSessionArtifacts,
+		svc.reapExpiredTokens,
 		svc.pruneRetainedRows,
 		svc.checkDBQuota,
 		func() {
@@ -853,6 +854,48 @@ func (s *Service) reapExpiredSessionArtifacts() {
 
 	if total > 0 {
 		slog.Info("cleared expired session artifacts", "rows_cleared", total, "ttl", s.cfg.SessionArtifactTTL)
+	}
+}
+
+// reapExpiredTokens audits tokens that have passed their expiration time.
+// The auth layer already rejects expired tokens via the WHERE clause in
+// auth/resolve.go; this reaper emits audit events for observability.
+func (s *Service) reapExpiredTokens() {
+	ctx, cancel := s.reaperCtx()
+	defer cancel()
+	now := time.Now().UTC()
+	query := `SELECT id, name FROM api_tokens WHERE expires_at IS NOT NULL AND expires_at <= ?`
+	if s.dialect == store.DialectPostgres {
+		query = `SELECT id, name FROM api_tokens WHERE expires_at IS NOT NULL AND expires_at <= $1`
+	}
+	rows, err := s.rawDB.QueryContext(ctx, query, now)
+	if err != nil {
+		slog.Error("token expiry audit failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	defer rows.Close()
+	var count int
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			continue
+		}
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "token_expired",
+			SourceType: "system",
+			TargetType: "token",
+			TargetID:   name,
+			TokenID:    id,
+			TokenName:  name,
+			Detail:     fmt.Sprintf("token %q expired", name),
+		})
+		count++
+	}
+	if count > 0 {
+		slog.Info("token expiry audit completed", "count", count)
 	}
 }
 

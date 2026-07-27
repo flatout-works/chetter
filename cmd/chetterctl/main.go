@@ -137,6 +137,7 @@ func tokenCmd(args []string, serverURL, token string) error {
 		fs.Var(&teams, "team", "Team name (repeatable for multi-team tokens)")
 		user := fs.String("user", "", "User name")
 		tokenName := fs.String("name", "", "Token name (e.g. 'alice-cli')")
+		expiresIn := fs.String("expires-in", "never", "Token lifetime: 30d, 90d, 1y, never (default: never)")
 		_ = fs.Parse(args[1:])
 		if *server == "" {
 			return fmt.Errorf("--server or CHETTER_SERVER_URL is required")
@@ -152,6 +153,7 @@ func tokenCmd(args []string, serverURL, token string) error {
 			TeamNames: teams,
 			UserName:  *user,
 			TokenName: *tokenName,
+			ExpiresIn: *expiresIn,
 		}
 		resp, err := client.CreateToken(context.Background(), connect.NewRequest(req))
 		if err != nil {
@@ -281,7 +283,7 @@ func printUsage() {
 
 Usage:
   chetterctl web
-  chetterctl token create --team <team> --user <user> --name <name>
+  chetterctl token create --team <team> --user <user> --name <name> [--expires-in 30d|90d|1y|never]
   chetterctl token list
   chetterctl token delete --name <name>
   chetterctl identity create --name <name> --git-author-name <name> --git-author-email <email>
@@ -302,13 +304,14 @@ func printTokenUsage() {
 	fmt.Println(`chetterctl token - Manage API tokens
 
 Usage:
-  chetterctl token create --team <name> [--team <name2>] --user <name> --name <token-name>
+  chetterctl token create --team <name> [--team <name2>] --user <name> --name <token-name> [--expires-in 30d|90d|1y|never]
   chetterctl token list
   chetterctl token delete --name <token-name>
 
 Options:
-  --server  Web API URL (or CHETTER_API_URL)
-  --token   Admin API token (or CHETTER_TOKEN)`)
+  --server      Web API URL (or CHETTER_API_URL)
+  --token       Admin API token (or CHETTER_TOKEN)
+  --expires-in  Token lifetime: 30d, 90d, 1y, never (default: never)`)
 }
 
 func printIdentityUsage() {
