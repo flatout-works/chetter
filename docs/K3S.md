@@ -4,7 +4,7 @@ Status: **Canonical local k3s guide**
 
 This guide shows how to run the Chetter server, web UI, runner, and local TiDB in a single-node k3s cluster for local validation.
 
-Current state: Chetter's Kubernetes manifests run the control plane and runner as Kubernetes workloads, but the runner still executes agent task containers through the host Docker socket. There is no Kubernetes pod executor in the runner yet. Plain Docker task execution is for trusted or convenience workloads only. For sandboxing, install gVisor (`runsc`) into Docker and set `USE_GVISOR=true`; task containers then run with Docker's `--runtime=runsc`.
+Current state: with `EXECUTION_BACKEND=kubernetes`, the runner creates one agent Pod per execution through the Kubernetes API. The k3s example uses a single-node hostPath shared by runner and agent Pods and does not mount a Docker socket. Set `KUBERNETES_RUNTIME_CLASS=gvisor` only after the k3s containerd runtime handler and RuntimeClass are installed.
 
 Use [EKS.md](EKS.md) for production Kubernetes notes. Use this document for local k3s validation.
 
@@ -13,18 +13,19 @@ Use [EKS.md](EKS.md) for production Kubernetes notes. Use this document for loca
 - k3s can run the Chetter server, web UI, runner, and TiDB manifests.
 - The server can connect to TiDB and serve MCP, health, ConnectRPC, and web UI endpoints.
 - The runner can connect to the server, claim tasks, and report events.
-- Agent task containers can run on the host Docker daemon, optionally under gVisor.
+- Agent Pods can run through the Kubernetes executor, optionally with `runtimeClassName: gvisor`.
+- ServeHarness task execution and resumable-session follow-up have been validated live with OpenCode agent Pods under gVisor. Pi attach, cancellation, and rolling-update behavior still require separate live-cluster smoke validation before this guide is considered production proof.
 
-This does not validate a Kubernetes pod-per-task executor. Task containers are Docker containers on the host, not Kubernetes Pods.
+The hostPath manifest is intentionally single-node. It does not validate multi-node RWX storage.
 
 ## Prerequisites
 
 - Linux host or VM. Ubuntu 24.04 is the known-good target.
 - Root or sudo access.
 - At least 4 CPU and 4 GB RAM.
-- Docker installed and running. k3s uses containerd, but the current runner needs the host Docker socket for task execution.
+- Docker only if it is used to build/save local images; task execution itself uses k3s containerd and the Kubernetes API.
 - `kubectl` installed or available through `sudo k3s kubectl`.
-- At least one provider key for the harness/model you want to test.
+- A provider key for the harness/model you want to test, unless that provider offers a model that does not require one.
 
 ## Architecture
 
@@ -36,13 +37,12 @@ k3s cluster (single node)
       port 8080: MCP and health
       port 8090: web UI and ConnectRPC API
     Chetter runner Deployment
-      RUNNER_LOCAL=true
-      /var/run/docker.sock mounted from host
-      creates host Docker task containers
-
-host Docker daemon
-  agent task containers
-  optional gVisor runtime: runsc
+      EXECUTION_BACKEND=kubernetes
+      hostPath workspace mounted at the runner workspace root
+      creates agent Pods pinned to the runner node
+    Agent Pod per execution
+      task AgentImage, execution-only workspace subPath
+      optional runtimeClassName: gvisor
 ```
 
 ## 1. Install k3s
@@ -98,30 +98,13 @@ kubectl logs cni-smoke
 kubectl delete pod cni-smoke
 ```
 
-## 4. Install gVisor For Docker Task Containers
+## 4. Decide Whether To Use gVisor
 
-This is the important gVisor setup for current Chetter task execution. The runner calls the host Docker daemon, so Docker must know about the `runsc` runtime.
+gVisor is optional. Without it, clear `KUBERNETES_RUNTIME_CLASS` in `deploy/k3s/kubernetes-runner.yaml`. With it, install `runsc` for k3s containerd and create the RuntimeClass in the next step. gVisor is syscall isolation; it does not enforce network egress.
 
-```bash
-sudo apt-get update
-sudo apt-get install -y runsc
-sudo /usr/bin/runsc install
-sudo systemctl restart docker
-```
+## 5. Configure k3s containerd For gVisor
 
-Verify Docker can launch a gVisor container:
-
-```bash
-docker run --runtime=runsc --rm alpine dmesg
-```
-
-The output should mention gVisor, for example `Starting gVisor...`.
-
-If you do not need sandbox validation, you can skip this step and keep `USE_GVISOR=false` on the runner.
-
-## 5. Optional: Configure k3s containerd For RuntimeClass Smoke Tests
-
-This optional step validates that k3s itself can start pods with `runtimeClassName: gvisor`. It is useful before future Kubernetes pod executor work, but current Chetter tasks do not use this path.
+This step is required when the runner sets `KUBERNETES_RUNTIME_CLASS=gvisor`. RuntimeClass scheduling or cluster policy must also place agent Pods on nodes that support the `runsc` handler.
 
 Install `runsc` if you did not already:
 
@@ -188,16 +171,17 @@ The Kubernetes manifests use GHCR image names. For local validation from your ch
 ```bash
 docker tag chetter-mcp:latest ghcr.io/flatout-works/chetter-mcp:main
 docker tag chetter-runner:latest ghcr.io/flatout-works/chetter-runner:main
+docker tag chetter-agent-base:latest ghcr.io/flatout-works/chetter-agent-base:main
 ```
 
-The host Docker daemon also needs the runner image under the same name, because task containers use `DEFAULT_AGENT_IMAGE=ghcr.io/flatout-works/chetter-runner:main` by default.
+The server must resolve tasks to an actual agent image containing harness CLIs. The tight runner daemon image is not an agent image.
 
 ## 7. Import Images Into k3s
 
 k3s uses containerd for Kubernetes pods, not Docker. Import the tagged images:
 
 ```bash
-docker save ghcr.io/flatout-works/chetter-mcp:main ghcr.io/flatout-works/chetter-runner:main | sudo k3s ctr images import -
+docker save ghcr.io/flatout-works/chetter-mcp:main ghcr.io/flatout-works/chetter-runner:main ghcr.io/flatout-works/chetter-agent-base:main | sudo k3s ctr images import -
 ```
 
 Verify:
@@ -252,38 +236,46 @@ kubectl -n chetter rollout status statefulset/tidb
 kubectl -n chetter get pod -l app=tidb
 ```
 
+Create the database before starting the Chetter server. The TiDB image does not contain
+the `mysql` client, so use a temporary client Pod:
+
+```bash
+kubectl -n chetter run mysql-client --rm -i --restart=Never --image=mysql:8.4 -- \
+  mysql -h tidb -P 4000 -u root -e 'CREATE DATABASE IF NOT EXISTS chetter'
+```
+
 This manifest runs TiDB with `unistore`, a single-container test engine. It is fine for local validation. For production, use TiDB Cloud or a real TiDB cluster.
 
 ## 10. Deploy The Chetter Server And Runner
 
-Apply the service and deployments:
+Apply and wait for the server first. This avoids runner registration failures while the
+server is applying database migrations:
 
 ```bash
 kubectl apply -f deploy/k8s/mcp-service.yaml
 kubectl apply -f deploy/k8s/mcp-deployment.yaml
-kubectl apply -f deploy/k8s/runner-deployment.yaml
-```
-
-For local validation, scale the server and runner down to one replica each:
-
-```bash
+kubectl -n chetter set env deployment/chetter-mcp DEFAULT_AGENT_IMAGE=ghcr.io/flatout-works/chetter-agent-base:main
 kubectl -n chetter scale deployment/chetter-mcp --replicas=1
-kubectl -n chetter scale deployment/chetter-runner --replicas=1
-```
-
-If you installed Docker gVisor in step 4, enable it for task containers:
-
-```bash
-kubectl -n chetter set env deployment/chetter-runner USE_GVISOR=true
-```
-
-Wait for rollout:
-
-```bash
 kubectl -n chetter rollout status deployment/chetter-mcp
-kubectl -n chetter rollout status deployment/chetter-runner
-kubectl -n chetter get pods
 ```
+
+Then apply the single-node runner. If gVisor is not installed for k3s containerd,
+remove `KUBERNETES_RUNTIME_CLASS` from `deploy/k3s/kubernetes-runner.yaml` before applying it.
+
+```bash
+kubectl apply -f deploy/k3s/kubernetes-runner.yaml
+kubectl -n chetter scale deployment/chetter-runner --replicas=1
+kubectl -n chetter rollout status deployment/chetter-runner
+```
+
+Verify all three long-running workloads are ready:
+
+```bash
+kubectl -n chetter get pods -o wide
+kubectl -n chetter logs deployment/chetter-runner --tail=20
+```
+
+The runner log should contain `claiming tasks via ConnectRPC`.
 
 ## 11. Open The Web UI
 
@@ -304,7 +296,59 @@ curl http://localhost:18088/healthz
 
 ## 12. Submit And Validate A Task
 
-Use the web UI or an MCP client to submit a small task.
+Before submitting the first task to a new database, create and select a default Git
+author identity in the web UI, or call the MCP tools directly. With the port-forward
+from step 11 still running:
+
+```bash
+curl -sS http://localhost:18088/mcp \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"chetter_create_git_identity","arguments":{"name":"k3s-local","git_author_name":"Chetter k3s","git_author_email":"chetter-k3s@example.invalid","credential_type":"github_app"}}}'
+
+curl -sS http://localhost:18088/mcp \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"chetter_set_git_identity_default","arguments":{"name":"k3s-local"}}}'
+```
+
+Submit a task that stays alive long enough to inspect its Pod. Replace the provider and
+model if needed:
+
+```bash
+curl -sS http://localhost:18088/mcp \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"chetter_submit_task","arguments":{"prompt":"Use the bash tool to run sleep 30. Then return exactly: K3S_GVISOR_OK","agent_image":"ghcr.io/flatout-works/chetter-agent-base:main","harness":"opencode","provider_id":"opencode","model_id":"deepseek-v4-flash-free","timeout_sec":180}}}'
+```
+
+Copy the returned task ID into `TASK_ID`, then wait for and inspect its child Pod:
+
+```bash
+export TASK_ID=task_<returned-id>
+kubectl -n chetter wait --for=condition=Ready pod \
+  -l "chetter.io/task-id=$TASK_ID" --timeout=60s
+export AGENT_POD="$(kubectl -n chetter get pod \
+  -l "chetter.io/task-id=$TASK_ID" -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl -n chetter get pod "$AGENT_POD" -o jsonpath='runtimeClass={.spec.runtimeClassName}{"\n"}node={.spec.nodeName}{"\n"}image={.spec.containers[0].image}{"\n"}workspaceSubPath={.spec.containers[0].volumeMounts[0].subPath}{"\n"}serviceAccount={.spec.serviceAccountName}{"\n"}automountToken={.spec.automountServiceAccountToken}{"\n"}'
+```
+
+For the supplied gVisor manifest, expect `runtimeClass=gvisor`, the current node name,
+the requested agent image, an execution-specific workspace subPath,
+`serviceAccount=chetter-agent`, and `automountToken=false`.
+
+Confirm that the runner itself has no Docker socket mount:
+
+```bash
+kubectl -n chetter get deployment chetter-runner \
+  -o jsonpath='{range .spec.template.spec.containers[0].volumeMounts[*]}{.mountPath}{"\n"}{end}'
+```
+
+The only expected mount is `/var/lib/chetter-runner/workspaces`.
 
 Watch the Chetter workloads:
 
@@ -314,20 +358,29 @@ kubectl -n chetter logs deployment/chetter-mcp -f
 kubectl -n chetter logs deployment/chetter-runner -f
 ```
 
-Because the current runner uses Docker mode, task containers show up in host Docker, not in `kubectl get pods`:
+During execution, child agent Pods show up in Kubernetes and are removed at finalization:
 
 ```bash
-docker ps --filter name=chetter
-docker ps -a --filter name=chetter
+kubectl -n chetter get pods -l chetter.io/owned=true -w
 ```
 
-If `USE_GVISOR=true`, inspect the task container runtime from Docker:
+After completion, query the task status through MCP:
 
 ```bash
-docker inspect <container-id> --format '{{.HostConfig.Runtime}}'
+curl -sS http://localhost:18088/mcp \
+  -H "Authorization: Bearer $CHETTER_MCP_AUTH_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"chetter_task_status\",\"arguments\":{\"task_id\":\"$TASK_ID\"}}}"
 ```
 
-The expected value is `runsc`.
+Expect `status` to be `done` and `summary` to contain `K3S_GVISOR_OK`. The following
+commands should then report no resources, confirming execution Pod and Secret cleanup:
+
+```bash
+kubectl -n chetter get pods -l chetter.io/owned=true
+kubectl -n chetter get secrets -l chetter.io/owned=true
+```
 
 ## Common Operations
 
@@ -340,16 +393,17 @@ kubectl -n chetter rollout restart deployment/chetter-mcp deployment/chetter-run
 ### Scale Runners
 
 ```bash
-kubectl -n chetter scale deployment/chetter-runner --replicas=2
+kubectl -n chetter scale deployment/chetter-runner --replicas=1
 ```
 
-Each runner pod can also process multiple tasks with `RUNNER_MAX_CONCURRENT`.
+The supplied hostPath manifest is single-node-only. Each runner Pod gets a unique UID-based `RUNNER_ID`; child Pods are pinned to that runner's node. Use an RWX PVC instead for multi-node production.
 
 ### Check TiDB
 
 ```bash
 kubectl -n chetter logs statefulset/tidb
-kubectl -n chetter exec -ti tidb-0 -- mysql -h 127.0.0.1 -P 4000 -e 'SELECT 1'
+kubectl -n chetter run mysql-client --rm -i --restart=Never --image=mysql:8.4 -- \
+  mysql -h tidb -P 4000 -u root -e 'SELECT 1'
 ```
 
 ### Cleanup Chetter Resources
@@ -397,6 +451,7 @@ Common causes:
 - `CHETTER_MCP_AUTH_TOKEN` is empty or starts with `change-me`.
 - `CHETTER_RUNNER_RPC_TOKEN` is empty or starts with `change-me`.
 - `DATABASE_DSN` cannot reach `tidb:4000`.
+- The `chetter` database was not created before server startup. Repeat step 9.
 
 ### Runner cannot connect to server
 
@@ -408,29 +463,28 @@ kubectl -n chetter logs deployment/chetter-runner
 kubectl -n chetter exec deployment/chetter-runner -- curl -s http://chetter-mcp:8080/healthz
 ```
 
-### Runner cannot launch task containers
+If registration returns `401 Unauthorized`, verify both workloads read the same
+`CHETTER_RUNNER_RPC_TOKEN` from `chetter-secrets`, then restart both deployments.
 
-The current runner needs the host Docker socket. Verify the socket exists on the host and is mounted in the runner pod:
+### Runner cannot launch agent Pods
 
-```bash
-ls -l /var/run/docker.sock
-kubectl -n chetter exec deployment/chetter-runner -- ls -l /var/run/docker.sock
-kubectl -n chetter exec deployment/chetter-runner -- docker version
-```
-
-Also verify the default agent image exists in the host Docker daemon:
+Verify runner identity/node metadata, RBAC, workspace mount, and events:
 
 ```bash
-docker images | grep 'flatout-works/chetter-runner'
+kubectl -n chetter exec deployment/chetter-runner -- env | grep -E 'RUNNER_ID|POD_UID|NODE_NAME'
+kubectl -n chetter auth can-i create pods --as system:serviceaccount:chetter:chetter-runner
+kubectl -n chetter get events --sort-by=.lastTimestamp
 ```
 
-### Docker gVisor fails with `runtime runsc not found`
+Also verify the agent image exists in k3s containerd:
 
-Docker does not have the `runsc` runtime installed. Repeat [step 4](#4-install-gvisor-for-docker-task-containers).
+```bash
+sudo k3s ctr images ls | grep 'flatout-works/chetter-agent'
+```
 
 ### k3s RuntimeClass fails with `RuntimeHandler "runsc" not supported`
 
-k3s containerd does not have the `runsc` runtime handler configured. Repeat [step 5](#5-optional-configure-k3s-containerd-for-runtimeclass-smoke-tests).
+k3s containerd does not have the `runsc` runtime handler configured. Repeat [step 5](#5-configure-k3s-containerd-for-gvisor).
 
 ### TiDB not ready
 
@@ -439,4 +493,27 @@ Check the StatefulSet and logs:
 ```bash
 kubectl -n chetter get statefulset,pod -l app=tidb
 kubectl -n chetter logs statefulset/tidb
+```
+
+If the PVC remains `Pending` and the local-path provisioner reports `no route to host`
+for `10.43.0.1:443`, k3s Pod-to-service networking is unhealthy. Restart k3s and the
+affected system deployments before retrying:
+
+```bash
+sudo systemctl restart k3s
+kubectl wait --for=condition=Ready node --all --timeout=180s
+kubectl -n kube-system rollout restart deployment/local-path-provisioner deployment/metrics-server
+```
+
+### Namespace remains `Terminating`
+
+A stale aggregated API, commonly `metrics.k8s.io`, can block namespace discovery even
+after all namespaced content is gone. Inspect the namespace conditions and verify no
+resources remain before forcing finalization:
+
+```bash
+kubectl get namespace chetter -o yaml
+kubectl get all,pvc,secrets,configmaps -n chetter
+kubectl get namespace chetter -o json | jq '.spec.finalizers=[]' | \
+  kubectl replace --raw '/api/v1/namespaces/chetter/finalize' -f -
 ```

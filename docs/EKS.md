@@ -1,8 +1,10 @@
 # Chetter on EKS — Production Installation Guide
 
-This guide covers installing Chetter into a stock AWS EKS cluster (or similar managed
-Kubernetes environment) with gVisor sandboxing. It assumes you have an EKS cluster
-and `kubectl` configured.
+This guide covers installing Chetter into AWS EKS (or a similar managed Kubernetes
+environment). A stock EKS cluster is not sufficient for the supplied Kubernetes runner:
+you must provide an RWX workspace StorageClass (normally EFS CSI), install a compatible
+RuntimeClass if gVisor is enabled, and ensure RuntimeClass scheduling or cluster policy
+places agent Pods on compatible nodes.
 
 For local validation on k3s, see `docs/K3S.md`.
 
@@ -80,22 +82,13 @@ apt-get update && apt-get install -y gvisor
 4. Restart containerd and bake the AMI.
 5. Use this AMI for the gVisor node group.
 
-**Option B: DaemonSet installer (easier, slower boot)**
+**Option B: Operator-managed node bootstrap**
 
-Use a DaemonSet that installs `runsc` on each node at startup. The existing
-`deploy/k8s/gvisor-runtimeclass.yaml` does this for Debian-based nodes:
-
-```bash
-kubectl apply -f deploy/k8s/gvisor-runtimeclass.yaml
-```
-
-This DaemonSet:
-- Runs an init container that installs `runsc` and copies the binary to `/usr/local/bin`
-  on the host.
-- Creates a `RuntimeClass` named `gvisor` with handler `runsc`.
-
-> **Warning:** The DaemonSet installer requires privileged access and host path mounts.
-> For production, prefer Option A (custom AMI). Use the DaemonSet only for testing.
+Use your node-image/bootstrap pipeline to install `runsc`, configure the containerd
+handler, restart containerd, and register the RuntimeClass. The reference
+`deploy/k8s/gvisor-runtimeclass.yaml` is not a complete stock-EKS installer: copying a
+binary does not configure EKS containerd, and its DaemonSet is intentionally excluded
+from the generic kustomization. Do not apply it as a production installation procedure.
 
 Create the gVisor node group:
 
@@ -178,6 +171,10 @@ DATABASE_DSN=root@tcp(gateway.<region>.aws.tidbcloud.com:4000)/chetter?parseTime
 
 This is the production-recommended option. No in-cluster TiDB to manage.
 
+Create the `chetter` database before starting the Chetter server unless it already
+exists. For TiDB Cloud, create it through the SQL endpoint with an administrative user,
+then use an application user scoped to that database in `DATABASE_DSN`.
+
 ### Option B: In-Cluster TiDB
 
 For development or self-hosted production, deploy TiDB using the TiDB Operator or
@@ -188,10 +185,14 @@ kubectl apply -f deploy/k3d/tidb.yaml
 ```
 
 For production in-cluster TiDB, use the [TiDB Operator](https://docs.pingcap.com/tidb-in-kubernetes/).
+Create the `chetter` database before deploying the server. Chetter applies table
+migrations, but a TiDB/MySQL DSN cannot select a database that does not yet exist.
 
 ## Step 5: Create RuntimeClass
 
-If not already created by the DaemonSet installer:
+Create a RuntimeClass whose scheduling section selects and tolerates the gVisor node
+group. Without this section (or an equivalent admission policy), child agent Pods do
+not inherit the runner Pod's node selector or tolerations:
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -200,6 +201,14 @@ kind: RuntimeClass
 metadata:
   name: gvisor
 handler: runsc
+scheduling:
+  nodeSelector:
+    node-role: gvisor
+  tolerations:
+    - key: sandbox
+      operator: Equal
+      value: gvisor
+      effect: NoSchedule
 EOF
 ```
 
@@ -255,7 +264,7 @@ spec:
               name: chetter-secrets
               key: CHETTER_RUNNER_RPC_TOKEN
         - name: DEFAULT_AGENT_IMAGE
-          value: "<registry>/chetter/runner:latest"
+          value: "<registry>/chetter/agent-golang:latest"
         - name: DATABASE_DSN
           valueFrom:
             secretKeyRef:
@@ -301,8 +310,23 @@ EOF
 
 ## Step 7: Deploy The Runner (Kubernetes Mode)
 
-```bash
-kubectl apply -f - <<'EOF'
+Use `deploy/k8s/runner-rbac.yaml`, `runner-workspace-pvc.yaml`, and
+`runner-deployment.yaml` as the authoritative base. Before applying them:
+
+- Set `storageClassName` on the PVC to an RWX-capable EFS CSI class. The default EBS
+  classes are RWO and are not suitable for runner and agent Pods on different nodes.
+- Install the `gvisor` RuntimeClass separately, or clear `KUBERNETES_RUNTIME_CLASS`.
+  `deploy/k8s/gvisor-runtimeclass.yaml` is not part of the generic kustomization.
+- Ensure the server resolves `DEFAULT_AGENT_IMAGE` to an actual agent image containing
+  harness CLIs; never use the tight runner daemon image as the agent image.
+- Keep the downward API values for `RUNNER_ID`, `POD_NAME`, `POD_UID`, `POD_IP`, and
+  `NODE_NAME`. The Pod UID prevents runner replicas sharing a PVC from sharing identity.
+
+The following is an abridged structural example, not a directly applicable manifest;
+the repository manifests include workspace volumes, owner identity, drain timing, and
+the least-privilege RBAC rules.
+
+```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -316,11 +340,20 @@ metadata:
   namespace: chetter
 rules:
 - apiGroups: [""]
-  resources: [pods, pods/log, configmaps, secrets]
-  verbs: [create, get, list, watch, delete, patch]
+  resources: [pods]
+  verbs: [create, get, list, delete]
 - apiGroups: [""]
-  resources: [persistentvolumeclaims]
-  verbs: [create, get, list, watch, delete]
+  resources: [pods/attach]
+  verbs: [create, get]
+- apiGroups: [""]
+  resources: [pods/log]
+  verbs: [get]
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [create, get, list, delete]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -378,16 +411,36 @@ spec:
           value: "kubernetes"
         - name: KUBERNETES_NAMESPACE
           value: "chetter"
+        - name: RUNNER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: KUBERNETES_RUNTIME_CLASS
           value: "gvisor"
         - name: KUBERNETES_CLEANUP_AFTER_TASK
           value: "true"
         - name: KUBERNETES_AGENT_IMAGE_PULL_POLICY
           value: "Always"
+        - name: KUBERNETES_WORKSPACE_PVC
+          value: "chetter-runner-workspaces"
         - name: RUNNER_MAX_CONCURRENT
           value: "2"
-        - name: DEFAULT_AGENT_IMAGE
-          value: "<registry>/chetter/runner:latest"
         resources:
           requests:
             cpu: 200m
@@ -395,14 +448,18 @@ spec:
           limits:
             cpu: "2"
             memory: 2Gi
-EOF
 ```
 
 Key points:
 - **No Docker socket mount.** The runner uses the Kubernetes API.
-- **Node selector + toleration** schedules the runner on gVisor nodes.
-- **ServiceAccount + RBAC** grants Pod/ConfigMap/Secret/PVC management.
+- **RuntimeClass scheduling:** the RuntimeClass or cluster policy must schedule child
+  agent Pods onto nodes configured with the selected runtime handler. Scheduling only
+  the runner does not automatically schedule its child Pods to the same node.
+- **ServiceAccount + RBAC:** grants only the Pod, attach/log, Secret, and Event operations
+  used by the controller. Agent Pods use a separate ServiceAccount with token automount disabled.
 - **`EXECUTION_BACKEND=kubernetes`** selects the Kubernetes executor.
+- **Runner authentication:** `CHETTER_RUNNER_RPC_TOKEN` must have the same value in the
+  server and runner Pods. `EXECUTION_BACKEND` is the only backend environment selector.
 
 ## Step 8: Configure Ingress
 
@@ -518,9 +575,26 @@ curl -s https://chetter.example.com/healthz
 # Check runner logs
 kubectl -n chetter logs -l app=chetter-runner --tail=50
 
-# Verify runner is connected to server
-kubectl -n chetter logs -l app=chetter-runner | grep "connected"
+# Verify runner is claiming over ConnectRPC
+kubectl -n chetter logs -l app=chetter-runner | grep "claiming tasks via ConnectRPC"
 ```
+
+Before the first task, create a default managed Git identity through the web UI or the
+`chetter_create_git_identity` and `chetter_set_git_identity_default` MCP tools. Task
+submission requires an author identity even when the task does not clone a repository.
+
+Submit a small task, then verify its child Pod while it is running:
+
+```bash
+kubectl -n chetter get pods -l chetter.io/owned=true -w
+kubectl -n chetter get pod <agent-pod> \
+  -o jsonpath='runtimeClass={.spec.runtimeClassName}{"\n"}image={.spec.containers[0].image}{"\n"}workspaceSubPath={.spec.containers[0].volumeMounts[0].subPath}{"\n"}automountToken={.spec.automountServiceAccountToken}{"\n"}'
+```
+
+Expect the configured runtime class and requested agent image, a task/execution-specific
+workspace subPath, and `automountToken=false`. After task finalization, both
+`kubectl -n chetter get pods -l chetter.io/owned=true` and the equivalent Secret query
+should return no resources. The complete MCP smoke-test commands are in `docs/K3S.md`.
 
 ## Agent Pod Configuration
 
@@ -528,24 +602,26 @@ When the runner creates an agent pod, it uses these conventions:
 
 | Setting | Value |
 |---|---|
-| Pod name | `chetter-task-<task-id>` |
+| Pod name | DNS-safe `chetter-<task-fragment>-<runner/task/execution-hash>` |
 | Namespace | From `KUBERNETES_NAMESPACE` |
 | RuntimeClass | From `KUBERNETES_RUNTIME_CLASS` (e.g. `gvisor`) |
-| Labels | `app=chetter-agent`, `chetter.io/task-id=<id>`, `chetter.io/runner-id=<id>` |
-| Workspace volume | `emptyDir` (non-resumable) or PVC (resumable) |
+| Labels | Runner, task, execution, session, and prompt identity labels |
+| Workspace volume | One shared PVC; only the validated execution workspace is mounted through `subPath` |
 | Agent port | 9999 |
 | Runner connects via | Pod IP directly |
 
 ## Storage Classes
 
-For resumable sessions, the runner creates PVCs. Ensure a StorageClass is available:
+The runner does not create per-task PVCs. Runner and agent Pods mount one operator-provided
+RWX PVC, while each agent sees only its execution workspace subPath. Ensure an RWX
+StorageClass is available:
 
 ```bash
 kubectl get storageclass
 ```
 
-EKS provides `gp2` by default. For gVisor nodes, ensure the StorageClass is available
-on those nodes (EBS is accessible from any node in the same AZ).
+EKS EBS `gp2`/`gp3` defaults are ReadWriteOnce and do not satisfy this requirement.
+Use EFS CSI or another RWX implementation accessible from every eligible agent node.
 
 ## Monitoring
 
@@ -592,12 +668,16 @@ can handle multiple concurrent tasks, each creating one agent pod.
   Agent pods are managed by Kubernetes, not Docker.
 - **RBAC:** The runner ServiceAccount is namespace-scoped. It cannot create pods outside
   the `chetter` namespace.
-- **gVisor isolation:** Agent pods run with `runtimeClassName: gvisor`, providing kernel-level
-  sandboxing. The agent cannot access host filesystem, kernel syscalls, or other pods.
+- **gVisor isolation:** `runtimeClassName: gvisor` provides a syscall/kernel isolation
+  boundary when the cluster handler is correctly installed. It does not enforce egress,
+  prevent access to other reachable Pods, or replace NetworkPolicy.
 - **Secrets:** Use Kubernetes Secrets (or External Secrets Operator) for API keys and tokens.
   Do not embed secrets in PodSpec env directly.
-- **Node taints:** gVisor nodes are tainted to prevent non-agent workloads from scheduling.
-  Only the runner (with toleration) and agent pods (with runtimeClassName) land on these nodes.
+- **Scheduling:** configure RuntimeClass scheduling, admission policy, or equivalent node
+  selection so agent Pods, not only runner Pods, land on gVisor-capable nodes.
+- **Current limitation:** proxy environment variables route cooperative clients but are not
+  an enforced egress boundary. Cross-task runner MCP authentication/network isolation is
+  not provided by this recovery; apply cluster network controls appropriate to your threat model.
 
 ## Backup
 

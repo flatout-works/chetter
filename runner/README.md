@@ -91,7 +91,7 @@ go build -o runner ./cmd/runner
 For testing **without Docker** (spawns plain local processes, no container isolation):
 
 ```bash
-export RUNNER_LOCAL=true
+export EXECUTION_BACKEND=local
 ./runner -config runner.yaml
 ```
 
@@ -155,7 +155,7 @@ claim queued tasks from the control plane over ConnectRPC.
 
 | Harness | Mode | Status |
 |---------|------|--------|
-| **OpenCode** | `opencode serve` (interactive, HTTP API) | **Working — Docker + local mode** |
+| **OpenCode** | `opencode serve` (interactive, HTTP API) | **Working - Docker, Kubernetes, and local mode** |
 | **Niffler** | MCP socket integration | Planned — library patch to add `--mcp-socket` agent mode |
 
 Unmodified harnesses work for public workflows (HTTP through proxy, workspace access, bash). Private git push requires harness to call MCP tools (`git_push`).
@@ -167,6 +167,7 @@ Unmodified harnesses work for public workflows (HTTP through proxy, workspace ac
 | `local` | Subprocess | None | Yes (opencode serve) | Any |
 | `docker` | Docker CLI + runc | Convenience only; not a security boundary | Yes (opencode serve) | Any |
 | `docker` + gVisor | Docker CLI + runsc | Task security boundary (userspace kernel) | Yes (opencode serve) | Linux only |
+| `kubernetes` + gVisor | Kubernetes Pod + runsc | Task security boundary (userspace kernel) | Yes (opencode serve) | Linux cluster |
 
 ## Security Model
 
@@ -183,8 +184,8 @@ Unmodified harnesses work for public workflows (HTTP through proxy, workspace ac
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHETTER_SERVER_URL` | (required) | Control plane URL |
-| `CHETTER_RUNNER_AUTH_TOKEN` | | Auth token (also checks `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN`) |
-| `RUNNER_LOCAL` | `false` | Run agents as local subprocesses (no Docker) |
+| `CHETTER_RUNNER_AUTH_TOKEN` | | Auth token (also checks `CHETTER_RUNNER_RPC_TOKEN`, `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN`) |
+| `EXECUTION_BACKEND` | `docker` | `docker`, `kubernetes`, or development-only `local` execution |
 | `USE_GVISOR` | `false` | Pass `--runtime=runsc` to Docker for gVisor sandboxing |
 | `MAX_CONCURRENT` | `10` | Max parallel tasks |
 

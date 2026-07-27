@@ -298,7 +298,7 @@ docker run -d --name chetter-runner-gvisor \
   --add-host host.docker.internal:host-gateway \
   -e CHETTER_SERVER_URL=http://host.docker.internal:9080 \
   -e CHETTER_RUNNER_AUTH_TOKEN=test-token \
-  -e RUNNER_LOCAL=false \
+  -e EXECUTION_BACKEND=docker \
   -e USE_GVISOR=true \
   -e RUNNER_MAX_CONCURRENT=1 \
   -e RUNNER_BIND_ADDR=0.0.0.0 \

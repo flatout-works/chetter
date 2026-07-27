@@ -213,6 +213,14 @@ Users can wire Chetter automations to lifecycle events without adding hardcoded 
 
 ### P5: Separate Docker Mode From Kubernetes Mode
 
+Status: **Implementation recovered; k3s ServeHarness and resume validated.** The current tree
+contains strict backend selection, client-go Pod execution, execution-only workspace
+subPath mounts over an operator-provided PVC or single-node hostPath, per-execution
+Secrets, ServeHarness resume, and Pi attach support. A clean single-node k3s run has
+validated normal OpenCode execution and resumable-session follow-up under gVisor,
+including Pod/Secret cleanup. Do not mark this complete until live tests also cover Pi
+attach, cancellation, a rolling runner update, and a production multi-node cluster.
+
 Why next:
 
 The runner currently creates agent containers by shelling out to `docker run` via the
@@ -234,7 +242,7 @@ Related docs:
 - `docs/K3S.md` — canonical local k3s guide
 - `docs/EKS.md` — production EKS installation guide
 
-#### Architecture Target
+#### Current Architecture
 
 ```text
 Docker mode (unchanged):
@@ -245,15 +253,19 @@ Kubernetes mode (new):
   Runner pod (no Docker socket)
     └─ Kubernetes API creates agent Pod
          spec:
-           runtimeClassName: gvisor
-           initContainers:
-             - clone (git clone into shared volume)
-           containers:
-             - workspace-mcp (sidecar, serves MCP tools)
-             - agent (opencode serve --port 9999)
+            runtimeClassName: gvisor
+            containers:
+              - agent (opencode serve --port 9999)
+            volumes:
+              - operator-provided shared workspace, execution-only subPath mount
 ```
 
-#### Phases
+#### Historical Phases
+
+The phase list below records the original proposal and is not the current implementation
+contract. In particular, the recovered executor does not use `emptyDir`, ConfigMap workspace
+archives, per-session PVC creation, or a workspace sidecar. See `docs/EXECUTION.md` for the
+current contract.
 
 **Phase 1: Execution Backend Abstraction**
 
@@ -263,7 +275,7 @@ Extract current execution logic behind an interface.
 - Move `runDockerAgent` / `runDockerAgentResume` into `DockerExecutor`.
 - Move `runLocalAgent` into `LocalExecutor`.
 - Config: `EXECUTION_BACKEND=docker|local|kubernetes` (default: `docker`).
-  Keep backward compat: `RUNNER_LOCAL=true` maps to `local`, `false` maps to `docker`.
+  Use `EXECUTION_BACKEND` as the sole execution backend selector.
 - `KubernetesExecutor` stub: returns "not implemented".
 - No behavior change for existing paths. `make check` passes.
 
@@ -318,6 +330,10 @@ Prove Kubernetes executor works with `runtimeClassName: gvisor`.
   - Pod is cleaned up.
 - Verify non-gVisor path too (empty `KUBERNETES_RUNTIME_CLASS`).
 
+Validated on single-node k3s with gVisor: task Pod creation, harness response, terminal
+`done` state, resumable-session follow-up over the preserved workspace, and Pod/Secret
+cleanup. The non-gVisor variant remains to be smoke-tested separately.
+
 **Phase 6: Resumable Sessions With PVC**
 
 Support resumable agent sessions using PVC-backed workspaces.
@@ -354,7 +370,6 @@ Docker mode (unchanged):
 
 ```
 EXECUTION_BACKEND=docker    # or omit (default)
-RUNNER_LOCAL=false
 USE_GVISOR=true|false
 ```
 
@@ -366,7 +381,7 @@ KUBERNETES_NAMESPACE=chetter
 KUBERNETES_RUNTIME_CLASS=gvisor
 KUBERNETES_CLEANUP_AFTER_TASK=true
 KUBERNETES_AGENT_IMAGE_PULL_POLICY=IfNotPresent
-KUBERNETES_SERVICE_ACCOUNT=chetter-runner
+KUBERNETES_AGENT_SERVICE_ACCOUNT=chetter-agent
 ```
 
 #### Risks
