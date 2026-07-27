@@ -4,6 +4,9 @@ set -eu
 : "${CHETTER_SERVER_URL:=http://chetter-mcp:8080}"
 : "${RUNNER_WORKSPACE_ROOT:=/var/lib/chetter-runner/workspaces}"
 : "${RUNNER_MAX_CONCURRENT:=2}"
+: "${RUNNER_CACHE_ROOT:=/var/lib/chetter-runner/cache}"
+
+RESOLVED_EXECUTION_BACKEND="${EXECUTION_BACKEND:-docker}"
 
 # Parse a Docker image reference and query its registry for the manifest digest.
 # Supports docker.io, ghcr.io, and other registries implementing the Docker
@@ -185,20 +188,33 @@ case "$DNS_UPSTREAM" in
   *) DNS_UPSTREAM="${DNS_UPSTREAM}:53" ;;
 esac
 
-mkdir -p "$RUNNER_WORKSPACE_ROOT" /var/lib/chetter-runner/cache/go/pkg/mod /var/lib/chetter-runner/cache/go/build /var/lib/chetter-runner/cache/npm
+mkdir -p "$RUNNER_WORKSPACE_ROOT" "$RUNNER_CACHE_ROOT/go/pkg/mod" "$RUNNER_CACHE_ROOT/go/build" "$RUNNER_CACHE_ROOT/npm"
 
 cat > /tmp/runner.yaml <<EOF
 server:
   url: ${CHETTER_SERVER_URL}
-  auth_token: "${CHETTER_RUNNER_AUTH_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:-}}"
+  auth_token: "${CHETTER_RUNNER_AUTH_TOKEN:-${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:-}}}"
 
 execution:
+  backend: "${RESOLVED_EXECUTION_BACKEND}"
   harness: "${CHETTER_HARNESS:-opencode}"
   use_gvisor: ${USE_GVISOR:-false}
 
 runner:
   workspace_root: ${RUNNER_WORKSPACE_ROOT}
   max_concurrent: ${RUNNER_MAX_CONCURRENT}
+
+kubernetes:
+  namespace: "${KUBERNETES_NAMESPACE:-default}"
+  runtime_class: "${KUBERNETES_RUNTIME_CLASS:-}"
+  image_pull_policy: "${KUBERNETES_AGENT_IMAGE_PULL_POLICY:-IfNotPresent}"
+  cleanup_after_task: ${KUBERNETES_CLEANUP_AFTER_TASK:-true}
+  agent_service_account: "${KUBERNETES_AGENT_SERVICE_ACCOUNT:-}"
+  workspace_pvc: "${KUBERNETES_WORKSPACE_PVC:-}"
+  workspace_host_path: "${KUBERNETES_WORKSPACE_HOST_PATH:-}"
+  node_name: "${NODE_NAME:-}"
+  kubeconfig: "${KUBECONFIG:-}"
+  pod_ready_timeout_sec: ${KUBERNETES_POD_READY_TIMEOUT_SEC:-120}
 
 proxy:
   listen_addr: :18080

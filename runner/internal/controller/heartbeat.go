@@ -25,6 +25,7 @@ const heartbeatInterval = 5 * time.Second
 // raise it via CHETTER_DRAIN_TIMEOUT_SEC (set it a few seconds below the pod's
 // grace period to leave time for the forced task shutdown). See issue #97.
 const defaultDrainTimeout = 30 * time.Second
+const defaultDrainCleanupGrace = 20 * time.Second
 
 func newRunnerID(workspaceRoot string) (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
@@ -115,9 +116,12 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	r.mu.Unlock()
 
 	gvisorEnabled := r.cfg.Execution.UseGVisor
+	if r.executionMode() == "kubernetes" {
+		gvisorEnabled = strings.EqualFold(strings.TrimSpace(r.cfg.Kubernetes.RuntimeClass), "gvisor")
+	}
 	checkpointRestore := false
 	runscVersion := ""
-	if gvisorEnabled {
+	if gvisorEnabled && r.executionMode() == "docker" {
 		checkpointRestore = true
 		runscVersion = firstEnv("RUNSC_VERSION")
 	}
@@ -296,11 +300,36 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 				session.Cancel()
 			}
 			r.mu.Unlock()
+			r.waitForTaskCleanup()
 			return true
 		case <-tasksChanged:
 			continue
 		case <-ticker.C:
 			slog.Info("drain waiting", "runner_id", r.runnerID, "remaining_tasks", count)
+		}
+	}
+}
+
+func (r *Runner) waitForTaskCleanup() {
+	grace := r.drainCleanupGrace
+	if grace <= 0 {
+		grace = drainCleanupGrace()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	for {
+		r.mu.Lock()
+		count := len(r.tasks)
+		tasksChanged := r.tasksChanged
+		r.mu.Unlock()
+		if count == 0 {
+			return
+		}
+		select {
+		case <-tasksChanged:
+		case <-ctx.Done():
+			slog.Warn("task cleanup grace expired", "runner_id", r.runnerID, "remaining_tasks", count, "grace", grace)
+			return
 		}
 	}
 }
@@ -357,6 +386,14 @@ func drainTimeout() time.Duration {
 		return time.Duration(seconds) * time.Second
 	}
 	return defaultDrainTimeout
+}
+
+func drainCleanupGrace() time.Duration {
+	seconds, err := strconv.Atoi(firstEnv("CHETTER_DRAIN_CLEANUP_GRACE_SEC"))
+	if err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	return defaultDrainCleanupGrace
 }
 
 func firstEnv(keys ...string) string {

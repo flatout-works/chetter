@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -71,7 +72,7 @@ func (m *Manager) Destroy(taskID, executionID string) error {
 	}); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("make workspace writable: %w", err)
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	if err := removeAllWithRetry(dir); err != nil {
 		return fmt.Errorf("remove workspace: %w", err)
 	}
 	parent := filepath.Dir(dir)
@@ -79,6 +80,19 @@ func (m *Manager) Destroy(taskID, executionID string) error {
 		return fmt.Errorf("remove execution directory: %w", err)
 	}
 	return nil
+}
+
+func removeAllWithRetry(dir string) error {
+	var err error
+	for attempt := 0; attempt < 6; attempt++ {
+		if err = os.RemoveAll(dir); err == nil {
+			return nil
+		}
+		if attempt < 5 {
+			time.Sleep(100 * time.Millisecond << attempt)
+		}
+	}
+	return err
 }
 
 func validateWorkspaceID(taskID, executionID string) error {

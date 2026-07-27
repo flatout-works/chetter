@@ -111,7 +111,16 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
 		}
-		r.runDockerAgentResume(ctx, session, req, serveHarness)
+		if r.executionMode() == "kubernetes" {
+			session.WorkspaceDir = req.ResumeWorkspacePath
+			if err := agentenv.PrepareGitWorkspace(ctx, session.WorkspaceDir, req); err != nil {
+				r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
+				return
+			}
+			r.runKubernetesAgent(ctx, session, req, serveHarness, true)
+		} else {
+			r.runDockerAgentResume(ctx, session, req, serveHarness)
+		}
 		return
 	}
 
@@ -212,9 +221,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 
 	if rpcHarness, ok := h.(harness.RPCHarness); ok {
-		if r.executionMode() == "local" {
+		switch r.executionMode() {
+		case "local":
 			r.runRpcAgent(ctx, session, req, rpcHarness)
-		} else {
+		case "kubernetes":
+			r.runKubernetesRpcAgent(ctx, session, req, rpcHarness)
+		default:
 			r.runDockerRpcAgent(ctx, session, req, rpcHarness)
 		}
 		return
@@ -224,9 +236,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s has no supported execution mode", h.Name()), nil)
 		return
 	}
-	if r.executionMode() == "local" {
+	switch r.executionMode() {
+	case "local":
 		r.runLocalAgent(ctx, session, req, serveHarness)
-	} else {
+	case "kubernetes":
+		r.runKubernetesAgent(ctx, session, req, serveHarness, false)
+	default:
 		r.runDockerAgent(ctx, session, req, serveHarness)
 	}
 }
@@ -312,9 +327,9 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarnes
 }
 
 type tokenUsageAccumulator struct {
-	mu           sync.Mutex
-	usage        task.TokenUsage
-	lastFlushed  task.TokenUsage
+	mu          sync.Mutex
+	usage       task.TokenUsage
+	lastFlushed task.TokenUsage
 }
 
 func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
@@ -361,8 +376,8 @@ func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
 	// gVisor containers route through HTTP_PROXY (running on the runner)
 	// which can reach this IP. Non-gVisor containers connect directly
 	// via the shared Docker network.
-	runnerIP := hostIP(runcNetwork())
-	return "http://" + runnerIP + ":" + port + "/mcp"
+	runnerIP := r.runnerHostIP()
+	return "http://" + net.JoinHostPort(runnerIP, port) + "/mcp"
 }
 
 func (r *Runner) taskChetterMCPURL() string {
@@ -377,7 +392,7 @@ func (r *Runner) taskChetterMCPURL() string {
 		slog.Error("invalid Chetter MCP relay address", "addr", r.mcpRelay.Addr(), "err", err)
 		return ""
 	}
-	return "http://" + hostIP(runcNetwork()) + ":" + port + "/mcp"
+	return "http://" + net.JoinHostPort(r.runnerHostIP(), port) + "/mcp"
 }
 
 func (r *Runner) taskChetterMCPToken() string {
@@ -1108,7 +1123,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	configureProcess(cmd)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
-	r.runRPCAgentCommand(ctx, session, req, h, cmd)
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd})
 }
 
 func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
@@ -1142,7 +1157,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 
 	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	configureProcess(cmd)
-	r.runRPCAgentCommand(ctx, session, req, h, cmd)
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd})
 }
 
 func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string) []string {
@@ -1222,7 +1237,30 @@ func shouldPullAgentImage(image string) bool {
 	return strings.HasPrefix(image, "ghcr.io/")
 }
 
-func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd *exec.Cmd) {
+type rpcProcess interface {
+	StdinPipe() (io.WriteCloser, error)
+	StdoutPipe() (io.ReadCloser, error)
+	StderrPipe() (io.ReadCloser, error)
+	Start() error
+	Wait() error
+	Stop() error
+}
+
+type execRPCProcess struct{ cmd *exec.Cmd }
+
+func (p *execRPCProcess) StdinPipe() (io.WriteCloser, error) { return p.cmd.StdinPipe() }
+func (p *execRPCProcess) StdoutPipe() (io.ReadCloser, error) { return p.cmd.StdoutPipe() }
+func (p *execRPCProcess) StderrPipe() (io.ReadCloser, error) { return p.cmd.StderrPipe() }
+func (p *execRPCProcess) Start() error                       { return p.cmd.Start() }
+func (p *execRPCProcess) Wait() error                        { return p.cmd.Wait() }
+func (p *execRPCProcess) Stop() error {
+	if p.cmd.Process == nil {
+		return nil
+	}
+	return terminateProcess(p.cmd)
+}
+
+func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd rpcProcess) {
 	name := h.Name()
 
 	stdin, err := cmd.StdinPipe()
@@ -1249,8 +1287,8 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 
 	exited := false
 	defer func() {
-		if !exited && cmd.Process != nil {
-			_ = terminateProcess(cmd)
+		if !exited {
+			_ = cmd.Stop()
 			_ = cmd.Wait()
 		}
 	}()
@@ -1635,16 +1673,14 @@ func cancellationStatus(ctx context.Context, name string) (string, string) {
 	return "cancelled", fmt.Sprintf("%s cancelled", name)
 }
 
-func waitForRPCProcess(ctx context.Context, cmd *exec.Cmd) error {
+func waitForRPCProcess(ctx context.Context, cmd rpcProcess) error {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
-		if cmd.Process != nil {
-			_ = terminateProcess(cmd)
-		}
+		_ = cmd.Stop()
 		<-done
 		return ctx.Err()
 	}

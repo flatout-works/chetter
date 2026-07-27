@@ -1,5 +1,5 @@
-// Package controller orchestrates agent execution — claiming tasks via
-// ConnectRPC, provisioning isolated workspaces and Docker containers,
+// Package controller orchestrates agent execution: claiming tasks via
+// ConnectRPC, provisioning isolated workspaces and backend-specific agents,
 // exposing MCP tools, and publishing results.
 package controller
 
@@ -29,6 +29,8 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/workspace"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -68,15 +70,21 @@ type Runner struct {
 	// forcedExit is set when waitDrain force-cancelled in-flight tasks after
 	// the drain deadline expired (see issue #97). main.go reads it via
 	// ForcedExit to exit with a non-zero status after a forced termination.
-	forcedExit atomic.Bool
+	forcedExit        atomic.Bool
+	kubeClient        kubernetes.Interface
+	kubeConfig        *rest.Config
+	drainCleanupGrace time.Duration
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
+	if cfg.Execution.Backend == "kubernetes" && sanitizeSubjectToken(os.Getenv("RUNNER_ID")) == "" {
+		return nil, fmt.Errorf("RUNNER_ID is required in kubernetes mode and must uniquely identify the runner Pod")
+	}
 	runnerID, err := newRunnerID(cfg.Runner.WorkspaceRoot)
 	if err != nil {
 		return nil, err
 	}
-	return &Runner{
+	r := &Runner{
 		cfg:            cfg,
 		defaultHarness: cfg.Execution.Harness,
 		harnessFactory: selectHarnessByName,
@@ -88,7 +96,13 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		terminalTasks:  make(map[string]struct{}),
 		cancelledTasks: make(map[string]struct{}),
 		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent),
-	}, nil
+	}
+	if cfg.Execution.Backend == "kubernetes" {
+		if err := r.initializeKubernetesClient(); err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
 }
 
 func selectHarnessByName(name string) harness.Harness {
@@ -118,13 +132,7 @@ func (r *Runner) harnessFor(name string) harness.Harness {
 }
 
 func (r *Runner) executionMode() string {
-	if os.Getenv("RUNNER_LOCAL") == "true" {
-		return "local"
-	}
-	if mode := os.Getenv("RUNNER_MODE"); mode != "" {
-		return mode
-	}
-	return "docker"
+	return r.cfg.Execution.Backend
 }
 
 func truncateSummary(s string) string {
@@ -136,7 +144,7 @@ func truncateSummary(s string) string {
 
 func (r *Runner) Start(ctx context.Context) error {
 	mode := r.executionMode()
-	if mode != "local" {
+	if mode == "docker" {
 		// Clean up orphaned task containers from previous runner instances.
 		// When a runner is restarted, the defer in runDockerAgent that runs
 		// "docker rm -f" never executes, leaving containers behind.
@@ -163,6 +171,8 @@ func (r *Runner) Start(ctx context.Context) error {
 			}
 		}
 
+	}
+	if mode != "local" {
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
 		if r.cfg.ChetterMCP.URL != "" {
 			if u, err := url.Parse(r.cfg.ChetterMCP.URL); err == nil && u.Host != "" {
@@ -175,7 +185,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			}
 		}
 		// Allow dev containers to reach the runner's own MCP server via HTTP_PROXY.
-		if runnerIP := hostIP(runcNetwork()); runnerIP != "" {
+		if runnerIP := r.runnerHostIP(); runnerIP != "" {
 			allowed = append(allowed, runnerIP)
 			slog.Info("added runner IP to proxy allowlist", "host", runnerIP)
 		}
@@ -221,6 +231,12 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 	} else {
 		slog.Info("skipping proxy/dns (local mode)")
+	}
+	if mode == "kubernetes" {
+		if err := r.verifyAndReconcileKubernetes(ctx); err != nil {
+			r.stopNetwork()
+			return err
+		}
 	}
 
 	return r.startConnectRPC(ctx)

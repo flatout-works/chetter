@@ -13,6 +13,22 @@
         "auth_token": { "type": "string" }
       }
     },
+    "kubernetes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": { "type": "string" },
+        "runtime_class": { "type": "string" },
+        "image_pull_policy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "cleanup_after_task": { "const": true },
+        "agent_service_account": { "type": "string" },
+        "workspace_pvc": { "type": "string" },
+        "workspace_host_path": { "type": "string" },
+        "node_name": { "type": "string" },
+        "kubeconfig": { "type": "string" },
+        "pod_ready_timeout_sec": { "type": "integer", "minimum": 1 }
+      }
+    },
     "runner": {
       "type": "object",
       "additionalProperties": false,
@@ -36,6 +52,7 @@
       "properties": {
         "listen_addr": { "type": "string" },
         "upstream": { "type": "string" },
+        "allowed_domains": { "type": "array", "items": { "type": "string" } },
         "blocked_domains": { "type": "array", "items": { "type": "string" } }
       }
     },
@@ -55,6 +72,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "backend": { "type": "string", "enum": ["docker", "kubernetes", "local"] },
         "runtime": { "type": "string" },
         "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex"] },
         "use_gvisor": { "type": "boolean" },
@@ -75,7 +93,8 @@
       "additionalProperties": false,
       "properties": {
         "url": { "type": "string" },
-        "auth_token": { "type": "string" }
+        "auth_token": { "type": "string" },
+        "relay_listen_addr": { "type": "string" }
       }
     }
   }

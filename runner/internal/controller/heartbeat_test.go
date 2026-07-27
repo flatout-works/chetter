@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,10 +45,26 @@ func TestCancelTaskRequiresExactExecutionHierarchy(t *testing.T) {
 	}
 }
 
+func TestNewRunnerIDUsesPerPodIdentityWithoutSharedPersistence(t *testing.T) {
+	t.Setenv("RUNNER_ID", "pod-uid-123")
+	root := t.TempDir()
+	id, err := newRunnerID(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "pod-uid-123" {
+		t.Fatalf("runner ID = %q", id)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".runner-id")); !os.IsNotExist(err) {
+		t.Fatalf("per-Pod runner ID should not persist on shared storage: %v", err)
+	}
+}
+
 func TestWaitDrainWaitsForTaskChange(t *testing.T) {
 	r := &Runner{
-		tasks:        map[string]*task.TaskSession{"task-1": {}},
-		tasksChanged: make(chan struct{}),
+		tasks:             map[string]*task.TaskSession{"task-1": {}},
+		tasksChanged:      make(chan struct{}),
+		drainCleanupGrace: 20 * time.Millisecond,
 	}
 	r.draining.Store(true)
 
@@ -85,7 +103,8 @@ func TestWaitDrainCancelsRemainingTasksAtDeadline(t *testing.T) {
 		tasks: map[string]*task.TaskSession{
 			"task-1": {Cancel: func() { cancelled.Store(true) }},
 		},
-		tasksChanged: make(chan struct{}),
+		tasksChanged:      make(chan struct{}),
+		drainCleanupGrace: 20 * time.Millisecond,
 	}
 	r.draining.Store(true)
 
@@ -164,17 +183,40 @@ func newDrainTestRunner(t *testing.T) (*Runner, *mockHeartbeatClient) {
 	t.Helper()
 	mb := &mockHeartbeatClient{}
 	r := &Runner{
-		cfg:            &config.Config{Runner: config.RunnerConfig{MaxConcurrent: 2}},
-		rpcClient:      mb,
-		tasks:          make(map[string]*task.TaskSession),
-		tasksChanged:   make(chan struct{}),
-		runnerID:       "runner-test",
-		startedAt:      time.Now().UTC(),
-		terminalTasks:  make(map[string]struct{}),
-		cancelledTasks: make(map[string]struct{}),
-		sem:            make(chan struct{}, 2),
+		cfg:               &config.Config{Runner: config.RunnerConfig{MaxConcurrent: 2}},
+		rpcClient:         mb,
+		tasks:             make(map[string]*task.TaskSession),
+		tasksChanged:      make(chan struct{}),
+		runnerID:          "runner-test",
+		startedAt:         time.Now().UTC(),
+		terminalTasks:     make(map[string]struct{}),
+		cancelledTasks:    make(map[string]struct{}),
+		sem:               make(chan struct{}, 2),
+		drainCleanupGrace: 20 * time.Millisecond,
 	}
 	return r, mb
+}
+
+func TestWaitDrainWaitsForForcedTaskCleanup(t *testing.T) {
+	r := &Runner{tasks: make(map[string]*task.TaskSession), tasksChanged: make(chan struct{}), drainCleanupGrace: time.Second}
+	r.draining.Store(true)
+	r.tasks["exec-1"] = &task.TaskSession{Cancel: func() {
+		go func() {
+			time.Sleep(30 * time.Millisecond)
+			r.mu.Lock()
+			delete(r.tasks, "exec-1")
+			close(r.tasksChanged)
+			r.tasksChanged = make(chan struct{})
+			r.mu.Unlock()
+		}()
+	}}
+	started := time.Now()
+	if !r.waitDrain(5 * time.Millisecond) {
+		t.Fatal("forced drain reported clean exit")
+	}
+	if elapsed := time.Since(started); elapsed < 25*time.Millisecond {
+		t.Fatalf("forced drain returned before cleanup completed: %v", elapsed)
+	}
 }
 
 // TestBeginGracefulShutdownDrainsAndHeartbeats verifies the SIGTERM entry
@@ -221,6 +263,29 @@ func TestForcedExitDefaultFalse(t *testing.T) {
 	r, _ := newDrainTestRunner(t)
 	if r.ForcedExit() {
 		t.Fatal("ForcedExit should default to false on a fresh runner")
+	}
+}
+
+func TestKubernetesHeartbeatReportsRuntimeWithoutCheckpointRestore(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	r.cfg.Execution.Backend = "kubernetes"
+	r.cfg.Kubernetes.RuntimeClass = "gvisor"
+	info := r.runnerInfoProto("active")
+	if info.ExecutionMode != "kubernetes" || !info.GvisorEnabled {
+		t.Fatalf("unexpected kubernetes heartbeat: %+v", info)
+	}
+	if info.CheckpointRestore {
+		t.Fatal("Kubernetes must not advertise checkpoint/restore")
+	}
+}
+
+func TestKubernetesHeartbeatDoesNotCallOtherRuntimeClassesGVisor(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	r.cfg.Execution.Backend = "kubernetes"
+	r.cfg.Kubernetes.RuntimeClass = "kata"
+	info := r.runnerInfoProto("active")
+	if info.GvisorEnabled || info.CheckpointRestore {
+		t.Fatalf("non-gVisor runtime reported as gVisor: %+v", info)
 	}
 }
 

@@ -33,7 +33,7 @@ func TestValidateTaskEnv_BlockedPrefixes(t *testing.T) {
 		value string
 	}{
 		{"CHETTER_SECRET", "x"},
-		{"RUNNER_MODE", "x"},
+		{"RUNNER_DEBUG", "x"},
 		{"MCP_AUTH_TOKEN", "x"},
 		{"DATABASE_URL", "x"},
 		{"GITHUB_APP_KEY", "x"},
@@ -110,10 +110,10 @@ func TestValidateTaskEnv_MultipleErrors(t *testing.T) {
 	cfg.MaxNameLength = 5
 	cfg.MaxValueLength = 5
 	env := map[string]string{
-		"VERY_LONG_NAME":  "value",
-		"OK":              strings.Repeat("X", 10),
-		"CHETTER_SECRET":  "x",
-		"PATH":            "x",
+		"VERY_LONG_NAME": "value",
+		"OK":             strings.Repeat("X", 10),
+		"CHETTER_SECRET": "x",
+		"PATH":           "x",
 	}
 	err := ValidateTaskEnv(env, cfg)
 	if err == nil {

@@ -369,7 +369,6 @@ func TestGenerateOpenCodeConfig_ChetterMCPUnderMCPKey(t *testing.T) {
 
 func TestGenerateOpenCodeConfig_MCPBridgeWhenRequested(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("RUNNER_LOCAL", "true")
 
 	wsDir := t.TempDir()
 
@@ -1076,8 +1075,7 @@ func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 }
 
 func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
-	t.Setenv("RUNNER_LOCAL", "true")
-	runner := &Runner{cfg: &config.Config{ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp", AuthToken: "local-token"}}}
+	runner := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{Backend: "local"}, ChetterMCP: config.ChetterMCPConfig{URL: "http://chetter-mcp:8080/mcp", AuthToken: "local-token"}}}
 	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
 		t.Fatalf("task Chetter MCP URL = %q", got)
 	}
