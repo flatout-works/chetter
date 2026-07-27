@@ -7,4 +7,5 @@ resources:
   - mcp-service.yaml
   - mcp-deployment.yaml
   - runner-deployment.yaml
-  - gvisor-runtimeclass.yaml
+  - runner-rbac.yaml
+  - runner-workspace-pvc.yaml

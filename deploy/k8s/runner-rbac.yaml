@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chetter-runner
+  namespace: chetter
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chetter-agent
+  namespace: chetter
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chetter-runner
+  namespace: chetter
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/attach"]
+    verbs: ["create", "get"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chetter-runner
+  namespace: chetter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chetter-runner
+subjects:
+  - kind: ServiceAccount
+    name: chetter-runner
+    namespace: chetter

@@ -24,8 +24,8 @@ spec:
         env:
         - name: CHETTER_SERVER_URL
           value: "http://chetter-mcp:8080"
-        - name: RUNNER_LOCAL
-          value: "false"
+        - name: EXECUTION_BACKEND
+          value: "docker"
         - name: USE_GVISOR
           value: "true"
         - name: RUNNER_MAX_CONCURRENT

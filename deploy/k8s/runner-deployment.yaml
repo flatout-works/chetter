@@ -4,7 +4,7 @@ metadata:
   name: chetter-runner
   namespace: chetter
 spec:
-  replicas: 4
+  replicas: 1
   selector:
     matchLabels:
       app: chetter-runner
@@ -13,6 +13,8 @@ spec:
       labels:
         app: chetter-runner
     spec:
+      terminationGracePeriodSeconds: 90
+      serviceAccountName: chetter-runner
       containers:
       - name: runner
         image: ghcr.io/flatout-works/chetter-runner:main
@@ -27,17 +29,49 @@ spec:
             secretKeyRef:
               name: chetter-secrets
               key: CHETTER_RUNNER_RPC_TOKEN
-        - name: RUNNER_LOCAL
-          value: "true"
+        - name: EXECUTION_BACKEND
+          value: "kubernetes"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: RUNNER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: KUBERNETES_RUNTIME_CLASS
+          value: "gvisor"
+        - name: KUBERNETES_AGENT_SERVICE_ACCOUNT
+          value: "chetter-agent"
+        - name: KUBERNETES_WORKSPACE_PVC
+          value: "chetter-runner-workspaces"
+        - name: KUBERNETES_AGENT_IMAGE_PULL_POLICY
+          value: "Always"
         - name: RUNNER_MAX_CONCURRENT
           value: "2"
-        - name: USE_GVISOR
-          value: "false"
+        - name: CHETTER_DRAIN_TIMEOUT_SEC
+          value: "60"
+        - name: CHETTER_DRAIN_CLEANUP_GRACE_SEC
+          value: "20"
         volumeMounts:
-        - name: docker-sock
-          mountPath: /var/run/docker.sock
         - name: runner-data
-          mountPath: /var/lib/chetter-runner
+          mountPath: /var/lib/chetter-runner/workspaces
         resources:
           requests:
             cpu: 200m
@@ -46,10 +80,6 @@ spec:
             cpu: "1"
             memory: 1Gi
       volumes:
-      - name: docker-sock
-        hostPath:
-          path: /var/run/docker.sock
       - name: runner-data
-        hostPath:
-          path: /var/lib/chetter-runner
-          type: DirectoryOrCreate
+        persistentVolumeClaim:
+          claimName: chetter-runner-workspaces
