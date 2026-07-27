@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-26
+
+### Added
+
+- Event callbacks web UI page at `/event-callbacks` with ConnectRPC `EventCallbackService` for list, create, edit, and delete operations (previously only available via MCP tools). Sidebar Callbacks nav item added (#130).
+- Structured task failure classification: `failure_category` column (timeout, harness_error, runner_lost, internal_error, user_cancelled, quota_exceeded, unknown) and `failure_message` column on tasks. Reaper sets failure_category on lease expiry; runner RPC maps error_category to failure_category. Web UI shows colored badges on task list and detail pages with a failure category filter dropdown. `task_status` and `list_tasks` MCP tools include the new fields (#98).
+- Reaper garbage collection for expired session checkpoints and exports: `SessionArtifactTTL` config (default 24h, zero disables GC) schedules periodic deletion of on-disk artifacts for terminal agent sessions. New `ClearExpiredSessionCheckpoints`, `ClearExpiredUserPromptExports`, `ClearExpiredExecutionAttemptExports` queries for both MySQL and PostgreSQL (#127).
+- PostgreSQL native full-text search using `to_tsvector` / `websearch_to_tsquery` for all four FTS search paths (tasks, sessions, audit log, artifacts), with GIN indexes created at bootstrap (#183).
+- PostgreSQL schema parity test comparing bootstrap schema (`ApplySchema`) and Goose migrations via information_schema introspection (#184).
+
+### Fixed
+
+- Live token delta emission: interim task events now include token usage deltas, and `ListTasks` API populates token fields from batch-aggregated execution attempt data, fixing token visibility in the task list (#161).
+- Web UI: task templates and repository picker added to the task list page.
+- Web UI: effective task harness metadata shown on session and task detail pages.
+- PostgreSQL: raw query placeholders properly bound in `searchTasksRaw` and `searchAgentSessionsRaw` FTS queries.
+- Migration column ordering fixed for the `add_task_failure_category` migration.
+
+### Documentation
+
+- Website updated to cover task re-run and structured failure classification.
+
 ## 2026-07-25
 
 ### Added
