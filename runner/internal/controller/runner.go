@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,6 +25,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/config"
+	"github.com/flatout-works/chetter/runner/internal/execution"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	"github.com/flatout-works/chetter/runner/internal/workspace"
@@ -45,6 +45,7 @@ type Runner struct {
 	defaultHarness string
 	harnessFactory func(string) harness.Harness
 	wsManager      *workspace.Manager
+	backend        execution.Backend
 	proxy          *network.TransparentProxy
 	dnsProxy       *network.DNSProxy
 	mcpRelay       *network.MCPRelay
@@ -81,6 +82,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		defaultHarness: cfg.Execution.Harness,
 		harnessFactory: selectHarnessByName,
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
+		backend:        execution.NewDockerBackend(),
 		tasks:          make(map[string]*task.TaskSession),
 		tasksChanged:   make(chan struct{}),
 		runnerID:       runnerID,
@@ -138,10 +140,10 @@ func (r *Runner) Start(ctx context.Context) error {
 	mode := r.executionMode()
 	if mode != "local" {
 		// Clean up orphaned task containers from previous runner instances.
-		// When a runner is restarted, the defer in runDockerAgent that runs
-		// "docker rm -f" never executes, leaving containers behind.
+		// When a runner is restarted, the defer in runDockerAgent that removes
+		// the container never executes, leaving containers behind.
 		slog.Info("cleaning up orphaned task containers")
-		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--filter", "label=chetter.runner_id="+r.runnerID, "--format", "{{.Names}}").Output()
+		out, err := r.backend.PS(ctx, "-a", "--filter", "name=chetter-task-", "--filter", "label=chetter.runner_id="+r.runnerID, "--format", "{{.Names}}")
 		if err != nil {
 			slog.Warn("failed to list docker containers", "err", err)
 		} else {
@@ -150,12 +152,12 @@ func (r *Runner) Start(ctx context.Context) error {
 					continue
 				}
 				// Skip containers that have checkpoints (paused for resume).
-				chkOut, _ := exec.Command("docker", "checkpoint", "ls", name).CombinedOutput()
+				chkOut, _ := r.backend.Checkpoint(ctx, "ls", name)
 				if strings.Contains(string(chkOut), "chetter-checkpoint") {
 					slog.Info("skipping orphaned container with checkpoints", "name", name)
 					continue
 				}
-				if err := exec.Command("docker", "rm", "-f", name).Run(); err != nil {
+				if err := r.backend.Remove(ctx, name); err != nil {
 					slog.Warn("failed to remove orphaned container", "name", name, "err", err)
 				} else {
 					slog.Info("removed orphaned task container", "name", name)

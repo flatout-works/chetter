@@ -633,7 +633,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 
 	containerName := containerNameForRequest(req)
 
-	removeTaskContainer(containerName)
+	r.removeTaskContainer(containerName)
 
 	secret := h.ServerPassword()
 
@@ -653,7 +653,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
-	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
+	out, err := r.backend.Run(ctx, dockerArgs...)
 	if err != nil {
 		slog.Error("docker run failed", "taskID", req.TaskID, "err", err, "output", string(out))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
@@ -665,15 +665,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			slog.Info("preserving container for checkpointed session", "taskID", req.TaskID, "container", containerName)
 			return
 		}
-		removeTaskContainer(containerName)
+		r.removeTaskContainer(containerName)
 	}()
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
-		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
-		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerName).CombinedOutput()
-		selfCheckOut, _ := exec.Command("docker", "exec", containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
+		logs, _ := r.backend.Logs(ctx, containerName)
+		inspectOut, _ := r.backend.Inspect(ctx, containerName, "{{json .NetworkSettings.Networks}}")
+		selfCheckOut, _ := r.backend.Exec(ctx, containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true")
 		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
@@ -720,7 +720,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
-			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
+			r.dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
 		}
 		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
 			workspacePath = session.WorkspaceDir
@@ -732,7 +732,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
 				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 			}
-			stopTaskContainer(containerName)
+			r.stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
@@ -747,7 +747,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
-		stopTaskContainer(containerName)
+		r.stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
@@ -800,8 +800,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	ln.Close()
 
 	containerName := containerNameForRequest(req)
-	removeTaskContainer(containerName)
-	defer removeTaskContainer(containerName)
+	r.removeTaskContainer(containerName)
+	defer r.removeTaskContainer(containerName)
 
 	secret := h.ServerPassword()
 	gvisor := r.cfg.Execution.UseGVisor
@@ -820,7 +820,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
 
-	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
+	out, err := r.backend.Run(ctx, dockerArgs...)
 	if err != nil {
 		slog.Error("docker run failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
@@ -829,7 +829,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
-		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
+		logs, _ := r.backend.Logs(ctx, containerName)
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)), nil)
 		return
 	}
@@ -865,7 +865,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		errorCategory := classifyErrorCategory("error", errorMessage)
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
-			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
+			r.dumpContainerLogs(req.TaskID, containerName, workspaceDir)
 		}
 		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
 			workspacePath = session.WorkspaceDir
@@ -877,7 +877,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
 				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
 			}
-			stopTaskContainer(containerName)
+			r.stopTaskContainer(containerName)
 			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 		}
 		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
@@ -891,7 +891,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
-		stopTaskContainer(containerName)
+		r.stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
@@ -949,19 +949,19 @@ func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.ServeHar
 	return ""
 }
 
-func stopTaskContainer(containerName string) {
+func (r *Runner) stopTaskContainer(containerName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, "docker", "stop", containerName).CombinedOutput(); err != nil {
-		slog.Warn("failed to stop task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	if err := r.backend.Stop(ctx, containerName); err != nil {
+		slog.Warn("failed to stop task container", "container", containerName, "err", err)
 	}
 }
 
-func removeTaskContainer(containerName string) {
+func (r *Runner) removeTaskContainer(containerName string) {
 	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerName).CombinedOutput(); err != nil && ctx.Err() != nil {
-		slog.Warn("timed out removing task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	if err := r.backend.Remove(ctx, containerName); err != nil {
+		slog.Warn("timed out removing task container", "container", containerName, "err", err)
 	}
 }
 
@@ -969,11 +969,11 @@ func shouldPreserveWorkspaceOnPromptError(errorCategory string) bool {
 	return errorCategory == "timeout" || errorCategory == "transport_error"
 }
 
-func dumpContainerLogs(taskID, containerName, workspaceDir string) {
+func (r *Runner) dumpContainerLogs(taskID, containerName, workspaceDir string) {
 	logPath := filepath.Join(workspaceDir, "docker-container.log")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "docker", "logs", "--tail", "500", "--timestamps", containerName).CombinedOutput()
+	out, err := r.backend.Logs(ctx, containerName, "--tail", "500", "--timestamps")
 	if err != nil {
 		slog.Warn("failed to dump container logs", "taskID", taskID, "container", containerName, "err", err)
 		if len(out) > 0 {
@@ -1124,8 +1124,8 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	}
 
 	containerName := containerNameForRequest(req)
-	removeTaskContainer(containerName)
-	defer removeTaskContainer(containerName)
+	r.removeTaskContainer(containerName)
+	defer r.removeTaskContainer(containerName)
 
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := ""
