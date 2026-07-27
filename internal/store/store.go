@@ -117,6 +117,7 @@ type TaskRecord struct {
 	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
 	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
 	CostCents             int64             `json:"cost_cents"`
+	Priority              int               `json:"priority,omitempty"`
 }
 
 // TaskResponse is the runner status event shape.
@@ -372,6 +373,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureTeamMetadataColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
 		return err
 	}
@@ -509,6 +513,7 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
 		{"failure_category", "ALTER TABLE chetter_tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
 		{"failure_message", "ALTER TABLE chetter_tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
+		{"priority", "ALTER TABLE chetter_tasks ADD COLUMN priority INT NOT NULL DEFAULT 0 AFTER status"},
 	}
 	for _, column := range columns {
 		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
@@ -619,6 +624,28 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_runners.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTeamMetadataColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"max_concurrent_tasks", "ALTER TABLE teams ADD COLUMN max_concurrent_tasks INT NOT NULL DEFAULT 0 AFTER name"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "teams", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add teams.%s: %w", column.name, err)
 		}
 	}
 	return nil

@@ -47,6 +47,10 @@ type Config struct {
 	// artifacts (checkpoints, session exports) are eligible for garbage
 	// collection by the reaper. A value of 0 disables GC. Default: 24h.
 	SessionArtifactTTL time.Duration
+
+	// MaxConcurrentTasks caps the number of in-flight (running) tasks across
+	// the entire fleet. 0 means no limit. See issue #115.
+	MaxConcurrentTasks int
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -77,6 +81,7 @@ func Load() Config {
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
 		EnvValidation:          envValidationConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
+		MaxConcurrentTasks:     envInt("CHETTER_MAX_CONCURRENT_TASKS", 0),
 	}
 }
 

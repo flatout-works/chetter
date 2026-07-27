@@ -302,6 +302,39 @@ func TestClaimTaskSkipsRunningTasks(t *testing.T) {
 	}
 }
 
+func TestClaimTaskRespectsGlobalConcurrencyLimit(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Set global limit to 1
+	svc = svc.WithMaxConcurrentTasks(1)
+
+	now := time.Now().UTC()
+	// Insert and mark one task as running (fills the single slot)
+	if err := q.InsertTask(ctx, repository.InsertTaskParams{
+		ID: "task_running", Prompt: "running", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("insert running task: %v", err)
+	}
+	markTaskRunning(t, q, "task_running", now)
+
+	// Insert a second pending task
+	insertPendingTask(t, q, "task_pending", "pending", "agent:latest")
+
+	// Claim should fail because running count (1) >= limit (1)
+	resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId:    "runner_1",
+		WaitSeconds: 1,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask: %v", err)
+	}
+	if resp.Msg.Task != nil {
+		t.Fatalf("expected no claimable task due to concurrency limit, got %+v", resp.Msg.Task)
+	}
+}
+
 func TestRPCHeartbeatReturnsCancelCommandForCancelledTask(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()

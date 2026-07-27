@@ -212,7 +212,7 @@ JOIN chetter_tasks task ON task.id = prompt.task_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = ?)
-ORDER BY attempt.created_at ASC
+ORDER BY task.priority DESC, attempt.created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED
 `

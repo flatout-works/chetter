@@ -140,6 +140,7 @@ type Task struct {
 	McpEndpoints     []string               `protobuf:"bytes,28,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
 	ExecutionId      string                 `protobuf:"bytes,29,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	Harness          string                 `protobuf:"bytes,32,opt,name=harness,proto3" json:"harness,omitempty"`
+	Priority         int32                  `protobuf:"varint,33,opt,name=priority,proto3" json:"priority,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -396,6 +397,13 @@ func (x *Task) GetHarness() string {
 		return x.Harness
 	}
 	return ""
+}
+
+func (x *Task) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
 }
 
 type AgentSession struct {
@@ -2588,6 +2596,7 @@ type SubmitTaskRequest struct {
 	PauseReason   string                 `protobuf:"bytes,14,opt,name=pause_reason,json=pauseReason,proto3" json:"pause_reason,omitempty"`
 	TtlHours      int32                  `protobuf:"varint,15,opt,name=ttl_hours,json=ttlHours,proto3" json:"ttl_hours,omitempty"`
 	McpEndpoints  []string               `protobuf:"bytes,16,rep,name=mcp_endpoints,json=mcpEndpoints,proto3" json:"mcp_endpoints,omitempty"`
+	Priority      int32                  `protobuf:"varint,17,opt,name=priority,proto3" json:"priority,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2732,6 +2741,13 @@ func (x *SubmitTaskRequest) GetMcpEndpoints() []string {
 		return x.McpEndpoints
 	}
 	return nil
+}
+
+func (x *SubmitTaskRequest) GetPriority() int32 {
+	if x != nil {
+		return x.Priority
+	}
+	return 0
 }
 
 type SubmitTaskResponse struct {
@@ -2961,6 +2977,7 @@ func (x *ListTasksRequest) GetAgent() string {
 type ListTasksResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tasks         []*Task                `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	QueueDepth    int64                  `protobuf:"varint,2,opt,name=queue_depth,json=queueDepth,proto3" json:"queue_depth,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3000,6 +3017,13 @@ func (x *ListTasksResponse) GetTasks() []*Task {
 		return x.Tasks
 	}
 	return nil
+}
+
+func (x *ListTasksResponse) GetQueueDepth() int64 {
+	if x != nil {
+		return x.QueueDepth
+	}
+	return 0
 }
 
 type ExtendTaskRequest struct {
@@ -9135,7 +9159,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xe2\b\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xfe\b\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x16\n" +
@@ -9177,7 +9201,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0fgit_identity_id\x18\x1b \x01(\tR\rgitIdentityId\x12#\n" +
 	"\rmcp_endpoints\x18\x1c \x03(\tR\fmcpEndpoints\x12!\n" +
 	"\fexecution_id\x18\x1d \x01(\tR\vexecutionId\x12\x18\n" +
-	"\aharness\x18  \x01(\tR\aharness\x1a6\n" +
+	"\aharness\x18  \x01(\tR\aharness\x12\x1a\n" +
+	"\bpriority\x18! \x01(\x05R\bpriority\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\r\n" +
@@ -9471,7 +9496,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\x12#\n" +
 	"\rdiscovered_at\x18\f \x01(\tR\fdiscoveredAt\x12)\n" +
 	"\x10discovery_source\x18\r \x01(\tR\x0fdiscoverySource\x120\n" +
-	"\x14execution_attempt_id\x18\x0e \x01(\tR\x12executionAttemptId\"\xc1\x04\n" +
+	"\x14execution_attempt_id\x18\x0e \x01(\tR\x12executionAttemptId\"\xdd\x04\n" +
 	"\x11SubmitTaskRequest\x12\x1f\n" +
 	"\x06prompt\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06prompt\x12\x17\n" +
 	"\agit_url\x18\x02 \x01(\tR\x06gitUrl\x12\x17\n" +
@@ -9493,7 +9518,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\fsession_mode\x18\r \x01(\tR\vsessionMode\x12!\n" +
 	"\fpause_reason\x18\x0e \x01(\tR\vpauseReason\x12\x1b\n" +
 	"\tttl_hours\x18\x0f \x01(\x05R\bttlHours\x12#\n" +
-	"\rmcp_endpoints\x18\x10 \x03(\tR\fmcpEndpoints\x1a6\n" +
+	"\rmcp_endpoints\x18\x10 \x03(\tR\fmcpEndpoints\x12\x1a\n" +
+	"\bpriority\x18\x11 \x01(\x05R\bpriority\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
@@ -9510,9 +9536,11 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x06search\x18\x04 \x01(\tR\x06search\x12\x19\n" +
 	"\bteam_ids\x18\x05 \x03(\tR\ateamIds\x12\x14\n" +
 	"\x05repos\x18\x06 \x03(\tR\x05repos\x12\x14\n" +
-	"\x05agent\x18\a \x01(\tR\x05agent\"7\n" +
+	"\x05agent\x18\a \x01(\tR\x05agent\"X\n" +
 	"\x11ListTasksResponse\x12\"\n" +
-	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\"c\n" +
+	"\x05tasks\x18\x01 \x03(\v2\f.api.v1.TaskR\x05tasks\x12\x1f\n" +
+	"\vqueue_depth\x18\x02 \x01(\x03R\n" +
+	"queueDepth\"c\n" +
 	"\x11ExtendTaskRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12,\n" +
 	"\rextension_sec\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\fextensionSec\"6\n" +

@@ -1,7 +1,16 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11);
+    (id, team_id, status, priority, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+
+-- name: CountRunningTasks :one
+SELECT COUNT(*) FROM chetter_tasks WHERE status = 'running';
+
+-- name: CountRunningTasksByTeam :one
+SELECT COUNT(*) FROM chetter_tasks WHERE status = 'running' AND team_id = $1;
+
+-- name: CountPendingTasks :one
+SELECT COUNT(*) FROM chetter_tasks WHERE status = 'pending';
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks WHERE id = $1;

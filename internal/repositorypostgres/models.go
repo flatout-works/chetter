@@ -195,6 +195,7 @@ type ChetterTask struct {
 	SearchText       sql.NullString `json:"search_text"`
 	FailureCategory  sql.NullString `json:"failure_category"`
 	FailureMessage   sql.NullString `json:"failure_message"`
+	Priority         int32          `json:"priority"`
 }
 
 type ChetterTaskArtifact struct {
@@ -372,12 +373,13 @@ type GitIdentity struct {
 }
 
 type Team struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	OktaGroupID   sql.NullString `json:"okta_group_id"`
-	OktaGroupName sql.NullString `json:"okta_group_name"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID                 string         `json:"id"`
+	Name               string         `json:"name"`
+	OktaGroupID        sql.NullString `json:"okta_group_id"`
+	OktaGroupName      sql.NullString `json:"okta_group_name"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	MaxConcurrentTasks int32          `json:"max_concurrent_tasks"`
 }
 
 type User struct {

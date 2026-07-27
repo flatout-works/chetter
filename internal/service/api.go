@@ -66,6 +66,11 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 }
 
 // ListTasks returns tasks, optionally filtered by status, respecting team scope.
+// QueueDepth returns the number of pending tasks waiting to be claimed.
+func (s *Service) QueueDepth(ctx context.Context) (int64, error) {
+	return s.repo.CountPendingTasks(ctx)
+}
+
 func (s *Service) ListTasks(ctx context.Context, status string, limit, offset int, search, agent string, uiTeamIDs, uiRepos []string) ([]TaskToolRecord, error) {
 	teamFilter := auth.ResolveTeamFilter(ctx, uiTeamIDs)
 	if teamFilter.Empty {

@@ -50,6 +50,7 @@ type SubmitTaskRequest struct {
 	SessionMode      string
 	PauseReason      string
 	TTLHours         int
+	Priority         int
 }
 
 type AuditEventParams struct {
@@ -965,6 +966,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:               taskID,
 			TeamID:           nullString(teamID),
+			Priority:         int32(in.Priority),
 			Prompt:           in.Prompt,
 			GitUrl:           nullString(in.GitURL),
 			GitRef:           nullString(in.GitRef),
@@ -1632,6 +1634,7 @@ func repoTaskToStoreRecord(task repository.ChetterTask, session repository.Chett
 		Summary:           task.Summary.String,
 		Error:             task.Error.String,
 		ErrorCategory:     task.ErrorCategory.String,
+		Priority:          int(task.Priority),
 		FailureCategory:   task.FailureCategory.String,
 		FailureMessage:    task.FailureMessage.String,
 		CreatedAt:         task.CreatedAt,

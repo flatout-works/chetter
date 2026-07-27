@@ -4,6 +4,7 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS chetter_tasks (
 		id VARCHAR(64) NOT NULL,
 		status VARCHAR(32) NOT NULL,
+		priority INT NOT NULL DEFAULT 0,
 		prompt TEXT NOT NULL,
 		git_url TEXT NULL,
 		git_ref VARCHAR(255) NULL,
@@ -244,6 +245,7 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS teams (
 		id VARCHAR(64) NOT NULL,
 		name VARCHAR(128) NOT NULL,
+		max_concurrent_tasks INT NOT NULL DEFAULT 0,
 		okta_group_id VARCHAR(255) NULL,
 		okta_group_name VARCHAR(255) NULL,
 		created_at DATETIME(6) NOT NULL,

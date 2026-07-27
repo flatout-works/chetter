@@ -300,6 +300,29 @@ func TestEnvDuration(t *testing.T) {
 	})
 }
 
+func TestLoadMaxConcurrentTasks(t *testing.T) {
+	t.Run("defaults to 0 (unlimited)", func(t *testing.T) {
+		cfg := Load()
+		if cfg.MaxConcurrentTasks != 0 {
+			t.Errorf("expected MaxConcurrentTasks 0, got %d", cfg.MaxConcurrentTasks)
+		}
+	})
+	t.Run("env override", func(t *testing.T) {
+		t.Setenv("CHETTER_MAX_CONCURRENT_TASKS", "10")
+		cfg := Load()
+		if cfg.MaxConcurrentTasks != 10 {
+			t.Errorf("expected MaxConcurrentTasks 10, got %d", cfg.MaxConcurrentTasks)
+		}
+	})
+	t.Run("invalid value falls back to zero", func(t *testing.T) {
+		t.Setenv("CHETTER_MAX_CONCURRENT_TASKS", "notanumber")
+		cfg := Load()
+		if cfg.MaxConcurrentTasks != 0 {
+			t.Errorf("expected 0 for invalid value, got %d", cfg.MaxConcurrentTasks)
+		}
+	})
+}
+
 func TestLoadSessionArtifactTTL(t *testing.T) {
 	t.Run("defaults to 24h", func(t *testing.T) {
 		cfg := Load()

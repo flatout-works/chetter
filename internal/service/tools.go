@@ -34,6 +34,7 @@ type SubmitTaskInput struct {
 	SessionMode  string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason  string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
 	TTLHours     int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	Priority     int               `json:"priority,omitempty" jsonschema:"Task priority (higher = more urgent, default 0)"`
 }
 
 // SubmitTaskOutput is the output for chetter_submit_task.
@@ -61,7 +62,8 @@ type ListTasksInput struct {
 
 // ListTasksOutput is the output for chetter_list_tasks.
 type ListTasksOutput struct {
-	Tasks []TaskToolRecord `json:"tasks"`
+	Tasks      []TaskToolRecord `json:"tasks"`
+	QueueDepth int64            `json:"queue_depth,omitempty" jsonschema:"Number of pending tasks waiting to be claimed"`
 }
 
 // TaskToolRecord is the stable MCP task response shape. Store-level task
@@ -109,6 +111,7 @@ type TaskToolRecord struct {
 	TotalCacheWriteTokens int64             `json:"total_cache_write_tokens"`
 	TotalReasoningTokens  int64             `json:"total_reasoning_tokens"`
 	CostCents             int64             `json:"cost_cents"`
+	Priority              int               `json:"priority,omitempty"`
 }
 
 // CreateTriggerInput is the input for chetter_create_trigger.
@@ -733,6 +736,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		SessionMode:      in.SessionMode,
 		PauseReason:      in.PauseReason,
 		TTLHours:         in.TTLHours,
+		Priority:         in.Priority,
 		SubmissionSource: "mcp",
 	})
 	if err != nil {
@@ -778,7 +782,12 @@ func (s *Service) listTasksTool(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return nil, ListTasksOutput{}, err
 	}
-	return nil, ListTasksOutput{Tasks: tasks}, nil
+	queueDepth, err := s.repo.CountPendingTasks(ctx)
+	if err != nil {
+		// Non-fatal: queue depth is best-effort visibility.
+		queueDepth = -1
+	}
+	return nil, ListTasksOutput{Tasks: tasks, QueueDepth: queueDepth}, nil
 }
 
 func (s *Service) listAgentSessionsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListAgentSessionsInput) (*mcp.CallToolResult, ListAgentSessionsOutput, error) {
@@ -925,6 +934,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		Summary:          task.Summary,
 		Error:            task.Error,
 		ErrorCategory:    task.ErrorCategory,
+		Priority:         task.Priority,
 		CreatedAt:        task.CreatedAt,
 		UpdatedAt:        task.UpdatedAt,
 		StartedAt:        task.StartedAt,
@@ -960,6 +970,7 @@ func repoTaskToToolRecord(task repository.ChetterTask, session repository.Chette
 		Summary:          task.Summary.String,
 		Error:            task.Error.String,
 		ErrorCategory:    task.ErrorCategory.String,
+		Priority:         int(task.Priority),
 		FailureCategory:  task.FailureCategory.String,
 		FailureMessage:   task.FailureMessage.String,
 		CreatedAt:        task.CreatedAt,

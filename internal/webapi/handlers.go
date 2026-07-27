@@ -32,6 +32,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		ModelId:          t.ModelID,
 		VariantId:        t.VariantID,
 		Harness:          t.Harness,
+		Priority:         int32(t.Priority),
 		ExecutionId:      t.ExecutionID,
 		Skills:           t.Skills,
 		McpEndpoints:     t.McpEndpoints,
@@ -306,6 +307,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		SessionMode:      req.Msg.SessionMode,
 		PauseReason:      req.Msg.PauseReason,
 		TTLHours:         int(req.Msg.TtlHours),
+		Priority:         int(req.Msg.Priority),
 		SubmissionSource: "ui",
 	})
 	if err != nil {
@@ -317,7 +319,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
 		VariantID: task.VariantID, Harness: harness, Skills: task.Skills, McpEndpoints: task.McpEndpoints, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
-		StartedAt: task.StartedAt, EndedAt: task.EndedAt,
+		StartedAt: task.StartedAt, EndedAt: task.EndedAt, Priority: task.Priority,
 		TriggerName: task.TriggerName, TriggerType: task.TriggerType, SubmissionSource: task.SubmissionSource,
 	})}), nil
 }
@@ -339,7 +341,11 @@ func (h *taskHandler) ListTasks(ctx context.Context, req *connect.Request[apiv1.
 	for i, t := range tasks {
 		out[i] = protoTask(t)
 	}
-	return connect.NewResponse(&apiv1.ListTasksResponse{Tasks: out}), nil
+	queueDepth, err := h.svc.QueueDepth(ctx)
+	if err != nil {
+		queueDepth = -1
+	}
+	return connect.NewResponse(&apiv1.ListTasksResponse{Tasks: out, QueueDepth: queueDepth}), nil
 }
 
 func (h *taskHandler) CancelTask(ctx context.Context, req *connect.Request[apiv1.CancelTaskRequest]) (*connect.Response[apiv1.CancelTaskResponse], error) {

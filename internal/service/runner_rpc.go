@@ -38,14 +38,15 @@ var errNoClaimableTask = errors.New("no claimable task")
 var errTaskNotClaimed = errors.New("task is not claimed by runner")
 
 type RunnerRPCService struct {
-	db            data.Repository
-	rawDB         *sql.DB
-	dialect       store.Dialect
-	heartbeatSeen sync.Map
-	drainRequests sync.Map // map[string]bool — runner ID → drain requested
-	eventBus      TaskEventPublisher
-	callbacks     TaskEventCallbackDispatcher
-	ghActions     GitHubActionService
+	db                  data.Repository
+	rawDB               *sql.DB
+	dialect             store.Dialect
+	maxConcurrentTasks  int
+	heartbeatSeen       sync.Map
+	drainRequests       sync.Map // map[string]bool — runner ID → drain requested
+	eventBus            TaskEventPublisher
+	callbacks           TaskEventCallbackDispatcher
+	ghActions           GitHubActionService
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -78,6 +79,11 @@ func NewRunnerRPCService(db data.Repository, rawDB *sql.DB, dialects ...store.Di
 		dialect = dialects[0]
 	}
 	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect}
+}
+
+func (s *RunnerRPCService) WithMaxConcurrentTasks(n int) *RunnerRPCService {
+	s.maxConcurrentTasks = n
+	return s
 }
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
@@ -705,6 +711,16 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	if runnerID == "" {
 		return claimedExecution{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
+	// Fast pre-check: if global concurrency limit is set and reached, skip.
+	if s.maxConcurrentTasks > 0 {
+		running, err := s.db.CountRunningTasks(ctx)
+		if err != nil {
+			return claimedExecution{}, connect.NewError(connect.CodeInternal, fmt.Errorf("count running tasks: %w", err))
+		}
+		if running >= int64(s.maxConcurrentTasks) {
+			return claimedExecution{}, errNoClaimableTask
+		}
+	}
 	var claimed claimedExecution
 	var eventID string
 	var eventPayload json.RawMessage
@@ -727,6 +743,23 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		task, err := q.GetTaskByID(ctx, queued.TaskID)
 		if err != nil {
 			return err
+		}
+		// Team-level concurrency check (inside tx for consistency).
+		if task.TeamID.Valid {
+			team, err := q.GetTeamByID(ctx, task.TeamID.String)
+			if err != nil {
+				return err
+			}
+			teamLimit := int(team.MaxConcurrentTasks)
+			if teamLimit > 0 {
+				running, err := q.CountRunningTasksByTeam(ctx, task.TeamID)
+				if err != nil {
+					return err
+				}
+				if running >= int64(teamLimit) {
+					return errNoClaimableTask
+				}
+			}
 		}
 		attemptNumber, err := q.CountExecutionAttemptsByTask(ctx, task.ID)
 		if err != nil {

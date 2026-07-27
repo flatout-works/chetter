@@ -50,6 +50,7 @@ message Task {
   repeated string mcp_endpoints = 28;
   string execution_id = 29;
   string harness = 32;
+  int32 priority = 33;
 }
 
 message AgentSession {
@@ -333,6 +334,7 @@ message SubmitTaskRequest {
   string pause_reason = 14;
   int32 ttl_hours = 15;
   repeated string mcp_endpoints = 16;
+  int32 priority = 17;
 }
 
 message SubmitTaskResponse {
@@ -359,6 +361,7 @@ message ListTasksRequest {
 
 message ListTasksResponse {
   repeated Task tasks = 1;
+  int64 queue_depth = 2;
 }
 
 message ExtendTaskRequest {

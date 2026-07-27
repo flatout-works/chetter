@@ -30,6 +30,9 @@ type Repository interface {
 	ClearExpiredUserPromptExports(ctx context.Context, ttlSeconds interface{}) (int64, error)
 	ClearPendingTasks(ctx context.Context, arg repository.ClearPendingTasksParams) (int64, error)
 	CountExecutionAttemptsByTask(ctx context.Context, taskID string) (int64, error)
+	CountPendingTasks(ctx context.Context) (int64, error)
+	CountRunningTasks(ctx context.Context) (int64, error)
+	CountRunningTasksByTeam(ctx context.Context, teamID sql.NullString) (int64, error)
 	CreateTeam(ctx context.Context, arg repository.CreateTeamParams) error
 	CreateToken(ctx context.Context, arg repository.CreateTokenParams) error
 	CreateTrigger(ctx context.Context, arg repository.CreateTriggerParams) error
@@ -227,6 +230,21 @@ func (q *Queries) ClearPendingTasks(ctx context.Context, arg repository.ClearPen
 
 func (q *Queries) CountExecutionAttemptsByTask(ctx context.Context, taskID string) (int64, error) {
 	value, err := q.postgres.CountExecutionAttemptsByTask(ctx, convert[string](taskID))
+	return convert[int64](value), err
+}
+
+func (q *Queries) CountPendingTasks(ctx context.Context) (int64, error) {
+	value, err := q.postgres.CountPendingTasks(ctx)
+	return convert[int64](value), err
+}
+
+func (q *Queries) CountRunningTasks(ctx context.Context) (int64, error) {
+	value, err := q.postgres.CountRunningTasks(ctx)
+	return convert[int64](value), err
+}
+
+func (q *Queries) CountRunningTasksByTeam(ctx context.Context, teamID sql.NullString) (int64, error) {
+	value, err := q.postgres.CountRunningTasksByTeam(ctx, convert[sql.NullString](teamID))
 	return convert[int64](value), err
 }
 

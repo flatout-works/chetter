@@ -191,7 +191,7 @@ func (q *Queries) DeleteUsersByTeam(ctx context.Context, teamID string) error {
 }
 
 const getTeamByID = `-- name: GetTeamByID :one
-SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at FROM teams WHERE id = $1
+SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at, max_concurrent_tasks FROM teams WHERE id = $1
 `
 
 func (q *Queries) GetTeamByID(ctx context.Context, id string) (Team, error) {
@@ -204,12 +204,13 @@ func (q *Queries) GetTeamByID(ctx context.Context, id string) (Team, error) {
 		&i.OktaGroupName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxConcurrentTasks,
 	)
 	return i, err
 }
 
 const getTeamByName = `-- name: GetTeamByName :one
-SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at FROM teams WHERE name = $1
+SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at, max_concurrent_tasks FROM teams WHERE name = $1
 `
 
 func (q *Queries) GetTeamByName(ctx context.Context, name string) (Team, error) {
@@ -222,6 +223,7 @@ func (q *Queries) GetTeamByName(ctx context.Context, name string) (Team, error) 
 		&i.OktaGroupName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MaxConcurrentTasks,
 	)
 	return i, err
 }
@@ -282,7 +284,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 }
 
 const listTeams = `-- name: ListTeams :many
-SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at FROM teams ORDER BY name ASC
+SELECT id, name, okta_group_id, okta_group_name, created_at, updated_at, max_concurrent_tasks FROM teams ORDER BY name ASC
 `
 
 func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
@@ -301,6 +303,7 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 			&i.OktaGroupName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MaxConcurrentTasks,
 		); err != nil {
 			return nil, err
 		}
