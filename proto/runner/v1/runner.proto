@@ -25,6 +25,15 @@ message RunnerInfo {
   bool checkpoint_restore = 16;
   string runsc_version = 17;
   repeated RunningExecution current_executions = 18;
+  ResourceInfo resource = 19;
+}
+
+message ResourceInfo {
+  double cpu_percent = 1;
+  double memory_percent = 2;
+  int64 memory_available_bytes = 3;
+  double disk_percent = 4;
+  int32 active_task_count = 5;
 }
 
 message RunningExecution {

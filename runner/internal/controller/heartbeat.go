@@ -95,6 +95,7 @@ func (r *Runner) publishRunnerHeartbeat(status string) {
 }
 
 func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
+	snapshot := collectResourceSnapshot()
 	r.mu.Lock()
 	currentExecutions := make([]*runnerv1.RunningExecution, 0, len(r.tasks))
 	for executionID, session := range r.tasks {
@@ -121,7 +122,7 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		runscVersion = firstEnv("RUNSC_VERSION")
 	}
 
-	return &runnerv1.RunnerInfo{
+	info := &runnerv1.RunnerInfo{
 		RunnerId:          r.runnerID,
 		Status:            status,
 		ImageRef:          firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
@@ -140,6 +141,26 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		CheckpointRestore: checkpointRestore,
 		RunscVersion:      runscVersion,
 	}
+
+	if snapshot.CPUPercent != nil || snapshot.MemoryPercent != nil || snapshot.DiskPercent != nil {
+		info.Resource = &runnerv1.ResourceInfo{}
+		if snapshot.CPUPercent != nil {
+			info.Resource.CpuPercent = *snapshot.CPUPercent
+		}
+		if snapshot.MemoryPercent != nil {
+			info.Resource.MemoryPercent = *snapshot.MemoryPercent
+		}
+		if snapshot.MemoryAvailableBytes != nil {
+			info.Resource.MemoryAvailableBytes = *snapshot.MemoryAvailableBytes
+		}
+		if snapshot.DiskPercent != nil {
+			info.Resource.DiskPercent = *snapshot.DiskPercent
+		}
+		// active_task_count is derived from running tasks.
+		info.Resource.ActiveTaskCount = int32(len(currentExecutions))
+	}
+
+	return info
 }
 
 func (r *Runner) publishRunnerHeartbeatRPC(status string) {

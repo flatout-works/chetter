@@ -239,7 +239,7 @@ func protoFleetHealth(h store.RunnerFleetHealth) *apiv1.RunnerFleetHealth {
 }
 
 func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
-	return &apiv1.RunnerInfo{
+	info := &apiv1.RunnerInfo{
 		RunnerId:       r.ID,
 		Status:         r.Status,
 		ImageRef:       r.ImageRef,
@@ -255,6 +255,16 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 		StartedAt:      timeStrPtr(r.StartedAt),
 		LastHeartbeat:  r.LastSeenAt.Format(time.RFC3339),
 	}
+	if r.Resource != nil {
+		info.Resource = &apiv1.ResourceInfo{
+			CpuPercent:           r.Resource.CPUPercent,
+			MemoryPercent:        r.Resource.MemoryPercent,
+			MemoryAvailableBytes: r.Resource.MemoryAvailableBytes,
+			DiskPercent:          r.Resource.DiskPercent,
+			ActiveTaskCount:      r.Resource.ActiveTaskCount,
+		}
+	}
+	return info
 }
 
 func protoRunningTaskInfo(t store.RunningTaskInfo) *apiv1.RunningTaskInfo {
