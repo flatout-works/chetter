@@ -118,6 +118,40 @@ Create a scoped token with `chetterctl`:
 chetterctl token create --team engineering --user alice --name alice-cli
 ```
 
+## Security
+
+### Secret Scanning And Redaction
+
+Chetter scans task event payloads for secrets before storing them in the database. If a task inadvertently outputs an API key, database credential, auth token, or other sensitive value, the server redacts it with `[REDACTED]` and logs an audit event.
+
+**Built-in patterns** (active by default):
+
+| Pattern | Description |
+|---|---|
+| `bearer_token` | `Bearer <token>` in Authorization headers |
+| `generic_api_key` | `api_key=...`, `auth_token=...`, and similar assignments |
+| `github_pat_classic` | GitHub classic PAT (`ghp_*`) |
+| `github_pat_fine_grained` | GitHub fine-grained PAT (`github_pat_*`) |
+| `github_oauth_token` | GitHub OAuth token (`gho_*`) |
+| `github_user_token` | GitHub user-to-server token (`ghu_*`) |
+| `github_server_token` | GitHub server-to-server token (`ghs_*`) |
+| `github_refresh_token` | GitHub refresh token (`ghr_*`) |
+| `aws_access_key_id` | AWS access key IDs (`AKIA*`) |
+| `aws_secret_access_key` | AWS secret access key assignments |
+| `private_key_pem` | `-----BEGIN ... PRIVATE KEY-----` blocks |
+| `private_key_openssh` | `-----BEGIN OPENSSH PRIVATE KEY-----` blocks |
+| `env_secret` | Generic `secret=...`, `token=...`, `password=...` assignments |
+
+**Custom patterns** can be added via the `SECRET_SCAN_PATTERNS` env var as a JSON array of `{"name", "pattern"}` objects:
+
+```dotenv
+SECRET_SCAN_PATTERNS='[{"name":"slack_token","pattern":"xox[baprs]-[A-Za-z0-9-]+"}]'
+```
+
+**Inspection**: Use the `chetter_list_secret_patterns` MCP tool to list active pattern names.
+
+**Audit**: Each redaction emits a `task_output_redacted` audit event recording the task ID, pattern name, and match count.
+
 ## Environment Variables
 
 ### Server

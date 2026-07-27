@@ -711,6 +711,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_webhook_deliveries", Description: "List recent webhook delivery records with status (received, completed, failed, dead_letter), retry attempts, and error details. Admin only."}, svc.listWebhookDeliveriesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_usage_summary", Description: "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data."}, svc.usageSummaryTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_secret_patterns", Description: "List the active secret-scanning pattern names used to redact credentials from task output before storage. Use --list-patterns for a human-readable variant."}, svc.listSecretPatternsTool)
 }
 
 func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in SubmitTaskInput) (*mcp.CallToolResult, SubmitTaskOutput, error) {
@@ -1842,4 +1843,23 @@ func (s *Service) listWebhookDeliveriesTool(ctx context.Context, _ *mcp.CallTool
 		return nil, WebhookDeliveryOutput{}, err
 	}
 	return nil, WebhookDeliveryOutput{Deliveries: deliveries}, nil
+}
+
+// SecretPatternsInput accepts an optional --list-patterns flag.
+type SecretPatternsInput struct{}
+
+// SecretPatternsOutput lists active secret-scanning pattern names and count.
+type SecretPatternsOutput struct {
+	Patterns     []string `json:"patterns"`
+	PatternCount int      `json:"pattern_count"`
+}
+
+func (s *Service) listSecretPatternsTool(ctx context.Context, _ *mcp.CallToolRequest, _ SecretPatternsInput) (*mcp.CallToolResult, SecretPatternsOutput, error) {
+	if s.secretScanner == nil {
+		return nil, SecretPatternsOutput{Patterns: []string{}, PatternCount: 0}, nil
+	}
+	return nil, SecretPatternsOutput{
+		Patterns:     s.secretScanner.ActivePatterns(),
+		PatternCount: s.secretScanner.ActivePatternCount(),
+	}, nil
 }

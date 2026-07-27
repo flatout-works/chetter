@@ -46,6 +46,7 @@ type RunnerRPCService struct {
 	eventBus      TaskEventPublisher
 	callbacks     TaskEventCallbackDispatcher
 	ghActions     GitHubActionService
+	secretScanner *SecretScanner
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -87,6 +88,12 @@ func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCServic
 
 func (s *RunnerRPCService) WithEventCallbacks(callbacks TaskEventCallbackDispatcher) *RunnerRPCService {
 	s.callbacks = callbacks
+	return s
+}
+
+// WithSecretScanner sets the secret scanner for payload redaction.
+func (s *RunnerRPCService) WithSecretScanner(scanner *SecretScanner) *RunnerRPCService {
+	s.secretScanner = scanner
 	return s
 }
 
@@ -848,6 +855,18 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			return connect.NewError(connect.CodeInternal, err)
 		}
 		payload = data
+	}
+	// Scan and redact secrets before storing
+	if s.secretScanner != nil {
+		redacted, records, changed := s.secretScanner.RedactJSON(payload)
+		if changed {
+			payload = redacted
+			slog.InfoContext(ctx, "redacted secrets from task event",
+				"task_id", event.TaskId,
+				"runner_id", runnerID,
+				"record_count", len(records),
+			)
+		}
 	}
 	eventID, err := randomID("evt")
 	if err != nil {

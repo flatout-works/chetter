@@ -116,6 +116,7 @@ type Service struct {
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
+	secretScanner  *SecretScanner
 }
 
 func (s *Service) QuotaExhausted() bool {
@@ -175,6 +176,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 	if cfg.ArcaneServerURL != "" && cfg.ArcaneAPIKey != "" {
 		svc.arcane = NewArcaneClient(cfg.ArcaneServerURL, cfg.ArcaneAPIKey)
 	}
+	svc.secretScanner = svc.buildSecretScanner()
 	svc.reaperSteps = []func(){
 		svc.reapStaleTasks,
 		svc.reapExpiredLeases,
@@ -553,6 +555,8 @@ func (s *Service) reapExpiredLeases() {
 				"status":           "pending",
 				"summary":          summary,
 			})
+			// Redact secrets from the payload before storing
+			redactedPayload := s.redactAndAudit(ctx, task.TaskID, payload)
 			event := TaskEventCallbackContext{
 				ID:        eventID,
 				TaskID:    task.TaskID,
@@ -561,7 +565,7 @@ func (s *Service) reapExpiredLeases() {
 				Status:    "pending",
 				EventType: "task.reclaimed",
 				Summary:   summary,
-				Payload:   payload,
+				Payload:   redactedPayload,
 				CreatedAt: now,
 			}
 			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
@@ -573,7 +577,7 @@ func (s *Service) reapExpiredLeases() {
 				Subject:            event.Subject,
 				Status:             event.Status,
 				EventType:          event.EventType,
-				Payload:            payload,
+				Payload:            redactedPayload,
 				CreatedAt:          event.CreatedAt,
 			}); err != nil {
 				return err
@@ -596,6 +600,8 @@ func (s *Service) reapExpiredLeases() {
 				"status":               "pending",
 				"summary":              restartSummary,
 			})
+			// Redact secrets from the restart payload before storing
+			redactedRestartPayload := s.redactAndAudit(ctx, task.TaskID, restartPayload)
 			restartEvent := TaskEventCallbackContext{
 				ID:        restartEventID,
 				TaskID:    task.TaskID,
@@ -604,7 +610,7 @@ func (s *Service) reapExpiredLeases() {
 				Status:    "pending",
 				EventType: "task.session_restarted",
 				Summary:   restartSummary,
-				Payload:   restartPayload,
+				Payload:   redactedRestartPayload,
 				CreatedAt: now,
 			}
 			if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
@@ -615,7 +621,7 @@ func (s *Service) reapExpiredLeases() {
 				Subject:        restartEvent.Subject,
 				Status:         restartEvent.Status,
 				EventType:      restartEvent.EventType,
-				Payload:        restartPayload,
+				Payload:        redactedRestartPayload,
 				CreatedAt:      restartEvent.CreatedAt,
 			}); err != nil {
 				return err
@@ -1226,6 +1232,8 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			"status":               "pending",
 			"summary":              recoverySummary,
 		})
+		// Redact secrets from the recovery payload before storing
+		redactedRecoveryPayload := s.redactAndAudit(ctx, taskID, recoveryPayload)
 		recoveryEvent = TaskEventCallbackContext{
 			ID:        recoveryEventID,
 			TaskID:    taskID,
@@ -1234,7 +1242,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			Status:    "pending",
 			EventType: "task.session_restarted",
 			Summary:   recoverySummary,
-			Payload:   recoveryPayload,
+			Payload:   redactedRecoveryPayload,
 			CreatedAt: now,
 		}
 		if err := q.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
@@ -1245,7 +1253,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			Subject:        recoveryEvent.Subject,
 			Status:         recoveryEvent.Status,
 			EventType:      recoveryEvent.EventType,
-			Payload:        recoveryPayload,
+			Payload:        redactedRecoveryPayload,
 			CreatedAt:      recoveryEvent.CreatedAt,
 		}); err != nil {
 			return fmt.Errorf("insert recovery event: %w", err)
@@ -2302,4 +2310,56 @@ func (s *Service) RecordArtifact(ctx context.Context, params RecordArtifactParam
 		DiscoverySource:    params.DiscoverySource,
 		SearchText:         nullString(artifactSearchText),
 	})
+}
+
+// SecretScanner returns the service's secret scanner (may be nil if no patterns configured).
+func (s *Service) SecretScanner() *SecretScanner {
+	return s.secretScanner
+}
+
+// buildSecretScanner constructs the SecretScanner from config and defaults.
+func (s *Service) buildSecretScanner() *SecretScanner {
+	patterns := DefaultSecretPatterns()
+
+	if raw := strings.TrimSpace(s.cfg.SecretScanPatternsJSON); raw != "" {
+		extra, err := ParseSecretPatterns(raw)
+		if err != nil {
+			slog.Warn("invalid SECRET_SCAN_PATTERNS, using only defaults", "error", err)
+		} else {
+			patterns = append(patterns, extra...)
+		}
+	}
+
+	return NewSecretScanner(patterns)
+}
+
+// redactAndAudit scans a task event payload for secrets and emits audit events
+// for any redactions. It returns the redacted payload.
+func (s *Service) redactAndAudit(ctx context.Context, taskID string, payload json.RawMessage) json.RawMessage {
+	if s.secretScanner == nil {
+		return payload
+	}
+
+	redacted, records, changed := s.secretScanner.RedactJSON(payload)
+	if !changed {
+		return payload
+	}
+
+	// Emit audit events for each redaction
+	for _, rec := range records {
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "task_output_redacted",
+			TargetType: "task",
+			TargetID:   taskID,
+			Detail:     fmt.Sprintf("Secret pattern %q matched %d time(s) in task event payload", rec.PatternName, rec.MatchCount),
+			Payload:    mustMarshalJSON(rec),
+		})
+	}
+
+	slog.InfoContext(ctx, "redacted secrets from task event",
+		"task_id", taskID,
+		"record_count", len(records),
+	)
+
+	return redacted
 }

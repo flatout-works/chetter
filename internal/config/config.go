@@ -47,6 +47,11 @@ type Config struct {
 	// artifacts (checkpoints, session exports) are eligible for garbage
 	// collection by the reaper. A value of 0 disables GC. Default: 24h.
 	SessionArtifactTTL time.Duration
+
+	// SecretScanPatternsJSON holds the raw JSON value of SECRET_SCAN_PATTERNS.
+	// It is an optional JSON array of {name, pattern} objects that define
+	// additional secret-scanning regexes beyond the built-in defaults.
+	SecretScanPatternsJSON string
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -75,8 +80,9 @@ func Load() Config {
 		EventsRetentionDays:    envInt("EVENTS_RETENTION_DAYS", 0),
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
-		EnvValidation:          envValidationConfig(),
-		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
+		EnvValidation:            envValidationConfig(),
+		SessionArtifactTTL:       envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
+		SecretScanPatternsJSON:   os.Getenv("SECRET_SCAN_PATTERNS"),
 	}
 }
 
