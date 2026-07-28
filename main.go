@@ -95,6 +95,7 @@ func run() error {
 	if err := st.ApplySchema(initCtx); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
+	schemaReady := true
 
 	var defs *definitions.Manager
 	if cfg.DefinitionsRepo != "" {
@@ -150,6 +151,23 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !schemaReady {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: schema not applied\n"))
+			return
+		}
+		pingCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		if err := st.Ping(pingCtx); err != nil {
+			slog.Warn("readiness check: database ping failed", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: database unreachable\n"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
 	mux.Handle(runnerPath, runnerRPCAuthMiddleware(cfg.RunnerRPCToken, runnerHandler))
@@ -182,6 +200,23 @@ func run() error {
 	webHandlers := webapi.NewHandlers(svc, eventBus)
 	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB())
 	webMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	webMux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !schemaReady {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: schema not applied\n"))
+			return
+		}
+		pingCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		if err := st.Ping(pingCtx); err != nil {
+			slog.Warn("readiness check: database ping failed", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: database unreachable\n"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
