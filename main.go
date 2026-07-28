@@ -18,6 +18,7 @@ import (
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/metrics"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webapi"
@@ -151,6 +152,7 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	mux.Handle("/metrics", metrics.Handler(st.DB(), st.Dialect()))
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		if !schemaReady {
 			w.WriteHeader(http.StatusServiceUnavailable)
