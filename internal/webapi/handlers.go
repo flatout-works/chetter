@@ -359,7 +359,7 @@ func (h *taskHandler) ExtendTask(ctx context.Context, req *connect.Request[apiv1
 }
 
 func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1.ExportTaskRequest]) (*connect.Response[apiv1.ExportTaskResponse], error) {
-	export, err := h.svc.ExportTask(ctx, req.Msg.TaskId)
+	export, err := h.svc.ExportTask(ctx, req.Msg.TaskId, req.Msg.Compact)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}

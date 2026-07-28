@@ -408,7 +408,7 @@
   async function exportTask() {
     try {
       const client = createClient(TaskService, getTransport());
-      const resp = await client.exportTask({ taskId: params.id });
+      const resp = await client.exportTask({ taskId: params.id, compact: false });
       const blob = new Blob([resp.export], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -451,7 +451,7 @@
     viewLoading = true;
     try {
       const client = createClient(TaskService, getTransport());
-      const resp = await client.exportTask({ taskId: params.id });
+      const resp = await client.exportTask({ taskId: params.id, compact: true });
       viewMarkdown = await marked.parse(resp.export, { breaks: true });
       showExportViewer = true;
     } catch (e) {
@@ -461,6 +461,7 @@
 
   function closeView() {
     showExportViewer = false;
+    viewMarkdown = null;
   }
 </script>
 
@@ -513,9 +514,9 @@
             {rerunning ? "Re-running…" : "Re-run"}
           </Button>
           <Button size="sm" onclick={viewExport} disabled={viewLoading}>
-            {viewLoading ? "Loading…" : "View"}
+            {viewLoading ? "Loading…" : "View activity"}
           </Button>
-          <Button color="alternative" size="sm" onclick={exportTask}>Export</Button>
+          <Button color="alternative" size="sm" onclick={exportTask}>Download full</Button>
         {/if}
         <Button color="alternative" size="sm" onclick={useAsTemplate}>Use as template</Button>
       </div>
@@ -919,7 +920,11 @@
 </Modal>
 
 <!-- Export viewer modal -->
-<Modal title="Session Export" bind:open={showExportViewer} size="xl" onclose={closeView}>
+<Modal title="Session Activity" bind:open={showExportViewer} size="xl" onclose={closeView}>
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <p class="text-sm text-gray-600 dark:text-gray-400">Compact activity view with bounded tool-result previews.</p>
+    <Button color="alternative" size="sm" onclick={exportTask}>Download full export</Button>
+  </div>
   <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto max-h-[70vh]">
     {@html viewMarkdown}
   </div>

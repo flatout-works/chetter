@@ -3197,6 +3197,7 @@ func (x *CancelTaskResponse) GetTask() *Task {
 type ExportTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Compact       bool                   `protobuf:"varint,2,opt,name=compact,proto3" json:"compact,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3236,6 +3237,13 @@ func (x *ExportTaskRequest) GetTaskId() string {
 		return x.TaskId
 	}
 	return ""
+}
+
+func (x *ExportTaskRequest) GetCompact() bool {
+	if x != nil {
+		return x.Compact
+	}
+	return false
 }
 
 type ExportTaskResponse struct {
@@ -9522,9 +9530,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"6\n" +
 	"\x12CancelTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"5\n" +
+	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"O\n" +
 	"\x11ExportTaskRequest\x12 \n" +
-	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\",\n" +
+	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x18\n" +
+	"\acompact\x18\x02 \x01(\bR\acompact\",\n" +
 	"\x12ExportTaskResponse\x12\x16\n" +
 	"\x06export\x18\x01 \x01(\tR\x06export\"6\n" +
 	"\x12RecoverTaskRequest\x12 \n" +

@@ -51,7 +51,7 @@ func (s *Service) GetTask(ctx context.Context, taskID string) (TaskToolRecord, e
 }
 
 // ExportTask returns the session export (markdown transcript) for a task.
-func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error) {
+func (s *Service) ExportTask(ctx context.Context, taskID string, compact bool) (string, error) {
 	if _, err := s.taskForToolAccess(ctx, taskID); err != nil {
 		return "", err
 	}
@@ -61,6 +61,9 @@ func (s *Service) ExportTask(ctx context.Context, taskID string) (string, error)
 	}
 	if !prompt.SessionExport.Valid {
 		return "", fmt.Errorf("no session export available for task %s", taskID)
+	}
+	if compact {
+		return compactSessionExport(prompt.SessionExport.String), nil
 	}
 	return strings.ReplaceAll(prompt.SessionExport.String, "\\n", "\n"), nil
 }

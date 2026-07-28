@@ -753,7 +753,7 @@ func (s *Service) taskStatusTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskExportInput) (*mcp.CallToolResult, TaskExportOutput, error) {
-	export, err := s.ExportTask(ctx, in.TaskID)
+	export, err := s.ExportTask(ctx, in.TaskID, false)
 	if err != nil {
 		return nil, TaskExportOutput{}, err
 	}

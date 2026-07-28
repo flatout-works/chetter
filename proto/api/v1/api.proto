@@ -381,6 +381,7 @@ message CancelTaskResponse {
 
 message ExportTaskRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  bool compact = 2;
 }
 
 message ExportTaskResponse {
