@@ -2454,6 +2454,108 @@ func TestDeleteTokenRequiresAdmin(t *testing.T) {
 	}
 }
 
+func TestCreateTokenWithExpiry(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, out, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName:       "engineering",
+		UserName:       "alice",
+		TokenName:      "alice-cli",
+		ExpiresInHours: 24,
+	})
+	if err != nil {
+		t.Fatalf("createTokenTool: %v", err)
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	tokens, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	if len(tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(tokens))
+	}
+	if !tokens[0].ExpiresAt.Valid {
+		t.Error("expected expires_at to be set")
+	}
+	expectedExpiry := time.Now().UTC().Add(24 * time.Hour)
+	if tokens[0].ExpiresAt.Time.After(expectedExpiry.Add(time.Minute)) || tokens[0].ExpiresAt.Time.Before(expectedExpiry.Add(-time.Minute)) {
+		t.Errorf("expected expires_at ~%v, got %v", expectedExpiry, tokens[0].ExpiresAt.Time)
+	}
+
+	// Verify listing exposes expires_at.
+	_, listed, err := svc.listTokensTool(ctx, nil, ListTokensInput{})
+	if err != nil {
+		t.Fatalf("listTokensTool: %v", err)
+	}
+	if len(listed.Tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(listed.Tokens))
+	}
+	if listed.Tokens[0].ExpiresAt == nil {
+		t.Error("expected expires_at in token listing output")
+	}
+	if out.ExpiresAt == nil {
+		t.Error("expected expires_at in create output")
+	}
+}
+
+func TestCreateTokenNoExpiry(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, _, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName:  "engineering",
+		UserName:  "alice",
+		TokenName: "alice-cli",
+	})
+	if err != nil {
+		t.Fatalf("createTokenTool: %v", err)
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	tokens, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatalf("list tokens: %v", err)
+	}
+	if len(tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(tokens))
+	}
+	if tokens[0].ExpiresAt.Valid {
+		t.Error("expected expires_at to be null when no expiry specified")
+	}
+
+	// Verify listing shows null expiry.
+	_, listed, err := svc.listTokensTool(ctx, nil, ListTokensInput{})
+	if err != nil {
+		t.Fatalf("listTokensTool: %v", err)
+	}
+	if len(listed.Tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(listed.Tokens))
+	}
+	if listed.Tokens[0].ExpiresAt != nil {
+		t.Error("expected null expires_at in token listing output")
+	}
+}
+
+func TestCreateTokenNegativeExpiry(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := ctxWithAdmin(context.Background())
+
+	_, _, err := svc.createTokenTool(ctx, nil, CreateTokenInput{
+		TeamName:       "engineering",
+		UserName:       "alice",
+		TokenName:      "alice-cli",
+		ExpiresInHours: -1,
+	})
+	if err == nil {
+		t.Fatal("expected error for negative expiry")
+	}
+}
+
 func TestGetModelCatalogReturnsDefaults(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()

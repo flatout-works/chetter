@@ -11,12 +11,13 @@ import (
 )
 
 type ApiToken struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TokenHash string    `json:"token_hash"`
-	UserID    string    `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	TokenHash string       `json:"token_hash"`
+	UserID    string       `json:"user_id"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
 }
 
 type ApiTokenTeam struct {

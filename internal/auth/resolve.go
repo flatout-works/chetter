@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"strings"
+	"time"
 )
 
 // ResolveToken validates a raw bearer token against the admin token
@@ -27,19 +28,23 @@ func lookupTokenScope(ctx context.Context, db *sql.DB, rawToken string) Scope {
 	hash := sha256.Sum256([]byte(rawToken))
 	tokenHash := hex.EncodeToString(hash[:])
 	var tokenID, tokenName, fallbackTeamID sql.NullString
+	var expiresAt sql.NullTime
 	tokenQuery := `
-		SELECT t.id, t.name, u.team_id
+		SELECT t.id, t.name, u.team_id, t.expires_at
 		FROM api_tokens t
 		JOIN users u ON u.id = t.user_id
 		WHERE t.token_hash = ?`
-	err := db.QueryRowContext(ctx, tokenQuery, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
+	err := db.QueryRowContext(ctx, tokenQuery, tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID, &expiresAt)
 	if err != nil {
 		// api_token_teams is not part of the generated repository surface. Use
 		// PostgreSQL placeholders for this small authentication lookup instead
 		// of relying on a driver-level SQL rewriter.
-		err = db.QueryRowContext(ctx, strings.Replace(tokenQuery, "?", "$1", 1), tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID)
+		err = db.QueryRowContext(ctx, strings.Replace(tokenQuery, "?", "$1", 1), tokenHash).Scan(&tokenID, &tokenName, &fallbackTeamID, &expiresAt)
 	}
 	if err != nil {
+		return Scope{}
+	}
+	if expiresAt.Valid && !expiresAt.Time.After(time.Now().UTC()) {
 		return Scope{}
 	}
 	teamQuery := `

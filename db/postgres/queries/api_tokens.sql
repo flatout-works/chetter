@@ -16,8 +16,8 @@ INSERT INTO users (id, name, team_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5);
 
 -- name: CreateToken :exec
-INSERT INTO api_tokens (id, name, token_hash, user_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO api_tokens (id, name, token_hash, user_id, expires_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: AddUserTeamMembership :exec
 INSERT INTO user_team_memberships (user_id, team_id, source, created_at, updated_at)
@@ -30,7 +30,7 @@ VALUES ($1, $2, $3)
 ON CONFLICT (token_id, team_id) DO NOTHING;
 
 -- name: GetTokenByHash :one
-SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
+SELECT t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name
 FROM api_tokens t
 JOIN users u ON u.id = t.user_id
@@ -38,7 +38,7 @@ JOIN teams tm ON tm.id = u.team_id
 WHERE t.token_hash = $1;
 
 -- name: ListTokens :many
-SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
+SELECT t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name,
        COALESCE(string_agg(ttm.name, ',' ORDER BY ttm.name), tm.name) AS team_names
 FROM api_tokens t
@@ -46,7 +46,7 @@ JOIN users u ON u.id = t.user_id
 JOIN teams tm ON tm.id = u.team_id
 LEFT JOIN api_token_teams tt ON tt.token_id = t.id
 LEFT JOIN teams ttm ON ttm.id = tt.team_id
-GROUP BY t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at, u.name, u.team_id, tm.name
+GROUP BY t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at, u.name, u.team_id, tm.name
 ORDER BY t.created_at DESC;
 
 -- name: ListTeams :many

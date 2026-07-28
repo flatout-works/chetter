@@ -386,21 +386,23 @@ type ClearQueueOutput struct {
 
 // CreateTokenInput is the input for chetter_create_token.
 type CreateTokenInput struct {
-	TeamName  string   `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
-	TeamNames []string `json:"team_names,omitempty" jsonschema:"Names of teams this token should belong to; defaults to team_name"`
-	UserName  string   `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
-	TokenName string   `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
+	TeamName       string   `json:"team_name" jsonschema:"Name of the team (created if it does not exist)"`
+	TeamNames      []string `json:"team_names,omitempty" jsonschema:"Names of teams this token should belong to; defaults to team_name"`
+	UserName       string   `json:"user_name" jsonschema:"Name of the user (created if it does not exist)"`
+	TokenName      string   `json:"token_name" jsonschema:"A short name for the token (e.g. 'alice-cli')"`
+	ExpiresInHours int      `json:"expires_in_hours,omitempty" jsonschema:"Optional token lifetime in hours; omission means no expiry"`
 }
 
 // CreateTokenOutput is the output for chetter_create_token.
 type CreateTokenOutput struct {
-	Token     string   `json:"token"`
-	TeamID    string   `json:"team_id"`
-	TeamName  string   `json:"team_name"`
-	TeamIDs   []string `json:"team_ids"`
-	TeamNames []string `json:"team_names"`
-	UserID    string   `json:"user_id"`
-	UserName  string   `json:"user_name"`
+	Token     string     `json:"token"`
+	TeamID    string     `json:"team_id"`
+	TeamName  string     `json:"team_name"`
+	TeamIDs   []string   `json:"team_ids"`
+	TeamNames []string   `json:"team_names"`
+	UserID    string     `json:"user_id"`
+	UserName  string     `json:"user_name"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // ListTokensInput is the input for chetter_list_tokens.
@@ -408,11 +410,12 @@ type ListTokensInput struct{}
 
 // TokenInfo is a single token entry in the list.
 type TokenInfo struct {
-	Name      string    `json:"name"`
-	UserName  string    `json:"user_name"`
-	TeamName  string    `json:"team_name"`
-	TeamNames []string  `json:"team_names"`
-	CreatedAt time.Time `json:"created_at"`
+	Name      string     `json:"name"`
+	UserName  string     `json:"user_name"`
+	TeamName  string     `json:"team_name"`
+	TeamNames []string   `json:"team_names"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // ListTokensOutput is the output for chetter_list_tokens.
@@ -1395,7 +1398,7 @@ func (s *Service) createTokenTool(ctx context.Context, _ *mcp.CallToolRequest, i
 	if len(teamNames) == 0 && in.TeamName != "" {
 		teamNames = []string{in.TeamName}
 	}
-	out, err := s.CreateToken(ctx, teamNames, in.UserName, in.TokenName)
+	out, err := s.CreateToken(ctx, teamNames, in.UserName, in.TokenName, in.ExpiresInHours)
 	if err != nil {
 		return nil, CreateTokenOutput{}, err
 	}

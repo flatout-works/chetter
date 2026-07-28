@@ -280,6 +280,7 @@ var schemaStatements = []string{
 		name VARCHAR(128) NOT NULL,
 		token_hash CHAR(64) NOT NULL,
 		user_id VARCHAR(64) NOT NULL,
+		expires_at DATETIME(6) NULL,
 		created_at DATETIME(6) NOT NULL,
 		updated_at DATETIME(6) NOT NULL,
 		PRIMARY KEY (id),

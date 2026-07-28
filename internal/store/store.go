@@ -414,6 +414,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTeamAuthSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureAPITokenExpiryColumn(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -422,6 +425,20 @@ func (s *Store) schemaStatements() []string {
 		return postgresSchemaStatements
 	}
 	return schemaStatements
+}
+
+func (s *Store) ensureAPITokenExpiryColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "api_tokens", "expires_at")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE api_tokens ADD COLUMN expires_at DATETIME(6) NULL AFTER user_id"); err != nil {
+		return fmt.Errorf("add api_tokens.expires_at: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) ensureTeamAuthSchema(ctx context.Context) error {
