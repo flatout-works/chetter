@@ -18,6 +18,7 @@ import (
 
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/redact"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -43,6 +44,7 @@ type RunnerRPCService struct {
 	dialect       store.Dialect
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
+	redactSets    sync.Map // map[string]*redact.Set — agent session ID → redaction set
 	eventBus      TaskEventPublisher
 	callbacks     TaskEventCallbackDispatcher
 	ghActions     GitHubActionService
@@ -88,6 +90,16 @@ func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCServic
 func (s *RunnerRPCService) WithEventCallbacks(callbacks TaskEventCallbackDispatcher) *RunnerRPCService {
 	s.callbacks = callbacks
 	return s
+}
+
+// RegisterRedactSet stores a transient redaction set for the given agent
+// session. The set is never persisted and is discarded after the session
+// completes. See internal/redact for details.
+func (s *RunnerRPCService) RegisterRedactSet(sessionID string, set *redact.Set) {
+	if set == nil || set.Empty() {
+		return
+	}
+	s.redactSets.Store(sessionID, set)
 }
 
 func (s *RunnerRPCService) RegisterRunner(ctx context.Context, req *connect.Request[runnerv1.RegisterRunnerRequest]) (*connect.Response[runnerv1.RegisterRunnerResponse], error) {
@@ -853,6 +865,18 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
+
+	// Apply transient redaction to runner output before persistence.
+	// The redaction set is derived from designated sensitive env vars
+	// and managed-integration credentials known at task setup time.
+	if rs, ok := s.redactSets.Load(event.AgentSessionId); ok {
+		set := rs.(*redact.Set)
+		event.Summary = set.Apply(event.Summary)
+		event.Error = set.Apply(event.Error)
+		event.SessionExport = set.Apply(event.SessionExport)
+		event.PayloadJson = set.Apply(event.PayloadJson)
+	}
+
 	status := event.Status
 	if status == "" {
 		status = "running"
@@ -1106,6 +1130,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			slog.Warn("could not load task for event callbacks", "task_id", event.TaskId, "error", err)
 		}
 	}
+
 	return nil
 }
 

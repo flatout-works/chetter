@@ -19,6 +19,7 @@ import (
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/redact"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/validation"
@@ -1036,6 +1037,14 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return store.TaskRecord{}, err
 	}
 	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "user_prompt_id", runID)
+
+	// Register transient redaction set for this session so runner output is
+	// scrubbed before persistence. The values are derived from designated
+	// sensitive environment variables and never persisted.
+	if s.runnerRPC != nil && len(in.Env) > 0 {
+		s.runnerRPC.RegisterRedactSet(sessionID, redact.NewSet(in.Env))
+	}
+
 	if in.TriggerName != "" {
 		trigger, err := s.repo.GetTriggerByName(ctx, in.TriggerName)
 		if err != nil {
