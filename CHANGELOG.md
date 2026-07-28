@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-28
+
+### Added
+
+- Kubernetes pod execution backend: `execution.backend: kubernetes` runs each task as an independent Kubernetes Pod instead of a Docker container, with configurable namespace, runtime class (gVisor via `kata` or `run.kata`), image pull policy, service account, workspace PVC or hostPath, node name, and pod readiness timeout. New `KubernetesExecutor` manages pod lifecycle including creation, readiness polling, log streaming, workspace event streaming, cleanup, and task event forwarding. Runner entrypoint generates `kubernetes:` config block from env vars.
+- PR review webhook now triggers on `synchronize` (push to PR branch) and `reopened` events in addition to `opened` and the `chetter-review` label.
+- Deploy manifests: `deploy/k3s/kubernetes-runner.yaml` for K3s, `deploy/k8s/runner-rbac.yaml` and `deploy/k8s/runner-workspace-pvc.yaml` for generic Kubernetes RBAC and workspace PVC setup.
+- Private fork workflow documentation: `docs/PRIVATEFORK.md` covers PR review and issue triggers on forked repositories.
+
+### Fixed
+
+- Webhook: Chetter-authored PR comments no longer resume the reviewed session or trigger recursive review requests. `GetAppLogin` uses app JWT directly instead of installation token for reliable bot login detection.
+- PR review label events from Chetter's own bot login are ignored, preventing infinite review loops when Chetter adds the review label to a PR it is reviewing.
+
+### Changed
+
+- Valid label check in `triggerActionFromPR` no longer falsely overrides `synchronize` or `reopened` actions when a review label already exists on the PR.
+
+### Documentation
+
+- `docs/EKS.md`, `docs/K3S.md`, `docs/EXECUTION.md`, `docs/MANUAL.md`, `docs/PLAN.md`, `runner/README.md`, `docs/testing/k3d-gvisor.md` updated to document Kubernetes pod execution deployment and configuration.
+- `docs/FEATURES.md`, `docs/HARNESSES.md`, `docs/MANUAL.md`, `runner/README.md`: gVisor security boundary clarified — gVisor sandboxes the agent process only, not the network or MCP bridge.
+- Website updated to cover per-execution network isolation, runner resource reporting, and API token expiry.
+
 ## 2026-07-26
 
 ### Added
