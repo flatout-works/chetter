@@ -958,9 +958,12 @@ func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store
 // --- Token Management ---
 
 // CreateToken creates a new API token for one or more teams and a user. Admin only.
-func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName, tokenName string) (CreateTokenOutput, error) {
+func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName, tokenName string, expiresInHours int) (CreateTokenOutput, error) {
 	if !isAdmin(ctx) {
 		return CreateTokenOutput{}, fmt.Errorf("admin access required")
+	}
+	if expiresInHours < 0 {
+		return CreateTokenOutput{}, fmt.Errorf("expires_in_hours must be >= 0")
 	}
 	teamNames = normalizeTeamNames(teamNames)
 	if len(teamNames) == 0 {
@@ -973,6 +976,11 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 		return CreateTokenOutput{}, fmt.Errorf("token_name is required")
 	}
 	now := time.Now().UTC()
+
+	var expiresAt sql.NullTime
+	if expiresInHours > 0 {
+		expiresAt = sql.NullTime{Time: now.Add(time.Duration(expiresInHours) * time.Hour), Valid: true}
+	}
 
 	userID, err := randomID("user")
 	if err != nil {
@@ -1042,6 +1050,7 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 			Name:      tokenName,
 			TokenHash: hex.EncodeToString(hash[:]),
 			UserID:    userID,
+			ExpiresAt: expiresAt,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}); err != nil {
@@ -1087,6 +1096,7 @@ func (s *Service) CreateToken(ctx context.Context, teamNames []string, userName,
 		TeamNames: returnedTeamNames,
 		UserID:    userID,
 		UserName:  userName,
+		ExpiresAt: nullTimePtr(expiresAt),
 	}, nil
 }
 
@@ -1107,6 +1117,7 @@ func (s *Service) ListTokens(ctx context.Context) ([]TokenInfo, error) {
 			TeamName:  r.TeamName,
 			TeamNames: splitCSV(r.TeamNames),
 			CreatedAt: r.CreatedAt,
+			ExpiresAt: nullTimePtr(r.ExpiresAt),
 		}
 	}
 	return out, nil

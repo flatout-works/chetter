@@ -753,7 +753,7 @@ func (h *adminHandler) CreateToken(ctx context.Context, req *connect.Request[api
 	if len(teamNames) == 0 && req.Msg.TeamName != "" {
 		teamNames = []string{req.Msg.TeamName}
 	}
-	out, err := h.svc.CreateToken(ctx, teamNames, req.Msg.UserName, req.Msg.TokenName)
+	out, err := h.svc.CreateToken(ctx, teamNames, req.Msg.UserName, req.Msg.TokenName, 0)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

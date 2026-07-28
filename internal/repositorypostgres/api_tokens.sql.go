@@ -80,17 +80,18 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) error {
 }
 
 const createToken = `-- name: CreateToken :exec
-INSERT INTO api_tokens (id, name, token_hash, user_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO api_tokens (id, name, token_hash, user_id, expires_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type CreateTokenParams struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TokenHash string    `json:"token_hash"`
-	UserID    string    `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	TokenHash string       `json:"token_hash"`
+	UserID    string       `json:"user_id"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) error {
@@ -99,6 +100,7 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) error 
 		arg.Name,
 		arg.TokenHash,
 		arg.UserID,
+		arg.ExpiresAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -227,7 +229,7 @@ func (q *Queries) GetTeamByName(ctx context.Context, name string) (Team, error) 
 }
 
 const getTokenByHash = `-- name: GetTokenByHash :one
-SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
+SELECT t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name
 FROM api_tokens t
 JOIN users u ON u.id = t.user_id
@@ -236,15 +238,16 @@ WHERE t.token_hash = $1
 `
 
 type GetTokenByHashRow struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TokenHash string    `json:"token_hash"`
-	UserID    string    `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UserName  string    `json:"user_name"`
-	TeamID    string    `json:"team_id"`
-	TeamName  string    `json:"team_name"`
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	TokenHash string       `json:"token_hash"`
+	UserID    string       `json:"user_id"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	UserName  string       `json:"user_name"`
+	TeamID    string       `json:"team_id"`
+	TeamName  string       `json:"team_name"`
 }
 
 func (q *Queries) GetTokenByHash(ctx context.Context, tokenHash string) (GetTokenByHashRow, error) {
@@ -255,6 +258,7 @@ func (q *Queries) GetTokenByHash(ctx context.Context, tokenHash string) (GetToke
 		&i.Name,
 		&i.TokenHash,
 		&i.UserID,
+		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UserName,
@@ -316,7 +320,7 @@ func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 }
 
 const listTokens = `-- name: ListTokens :many
-SELECT t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at,
+SELECT t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at,
        u.name AS user_name, u.team_id, tm.name AS team_name,
        COALESCE(string_agg(ttm.name, ',' ORDER BY ttm.name), tm.name) AS team_names
 FROM api_tokens t
@@ -324,21 +328,22 @@ JOIN users u ON u.id = t.user_id
 JOIN teams tm ON tm.id = u.team_id
 LEFT JOIN api_token_teams tt ON tt.token_id = t.id
 LEFT JOIN teams ttm ON ttm.id = tt.team_id
-GROUP BY t.id, t.name, t.token_hash, t.user_id, t.created_at, t.updated_at, u.name, u.team_id, tm.name
+GROUP BY t.id, t.name, t.token_hash, t.user_id, t.expires_at, t.created_at, t.updated_at, u.name, u.team_id, tm.name
 ORDER BY t.created_at DESC
 `
 
 type ListTokensRow struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TokenHash string    `json:"token_hash"`
-	UserID    string    `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UserName  string    `json:"user_name"`
-	TeamID    string    `json:"team_id"`
-	TeamName  string    `json:"team_name"`
-	TeamNames string    `json:"team_names"`
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	TokenHash string       `json:"token_hash"`
+	UserID    string       `json:"user_id"`
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	UserName  string       `json:"user_name"`
+	TeamID    string       `json:"team_id"`
+	TeamName  string       `json:"team_name"`
+	TeamNames string       `json:"team_names"`
 }
 
 func (q *Queries) ListTokens(ctx context.Context) ([]ListTokensRow, error) {
@@ -355,6 +360,7 @@ func (q *Queries) ListTokens(ctx context.Context) ([]ListTokensRow, error) {
 			&i.Name,
 			&i.TokenHash,
 			&i.UserID,
+			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserName,

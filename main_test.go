@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
@@ -246,6 +247,129 @@ func TestLookupTokenScopeInvalidToken(t *testing.T) {
 	if scope.Admin {
 		t.Error("expected Admin=false for invalid token")
 	}
+}
+
+func TestLookupTokenScopeExpired(t *testing.T) {
+	tdb, cleanup := mainTestDB.NewTestDB(t)
+	defer cleanup()
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	// Seed a token that expired 1 hour ago.
+	rawToken := seedTokenWithExpiry(t, st, -1*time.Hour)
+
+	scope, ok := auth.ResolveToken(context.Background(), "", st.DB(), rawToken)
+	if ok {
+		t.Error("expected expired token to be rejected")
+	}
+	if scope.TeamID != "" {
+		t.Errorf("expected empty TeamID for expired token, got %q", scope.TeamID)
+	}
+}
+
+func TestLookupTokenScopeFutureExpiry(t *testing.T) {
+	tdb, cleanup := mainTestDB.NewTestDB(t)
+	defer cleanup()
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	// Seed a token that expires 1 hour from now.
+	rawToken := seedTokenWithExpiry(t, st, 1*time.Hour)
+
+	scope, ok := auth.ResolveToken(context.Background(), "", st.DB(), rawToken)
+	if !ok {
+		t.Error("expected future-expiry token to be valid")
+	}
+	if scope.TeamID != "team_integration_test" {
+		t.Errorf("expected TeamID=team_integration_test, got %q", scope.TeamID)
+	}
+}
+
+func TestLookupTokenScopeNullExpiry(t *testing.T) {
+	tdb, cleanup := mainTestDB.NewTestDB(t)
+	defer cleanup()
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	// Seed a token with null expiry (no expiry).
+	_, rawToken := seedTokenInDB(t, st)
+
+	scope, ok := auth.ResolveToken(context.Background(), "", st.DB(), rawToken)
+	if !ok {
+		t.Error("expected null-expiry token to be valid")
+	}
+	if scope.TeamID != "team_integration_test" {
+		t.Errorf("expected TeamID=team_integration_test, got %q", scope.TeamID)
+	}
+}
+
+func TestLookupTokenScopeJustExpired(t *testing.T) {
+	tdb, cleanup := mainTestDB.NewTestDB(t)
+	defer cleanup()
+	st, err := store.Open(tdb.DSN, tdb.Dialect())
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	// Seed a token that expired 1 second ago (exact boundary).
+	rawToken := seedTokenWithExpiry(t, st, -1*time.Second)
+
+	scope, ok := auth.ResolveToken(context.Background(), "", st.DB(), rawToken)
+	if ok {
+		t.Error("expected just-expired token to be rejected")
+	}
+	if scope.TeamID != "" {
+		t.Errorf("expected empty TeamID for expired token, got %q", scope.TeamID)
+	}
+}
+
+// seedTokenWithExpiry creates a token with expires_at set to now+offset.
+func seedTokenWithExpiry(t *testing.T, st *store.Store, offset time.Duration) string {
+	t.Helper()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	q := data.New(st.DB(), st.Dialect())
+
+	teamID := "team_integration_test"
+	if err := q.CreateTeam(ctx, repository.CreateTeamParams{
+		ID: teamID, Name: "test-team", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		// Team may already exist from earlier seeding; that's OK.
+	}
+
+	userID := "user_integration_test_expiry"
+	if err := q.CreateUser(ctx, repository.CreateUserParams{
+		ID: userID, Name: "test-user-expiry", TeamID: teamID, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		// User may already exist; that's OK.
+	}
+
+	rawToken := "chtr_test_integration_expiry_token_" + teamID
+	hash := sha256.Sum256([]byte(rawToken))
+	tokenID := "tok_integration_expiry_" + teamID
+	expiresAt := sql.NullTime{Time: now.Add(offset), Valid: true}
+	if err := q.CreateToken(ctx, repository.CreateTokenParams{
+		ID:        tokenID,
+		Name:      "test-token-expiry-" + teamID,
+		TokenHash: hex.EncodeToString(hash[:]),
+		UserID:    userID,
+		ExpiresAt: expiresAt,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	return rawToken
 }
 
 func TestAuthMiddlewareWithDBToken(t *testing.T) {
