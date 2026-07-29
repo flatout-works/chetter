@@ -313,6 +313,14 @@ Supported YAML formats are:
 | `global/mcp-endpoints/*.yaml`, `groups/<team-name>/mcp-endpoints/*.yaml` | `name`, `url` | Global or team-scoped HTTP or SSE endpoint. `auth.token_env` names a variable configured on every runner; static `headers` are persisted and must not contain secrets. |
 | `<scope>/agents/*.md` | `identity` | Supported under global, team, and repository scopes. YAML frontmatter must reference a server-managed Git identity by name; it may also include `description`, `provider`, `model`, `mode`, `mcp_endpoints`, and `permission`. The Markdown body is the agent prompt. Identity credentials are never stored in the definitions repository. |
 
+#### Trigger Sync Identity and Renames
+
+A trigger materialized from a definition source carries a stable identity derived from the definition source ID and the trigger `name`. Re-syncing an unchanged trigger definition updates the row in place: the trigger ID, trigger runs, usage attribution, and task references all keep pointing at the same trigger, and exactly one cron registration exists per enabled cron trigger.
+
+Removing a trigger definition from the source deletes the corresponding trigger row and tears down its in-memory cron schedule on the next sync, so no stale cron entries fire. Toggling `enabled` off, changing `trigger_type` away from `cron`, or editing `cron_expr` updates in place and never duplicates cron registrations.
+
+Renames are **delete old + create new**. A trigger definition renamed from `nightly` to `daily` is treated as removing `nightly` and adding `daily`: the old trigger row and cron schedule are removed, and a fresh trigger with a new ID is created. Trigger run history and usage attribution recorded against the old name/ID do **not** follow the rename. To preserve history across a rename, keep the trigger `name` stable and change other fields instead.
+
 ### Managed Git Identities
 
 Git identities control commit attribution for task work. They contain only an identity reference, author name, author email, and credential provider; GitHub App credentials remain server-managed and must never be committed to the definitions repository.

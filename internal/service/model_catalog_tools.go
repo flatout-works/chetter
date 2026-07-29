@@ -390,6 +390,9 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 	if err != nil {
 		return ModelCatalogRecord{}, fmt.Errorf("list existing triggers: %w", err)
 	}
+	// Triggers the default definition source already owns, captured before the
+	// sync so cron registrations for removed/renamed triggers can be torn down.
+	managedBeforeByName, managedBeforeIDs := syncedTriggersBefore(existingTriggers)
 	desiredTriggerNames := make(map[string]struct{}, len(triggerEntries))
 	for _, entry := range triggerEntries {
 		desiredTriggerNames[entry.def.Name] = struct{}{}
@@ -476,6 +479,11 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
 	}
+	// Reconcile in-memory cron registrations against the desired set before
+	// refreshing entries: this drops schedules for removed, renamed, disabled,
+	// or no-longer-cron triggers so stale cron entries never fire.
+	desiredIDs, desiredCronEnabledIDs := desiredSyncedTriggerIDs(triggerEntries, managedBeforeByName)
+	s.reconcileSyncedCronEntries(managedBeforeIDs, desiredIDs, desiredCronEnabledIDs)
 	activateTriggerEntries(ctx, s, triggerEntries)
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "definitions_synced",
@@ -722,10 +730,11 @@ func (s *Service) parseTriggerDefsForSync(defs []definitions.Definition, now tim
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", def.Path, err)
 		}
-		id, err := randomID("trig")
-		if err != nil {
-			return nil, fmt.Errorf("%s: generate trigger id: %w", def.Path, err)
-		}
+		// Deterministic identity keyed on (source ID, trigger name) so re-syncs
+		// reuse the same ID. The name-keyed upsert preserves existing IDs even
+		// when a row predates this identity scheme. A rename mints a new ID
+		// (delete old + create new); trigger run history does not follow.
+		id := triggerID(defaultDefinitionSourceID, td.Name)
 		skillsJSON, err := json.Marshal(nonEmptyStrings(td.Skills))
 		if err != nil {
 			return nil, fmt.Errorf("%s: marshal skills: %w", def.Path, err)
@@ -763,7 +772,10 @@ func (s *Service) parseTriggerDefsForSync(defs []definitions.Definition, now tim
 
 func activateTriggerEntries(ctx context.Context, s *Service, entries []triggerSyncEntry) {
 	for _, t := range entries {
-		if t.def.TriggerType != "cron" {
+		// Only enabled cron triggers hold an in-memory schedule. Disabled or
+		// non-cron triggers have their registrations torn down by
+		// reconcileSyncedCronEntries, so this loop only refreshes active ones.
+		if t.def.TriggerType != "cron" || !t.def.Enabled {
 			continue
 		}
 		trigger, err := s.repo.GetTriggerByName(ctx, t.def.Name)
@@ -771,18 +783,83 @@ func activateTriggerEntries(ctx context.Context, s *Service, entries []triggerSy
 			slog.Warn("activate synced cron trigger: get trigger", "name", t.def.Name, "err", err)
 			continue
 		}
-		if t.def.Enabled {
-			record := triggerToStoreRecord(trigger)
-			if err := s.activateTrigger(ctx, record); err != nil {
-				slog.Warn("activate synced cron trigger", "name", t.def.Name, "err", err)
+		if err := s.activateTrigger(ctx, triggerToStoreRecord(trigger)); err != nil {
+			slog.Warn("activate synced cron trigger", "name", t.def.Name, "err", err)
+		}
+	}
+}
+
+// triggerID derives a deterministic trigger identity from the definition source
+// and the trigger name. Synced triggers keep this ID across re-syncs, so trigger
+// runs, usage attribution, and task references stay stable. A rename mints a
+// new ID (delete old + create new); history does not follow.
+func triggerID(sourceID, name string) string {
+	sum := sha256.Sum256([]byte(sourceID + "\x00" + name))
+	return "trig_" + hex.EncodeToString(sum[:])[:32]
+}
+
+// syncedTriggersBefore returns the triggers already owned by the default
+// definition source as they were before this sync, keyed by name and by ID.
+func syncedTriggersBefore(existing []repository.ChetterTrigger) (map[string]repository.ChetterTrigger, map[string]struct{}) {
+	byName := make(map[string]repository.ChetterTrigger)
+	ids := make(map[string]struct{})
+	for _, t := range existing {
+		if !t.SourceID.Valid || t.SourceID.String != defaultDefinitionSourceID {
+			continue
+		}
+		byName[t.Name] = t
+		ids[t.ID] = struct{}{}
+	}
+	return byName, ids
+}
+
+// desiredSyncedTriggerIDs returns the set of trigger IDs the source should own
+// after this sync, plus the subset that should hold an active cron registration
+// (cron triggers that are enabled). Existing triggers keep their stored ID
+// (preserved by the name-keyed upsert); new triggers use the deterministic ID.
+func desiredSyncedTriggerIDs(entries []triggerSyncEntry, managedBeforeByName map[string]repository.ChetterTrigger) (map[string]struct{}, map[string]struct{}) {
+	desired := make(map[string]struct{}, len(entries))
+	cronEnabled := make(map[string]struct{}, len(entries))
+	for _, t := range entries {
+		id := syncedTriggerStoredID(t, managedBeforeByName)
+		desired[id] = struct{}{}
+		if t.def.TriggerType == "cron" && t.def.Enabled {
+			cronEnabled[id] = struct{}{}
+		}
+	}
+	return desired, cronEnabled
+}
+
+func syncedTriggerStoredID(entry triggerSyncEntry, managedBeforeByName map[string]repository.ChetterTrigger) string {
+	if existing, ok := managedBeforeByName[entry.def.Name]; ok {
+		return existing.ID
+	}
+	return entry.params.ID
+}
+
+// reconcileSyncedCronEntries drops in-memory cron registrations for triggers the
+// default definition source no longer manages (removed or renamed) and for
+// synced triggers that should not run on a schedule anymore (disabled or no
+// longer cron). API-managed and other-source triggers are left untouched; desired
+// enabled cron triggers are refreshed afterward by activateTriggerEntries.
+func (s *Service) reconcileSyncedCronEntries(managedBeforeIDs, desiredIDs, desiredCronEnabledIDs map[string]struct{}) {
+	s.cronMu.Lock()
+	defer s.cronMu.Unlock()
+	for id := range managedBeforeIDs {
+		if _, desired := desiredIDs[id]; !desired {
+			// trigger was owned by this source but is gone (deleted or renamed)
+			if entryID, ok := s.cronEntries[id]; ok {
+				s.cron.Remove(entryID)
+				delete(s.cronEntries, id)
 			}
-		} else {
-			s.cronMu.Lock()
-			if existing, ok := s.cronEntries[trigger.ID]; ok {
-				s.cron.Remove(existing)
-				delete(s.cronEntries, trigger.ID)
+			continue
+		}
+		// still desired; drop its schedule if it should no longer fire
+		if _, enabledCron := desiredCronEnabledIDs[id]; !enabledCron {
+			if entryID, ok := s.cronEntries[id]; ok {
+				s.cron.Remove(entryID)
+				delete(s.cronEntries, id)
 			}
-			s.cronMu.Unlock()
 		}
 	}
 }
