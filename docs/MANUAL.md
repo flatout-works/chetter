@@ -118,6 +118,8 @@ Create a scoped token with `chetterctl`:
 chetterctl token create --team engineering --user alice --name alice-cli
 ```
 
+Team tokens can optionally expire. The `chetter_create_token` MCP tool accepts an optional `expires_in_hours` field; omission or zero means no expiry. Expired tokens are rejected at authentication time. `chetter_list_tokens` exposes the `expires_at` timestamp (null when no expiry is set).
+
 ## Environment Variables
 
 ### Server
@@ -586,6 +588,10 @@ Registered only when `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured:
 ```bash
 curl http://localhost:18088/healthz
 ```
+
+A `/readyz` endpoint on both the MCP server (port 8080) and web API (port 8090) performs a database ping (1s timeout) and returns 503 if the schema is not applied or the database is unreachable. Use it for Kubernetes readiness probes; use `/healthz` for liveness probes.
+
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale, available/occupied slots), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 ### Logs
 
