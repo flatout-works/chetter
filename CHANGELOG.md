@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file.
 - PR review webhook now triggers on `synchronize` (push to PR branch) and `reopened` events in addition to `opened` and the `chetter-review` label.
 - Deploy manifests: `deploy/k3s/kubernetes-runner.yaml` for K3s, `deploy/k8s/runner-rbac.yaml` and `deploy/k8s/runner-workspace-pvc.yaml` for generic Kubernetes RBAC and workspace PVC setup.
 - Private fork workflow documentation: `docs/PRIVATEFORK.md` covers PR review and issue triggers on forked repositories.
+- API token expiry enforcement: nullable `expires_at` column on `api_tokens`; token creation accepts an optional `expires_in_hours` (null = no expiry); the auth resolver rejects expired tokens (`expires_at <= now`); token listing exposes `expires_at`. Auto-migrated on startup via `ensureAPITokenExpiryColumn` (#246).
+- `/readyz` endpoint on both MCP and web API muxes that verifies schema application and performs a lightweight DB ping, with Kubernetes `livenessProbe` (`/healthz`) and `readinessProbe` (`/readyz`) added to `deploy/k8s/mcp-deployment.yaml` (#93).
+- Prometheus `/metrics` endpoint on the MCP server (no auth, like `/healthz`) exposing Go process/runtime collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale/slots), and webhook delivery status, with bounded cardinality (no task/runner/token/user IDs as labels) (#92).
+- Secret redaction in runner output: a transient per-execution set built from sensitive environment variables (keys containing `SECRET`, `TOKEN`, `KEY`, or `PASSWORD`) replaces exact occurrences with `[REDACTED]` before any output is persisted or published — covering task events, terminal summaries/errors, session exports, callback data, and live events. The set is held in memory only and never logged, audited, or persisted; values shorter than 4 characters are skipped (#247).
+- Web UI: compact Pi session activity view on the task detail page. The export viewer renders a compact activity transcript for Pi sessions with bounded tool-result and argument previews; "View" is renamed to "View activity" and "Export" to "Download full". A new `compact` flag on the `ExportTask` RPC selects compact versus full export.
 
 ### Fixed
 
@@ -25,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - `docs/EKS.md`, `docs/K3S.md`, `docs/EXECUTION.md`, `docs/MANUAL.md`, `docs/PLAN.md`, `runner/README.md`, `docs/testing/k3d-gvisor.md` updated to document Kubernetes pod execution deployment and configuration.
 - `docs/FEATURES.md`, `docs/HARNESSES.md`, `docs/MANUAL.md`, `runner/README.md`: gVisor security boundary clarified — gVisor sandboxes the agent process only, not the network or MCP bridge.
 - Website updated to cover per-execution network isolation, runner resource reporting, and API token expiry.
+- New `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md` — plan for a unified webhook platform.
 
 ## 2026-07-26
 
