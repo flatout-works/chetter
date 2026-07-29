@@ -54,7 +54,7 @@
         <div class="shots">
           <article class="card shot">
             <img src="screenshots/screenshot-2.png" alt="Chetter dashboard showing task status cards and recent tasks" />
-            <div><h3>Fleet dashboard</h3><p>Track task throughput, live status, agents, timing, runner health, and per-runner resource utilization (CPU, memory, disk) from the control plane.</p></div>
+            <div><h3>Fleet dashboard</h3><p>Track task throughput, live status, agents, timing, runner health, and per-runner resource utilization (CPU, memory, disk) from the control plane, with a Prometheus <code>/metrics</code> endpoint for fleet and webhook monitoring in your existing dashboards.</p></div>
           </article>
           <article class="card shot">
             <img src="screenshots/screenshot-3.png" alt="Chetter triggers page showing automation workflows" />
@@ -81,7 +81,7 @@
         <div class="card callout">
           <p class="eyebrow">Secure by default</p>
           <h2 style="font-size: 28px;">Every agent container runs in an isolated network.</h2>
-          <p style="margin: 10px 0 0; color: var(--muted); line-height: 1.65; max-width: 760px;">Chetter creates a per-execution isolated Docker network for every task container — whether under <code>gVisor</code> (<code>runsc</code>) or standard Docker — so no agent can reach the runner's credentials, other tasks' workspaces, or internal infrastructure. Under gVisor, a userspace kernel adds filesystem isolation and syscall filtering; traffic routes through transparent HTTP and DNS proxies. The result is defense in depth: network isolation blocks lateral movement at the network layer, and gVisor hardens the container boundary. Both work on standard Docker and Kubernetes nodes; no custom AMI or kernel patches are required.</p>
+          <p style="margin: 10px 0 0; color: var(--muted); line-height: 1.65; max-width: 760px;">Chetter creates a per-execution isolated Docker network for every task container — whether under <code>gVisor</code> (<code>runsc</code>) or standard Docker — so no agent can reach the runner's credentials, other tasks' workspaces, or internal infrastructure. Under gVisor, a userspace kernel adds filesystem isolation and syscall filtering; traffic routes through transparent HTTP and DNS proxies. The result is defense in depth: network isolation blocks lateral movement at the network layer, and gVisor hardens the container boundary. Both work on standard Docker and Kubernetes nodes; no custom AMI or kernel patches are required. Secrets that slip into agent output are scrubbed too: exact known secret values are replaced with <code>[REDACTED]</code> before any task event, summary, session export, or callback is stored or published.</p>
         </div>
       </section>
 
