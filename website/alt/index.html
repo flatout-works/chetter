@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>chetter — run coding agents on your own infrastructure</title>
+  <meta name="description" content="Chetter is an open source (MIT) control plane for autonomous coding agents. Standard harnesses, plain Docker or Kubernetes, GitHub-native workflows. No hosted service, no custom runtime, no lock-in." />
+  <link rel="icon" href="../current/chetter-mark.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --paper: #f4f3ee;
+      --ink: #16150f;
+      --soft: #5c594e;
+      --line: #16150f;
+      --accent: #d4370c;
+      --ok: #1a7a34;
+      --bad: #b02318;
+      --code-bg: #16150f;
+      --code-fg: #e8e6dd;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    ::selection { background: var(--accent); color: #fff; }
+
+    a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+    a:hover { color: var(--accent); }
+
+    .wrap { width: min(1080px, calc(100% - 32px)); margin: 0 auto; }
+
+    /* ---- header ---- */
+    header {
+      border-bottom: 2px solid var(--line);
+      padding: 14px 0;
+    }
+    header .wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .wordmark {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-decoration: none;
+    }
+    .wordmark:hover { color: var(--ink); }
+    .wordmark .dot { color: var(--accent); }
+    nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; }
+    nav a { text-decoration: none; }
+    nav a::before { content: "[ "; color: var(--soft); }
+    nav a::after { content: " ]"; color: var(--soft); }
+    nav a:hover { color: var(--accent); }
+
+    /* ---- hero ---- */
+    .hero { padding: 72px 0 56px; border-bottom: 2px solid var(--line); }
+    .kicker {
+      display: inline-block;
+      border: 2px solid var(--line);
+      padding: 4px 10px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: #fff;
+    }
+    h1 {
+      font-size: clamp(34px, 5.4vw, 58px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin: 26px 0 20px;
+      max-width: 900px;
+    }
+    h1 em { font-style: normal; color: var(--accent); }
+    .lede { max-width: 720px; color: var(--soft); font-size: 16px; margin: 0 0 28px; }
+    .lede b { color: var(--ink); }
+    .hero-links { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      border: 2px solid var(--line);
+      padding: 10px 18px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn.plain { background: transparent; color: var(--ink); }
+    .btn.plain:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+    /* ---- terminal ---- */
+    .term {
+      margin-top: 40px;
+      border: 2px solid var(--line);
+      background: var(--code-bg);
+      color: var(--code-fg);
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-x: auto;
+    }
+    .term-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 14px;
+      border-bottom: 2px solid #3a382f;
+      color: #8a877a;
+      font-size: 12px;
+    }
+    .term pre { margin: 0; padding: 16px 14px; }
+    .term .c { color: #8a877a; }
+    .term .p { color: #e0a23c; }
+
+    /* ---- sections ---- */
+    section { padding: 56px 0; border-bottom: 2px solid var(--line); }
+    .sec-label {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin: 0 0 10px;
+    }
+    h2 {
+      font-size: clamp(24px, 3.4vw, 34px);
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin: 0 0 14px;
+    }
+    .sec-intro { max-width: 720px; color: var(--soft); margin: 0 0 32px; }
+    .sec-intro b { color: var(--ink); }
+
+    /* ---- comparison table ---- */
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 2px solid var(--line); }
+    th, td { border: 1px solid var(--line); padding: 10px 14px; text-align: left; vertical-align: top; font-size: 14px; }
+    th { background: var(--ink); color: var(--paper); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+    td:first-child { font-weight: 700; white-space: nowrap; }
+    .yes { color: var(--ok); font-weight: 700; }
+    .no { color: var(--bad); font-weight: 700; }
+    .table-note { font-size: 12px; color: var(--soft); margin-top: 10px; }
+
+    /* ---- principles grid ---- */
+    .principles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; border: 2px solid var(--line); background: #fff; }
+    .principle { padding: 20px 22px; border: 1px solid var(--line); margin: -1px 0 0 -1px; }
+    .principle .n { color: var(--accent); font-weight: 700; font-size: 13px; }
+    .principle h3 { margin: 6px 0 8px; font-size: 16px; }
+    .principle p { margin: 0; color: var(--soft); font-size: 14px; }
+
+    /* ---- spec list ---- */
+    .spec { border: 2px solid var(--line); background: #fff; }
+    .spec-row { display: grid; grid-template-columns: 220px 1fr; border-top: 1px solid var(--line); }
+    .spec-row:first-child { border-top: none; }
+    .spec-row dt {
+      padding: 14px 18px;
+      font-weight: 700;
+      border-right: 1px solid var(--line);
+      background: #efece4;
+      font-size: 13px;
+    }
+    .spec-row dd { margin: 0; padding: 14px 18px; color: var(--soft); font-size: 14px; }
+    .spec-row dd b, .spec-row dd code { color: var(--ink); }
+    code {
+      font-size: 0.92em;
+      background: #e9e6dc;
+      padding: 1px 5px;
+      border: 1px solid #d6d2c4;
+    }
+
+    /* ---- flow ---- */
+    .flow { border: 2px solid var(--line); background: var(--code-bg); color: var(--code-fg); padding: 22px; font-size: 13px; line-height: 1.9; overflow-x: auto; }
+    .flow .step { color: #e0a23c; font-weight: 700; }
+    .flow .muted { color: #8a877a; }
+
+    /* ---- screenshots ---- */
+    .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .shot { border: 2px solid var(--line); background: #fff; }
+    .shot.wide { grid-column: 1 / -1; }
+    .shot img { display: block; width: 100%; border-bottom: 2px solid var(--line); }
+    .shot figcaption { padding: 10px 14px; font-size: 13px; color: var(--soft); }
+    .shot figcaption b { color: var(--ink); }
+
+    /* ---- footer ---- */
+    footer { padding: 36px 0 56px; font-size: 13px; color: var(--soft); }
+    footer .row { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer ul { list-style: none; margin: 14px 0 0; padding: 0; }
+    footer li::before { content: "— "; }
+
+    @media (max-width: 820px) {
+      .principles { grid-template-columns: 1fr; }
+      .shots { grid-template-columns: 1fr; }
+      .spec-row { grid-template-columns: 1fr; }
+      .spec-row dt { border-right: none; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="wordmark" href="index.html">chetter<span class="dot">_</span></a>
+      <nav aria-label="Primary">
+        <a href="https://github.com/flatout-works/chetter/blob/main/docs/MANUAL.md">docs</a>
+        <a href="https://github.com/flatout-works/chetter">github</a>
+        <a href="https://discord.gg/KkZxKwSTvF">discord</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO -->
+    <div class="hero">
+      <div class="wrap">
+        <span class="kicker">open source · MIT · self-hosted</span>
+        <h1>Run autonomous coding agents on <em>your own infrastructure</em>.</h1>
+        <p class="lede">
+          Chetter is a control plane for AI coding agents, written in Go.
+          <b>One server binary. One SQL database. Plain Docker containers.</b>
+          It drives the harnesses you already use — OpenCode, Claude Code, Codex, Pi, CodeWhale —
+          and orchestrates work through the GitHub primitives you already know: PRs, issues, reviews, comments.
+        </p>
+        <div class="hero-links">
+          <a class="btn" href="https://github.com/flatout-works/chetter#quick-start">Get started →</a>
+          <a class="btn plain" href="https://github.com/flatout-works/chetter">Source code</a>
+        </div>
+
+        <div class="term" aria-label="Quick start terminal session">
+          <div class="term-bar"><span>~/src — quick start</span><span>sh</span></div>
+          <pre><span class="p">$</span> git clone https://github.com/flatout-works/chetter.git
+<span class="p">$</span> cd chetter &amp;&amp; cp .env.example .env
+<span class="c"># set CHETTER_MCP_AUTH_TOKEN + one LLM provider key</span>
+<span class="p">$</span> ./deploy/build.sh
+<span class="p">$</span> docker compose --env-file .env -f deploy/compose.yaml \
+    -f deploy/compose.local.yaml up -d
+
+<span class="c"># mcp server → http://localhost:18088</span>
+<span class="c"># web ui     → http://localhost:18090</span></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- WHY -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">Why it exists</p>
+        <h2>Hosted agent platforms want your code, your credentials, and a monthly bill.</h2>
+        <p class="sec-intro">
+          Chetter was built as a reaction to platforms that are <b>not open source</b>, want to <b>host your agents</b>,
+          require <b>exotic infrastructure</b> like Firecracker VMs, or replace standard tooling with a <b>custom agent runtime</b>.
+          Chetter takes the opposite position on every one of those points.
+        </p>
+        <table>
+          <thead>
+            <tr><th></th><th>Hosted agent platforms</th><th>Chetter</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Source code</td><td><span class="no">✗</span> Closed, or partially open</td><td><span class="yes">✓</span> MIT, full stack</td></tr>
+            <tr><td>Execution</td><td><span class="no">✗</span> Their cloud, their sandbox</td><td><span class="yes">✓</span> Your Docker or Kubernetes</td></tr>
+            <tr><td>Infrastructure</td><td><span class="no">✗</span> Firecracker / proprietary VMs</td><td><span class="yes">✓</span> Ordinary containers, optional gVisor</td></tr>
+            <tr><td>Agent harness</td><td><span class="no">✗</span> Custom runtime you can't reuse</td><td><span class="yes">✓</span> OpenCode, Claude Code, Codex, Pi, CodeWhale</td></tr>
+            <tr><td>Workflow</td><td><span class="no">✗</span> Their dashboard, their API</td><td><span class="yes">✓</span> GitHub PRs, issues, reviews, comments</td></tr>
+            <tr><td>Secrets &amp; code</td><td><span class="no">✗</span> Leave your network</td><td><span class="yes">✓</span> Never leave your network</td></tr>
+          </tbody>
+        </table>
+        <p class="table-note">If you believe the future of software development should be under your own control, this is the trade.</p>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">Design principles</p>
+        <h2>Deliberately boring technology, composed well.</h2>
+        <p class="sec-intro">These are not marketing values. They are constraints the codebase is held to.</p>
+        <div class="principles">
+          <div class="principle">
+            <span class="n">01</span>
+            <h3>True open source</h3>
+            <p>MIT licensed, no hosted Chetter service, no paid tier with the good parts removed. Clone it, run it, keep the execution path under your control.</p>
+          </div>
+          <div class="principle">
+            <span class="n">02</span>
+            <h3>Standard harnesses</h3>
+            <p>Agent execution is delegated to existing CLI tools. No custom agent runtime — an autonomous agent should be built with the same tools you use as an individual developer.</p>
+          </div>
+          <div class="principle">
+            <span class="n">03</span>
+            <h3>Docker or Kubernetes</h3>
+            <p>Server and runners deploy on standard container infrastructure. No special hardware, no custom AMIs, no kernel patches. gVisor is there when you need a hard security boundary.</p>
+          </div>
+          <div class="principle">
+            <span class="n">04</span>
+            <h3>GitHub-native orchestration</h3>
+            <p>Agents open PRs, triage issues, post reviews, and commit with managed Git identities. The same primitives your team already uses, with auditable artifacts.</p>
+          </div>
+          <div class="principle">
+            <span class="n">05</span>
+            <h3>Plain containers as environments</h3>
+            <p>The agent runs in a normal Docker image. You define the tools and stack your project needs — language toolchains, CLIs, whatever the job requires.</p>
+          </div>
+          <div class="principle">
+            <span class="n">06</span>
+            <h3>API and MCP first</h3>
+            <p>Every capability is a ConnectRPC endpoint, also exposed as an MCP tool. The web UI exists for observation and admin — it's a client of the API, not a gatekeeper.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPEC -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">What you get</p>
+        <h2>The spec sheet.</h2>
+        <p class="sec-intro">No feature-page adjectives. This is what the system actually does.</p>
+        <dl class="spec">
+          <div class="spec-row">
+            <dt>Task queue</dt>
+            <dd>Just SQL. <b>SELECT … FOR UPDATE SKIP LOCKED</b>, 60-second database leases, heartbeats, and a reaper that reclaims dead runners' work every 30s. No broker to operate.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Automation</dt>
+            <dd>Cron triggers, generic webhooks, GitHub PR-review and issue triggers. Definitions can live in a Git repo and sync every five minutes — agents, skills, triggers, model catalogs.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Sessions</dt>
+            <dd>Pause an agent mid-task and resume it later on the same runner. Recover timed-out sessions with full context. Re-run any terminal task with one click.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Models</dt>
+            <dd>Bring any provider — OpenAI-compatible, native, AWS Bedrock, LiteLLM routers. A data-driven catalog maps providers to harnesses. No code changes to add a model.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Isolation</dt>
+            <dd>Every task container gets its own isolated Docker network — no lateral movement, no access to runner credentials. gVisor (<code>runsc</code>) adds a userspace kernel when enabled.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Operations</dt>
+            <dd>Full audit log, per-task event streams, token &amp; cost summaries by team/trigger/repo, structured failure categories, runner fleet health with CPU/mem/disk utilization.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Database</dt>
+            <dd>TiDB, MySQL, or PostgreSQL — auto-detected. Zero-downtime auto-migrations on startup plus Goose for explicit schema changes.</dd>
+          </div>
+          <div class="spec-row">
+            <dt>Clients</dt>
+            <dd>Any MCP client (OpenCode, Claude Code, …), the <code>chetterctl</code> CLI, or the web UI. Connect from your editor and submit a task without leaving it.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">How it works</p>
+        <h2>One control plane, many disposable runners.</h2>
+        <p class="sec-intro">The server owns state. Runners own execution. The whole lifecycle fits in six steps.</p>
+        <div class="flow"><pre style="margin:0"><span class="step">1. SUBMIT </span> <span class="muted">MCP call, cron, or GitHub webhook inserts a task row. You get a task id back immediately.</span>
+<span class="step">2. QUEUE  </span> <span class="muted">Task sits in the database as pending, with team, model, timeout, and repo metadata.</span>
+<span class="step">3. CLAIM  </span> <span class="muted">Runners poll over ConnectRPC. One wins the row lock + lease; two runners never run the same task.</span>
+<span class="step">4. PREPARE</span> <span class="muted">Winner clones the repo, writes agent/skill definitions, resolves MCP endpoint credentials.</span>
+<span class="step">5. RUN    </span> <span class="muted">The harness starts in a container from your agent image, on an isolated network.</span>
+<span class="step">6. REPORT </span> <span class="muted">Events, heartbeats, token usage, and artifacts stream back. Done, error, or recoverable.</span></pre></div>
+      </div>
+    </section>
+
+    <!-- SCREENSHOTS -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">See it running</p>
+        <h2>The web UI is for watching, not for clicking through wizards.</h2>
+        <p class="sec-intro">Real screenshots from a production Chetter instance. It runs its own issue triage, implementation, docs, and changelog maintenance.</p>
+        <div class="shots">
+          <figure class="shot wide">
+            <img src="../current/screenshots/alt-dashboard.png" alt="Chetter dashboard with task status counters and recent tasks table" loading="lazy" />
+            <figcaption><b>Dashboard.</b> Fleet status counters and the live task stream. Click a counter to filter.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="../current/screenshots/alt-task.png" alt="Task detail page showing full configuration, environment, and execution metadata" loading="lazy" />
+            <figcaption><b>Task detail.</b> Full execution envelope: agent, harness, model, origin, environment. Recover, re-run, or export.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="../current/screenshots/alt-runners.png" alt="Runner fleet page showing runner health and resource utilization" loading="lazy" />
+            <figcaption><b>Runner fleet.</b> Capacity, leases, and per-runner CPU/memory/disk, straight from heartbeats.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="../current/screenshots/alt-triggers.png" alt="Triggers page listing cron schedules and GitHub webhook handlers" loading="lazy" />
+            <figcaption><b>Triggers.</b> Cron schedules and GitHub webhook handlers, toggled in one table.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="../current/screenshots/alt-agents.png" alt="Agents page listing Git-managed agent definitions" loading="lazy" />
+            <figcaption><b>Agents.</b> Git-managed agent definitions, browsable with per-agent activity and token usage.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONNECT -->
+    <section>
+      <div class="wrap">
+        <p class="sec-label">Use it</p>
+        <h2>Connect the client you already have.</h2>
+        <p class="sec-intro">Chetter is a standard remote MCP server. Point your AI client at it and submit tasks from your editor.</p>
+        <div class="term">
+          <div class="term-bar"><span>connect an MCP client</span><span>sh</span></div>
+          <pre><span class="c"># Claude Code</span>
+<span class="p">$</span> claude mcp add --transport http chetter \
+    https://chetter.example.com/mcp \
+    --header "Authorization: Bearer $TOKEN"
+
+<span class="c"># OpenCode: built-in config at .opencode/opencode.json</span>
+<span class="c"># Any other MCP client: standard remote server format</span></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="row">
+        <div>
+          <b>chetter</b> — MIT licensed.
+        </div>
+        <div>
+          <a href="https://github.com/flatout-works/chetter">github.com/flatout-works/chetter</a>
+        </div>
+      </div>
+      <ul>
+        <li>No hosted service. No signup. No tracking on this page.</li>
+        <li>No JavaScript, no webfonts, no cookies — one HTML file.</li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chetter — coding agents on your own infrastructure</title>
+  <meta name="description" content="Chetter is an open source control plane for autonomous coding agents. Standard harnesses, plain Docker or Kubernetes, GitHub-native workflows. No hosted service, no custom runtime, no lock-in." />
+  <link rel="icon" href="chetter-mark.svg" type="image/svg+xml" />
+  <script>document.documentElement.classList.add('js');</script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07080c;
+      --panel: #0d1017;
+      --panel-2: #11141d;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #eef0f6;
+      --muted: #98a0b3;
+      --faint: #6b7284;
+      --blue: #6d9bff;
+      --violet: #a78bfa;
+      --grad: linear-gradient(92deg, var(--blue), var(--violet));
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    ::selection { background: rgba(109, 155, 255, 0.35); }
+
+    a { color: inherit; text-decoration: none; }
+
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+
+    /* ---------- background ---------- */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background:
+        radial-gradient(900px 500px at 50% -10%, rgba(109, 155, 255, 0.14), transparent 60%),
+        radial-gradient(700px 500px at 85% 10%, rgba(167, 139, 250, 0.10), transparent 60%),
+        var(--bg);
+    }
+    .bg::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 56px 56px;
+      mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 30%, transparent 75%);
+    }
+
+    /* ---------- nav ---------- */
+    nav {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(13, 16, 23, 0.72);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    nav .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 4px 12px 4px 6px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    nav .brand img { width: 22px; height: 22px; border-radius: 6px; }
+    nav .links { display: flex; align-items: center; gap: 2px; }
+    nav .links a {
+      padding: 6px 12px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: color 0.15s, background 0.15s;
+    }
+    nav .links a:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+    nav .cta-nav {
+      padding: 7px 16px !important;
+      background: var(--text) !important;
+      color: #0b0d12 !important;
+      font-weight: 650 !important;
+    }
+    nav .cta-nav:hover { background: #fff !important; }
+
+    /* ---------- reveal ---------- */
+    .js .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s cubic-bezier(0.2, 0.6, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.6, 0.2, 1); }
+    .js .reveal.in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .js .reveal { opacity: 1; transform: none; transition: none; }
+    }
+
+    /* ---------- hero ---------- */
+    .hero { padding: 168px 0 40px; text-align: center; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 550;
+      letter-spacing: 0.04em;
+    }
+    .pill .dot {
+      width: 7px; height: 7px; border-radius: 999px;
+      background: var(--grad);
+      box-shadow: 0 0 12px rgba(109, 155, 255, 0.9);
+    }
+    h1 {
+      margin: 26px auto 18px;
+      max-width: 820px;
+      font-size: clamp(42px, 6.4vw, 72px);
+      line-height: 1.04;
+      letter-spacing: -0.035em;
+      font-weight: 750;
+    }
+    h1 .grad {
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .lede {
+      max-width: 560px;
+      margin: 0 auto 34px;
+      color: var(--muted);
+      font-size: 17.5px;
+      line-height: 1.65;
+    }
+    .hero-btns { display: flex; gap: 12px; justify-content: center; margin-bottom: 64px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 650;
+      font-size: 15px;
+      transition: transform 0.15s, box-shadow 0.2s, background 0.15s;
+    }
+    .btn.primary {
+      background: var(--text);
+      color: #0b0d12;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 40px rgba(109, 155, 255, 0.25);
+    }
+    .btn.primary:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,255,255,0.15), 0 16px 48px rgba(109,155,255,0.35); }
+    .btn.ghost {
+      border: 1px solid var(--border-strong);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+    }
+    .btn.ghost:hover { background: rgba(255, 255, 255, 0.07); }
+
+    /* hero screenshot */
+    .shot-hero {
+      position: relative;
+      max-width: 1000px;
+      margin: 0 auto;
+      border-radius: 16px;
+      padding: 1px;
+      background: linear-gradient(180deg, rgba(109,155,255,0.5), rgba(167,139,250,0.18) 40%, rgba(255,255,255,0.06));
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 80px rgba(109, 155, 255, 0.12);
+    }
+    .shot-hero img { display: block; width: 100%; border-radius: 15px; }
+    .shot-hero .fade {
+      position: absolute;
+      inset: auto 0 0;
+      height: 34%;
+      border-radius: 0 0 15px 15px;
+      background: linear-gradient(180deg, transparent, rgba(7, 8, 12, 0.85));
+      pointer-events: none;
+    }
+
+    /* ---------- harness strip ---------- */
+    .strip {
+      padding: 44px 0 8px;
+      text-align: center;
+    }
+    .strip p {
+      margin: 0 0 18px;
+      color: var(--faint);
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .strip .names {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px 28px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 15px;
+    }
+    .strip .names span { transition: color 0.15s; }
+    .strip .names span:hover { color: var(--text); }
+
+    /* ---------- sections ---------- */
+    section { padding: 110px 0 0; }
+    .sec-head { max-width: 640px; margin-bottom: 48px; }
+    .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+    .eyebrow {
+      margin: 0 0 12px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(28px, 3.8vw, 42px);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      font-weight: 720;
+    }
+    .sec-head p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 16.5px; }
+
+    /* ---------- why / compare ---------- */
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .col-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 26px 26px 20px;
+    }
+    .col-card.good {
+      border-color: transparent;
+      background:
+        linear-gradient(var(--panel-2), var(--panel-2)) padding-box,
+        linear-gradient(160deg, rgba(109,155,255,0.7), rgba(167,139,250,0.35) 55%, rgba(255,255,255,0.08)) border-box;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45), 0 0 60px rgba(109, 155, 255, 0.08);
+    }
+    .col-card h3 {
+      margin: 0 0 18px;
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .col-card.good h3 { color: var(--blue); }
+    .col-card ul { list-style: none; margin: 0; padding: 0; }
+    .col-card li {
+      display: flex;
+      gap: 12px;
+      padding: 9px 0;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .col-card.good li { color: #c9cfdd; }
+    .col-card li b { color: var(--text); font-weight: 600; }
+    .col-card li .x, .col-card li .y { flex: 0 0 18px; font-weight: 700; }
+    .col-card li .x { color: #f87171; }
+    .col-card li .y { color: #4ade80; }
+
+    /* ---------- principles bento ---------- */
+    .bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .cell {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 24px;
+      transition: border-color 0.2s, transform 0.2s, background 0.2s;
+      overflow: hidden;
+    }
+    .cell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(320px 160px at 20% 0%, rgba(109, 155, 255, 0.10), transparent 70%);
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+    }
+    .cell:hover { border-color: rgba(109, 155, 255, 0.35); transform: translateY(-2px); background: var(--panel-2); }
+    .cell:hover::after { opacity: 1; }
+    .cell .num {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--faint);
+    }
+    .cell h3 { margin: 12px 0 8px; font-size: 17.5px; letter-spacing: -0.01em; }
+    .cell p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+    /* ---------- spec ---------- */
+    .spec { display: grid; grid-template-columns: 1fr 1fr; gap: 0 48px; }
+    .spec .row {
+      display: grid;
+      grid-template-columns: 132px 1fr;
+      gap: 20px;
+      padding: 18px 0;
+      border-top: 1px solid var(--border);
+      align-items: baseline;
+    }
+    .spec .row .k {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--blue);
+      letter-spacing: 0.02em;
+    }
+    .spec .row .v { color: var(--muted); font-size: 15px; }
+    .spec .row .v b { color: var(--text); font-weight: 600; }
+    .spec .row .v code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      color: #cdd6e8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    /* ---------- lifecycle ---------- */
+    .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; counter-reset: step; }
+    .flow .step {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 18px;
+      position: relative;
+    }
+    .flow .step .n {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(109, 155, 255, 0.12);
+      color: var(--blue);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .flow .step h3 { margin: 0 0 6px; font-size: 14.5px; }
+    .flow .step p { margin: 0; color: var(--faint); font-size: 12.8px; line-height: 1.55; }
+
+    /* ---------- gallery ---------- */
+    .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .gshot.wide { grid-column: 1 / -1; }
+    .gshot {
+      border-radius: 14px;
+      padding: 1px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+      transition: transform 0.25s, box-shadow 0.25s;
+    }
+    .gshot:hover, .gshot:focus-within { transform: translateY(-3px); box-shadow: 0 32px 90px rgba(0, 0, 0, 0.55), 0 0 50px rgba(109, 155, 255, 0.10); }
+    .gshot img { display: block; width: 100%; border-radius: 13px 13px 0 0; }
+    .gshot figcaption {
+      padding: 13px 18px;
+      background: var(--panel-2);
+      border-radius: 0 0 13px 13px;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+    .gshot figcaption b { color: var(--text); font-weight: 600; }
+    .shot-open {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: zoom-in;
+    }
+    .shot-open::after {
+      content: "View larger";
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      z-index: 2;
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      background: rgba(7, 8, 12, 0.82);
+      backdrop-filter: blur(8px);
+      color: #dce3f3;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      opacity: 0.78;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .shot-open:hover::after, .shot-open:focus-visible::after { opacity: 1; transform: translateY(-2px); }
+    .shot-open:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 13px; }
+    .shot-hero .shot-open { border-radius: 15px; overflow: hidden; }
+    .shot-hero .shot-open::after { bottom: 18px; right: 18px; }
+
+    /* ---------- screenshot lightbox ---------- */
+    .lightbox {
+      width: auto;
+      max-width: 96vw;
+      max-height: 94vh;
+      padding: 0;
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      background: #080a0f;
+      color: var(--text);
+      box-shadow: 0 40px 140px rgba(0, 0, 0, 0.78), 0 0 80px rgba(109, 155, 255, 0.12);
+      overflow: hidden;
+    }
+    .lightbox::backdrop { background: rgba(2, 3, 7, 0.86); backdrop-filter: blur(10px); }
+    .lightbox figure { margin: 0; }
+    .lightbox img {
+      display: block;
+      max-width: 96vw;
+      max-height: calc(94vh - 52px);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+    .lightbox figcaption {
+      min-height: 52px;
+      padding: 15px 64px 15px 18px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+    .lightbox-close {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      z-index: 3;
+      padding: 8px 11px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      background: rgba(7, 8, 12, 0.88);
+      color: var(--text);
+      font: 600 12px var(--mono);
+      cursor: pointer;
+    }
+    .lightbox-close:hover, .lightbox-close:focus-visible { background: #171b24; outline: none; }
+
+    /* ---------- quickstart ---------- */
+    .term {
+      max-width: 760px;
+      margin: 0 auto;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: #0a0c11;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), 0 0 60px rgba(109, 155, 255, 0.07);
+      overflow: hidden;
+      text-align: left;
+    }
+    .term-bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .term-bar i { width: 11px; height: 11px; border-radius: 999px; background: #2a2f3c; }
+    .term-bar i:nth-child(1) { background: #3a2f3c; }
+    .term-bar span { margin-left: 8px; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+    .term pre {
+      margin: 0;
+      padding: 20px 22px;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      line-height: 1.85;
+      color: #c4cbdb;
+      overflow-x: auto;
+    }
+    .term .p { color: var(--blue); }
+    .term .c { color: var(--faint); }
+
+    /* ---------- cta ---------- */
+    .cta {
+      margin-top: 110px;
+      padding: 90px 0 100px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      background: radial-gradient(600px 300px at 50% 120%, rgba(109, 155, 255, 0.12), transparent 70%);
+    }
+    .cta h2 { margin-bottom: 10px; }
+    .cta p { color: var(--muted); margin: 0 auto 30px; max-width: 440px; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 0 40px;
+    }
+    footer .wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      color: var(--faint);
+      font-size: 13px;
+    }
+    footer .flinks { display: flex; gap: 20px; }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+    footer .mark { display: flex; align-items: center; gap: 8px; color: var(--muted); font-weight: 600; }
+    footer .mark img { width: 18px; height: 18px; border-radius: 5px; }
+
+    @media (max-width: 900px) {
+      .compare, .gallery { grid-template-columns: 1fr; }
+      .gshot.wide { grid-column: auto; }
+      .bento { grid-template-columns: 1fr 1fr; }
+      .flow { grid-template-columns: 1fr 1fr; }
+      .spec { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      nav .links a:not(.cta-nav) { display: none; }
+      .bento, .flow { grid-template-columns: 1fr; }
+      .hero { padding-top: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <nav aria-label="Primary">
+    <a class="brand" href="index.html"><img src="chetter-mark.svg" alt="" />Chetter</a>
+    <div class="links">
+      <a href="#why">Why</a>
+      <a href="#principles">Principles</a>
+      <a href="#spec">Spec</a>
+      <a href="https://github.com/flatout-works/chetter/blob/main/docs/MANUAL.md">Docs</a>
+      <a class="cta-nav" href="https://github.com/flatout-works/chetter">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <main>
+    <!-- HERO -->
+    <header class="hero">
+      <div class="wrap">
+        <span class="pill reveal"><span class="dot"></span>Open source · MIT · Self-hosted</span>
+        <h1 class="reveal">Coding agents on <span class="grad">your own infrastructure</span>.</h1>
+        <p class="lede reveal">Chetter is an open source control plane for autonomous coding agents. One Go server, one SQL database, plain containers — and the harnesses you already use.</p>
+        <div class="hero-btns reveal">
+          <a class="btn primary" href="https://github.com/flatout-works/chetter#quick-start">Get started →</a>
+          <a class="btn ghost" href="https://discord.gg/KkZxKwSTvF">Join Discord</a>
+        </div>
+        <div class="shot-hero reveal">
+          <button class="shot-open" type="button" data-lightbox data-caption="Dashboard. Live queue health, task outcomes, and runner capacity at a glance." aria-label="Open dashboard screenshot in a larger view">
+            <img src="screenshots/mod-dashboard.png" alt="Chetter dashboard showing live task status and recent agent tasks" />
+            <span class="fade"></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- HARNESS STRIP -->
+    <div class="strip reveal">
+      <p>No custom runtime — standard harnesses</p>
+      <div class="names">
+        <span>OpenCode</span><span>Claude Code</span><span>Codex</span><span>Pi</span><span>CodeWhale</span>
+      </div>
+    </div>
+
+    <!-- WHY -->
+    <section id="why">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="eyebrow">Why Chetter</p>
+          <h2>Hosted agent platforms want your code, your credentials, and a monthly bill.</h2>
+          <p>Chetter is the opposite position on every one of those points.</p>
+        </div>
+        <div class="compare">
+          <div class="col-card reveal">
+            <h3>Hosted platforms</h3>
+            <ul>
+              <li><span class="x">✗</span><span>Closed source, or open in name only</span></li>
+              <li><span class="x">✗</span><span>Agents run in <b>their</b> cloud, on proprietary sandboxes</span></li>
+              <li><span class="x">✗</span><span>Exotic infrastructure — Firecracker VMs, custom kernels</span></li>
+              <li><span class="x">✗</span><span>Custom agent runtime you can't reuse locally</span></li>
+              <li><span class="x">✗</span><span>Your code and secrets leave your network</span></li>
+            </ul>
+          </div>
+          <div class="col-card good reveal">
+            <h3>Chetter</h3>
+            <ul>
+              <li><span class="y">✓</span><span><b>MIT licensed</b>, full stack, no hosted tier</span></li>
+              <li><span class="y">✓</span><span>Runs on <b>your</b> Docker or Kubernetes — nothing exotic</span></li>
+              <li><span class="y">✓</span><span>Optional <b>gVisor</b> sandboxing, per-task isolated networks</span></li>
+              <li><span class="y">✓</span><span>Standard harness CLIs — same tools you use by hand</span></li>
+              <li><span class="y">✓</span><span>Code and credentials <b>never leave your network</b></span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section id="principles">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="eyebrow">Design principles</p>
+          <h2>Deliberately boring technology, composed well.</h2>
+          <p>Not marketing values — constraints the codebase is held to.</p>
+        </div>
+        <div class="bento">
+          <div class="cell reveal"><span class="num">01</span><h3>True open source</h3><p>MIT, no hosted service. Clone it, run it, own the execution path.</p></div>
+          <div class="cell reveal"><span class="num">02</span><h3>Standard harnesses</h3><p>Execution delegated to existing CLI agents. No custom runtime.</p></div>
+          <div class="cell reveal"><span class="num">03</span><h3>Docker or Kubernetes</h3><p>Standard containers anywhere. gVisor when you need a hard boundary.</p></div>
+          <div class="cell reveal"><span class="num">04</span><h3>GitHub-native</h3><p>Agents open PRs, triage issues, post reviews — with managed Git identities.</p></div>
+          <div class="cell reveal"><span class="num">05</span><h3>Plain containers</h3><p>The agent image is a normal Docker image with your stack in it.</p></div>
+          <div class="cell reveal"><span class="num">06</span><h3>API &amp; MCP first</h3><p>Everything is a ConnectRPC endpoint and an MCP tool. The UI just observes.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPEC -->
+    <section id="spec">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="eyebrow">Spec sheet</p>
+          <h2>What the system actually does.</h2>
+        </div>
+        <div class="spec reveal">
+          <div class="row"><span class="k">queue</span><span class="v">Just SQL — <code>SKIP LOCKED</code> claims, 60s leases, a reaper for dead runners. No broker.</span></div>
+          <div class="row"><span class="k">automation</span><span class="v">Cron, generic webhooks, GitHub PR-review &amp; issue triggers. Config can live in Git.</span></div>
+          <div class="row"><span class="k">sessions</span><span class="v">Pause mid-task, resume on the same runner, recover timeouts, re-run anything.</span></div>
+          <div class="row"><span class="k">models</span><span class="v">Any provider — OpenAI-compatible, native, Bedrock, LiteLLM. Data-driven catalog.</span></div>
+          <div class="row"><span class="k">isolation</span><span class="v">Per-task Docker networks block lateral movement. gVisor adds a userspace kernel.</span></div>
+          <div class="row"><span class="k">operations</span><span class="v">Audit log, event streams, token &amp; cost summaries, runner fleet health.</span></div>
+          <div class="row"><span class="k">database</span><span class="v">TiDB, MySQL, or PostgreSQL — auto-detected, auto-migrated.</span></div>
+          <div class="row"><span class="k">clients</span><span class="v">Any MCP client, the <code>chetterctl</code> CLI, or the web UI.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIFECYCLE -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="eyebrow">How it works</p>
+          <h2>Prompt to pull request in six steps.</h2>
+        </div>
+        <div class="flow reveal">
+          <div class="step"><span class="n">1</span><h3>Submit</h3><p>MCP call, cron, or webhook creates a task.</p></div>
+          <div class="step"><span class="n">2</span><h3>Queue</h3><p>Stored in the database as pending.</p></div>
+          <div class="step"><span class="n">3</span><h3>Claim</h3><p>A runner wins the row lock and lease.</p></div>
+          <div class="step"><span class="n">4</span><h3>Prepare</h3><p>Repo cloned, agent config injected.</p></div>
+          <div class="step"><span class="n">5</span><h3>Run</h3><p>Harness executes in an isolated container.</p></div>
+          <div class="step"><span class="n">6</span><h3>Report</h3><p>Events and artifacts stream back. PR opened.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALLERY -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="eyebrow">See it running</p>
+          <h2>A UI for watching, not for wizards.</h2>
+          <p>Real views from a production instance that runs its own triage, implementation, and docs maintenance. Click any screenshot to inspect it.</p>
+        </div>
+        <div class="gallery">
+          <figure class="gshot wide reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Tasks. Search and filter every run by status and failure type, with its agent, model, origin, age, and duration." aria-label="Open tasks screenshot in a larger view">
+              <img src="screenshots/mod-tasks.png" alt="Chetter tasks page showing task status, failure type, agent, model, origin, and duration" loading="lazy" />
+            </button>
+            <figcaption><b>Tasks.</b> Every run, model, origin, failure, and duration in one searchable queue.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Triggers. Cron schedules and GitHub webhook handlers in one operational table." aria-label="Open triggers screenshot in a larger view">
+              <img src="screenshots/mod-triggers.png" alt="Chetter triggers page listing cron schedules and GitHub webhook handlers" loading="lazy" />
+            </button>
+            <figcaption><b>Triggers.</b> Cron schedules and GitHub webhook handlers in one table.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Runner fleet. Capacity and per-runner CPU, memory, and disk utilization reported by live heartbeats." aria-label="Open runner fleet screenshot in a larger view">
+              <img src="screenshots/mod-runners.png" alt="Chetter runner fleet page with per-runner CPU, memory and disk utilization" loading="lazy" />
+            </button>
+            <figcaption><b>Runner fleet.</b> Capacity and per-runner CPU/memory/disk, live from heartbeats.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Agents. Git-managed definitions connect each task role to its model, identity, and scope." aria-label="Open agents screenshot in a larger view">
+              <img src="screenshots/mod-agents.png" alt="Chetter agents page listing Git-managed agent definitions, models, identities, and scopes" loading="lazy" />
+            </button>
+            <figcaption><b>Agents.</b> Git-managed roles with explicit models, identities, and scope.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Sessions. Resumable execution state stays visible across completed, failed, paused, and abandoned runs." aria-label="Open sessions screenshot in a larger view">
+              <img src="screenshots/mod-sessions.png" alt="Chetter agent sessions page showing resumable session status, agent, model, and prompt count" loading="lazy" />
+            </button>
+            <figcaption><b>Sessions.</b> Resumable execution state, status, agent, and model.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Artifacts. GitHub issues, pull requests, comments, and reviews are linked back to the task and execution attempt that created them." aria-label="Open artifacts screenshot in a larger view">
+              <img src="screenshots/mod-artifacts.png" alt="Chetter task artifacts page linking GitHub issues and pull requests to tasks and execution attempts" loading="lazy" />
+            </button>
+            <figcaption><b>Artifacts.</b> Every GitHub issue, PR, comment, and review traced to its task.</figcaption>
+          </figure>
+          <figure class="gshot reveal" style="margin:0">
+            <button class="shot-open" type="button" data-lightbox data-caption="Audit log. Searchable server-side history for task, trigger, webhook, definition, and artifact activity." aria-label="Open audit log screenshot in a larger view">
+              <img src="screenshots/mod-audit.png" alt="Chetter audit log showing searchable server-side automation and webhook events" loading="lazy" />
+            </button>
+            <figcaption><b>Audit log.</b> Searchable server-side history for automation and webhook activity.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUICKSTART -->
+    <section>
+      <div class="wrap">
+        <div class="sec-head center reveal">
+          <p class="eyebrow">Quick start</p>
+          <h2>Running in four commands.</h2>
+        </div>
+        <div class="term reveal">
+          <div class="term-bar"><i></i><i></i><i></i><span>sh</span></div>
+          <pre><span class="p">$</span> git clone https://github.com/flatout-works/chetter.git
+<span class="p">$</span> cd chetter &amp;&amp; cp .env.example .env   <span class="c"># set a token + one LLM key</span>
+<span class="p">$</span> ./deploy/build.sh
+<span class="p">$</span> docker compose --env-file .env -f deploy/compose.yaml \
+    -f deploy/compose.local.yaml up -d
+
+<span class="c"># mcp  → http://localhost:18088    ui → http://localhost:18090</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <div class="cta">
+      <div class="wrap reveal">
+        <h2>Own your agent infrastructure.</h2>
+        <p>No hosted service. No signup. Clone the repo and you're running.</p>
+        <div class="hero-btns" style="margin-bottom:0">
+          <a class="btn primary" href="https://github.com/flatout-works/chetter">Star on GitHub ↗</a>
+          <a class="btn ghost" href="https://github.com/flatout-works/chetter/blob/main/docs/MANUAL.md">Read the manual</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span class="mark"><img src="chetter-mark.svg" alt="" />Chetter — MIT licensed</span>
+      <div class="flinks">
+        <a href="https://github.com/flatout-works/chetter">GitHub</a>
+        <a href="https://discord.gg/KkZxKwSTvF">Discord</a>
+        <a href="https://github.com/flatout-works/chetter/blob/main/docs/MANUAL.md">Docs</a>
+      </div>
+    </div>
+  </footer>
+
+  <dialog class="lightbox" aria-label="Expanded screenshot">
+    <button class="lightbox-close" type="button">Close</button>
+    <figure>
+      <img src="" alt="" />
+      <figcaption></figcaption>
+    </figure>
+  </dialog>
+
+  <script>
+    (function () {
+      var els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) {
+        els.forEach(function (el) { el.classList.add('in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      els.forEach(function (el, i) {
+        el.style.transitionDelay = Math.min((i % 6) * 60, 300) + 'ms';
+        io.observe(el);
+      });
+    })();
+
+    (function () {
+      var dialog = document.querySelector('.lightbox');
+      var fullImage = dialog.querySelector('img');
+      var caption = dialog.querySelector('figcaption');
+      var closeButton = dialog.querySelector('.lightbox-close');
+      var opener = null;
+
+      document.querySelectorAll('[data-lightbox]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var image = button.querySelector('img');
+          opener = button;
+          fullImage.src = image.src;
+          fullImage.alt = image.alt;
+          caption.textContent = button.dataset.caption;
+          dialog.showModal();
+        });
+      });
+
+      closeButton.addEventListener('click', function () { dialog.close(); });
+      dialog.addEventListener('click', function (event) {
+        if (event.target === dialog) dialog.close();
+      });
+      dialog.addEventListener('close', function () {
+        if (opener) opener.focus();
+      });
+    })();
+  </script>
+</body>
+</html>
