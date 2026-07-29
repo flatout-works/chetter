@@ -197,6 +197,45 @@ variables take effect after restarting the server. Retention deletes data
 permanently, so choose values that satisfy operational, audit, and compliance
 requirements before enabling it.
 
+## Optional Mem9 Integration
+
+Chetter supports [Mem9](https://mem9.ai/) persistent memory for the OpenCode
+harness, but does not require or enable it by default. Mem9 is enabled only when
+the runner starts with a non-empty `MEM9_API_KEY`. Without that key, Chetter does
+not add the Mem9 plugin to the generated OpenCode configuration. Setting
+`MEM9_API_URL` or `MEM9_DEBUG` without an API key does not enable the plugin.
+
+Configure Mem9 in the runner environment, such as in the deployment `.env` used
+by Compose:
+
+```dotenv
+MEM9_API_KEY=your-secret-key
+MEM9_API_URL=https://api.mem9.ai
+MEM9_DEBUG=false
+```
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `MEM9_API_KEY` | To enable Mem9 | empty | Enables the integration and authenticates Mem9 API requests. Keep it secret. |
+| `MEM9_API_URL` | No | `https://api.mem9.ai` in Compose | Overrides the Mem9 API endpoint. It is inert when `MEM9_API_KEY` is empty. |
+| `MEM9_DEBUG` | No | `false` in Compose | Controls Mem9 plugin debug output. It is inert when `MEM9_API_KEY` is empty. |
+| `MEM9_HOME` | No | empty | Overrides Mem9's state/configuration directory when supported by the plugin. |
+| `MEM9_PLUGIN_SPEC` | No | `@mem9/opencode` | Advanced runner-side override for the OpenCode plugin package specification. |
+
+Enablement is runner-wide, not per task. A configured key enables Mem9 for every
+OpenCode task claimed by that runner; other harnesses do not use this integration.
+The runner owns the `MEM9_*` environment variables, so task-supplied environment
+values cannot replace runner credentials or opt an individual task in or out.
+
+The standard agent base image preinstalls the Mem9 OpenCode npm package, and the
+default runner network policy allows `api.mem9.ai`. These provide offline-ready
+support but do not activate Mem9 or make an API request without plugin activation.
+A repository can still explicitly declare plugins in its own OpenCode config;
+that is repository-controlled behavior rather than Chetter's Mem9 integration.
+
+To disable Mem9, remove or empty `MEM9_API_KEY` in the runner environment and
+restart the affected runners. No Mem9-specific image change is required.
+
 ## YAML Configuration And Validation
 
 Chetter-owned YAML files have JSON Schemas under `schemas/` and are validated by the code paths that load them. Third-party YAML files such as Kubernetes manifests, Compose files, `buf.yaml`, and `sqlc.yaml` use their own upstream validators instead.
