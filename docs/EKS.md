@@ -279,7 +279,7 @@ spec:
             memory: 512Mi
         readinessProbe:
           httpGet:
-            path: /healthz
+            path: /readyz
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -640,7 +640,7 @@ kubectl -n chetter logs chetter-task-<task-id> -c agent
 
 ### Health
 
-The server exposes `/healthz` on port 8080. Use this for readiness and liveness probes.
+The server exposes `/healthz` (liveness) and `/readyz` (readiness, performs a database ping) on port 8080. Use `/readyz` for readiness probes and `/healthz` for liveness probes. A Prometheus `/metrics` endpoint is also available on port 8080 without authentication.
 
 The runner does not expose a health endpoint yet. Monitor runner health through the
 Chetter server's runner health API:

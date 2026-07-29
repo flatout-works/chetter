@@ -129,6 +129,10 @@ Plain Docker and local execution are not security boundaries: a task can escape 
 
 Optional proxy and DNS filtering are operational controls, not a substitute for sandboxing. Legacy Kata/containerd execution and host network namespace management have been removed.
 
+### Secret Redaction
+
+Before any runner output is persisted or published, exact occurrences of known secret values are replaced with `[REDACTED]`. The redaction set is built per execution from designated sensitive environment variables — keys whose uppercased form contains `SECRET`, `TOKEN`, `KEY`, or `PASSWORD` — at task submission time. Redaction is applied at a single boundary covering task event payloads, terminal summaries and errors, session exports, callback data, and live event publication. The set is held in memory only (never logged, audited, or persisted) and discarded after the session completes. Values shorter than four characters are skipped to avoid false positives.
+
 ## Runner-Local MCP Tools
 
 The runner exposes only workspace file I/O tools to agents:
@@ -147,6 +151,7 @@ Chetter supports:
 
 - Admin token auth for global access.
 - Team tokens stored hashed in the configured database.
+- Optional token expiry via the `expires_in_hours` field on `chetter_create_token`; expired tokens are rejected at authentication time.
 - Automatic `team_id` stamping for tasks, triggers, schedule runs, and sessions.
 - Team-scoped reads for non-admin tokens.
 
@@ -213,6 +218,8 @@ Severity filters: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN`.
 ## Audit And Observability
 
 Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Aggregate token usage and cost totals are available grouped by team, trigger, and repository.
+
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors alongside custom `chetter_*` gauges: task counts by status, runner fleet health (active/stale, available/occupied slots), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 Tools:
 
