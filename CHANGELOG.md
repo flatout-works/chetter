@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-29
+
+### Fixed
+
+- Trigger identity is now stable across definition syncs: synced triggers receive a deterministic identity keyed on (definition source ID, trigger `name`) so re-syncs reuse the same trigger ID instead of minting a fresh random ID each time. In-memory cron registrations are reconciled against the full desired trigger set after each sync, dropping schedules for removed or renamed triggers and for synced triggers that are disabled or no longer cron-typed; API and other-source triggers are left untouched. This stops stale cron entries from firing `runTrigger` against deleted trigger IDs. Renames are treated as delete-old + create-new — trigger run history and usage attribution do not follow a rename (#256).
+
+### Documentation
+
+- Optional Mem9 persistent memory integration for the OpenCode harness documented in `docs/MANUAL.md`: enabled only when the runner starts with a non-empty `MEM9_API_KEY` (runner-wide, not per-task; other harnesses unaffected). Configurable via `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME`, and `MEM9_PLUGIN_SPEC`.
+- Website redesigned and relaunched: a new modern site under `website/current/` (with an alternate variant under `website/alt/`); the previous site moved to `website/old/`.
+
 ## 2026-07-28
 
 ### Added
