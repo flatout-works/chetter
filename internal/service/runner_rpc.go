@@ -191,7 +191,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 				}
 			}
 			s.resolveTaskModel(ctx, protoTask)
-			agentEndpointNames := s.resolveTaskDefinitions(ctx, protoTask)
+			agentEndpointNames := s.resolveTaskDefinitions(ctx, protoTask, task.TeamID.String)
 			mcpEndpointNames = normalizeMcpEndpointNames(append(mcpEndpointNames, agentEndpointNames...))
 			if len(mcpEndpointNames) > 0 {
 				protoTask.McpEndpoints = s.resolveMcpEndpoints(ctx, mcpEndpointNames, task.TeamID.String)
@@ -265,18 +265,22 @@ func (s *RunnerRPCService) resolveTaskModel(ctx context.Context, task *runnerv1.
 	task.ProviderAuthHeader = resolved.ProviderAuthHeader
 }
 
-func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task) []string {
+func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *runnerv1.Task, teamID string) []string {
 	var agentEndpointNames []string
 	if task == nil {
 		return agentEndpointNames
 	}
 	if task.Agent != "" {
 		var content string
-		placeholder := sqlPlaceholders(s.dialect, 1)[0]
-		err := s.rawDB.QueryRowContext(ctx,
-			`SELECT content FROM definitions WHERE definition_type='agent' AND name=`+placeholder+` AND active=true ORDER BY updated_at DESC LIMIT 1`,
-			task.Agent,
-		).Scan(&content)
+		query := `SELECT content FROM definitions WHERE definition_type='agent' AND name=? AND active=true`
+		args := []any{task.Agent}
+		query += teamScopedDefinitionClause(teamID, &args)
+		// Team-scoped definitions override global ones for the owning team's
+		// tasks; cross-team names resolve as not-found (fail closed). The
+		// ORDER BY makes precedence deterministic when a name exists in both
+		// global and the task's team scope.
+		query += ` ORDER BY CASE scope WHEN 'team' THEN 0 WHEN 'global' THEN 1 ELSE 2 END, updated_at DESC LIMIT 1`
+		err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, query), args...).Scan(&content)
 		if err == nil {
 			task.AgentDefinition = content
 			if names, parseErr := definitions.AgentMcpEndpoints(content); parseErr == nil && len(names) > 0 {
@@ -285,12 +289,26 @@ func (s *RunnerRPCService) resolveTaskDefinitions(ctx context.Context, task *run
 		}
 	}
 	if len(task.Skills) > 0 {
-		skillDefs := s.resolveSkillDefinitions(ctx, task.Skills)
+		skillDefs := s.resolveSkillDefinitions(ctx, task.Skills, teamID)
 		if len(skillDefs) > 0 {
 			task.SkillDefinitions = skillDefs
 		}
 	}
 	return agentEndpointNames
+}
+
+// teamScopedDefinitionClause appends a scope-visibility predicate to a
+// definitions query, mirroring loadMcpEndpoints: a task with a team sees global
+// definitions plus its own team-scoped definitions; a teamless (global) task
+// sees only global definitions. Repo-scoped definitions are not materialized
+// on the runner path (no repo context is available there). The appended
+// placeholder is a literal "?" converted to the dialect form by sqlQuery.
+func teamScopedDefinitionClause(teamID string, args *[]any) string {
+	if teamID != "" {
+		*args = append(*args, teamID)
+		return ` AND ((scope = 'global' AND team_id IS NULL) OR (scope = 'team' AND team_id = ?))`
+	}
+	return ` AND (scope = 'global' AND team_id IS NULL)`
 }
 
 func (s *RunnerRPCService) resolveMcpEndpoints(ctx context.Context, names []string, teamID string) []*runnerv1.MCPEndpoint {
@@ -319,13 +337,15 @@ func (s *RunnerRPCService) resolveMcpEndpoints(ctx context.Context, names []stri
 	return out
 }
 
-func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string) map[string][]byte {
-	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + strings.Join(sqlPlaceholders(s.dialect, len(skillNames)), ",") + `) AND active=true`
+func (s *RunnerRPCService) resolveSkillDefinitions(ctx context.Context, skillNames []string, teamID string) map[string][]byte {
+	namePlaceholders := strings.Repeat(",?", len(skillNames))[1:]
+	query := `SELECT name, path, content FROM definitions WHERE definition_type='skill' AND name IN (` + namePlaceholders + `) AND active=true`
 	args := make([]any, len(skillNames))
 	for i, n := range skillNames {
 		args[i] = n
 	}
-	rows, err := s.rawDB.QueryContext(ctx, query, args...)
+	query += teamScopedDefinitionClause(teamID, &args)
+	rows, err := s.rawDB.QueryContext(ctx, sqlQuery(s.dialect, query), args...)
 	if err != nil {
 		slog.Warn("resolve skill definitions query", "err", err)
 		return nil

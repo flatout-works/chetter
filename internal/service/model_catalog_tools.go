@@ -140,26 +140,11 @@ func (s *Service) ListAgentDefinitions(ctx context.Context, uiTeamIDs, uiRepos [
 		return nil, fmt.Errorf("list agent definitions: %w", err)
 	}
 
-	scope, scoped := auth.GetScope(ctx)
-	allowedTeams := uiTeamIDs
-	if scoped && !scope.Admin {
-		allowedTeams = scope.Teams()
-		if len(uiTeamIDs) > 0 {
-			allowedTeams = intersectStrings(allowedTeams, uiTeamIDs)
-		}
-	}
-	teamSet := stringSet(allowedTeams)
-	repoSet := stringSet(uiRepos)
+	filter := newDefinitionScopeFilter(ctx, uiTeamIDs, uiRepos)
 	sourceCache := map[string]repository.DefinitionSource{}
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
-		if def.Scope == definitionScopeTeam && len(teamSet) > 0 && (!def.TeamID.Valid || !teamSet[def.TeamID.String]) {
-			continue
-		}
-		if def.Scope == definitionScopeTeam && scoped && !scope.Admin && len(teamSet) == 0 {
-			continue
-		}
-		if def.Scope == definitionScopeRepo && len(repoSet) > 0 && (!def.Repo.Valid || !repoSet[def.Repo.String]) {
+		if !filter.visible(def) {
 			continue
 		}
 		record := definitionToolRecord(def)
@@ -189,6 +174,86 @@ func stringSet(values []string) map[string]bool {
 		set[value] = true
 	}
 	return set
+}
+
+// definitionScopeFilter captures the caller's resolved definition-visibility
+// view. It mirrors the filtering applied by ListAgentDefinitions so the MCP
+// list/get tools and the agent listing path apply identical scope rules: an
+// unconstrained caller (admin token or no scope set) sees everything; a
+// team-scoped caller sees global definitions plus their own team-scoped
+// definitions, with repo-scoped definitions visible only for matching repo
+// context. Out-of-scope definitions are hidden (fail closed).
+type definitionScopeFilter struct {
+	scoped  bool
+	admin   bool
+	teamSet map[string]bool
+	repoSet map[string]bool
+}
+
+func newDefinitionScopeFilter(ctx context.Context, uiTeamIDs, uiRepos []string) definitionScopeFilter {
+	scope, scoped := auth.GetScope(ctx)
+	allowedTeams := uiTeamIDs
+	if scoped && !scope.Admin {
+		allowedTeams = scope.Teams()
+		if len(uiTeamIDs) > 0 {
+			allowedTeams = intersectStrings(allowedTeams, uiTeamIDs)
+		}
+	}
+	return definitionScopeFilter{
+		scoped:  scoped,
+		admin:   scope.Admin,
+		teamSet: stringSet(allowedTeams),
+		repoSet: stringSet(uiRepos),
+	}
+}
+
+// visible reports whether def is readable by the caller's scope.
+func (f definitionScopeFilter) visible(def repository.Definition) bool {
+	if def.Scope == definitionScopeTeam && len(f.teamSet) > 0 && (!def.TeamID.Valid || !f.teamSet[def.TeamID.String]) {
+		return false
+	}
+	if def.Scope == definitionScopeTeam && f.scoped && !f.admin && len(f.teamSet) == 0 {
+		return false
+	}
+	if def.Scope == definitionScopeRepo && len(f.repoSet) > 0 && (!def.Repo.Valid || !f.repoSet[def.Repo.String]) {
+		return false
+	}
+	return true
+}
+
+// pickVisibleDefinition selects the highest-precedence definition visible to the
+// caller's scope from defs, optionally constrained to a single scope. Out-of-scope
+// definitions are treated as absent (fail closed). Precedence mirrors
+// GetDefinitionBySourceTypeName — global, then team, then repo, then most
+// recently updated — so resolution is deterministic when same-named definitions
+// exist across scopes.
+func pickVisibleDefinition(defs []repository.Definition, filter definitionScopeFilter, scopeFilter string) (repository.Definition, bool) {
+	scopeRank := map[string]int{
+		definitionScopeGlobal: 0,
+		definitionScopeTeam:   1,
+		definitionScopeRepo:   2,
+	}
+	const worst = 3
+	var best repository.Definition
+	bestPrio := worst
+	var bestUpdated time.Time
+	found := false
+	for _, def := range defs {
+		if scopeFilter != "" && def.Scope != scopeFilter {
+			continue
+		}
+		if !filter.visible(def) {
+			continue
+		}
+		prio := worst
+		if rank, ok := scopeRank[def.Scope]; ok {
+			prio = rank
+		}
+		if !found || prio < bestPrio || (prio == bestPrio && def.UpdatedAt.After(bestUpdated)) {
+			best, bestPrio, bestUpdated, found = def, prio, def.UpdatedAt, true
+		}
+	}
+	return best, found
 }
 
 const (
@@ -283,8 +348,12 @@ func (s *Service) listDefinitionsTool(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, ListDefinitionsOutput{}, fmt.Errorf("list definitions: %w", err)
 	}
+	filter := newDefinitionScopeFilter(ctx, nil, nil)
 	out := make([]DefinitionToolRecord, 0, len(defs))
 	for _, def := range defs {
+		if !filter.visible(def) {
+			continue
+		}
 		out = append(out, definitionToolRecord(def))
 	}
 	return nil, ListDefinitionsOutput{Definitions: out}, nil
@@ -301,14 +370,20 @@ func (s *Service) getDefinitionTool(ctx context.Context, _ *mcp.CallToolRequest,
 	if sourceID == "" {
 		sourceID = defaultDefinitionSourceID
 	}
-	def, err := s.repo.GetDefinitionBySourceTypeName(ctx, repository.GetDefinitionBySourceTypeNameParams{
-		SourceID:       sourceID,
+	defs, err := s.repo.ListDefinitions(ctx, repository.ListDefinitionsParams{
+		Column1:        in.DefinitionType,
 		DefinitionType: in.DefinitionType,
-		Name:           in.Name,
-		ScopeFilter:    in.Scope,
+		Column3:        sourceID,
+		SourceID:       sourceID,
+		NameFilter:     in.Name,
 	})
 	if err != nil {
 		return nil, GetDefinitionOutput{}, fmt.Errorf("get definition: %w", err)
+	}
+	filter := newDefinitionScopeFilter(ctx, nil, nil)
+	def, ok := pickVisibleDefinition(defs, filter, in.Scope)
+	if !ok {
+		return nil, GetDefinitionOutput{}, fmt.Errorf("get definition: %w", sql.ErrNoRows)
 	}
 	return nil, GetDefinitionOutput{Definition: definitionToolRecord(def)}, nil
 }
