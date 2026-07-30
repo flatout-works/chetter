@@ -948,7 +948,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"LITELLM_API_KEY": "task-key",
 		},
 	}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "")
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
 
 	entrypointIdx := indexOf(args, "--entrypoint")
 	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
@@ -990,7 +990,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1")
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1", config.ExecutionConfig{})
 
 	if !hasAdjacentArgs(args, "--dns", "172.21.0.1") {
 		t.Fatalf("expected runner DNS in args: %v", args)
@@ -1000,6 +1000,69 @@ func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	}
 	if !hasAdjacentArgs(args, "-e", "NODE_USE_ENV_PROXY=1") {
 		t.Fatalf("expected Node environment proxy support: %v", args)
+	}
+}
+
+func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected --memory 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected --memory-swap 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "1.5") {
+		t.Fatalf("expected --cpus 1.5 in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "200") {
+		t.Fatalf("expected --pids-limit 200 in args: %v", args)
+	}
+}
+
+func TestDockerRPCArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	for _, flag := range []string{"--memory", "--memory-swap", "--cpus", "--pids-limit"} {
+		if indexOf(args, flag) != -1 {
+			t.Fatalf("expected no %q flag when limits unset, got: %v", flag, args)
+		}
+	}
+}
+
+func TestDockerServeArgsAppliesContainerLimits(t *testing.T) {
+	r := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 2, ContainerPIDs: 256}}, runnerID: "runner-test"}
+	h := opencode.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator"}
+	serveCmd := h.ServeCommand(containerPortForServe)
+	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected --memory 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected --memory-swap 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected --cpus 2 in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "256") {
+		t.Fatalf("expected --pids-limit 256 in args: %v", args)
+	}
+}
+
+func TestDockerServeArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
+	r := &Runner{cfg: &config.Config{}, runnerID: "runner-test"}
+	h := opencode.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator"}
+	serveCmd := h.ServeCommand(containerPortForServe)
+	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	for _, flag := range []string{"--memory", "--memory-swap", "--cpus", "--pids-limit"} {
+		if indexOf(args, flag) != -1 {
+			t.Fatalf("expected no %q flag when limits unset, got: %v", flag, args)
+		}
 	}
 }
 

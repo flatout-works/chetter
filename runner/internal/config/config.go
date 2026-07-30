@@ -67,11 +67,16 @@ type GitConfig struct {
 }
 
 type ExecutionConfig struct {
-	Backend         string `yaml:"backend"`
-	Runtime         string `yaml:"runtime"`
-	Harness         string `yaml:"harness"`
-	UseGVisor       bool   `yaml:"use_gvisor"`
-	ContainerMemory string `yaml:"container_memory"`
+	Backend         string  `yaml:"backend"`
+	Runtime         string  `yaml:"runtime"`
+	Harness         string  `yaml:"harness"`
+	UseGVisor       bool    `yaml:"use_gvisor"`
+	ContainerMemory string  `yaml:"container_memory"`
+	ContainerCPU    float64 `yaml:"container_cpu"`
+	ContainerPIDs   int     `yaml:"container_pids"`
+
+	containerCPUEnvInvalid  bool
+	containerPIDsEnvInvalid  bool
 }
 
 type KubernetesConfig struct {
@@ -121,6 +126,18 @@ func Load(path string) (*Config, error) {
 func validate(cfg *Config) error {
 	if cfg.Runner.MaxConcurrent < 0 {
 		return fmt.Errorf("runner.max_concurrent must be greater than or equal to 0")
+	}
+	if cfg.Execution.containerCPUEnvInvalid {
+		return fmt.Errorf("CHETTER_CONTAINER_CPU must be a positive number")
+	}
+	if cfg.Execution.containerPIDsEnvInvalid {
+		return fmt.Errorf("CHETTER_CONTAINER_PIDS must be a positive integer")
+	}
+	if cfg.Execution.ContainerCPU < 0 {
+		return fmt.Errorf("execution.container_cpu must be greater than or equal to 0")
+	}
+	if cfg.Execution.ContainerPIDs < 0 {
+		return fmt.Errorf("execution.container_pids must be greater than or equal to 0")
 	}
 	if cfg.Execution.Harness != "" && !isSupportedHarness(cfg.Execution.Harness) {
 		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, codewhale, or codex")
@@ -205,6 +222,23 @@ func applyDefaults(cfg *Config) {
 	}
 	if !cfg.Execution.UseGVisor {
 		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_MEMORY")); value != "" {
+		cfg.Execution.ContainerMemory = value
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_CPU")); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+			cfg.Execution.ContainerCPU = parsed
+		} else {
+			cfg.Execution.containerCPUEnvInvalid = true
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_PIDS")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			cfg.Execution.ContainerPIDs = parsed
+		} else {
+			cfg.Execution.containerPIDsEnvInvalid = true
+		}
 	}
 	setStringFromEnv(&cfg.Kubernetes.Namespace, "KUBERNETES_NAMESPACE")
 	setStringFromEnv(&cfg.Kubernetes.RuntimeClass, "KUBERNETES_RUNTIME_CLASS")

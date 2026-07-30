@@ -146,6 +146,33 @@ docker run -d --name chetter-runner \
 
 If the container exits immediately, check `docker logs chetter-runner`. Common causes are a missing `server.url` or lack of access to the mounted Docker socket.
 
+## Container resource limits
+
+Optionally cap the memory, CPU, and PID count of every agent task container so a single misbehaving task cannot exhaust the host. Limits are applied consistently to the serve, resume, and RPC container paths and only emit a Docker flag when the value is set, so unset limits leave behavior unchanged.
+
+Configure them in `runner.yaml`:
+
+```yaml
+execution:
+  container_memory: 512m   # passed to docker --memory and --memory-swap
+  container_cpu: 2          # passed to docker --cpus (decimal allowed, e.g. 1.5)
+  container_pids: 256       # passed to docker --pids-limit
+```
+
+Or via environment variables (which override the YAML values when set):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit, e.g. `512m`, `2g` |
+| `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores, e.g. `1.5` |
+| `CHETTER_CONTAINER_PIDS` | (unset) | Maximum number of PIDs, e.g. `256` |
+
+**Requirements:**
+
+- `container_memory`, `container_cpu`, and `container_pids` must be greater than or equal to 0; negative values and unparseable environment overrides fail configuration validation at startup.
+- `--cpus` and `--pids-limit` are supported by the Docker daemon and are compatible with the gVisor (`runsc`) runtime.
+- A `container_cpu` of `0` means "unset" (no `--cpus` flag); use a positive value to enforce a quota.
+
 ## Sending a Task
 
 Submit tasks through the Chetter MCP server using `chetter_submit_task`. Runners
@@ -188,6 +215,9 @@ Unmodified harnesses work for public workflows (HTTP through proxy, workspace ac
 | `EXECUTION_BACKEND` | `docker` | `docker`, `kubernetes`, or development-only `local` execution |
 | `USE_GVISOR` | `false` | Pass `--runtime=runsc` to Docker for gVisor sandboxing |
 | `MAX_CONCURRENT` | `10` | Max parallel tasks |
+| `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit passed to `docker --memory`/`--memory-swap` (see [Container resource limits](#container-resource-limits)) |
+| `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores passed to `docker --cpus` (decimal allowed) |
+| `CHETTER_CONTAINER_PIDS` | (unset) | PID cap passed to `docker --pids-limit` |
 
 ## Troubleshooting
 

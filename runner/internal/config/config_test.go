@@ -205,3 +205,72 @@ func TestKubernetesEnvironmentOverridesYAML(t *testing.T) {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }
+
+func TestContainerLimitsValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		env     map[string]string
+		wantErr bool
+	}{
+		{name: "unset allowed", yaml: `{}`},
+		{name: "zero allowed", yaml: "execution:\n  container_cpu: 0\n  container_pids: 0\n"},
+		{name: "valid cpu and pids", yaml: "execution:\n  container_cpu: 2\n  container_pids: 256\n"},
+		{name: "fractional cpu", yaml: "execution:\n  container_cpu: 1.5\n"},
+		{name: "negative cpu", yaml: "execution:\n  container_cpu: -1\n", wantErr: true},
+		{name: "negative pids", yaml: "execution:\n  container_pids: -1\n", wantErr: true},
+		{name: "env cpu override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_CPU": "1.5"}},
+		{name: "env pids override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_PIDS": "100"}},
+		{name: "env memory override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_MEMORY": "512m"}},
+		{name: "invalid env cpu", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_CPU": "abc"}, wantErr: true},
+		{name: "invalid env pids", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_PIDS": "abc"}, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CHETTER_CONTAINER_CPU", "")
+			t.Setenv("CHETTER_CONTAINER_PIDS", "")
+			t.Setenv("CHETTER_CONTAINER_MEMORY", "")
+			for key, value := range tc.env {
+				t.Setenv(key, value)
+			}
+			path := filepath.Join(t.TempDir(), "runner.yaml")
+			if err := os.WriteFile(path, []byte(tc.yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected validation error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+		})
+	}
+}
+
+func TestContainerLimitsEnvOverridesYAML(t *testing.T) {
+	t.Setenv("CHETTER_CONTAINER_CPU", "1.5")
+	t.Setenv("CHETTER_CONTAINER_PIDS", "100")
+	t.Setenv("CHETTER_CONTAINER_MEMORY", "512m")
+	path := filepath.Join(t.TempDir(), "runner.yaml")
+	data := "execution:\n  container_cpu: 4\n  container_pids: 200\n  container_memory: 1g\n"
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Execution.ContainerCPU != 1.5 {
+		t.Errorf("ContainerCPU = %v, want 1.5 (env should override YAML)", cfg.Execution.ContainerCPU)
+	}
+	if cfg.Execution.ContainerPIDs != 100 {
+		t.Errorf("ContainerPIDs = %v, want 100 (env should override YAML)", cfg.Execution.ContainerPIDs)
+	}
+	if cfg.Execution.ContainerMemory != "512m" {
+		t.Errorf("ContainerMemory = %q, want 512m (env should override YAML)", cfg.Execution.ContainerMemory)
+	}
+}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/agentenv"
+	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -1150,7 +1151,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP)
+	dockerArgs := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP, r.cfg.Execution)
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -1160,7 +1161,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd})
 }
 
-func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string) []string {
+func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) []string {
 	dockerArgs := []string{
 		"run", "--rm", "-i",
 		"--entrypoint", command[0],
@@ -1177,6 +1178,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
+	dockerArgs = appendContainerLimits(dockerArgs, exec)
 	dockerArgs = append(dockerArgs,
 		"-v", agentenv.HostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
 		"-w", containerWorkspaceDir,
