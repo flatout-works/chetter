@@ -862,6 +862,21 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if in.Prompt == "" {
 		return store.TaskRecord{}, fmt.Errorf("prompt is required")
 	}
+	if err := validation.ValidateTaskInput(validation.TaskInput{
+		Harness:     in.Harness,
+		SessionMode: in.SessionMode,
+		PauseReason: in.PauseReason,
+		TTLHours:    in.TTLHours,
+		TimeoutSec:  in.TimeoutSec,
+	}, s.cfg.TaskLimits); err != nil {
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "task.validation_failed",
+			SourceType: "api",
+			TargetType: "task",
+			Detail:     err.Error(),
+		})
+		return store.TaskRecord{}, err
+	}
 	if err := validation.ValidateTaskEnv(in.Env, s.cfg.EnvValidation); err != nil {
 		s.auditAsync(ctx, AuditEventParams{
 			EventType:  "task.validation_failed",
@@ -1742,6 +1757,9 @@ func (s *Service) CreateTrigger(ctx context.Context, in store.TriggerInput) (sto
 	default:
 		return store.TriggerRecord{}, fmt.Errorf("unknown trigger_type %q", in.TriggerType)
 	}
+	if err := s.validateTriggerFields(ctx, in); err != nil {
+		return store.TriggerRecord{}, err
+	}
 	now := time.Now().UTC()
 	skills, err := json.Marshal(nonEmptyStrings(in.Skills))
 	if err != nil {
@@ -1834,6 +1852,9 @@ func (s *Service) UpdateTrigger(ctx context.Context, name string, in store.Trigg
 	in.AgentImage = s.resolveAgentImage(in.AgentImage)
 	if in.TimeoutSec == 0 {
 		in.TimeoutSec = s.cfg.DefaultTaskTimeoutSec
+	}
+	if err := s.validateTriggerFields(ctx, in); err != nil {
+		return store.TriggerRecord{}, err
 	}
 	existing, err := s.triggerForToolAccess(ctx, name)
 	if err != nil {
@@ -2147,6 +2168,42 @@ type triggerRuntimeConfig struct {
 
 func triggerRuntimeConfigFromJSON(cfg json.RawMessage) triggerRuntimeConfig {
 	return parseJSON[triggerRuntimeConfig](cfg, "trigger_runtime_config")
+}
+
+// validateTriggerFields validates the deterministic fields of a trigger
+// create/update request against the configured limits. It parses the
+// trigger_config JSON for runtime fields (session_mode, pause_reason,
+// ttl_hours) and, for GitHub triggers, the repo, so the same central rules
+// apply to MCP, ConnectRPC, and webhook-triggered submissions.
+func (s *Service) validateTriggerFields(ctx context.Context, in store.TriggerInput) error {
+	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(in.TriggerConfig))
+	repo := ""
+	if validation.IsGitHubTriggerType(in.TriggerType) {
+		var cfg struct {
+			Repo string `json:"repo"`
+		}
+		_ = json.Unmarshal([]byte(in.TriggerConfig), &cfg)
+		repo = strings.TrimSpace(cfg.Repo)
+	}
+	if err := validation.ValidateTriggerInput(validation.TriggerInput{
+		TriggerType: in.TriggerType,
+		Harness:     in.Harness,
+		SessionMode: runtime.SessionMode,
+		PauseReason: runtime.PauseReason,
+		TTLHours:    runtime.TTLHours,
+		TimeoutSec:  in.TimeoutSec,
+		Repo:        repo,
+	}, s.cfg.TaskLimits); err != nil {
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "trigger.validation_failed",
+			SourceType: "api",
+			TargetType: "trigger",
+			TargetID:   in.Name,
+			Detail:     err.Error(),
+		})
+		return err
+	}
+	return nil
 }
 
 func randomID(prefix string) (string, error) {
