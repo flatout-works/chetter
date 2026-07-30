@@ -43,6 +43,12 @@ type Config struct {
 	// time. See env var CHETTER_ENV_* and internal/validation.
 	EnvValidation validation.Config
 
+	// TaskLimits configures deterministic task/trigger field validation
+	// (harness, session mode, timeout/TTL bounds) applied centrally at
+	// submission time. See env vars CHETTER_MAX_TASK_TIMEOUT_SEC and
+	// CHETTER_MAX_SESSION_TTL_HOURS.
+	TaskLimits validation.TaskLimits
+
 	// SessionArtifactTTL is the duration after which terminal-session on-disk
 	// artifacts (checkpoints, session exports) are eligible for garbage
 	// collection by the reaper. A value of 0 disables GC. Default: 24h.
@@ -76,6 +82,7 @@ func Load() Config {
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
 		EnvValidation:          envValidationConfig(),
+		TaskLimits:             taskLimitsConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
 	}
 }
@@ -201,4 +208,18 @@ func envValidationConfig() validation.Config {
 	cfg.MaxNameLength = envInt("CHETTER_ENV_MAX_NAME_LENGTH", cfg.MaxNameLength)
 	cfg.MaxValueLength = envInt("CHETTER_ENV_MAX_VALUE_LENGTH", cfg.MaxValueLength)
 	return cfg
+}
+
+// taskLimitsConfig returns deterministic task/trigger field limits. Defaults
+// come from validation.DefaultTaskLimits; operators may override either cap
+// via env. Setting a cap to 0 explicitly disables it.
+func taskLimitsConfig() validation.TaskLimits {
+	limits := validation.DefaultTaskLimits()
+	if v := envInt("CHETTER_MAX_TASK_TIMEOUT_SEC", limits.MaxTimeoutSec); v >= 0 {
+		limits.MaxTimeoutSec = v
+	}
+	if v := envInt("CHETTER_MAX_SESSION_TTL_HOURS", limits.MaxTTLHours); v >= 0 {
+		limits.MaxTTLHours = v
+	}
+	return limits
 }

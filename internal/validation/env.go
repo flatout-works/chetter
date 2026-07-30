@@ -75,7 +75,7 @@ func ValidateTaskEnv(env map[string]string, cfg Config) error {
 		})
 		// Early exit: if count is already violated, name/value checks on every
 		// var are noisy and unnecessary.
-		return joinErrors(errs)
+		return joinErrors(errs, "environment variable validation failed")
 	}
 
 	for key, value := range env {
@@ -120,10 +120,13 @@ func ValidateTaskEnv(env map[string]string, cfg Config) error {
 		}
 	}
 
-	return joinErrors(errs)
+	return joinErrors(errs, "environment variable validation failed")
 }
 
-func joinErrors(errs []ValidationError) error {
+// joinErrors collapses a slice of ValidationError into a single error. A single
+// violation is returned directly so callers can type-assert to ValidationError;
+// multiple violations are joined under label.
+func joinErrors(errs []ValidationError, label string) error {
 	if len(errs) == 0 {
 		return nil
 	}
@@ -134,5 +137,5 @@ func joinErrors(errs []ValidationError) error {
 	for _, e := range errs {
 		msgs = append(msgs, e.Error())
 	}
-	return fmt.Errorf("environment variable validation failed: %s", strings.Join(msgs, "; "))
+	return fmt.Errorf("%s: %s", label, strings.Join(msgs, "; "))
 }
