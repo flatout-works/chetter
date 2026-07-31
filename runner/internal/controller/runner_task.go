@@ -31,6 +31,14 @@ const (
 	finalizationHeartbeatInterval = 15 * time.Second
 )
 
+// dockerAbortTimeout bounds the graceful harness abort issued during Docker
+// agent cleanup. It is applied to a context derived from context.Background
+// (not the task context, which may already be cancelled) so the abort still
+// runs after cancellation. The overall cleanup deadline is the sum of this
+// abort bound, containerCleanupTimeout (docker stop) and sessionExportTimeout
+// (reading the bind-mounted workspace). See issue #46.
+var dockerAbortTimeout = 10 * time.Second
+
 func executionKey(req task.TaskRequest) string {
 	return req.ExecutionID
 }
@@ -743,14 +751,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			session.PreserveWorkspace = true
 			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
 		}
-		if sid != "" {
-			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
-			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
-				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
-			}
-			stopTaskContainer(containerName)
-			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
-		}
+		sessionExport = r.shutdownDockerAgentSession(req, baseURL, sid, secret, session.WorkspaceDir, h, func() { stopTaskContainer(containerName) })
 		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
@@ -888,14 +889,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			session.PreserveWorkspace = true
 			slog.Info("preserving workspace for recoverable prompt failure", "taskID", req.TaskID, "workspace", workspacePath, "error_category", errorCategory)
 		}
-		if sid != "" {
-			slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
-			if abortErr := h.AbortSession(ctx, baseURL, sid, secret); abortErr != nil {
-				slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
-			}
-			stopTaskContainer(containerName)
-			sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
-		}
+		sessionExport = r.shutdownDockerAgentSession(req, baseURL, sid, secret, session.WorkspaceDir, h, func() { stopTaskContainer(containerName) })
 		r.publishStatusWithMetadataAndCheckpoint(req, status, statusMessage, nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s prompt failed on resume", req.TaskID), "failed", err.Error(), time.Since(session.StartedAt).Milliseconds())
 		return
@@ -939,6 +933,33 @@ func (r *Runner) publishStatusWithMetadataAndCheckpoint(req task.TaskRequest, st
 		resp.Summary = message
 	}
 	r.publishTaskResponse(resp)
+}
+
+// shutdownDockerAgentSession performs bounded cleanup of a Docker agent
+// session after the prompt returns (normally or because the task was
+// cancelled). It uses a fresh, bounded cleanup context derived from
+// context.Background — independent of the task context, which may already be
+// cancelled — so the graceful harness abort and the session export are still
+// attempted after cancellation. The harness abort is issued before the
+// container is stopped so the agent can flush its in-flight state; the
+// session export is then read from the bind-mounted workspace, which persists
+// after the container is removed. Abort and export failures are recorded as
+// diagnostic events but never change the terminal task status. See issue #46.
+func (r *Runner) shutdownDockerAgentSession(req task.TaskRequest, baseURL, sid, secret, wsDir string, h harness.ServeHarness, stopContainer func()) string {
+	if sid != "" {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), dockerAbortTimeout)
+		slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
+		if abortErr := h.AbortSession(cleanupCtx, baseURL, sid, secret); abortErr != nil {
+			slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
+			r.publishEvent(req.TaskID, fmt.Sprintf("session abort failed: %v", abortErr))
+		}
+		cancel()
+	}
+	stopContainer()
+	if sid == "" {
+		return ""
+	}
+	return r.readSessionExport(req.TaskID, wsDir, sid, h)
 }
 
 func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.ServeHarness) string {

@@ -12,11 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
@@ -790,6 +792,247 @@ func TestPiRPCCleanupExportsBeforeAbort(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(wsDir, ".pi", "session-export.md")); err != nil {
 		t.Fatalf("session export missing: %v", err)
+	}
+}
+
+// fakeServeHarness is a minimal harness.ServeHarness that only implements the
+// cleanup methods exercised by shutdownDockerAgentSession. Embedding the
+// interface keeps the fake small; unimplemented methods panic if invoked, which
+// they are not in these tests.
+type fakeServeHarness struct {
+	harness.ServeHarness
+	mu           sync.Mutex
+	abortCtx     context.Context
+	abortCtxErr  error
+	abortCalls   int
+	abortErr     error
+	abortBlock   chan struct{}
+	exportCalls  int
+	exportResult string
+	exportErr    error
+	order        []string
+}
+
+func (f *fakeServeHarness) AbortSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	f.mu.Lock()
+	f.abortCalls++
+	f.abortCtx = ctx
+	f.abortCtxErr = ctx.Err()
+	block := f.abortBlock
+	f.order = append(f.order, "abort")
+	f.mu.Unlock()
+	if block != nil {
+		select {
+		case <-block:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return f.abortErr
+}
+
+func (f *fakeServeHarness) ReadSessionExport(wsDir, sessionID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.exportCalls++
+	f.order = append(f.order, "export")
+	return f.exportResult, f.exportErr
+}
+
+func (f *fakeServeHarness) recordStop() {
+	f.mu.Lock()
+	f.order = append(f.order, "stop")
+	f.mu.Unlock()
+}
+
+func (f *fakeServeHarness) abortCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.abortCalls
+}
+
+func (f *fakeServeHarness) exportCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.exportCalls
+}
+
+func (f *fakeServeHarness) recordedOrder() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.order...)
+}
+
+// mockEventClient records task event summaries reported via ReportTaskEvents
+// so tests can assert diagnostic events are published during cleanup.
+type mockEventClient struct {
+	runnerRPCClient
+	mu     sync.Mutex
+	events []string
+}
+
+func (m *mockEventClient) ReportTaskEvents(_ context.Context, req *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error) {
+	m.mu.Lock()
+	if req.Msg != nil {
+		for _, e := range req.Msg.Events {
+			m.events = append(m.events, e.Summary)
+		}
+	}
+	m.mu.Unlock()
+	return connect.NewResponse(&runnerv1.ReportTaskEventsResponse{}), nil
+}
+
+func (m *mockEventClient) recordedEvents() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.events...)
+}
+
+func newShutdownTestRunner() (*Runner, *mockEventClient) {
+	mb := &mockEventClient{}
+	return &Runner{rpcClient: mb}, mb
+}
+
+func containsEvent(events []string, substr string) bool {
+	for _, e := range events {
+		if strings.Contains(e, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestShutdownDockerAgentSessionUsesBoundedNonCancelledContext verifies the
+// graceful abort runs against a fresh, bounded cleanup context (derived from
+// context.Background) rather than the already-cancelled task context. This is
+// the core fix for issue #46: previously the cancelled task context was
+// propagated to AbortSession, so the abort never reached the harness.
+func TestShutdownDockerAgentSessionUsesBoundedNonCancelledContext(t *testing.T) {
+	r, _ := newShutdownTestRunner()
+	h := &fakeServeHarness{}
+	stopped := false
+	r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://127.0.0.1:1", "sess_1", "secret", t.TempDir(), h, func() { stopped = true })
+
+	if h.abortCallCount() != 1 {
+		t.Fatalf("abort called %d times, want 1", h.abortCallCount())
+	}
+	if h.abortCtxErr != nil {
+		t.Fatalf("abort context was already cancelled when AbortSession ran: %v", h.abortCtxErr)
+	}
+	if _, ok := h.abortCtx.Deadline(); !ok {
+		t.Fatal("abort context is not bounded by a deadline")
+	}
+	if !stopped {
+		t.Fatal("container was not stopped after abort")
+	}
+}
+
+// TestShutdownDockerAgentSessionAbortsBeforeStopBeforeExport verifies the
+// cleanup sequence is graceful abort, then stop the container, then read the
+// session export from the workspace. This ordering gives the agent a chance to
+// flush in-flight state before the container is killed. See issue #46.
+func TestShutdownDockerAgentSessionAbortsBeforeStopBeforeExport(t *testing.T) {
+	r, _ := newShutdownTestRunner()
+	h := &fakeServeHarness{exportResult: "export"}
+	r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "sess_1", "secret", t.TempDir(), h, func() { h.recordStop() })
+
+	if got := h.recordedOrder(); !reflect.DeepEqual(got, []string{"abort", "stop", "export"}) {
+		t.Fatalf("cleanup order = %v, want [abort stop export]", got)
+	}
+}
+
+// TestShutdownDockerAgentSessionPreservesExport verifies the session export
+// collected from the workspace is returned to the caller so it can be attached
+// to the terminal task report, even when the prompt failed. See issue #46.
+func TestShutdownDockerAgentSessionPreservesExport(t *testing.T) {
+	r, _ := newShutdownTestRunner()
+	h := &fakeServeHarness{exportResult: "transcript"}
+	export := r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "sess_1", "secret", t.TempDir(), h, func() {})
+	if export != "transcript" {
+		t.Fatalf("export = %q, want transcript", export)
+	}
+}
+
+// TestShutdownDockerAgentSessionRecordsAbortFailureEvent verifies that when
+// the graceful abort fails, a diagnostic event is published but cleanup still
+// completes and the export is still collected. Abort/export failures must
+// not change the terminal task status (the caller owns that), only surface in
+// the event stream. See issue #46.
+func TestShutdownDockerAgentSessionRecordsAbortFailureEvent(t *testing.T) {
+	r, mb := newShutdownTestRunner()
+	h := &fakeServeHarness{abortErr: fmt.Errorf("harness unreachable"), exportResult: "partial"}
+	r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "sess_1", "secret", t.TempDir(), h, func() {})
+
+	if !containsEvent(mb.recordedEvents(), "session abort failed") {
+		t.Fatalf("abort failure not recorded as event: %v", mb.recordedEvents())
+	}
+	if h.exportCallCount() != 1 {
+		t.Fatal("export should still be collected after abort failure")
+	}
+}
+
+// TestShutdownDockerAgentSessionRecordsExportFailureEvent verifies that when
+// reading the session export fails, a diagnostic event is published. See
+// issue #46.
+func TestShutdownDockerAgentSessionRecordsExportFailureEvent(t *testing.T) {
+	r, mb := newShutdownTestRunner()
+	h := &fakeServeHarness{exportErr: fmt.Errorf("opencode db locked")}
+	r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "sess_1", "secret", t.TempDir(), h, func() {})
+
+	if !containsEvent(mb.recordedEvents(), "opencode db locked") {
+		t.Fatalf("export failure not recorded as event: %v", mb.recordedEvents())
+	}
+}
+
+// TestShutdownDockerAgentSessionBoundedWhenHarnessUnresponsive verifies that
+// cleanup stays bounded when the harness never responds to the abort: the
+// abort deadline expires, the failure is recorded, and cleanup (stop + export)
+// still completes so cancellation cannot hang indefinitely. See issue #46.
+func TestShutdownDockerAgentSessionBoundedWhenHarnessUnresponsive(t *testing.T) {
+	defer func(d time.Duration) { dockerAbortTimeout = d }(dockerAbortTimeout)
+	dockerAbortTimeout = 50 * time.Millisecond
+
+	r, mb := newShutdownTestRunner()
+	h := &fakeServeHarness{abortBlock: make(chan struct{}), exportResult: "stale"}
+	stopped := false
+	start := time.Now()
+	export := r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "sess_1", "secret", t.TempDir(), h, func() { stopped = true })
+	elapsed := time.Since(start)
+
+	if elapsed > 5*time.Second {
+		t.Fatalf("cleanup hung for %v waiting on an unresponsive harness", elapsed)
+	}
+	if !containsEvent(mb.recordedEvents(), "session abort failed") {
+		t.Fatalf("unresponsive abort failure not recorded: %v", mb.recordedEvents())
+	}
+	if !stopped {
+		t.Fatal("container not stopped after unresponsive abort")
+	}
+	if export != "stale" {
+		t.Fatalf("export = %q, want stale", export)
+	}
+}
+
+// TestShutdownDockerAgentSessionEmptySIDStopsWithoutAbort verifies that when
+// there is no harness session (e.g. session creation failed), the container is
+// still stopped but no abort or export is attempted. See issue #46.
+func TestShutdownDockerAgentSessionEmptySIDStopsWithoutAbort(t *testing.T) {
+	r, _ := newShutdownTestRunner()
+	h := &fakeServeHarness{}
+	stopped := false
+	export := r.shutdownDockerAgentSession(task.TaskRequest{TaskID: "task_1"}, "http://x", "", "secret", t.TempDir(), h, func() { stopped = true })
+
+	if export != "" {
+		t.Fatalf("export = %q, want empty", export)
+	}
+	if h.abortCallCount() != 0 {
+		t.Fatalf("abort called %d times, want 0", h.abortCallCount())
+	}
+	if h.exportCallCount() != 0 {
+		t.Fatalf("export called %d times, want 0", h.exportCallCount())
+	}
+	if !stopped {
+		t.Fatal("container should still be stopped without a session")
 	}
 }
 
