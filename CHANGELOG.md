@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-07-30
+
+### Added
+
+- Central server-side task and trigger validation (#80): harness must be empty (runner default) or one of the supported harnesses (opencode, claude-code, pi, codewhale, codex) — unknown harnesses are rejected instead of silently falling back to OpenCode; `session_mode` must be empty, "none", or "resumable"; `timeout_sec` and `ttl_hours` must be non-negative and within operator-configurable limits (`CHETTER_MAX_TASK_TIMEOUT_SEC`, `CHETTER_MAX_SESSION_TTL_HOURS`); GitHub trigger repos (pr_review/issue) must use canonical owner/repo syntax. Validation lives in `internal/validation` and is wired into `Service.SubmitTask` and `Service.CreateTrigger`/`UpdateTrigger`, the single chokepoints for all task and trigger ingress, so MCP, ConnectRPC/web UI, and webhook-triggered submissions share the same rules; invalid requests are rejected before persistence. Agent/skill names remain hints resolved lazily by the runner; MCP endpoint existence continues to be validated centrally in SubmitTask.
+- Runner CPU (`--cpus`) and PID (`--pids-limit`) limits for task containers (#54), so a single misbehaving task cannot exhaust host CPU or process IDs. Configurable via `execution.container_cpu`/`container_pids` (YAML) or `CHETTER_CONTAINER_CPU`/`CHETTER_CONTAINER_PIDS`/`CHETTER_CONTAINER_MEMORY` env vars; limits are applied consistently across serve, resume, and RPC container paths, and the memory limit is now also applied to the RPC path for consistency. Flags are only emitted when set, so unset limits leave behavior unchanged. Negative or unparseable env overrides fail runner startup validation. Added to `schemas/runner.schema.json`.
+
+### Fixed
+
+- Cross-team definition confidentiality exposure (#262): definition get/list MCP tools and runner-side agent/skill materialization resolved definitions by name only, ignoring team/repo scope, so any authenticated team token could fetch another team's agent, skill, trigger, task-template, or MCP-endpoint definition content, and a task submitted by one team naming another team's agent received that team's definition (including MCP endpoint references) injected and executed. Both paths now resolve to global plus the caller's own team-scoped definitions; cross-team names resolve as not-found (fail closed), and team-scoped agent definitions override global ones for the owning team's tasks. `getDefinition` resolves from all matching definitions and picks the highest-precedence visible one (global > team > repo, then most recently updated).
+
+### Documentation
+
+- `website/old/technical.html` corrected: failure-category list aligned to the canonical task-level set (timeout, harness_error, runner_lost, internal_error, user_cancelled, quota_exceeded, unknown), and the Kubernetes pod execution backend (`execution.backend: kubernetes`, `KubernetesExecutor`) documented.
+
 ## 2026-07-29
 
 ### Fixed
