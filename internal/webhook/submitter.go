@@ -95,8 +95,6 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		"GITHUB_TOKEN": review.GitHubToken,
 		"GITHUB_REPO":  review.Repo,
 	}
-	env["CHETTER_AGENT_NAME"] = review.Agent
-	env["CHETTER_MODEL_ID"] = review.ModelID
 	if review.CommentAuthor != "" {
 		env["COMMENT_AUTHOR"] = review.CommentAuthor
 	}

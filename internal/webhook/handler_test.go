@@ -261,6 +261,11 @@ func TestBuildReviewTaskRequest(t *testing.T) {
 	if got := req.Env["GITHUB_REPO"]; got != "chetter/chetter" {
 		t.Errorf("Env[GITHUB_REPO] = %q, want my-org/my-repo", got)
 	}
+	for _, key := range []string{"CHETTER_AGENT_NAME", "CHETTER_MODEL_ID"} {
+		if _, ok := req.Env[key]; ok {
+			t.Errorf("Env[%s] must not be supplied by the webhook request", key)
+		}
+	}
 	if _, ok := req.Env["COMMENT_AUTHOR"]; ok {
 		t.Error("COMMENT_AUTHOR should not be set when CommentAuthor is empty")
 	}
