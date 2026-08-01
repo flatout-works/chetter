@@ -165,6 +165,22 @@ Per-task Docker containers are the standard execution model; gVisor provides the
 security boundary when isolation is required. RPC mode runs as a subprocess of
 the runner (no gVisor), available only for Pi.
 
+### Runner MCP authentication boundary
+
+Every execution receives a new 256-bit capability for its runner-owned MCP
+server. The server requires that bearer token on every request and listens on
+loopback in local mode or the runner's routable Docker/Kubernetes interface in
+container modes. Chetter injects the header into the OpenCode, Claude Code,
+CodeWhale, Codex, and Pi MCP configurations; files containing the token are
+forced to owner-only permissions.
+
+The same capability authenticates the runner-wide Chetter MCP relay. Only
+currently active executions are registered. Closing the execution MCP server
+revokes relay access, and the relay replaces the capability with its upstream
+credential while forwarding task and execution fencing headers. The locally
+minted capability is never serialized to the control plane and is redacted
+from runner-published summaries, errors, exports, and artifact strings.
+
 ## Selection
 
 Harness can be set at two levels:
