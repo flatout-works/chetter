@@ -74,6 +74,7 @@ func TestClassifyTaskErrorCategory(t *testing.T) {
 		{"oomkilled container", "error", "task container exceeded its memory limit (OOMKilled): prompt failed: EOF", "resource_limit"},
 		{"out of memory", "error", "container out of memory", "resource_limit"},
 		{"resource limit", "error", "cgroup memory limit reached", "resource_limit"},
+		{"oom takes precedence over deadline", "error", "task container exceeded its memory limit (OOMKilled): container harness serve not ready: context deadline exceeded", "resource_limit"},
 		{"stuck", "error", "stuck in loop", "stuck"},
 		{"model error", "error", "model returned invalid response", "model_error"},
 		{"llm error", "error", "LLM provider error", "model_error"},

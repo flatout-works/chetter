@@ -285,10 +285,10 @@ func classifyErrorCategory(status, message string) string {
 	switch {
 	case strings.Contains(lower, "budget"), strings.Contains(lower, "cost limit"), strings.Contains(lower, "max budget"):
 		return "budget_exceeded"
-	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"):
-		return "timeout"
 	case strings.Contains(lower, "oomkilled"), strings.Contains(lower, "out of memory"), strings.Contains(lower, "memory limit"), strings.Contains(lower, "resource limit"), strings.Contains(lower, "cgroup memory"):
 		return "resource_limit"
+	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"):
+		return "timeout"
 	case isPromptTransportFailureMessage(lower):
 		return "transport_error"
 	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
