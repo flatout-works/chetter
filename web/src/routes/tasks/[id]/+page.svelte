@@ -14,7 +14,6 @@
   import { formatDuration, formatHarness, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
-  import { marked } from "marked";
 
   let { params } = $props();
   let task = $state<Task | null>(null);
@@ -468,7 +467,7 @@ ${task?.prompt ?? ""}`;
     try {
       const client = createClient(TaskService, getTransport());
       const resp = await client.exportTask({ taskId: params.id, compact: true });
-      viewMarkdown = await marked.parse(resp.export, { breaks: true });
+      viewMarkdown = renderMarkdown(resp.export, true);
       showExportViewer = true;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load export";

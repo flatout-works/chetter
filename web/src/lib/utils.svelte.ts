@@ -1,8 +1,12 @@
 import { getSettings } from "$lib/stores/settings.svelte";
-import { lexer, parser } from "marked";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
-export function renderMarkdown(text: string): string {
-  return parser(lexer(text));
+export function renderMarkdown(text: string, breaks = false): string {
+  const html = marked.parse(text, { async: false, breaks });
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+  });
 }
 
 export function formatDuration(startedAt?: string | null, endedAt?: string | null): string {
