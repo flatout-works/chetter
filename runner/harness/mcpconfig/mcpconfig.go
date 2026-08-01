@@ -2,10 +2,30 @@ package mcpconfig
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
+
+// SetBearerToken adds a literal Authorization header to a runner-owned MCP
+// server definition. It intentionally does nothing for an empty token.
+// WritePrivateFile writes a credential-bearing configuration file and forces
+// owner-only permissions even when the file already existed in a repository.
+func WritePrivateFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
+}
+
+func SetBearerToken(server map[string]any, token string) {
+	if token != "" {
+		server["headers"] = map[string]string{
+			"Authorization": "Bearer " + token,
+		}
+	}
+}
 
 func AddOpenCodeServers(servers map[string]any, endpoints []task.MCPEndpoint) error {
 	for _, endpoint := range endpoints {

@@ -8,6 +8,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -23,6 +26,7 @@ type Server struct {
 	sdkServer *mcplib.Server
 	httpSrv   *http.Server
 	addr      string
+	token     string
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 }
@@ -37,24 +41,34 @@ type ToolDef struct {
 	InputSchema map[string]any
 }
 
-// NewServer creates a new MCP server listening on a random TCP port.
-func NewServer() (*Server, error) {
-	ln, err := net.Listen("tcp4", "0.0.0.0:0") // tcp4 to avoid IPv6 which gVisor can't reach
+// NewServer creates an authenticated MCP server on a random TCP port. The
+// optional listenHost narrows which local interface accepts task traffic; it
+// defaults to loopback for direct callers and tests.
+func NewServer(listenHost ...string) (*Server, error) {
+	host := "127.0.0.1"
+	if len(listenHost) > 0 && listenHost[0] != "" {
+		host = listenHost[0]
+	}
+	token, err := randomBearerToken()
 	if err != nil {
-		return nil, fmt.Errorf("listen: %w", err)
+		return nil, fmt.Errorf("generate MCP bearer token: %w", err)
+	}
+	ln, err := net.Listen("tcp4", net.JoinHostPort(host, "0")) // tcp4 to avoid IPv6 which gVisor can't reach
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", host, err)
 	}
 	addr := ln.Addr().String()
 
 	sdkServer := mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil)
 
 	getServer := func(_ *http.Request) *mcplib.Server { return sdkServer }
-	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	mcpHandler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", requireBearerToken(token, mcpHandler))
 
 	httpSrv := &http.Server{Handler: mux}
-	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr}
+	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr, token: token}
 	serverCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return serverCtx }
@@ -71,6 +85,10 @@ func NewServer() (*Server, error) {
 
 // Addr returns the listen address for the MCP server (e.g. "127.0.0.1:12345").
 func (s *Server) Addr() string { return s.addr }
+
+// Token returns the per-server bearer token to inject into the task's private
+// harness configuration.
+func (s *Server) Token() string { return s.token }
 
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
@@ -91,6 +109,27 @@ func (s *Server) Close() error {
 	}
 	s.wg.Wait()
 	return nil
+}
+
+func randomBearerToken() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func requireBearerToken(token string, next http.Handler) http.Handler {
+	expected := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		provided := []byte(r.Header.Get("Authorization"))
+		if len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func adaptHandler(h ToolHandler) mcplib.ToolHandler {

@@ -12,6 +12,7 @@ import (
 func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 	wsDir := t.TempDir()
 	req := task.TaskRequest{
+		RunnerMCPToken: "runner-token",
 		McpEndpoints: []task.MCPEndpoint{{
 			Name:           "docs",
 			URL:            "https://docs.example.test/mcp",
@@ -22,9 +23,17 @@ func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(wsDir, ".codewhale", "mcp.json"))
+	mcpPath := filepath.Join(wsDir, ".codewhale", "mcp.json")
+	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		t.Fatalf("read MCP config: %v", err)
+	}
+	info, err := os.Stat(mcpPath)
+	if err != nil {
+		t.Fatalf("stat MCP config: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("MCP config permissions = %v, want 0600", info.Mode().Perm())
 	}
 	var config struct {
 		Servers map[string]map[string]any `json:"servers"`
@@ -44,5 +53,9 @@ func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 	}
 	if got := config.Servers["docs"]["bearer_token_env_var"]; got != "DOCS_MCP_TOKEN" {
 		t.Fatalf("docs bearer token env = %v", got)
+	}
+	headers, ok := config.Servers["runner-bridge"]["headers"].(map[string]any)
+	if !ok || headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge headers = %#v", config.Servers["runner-bridge"]["headers"])
 	}
 }

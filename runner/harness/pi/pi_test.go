@@ -68,7 +68,8 @@ func TestResolvedModelID(t *testing.T) {
 
 func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", task.TaskRequest{}, false); err != nil {
+	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -82,9 +83,17 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 		t.Fatalf("expected default adapter path, got %v", extensions[0])
 	}
 
-	data, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))
+	mcpPath := filepath.Join(wsDir, ".mcp.json")
+	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		t.Fatalf("read .mcp.json: %v", err)
+	}
+	info, err := os.Stat(mcpPath)
+	if err != nil {
+		t.Fatalf("stat .mcp.json: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("MCP config permissions = %v, want 0600", info.Mode().Perm())
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -94,8 +103,13 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if !ok {
 		t.Fatal("expected mcpServers map")
 	}
-	if _, ok := servers["runner-bridge"]; !ok {
+	runner, ok := servers["runner-bridge"].(map[string]any)
+	if !ok {
 		t.Fatal("expected runner-bridge MCP server")
+	}
+	headers, ok := runner["headers"].(map[string]any)
+	if !ok || headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge headers = %#v", runner["headers"])
 	}
 	if _, ok := servers["chetter"]; !ok {
 		t.Fatal("expected chetter MCP server")

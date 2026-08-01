@@ -117,7 +117,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		defer mcpServer.Close()
 		mcpURL := runnerMCPURL(r, mcpServer)
-		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, false); err != nil {
+		configReq := req
+		configReq.RunnerMCPToken = mcpServer.Token()
+		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), configReq, false); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
 		}
@@ -211,8 +213,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
+	configReq := req
+	configReq.RunnerMCPToken = mcpServer.Token()
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), configReq, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -252,7 +256,11 @@ func (r *Runner) runTask(req task.TaskRequest) {
 }
 
 func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID string) (*mcp.Server, error) {
-	mcpServer, err := mcp.NewServer()
+	listenHost := "127.0.0.1"
+	if r.executionMode() != "local" {
+		listenHost = r.runnerHostIP()
+	}
+	mcpServer, err := mcp.NewServer(listenHost)
 	if err != nil {
 		return nil, err
 	}
@@ -791,13 +799,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 
 	r.publishStatusForRequest(req, "running", "Resuming agent session...", nil)
-
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
-		return
-	}
-	defer mcpServer.Close()
 
 	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
 	if bindAddr == "" {

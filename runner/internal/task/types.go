@@ -30,6 +30,7 @@ type TaskRequest struct {
 	VariantID              string            `json:"variant_id,omitempty"`
 	Skills                 []string          `json:"skills,omitempty"`
 	McpEndpoints           []MCPEndpoint     `json:"mcp_endpoints,omitempty"`
+	RunnerMCPToken         string            `json:"-"` // Generated locally per execution; never received from or reported to the control plane.
 	Harness                string            `json:"harness,omitempty"`
 	TimeoutSec             int               `json:"timeout_sec"`
 	MaxMemoryMB            int               `json:"max_memory_mb"`
