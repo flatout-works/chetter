@@ -58,6 +58,9 @@ const (
 	// RunnerServiceGitHubPRReviewProcedure is the fully-qualified name of the RunnerService's
 	// GitHubPRReview RPC.
 	RunnerServiceGitHubPRReviewProcedure = "/runner.v1.RunnerService/GitHubPRReview"
+	// RunnerServiceGetGitHubCredentialProcedure is the fully-qualified name of the RunnerService's
+	// GetGitHubCredential RPC.
+	RunnerServiceGetGitHubCredentialProcedure = "/runner.v1.RunnerService/GetGitHubCredential"
 )
 
 // RunnerServiceClient is a client for the runner.v1.RunnerService service.
@@ -74,6 +77,7 @@ type RunnerServiceClient interface {
 	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
+	GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error)
 }
 
 // NewRunnerServiceClient constructs a client for the runner.v1.RunnerService service. By default,
@@ -141,20 +145,27 @@ func NewRunnerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
 			connect.WithClientOptions(opts...),
 		),
+		getGitHubCredential: connect.NewClient[v1.GetGitHubCredentialRequest, v1.GetGitHubCredentialResponse](
+			httpClient,
+			baseURL+RunnerServiceGetGitHubCredentialProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GetGitHubCredential")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // runnerServiceClient implements RunnerServiceClient.
 type runnerServiceClient struct {
-	registerRunner     *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
-	heartbeat          *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
-	claimTask          *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
-	reportTaskEvents   *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
-	pruneWorkspaces    *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
-	gitHubCreateIssue  *connect.Client[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse]
-	gitHubIssueComment *connect.Client[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse]
-	gitHubCreatePR     *connect.Client[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse]
-	gitHubPRReview     *connect.Client[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse]
+	registerRunner      *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
+	heartbeat           *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	claimTask           *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
+	reportTaskEvents    *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
+	pruneWorkspaces     *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
+	gitHubCreateIssue   *connect.Client[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse]
+	gitHubIssueComment  *connect.Client[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse]
+	gitHubCreatePR      *connect.Client[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse]
+	gitHubPRReview      *connect.Client[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse]
+	getGitHubCredential *connect.Client[v1.GetGitHubCredentialRequest, v1.GetGitHubCredentialResponse]
 }
 
 // RegisterRunner calls runner.v1.RunnerService.RegisterRunner.
@@ -202,6 +213,11 @@ func (c *runnerServiceClient) GitHubPRReview(ctx context.Context, req *connect.R
 	return c.gitHubPRReview.CallUnary(ctx, req)
 }
 
+// GetGitHubCredential calls runner.v1.RunnerService.GetGitHubCredential.
+func (c *runnerServiceClient) GetGitHubCredential(ctx context.Context, req *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error) {
+	return c.getGitHubCredential.CallUnary(ctx, req)
+}
+
 // RunnerServiceHandler is an implementation of the runner.v1.RunnerService service.
 type RunnerServiceHandler interface {
 	RegisterRunner(context.Context, *connect.Request[v1.RegisterRunnerRequest]) (*connect.Response[v1.RegisterRunnerResponse], error)
@@ -216,6 +232,7 @@ type RunnerServiceHandler interface {
 	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
+	GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error)
 }
 
 // NewRunnerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -279,6 +296,12 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	runnerServiceGetGitHubCredentialHandler := connect.NewUnaryHandler(
+		RunnerServiceGetGitHubCredentialProcedure,
+		svc.GetGitHubCredential,
+		connect.WithSchema(runnerServiceMethods.ByName("GetGitHubCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/runner.v1.RunnerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RunnerServiceRegisterRunnerProcedure:
@@ -299,6 +322,8 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 			runnerServiceGitHubCreatePRHandler.ServeHTTP(w, r)
 		case RunnerServiceGitHubPRReviewProcedure:
 			runnerServiceGitHubPRReviewHandler.ServeHTTP(w, r)
+		case RunnerServiceGetGitHubCredentialProcedure:
+			runnerServiceGetGitHubCredentialHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -342,4 +367,8 @@ func (UnimplementedRunnerServiceHandler) GitHubCreatePR(context.Context, *connec
 
 func (UnimplementedRunnerServiceHandler) GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubPRReview is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GetGitHubCredential is not implemented"))
 }

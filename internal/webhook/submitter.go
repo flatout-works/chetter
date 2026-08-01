@@ -21,23 +21,25 @@ type TaskSubmitterService interface {
 // it here to avoid importing the service package. The service adapter in
 // main.go converts from service.SubmitTaskRequest to this type.
 type SubmitTaskRequest struct {
-	TeamID      string
-	Prompt      string
-	GitURL      string
-	GitRef      string
-	AgentImage  string
-	Agent       string
-	ProviderID  string
-	ModelID     string
-	VariantID   string
-	Skills      []string
-	Env         map[string]string
-	TimeoutSec  int
-	TriggerName string
-	TriggerType string
-	SessionMode string
-	PauseReason string
-	TTLHours    int
+	TeamID               string
+	Prompt               string
+	GitURL               string
+	GitRef               string
+	GitHubRepo           string
+	GitHubInstallationID int64
+	AgentImage           string
+	Agent                string
+	ProviderID           string
+	ModelID              string
+	VariantID            string
+	Skills               []string
+	Env                  map[string]string
+	TimeoutSec           int
+	TriggerName          string
+	TriggerType          string
+	SessionMode          string
+	PauseReason          string
+	TTLHours             int
 }
 
 // NewServiceSubmitter creates a TaskSubmitter that wraps the given service
@@ -91,32 +93,33 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	}
 
 	env := map[string]string{
-		"PR_NUMBER":    fmt.Sprintf("%d", review.PRNumber),
-		"GITHUB_TOKEN": review.GitHubToken,
-		"GITHUB_REPO":  review.Repo,
+		"PR_NUMBER":   fmt.Sprintf("%d", review.PRNumber),
+		"GITHUB_REPO": review.Repo,
 	}
 	if review.CommentAuthor != "" {
 		env["COMMENT_AUTHOR"] = review.CommentAuthor
 	}
 
 	return SubmitTaskRequest{
-		TeamID:      review.TeamID,
-		Prompt:      prompt,
-		GitURL:      review.HeadCloneURL,
-		GitRef:      review.HeadRef,
-		AgentImage:  agentImage,
-		Agent:       review.Agent,
-		ProviderID:  review.ProviderID,
-		ModelID:     review.ModelID,
-		VariantID:   review.VariantID,
-		Skills:      review.Skills,
-		Env:         env,
-		TimeoutSec:  review.TimeoutSec,
-		TriggerName: review.TriggerName,
-		TriggerType: review.TriggerType,
-		SessionMode: review.SessionMode,
-		PauseReason: review.PauseReason,
-		TTLHours:    review.TTLHours,
+		TeamID:               review.TeamID,
+		Prompt:               prompt,
+		GitURL:               review.HeadCloneURL,
+		GitRef:               review.HeadRef,
+		GitHubRepo:           review.Repo,
+		GitHubInstallationID: review.GitHubInstallationID,
+		AgentImage:           agentImage,
+		Agent:                review.Agent,
+		ProviderID:           review.ProviderID,
+		ModelID:              review.ModelID,
+		VariantID:            review.VariantID,
+		Skills:               review.Skills,
+		Env:                  env,
+		TimeoutSec:           review.TimeoutSec,
+		TriggerName:          review.TriggerName,
+		TriggerType:          review.TriggerType,
+		SessionMode:          review.SessionMode,
+		PauseReason:          review.PauseReason,
+		TTLHours:             review.TTLHours,
 	}
 }
 
@@ -140,7 +143,6 @@ const reviewPromptTemplate = `You are performing a deep code review on a pull re
 
 Environment variables available to you:
 - PR_NUMBER — the PR to review
-- GITHUB_TOKEN — GitHub App installation token with PR read/write
 - GITHUB_REPO — repository (e.g., my-org/my-repo)
 - COMMENT_AUTHOR — set when the trigger was a comment (the user who requested review)
 - CHETTER_AGENT_NAME — agent definition name (e.g., "pr-reviewer")
@@ -216,7 +218,6 @@ func prReviewContextBlock(review ReviewContext) string {
 
 Environment variables available to you:
 - PR_NUMBER — the PR to review
-- GITHUB_TOKEN — GitHub App installation token with PR read/write
 - GITHUB_REPO — repository (e.g., my-org/my-repo)
 - CHETTER_TASK_ID — Chetter task identifier
 

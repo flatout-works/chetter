@@ -36,30 +36,33 @@ const (
 
 // PullRequestEvent is the top-level payload for a pull_request webhook event.
 type PullRequestEvent struct {
-	Action      string      `json:"action"`
-	Number      int         `json:"number"`
-	PullRequest PullRequest `json:"pull_request"`
-	Label       *Label      `json:"label,omitempty"`
-	Repository  Repository  `json:"repository"`
-	Sender      struct {
+	Action       string       `json:"action"`
+	Number       int          `json:"number"`
+	PullRequest  PullRequest  `json:"pull_request"`
+	Label        *Label       `json:"label,omitempty"`
+	Repository   Repository   `json:"repository"`
+	Installation Installation `json:"installation"`
+	Sender       struct {
 		Login string `json:"login"`
 	} `json:"sender"`
 }
 
 // PullRequestReviewEvent is the top-level payload for pull_request_review.
 type PullRequestReviewEvent struct {
-	Action      string      `json:"action"`
-	PullRequest PullRequest `json:"pull_request"`
-	Review      Review      `json:"review"`
-	Repository  Repository  `json:"repository"`
+	Action       string       `json:"action"`
+	PullRequest  PullRequest  `json:"pull_request"`
+	Review       Review       `json:"review"`
+	Repository   Repository   `json:"repository"`
+	Installation Installation `json:"installation"`
 }
 
 // PullRequestReviewCommentEvent is the top-level payload for pull_request_review_comment.
 type PullRequestReviewCommentEvent struct {
-	Action      string      `json:"action"`
-	PullRequest PullRequest `json:"pull_request"`
-	Comment     Comment     `json:"comment"`
-	Repository  Repository  `json:"repository"`
+	Action       string       `json:"action"`
+	PullRequest  PullRequest  `json:"pull_request"`
+	Comment      Comment      `json:"comment"`
+	Repository   Repository   `json:"repository"`
+	Installation Installation `json:"installation"`
 }
 
 // Review is the relevant subset of a pull request review object.
@@ -110,14 +113,21 @@ type Repository struct {
 	} `json:"owner"`
 }
 
+// Installation identifies the GitHub App installation that signed event work
+// must use for installation-authenticated API calls.
+type Installation struct {
+	ID int64 `json:"id"`
+}
+
 // IssueCommentEvent is the top-level payload for an issue_comment webhook event.
 // For PR comments, the Issue object includes a `pull_request` field which we
 // use to determine that this is a PR comment (vs an issue comment).
 type IssueCommentEvent struct {
-	Action     string     `json:"action"`
-	Comment    Comment    `json:"comment"`
-	Issue      Issue      `json:"issue"`
-	Repository Repository `json:"repository"`
+	Action       string       `json:"action"`
+	Comment      Comment      `json:"comment"`
+	Issue        Issue        `json:"issue"`
+	Repository   Repository   `json:"repository"`
+	Installation Installation `json:"installation"`
 }
 
 // Comment is the issue/PR comment object.
@@ -147,10 +157,11 @@ func (e *IssueCommentEvent) IsPullRequest() bool {
 
 // IssueEvent is the top-level payload for an issues webhook event.
 type IssueEvent struct {
-	Action     string     `json:"action"`
-	Issue      IssueData  `json:"issue"`
-	Label      *Label     `json:"label,omitempty"`
-	Repository Repository `json:"repository"`
+	Action       string       `json:"action"`
+	Issue        IssueData    `json:"issue"`
+	Label        *Label       `json:"label,omitempty"`
+	Repository   Repository   `json:"repository"`
+	Installation Installation `json:"installation"`
 }
 
 // IssueData is the relevant subset of the issue object.

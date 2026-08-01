@@ -80,7 +80,7 @@ Chetter exposes runner-bridge GitHub tools to task agents so they do not need di
 - `chetter_create_pr`
 - `chetter_pr_review`
 
-These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `chetter_task_artifacts`. The runner image wraps `gh` and blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`) unless `CHETTER_ALLOW_GH_WRITES=1` is set for manual debugging.
+These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `chetter_task_artifacts`. The runner image wraps `gh` with an explicit read-only command allowlist; arbitrary API access and all writes must use the audited Chetter tools.
 
 Artifact browsing is available with `chetter_list_task_artifacts` and in the web UI.
 

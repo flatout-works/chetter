@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/pkg/definitions"
 )
 
@@ -188,7 +189,10 @@ func (s *Service) resolveTaskGitIdentity(ctx context.Context, agent, teamID, git
 	if strings.TrimSpace(agent) == "" {
 		return GitIdentityRecord{}, fmt.Errorf("agent is required")
 	}
-	repo := repoNameFromGitURL(gitURL)
+	repo := ""
+	if parsed, err := githubrepo.Parse(gitURL); err == nil {
+		repo = parsed.Normalized()
+	}
 	var content string
 	err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, `SELECT content FROM definitions
          WHERE definition_type='agent' AND name=? AND active=true
@@ -270,16 +274,4 @@ func normalizedCredentialType(value string) string {
 		return "github_app"
 	}
 	return strings.TrimSpace(value)
-}
-
-func repoNameFromGitURL(gitURL string) string {
-	gitURL = strings.TrimSuffix(strings.TrimSpace(gitURL), "/")
-	gitURL = strings.TrimSuffix(gitURL, ".git")
-	if i := strings.Index(gitURL, "github.com/"); i >= 0 {
-		return gitURL[i+len("github.com/"):]
-	}
-	if i := strings.Index(gitURL, ":"); i >= 0 {
-		return gitURL[i+1:]
-	}
-	return ""
 }

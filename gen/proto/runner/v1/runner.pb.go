@@ -703,6 +703,7 @@ type Task struct {
 	ExecutionId            string                 `protobuf:"bytes,33,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	AgentSessionId         string                 `protobuf:"bytes,34,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	UserPromptId           string                 `protobuf:"bytes,35,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	GithubRepo             string                 `protobuf:"bytes,36,opt,name=github_repo,json=githubRepo,proto3" json:"github_repo,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -978,6 +979,13 @@ func (x *Task) GetAgentSessionId() string {
 func (x *Task) GetUserPromptId() string {
 	if x != nil {
 		return x.UserPromptId
+	}
+	return ""
+}
+
+func (x *Task) GetGithubRepo() string {
+	if x != nil {
+		return x.GithubRepo
 	}
 	return ""
 }
@@ -1694,6 +1702,7 @@ type GitHubCreateIssueRequest struct {
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	Labels        []string               `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	RunnerId      string                 `protobuf:"bytes,7,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1770,6 +1779,13 @@ func (x *GitHubCreateIssueRequest) GetExecutionId() string {
 	return ""
 }
 
+func (x *GitHubCreateIssueRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
 type GitHubCreateIssueResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -1829,6 +1845,7 @@ type GitHubIssueCommentRequest struct {
 	IssueNumber   int32                  `protobuf:"varint,3,opt,name=issue_number,json=issueNumber,proto3" json:"issue_number,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,5,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	RunnerId      string                 `protobuf:"bytes,6,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1898,6 +1915,13 @@ func (x *GitHubIssueCommentRequest) GetExecutionId() string {
 	return ""
 }
 
+func (x *GitHubIssueCommentRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
 type GitHubIssueCommentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
@@ -1952,6 +1976,7 @@ type GitHubCreatePRRequest struct {
 	Base          string                 `protobuf:"bytes,6,opt,name=base,proto3" json:"base,omitempty"`
 	Draft         bool                   `protobuf:"varint,7,opt,name=draft,proto3" json:"draft,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	RunnerId      string                 `protobuf:"bytes,9,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2042,6 +2067,13 @@ func (x *GitHubCreatePRRequest) GetExecutionId() string {
 	return ""
 }
 
+func (x *GitHubCreatePRRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
 type GitHubCreatePRResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -2102,6 +2134,7 @@ type GitHubPRReviewRequest struct {
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	Event         string                 `protobuf:"bytes,5,opt,name=event,proto3" json:"event,omitempty"` // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
 	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	RunnerId      string                 `protobuf:"bytes,7,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2178,6 +2211,13 @@ func (x *GitHubPRReviewRequest) GetExecutionId() string {
 	return ""
 }
 
+func (x *GitHubPRReviewRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
 type GitHubPRReviewResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
@@ -2218,6 +2258,134 @@ func (*GitHubPRReviewResponse) Descriptor() ([]byte, []int) {
 func (x *GitHubPRReviewResponse) GetUrl() string {
 	if x != nil {
 		return x.Url
+	}
+	return ""
+}
+
+type GetGitHubCredentialRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunnerId      string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,3,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Repo          string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetGitHubCredentialRequest) Reset() {
+	*x = GetGitHubCredentialRequest{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetGitHubCredentialRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetGitHubCredentialRequest) ProtoMessage() {}
+
+func (x *GetGitHubCredentialRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetGitHubCredentialRequest.ProtoReflect.Descriptor instead.
+func (*GetGitHubCredentialRequest) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *GetGitHubCredentialRequest) GetRunnerId() string {
+	if x != nil {
+		return x.RunnerId
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialRequest) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+type GetGitHubCredentialResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
+	Token         string                 `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
+	ExpiresAt     string                 `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetGitHubCredentialResponse) Reset() {
+	*x = GetGitHubCredentialResponse{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetGitHubCredentialResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetGitHubCredentialResponse) ProtoMessage() {}
+
+func (x *GetGitHubCredentialResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetGitHubCredentialResponse.ProtoReflect.Descriptor instead.
+func (*GetGitHubCredentialResponse) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetGitHubCredentialResponse) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialResponse) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
 	}
 	return ""
 }
@@ -2279,7 +2447,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xd1\f\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xf2\f\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -2320,7 +2488,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\rmcp_endpoints\x18  \x03(\v2\x16.runner.v1.MCPEndpointR\fmcpEndpoints\x12*\n" +
 	"\fexecution_id\x18! \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x121\n" +
 	"\x10agent_session_id\x18\" \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
-	"\x0euser_prompt_id\x18# \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x1a6\n" +
+	"\x0euser_prompt_id\x18# \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x12\x1f\n" +
+	"\vgithub_repo\x18$ \x01(\tR\n" +
+	"githubRepo\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -2394,25 +2564,27 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0eworkspace_path\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rworkspacePath\"\\\n" +
 	"\fWorkspaceKey\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
-	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"\xd0\x01\n" +
+	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"\xf6\x01\n" +
 	"\x18GitHubCreateIssueRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
 	"\x05title\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05title\x12\x12\n" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x16\n" +
 	"\x06labels\x18\x05 \x03(\tR\x06labels\x12*\n" +
-	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"E\n" +
+	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
+	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"E\n" +
 	"\x19GitHubCreateIssueResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\xcf\x01\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xf5\x01\n" +
 	"\x19GitHubIssueCommentRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12*\n" +
 	"\fissue_number\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\vissueNumber\x12\x1b\n" +
 	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12*\n" +
-	"\fexecution_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\".\n" +
+	"\fexecution_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
+	"\trunner_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\".\n" +
 	"\x1aGitHubIssueCommentResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\x85\x02\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\xab\x02\n" +
 	"\x15GitHubCreatePRRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
@@ -2421,19 +2593,31 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x04head\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04head\x12\x1b\n" +
 	"\x04base\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04base\x12\x14\n" +
 	"\x05draft\x18\a \x01(\bR\x05draft\x12*\n" +
-	"\fexecution_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"B\n" +
+	"\fexecution_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
+	"\trunner_id\x18\t \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"B\n" +
 	"\x16GitHubCreatePRResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\xdb\x01\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\x81\x02\n" +
 	"\x15GitHubPRReviewRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12$\n" +
 	"\tpr_number\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\bprNumber\x12\x1b\n" +
 	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12\x14\n" +
 	"\x05event\x18\x05 \x01(\tR\x05event\x12*\n" +
-	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"*\n" +
+	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
+	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"*\n" +
 	"\x16GitHubPRReviewResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url2\xb0\x06\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\xad\x01\n" +
+	"\x1aGetGitHubCredentialRequest\x12$\n" +
+	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12 \n" +
+	"\atask_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
+	"\fexecution_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12\x1b\n" +
+	"\x04repo\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\"\x89\x01\n" +
+	"\x1bGetGitHubCredentialResponse\x12#\n" +
+	"\busername\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\busername\x12\x1d\n" +
+	"\x05token\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05token\x12&\n" +
+	"\n" +
+	"expires_at\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\texpiresAt2\x98\a\n" +
 	"\rRunnerService\x12W\n" +
 	"\x0eRegisterRunner\x12 .runner.v1.RegisterRunnerRequest\x1a!.runner.v1.RegisterRunnerResponse\"\x00\x12H\n" +
 	"\tHeartbeat\x12\x1b.runner.v1.HeartbeatRequest\x1a\x1c.runner.v1.HeartbeatResponse\"\x00\x12H\n" +
@@ -2443,7 +2627,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x11GitHubCreateIssue\x12#.runner.v1.GitHubCreateIssueRequest\x1a$.runner.v1.GitHubCreateIssueResponse\"\x00\x12c\n" +
 	"\x12GitHubIssueComment\x12$.runner.v1.GitHubIssueCommentRequest\x1a%.runner.v1.GitHubIssueCommentResponse\"\x00\x12W\n" +
 	"\x0eGitHubCreatePR\x12 .runner.v1.GitHubCreatePRRequest\x1a!.runner.v1.GitHubCreatePRResponse\"\x00\x12W\n" +
-	"\x0eGitHubPRReview\x12 .runner.v1.GitHubPRReviewRequest\x1a!.runner.v1.GitHubPRReviewResponse\"\x00B\xa0\x01\n" +
+	"\x0eGitHubPRReview\x12 .runner.v1.GitHubPRReviewRequest\x1a!.runner.v1.GitHubPRReviewResponse\"\x00\x12f\n" +
+	"\x13GetGitHubCredential\x12%.runner.v1.GetGitHubCredentialRequest\x1a&.runner.v1.GetGitHubCredentialResponse\"\x00B\xa0\x01\n" +
 	"\rcom.runner.v1B\vRunnerProtoP\x01Z=github.com/flatout-works/chetter/gen/proto/runner/v1;runnerv1\xa2\x02\x03RXX\xaa\x02\tRunner.V1\xca\x02\tRunner\\V1\xe2\x02\x15Runner\\V1\\GPBMetadata\xea\x02\n" +
 	"Runner::V1b\x06proto3"
 
@@ -2459,40 +2644,42 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
-	(*RunnerInfo)(nil),                 // 0: runner.v1.RunnerInfo
-	(*ResourceInfo)(nil),               // 1: runner.v1.ResourceInfo
-	(*RunningExecution)(nil),           // 2: runner.v1.RunningExecution
-	(*RegisterRunnerRequest)(nil),      // 3: runner.v1.RegisterRunnerRequest
-	(*RegisterRunnerResponse)(nil),     // 4: runner.v1.RegisterRunnerResponse
-	(*HeartbeatRequest)(nil),           // 5: runner.v1.HeartbeatRequest
-	(*RunnerCommand)(nil),              // 6: runner.v1.RunnerCommand
-	(*HeartbeatResponse)(nil),          // 7: runner.v1.HeartbeatResponse
-	(*ClaimTaskRequest)(nil),           // 8: runner.v1.ClaimTaskRequest
-	(*Task)(nil),                       // 9: runner.v1.Task
-	(*MCPEndpoint)(nil),                // 10: runner.v1.MCPEndpoint
-	(*ClaimTaskResponse)(nil),          // 11: runner.v1.ClaimTaskResponse
-	(*TokenUsage)(nil),                 // 12: runner.v1.TokenUsage
-	(*TaskEvent)(nil),                  // 13: runner.v1.TaskEvent
-	(*ReportTaskEventsRequest)(nil),    // 14: runner.v1.ReportTaskEventsRequest
-	(*ReportTaskEventsResponse)(nil),   // 15: runner.v1.ReportTaskEventsResponse
-	(*PruneWorkspacesRequest)(nil),     // 16: runner.v1.PruneWorkspacesRequest
-	(*PruneWorkspacesResponse)(nil),    // 17: runner.v1.PruneWorkspacesResponse
-	(*WorkspaceCandidate)(nil),         // 18: runner.v1.WorkspaceCandidate
-	(*WorkspaceKey)(nil),               // 19: runner.v1.WorkspaceKey
-	(*GitHubCreateIssueRequest)(nil),   // 20: runner.v1.GitHubCreateIssueRequest
-	(*GitHubCreateIssueResponse)(nil),  // 21: runner.v1.GitHubCreateIssueResponse
-	(*GitHubIssueCommentRequest)(nil),  // 22: runner.v1.GitHubIssueCommentRequest
-	(*GitHubIssueCommentResponse)(nil), // 23: runner.v1.GitHubIssueCommentResponse
-	(*GitHubCreatePRRequest)(nil),      // 24: runner.v1.GitHubCreatePRRequest
-	(*GitHubCreatePRResponse)(nil),     // 25: runner.v1.GitHubCreatePRResponse
-	(*GitHubPRReviewRequest)(nil),      // 26: runner.v1.GitHubPRReviewRequest
-	(*GitHubPRReviewResponse)(nil),     // 27: runner.v1.GitHubPRReviewResponse
-	nil,                                // 28: runner.v1.Task.EnvEntry
-	nil,                                // 29: runner.v1.Task.SkillDefinitionsEntry
-	nil,                                // 30: runner.v1.Task.ExtraFilesEntry
-	nil,                                // 31: runner.v1.MCPEndpoint.HeadersEntry
+	(*RunnerInfo)(nil),                  // 0: runner.v1.RunnerInfo
+	(*ResourceInfo)(nil),                // 1: runner.v1.ResourceInfo
+	(*RunningExecution)(nil),            // 2: runner.v1.RunningExecution
+	(*RegisterRunnerRequest)(nil),       // 3: runner.v1.RegisterRunnerRequest
+	(*RegisterRunnerResponse)(nil),      // 4: runner.v1.RegisterRunnerResponse
+	(*HeartbeatRequest)(nil),            // 5: runner.v1.HeartbeatRequest
+	(*RunnerCommand)(nil),               // 6: runner.v1.RunnerCommand
+	(*HeartbeatResponse)(nil),           // 7: runner.v1.HeartbeatResponse
+	(*ClaimTaskRequest)(nil),            // 8: runner.v1.ClaimTaskRequest
+	(*Task)(nil),                        // 9: runner.v1.Task
+	(*MCPEndpoint)(nil),                 // 10: runner.v1.MCPEndpoint
+	(*ClaimTaskResponse)(nil),           // 11: runner.v1.ClaimTaskResponse
+	(*TokenUsage)(nil),                  // 12: runner.v1.TokenUsage
+	(*TaskEvent)(nil),                   // 13: runner.v1.TaskEvent
+	(*ReportTaskEventsRequest)(nil),     // 14: runner.v1.ReportTaskEventsRequest
+	(*ReportTaskEventsResponse)(nil),    // 15: runner.v1.ReportTaskEventsResponse
+	(*PruneWorkspacesRequest)(nil),      // 16: runner.v1.PruneWorkspacesRequest
+	(*PruneWorkspacesResponse)(nil),     // 17: runner.v1.PruneWorkspacesResponse
+	(*WorkspaceCandidate)(nil),          // 18: runner.v1.WorkspaceCandidate
+	(*WorkspaceKey)(nil),                // 19: runner.v1.WorkspaceKey
+	(*GitHubCreateIssueRequest)(nil),    // 20: runner.v1.GitHubCreateIssueRequest
+	(*GitHubCreateIssueResponse)(nil),   // 21: runner.v1.GitHubCreateIssueResponse
+	(*GitHubIssueCommentRequest)(nil),   // 22: runner.v1.GitHubIssueCommentRequest
+	(*GitHubIssueCommentResponse)(nil),  // 23: runner.v1.GitHubIssueCommentResponse
+	(*GitHubCreatePRRequest)(nil),       // 24: runner.v1.GitHubCreatePRRequest
+	(*GitHubCreatePRResponse)(nil),      // 25: runner.v1.GitHubCreatePRResponse
+	(*GitHubPRReviewRequest)(nil),       // 26: runner.v1.GitHubPRReviewRequest
+	(*GitHubPRReviewResponse)(nil),      // 27: runner.v1.GitHubPRReviewResponse
+	(*GetGitHubCredentialRequest)(nil),  // 28: runner.v1.GetGitHubCredentialRequest
+	(*GetGitHubCredentialResponse)(nil), // 29: runner.v1.GetGitHubCredentialResponse
+	nil,                                 // 30: runner.v1.Task.EnvEntry
+	nil,                                 // 31: runner.v1.Task.SkillDefinitionsEntry
+	nil,                                 // 32: runner.v1.Task.ExtraFilesEntry
+	nil,                                 // 33: runner.v1.MCPEndpoint.HeadersEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	2,  // 0: runner.v1.RunnerInfo.current_executions:type_name -> runner.v1.RunningExecution
@@ -2500,11 +2687,11 @@ var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 2: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
 	0,  // 3: runner.v1.HeartbeatRequest.runner:type_name -> runner.v1.RunnerInfo
 	6,  // 4: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
-	28, // 5: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
-	29, // 6: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
-	30, // 7: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
+	30, // 5: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
+	31, // 6: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
+	32, // 7: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
 	10, // 8: runner.v1.Task.mcp_endpoints:type_name -> runner.v1.MCPEndpoint
-	31, // 9: runner.v1.MCPEndpoint.headers:type_name -> runner.v1.MCPEndpoint.HeadersEntry
+	33, // 9: runner.v1.MCPEndpoint.headers:type_name -> runner.v1.MCPEndpoint.HeadersEntry
 	9,  // 10: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
 	12, // 11: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
 	13, // 12: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
@@ -2519,17 +2706,19 @@ var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	22, // 21: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
 	24, // 22: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
 	26, // 23: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
-	4,  // 24: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	7,  // 25: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	11, // 26: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	15, // 27: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	17, // 28: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
-	21, // 29: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
-	23, // 30: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
-	25, // 31: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
-	27, // 32: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
-	24, // [24:33] is the sub-list for method output_type
-	15, // [15:24] is the sub-list for method input_type
+	28, // 24: runner.v1.RunnerService.GetGitHubCredential:input_type -> runner.v1.GetGitHubCredentialRequest
+	4,  // 25: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	7,  // 26: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	11, // 27: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	15, // 28: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	17, // 29: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
+	21, // 30: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
+	23, // 31: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
+	25, // 32: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
+	27, // 33: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
+	29, // 34: runner.v1.RunnerService.GetGitHubCredential:output_type -> runner.v1.GetGitHubCredentialResponse
+	25, // [25:35] is the sub-list for method output_type
+	15, // [15:25] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -2546,7 +2735,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   32,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

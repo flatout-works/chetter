@@ -208,7 +208,7 @@ Before committing, verify:
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.
 - **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
 - **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
-- **GitHub webhook** is optional. If `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, and `GITHUB_WEBHOOK_SECRET` are set, the webhook handler is registered.
+- **GitHub webhook** is optional. If `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, and `GITHUB_WEBHOOK_SECRET` are set, the webhook handler is registered. One App may have multiple installations; signed webhooks select `installation.id`, while repository-scoped work discovers its installation. `GITHUB_INSTALLATION_ID` is only a deprecated legacy fallback.
 - **Arcane tools** are conditionally registered only if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.
 - **Audit log** (`chetter_audit_log` table) records server-side events: webhook receipts, trigger matches, task submissions, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Queryable via `chetter_list_audit_events` MCP tool.
 - **Task artifacts** (`chetter_task_artifacts` table) tracks GitHub artifacts (issues, PRs, comments) created by tasks, discovered passively via the `Task: task_XXX` footer signature. Queryable via `chetter_list_task_artifacts` MCP tool.

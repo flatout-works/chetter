@@ -83,6 +83,8 @@ type TaskRecord struct {
 	Prompt                string            `json:"prompt"`
 	GitURL                string            `json:"git_url,omitempty"`
 	GitRef                string            `json:"git_ref,omitempty"`
+	GitHubRepo            string            `json:"github_repo,omitempty"`
+	GitHubInstallationID  int64             `json:"github_installation_id,omitempty"`
 	AgentImage            string            `json:"agent_image,omitempty"`
 	Agent                 string            `json:"agent,omitempty"`
 	ProviderID            string            `json:"provider_id,omitempty"`
@@ -354,6 +356,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 			return fmt.Errorf("apply schema: %w", err)
 		}
 	}
+	if err := s.ensureTaskGitHubMetadataColumns(ctx); err != nil {
+		return err
+	}
 	if s.IsPostgres() {
 		return nil
 	}
@@ -536,6 +541,34 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTaskGitHubMetadataColumns(ctx context.Context) error {
+	columns := []struct {
+		name     string
+		mysqlDDL string
+		pgDDL    string
+	}{
+		{"github_repo", "ALTER TABLE chetter_tasks ADD COLUMN github_repo VARCHAR(255) NULL AFTER git_ref", "ALTER TABLE chetter_tasks ADD COLUMN github_repo VARCHAR(255) NULL"},
+		{"github_installation_id", "ALTER TABLE chetter_tasks ADD COLUMN github_installation_id BIGINT NULL AFTER github_repo", "ALTER TABLE chetter_tasks ADD COLUMN github_installation_id BIGINT NULL"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		ddl := column.mysqlDDL
+		if s.IsPostgres() {
+			ddl = column.pgDDL
+		}
+		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
 		}
 	}
@@ -931,6 +964,16 @@ func (s *Store) ensureTaskEventTypeColumn(ctx context.Context) error {
 
 func (s *Store) columnExists(ctx context.Context, table, column string) (bool, error) {
 	var count int
+	if s.IsPostgres() {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2
+		`, table, column).Scan(&count); err != nil {
+			return false, fmt.Errorf("check column %s.%s: %w", table, column, err)
+		}
+		return count > 0, nil
+	}
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM information_schema.columns

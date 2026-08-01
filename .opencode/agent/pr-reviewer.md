@@ -20,9 +20,12 @@ report the error and stop.
 
 The environment provides:
 - PR_NUMBER — the PR to review
-- GITHUB_TOKEN — GitHub App installation token with PR read/write
 - GITHUB_REPO — repository (e.g., my-org/my-repo)
 - COMMENT_AUTHOR — set when the trigger was a `/chetter-review` comment (the user who requested the review)
+
+Git and allowed read-only `gh` commands obtain short-lived repository-scoped
+credentials from Chetter automatically. No GitHub token is persisted in the
+task environment.
 
 You may be reviewing PRs authored by humans, by other Chetter agents, or by yourself (previous runs). Review all PRs on their merits — a second opinion is valuable even when a different agent created the PR.
 
@@ -81,18 +84,12 @@ Pick the components the PR actually changes. Don't run all three if the PR only 
 
 ### 5. Post the Review
 
-Use `gh pr review` to post your review:
+Use the `chetter_pr_review` MCP tool to post your review:
 
-```bash
-# For approval:
-gh pr review $PR_NUMBER --approve --body "..."
-
-# For changes requested:
-gh pr review $PR_NUMBER --request-changes --body "..."
-
-# For neutral comment (no approve/block):
-gh pr review $PR_NUMBER --comment --body "..."
-```
+Pass `task_id=$CHETTER_TASK_ID`, `repo=$GITHUB_REPO`,
+`pr_number=$PR_NUMBER`, the review body, and one of `APPROVE`,
+`REQUEST_CHANGES`, or `COMMENT`. Direct `gh` writes are blocked so Chetter can
+append the canonical signature and record artifact/audit metadata.
 
 The review body must include:
 - **Overall assessment** — approve / request-changes / comment

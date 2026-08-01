@@ -95,6 +95,126 @@ func TestPostgresRepositoryUsesNativeQueries(t *testing.T) {
 	}
 }
 
+func TestTaskGitHubMetadataPersistenceAndPinning(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	derived, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:     "derive repository",
+		GitURL:     "git@github.com:Flatout-Works/Chetter.git",
+		AgentImage: "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("submit derived task: %v", err)
+	}
+	if derived.GitHubRepo != "Flatout-Works/Chetter" || derived.GitHubInstallationID != 0 {
+		t.Fatalf("derived GitHub metadata = (%q, %d)", derived.GitHubRepo, derived.GitHubInstallationID)
+	}
+
+	now := time.Now().UTC()
+	rows, err := svc.repo.PinTaskGitHubInstallation(ctx, repository.PinTaskGitHubInstallationParams{
+		GithubInstallationID: sql.NullInt64{Int64: 111, Valid: true},
+		UpdatedAt:            now,
+		ID:                   derived.ID,
+	})
+	if err != nil || rows != 1 {
+		t.Fatalf("first pin = (%d, %v), want one updated row", rows, err)
+	}
+	rows, err = svc.repo.PinTaskGitHubInstallation(ctx, repository.PinTaskGitHubInstallationParams{
+		GithubInstallationID: sql.NullInt64{Int64: 222, Valid: true},
+		UpdatedAt:            now,
+		ID:                   derived.ID,
+	})
+	if err != nil || rows != 0 {
+		t.Fatalf("second pin = (%d, %v), want no updated rows", rows, err)
+	}
+	pinned, err := svc.GetTask(ctx, derived.ID)
+	if err != nil {
+		t.Fatalf("get pinned task: %v", err)
+	}
+	if pinned.GitHubInstallationID != 111 {
+		t.Fatalf("pinned installation = %d, want 111", pinned.GitHubInstallationID)
+	}
+
+	trusted, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:               "trusted metadata without clone",
+		GitHubRepo:           "gokr/BuddyDrive",
+		GitHubInstallationID: 333,
+		AgentImage:           "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("submit trusted task: %v", err)
+	}
+	if trusted.GitHubRepo != "gokr/BuddyDrive" || trusted.GitHubInstallationID != 333 {
+		t.Fatalf("trusted GitHub metadata = (%q, %d)", trusted.GitHubRepo, trusted.GitHubInstallationID)
+	}
+
+	legacy, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "non GitHub clone", GitURL: "https://gitlab.com/group/repo.git", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit non-GitHub task: %v", err)
+	}
+	if legacy.GitHubRepo != "" || legacy.GitHubInstallationID != 0 {
+		t.Fatalf("non-GitHub metadata = (%q, %d), want null values", legacy.GitHubRepo, legacy.GitHubInstallationID)
+	}
+}
+
+func TestApplySchemaRestoresTaskGitHubMetadataColumns(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if _, err := tdb.DB.Exec("ALTER TABLE chetter_tasks DROP COLUMN github_installation_id, DROP COLUMN github_repo"); err != nil {
+		t.Fatalf("drop GitHub metadata columns: %v", err)
+	}
+	if err := svc.store.ApplySchema(ctx); err != nil {
+		t.Fatalf("ApplySchema: %v", err)
+	}
+	rows, err := tdb.DB.Query("SELECT github_repo, github_installation_id FROM chetter_tasks WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query restored GitHub metadata columns: %v", err)
+	}
+	rows.Close()
+}
+
+func TestCreateTaskCallbackPreservesGitHubMetadata(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	// Callback context variables are server-owned rather than user input.
+	svc.cfg.EnvValidation.BlockedPrefixes = nil
+
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:               "source task",
+		GitHubRepo:           "flatout-works/chetter",
+		GitHubInstallationID: 444,
+		AgentImage:           "runner:latest",
+	})
+	if err != nil {
+		t.Fatalf("submit source task: %v", err)
+	}
+	callback := repository.ChetterEventCallback{
+		Name:         "follow-up",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":"follow up"}`),
+	}
+	if err := svc.runCreateTaskCallback(ctx, TaskEventCallbackContext{ID: "evt_1", TaskID: source.ID, EventType: "task.completed"}, callback); err != nil {
+		t.Fatalf("run create-task callback: %v", err)
+	}
+
+	var repo sql.NullString
+	var installationID sql.NullInt64
+	err = tdb.DB.QueryRow(testQuery(tdb.Dialect(),
+		"SELECT github_repo, github_installation_id FROM chetter_tasks WHERE trigger_name = ?",
+		"SELECT github_repo, github_installation_id FROM chetter_tasks WHERE trigger_name = $1"), callback.Name).Scan(&repo, &installationID)
+	if err != nil {
+		t.Fatalf("load callback task metadata: %v", err)
+	}
+	if repo.String != "flatout-works/chetter" || installationID.Int64 != 444 {
+		t.Fatalf("callback metadata = (%q, %d)", repo.String, installationID.Int64)
+	}
+}
+
 func TestGetTaskProgressPaginatesRawEvents(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -735,10 +855,13 @@ func TestRerunTaskCreatesNewTaskWithSameParameters(t *testing.T) {
 	}
 
 	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
-		Prompt:     "run this task again",
-		AgentImage: "runner:latest",
-		Agent:      "test-agent",
-		ModelID:    "test-model",
+		Prompt:               "run this task again",
+		GitURL:               "https://github.com/flatout-works/chetter.git",
+		GitHubRepo:           "flatout-works/chetter",
+		GitHubInstallationID: 555,
+		AgentImage:           "runner:latest",
+		Agent:                "test-agent",
+		ModelID:              "test-model",
 	})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
@@ -788,6 +911,9 @@ func TestRerunTaskCreatesNewTaskWithSameParameters(t *testing.T) {
 	}
 	if newTask.ModelID != task.ModelID {
 		t.Fatalf("rerun model = %s, want %s", newTask.ModelID, task.ModelID)
+	}
+	if newTask.GitHubRepo != task.GitHubRepo || newTask.GitHubInstallationID != task.GitHubInstallationID {
+		t.Fatalf("rerun GitHub metadata = (%q, %d), want (%q, %d)", newTask.GitHubRepo, newTask.GitHubInstallationID, task.GitHubRepo, task.GitHubInstallationID)
 	}
 	if newTask.SubmissionSource != "rerun" {
 		t.Fatalf("rerun submission_source = %s, want rerun", newTask.SubmissionSource)

@@ -62,26 +62,28 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()
 	record := taskToolRecord(store.TaskRecord{
-		ID:               "task_1",
-		TeamID:           "team_123",
-		Status:           "done",
-		Prompt:           "prompt",
-		GitURL:           "https://example.com/repo.git",
-		GitRef:           "main",
-		AgentImage:       "image",
-		Agent:            "changelog-maintainer",
-		ProviderID:       "synthetic",
-		ModelID:          "model",
-		VariantID:        "variant",
-		TriggerName:      "nightly-docs",
-		TriggerType:      store.TriggerTypeCron,
-		SubmissionSource: "trigger",
-		Skills:           []string{"go"},
-		Env:              map[string]string{"SAFE": "value"},
-		TimeoutSec:       300,
-		Summary:          "summary",
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		ID:                   "task_1",
+		TeamID:               "team_123",
+		Status:               "done",
+		Prompt:               "prompt",
+		GitURL:               "https://example.com/repo.git",
+		GitRef:               "main",
+		GitHubRepo:           "flatout-works/chetter",
+		GitHubInstallationID: 12345,
+		AgentImage:           "image",
+		Agent:                "changelog-maintainer",
+		ProviderID:           "synthetic",
+		ModelID:              "model",
+		VariantID:            "variant",
+		TriggerName:          "nightly-docs",
+		TriggerType:          store.TriggerTypeCron,
+		SubmissionSource:     "trigger",
+		Skills:               []string{"go"},
+		Env:                  map[string]string{"SAFE": "value"},
+		TimeoutSec:           300,
+		Summary:              "summary",
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	})
 
 	if record.ID != "task_1" || record.Status != "done" || record.TimeoutSec != 300 || record.TeamID != "team_123" {
@@ -92,6 +94,9 @@ func TestTaskToolRecordKeepsStableShape(t *testing.T) {
 	}
 	if record.ProviderID != "synthetic" || record.ModelID != "model" || record.VariantID != "variant" {
 		t.Fatalf("expected model fields to be preserved: %+v", record)
+	}
+	if record.GitHubRepo != "flatout-works/chetter" || record.GitHubInstallationID != 12345 {
+		t.Fatalf("expected GitHub diagnostics to be preserved: %+v", record)
 	}
 	if record.TriggerName != "nightly-docs" || record.TriggerType != store.TriggerTypeCron {
 		t.Fatalf("expected trigger attribution to be preserved: %+v", record)

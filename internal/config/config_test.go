@@ -218,21 +218,26 @@ func TestLoad(t *testing.T) {
 	})
 	t.Run("github not configured by default", func(t *testing.T) {
 		cfg := Load()
-		if cfg.GitHubConfigured() {
+		if cfg.GitHubWebhookConfigured() {
 			t.Error("expected GitHub not configured")
 		}
 	})
 }
 
-func TestGitHubConfigured(t *testing.T) {
-	t.Run("all required fields present", func(t *testing.T) {
+func TestGitHubConfigurationPredicates(t *testing.T) {
+	t.Run("app credentials do not require legacy installation", func(t *testing.T) {
+		cfg := Config{GitHubAppID: 1, GitHubAppPrivateKeyB64: "key"}
+		if !cfg.GitHubAppConfigured() {
+			t.Error("expected app configured")
+		}
+	})
+	t.Run("webhook ready without legacy installation", func(t *testing.T) {
 		cfg := Config{
 			GitHubWebhookSecret:    "secret",
 			GitHubAppID:            1,
 			GitHubAppPrivateKeyB64: "key",
-			GitHubInstallationID:   1,
 		}
-		if !cfg.GitHubConfigured() {
+		if !cfg.GitHubWebhookConfigured() {
 			t.Error("expected configured")
 		}
 	})
@@ -242,7 +247,7 @@ func TestGitHubConfigured(t *testing.T) {
 			GitHubAppPrivateKeyB64: "key",
 			GitHubInstallationID:   1,
 		}
-		if cfg.GitHubConfigured() {
+		if cfg.GitHubWebhookConfigured() {
 			t.Error("expected not configured")
 		}
 	})
@@ -252,7 +257,7 @@ func TestGitHubConfigured(t *testing.T) {
 			GitHubAppPrivateKeyB64: "key",
 			GitHubInstallationID:   1,
 		}
-		if cfg.GitHubConfigured() {
+		if cfg.GitHubWebhookConfigured() {
 			t.Error("expected not configured")
 		}
 	})
@@ -264,7 +269,7 @@ func TestGitHubConfigured(t *testing.T) {
 			GitHubAppPrivateKeyB64: "key",
 			GitHubInstallationID:   1,
 		}
-		if cfg.GitHubConfigured() {
+		if cfg.GitHubWebhookConfigured() {
 			t.Error("expected not configured when disabled")
 		}
 	})

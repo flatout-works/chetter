@@ -139,3 +139,66 @@ func TestServerMultipleTools(t *testing.T) {
 		t.Fatalf("expected 4 tools, got %d", len(tools))
 	}
 }
+
+func TestGitHubCredentialEndpointRequiresCapabilityAndPOST(t *testing.T) {
+	srv, err := NewServer(func(context.Context) (string, error) { return "installation-token", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	if len(srv.CredentialCapability()) < 43 {
+		t.Fatalf("credential capability is too short: %d", len(srv.CredentialCapability()))
+	}
+	_, port, _ := net.SplitHostPort(srv.Addr())
+	url := "http://127.0.0.1:" + port + GitHubCredentialPath
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		auth   string
+		want   int
+	}{
+		{name: "wrong method", method: http.MethodGet, auth: "Bearer " + srv.CredentialCapability(), want: http.StatusMethodNotAllowed},
+		{name: "missing capability", method: http.MethodPost, want: http.StatusUnauthorized},
+		{name: "wrong capability", method: http.MethodPost, auth: "Bearer wrong", want: http.StatusUnauthorized},
+		{name: "success", method: http.MethodPost, auth: "Bearer " + srv.CredentialCapability(), want: http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, _ := http.NewRequest(tc.method, url, nil)
+			req.Header.Set("Authorization", tc.auth)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != tc.want {
+				t.Fatalf("status = %d, want %d: %s", resp.StatusCode, tc.want, body)
+			}
+			if resp.Header.Get("Cache-Control") != "no-store" {
+				t.Fatalf("Cache-Control = %q", resp.Header.Get("Cache-Control"))
+			}
+			if tc.want == http.StatusOK && string(body) != "installation-token" {
+				t.Fatalf("body = %q", body)
+			}
+		})
+	}
+}
+
+func TestGitHubCredentialEndpointIsNotAnMCPTool(t *testing.T) {
+	srv, err := NewServer(func(context.Context) (string, error) { return "token", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	mcpInit(t, srv)
+	result := mcpCall(t, srv, "tools/list", map[string]any{})
+	resultMap, _ := result["result"].(map[string]any)
+	tools, _ := resultMap["tools"].([]any)
+	for _, raw := range tools {
+		tool, _ := raw.(map[string]any)
+		if tool["name"] == "github-credential" || tool["name"] == GitHubCredentialPath {
+			t.Fatalf("credential endpoint appeared in MCP tools: %#v", tool)
+		}
+	}
+}

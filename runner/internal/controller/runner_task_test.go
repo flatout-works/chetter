@@ -27,6 +27,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/config"
+	runnermcp "github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
@@ -1146,6 +1147,13 @@ func TestProtoTaskToRequest_MapsMcpEndpoints(t *testing.T) {
 	}
 }
 
+func TestProtoTaskToRequestMapsGitHubRepo(t *testing.T) {
+	req := protoTaskToRequest(&runnerv1.Task{GithubRepo: "Acme/Repo"})
+	if req.GitHubRepo != "Acme/Repo" {
+		t.Fatalf("GitHubRepo = %q", req.GitHubRepo)
+	}
+}
+
 func TestValidateEndpointTokenEnvironment(t *testing.T) {
 	endpoints := []task.MCPEndpoint{{BearerTokenEnv: "CONTEXT_MCP_TOKEN"}}
 	t.Setenv("CONTEXT_MCP_TOKEN", "")
@@ -1305,6 +1313,160 @@ func TestDockerServeArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
 	for _, flag := range []string{"--memory", "--memory-swap", "--cpus", "--pids-limit"} {
 		if indexOf(args, flag) != -1 {
 			t.Fatalf("expected no %q flag when limits unset, got: %v", flag, args)
+		}
+	}
+}
+
+func TestDockerEnvironmentUsesContainerAskpassAndCredentialBridge(t *testing.T) {
+	r := &Runner{cfg: &config.Config{}, runnerID: "runner-test"}
+	h := opencode.New()
+	req := task.TaskRequest{
+		TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "reviewer",
+		GitHubCredentialURL:   "http://172.20.0.2/internal/github-credential",
+		GitHubCredentialToken: "execution-capability",
+		Env: map[string]string{
+			agentenv.GitHubCredentialURLEnv:   "http://attacker",
+			agentenv.GitHubCredentialTokenEnv: "attacker-capability",
+		},
+	}
+	args := r.dockerServeArgs(req, "/host/workspace", "container", h, h.ServeCommand(containerPortForServe), "", containerPortForServe, false, "bridge", "", "")
+	for _, want := range []string{
+		"GIT_ASKPASS=/workspace/.chetter-git-askpass",
+		agentenv.GitHubCredentialURLEnv + "=http://172.20.0.2/internal/github-credential",
+		agentenv.GitHubCredentialTokenEnv + "=execution-capability",
+	} {
+		if !hasAdjacentArgs(args, "-e", want) {
+			t.Fatalf("missing managed environment %q in %v", want, args)
+		}
+	}
+	if hasAdjacentArgs(args, "-e", agentenv.GitHubCredentialTokenEnv+"=attacker-capability") {
+		t.Fatal("task overrode credential capability")
+	}
+}
+
+func TestDockerRPCEnvironmentIncludesCredentialBridge(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{
+		TaskID: "task-123", AgentImage: "chetter-agent:latest",
+		GitHubCredentialURL:   "http://172.20.0.2/internal/github-credential",
+		GitHubCredentialToken: "execution-capability",
+	}
+	args := dockerRPCArgs(req, "runner-test", "/host/workspace", "container", h, h.RpcCommand(req), false, "bridge", "172.20.0.2", config.ExecutionConfig{})
+	for _, want := range []string{
+		agentenv.GitHubCredentialURLEnv + "=http://172.20.0.2/internal/github-credential",
+		agentenv.GitHubCredentialTokenEnv + "=execution-capability",
+		"GIT_ASKPASS=/workspace/.chetter-git-askpass",
+	} {
+		if !hasAdjacentArgs(args, "-e", want) {
+			t.Fatalf("missing RPC environment %q in %v", want, args)
+		}
+	}
+}
+
+func TestLocalAgentEnvironmentProtectsCredentialBridgeAndRunnerBearer(t *testing.T) {
+	t.Setenv("CHETTER_RUNNER_AUTH_TOKEN", "runner-rpc-secret")
+	r := &Runner{}
+	req := task.TaskRequest{
+		GitHubCredentialURL:   "http://127.0.0.1/internal/github-credential",
+		GitHubCredentialToken: "execution-capability",
+		Env: map[string]string{
+			agentenv.GitHubCredentialTokenEnv: "attacker-capability",
+			"CHETTER_RUNNER_AUTH_TOKEN":       "attacker-runner-token",
+		},
+	}
+	env := strings.Join(r.agentEnv(req, "/workspace", "", opencode.New()), "\n")
+	if !strings.Contains(env, agentenv.GitHubCredentialTokenEnv+"=execution-capability") {
+		t.Fatal("runner credential capability missing")
+	}
+	if strings.Contains(env, "attacker-capability") || strings.Contains(env, "runner-rpc-secret") || strings.Contains(env, "attacker-runner-token") {
+		t.Fatal("task or runner RPC credential leaked into local agent environment")
+	}
+}
+
+func TestCloneCredentialSelectionAndURLSafety(t *testing.T) {
+	base := task.TaskRequest{GitURL: "https://github.com/Acme/Repo.git", GitHubRepo: "acme/repo", GitRef: "main"}
+	calls := 0
+	get := func(context.Context, task.TaskRequest) (string, error) {
+		calls++
+		return "broker-token", nil
+	}
+	token, err := selectCloneCredential(context.Background(), base, "static-token", get)
+	if err != nil || token != "broker-token" || calls != 1 {
+		t.Fatalf("base credential = %q, calls=%d, err=%v", token, calls, err)
+	}
+	args := gitCloneArgs(base)
+	if strings.Join(args, " ") != "clone -b main https://github.com/Acme/Repo.git ." || strings.Contains(strings.Join(args, " "), token) {
+		t.Fatalf("unsafe clone args: %v", args)
+	}
+
+	fork := base
+	fork.GitURL = "https://github.com/Contributor/Fork.git"
+	token, err = selectCloneCredential(context.Background(), fork, "static-token", get)
+	if err != nil || token != "static-token" || calls != 1 {
+		t.Fatalf("fork credential = %q, calls=%d, err=%v", token, calls, err)
+	}
+}
+
+type fakeGitHubCredentialClient struct {
+	request *runnerv1.GetGitHubCredentialRequest
+}
+
+func (f *fakeGitHubCredentialClient) GetGitHubCredential(_ context.Context, req *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error) {
+	f.request = req.Msg
+	return connect.NewResponse(&runnerv1.GetGitHubCredentialResponse{
+		Username: "x-access-token", Token: "broker-token", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano),
+	}), nil
+}
+
+func TestRequestGitHubCredentialAddsRunnerOwnedIdentity(t *testing.T) {
+	client := &fakeGitHubCredentialClient{}
+	token, err := requestGitHubCredential(context.Background(), client, "runner-owner", &runnerv1.GetGitHubCredentialRequest{
+		TaskId: "task-1", ExecutionId: "exec-1", Repo: "Acme/Repo",
+	})
+	if err != nil || token != "broker-token" {
+		t.Fatalf("token = %q, err=%v", token, err)
+	}
+	if client.request.RunnerId != "runner-owner" || client.request.TaskId != "task-1" || client.request.ExecutionId != "exec-1" || client.request.Repo != "Acme/Repo" {
+		t.Fatalf("request = %+v", client.request)
+	}
+}
+
+func TestGitHubCredentialBridgeURLUsesExecutionBackendHost(t *testing.T) {
+	server, err := runnermcp.NewServer(func(context.Context) (string, error) { return "token", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	_, port, _ := net.SplitHostPort(server.Addr())
+
+	local := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{Backend: "local"}}}
+	if got, want := runnerGitHubCredentialURL(local, server), "http://127.0.0.1:"+port+runnermcp.GitHubCredentialPath; got != want {
+		t.Fatalf("local URL = %q, want %q", got, want)
+	}
+	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
+	for _, backend := range []string{"docker", "kubernetes"} {
+		runner := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{Backend: backend}}}
+		if got, want := runnerGitHubCredentialURL(runner, server), "http://172.21.0.3:"+port+runnermcp.GitHubCredentialPath; got != want {
+			t.Fatalf("%s URL = %q, want %q", backend, got, want)
+		}
+	}
+}
+
+func TestGHWrapperBlocksWritesAndHasNoBypass(t *testing.T) {
+	script := filepath.Join("..", "..", "scripts", "gh")
+	contents, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(contents), "CHETTER_ALLOW_GH_WRITES") {
+		t.Fatal("gh wrapper retains a task-enableable write bypass")
+	}
+	for _, args := range [][]string{{"api", "/user"}, {"issue", "create"}, {"pr", "checkout", "1"}} {
+		cmd := exec.Command(script, args...)
+		if err := cmd.Run(); err == nil {
+			t.Fatalf("gh wrapper allowed %v", args)
+		} else if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 64 {
+			t.Fatalf("gh wrapper %v exit = %v", args, err)
 		}
 	}
 }

@@ -7,6 +7,8 @@ var schemaStatements = []string{
 		prompt TEXT NOT NULL,
 		git_url TEXT NULL,
 		git_ref VARCHAR(255) NULL,
+		github_repo VARCHAR(255) NULL,
+		github_installation_id BIGINT NULL,
 		trigger_name VARCHAR(128) NULL,
 		trigger_type VARCHAR(32) NULL,
 		submission_source VARCHAR(32) NOT NULL DEFAULT 'manual',

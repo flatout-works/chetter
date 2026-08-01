@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"path"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/webhook"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -92,7 +92,7 @@ const definitionProposalStatusOpen = "open"
 var safeBranchSegment = regexp.MustCompile(`[^a-zA-Z0-9._/-]+`)
 
 func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateDefinitionProposalInput) (*mcp.CallToolResult, CreateDefinitionProposalOutput, error) {
-	if s.githubClient() == nil {
+	if s.githubManager() == nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("GitHub App client is not configured")
 	}
 	if strings.TrimSpace(in.Title) == "" {
@@ -116,17 +116,21 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, err
 	}
+	gh, err := s.githubManager().ClientForRepo(ctx, repo)
+	if err != nil {
+		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("resolve definition repository installation: %w", err)
+	}
 	baseBranch := nonEmpty(in.BaseBranch, source.Branch)
 	branch := strings.TrimSpace(in.Branch)
 	if branch == "" {
 		branch = generatedDefinitionProposalBranch(in.Title, time.Now().UTC())
 	}
 	commitMessage := nonEmpty(in.CommitMessage, "chore: propose definition updates")
-	baseSHA, err := s.githubClient().GetBranchSHA(ctx, repo, baseBranch)
+	baseSHA, err := gh.GetBranchSHA(ctx, repo, baseBranch)
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get base branch sha: %w", err)
 	}
-	if err := s.githubClient().CreateBranch(ctx, repo, branch, baseSHA); err != nil {
+	if err := gh.CreateBranch(ctx, repo, branch, baseSHA); err != nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("create proposal branch: %w", err)
 	}
 	files := make([]DefinitionProposalFile, 0, len(in.Files))
@@ -139,7 +143,7 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("file path %q must be relative and must not contain '..'", filePath)
 		}
 		fullPath := definitionSourceFilePath(source.Path, filePath)
-		if err := s.githubClient().UpsertFile(ctx, repo, branch, fullPath, file.Content, commitMessage); err != nil {
+		if err := gh.UpsertFile(ctx, repo, branch, fullPath, file.Content, commitMessage); err != nil {
 			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("upsert proposal file %s: %w", fullPath, err)
 		}
 		files = append(files, DefinitionProposalFile{Path: fullPath})
@@ -157,7 +161,7 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		}
 		body = appendChetterSignature(body, s.githubToolSignature(ctx, task, userPrompt, in.ExecutionAttemptID))
 	}
-	created, err := s.githubClient().CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
+	created, err := gh.CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
 	if err != nil {
 		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("create definition proposal PR: %w", err)
 	}
@@ -276,15 +280,19 @@ func (s *Service) definitionProposalByInput(ctx context.Context, in GetDefinitio
 }
 
 func (s *Service) liveDefinitionProposalStatus(ctx context.Context, row repository.DefinitionChangeProposal) *DefinitionProposalStatus {
-	if s.githubClient() == nil {
+	if s.githubManager() == nil {
 		return nil
 	}
-	details, err := s.githubClient().GetPullRequestDetails(ctx, row.Repo, int(row.PrNumber))
+	gh, err := s.githubManager().ClientForRepo(ctx, row.Repo)
 	if err != nil {
 		return nil
 	}
-	files, _ := s.githubClient().ListPRFiles(ctx, row.Repo, int(row.PrNumber))
-	checks, _ := s.githubClient().ListCheckRunsForRef(ctx, row.Repo, details.HeadSHA)
+	details, err := gh.GetPullRequestDetails(ctx, row.Repo, int(row.PrNumber))
+	if err != nil {
+		return nil
+	}
+	files, _ := gh.ListPRFiles(ctx, row.Repo, int(row.PrNumber))
+	checks, _ := gh.ListCheckRunsForRef(ctx, row.Repo, details.HeadSHA)
 	return &DefinitionProposalStatus{State: details.State, Merged: details.Merged, HeadSHA: details.HeadSHA, ChangedFiles: files, Checks: checks}
 }
 
@@ -310,27 +318,14 @@ func definitionProposalToolRecord(row repository.DefinitionChangeProposal, live 
 }
 
 func githubRepoFromURL(repoURL string) (string, error) {
-	trimmed := strings.TrimSpace(repoURL)
-	if trimmed == "" {
+	if strings.TrimSpace(repoURL) == "" {
 		return "", fmt.Errorf("definition source repo_url is empty")
 	}
-	if strings.Count(trimmed, "/") == 1 && !strings.Contains(trimmed, ":") {
-		return trimmed, nil
+	repo, err := githubrepo.Parse(repoURL)
+	if err != nil {
+		return "", fmt.Errorf("definition source repo_url %q is not a GitHub repository URL: %w", repoURL, err)
 	}
-	if strings.HasPrefix(trimmed, "git@github.com:") {
-		repo := strings.TrimSuffix(strings.TrimPrefix(trimmed, "git@github.com:"), ".git")
-		if strings.Count(repo, "/") == 1 {
-			return repo, nil
-		}
-	}
-	u, err := url.Parse(trimmed)
-	if err == nil && strings.EqualFold(u.Host, "github.com") {
-		repo := strings.Trim(strings.TrimSuffix(u.Path, ".git"), "/")
-		if strings.Count(repo, "/") == 1 {
-			return repo, nil
-		}
-	}
-	return "", fmt.Errorf("definition source repo_url %q is not a GitHub repository URL", repoURL)
+	return repo.FullName(), nil
 }
 
 func generatedDefinitionProposalBranch(title string, now time.Time) string {

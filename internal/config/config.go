@@ -111,9 +111,8 @@ func isPlaceholderAuthToken(token string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(token)), "change-me")
 }
 
-// GitHubConfigured reports whether the GitHub App integration is enabled.
-// Returns true only if all required fields are present.
-func (c Config) GitHubConfigured() bool {
+// GitHubWebhookConfigured reports whether signed webhook processing is ready.
+func (c Config) GitHubWebhookConfigured() bool {
 	return !c.GitHubWebhookDisabled &&
 		c.GitHubWebhookSecret != "" &&
 		c.GitHubAppConfigured()
@@ -122,8 +121,7 @@ func (c Config) GitHubConfigured() bool {
 // GitHubAppConfigured reports whether GitHub App API credentials are present.
 func (c Config) GitHubAppConfigured() bool {
 	return c.GitHubAppID > 0 &&
-		c.GitHubAppPrivateKeyB64 != "" &&
-		c.GitHubInstallationID > 0
+		c.GitHubAppPrivateKeyB64 != ""
 }
 
 func env(key, fallback string) string {

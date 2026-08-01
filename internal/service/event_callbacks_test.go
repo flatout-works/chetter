@@ -184,3 +184,31 @@ func TestTemplateData(t *testing.T) {
 		t.Errorf("created_at format: %q", data.CreatedAt)
 	}
 }
+
+func TestCallbackTaskGitHubMetadata(t *testing.T) {
+	t.Parallel()
+	source := repository.ChetterTask{
+		GithubRepo:           sql.NullString{String: "Flatout-Works/Chetter", Valid: true},
+		GithubInstallationID: sql.NullInt64{Int64: 12345, Valid: true},
+	}
+	tests := []struct {
+		name             string
+		gitURL           string
+		wantRepo         string
+		wantInstallation int64
+	}{
+		{name: "repository-less callback inherits source", wantRepo: "Flatout-Works/Chetter", wantInstallation: 12345},
+		{name: "same repository keeps pin", gitURL: "git@github.com:flatout-works/chetter.git", wantRepo: "flatout-works/chetter", wantInstallation: 12345},
+		{name: "different repository drops pin", gitURL: "https://github.com/flatout-works/other.git", wantRepo: "flatout-works/other"},
+		{name: "non GitHub repository has no metadata", gitURL: "https://gitlab.com/flatout-works/chetter.git"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo, installationID := callbackTaskGitHubMetadata(source, tt.gitURL)
+			if repo != tt.wantRepo || installationID != tt.wantInstallation {
+				t.Fatalf("callbackTaskGitHubMetadata() = (%q, %d), want (%q, %d)", repo, installationID, tt.wantRepo, tt.wantInstallation)
+			}
+		})
+	}
+}

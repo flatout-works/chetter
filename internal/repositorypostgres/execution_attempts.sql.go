@@ -347,6 +347,54 @@ func (q *Queries) GetExecutionAttemptUsageByTask(ctx context.Context, taskID str
 	return i, err
 }
 
+const getGitHubExecutionContext = `-- name: GetGitHubExecutionContext :one
+SELECT attempt.id AS execution_attempt_id,
+       prompt.id AS user_prompt_id,
+       prompt.agent_session_id,
+       prompt.task_id,
+       attempt.runner_id,
+       attempt.status AS execution_status,
+       attempt.lease_expires_at,
+       task.status AS task_status,
+       task.github_repo,
+       task.github_installation_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_tasks task ON task.id = prompt.task_id
+WHERE attempt.id = $1
+`
+
+type GetGitHubExecutionContextRow struct {
+	ExecutionAttemptID   string         `json:"execution_attempt_id"`
+	UserPromptID         string         `json:"user_prompt_id"`
+	AgentSessionID       string         `json:"agent_session_id"`
+	TaskID               string         `json:"task_id"`
+	RunnerID             sql.NullString `json:"runner_id"`
+	ExecutionStatus      string         `json:"execution_status"`
+	LeaseExpiresAt       sql.NullTime   `json:"lease_expires_at"`
+	TaskStatus           string         `json:"task_status"`
+	GithubRepo           sql.NullString `json:"github_repo"`
+	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
+}
+
+func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (GetGitHubExecutionContextRow, error) {
+	row := q.db.QueryRowContext(ctx, getGitHubExecutionContext, id)
+	var i GetGitHubExecutionContextRow
+	err := row.Scan(
+		&i.ExecutionAttemptID,
+		&i.UserPromptID,
+		&i.AgentSessionID,
+		&i.TaskID,
+		&i.RunnerID,
+		&i.ExecutionStatus,
+		&i.LeaseExpiresAt,
+		&i.TaskStatus,
+		&i.GithubRepo,
+		&i.GithubInstallationID,
+	)
+	return i, err
+}
+
 const getNextExecutionAttemptSequence = `-- name: GetNextExecutionAttemptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
 FROM chetter_execution_attempts

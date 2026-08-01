@@ -27,7 +27,7 @@ Route by event type:
   ├─ pull_request (opened/synchronize/reopened/labeled)
   │     ├─ Evaluate eligibility (label or fork)
   │     ├─ If eligible:
-  │     │     ├─ Generate GitHub App installation token
+  │     │     ├─ Select client from signed installation.id
   │     │     ├─ Look up matching PR review triggers in DB
   │     │     ├─ Auto-add chetter-review label (after trigger match, skip if label-triggered)
   │     │     └─ Submit one review task per matching trigger
@@ -51,7 +51,7 @@ GitHub              Chetter                                Runner             Op
   │                   │──200 OK                              │                  │
   │                   │──verify sig                          │                  │
   │                   │──dedup check                         │                  │
-  │                   │──gen app token                       │                  │
+  │                   │──select signed installation          │                  │
   │                   │──query DB triggers for repo          │                  │
   │                   │──add label (if not label-triggered)  │                  │
   │                   │──SubmitReviewTask()                  │                  │
@@ -60,7 +60,7 @@ GitHub              Chetter                                Runner             Op
   │                   │                                      │──git clone       │
   │                   │                                      │──gh pr view      │
   │                   │                                      │──review changes  │
-  │                   │                                      │──gh pr review────│──▶ GitHub
+  │                   │                                      │──review MCP tool─│──▶ GitHub
   │                   │                                      │                  │
   │                   │                    │◀─status: done──│                  │
 ```
@@ -159,7 +159,7 @@ Multiple PR review triggers for the same repo are allowed. Each trigger submits 
 | `GITHUB_APP_PRIVATE_KEY_B64` | PEM private key, base64-encoded | Yes |
 | `GITHUB_WEBHOOK_SECRET` | HMAC-SHA256 secret for signature verification | Yes |
 | `GITHUB_WEBHOOK_DISABLED` | `true` to disable the webhook (kill switch) | No |
-| `GITHUB_INSTALLATION_ID` | Pre-configured installation ID | No |
+| `GITHUB_INSTALLATION_ID` | Deprecated single-installation fallback | No |
 
 No reviewer-specific env vars are needed — agent, model, and timeout come from the trigger configuration in the database.
 
@@ -176,7 +176,11 @@ The webhook handler is registered outside the MCP auth middleware — HMAC signa
 
 ## GitHub App: Chetter
 
-Registered at the GitHub organization level. Used as the review identity — posts reviews, adds labels, creates comments.
+Install the same App on every organization or user account whose repositories
+Chetter automates. Signed webhook payloads select the installation for event
+handling; manual and scheduled tasks resolve it from `owner/repo`. Installation
+tokens are cached per installation and task Git credentials are restricted to
+the task repository.
 
 ### Required Permissions
 

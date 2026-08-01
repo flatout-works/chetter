@@ -548,15 +548,20 @@ If using PR review or issue triggers, configure the GitHub App:
 1. Create a GitHub App with:
    - Webhook URL: `https://chetter.example.com/webhook/github`
    - Webhook secret: a random string
-   - Permissions: issues (read/write), pull requests (read/write), contents (read)
+   - Permissions: issues (read/write), pull requests (read/write), contents (read/write)
+   Install this same App on each organization or user account Chetter should
+   automate, selecting the intended repositories in each installation.
 2. Set in `chetter-secrets`:
 
 ```
 GITHUB_APP_ID=<app-id>
-GITHUB_INSTALLATION_ID=<installation-id>
 GITHUB_APP_PRIVATE_KEY_B64=<base64-encoded-private-key>
 GITHUB_WEBHOOK_SECRET=<webhook-secret>
 ```
+
+Do not set `GITHUB_INSTALLATION_ID` on new deployments. Chetter selects signed
+webhook installations and discovers installations for manual or scheduled
+tasks from their repository identity.
 
 3. Restart the MCP server to pick up the new secrets.
 

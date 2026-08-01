@@ -306,21 +306,23 @@ logs, events, checkpoints, or workspace files.
 
 The askpass script and `gh` wrapper execute **inside** the task container,
 which does not and must not hold the runner ConnectRPC token (and under gVisor
-should not need a direct control-plane connection). The transport is therefore
-the existing mounted runner-bridge Unix socket (`MCP_SOCKET_PATH`, currently
-`/workspace/.chetter.sock`):
+must not need a direct control-plane connection). The historical Unix-socket
+MCP bridge was removed before this work and is not portable to Kubernetes PVCs
+or the current gVisor transport. The broker therefore uses a private, non-MCP
+endpoint on the existing per-execution runner HTTP server:
 
-1. The askpass/`gh` helper calls a new credential endpoint on the local
-   mcp-bridge over that socket.
-2. The bridge/runner attaches the task and execution IDs it already owns.
-3. The runner calls the server's `GetGitHubCredential` ConnectRPC and returns
-   the token to the helper.
+1. The runner creates a random 256-bit bearer capability for the execution.
+2. The askpass/`gh` helper calls `POST /internal/github-credential` with that
+   capability. The endpoint accepts no task-controlled identity fields.
+3. The runner attaches the task, execution, runner, and repository identities
+   captured by the endpoint closure.
+4. The runner calls the server's `GetGitHubCredential` ConnectRPC and returns
+   only the current token to the helper with `Cache-Control: no-store`.
 
-The helper itself is injected per task through the existing `ExtraFiles`
-mechanism rather than baked into agent images, so old agent images keep the
-static-token behavior until explicitly updated. The Git credential username
-for installation tokens remains `x-access-token`, matching the current
-askpass helper.
+The no-secret askpass helper is written by the runner into the workspace. The
+capability is supplied through runner-managed environment variables, never in
+the endpoint URL or workspace file. The Git credential username for
+installation tokens remains `x-access-token`.
 
 The static runner `GITHUB_TOKEN` remains a temporary compatibility fallback
 for tasks that cannot resolve a GitHub App installation (including fork head
@@ -441,8 +443,9 @@ Primary files:
 2. Regenerate protobuf and ConnectRPC code.
 3. Implement server-side execution fencing and credential issuance.
 4. Fetch credentials for GitHub clone operations.
-5. Replace static-token-only askpass behavior with a refreshable helper
-   injected via `ExtraFiles`, calling the mcp-bridge over the mounted socket.
+5. Replace static-token-only askpass behavior with a refreshable no-secret
+   helper calling the authenticated, non-MCP endpoint on the per-task HTTP
+   server.
 6. Update the `gh` wrapper to obtain a current token before allowed reads.
 7. Ensure task containers receive no persisted installation token.
 8. **Update chetter-config prompts.** Global agent definitions and trigger
@@ -597,7 +600,7 @@ described in `AGENTS.md`.
 | Repository mapping changes after App installation update | Bounded mapping TTL and invalidation on authentication/not-found errors |
 | Cross-repository task writes | Persist repository identity and enforce it in runner RPC handlers |
 | Fork PR pinned to fork clone URL breaks artifact ops | Pin `github_repo` from the webhook payload repository, never from head clone URL |
-| Task container lacks a safe broker transport | Reuse the mounted mcp-bridge Unix socket; never give containers the runner RPC token |
+| Task container lacks a safe broker transport | Use an authenticated non-MCP endpoint on the per-execution HTTP bridge; never give containers the runner RPC token |
 | Phase 4 rejects a legitimate existing automation | Warn-only rollout mode plus a live trigger audit before enforcement |
 | Token-exchange burst hits GitHub rate limits | Per-key singleflight and cross-task token reuse by installation/repo/profile |
 | Deployment regression for `flatout-works` | Staged rollout with legacy static-token fallback |

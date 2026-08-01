@@ -15,10 +15,10 @@ func TestRepoFromGitURL(t *testing.T) {
 		{"https github", "https://github.com/flatout-works/chetter.git", "flatout-works/chetter"},
 		{"https no .git", "https://github.com/flatout-works/chetter", "flatout-works/chetter"},
 		{"ssh style", "git@github.com:flatout-works/chetter.git", "flatout-works/chetter"},
-		{"https gitlab subgroup", "https://gitlab.com/group/subgroup/repo.git", "group/subgroup/repo"},
+		{"https gitlab rejected", "https://gitlab.com/group/subgroup/repo.git", ""},
 		{"empty", "", ""},
 		{"no slash", "https://no-slash", ""},
-		{"http protocol", "http://example.com/owner/repo.git", "owner/repo"},
+		{"http protocol rejected", "http://github.com/owner/repo.git", ""},
 		{"trailing slash", "https://github.com/owner/repo/", "owner/repo"},
 		{"ssh no .git", "git@github.com:owner/repo", "owner/repo"},
 	}
