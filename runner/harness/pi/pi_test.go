@@ -24,11 +24,38 @@ func TestBuildRPCCommand(t *testing.T) {
 }
 
 func TestBuildRPCCommandProviderQualifiedModel(t *testing.T) {
+	t.Setenv("PI_PROVIDER", "ambient-provider")
+	t.Setenv("PI_MODEL", "ambient-model")
 	req := task.TaskRequest{ModelID: "anthropic/claude-sonnet-4-5"}
 	got := buildRPCCommand(req)
 	want := []string{"pi", "--mode", "rpc", "--no-session", "--offline", "--approve", "--provider", "anthropic", "--model", "claude-sonnet-4-5"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildRPCCommand() = %#v, want %#v", got, want)
+	}
+}
+
+func TestModelFieldsPrecedence(t *testing.T) {
+	t.Setenv("PI_PROVIDER", "environment-provider")
+	t.Setenv("PI_MODEL", "environment-model")
+
+	tests := []struct {
+		name         string
+		req          task.TaskRequest
+		wantProvider string
+		wantModel    string
+	}{
+		{name: "explicit fields", req: task.TaskRequest{ProviderID: "explicit-provider", ModelID: "explicit-model"}, wantProvider: "explicit-provider", wantModel: "explicit-model"},
+		{name: "qualified explicit model", req: task.TaskRequest{ModelID: "model-provider/qualified-model"}, wantProvider: "model-provider", wantModel: "qualified-model"},
+		{name: "explicit provider with environment model", req: task.TaskRequest{ProviderID: "explicit-provider"}, wantProvider: "explicit-provider", wantModel: "environment-model"},
+		{name: "environment defaults", req: task.TaskRequest{}, wantProvider: "environment-provider", wantModel: "environment-model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider, model := modelFields(tt.req)
+			if provider != tt.wantProvider || model != tt.wantModel {
+				t.Fatalf("modelFields() = (%q, %q), want (%q, %q)", provider, model, tt.wantProvider, tt.wantModel)
+			}
+		})
 	}
 }
 
