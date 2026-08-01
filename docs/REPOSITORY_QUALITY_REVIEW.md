@@ -25,7 +25,8 @@ Work started on the highest-priority, independently reviewable items:
 - [x] Update the frontend lockfile to resolve the PostCSS security advisory; `npm audit --omit=dev` reports no vulnerabilities.
 - [ ] Authenticate and narrow per-task MCP listeners.
 - [ ] Decide and implement PostgreSQL startup migration behavior.
-- [ ] Remove confirmed dead runner packages in a separate cleanup change set.
+- [x] Remove confirmed dead runner packages and stale compile-time placeholders.
+- [x] Consolidate duplicated harness output logging into the shared harness package.
 
 ## Immediate priorities
 
