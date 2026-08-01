@@ -1186,7 +1186,7 @@ func statusIsErrorCategoryCandidate(status string) bool {
 
 func normalizeErrorCategory(category string) string {
 	switch category {
-	case "budget_exceeded", "model_error", "runtime_error", "timeout", "transport_error", "stuck", "cancelled", "unknown":
+	case "budget_exceeded", "model_error", "runtime_error", "timeout", "transport_error", "stuck", "resource_limit", "cancelled", "unknown":
 		return category
 	default:
 		return ""
@@ -1207,6 +1207,8 @@ func classifyTaskErrorCategory(status, message string) string {
 		return "budget_exceeded"
 	case strings.Contains(lower, "timeout"), strings.Contains(lower, "deadline exceeded"), strings.Contains(lower, "context deadline"), strings.Contains(lower, "lease expired"):
 		return "timeout"
+	case strings.Contains(lower, "oomkilled"), strings.Contains(lower, "out of memory"), strings.Contains(lower, "memory limit"), strings.Contains(lower, "resource limit"), strings.Contains(lower, "cgroup memory"):
+		return "resource_limit"
 	case isPromptTransportFailureMessage(lower):
 		return "transport_error"
 	case strings.Contains(lower, "stuck"), strings.Contains(lower, "loop"):
@@ -1222,7 +1224,8 @@ func classifyTaskErrorCategory(status, message string) string {
 
 // classifyFailureCategory maps a per-attempt error_category to a task-level failure_category.
 // Values per the issue #98 specification: timeout, harness_error, runner_lost,
-// internal_error, user_cancelled, quota_exceeded, unknown.
+// internal_error, user_cancelled, quota_exceeded, unknown. resource_limit is an
+// additional value introduced by #273 for containers killed by their memory limit.
 func classifyFailureCategory(errorCategory string) string {
 	switch errorCategory {
 	case "timeout":
@@ -1233,6 +1236,8 @@ func classifyFailureCategory(errorCategory string) string {
 		return "quota_exceeded"
 	case "model_error":
 		return "internal_error"
+	case "resource_limit":
+		return "resource_limit"
 	case "runtime_error", "transport_error", "stuck":
 		return "harness_error"
 	default:

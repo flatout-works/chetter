@@ -221,6 +221,8 @@ message RunnerInfo {
   string runsc_version = 17;
   string last_heartbeat = 18;
   ResourceInfo resource = 19;
+  int32 container_memory_mb = 20;
+  double container_cpu = 21;
 }
 
 message ResourceInfo {

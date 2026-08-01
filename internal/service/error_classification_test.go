@@ -15,6 +15,7 @@ func TestNormalizeErrorCategory(t *testing.T) {
 		{"timeout", "timeout"},
 		{"transport_error", "transport_error"},
 		{"stuck", "stuck"},
+		{"resource_limit", "resource_limit"},
 		{"cancelled", "cancelled"},
 		{"unknown", "unknown"},
 		{"", ""},
@@ -70,6 +71,9 @@ func TestClassifyTaskErrorCategory(t *testing.T) {
 		{"timeout lease", "error", "lease expired", "timeout"},
 		{"opencode eof", "error", `prompt failed: POST /message: Post "http://127.0.0.1/session/ses/message": EOF`, "transport_error"},
 		{"opencode reset", "error", `prompt failed: POST /message: read: connection reset by peer`, "transport_error"},
+		{"oomkilled container", "error", "task container exceeded its memory limit (OOMKilled): prompt failed: EOF", "resource_limit"},
+		{"out of memory", "error", "container out of memory", "resource_limit"},
+		{"resource limit", "error", "cgroup memory limit reached", "resource_limit"},
 		{"stuck", "error", "stuck in loop", "stuck"},
 		{"model error", "error", "model returned invalid response", "model_error"},
 		{"llm error", "error", "LLM provider error", "model_error"},
@@ -138,6 +142,32 @@ func TestSanitizeEventTypePart(t *testing.T) {
 			got := sanitizeEventTypePart(tc.input)
 			if got != tc.want {
 				t.Errorf("sanitizeEventTypePart(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestClassifyFailureCategory(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"timeout", "timeout"},
+		{"cancelled", "user_cancelled"},
+		{"budget_exceeded", "quota_exceeded"},
+		{"model_error", "internal_error"},
+		{"resource_limit", "resource_limit"},
+		{"runtime_error", "harness_error"},
+		{"transport_error", "harness_error"},
+		{"stuck", "harness_error"},
+		{"", "unknown"},
+		{"random_value", "unknown"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got := classifyFailureCategory(tc.input)
+			if got != tc.want {
+				t.Errorf("classifyFailureCategory(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}

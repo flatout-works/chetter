@@ -1703,6 +1703,8 @@ type RunnerInfo struct {
 	RunscVersion      string                 `protobuf:"bytes,17,opt,name=runsc_version,json=runscVersion,proto3" json:"runsc_version,omitempty"`
 	LastHeartbeat     string                 `protobuf:"bytes,18,opt,name=last_heartbeat,json=lastHeartbeat,proto3" json:"last_heartbeat,omitempty"`
 	Resource          *ResourceInfo          `protobuf:"bytes,19,opt,name=resource,proto3" json:"resource,omitempty"`
+	ContainerMemoryMb int32                  `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
+	ContainerCpu      float64                `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1868,6 +1870,20 @@ func (x *RunnerInfo) GetResource() *ResourceInfo {
 		return x.Resource
 	}
 	return nil
+}
+
+func (x *RunnerInfo) GetContainerMemoryMb() int32 {
+	if x != nil {
+		return x.ContainerMemoryMb
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetContainerCpu() float64 {
+	if x != nil {
+		return x.ContainerCpu
+	}
+	return 0
 }
 
 type ResourceInfo struct {
@@ -9386,7 +9402,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1d\n" +
 	"\n" +
-	"runner_ids\x18\x03 \x03(\tR\trunnerIds\"\xc5\x05\n" +
+	"runner_ids\x18\x03 \x03(\tR\trunnerIds\"\x9a\x06\n" +
 	"\n" +
 	"RunnerInfo\x12\x1b\n" +
 	"\trunner_id\x18\x01 \x01(\tR\brunnerId\x12\x16\n" +
@@ -9409,7 +9425,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x12checkpoint_restore\x18\x10 \x01(\bR\x11checkpointRestore\x12#\n" +
 	"\rrunsc_version\x18\x11 \x01(\tR\frunscVersion\x12%\n" +
 	"\x0elast_heartbeat\x18\x12 \x01(\tR\rlastHeartbeat\x120\n" +
-	"\bresource\x18\x13 \x01(\v2\x14.api.v1.ResourceInfoR\bresource\"\xdb\x01\n" +
+	"\bresource\x18\x13 \x01(\v2\x14.api.v1.ResourceInfoR\bresource\x12.\n" +
+	"\x13container_memory_mb\x18\x14 \x01(\x05R\x11containerMemoryMb\x12#\n" +
+	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\"\xdb\x01\n" +
 	"\fResourceInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12%\n" +

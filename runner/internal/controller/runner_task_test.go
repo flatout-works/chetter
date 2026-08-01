@@ -1265,6 +1265,45 @@ func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	}
 }
 
+// TestDockerRPCArgsPerTaskLimitsWinOverConfig verifies that per-task
+// MaxMemoryMB/MaxCPU overrides (issue #273) take precedence over the runner
+// config limits on the RPC execution path.
+func TestDockerRPCArgsPerTaskLimitsWinOverConfig(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 2048, MaxCPU: 3}
+	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "2048m") {
+		t.Fatalf("expected --memory 2048m (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "2048m") {
+		t.Fatalf("expected --memory-swap 2048m (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "3") {
+		t.Fatalf("expected --cpus 3 (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "200") {
+		t.Fatalf("expected config --pids-limit 200 fallback in args: %v", args)
+	}
+}
+
+// TestDockerRPCArgsPerTaskLimitsWhenConfigUnset verifies per-task limits are
+// applied even when no runner-level config limits are configured.
+func TestDockerRPCArgsPerTaskLimitsWhenConfigUnset(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	if !hasAdjacentArgs(args, "--memory", "768m") {
+		t.Fatalf("expected --memory 768m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected --cpus 2 in args: %v", args)
+	}
+	if indexOf(args, "--pids-limit") != -1 {
+		t.Fatalf("expected no --pids-limit when unset, got: %v", args)
+	}
+}
+
 func TestDockerRPCArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
@@ -1293,6 +1332,29 @@ func TestDockerServeArgsAppliesContainerLimits(t *testing.T) {
 	}
 	if !hasAdjacentArgs(args, "--pids-limit", "256") {
 		t.Fatalf("expected --pids-limit 256 in args: %v", args)
+	}
+}
+
+// TestDockerServeArgsPerTaskLimitsWinOverConfig verifies that per-task
+// MaxMemoryMB/MaxCPU overrides win over the runner config on the serve path
+// (used by both serve and resume, issue #273).
+func TestDockerServeArgsPerTaskLimitsWinOverConfig(t *testing.T) {
+	r := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 2, ContainerPIDs: 256}}, runnerID: "runner-test"}
+	h := opencode.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator", MaxMemoryMB: 4096, MaxCPU: 4}
+	serveCmd := h.ServeCommand(containerPortForServe)
+	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	if !hasAdjacentArgs(args, "--memory", "4096m") {
+		t.Fatalf("expected --memory 4096m (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "4096m") {
+		t.Fatalf("expected --memory-swap 4096m (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "4") {
+		t.Fatalf("expected --cpus 4 (per-task wins) in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "256") {
+		t.Fatalf("expected config --pids-limit 256 fallback in args: %v", args)
 	}
 }
 

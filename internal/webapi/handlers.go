@@ -254,6 +254,10 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 		CurrentTaskIds: r.CurrentTaskIDs,
 		StartedAt:      timeStrPtr(r.StartedAt),
 		LastHeartbeat:  r.LastSeenAt.Format(time.RFC3339),
+		// Effective per-task container limits enforced by the runner (0 =
+		// unset/unlimited). See issue #273.
+		ContainerMemoryMb: int32(r.ContainerMemoryMB),
+		ContainerCpu:      r.ContainerCPU,
 	}
 	if r.Resource != nil {
 		info.Resource = &apiv1.ResourceInfo{

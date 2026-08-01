@@ -217,6 +217,13 @@ func TestContainerLimitsValidation(t *testing.T) {
 		{name: "zero allowed", yaml: "execution:\n  container_cpu: 0\n  container_pids: 0\n"},
 		{name: "valid cpu and pids", yaml: "execution:\n  container_cpu: 2\n  container_pids: 256\n"},
 		{name: "fractional cpu", yaml: "execution:\n  container_cpu: 1.5\n"},
+		{name: "valid memory mb", yaml: "execution:\n  container_memory: 512m\n"},
+		{name: "valid memory gb", yaml: "execution:\n  container_memory: 1g\n"},
+		{name: "valid memory fractional gb", yaml: "execution:\n  container_memory: 1.5g\n"},
+		{name: "valid memory bytes", yaml: "execution:\n  container_memory: \"2048\"\n"},
+		{name: "invalid memory format", yaml: "execution:\n  container_memory: abc\n", wantErr: true},
+		{name: "invalid memory zero", yaml: "execution:\n  container_memory: 0\n", wantErr: true},
+		{name: "invalid memory negative", yaml: "execution:\n  container_memory: -512m\n", wantErr: true},
 		{name: "negative cpu", yaml: "execution:\n  container_cpu: -1\n", wantErr: true},
 		{name: "negative pids", yaml: "execution:\n  container_pids: -1\n", wantErr: true},
 		{name: "env cpu override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_CPU": "1.5"}},
@@ -224,6 +231,7 @@ func TestContainerLimitsValidation(t *testing.T) {
 		{name: "env memory override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_MEMORY": "512m"}},
 		{name: "invalid env cpu", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_CPU": "abc"}, wantErr: true},
 		{name: "invalid env pids", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_PIDS": "abc"}, wantErr: true},
+		{name: "invalid env memory", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_MEMORY": "abc"}, wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -272,5 +280,45 @@ func TestContainerLimitsEnvOverridesYAML(t *testing.T) {
 	}
 	if cfg.Execution.ContainerMemory != "512m" {
 		t.Errorf("ContainerMemory = %q, want 512m (env should override YAML)", cfg.Execution.ContainerMemory)
+	}
+}
+
+func TestParseMemoryBytes(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int64
+		err   bool
+	}{
+		{"512m", 512 << 20, false},
+		{"512M", 512 << 20, false},
+		{"1g", 1 << 30, false},
+		{"2G", 2 << 30, false},
+		{"1.5g", 1536 << 20, false},
+		{"256k", 256 << 10, false},
+		{"2048", 2048, false},
+		{"4b", 4, false},
+		{" 1g ", 1 << 30, false},
+		{"", 0, true},
+		{"abc", 0, true},
+		{"0", 0, true},
+		{"-512m", 0, true},
+		{"1x", 0, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := ParseMemoryBytes(tc.input)
+			if tc.err {
+				if err == nil {
+					t.Fatalf("ParseMemoryBytes(%q) = %d, want error", tc.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseMemoryBytes(%q): %v", tc.input, err)
+			}
+			if got != tc.want {
+				t.Errorf("ParseMemoryBytes(%q) = %d, want %d", tc.input, got, tc.want)
+			}
+		})
 	}
 }

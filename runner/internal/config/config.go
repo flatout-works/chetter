@@ -75,8 +75,9 @@ type ExecutionConfig struct {
 	ContainerCPU    float64 `yaml:"container_cpu"`
 	ContainerPIDs   int     `yaml:"container_pids"`
 
-	containerCPUEnvInvalid  bool
-	containerPIDsEnvInvalid  bool
+	containerMemoryEnvInvalid bool
+	containerCPUEnvInvalid    bool
+	containerPIDsEnvInvalid   bool
 }
 
 type KubernetesConfig struct {
@@ -127,11 +128,19 @@ func validate(cfg *Config) error {
 	if cfg.Runner.MaxConcurrent < 0 {
 		return fmt.Errorf("runner.max_concurrent must be greater than or equal to 0")
 	}
+	if cfg.Execution.containerMemoryEnvInvalid {
+		return fmt.Errorf("CHETTER_CONTAINER_MEMORY must be a valid memory limit (e.g. 512m, 1g)")
+	}
 	if cfg.Execution.containerCPUEnvInvalid {
 		return fmt.Errorf("CHETTER_CONTAINER_CPU must be a positive number")
 	}
 	if cfg.Execution.containerPIDsEnvInvalid {
 		return fmt.Errorf("CHETTER_CONTAINER_PIDS must be a positive integer")
+	}
+	if cfg.Execution.ContainerMemory != "" {
+		if _, err := ParseMemoryBytes(cfg.Execution.ContainerMemory); err != nil {
+			return fmt.Errorf("execution.container_memory: %v", err)
+		}
 	}
 	if cfg.Execution.ContainerCPU < 0 {
 		return fmt.Errorf("execution.container_cpu must be greater than or equal to 0")
@@ -224,7 +233,11 @@ func applyDefaults(cfg *Config) {
 		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"
 	}
 	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_MEMORY")); value != "" {
-		cfg.Execution.ContainerMemory = value
+		if _, err := ParseMemoryBytes(value); err == nil {
+			cfg.Execution.ContainerMemory = value
+		} else {
+			cfg.Execution.containerMemoryEnvInvalid = true
+		}
 	}
 	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_CPU")); value != "" {
 		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
@@ -291,4 +304,41 @@ func firstEnv(keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// ParseMemoryBytes parses a Docker-style memory limit such as "512m" or "1g"
+// into bytes. Suffixes are binary (b, k, m, g map to KiB/MiB/GiB), matching
+// Docker's --memory semantics; a bare number is interpreted as bytes. It is
+// used both to validate execution.container_memory at startup and to convert
+// the configured limit to MB for runner capacity reporting.
+func ParseMemoryBytes(value string) (int64, error) {
+	s := strings.TrimSpace(strings.ToLower(value))
+	if s == "" {
+		return 0, fmt.Errorf("empty memory limit")
+	}
+	multiplier := int64(1)
+	switch s[len(s)-1] {
+	case 'b':
+		s = s[:len(s)-1]
+	case 'k':
+		multiplier = 1 << 10
+		s = s[:len(s)-1]
+	case 'm':
+		multiplier = 1 << 20
+		s = s[:len(s)-1]
+	case 'g':
+		multiplier = 1 << 30
+		s = s[:len(s)-1]
+	}
+	if s == "" {
+		return 0, fmt.Errorf("memory limit %q has no numeric value", value)
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid memory limit %q", value)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("memory limit %q must be a positive number", value)
+	}
+	return int64(n * float64(multiplier)), nil
 }

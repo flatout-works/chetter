@@ -24,6 +24,10 @@ func TestBuildRPCCommand(t *testing.T) {
 }
 
 func TestBuildRPCCommandProviderQualifiedModel(t *testing.T) {
+	// Isolate from ambient PI_PROVIDER/PI_MODEL so the qualified-model split
+	// path is exercised deterministically regardless of the host environment.
+	t.Setenv("PI_PROVIDER", "")
+	t.Setenv("PI_MODEL", "")
 	req := task.TaskRequest{ModelID: "anthropic/claude-sonnet-4-5"}
 	got := buildRPCCommand(req)
 	want := []string{"pi", "--mode", "rpc", "--no-session", "--offline", "--approve", "--provider", "anthropic", "--model", "claude-sonnet-4-5"}

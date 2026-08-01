@@ -43,6 +43,19 @@ func executionKey(req task.TaskRequest) string {
 	return req.ExecutionID
 }
 
+// validateTaskResourceLimits rejects invalid per-task resource limit overrides
+// with a clear error, mirroring the startup validation of runner-level
+// container limits. Returns "" when the limits are acceptable.
+func validateTaskResourceLimits(req task.TaskRequest) string {
+	if req.MaxMemoryMB < 0 {
+		return fmt.Sprintf("invalid max_memory_mb %d: must be greater than or equal to 0", req.MaxMemoryMB)
+	}
+	if req.MaxCPU < 0 {
+		return fmt.Sprintf("invalid max_cpu %d: must be greater than or equal to 0", req.MaxCPU)
+	}
+	return ""
+}
+
 func containerNameForRequest(req task.TaskRequest) string {
 	key := executionKey(req)
 	return "chetter-task-" + req.TaskID + "-" + key
@@ -58,6 +71,10 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}()
 	if req.ExecutionID == "" {
 		r.publishStatusForRequest(req, "error", "execution_id is required", nil)
+		return
+	}
+	if message := validateTaskResourceLimits(req); message != "" {
+		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
 
@@ -742,6 +759,10 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			status, statusMessage = "error", "task timeout during drain; resumable session preserved"
 		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
+		if oomMessage := dockerOOMFailureMessage(containerName, errorMessage); oomMessage != errorMessage {
+			errorCategory = "resource_limit"
+			statusMessage = oomMessage
+		}
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
@@ -880,6 +901,10 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			status, statusMessage = "error", "task timeout during drain; resumable session preserved"
 		}
 		errorCategory := classifyErrorCategory("error", errorMessage)
+		if oomMessage := dockerOOMFailureMessage(containerName, errorMessage); oomMessage != errorMessage {
+			errorCategory = "resource_limit"
+			statusMessage = oomMessage
+		}
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
@@ -1043,6 +1068,40 @@ func (r *Runner) publishDockerPromptFailureDiagnostics(taskID, containerName, ba
 	r.publishEvent(taskID, fmt.Sprintf("opencode container logs tail: %s", truncateSummary(logs)))
 }
 
+// dockerContainerOOMKilled reports whether the named Docker container was
+// killed by the kernel for exceeding its memory limit. It queries
+// .State.OOMKilled via docker inspect; a missing or uninspectable container
+// reports false.
+func dockerContainerOOMKilled(containerName string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.OOMKilled}}", containerName).CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
+}
+
+// dockerOOMFailureMessage returns a structured resource-limit failure message
+// when the task container was OOM-killed, otherwise the original message.
+// containerName must be empty for non-Docker backends (local, Kubernetes),
+// which keeps the check a no-op there.
+func dockerOOMFailureMessage(containerName, message string) string {
+	if containerName == "" {
+		return message
+	}
+	return dockerOOMMessage(dockerContainerOOMKilled(containerName), message)
+}
+
+// dockerOOMMessage rewrites a failure message into a structured resource-limit
+// error when the container was OOM-killed.
+func dockerOOMMessage(oomKilled bool, message string) string {
+	if !oomKilled {
+		return message
+	}
+	return "task container exceeded its memory limit (OOMKilled): " + message
+}
+
 func runDiagnosticCommand(ctx context.Context, name string, args ...string) string {
 	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
 	text := strings.TrimSpace(string(out))
@@ -1145,7 +1204,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	configureProcess(cmd)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
-	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd})
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, "")
 }
 
 func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
@@ -1179,12 +1238,12 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 
 	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	configureProcess(cmd)
-	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd})
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, containerName)
 }
 
 func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) []string {
 	dockerArgs := []string{
-		"run", "--rm", "-i",
+		"run", "-i",
 		"--entrypoint", command[0],
 		"--name", containerName,
 		"--label", "chetter.runner_id=" + runnerID,
@@ -1199,7 +1258,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
-	dockerArgs = appendContainerLimits(dockerArgs, exec)
+	dockerArgs = appendContainerLimits(dockerArgs, exec, req)
 	dockerArgs = append(dockerArgs,
 		"-v", agentenv.HostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
 		"-w", containerWorkspaceDir,
@@ -1283,7 +1342,7 @@ func (p *execRPCProcess) Stop() error {
 	return terminateProcess(p.cmd)
 }
 
-func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd rpcProcess) {
+func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd rpcProcess, containerName string) {
 	name := h.Name()
 
 	stdin, err := cmd.StdinPipe()
@@ -1323,7 +1382,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 
 	readyCmd := map[string]any{"id": "ready", "type": "get_state"}
 	if err := writeRPCCommand(stdin, readyCmd); err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("write ready probe: %v", err), nil)
+		r.publishStatusForRequest(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("write ready probe: %v", err)), nil)
 		return
 	}
 	readyResp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "ready", state)
@@ -1333,7 +1392,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 			r.publishStatusForRequest(req, status, message, nil)
 			return
 		}
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("%s ready: %v", name, err), nil)
+		r.publishStatusForRequest(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s ready: %v", name, err)), nil)
 		return
 	}
 	state.sessionID = rpcSessionID(readyResp)
@@ -1341,7 +1400,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
 	if err := writeRPCCommand(stdin, promptCmd); err != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("write prompt: %v", err), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("write prompt: %v", err)), nil, state.sessionID, "", task.TokenUsage{})
 		return
 	}
 	if _, err := r.waitForRPCResponse(ctx, req, lines, stdin, "prompt", state); err != nil {
@@ -1351,7 +1410,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 			r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
 			return
 		}
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s prompt: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s prompt: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
 		return
 	}
 
@@ -1368,11 +1427,11 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 				state.terminal = true
 				break
 			}
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s output: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s output: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
 			return
 		}
 		if err := r.handleRPCLine(req, stdin, line, state); err != nil {
-			r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s event: %v", name, err), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s event: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
 			return
 		}
 	}
@@ -1422,7 +1481,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		return
 	}
 	if waitErr != nil {
-		r.publishStatusWithMetadata(req, "error", fmt.Sprintf("%s: %v", name, waitErr), nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)), nil, state.sessionID, sessionExport, task.TokenUsage{})
 		return
 	}
 
