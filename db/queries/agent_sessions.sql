@@ -150,35 +150,41 @@ FROM chetter_user_prompts
 WHERE agent_session_id = ?;
 
 -- name: MarkUserPromptRunningByTask :execrows
-UPDATE chetter_user_prompts
-SET status = 'running',
-    started_at = COALESCE(started_at, ?),
-    updated_at = ?
-WHERE id = (
-    SELECT prompt.id FROM chetter_user_prompts prompt
-    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
-    WHERE prompt.task_id = ?
-    ORDER BY session.sequence DESC, prompt.sequence DESC
-    LIMIT 1
-)
-  AND status IN ('pending', 'claimed');
+UPDATE chetter_user_prompts target
+JOIN (
+    SELECT latest.id
+    FROM (
+        SELECT prompt.id FROM chetter_user_prompts prompt
+        JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+        WHERE prompt.task_id = sqlc.arg(task_id)
+        ORDER BY session.sequence DESC, prompt.sequence DESC
+        LIMIT 1
+    ) latest
+) selected ON selected.id = target.id
+SET target.status = 'running',
+    target.started_at = COALESCE(target.started_at, sqlc.arg(started_at)),
+    target.updated_at = sqlc.arg(updated_at)
+WHERE target.status IN ('pending', 'claimed');
 
 -- name: MarkUserPromptTerminalByTask :execrows
-UPDATE chetter_user_prompts
-SET status = ?,
-    summary = ?,
-    error = ?,
-    session_export = COALESCE(?, session_export),
-    started_at = COALESCE(started_at, ?),
-    ended_at = COALESCE(?, ended_at),
-    updated_at = ?
-WHERE id = (
-    SELECT prompt.id FROM chetter_user_prompts prompt
-    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
-    WHERE prompt.task_id = ?
-    ORDER BY session.sequence DESC, prompt.sequence DESC
-    LIMIT 1
-);
+UPDATE chetter_user_prompts target
+JOIN (
+    SELECT latest.id
+    FROM (
+        SELECT prompt.id FROM chetter_user_prompts prompt
+        JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+        WHERE prompt.task_id = sqlc.arg(task_id)
+        ORDER BY session.sequence DESC, prompt.sequence DESC
+        LIMIT 1
+    ) latest
+) selected ON selected.id = target.id
+SET target.status = sqlc.arg(status),
+    target.summary = sqlc.narg(summary),
+    target.error = sqlc.narg(error),
+    target.session_export = COALESCE(sqlc.narg(session_export), target.session_export),
+    target.started_at = COALESCE(target.started_at, sqlc.narg(started_at)),
+    target.ended_at = COALESCE(sqlc.narg(ended_at), target.ended_at),
+    target.updated_at = sqlc.arg(updated_at);
 
 -- name: FailPendingResumeTasksForMissingRunner :execrows
 UPDATE chetter_tasks t
