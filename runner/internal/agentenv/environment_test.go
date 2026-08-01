@@ -92,14 +92,34 @@ func TestManagedEnvironment(t *testing.T) {
 
 func TestHostWorkspaceDir(t *testing.T) {
 	t.Setenv("HOST_WORKSPACE_ROOT", "/host/runner")
-	got := HostWorkspaceDir("/var/lib/chetter-runner/task-1/workspace")
+	got, err := HostWorkspaceDir("/var/lib/chetter-runner/task-1/workspace", "/var/lib/chetter-runner")
+	if err != nil {
+		t.Fatalf("HostWorkspaceDir: %v", err)
+	}
 	if got != "/host/runner/task-1/workspace" {
 		t.Fatalf("HostWorkspaceDir = %q", got)
 	}
 
 	t.Setenv("HOST_WORKSPACE_ROOT", "")
-	if got := HostWorkspaceDir("/workspace"); got != "/workspace" {
+	got, err = HostWorkspaceDir("/workspace", "/")
+	if err != nil {
+		t.Fatalf("HostWorkspaceDir without root: %v", err)
+	}
+	if got != "/workspace" {
 		t.Fatalf("HostWorkspaceDir without root = %q", got)
+	}
+}
+
+func TestHostWorkspaceDirRejectsEscape(t *testing.T) {
+	t.Setenv("HOST_WORKSPACE_ROOT", "/host/runner")
+	if _, err := HostWorkspaceDir("/var/lib/other/task/workspace", "/var/lib/chetter-runner"); err == nil {
+		t.Fatal("HostWorkspaceDir accepted workspace outside configured root")
+	}
+	if _, err := HostWorkspaceDir("relative/workspace", "/var/lib/chetter-runner"); err == nil {
+		t.Fatal("HostWorkspaceDir accepted relative workspace")
+	}
+	if _, err := HostWorkspaceDir("/var/lib/chetter-runner/task/../outside", "/var/lib/chetter-runner"); err == nil {
+		t.Fatal("HostWorkspaceDir accepted traversal workspace")
 	}
 }
 

@@ -11,7 +11,11 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerName string, h harness.ServeHarness, serveCmd []string, bindAddr string, hostPort int, gvisor bool, netName, runnerIP, secret string) []string {
+func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerName string, h harness.ServeHarness, serveCmd []string, bindAddr string, hostPort int, gvisor bool, netName, runnerIP, secret string) ([]string, error) {
+	hostWorkspaceDir, err := agentenv.HostWorkspaceDir(workspaceDir, r.cfg.Runner.WorkspaceRoot)
+	if err != nil {
+		return nil, err
+	}
 	entrypoint := serveCmd[0]
 	dockerArgs := []string{
 		"run", "-d",
@@ -32,7 +36,7 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPortForServe))
 	dockerArgs = append(dockerArgs,
-		"-v", agentenv.HostWorkspaceDir(workspaceDir)+":/workspace",
+		"-v", hostWorkspaceDir+":/workspace",
 		"-w", "/workspace",
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE=/workspace",
@@ -82,7 +86,7 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		dockerArgs = append(dockerArgs, "--pull=always")
 	}
 	dockerArgs = append(dockerArgs, req.AgentImage)
-	return append(dockerArgs, serveCmd[1:]...)
+	return append(dockerArgs, serveCmd[1:]...), nil
 }
 
 const containerPortForServe = 9999
