@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -79,6 +80,25 @@ func mcpInit(t *testing.T, srv *Server) {
 		"clientInfo":      map[string]string{"name": "test", "version": "1.0"},
 	})
 	time.Sleep(200 * time.Millisecond)
+}
+
+func TestServerCloseHooksRunOnce(t *testing.T) {
+	srv, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if err := srv.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if calls.Load() != 2 {
+		t.Fatalf("close hook calls = %d, want 2", calls.Load())
+	}
 }
 
 func TestServerRequiresBearerToken(t *testing.T) {

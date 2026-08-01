@@ -23,12 +23,17 @@ import (
 )
 
 type Server struct {
-	sdkServer *mcplib.Server
-	httpSrv   *http.Server
-	addr      string
-	token     string
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	sdkServer  *mcplib.Server
+	httpSrv    *http.Server
+	addr       string
+	token      string
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	closeOnce  sync.Once
+	closeMu    sync.Mutex
+	closed     bool
+	closeErr   error
+	closeHooks []func()
 }
 
 // ToolHandler is the function signature for tool implementations.
@@ -99,16 +104,42 @@ func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 	}, adaptHandler(handler))
 }
 
-// Close shuts down the HTTP server.
-func (s *Server) Close() error {
-	s.cancel()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
-		return err
+// AddCloseHook registers cleanup that runs once after the HTTP server exits.
+// A hook added after closure runs immediately.
+func (s *Server) AddCloseHook(hook func()) {
+	if hook == nil {
+		return
 	}
-	s.wg.Wait()
-	return nil
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		hook()
+		return
+	}
+	s.closeHooks = append(s.closeHooks, hook)
+	s.closeMu.Unlock()
+}
+
+// Close shuts down the HTTP server and runs registered cleanup hooks. It is
+// safe to call more than once.
+func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		s.cancel()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		s.closeErr = s.httpSrv.Shutdown(shutdownCtx)
+		cancel()
+		s.wg.Wait()
+
+		s.closeMu.Lock()
+		s.closed = true
+		hooks := append([]func(){}, s.closeHooks...)
+		s.closeHooks = nil
+		s.closeMu.Unlock()
+		for _, hook := range hooks {
+			hook()
+		}
+	})
+	return s.closeErr
 }
 
 func randomBearerToken() (string, error) {

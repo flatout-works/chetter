@@ -117,9 +117,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		defer mcpServer.Close()
 		mcpURL := runnerMCPURL(r, mcpServer)
-		configReq := req
-		configReq.RunnerMCPToken = mcpServer.Token()
-		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), configReq, false); err != nil {
+		req.RunnerMCPToken = mcpServer.Token()
+		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, false); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
 		}
@@ -213,10 +212,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
-	configReq := req
-	configReq.RunnerMCPToken = mcpServer.Token()
+	req.RunnerMCPToken = mcpServer.Token()
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), configReq, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -263,6 +261,14 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID stri
 	mcpServer, err := mcp.NewServer(listenHost)
 	if err != nil {
 		return nil, err
+	}
+	if r.mcpRelay != nil {
+		unregister, err := r.mcpRelay.RegisterClaim(mcpServer.Token(), taskID, executionID)
+		if err != nil {
+			_ = mcpServer.Close()
+			return nil, fmt.Errorf("register MCP relay claim: %w", err)
+		}
+		mcpServer.AddCloseHook(unregister)
 	}
 	r.registerGitHubMCPTools(mcpServer, taskID, executionID)
 	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
@@ -408,11 +414,11 @@ func (r *Runner) taskChetterMCPURL() string {
 	return "http://" + net.JoinHostPort(r.runnerHostIP(), port) + "/mcp"
 }
 
-func (r *Runner) taskChetterMCPToken() string {
+func (r *Runner) taskChetterMCPToken(claimToken string) string {
 	if r.executionMode() == "local" || r.mcpRelay == nil {
 		return r.cfg.ChetterMCP.AuthToken
 	}
-	return ""
+	return claimToken
 }
 
 // runcNetwork returns the Docker network name for the runner container,

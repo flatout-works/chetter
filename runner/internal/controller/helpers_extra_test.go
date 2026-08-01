@@ -1,11 +1,37 @@
 package controller
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/flatout-works/chetter/runner/internal/agentenv"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
+
+func TestRedactRunnerMCPToken(t *testing.T) {
+	const token = "claim-secret-token"
+	resp := task.TaskResponse{
+		Summary:        "summary " + token,
+		Error:          "error " + token,
+		SessionExport:  "export " + token,
+		Artifacts:      []string{"artifact " + token},
+		RunnerMCPToken: token,
+	}
+	redactRunnerMCPToken(&resp)
+
+	for name, value := range map[string]string{
+		"summary": resp.Summary, "error": resp.Error,
+		"session export": resp.SessionExport, "artifact": resp.Artifacts[0],
+	} {
+		if strings.Contains(value, token) || !strings.Contains(value, "[REDACTED]") {
+			t.Fatalf("%s was not redacted: %q", name, value)
+		}
+	}
+	if resp.RunnerMCPToken != "" {
+		t.Fatal("redaction-only token remained on response")
+	}
+}
 
 func TestClassifyErrorCategory(t *testing.T) {
 	tests := []struct {

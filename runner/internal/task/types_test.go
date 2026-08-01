@@ -55,9 +55,10 @@ func TestTaskRequest_Defaults(t *testing.T) {
 
 func TestTaskResponse_MarshalJSON(t *testing.T) {
 	resp := TaskResponse{
-		TaskID:  "task-1",
-		Status:  "running",
-		Summary: "everything is fine",
+		TaskID:         "task-1",
+		Status:         "running",
+		Summary:        "everything is fine",
+		RunnerMCPToken: "must-not-be-serialized",
 	}
 
 	data, err := json.Marshal(&resp)
@@ -72,6 +73,9 @@ func TestTaskResponse_MarshalJSON(t *testing.T) {
 
 	if parsed["status"] != "running" {
 		t.Errorf("status = %v", parsed["status"])
+	}
+	if _, ok := parsed["runner_mcp_token"]; ok {
+		t.Fatal("locally generated runner MCP token was serialized")
 	}
 }
 

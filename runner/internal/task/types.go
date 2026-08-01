@@ -89,6 +89,7 @@ type TaskResponse struct {
 	WorkspacePath     string     `json:"workspace_path,omitempty"`
 	ErrorCategory     string     `json:"error_category,omitempty"`
 	TokenUsage        TokenUsage `json:"token_usage,omitempty"`
+	RunnerMCPToken    string     `json:"-"` // Local redaction-only value; never sent to the control plane.
 }
 
 // TaskSession represents one running task inside the runner.
