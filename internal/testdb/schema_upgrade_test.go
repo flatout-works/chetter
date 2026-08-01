@@ -3,10 +3,13 @@ package testdb
 import (
 	"context"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	postgresmigrations "github.com/flatout-works/chetter/db/postgres/migrations"
 	"github.com/flatout-works/chetter/internal/store"
@@ -104,6 +107,43 @@ func latestPostgresMigrationVersion(t *testing.T) int64 {
 		t.Fatal("no embedded postgres migrations")
 	}
 	return latest
+}
+
+func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP COLUMN github_installation_id, DROP COLUMN github_repo"); err != nil {
+		t.Fatalf("drop GitHub metadata columns: %v", err)
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/048_add_task_github_metadata.sql"))
+	if err != nil {
+		t.Fatalf("read GitHub metadata migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"048_add_task_github_metadata.sql": &fstest.MapFile{Data: migration},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply GitHub metadata migration: %v", err)
+	}
+
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT github_repo, github_installation_id FROM chetter_tasks WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query migrated GitHub metadata columns: %v", err)
+	}
+	rows.Close()
 }
 
 func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) {
