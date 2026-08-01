@@ -144,7 +144,7 @@ Team tokens can optionally expire. The `chetter_create_token` MCP tool accepts a
 | `ARCANE_API_KEY` | No | empty | Optional Arcane API key. |
 | `GITHUB_APP_ID` | For GitHub app | `0` | GitHub App ID. |
 | `GITHUB_APP_PRIVATE_KEY_B64` | For GitHub app | empty | Base64-encoded GitHub App private key PEM. |
-| `GITHUB_INSTALLATION_ID` | For GitHub app | `0` | GitHub App installation ID. |
+| `GITHUB_INSTALLATION_ID` | No | `0` | Deprecated single-installation fallback. New deployments should omit it; Chetter resolves the installation from signed webhooks or repository identity. |
 | `GITHUB_WEBHOOK_SECRET` | For GitHub webhook | empty | HMAC-SHA256 webhook secret. |
 | `GITHUB_WEBHOOK_DISABLED` | No | `false` | Webhook kill switch. |
 
@@ -164,7 +164,8 @@ Team tokens can optionally expire. The `chetter_create_token` MCP tool accepts a
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
-| `GITHUB_TOKEN` | GitHub token for cloning private repos and read operations inside tasks. |
+| `GITHUB_TOKEN` | Temporary compatibility token for repositories the configured GitHub App cannot access, such as fork heads. App credentials take precedence for task repositories. |
+| `CHETTER_GITHUB_CREDENTIAL_URL`, `CHETTER_GITHUB_CREDENTIAL_TOKEN` | Runner-managed execution-scoped credential bridge values. Tasks cannot override them; operators should not configure them. |
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
 
@@ -309,7 +310,7 @@ chetter_mcp:
 | `dns.upstream` | `8.8.8.8:53` | Upstream DNS server. |
 | `dns.blocked_domains` | empty | Optional DNS blocklist. |
 | `git.ssh_key_path` | empty | Optional SSH key path for clone operations. |
-| `git.pat` | empty | Optional Git personal access token. Prefer env-provided `GITHUB_TOKEN` for normal deployments. |
+| `git.pat` | empty | Optional compatibility PAT for repositories outside the GitHub App installation. GitHub App credentials are preferred for normal deployments. |
 | `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
 | `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
@@ -822,7 +823,9 @@ The runner injects these environment variables into every container:
 |----------|-------------|
 | `TASK_ID` | Task identifier |
 | `WORKSPACE` | Path to the cloned repo (typically `/workspace`) |
-| `MCP_SOCKET_PATH` | Unix socket for the runner-bridge MCP server |
+| `CHETTER_EXECUTION_ID` | Immutable execution-attempt identifier used for runner and GitHub credential fencing |
+| `CHETTER_GITHUB_CREDENTIAL_URL` | Runner-managed private GitHub credential endpoint when the task has a GitHub repository |
+| `CHETTER_GITHUB_CREDENTIAL_TOKEN` | Random per-execution capability for the private credential endpoint |
 | `HOME` | Set to `/opt/opencode` |
 | `XDG_CONFIG_HOME` | Set to `/opt/opencode/.config` |
 | `CHETTER_AGENT_NAME` | Agent name from the task request |
@@ -841,7 +844,7 @@ Today Chetter bakes these into `chetter-runner-base` and derived images:
 | Category | Examples |
 |---|---|
 | Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
-| GitHub CLI wrapper | `/usr/local/bin/gh` is a Chetter wrapper that blocks write commands (`gh api`, `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr comment`, `gh pr review`) and guides agents to the MCP tools. The real binary is at `/usr/local/bin/gh-real`. Set `CHETTER_ALLOW_GH_WRITES=1` for manual debugging only (not advertised to agents). |
+| GitHub CLI wrapper | `/usr/local/bin/gh` permits an explicit read-only command allowlist and obtains repository-scoped credentials from the execution broker. Arbitrary API access and all writes are blocked and must use Chetter MCP tools. The real binary is at `/usr/local/bin/gh-real`. |
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
 | Agent harnesses | OpenCode, Claude Code, Pi, CodeWhale, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
@@ -856,12 +859,12 @@ Task-specific data is stored by the server, passed to the runner over ConnectRPC
 | Category | Injected values |
 |---|---|
 | Task content | Prompt, repo URL/ref, timeout, harness name, selected agent name, skill hints, and optional non-secret task env. |
-| Workspace mounts | The cloned workspace is mounted at `/workspace`; the runner MCP bridge socket is mounted at `/workspace/.chetter.sock`. |
+| Workspace mounts | The cloned workspace is mounted at `/workspace`. The runner bridge uses a per-execution HTTP endpoint rather than a mounted socket. |
 | Harness config | OpenCode config is generated into the workspace (`/workspace/.opencode.json` and `/workspace/.config/opencode/config.json`) with Chetter MCP and runner bridge MCP entries. |
-| Task identity | `TASK_ID`, `WORKSPACE`, `MCP_SOCKET_PATH`, `CHETTER_TASK_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
+| Task identity | `TASK_ID`, `WORKSPACE`, `CHETTER_TASK_ID`, `CHETTER_AGENT_SESSION_ID`, `CHETTER_USER_PROMPT_ID`, `CHETTER_EXECUTION_ID`, `CHETTER_AGENT_NAME`, `CHETTER_MODEL_ID`, `CHETTER_RUNNER_IMAGE`, and `CHETTER_RUNNER_IMAGE_DIGEST`. |
 | Git identity | The server resolves an agent definition's managed identity when present; otherwise it resolves the team default, then the global default. The runner sets repository-local `user.name` and `user.email` plus `GIT_AUTHOR_*` / `GIT_COMMITTER_*` for every harness mode. |
 | Model/provider resolution | The server resolves provider/model/base URL/API-key-env from the active model catalog before the runner starts the task. |
-| Runner-owned secrets and provider env | The runner forwards configured secrets such as `GITHUB_TOKEN`, `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. It also owns Claude Code provider env such as `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_DEFAULT_*_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. User-supplied task env cannot override these runner-owned keys. |
+| Runner-owned secrets and provider env | GitHub App credentials are fetched through an execution-scoped broker and are not persisted. A configured `GITHUB_TOKEN` is forwarded only as a temporary compatibility fallback. The runner also forwards provider credentials such as `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY`, `ZAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`, and `MEM9_*`. User-supplied task env cannot override runner-owned keys. |
 | Sandbox/network config | In gVisor mode the task container runs with `--runtime=runsc` and receives proxy env (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`). Proxy settings are operational controls, not a replacement for gVisor's sandbox boundary. |
 
 ### Trigger-Type Environment Variables
@@ -871,7 +874,6 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 | Variable | Trigger type(s) | Description |
 |---|---|---|
 | `GITHUB_REPO` | `issue`, `pr_review` | Full repository name (e.g. `owner/repo`) |
-| `GITHUB_TOKEN` | `issue`, `pr_review` | GitHub App installation token with read/write access |
 | `ISSUE_NUMBER` | `issue` | Issue number |
 | `ISSUE_TITLE` | `issue` | Issue title text |
 | `ISSUE_URL` | `issue` | Issue HTML URL |

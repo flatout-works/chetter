@@ -19,6 +19,7 @@ import (
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/internal/redact"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
@@ -30,27 +31,29 @@ import (
 
 // SubmitTaskRequest contains all fields needed to submit a runner task.
 type SubmitTaskRequest struct {
-	TeamID           string
-	TeamName         string
-	Prompt           string
-	GitURL           string
-	GitRef           string
-	AgentImage       string
-	Agent            string
-	ProviderID       string
-	ModelID          string
-	VariantID        string
-	Harness          string
-	Skills           []string
-	McpEndpoints     []string
-	Env              map[string]string
-	TimeoutSec       int
-	TriggerName      string
-	TriggerType      string
-	SubmissionSource string
-	SessionMode      string
-	PauseReason      string
-	TTLHours         int
+	TeamID               string
+	TeamName             string
+	Prompt               string
+	GitURL               string
+	GitRef               string
+	GitHubRepo           string
+	GitHubInstallationID int64
+	AgentImage           string
+	Agent                string
+	ProviderID           string
+	ModelID              string
+	VariantID            string
+	Harness              string
+	Skills               []string
+	McpEndpoints         []string
+	Env                  map[string]string
+	TimeoutSec           int
+	TriggerName          string
+	TriggerType          string
+	SubmissionSource     string
+	SessionMode          string
+	PauseReason          string
+	TTLHours             int
 }
 
 type AuditEventParams struct {
@@ -106,7 +109,7 @@ type Service struct {
 	rawDB          *sql.DB
 	dialect        store.Dialect
 	arcane         *ArcaneClient
-	github         *webhook.Client
+	github         *webhook.Manager
 	runnerRPC      *RunnerRPCService
 	cron           *cron.Cron
 	cronMu         sync.Mutex
@@ -160,8 +163,8 @@ func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
 	s.runnerRPC = r
 }
 
-func (s *Service) SetGitHubClient(c *webhook.Client) {
-	s.github = c
+func (s *Service) SetGitHubManager(manager *webhook.Manager) {
+	s.github = manager
 }
 
 func (s *Service) SetDefinitions(d *definitions.Manager) {
@@ -949,6 +952,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, err
 	}
+	githubRepo, githubInstallationID, err := taskGitHubMetadata(in)
+	if err != nil {
+		return store.TaskRecord{}, err
+	}
 	var gitIdentity GitIdentityRecord
 	if strings.TrimSpace(in.Agent) != "" {
 		gitIdentity, err = s.resolveTaskGitIdentity(ctx, in.Agent, teamID, in.GitURL)
@@ -1026,19 +1033,21 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	}
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL), " ")
+		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL+" "+githubRepo), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
-			ID:               taskID,
-			TeamID:           nullString(teamID),
-			Prompt:           in.Prompt,
-			GitUrl:           nullString(in.GitURL),
-			GitRef:           nullString(in.GitRef),
-			TriggerName:      nullString(in.TriggerName),
-			TriggerType:      nullString(in.TriggerType),
-			SubmissionSource: submissionSource,
-			SearchText:       nullString(taskSearchText),
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:                   taskID,
+			TeamID:               nullString(teamID),
+			Prompt:               in.Prompt,
+			GitUrl:               nullString(in.GitURL),
+			GitRef:               nullString(in.GitRef),
+			GithubRepo:           nullString(githubRepo),
+			GithubInstallationID: nullInt64(githubInstallationID),
+			TriggerName:          nullString(in.TriggerName),
+			TriggerType:          nullString(in.TriggerType),
+			SubmissionSource:     submissionSource,
+			SearchText:           nullString(taskSearchText),
+			CreatedAt:            now,
+			UpdatedAt:            now,
 		}); err != nil {
 			return fmt.Errorf("insert task: %w", err)
 		}
@@ -1410,15 +1419,17 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(orig.Prompt+" "+session.Agent.String+" "+session.ModelID.String+" "+orig.GitUrl.String), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
-			ID:               newTaskID,
-			TeamID:           nullString(teamID),
-			Prompt:           orig.Prompt,
-			GitUrl:           orig.GitUrl,
-			GitRef:           orig.GitRef,
-			SubmissionSource: "rerun",
-			SearchText:       nullString(taskSearchText),
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:                   newTaskID,
+			TeamID:               nullString(teamID),
+			Prompt:               orig.Prompt,
+			GitUrl:               orig.GitUrl,
+			GitRef:               orig.GitRef,
+			GithubRepo:           orig.GithubRepo,
+			GithubInstallationID: orig.GithubInstallationID,
+			SubmissionSource:     "rerun",
+			SearchText:           nullString(taskSearchText),
+			CreatedAt:            now,
+			UpdatedAt:            now,
 		}); err != nil {
 			return fmt.Errorf("insert rerun task: %w", err)
 		}
@@ -1687,36 +1698,66 @@ func repoTaskToStoreRecord(task repository.ChetterTask, session repository.Chett
 		endedAt = &task.EndedAt.Time
 	}
 	return store.TaskRecord{
-		ID:                task.ID,
-		TeamID:            task.TeamID.String,
-		Status:            task.Status,
-		Prompt:            task.Prompt,
-		GitURL:            task.GitUrl.String,
-		GitRef:            task.GitRef.String,
-		AgentImage:        session.AgentImage.String,
-		Agent:             session.Agent.String,
-		ProviderID:        session.ProviderID.String,
-		ModelID:           session.ModelID.String,
-		VariantID:         session.VariantID.String,
-		CommitAuthorName:  session.CommitAuthorName.String,
-		CommitAuthorEmail: session.CommitAuthorEmail.String,
-		GitIdentityID:     session.GitIdentityID.String,
-		AgentSessionID:    session.ID,
-		TriggerName:       task.TriggerName.String,
-		TriggerType:       task.TriggerType.String,
-		SubmissionSource:  task.SubmissionSource,
-		Skills:            skills,
-		McpEndpoints:      mcpEndpoints,
-		Env:               env,
-		Summary:           task.Summary.String,
-		Error:             task.Error.String,
-		ErrorCategory:     task.ErrorCategory.String,
-		FailureCategory:   task.FailureCategory.String,
-		FailureMessage:    task.FailureMessage.String,
-		CreatedAt:         task.CreatedAt,
-		UpdatedAt:         task.UpdatedAt,
-		EndedAt:           endedAt,
+		ID:                   task.ID,
+		TeamID:               task.TeamID.String,
+		Status:               task.Status,
+		Prompt:               task.Prompt,
+		GitURL:               task.GitUrl.String,
+		GitRef:               task.GitRef.String,
+		GitHubRepo:           task.GithubRepo.String,
+		GitHubInstallationID: task.GithubInstallationID.Int64,
+		AgentImage:           session.AgentImage.String,
+		Agent:                session.Agent.String,
+		ProviderID:           session.ProviderID.String,
+		ModelID:              session.ModelID.String,
+		VariantID:            session.VariantID.String,
+		CommitAuthorName:     session.CommitAuthorName.String,
+		CommitAuthorEmail:    session.CommitAuthorEmail.String,
+		GitIdentityID:        session.GitIdentityID.String,
+		AgentSessionID:       session.ID,
+		TriggerName:          task.TriggerName.String,
+		TriggerType:          task.TriggerType.String,
+		SubmissionSource:     task.SubmissionSource,
+		Skills:               skills,
+		McpEndpoints:         mcpEndpoints,
+		Env:                  env,
+		Summary:              task.Summary.String,
+		Error:                task.Error.String,
+		ErrorCategory:        task.ErrorCategory.String,
+		FailureCategory:      task.FailureCategory.String,
+		FailureMessage:       task.FailureMessage.String,
+		CreatedAt:            task.CreatedAt,
+		UpdatedAt:            task.UpdatedAt,
+		EndedAt:              endedAt,
 	}
+}
+
+func taskGitHubMetadata(in SubmitTaskRequest) (string, int64, error) {
+	if in.GitHubInstallationID < 0 {
+		return "", 0, fmt.Errorf("github_installation_id must be positive")
+	}
+	if strings.TrimSpace(in.GitHubRepo) != "" {
+		repo, err := githubrepo.Parse(in.GitHubRepo)
+		if err != nil {
+			return "", 0, fmt.Errorf("invalid trusted github_repo: %w", err)
+		}
+		return repo.FullName(), in.GitHubInstallationID, nil
+	}
+	if in.GitHubInstallationID > 0 {
+		return "", 0, fmt.Errorf("github_installation_id requires github_repo")
+	}
+	if strings.TrimSpace(in.GitURL) == "" {
+		return "", 0, nil
+	}
+	repo, err := githubrepo.Parse(in.GitURL)
+	if err != nil {
+		return "", 0, nil
+	}
+	return repo.FullName(), 0, nil
+}
+
+func nullInt64(value int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: value, Valid: value != 0}
 }
 
 func expandChetterPromptVars(prompt string, values map[string]string) string {

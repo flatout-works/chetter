@@ -23,24 +23,10 @@ type GitHubArtifactOutput struct {
 	Body               string `json:"body,omitempty"`
 }
 
-func (s *Service) githubClient() *webhook.Client {
-	return s.github
-}
-
-func (s *Service) GitHubClient() *webhook.Client {
-	return s.githubClient()
-}
-
-func (s *Service) GetTaskSignature(ctx context.Context, taskID, executionAttemptID string) (string, error) {
-	task, userPrompt, err := s.githubToolTaskContext(ctx, taskID, executionAttemptID)
-	if err != nil {
-		return "", err
-	}
-	return s.githubToolSignature(ctx, task, userPrompt, executionAttemptID), nil
-}
+func (s *Service) githubManager() *webhook.Manager { return s.github }
 
 func (s *Service) githubToolTaskContext(ctx context.Context, taskID, executionAttemptID string) (repository.ChetterTask, repository.ChetterUserPrompt, error) {
-	if s.githubClient() == nil {
+	if s.githubManager() == nil {
 		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("GitHub App client is not configured")
 	}
 	ownership, err := s.repo.GetExecutionAttemptContext(ctx, executionAttemptID)
@@ -68,19 +54,23 @@ func (s *Service) githubToolTaskContext(ctx context.Context, taskID, executionAt
 }
 
 func (s *Service) githubToolSignature(ctx context.Context, task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, executionAttemptID string) string {
-	taskLink := task.ID
+	return s.githubToolSignatureForContext(ctx, task.ID, userPrompt.AgentSessionID, userPrompt.ID, executionAttemptID)
+}
+
+func (s *Service) githubToolSignatureForContext(ctx context.Context, taskID, agentSessionID, userPromptID, executionAttemptID string) string {
+	taskLink := taskID
 	if s.cfg.WebURL != "" {
-		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", task.ID, strings.TrimRight(s.cfg.WebURL, "/"), task.ID)
+		taskLink = fmt.Sprintf("[%s](%s/tasks/%s)", taskID, strings.TrimRight(s.cfg.WebURL, "/"), taskID)
 	}
 	parts := []string{fmt.Sprintf("Task: %s", taskLink)}
-	if userPrompt.AgentSessionID != "" {
-		parts = append(parts, "Session: "+userPrompt.AgentSessionID)
+	if agentSessionID != "" {
+		parts = append(parts, "Session: "+agentSessionID)
 	}
-	if userPrompt.ID != "" {
-		parts = append(parts, "Prompt: "+userPrompt.ID)
+	if userPromptID != "" {
+		parts = append(parts, "Prompt: "+userPromptID)
 	}
 	parts = append(parts, "Attempt: "+executionAttemptID)
-	if session, err := s.repo.GetAgentSessionByID(ctx, userPrompt.AgentSessionID); err == nil {
+	if session, err := s.repo.GetAgentSessionByID(ctx, agentSessionID); err == nil {
 		if agent := strings.TrimSpace(session.Agent.String); agent != "" {
 			parts = append(parts, "Agent: "+agent)
 		}

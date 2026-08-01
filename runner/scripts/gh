@@ -1,40 +1,41 @@
 #!/bin/sh
-# Chetter gh wrapper — blocks GitHub write commands so agents must use Chetter
-# MCP tools instead. This ensures every issue, comment, PR, and review gets a
-# canonical signature, audit log entry, and artifact record.
-#
-# Blocked: gh api <any>, gh issue create/comment, gh pr create/review/comment
-# Allowed: all read-only commands (issue view/list, pr view/checks, search, etc.)
-# Bypass:  set CHETTER_ALLOW_GH_WRITES=1 for manual debugging only.
-#
-# Real binary: /usr/local/bin/gh-real
+# Chetter gh wrapper. Only explicitly reviewed read operations are allowed;
+# writes and arbitrary API access must use Chetter's audited MCP tools.
 set -eu
-
-if [ "${CHETTER_ALLOW_GH_WRITES:-}" = "1" ]; then
-  exec /usr/local/bin/gh-real "$@"
-fi
 
 _blocked() {
   cat >&2 <<'EOF'
-Chetter-managed GitHub writes must go through MCP tools so every artifact
-gets a canonical signature, audit log entry, and artifact record:
-
-  chetter_create_issue    — instead of gh issue create or gh api
-  chetter_issue_comment   — instead of gh issue comment, gh pr comment, or gh api
-  chetter_create_pr       — instead of gh pr create or gh api
-  chetter_pr_review       — instead of gh pr review or gh api
-
-Read-only gh commands are still available (issue view/list, pr view/checks, etc.).
-Use the Chetter MCP tools listed above. These ensure proper audit logging and
-canonical Chetter signatures on every artifact.
+Chetter permits only an explicit set of read-only gh commands. GitHub writes
+must use chetter_create_issue, chetter_issue_comment, chetter_create_pr, or
+chetter_pr_review so signatures, artifacts, and audit records are preserved.
 EOF
   exit 64
 }
 
-cmd="${1:-} ${2:-}"
-case "$cmd" in
-  "api"*) _blocked ;;
-  "issue create"|"issue comment"|"pr create"|"pr review"|"pr comment") _blocked ;;
+case "${1:-}:${2:-}" in
+  issue:list|issue:view|issue:status) ;;
+  pr:list|pr:view|pr:status|pr:checks|pr:diff) ;;
+  repo:view) ;;
+  run:list|run:view|run:watch) ;;
+  workflow:list|workflow:view) ;;
+  release:list|release:view) ;;
+  search:issues|search:prs|search:repos|search:code|search:commits) ;;
+  --version:|version:|help:*|--help:) exec /usr/local/bin/gh-real "$@" ;;
+  *) _blocked ;;
 esac
 
+broker_token=""
+if [ -n "${CHETTER_GITHUB_CREDENTIAL_URL:-}" ] && [ -n "${CHETTER_GITHUB_CREDENTIAL_TOKEN:-}" ]; then
+  broker_token="$(
+    printf 'request = "POST"\nheader = "Authorization: Bearer %s"\n' "$CHETTER_GITHUB_CREDENTIAL_TOKEN" |
+      curl --fail --silent --show-error --config - "$CHETTER_GITHUB_CREDENTIAL_URL" 2>/dev/null
+  )" || broker_token=""
+fi
+
+if [ -n "$broker_token" ]; then
+  GITHUB_TOKEN= GH_TOKEN="$broker_token" exec /usr/local/bin/gh-real "$@"
+fi
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  GH_TOKEN="$GITHUB_TOKEN" exec /usr/local/bin/gh-real "$@"
+fi
 exec /usr/local/bin/gh-real "$@"

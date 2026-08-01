@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/internal/repository"
 )
 
@@ -289,25 +290,47 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	env["CHETTER_EVENT_TYPE"] = event.EventType
 	env["CHETTER_EVENT_TASK_ID"] = event.TaskID
 	env["CHETTER_EVENT_CALLBACK"] = callback.Name
+	sourceTask, err := s.repo.GetTaskByID(ctx, event.TaskID)
+	if err != nil {
+		return fmt.Errorf("load callback source task: %w", err)
+	}
+	githubRepo, githubInstallationID := callbackTaskGitHubMetadata(sourceTask, cfg.GitURL)
 	_, err = s.SubmitTask(ctx, SubmitTaskRequest{
-		TeamID:           event.TeamID,
-		Prompt:           prompt,
-		GitURL:           cfg.GitURL,
-		GitRef:           cfg.GitRef,
-		AgentImage:       cfg.AgentImage,
-		Agent:            cfg.Agent,
-		ProviderID:       cfg.ProviderID,
-		ModelID:          cfg.ModelID,
-		VariantID:        cfg.VariantID,
-		Harness:          cfg.Harness,
-		Skills:           cfg.Skills,
-		Env:              env,
-		TimeoutSec:       cfg.TimeoutSec,
-		TriggerName:      callback.Name,
-		TriggerType:      "event_callback",
-		SubmissionSource: "event_callback",
+		TeamID:               event.TeamID,
+		Prompt:               prompt,
+		GitURL:               cfg.GitURL,
+		GitRef:               cfg.GitRef,
+		GitHubRepo:           githubRepo,
+		GitHubInstallationID: githubInstallationID,
+		AgentImage:           cfg.AgentImage,
+		Agent:                cfg.Agent,
+		ProviderID:           cfg.ProviderID,
+		ModelID:              cfg.ModelID,
+		VariantID:            cfg.VariantID,
+		Harness:              cfg.Harness,
+		Skills:               cfg.Skills,
+		Env:                  env,
+		TimeoutSec:           cfg.TimeoutSec,
+		TriggerName:          callback.Name,
+		TriggerType:          "event_callback",
+		SubmissionSource:     "event_callback",
 	})
 	return err
+}
+
+func callbackTaskGitHubMetadata(source repository.ChetterTask, gitURL string) (string, int64) {
+	if strings.TrimSpace(gitURL) == "" {
+		return source.GithubRepo.String, source.GithubInstallationID.Int64
+	}
+	repo, err := githubrepo.Parse(gitURL)
+	if err != nil {
+		return "", 0
+	}
+	installationID := int64(0)
+	if source.GithubRepo.Valid && githubrepo.Same(source.GithubRepo.String, repo.FullName()) {
+		installationID = source.GithubInstallationID.Int64
+	}
+	return repo.FullName(), installationID
 }
 
 func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.ChetterEventCallback) error {

@@ -3,32 +3,13 @@ package agentenv
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
-
-func TestInjectPATIntoURL(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		pat  string
-		want string
-	}{
-		{name: "https", raw: "https://github.com/owner/repo.git", pat: "secret", want: "https://secret@github.com/owner/repo.git"},
-		{name: "empty pat", raw: "https://github.com/owner/repo.git", want: "https://github.com/owner/repo.git"},
-		{name: "ssh", raw: "git@github.com:owner/repo.git", pat: "secret", want: "git@github.com:owner/repo.git"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := InjectPATIntoURL(tc.raw, tc.pat); got != tc.want {
-				t.Fatalf("InjectPATIntoURL(%q, %q) = %q, want %q", tc.raw, tc.pat, got, tc.want)
-			}
-		})
-	}
-}
 
 func TestShellQuoteArg(t *testing.T) {
 	tests := []struct {
@@ -80,13 +61,85 @@ func TestManagedEnvironment(t *testing.T) {
 		ProviderAPIKeyEnv: "PROVIDER_TOKEN",
 		McpEndpoints:      []task.MCPEndpoint{{BearerTokenEnv: "MCP_TOKEN"}},
 	}
-	for _, key := range []string{"PROVIDER_TOKEN", "OPENAI_API_KEY", "MCP_TOKEN"} {
+	for _, key := range []string{"PROVIDER_TOKEN", "OPENAI_API_KEY", "MCP_TOKEN", GitHubCredentialURLEnv, GitHubCredentialTokenEnv, "CHETTER_RUNNER_AUTH_TOKEN"} {
 		if !IsManagedEnv(key, req) {
 			t.Errorf("IsManagedEnv(%q) = false, want true", key)
 		}
 	}
 	if IsManagedEnv("CUSTOM_ENV", req) {
 		t.Fatal("custom environment should not be managed")
+	}
+}
+
+func TestGitAskpassBrokerRefreshAndFallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteGitAskpass(dir); err != nil {
+		t.Fatal(err)
+	}
+	countFile := filepath.Join(dir, "count")
+	captureFile := filepath.Join(dir, "curl-config")
+	curlPath := filepath.Join(dir, "curl")
+	curlScript := `#!/bin/sh
+config="$(cat)"
+printf '%s' "$config" > "$CURL_CONFIG_CAPTURE"
+if [ "${CURL_FAIL:-}" = 1 ]; then exit 22; fi
+n=0
+if [ -f "$CURL_COUNT_FILE" ]; then n="$(cat "$CURL_COUNT_FILE")"; fi
+n=$((n + 1))
+printf '%s' "$n" > "$CURL_COUNT_FILE"
+printf 'broker-token-%s' "$n"
+`
+	if err := os.WriteFile(curlPath, []byte(curlScript), 0700); err != nil {
+		t.Fatal(err)
+	}
+	baseEnv := append(TaskProcessEnv(),
+		"PATH="+dir+":"+os.Getenv("PATH"),
+		GitHubCredentialURLEnv+"=http://runner/internal/github-credential",
+		GitHubCredentialTokenEnv+"=capability-secret",
+		"CURL_COUNT_FILE="+countFile,
+		"CURL_CONFIG_CAPTURE="+captureFile,
+	)
+	run := func(prompt string, extra ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(dir, gitAskpassFilename), prompt)
+		cmd.Env = append(baseEnv, extra...)
+		out, err := cmd.Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	username, err := run("Username for https://github.com")
+	if err != nil || username != "x-access-token" {
+		t.Fatalf("username = %q, err=%v", username, err)
+	}
+	first, err := run("Password for https://github.com")
+	if err != nil || first != "broker-token-1" {
+		t.Fatalf("first password = %q, err=%v", first, err)
+	}
+	second, err := run("Password for https://github.com")
+	if err != nil || second != "broker-token-2" {
+		t.Fatalf("second password = %q, err=%v", second, err)
+	}
+	config, err := os.ReadFile(captureFile)
+	if err != nil || !strings.Contains(string(config), "Authorization: Bearer capability-secret") {
+		t.Fatalf("curl config = %q, err=%v", config, err)
+	}
+	fallback, err := run("Password for https://github.com", "CURL_FAIL=1", "GITHUB_TOKEN=static-token")
+	if err != nil || fallback != "static-token" {
+		t.Fatalf("fallback = %q, err=%v", fallback, err)
+	}
+	if _, err := run("Password for https://github.com", "CURL_FAIL=1", "GITHUB_TOKEN="); err == nil {
+		t.Fatal("askpass succeeded without broker or fallback token")
+	}
+}
+
+func TestTaskProcessEnvRemovesRunnerRPCBearer(t *testing.T) {
+	t.Setenv("CHETTER_RUNNER_AUTH_TOKEN", "runner-secret")
+	t.Setenv("CHETTER_RUNNER_RPC_TOKEN", "runner-rpc-secret")
+	t.Setenv("CUSTOM_TASK_BASE", "visible")
+	joined := strings.Join(TaskProcessEnv(), "\n")
+	if strings.Contains(joined, "runner-secret") || strings.Contains(joined, "runner-rpc-secret") {
+		t.Fatal("runner RPC bearer leaked into task process environment")
+	}
+	if !strings.Contains(joined, "CUSTOM_TASK_BASE=visible") {
+		t.Fatal("ordinary ambient environment was removed")
 	}
 }
 

@@ -1,10 +1,17 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11);
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks WHERE id = $1;
+
+-- name: PinTaskGitHubInstallation :execrows
+UPDATE chetter_tasks
+SET github_installation_id = sqlc.arg(github_installation_id),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+  AND github_installation_id IS NULL;
 
 -- name: RequeueTaskForPrompt :execrows
 UPDATE chetter_tasks
@@ -151,6 +158,6 @@ SET search_text = concat_ws(' ',
 	COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
 	COALESCE((SELECT agent FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
 	COALESCE((SELECT model_id FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
-	COALESCE(trigger_name, ''), COALESCE(git_url, '')
+	COALESCE(trigger_name, ''), COALESCE(git_url, ''), COALESCE(github_repo, '')
 )
 WHERE chetter_tasks.id = sqlc.arg(id);

@@ -67,6 +67,7 @@ type Repository interface {
 	GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error)
 	GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error)
 	GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error)
+	GetGitHubExecutionContext(ctx context.Context, id string) (repository.GetGitHubExecutionContextRow, error)
 	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error)
 	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSessionCheckpoint, error)
 	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error)
@@ -146,6 +147,7 @@ type Repository interface {
 	MarkUserPromptRunningByTask(ctx context.Context, arg repository.MarkUserPromptRunningByTaskParams) (int64, error)
 	MarkUserPromptTerminalByTask(ctx context.Context, arg repository.MarkUserPromptTerminalByTaskParams) (int64, error)
 	PauseAgentSessionByTaskID(ctx context.Context, arg repository.PauseAgentSessionByTaskIDParams) (int64, error)
+	PinTaskGitHubInstallation(ctx context.Context, arg repository.PinTaskGitHubInstallationParams) (int64, error)
 	ReapStaleSessionsForTerminalRuns(ctx context.Context) (int64, error)
 	ReapStaleUserPrompts(ctx context.Context) (int64, error)
 	RenewExecutionAttemptLease(ctx context.Context, arg repository.RenewExecutionAttemptLeaseParams) (int64, error)
@@ -400,6 +402,11 @@ func (q *Queries) GetExecutionAttemptContext(ctx context.Context, id string) (re
 func (q *Queries) GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error) {
 	value, err := q.postgres.GetExecutionAttemptUsageByTask(ctx, convert[string](taskID))
 	return convert[repository.GetExecutionAttemptUsageByTaskRow](value), err
+}
+
+func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (repository.GetGitHubExecutionContextRow, error) {
+	value, err := q.postgres.GetGitHubExecutionContext(ctx, convert[string](id))
+	return convert[repository.GetGitHubExecutionContextRow](value), err
 }
 
 func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error) {
@@ -779,6 +786,11 @@ func (q *Queries) MarkUserPromptTerminalByTask(ctx context.Context, arg reposito
 
 func (q *Queries) PauseAgentSessionByTaskID(ctx context.Context, arg repository.PauseAgentSessionByTaskIDParams) (int64, error) {
 	value, err := q.postgres.PauseAgentSessionByTaskID(ctx, convert[repositorypostgres.PauseAgentSessionByTaskIDParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) PinTaskGitHubInstallation(ctx context.Context, arg repository.PinTaskGitHubInstallationParams) (int64, error) {
+	value, err := q.postgres.PinTaskGitHubInstallation(ctx, convert[repositorypostgres.PinTaskGitHubInstallationParams](arg))
 	return convert[int64](value), err
 }
 

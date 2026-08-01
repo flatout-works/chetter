@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/config"
@@ -133,14 +134,16 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s cannot resume HTTP sessions", h.Name()), nil)
 			return
 		}
-		mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
+		mcpServer, err := r.startWorkspaceMCP(req)
 		if err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 			return
 		}
 		defer mcpServer.Close()
-		mcpURL := runnerMCPURL(r, mcpServer)
+		req = r.withGitHubCredentialBridge(req, mcpServer)
 		req.RunnerMCPToken = mcpServer.Token()
+		session.Request = req
+		mcpURL := runnerMCPURL(r, mcpServer)
 		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, false); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
@@ -176,9 +179,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 	}()
 
-	gitURL := req.GitURL
 	if req.GitURL != "" {
-		slog.Info("cloning", "taskID", req.TaskID, "url", req.GitURL)
+		slog.Info("cloning", "taskID", req.TaskID)
 		credentialDir := agentenv.GitCloneCredentialDir(wsDir)
 		if err := os.RemoveAll(wsDir); err != nil {
 			slog.Warn("removing stale workspace", "taskID", req.TaskID, "err", err)
@@ -191,23 +193,28 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("prepare Git credentials: %v", err), nil)
 			return
 		}
-		if r.cfg.Git.PAT != "" && strings.HasPrefix(req.GitURL, "https://") {
-			gitURL = agentenv.InjectPATIntoURL(req.GitURL, r.cfg.Git.PAT)
+		cloneToken := r.cfg.Git.PAT
+		if cloneToken == "" {
+			cloneToken = os.Getenv("GITHUB_TOKEN")
 		}
-		cloneCmd := exec.CommandContext(ctx, "git", "clone")
-		if req.GitRef != "" {
-			cloneCmd.Args = append(cloneCmd.Args, "-b", req.GitRef)
+		if selected, err := selectCloneCredential(ctx, req, cloneToken, r.getGitHubCredential); err == nil {
+			cloneToken = selected
+		} else {
+			slog.Warn("GitHub credential broker unavailable for clone; using compatibility fallback", "taskID", req.TaskID, "err", err)
 		}
-		cloneCmd.Args = append(cloneCmd.Args, gitURL, ".")
+		cloneCmd := exec.CommandContext(ctx, "git", gitCloneArgs(req)...)
 		cloneCmd.Dir = wsDir
-		cloneCmd.Env = append(os.Environ(), agentenv.GitCredentialEnv(credentialDir)...)
+		cloneCmd.Env = append(agentenv.TaskProcessEnv(), agentenv.GitCredentialEnv(credentialDir)...)
+		if cloneToken != "" {
+			cloneCmd.Env = append(cloneCmd.Env, "GITHUB_TOKEN="+cloneToken)
+		}
 		if r.cfg.Git.SSHKeyPath != "" {
 			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
 		if out, err := cloneCmd.CombinedOutput(); err != nil {
 			slog.Error("clone error", "taskID", req.TaskID, "err", err, "output", string(out))
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("git clone: %v\n%s", err, string(out)), nil)
-			r.publishActivityEvent("repo", "Git Clone Failed", fmt.Sprintf("Failed to clone %s", req.GitURL), "failed", fmt.Sprintf("%v\n%s", err, string(out)), time.Since(session.StartedAt).Milliseconds())
+			r.publishActivityEvent("repo", "Git Clone Failed", "Failed to clone task repository", "failed", fmt.Sprintf("%v\n%s", err, string(out)), time.Since(session.StartedAt).Milliseconds())
 			return
 		}
 	}
@@ -228,14 +235,16 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
 	}
 
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
+	mcpServer, err := r.startWorkspaceMCP(req)
 	if err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
 		return
 	}
 	defer mcpServer.Close()
-	mcpURL := runnerMCPURL(r, mcpServer)
+	req = r.withGitHubCredentialBridge(req, mcpServer)
 	req.RunnerMCPToken = mcpServer.Token()
+	session.Request = req
+	mcpURL := runnerMCPURL(r, mcpServer)
 
 	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
@@ -276,7 +285,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 }
 
-func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID string) (*mcp.Server, error) {
+func (r *Runner) startWorkspaceMCP(req task.TaskRequest) (*mcp.Server, error) {
 	listenHost := "127.0.0.1"
 	if r.executionMode() != "local" {
 		listenHost = r.runnerHostIP()
@@ -286,16 +295,65 @@ func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID stri
 		return nil, err
 	}
 	if r.mcpRelay != nil {
-		unregister, err := r.mcpRelay.RegisterClaim(mcpServer.Token(), taskID, executionID)
+		unregister, err := r.mcpRelay.RegisterClaim(mcpServer.Token(), req.TaskID, req.ExecutionID)
 		if err != nil {
 			_ = mcpServer.Close()
 			return nil, fmt.Errorf("register MCP relay claim: %w", err)
 		}
 		mcpServer.AddCloseHook(unregister)
 	}
-	r.registerGitHubMCPTools(mcpServer, taskID, executionID)
-	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
+	if strings.TrimSpace(req.GitHubRepo) != "" {
+		if err := mcpServer.SetCredentialHandler(func(ctx context.Context) (string, error) {
+			return r.getGitHubCredential(ctx, req)
+		}); err != nil {
+			_ = mcpServer.Close()
+			return nil, fmt.Errorf("register GitHub credential handler: %w", err)
+		}
+	}
+	r.registerGitHubMCPTools(mcpServer, req.TaskID, req.ExecutionID)
+	slog.Info("MCP server started", "taskID", req.TaskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
+}
+
+func cloneUsesGitHubBroker(req task.TaskRequest) bool {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.GitURL)), "https://") {
+		return false
+	}
+	cloneRepo, err := githubrepo.Parse(req.GitURL)
+	if err != nil {
+		return false
+	}
+	taskRepo, err := githubrepo.Parse(req.GitHubRepo)
+	return err == nil && cloneRepo.Normalized() == taskRepo.Normalized()
+}
+
+func selectCloneCredential(ctx context.Context, req task.TaskRequest, fallback string, get func(context.Context, task.TaskRequest) (string, error)) (string, error) {
+	if !cloneUsesGitHubBroker(req) {
+		return fallback, nil
+	}
+	token, err := get(ctx, req)
+	if err != nil {
+		return fallback, err
+	}
+	return token, nil
+}
+
+func gitCloneArgs(req task.TaskRequest) []string {
+	args := []string{"clone"}
+	if req.GitRef != "" {
+		args = append(args, "-b", req.GitRef)
+	}
+	return append(args, req.GitURL, ".")
+}
+
+func (r *Runner) withGitHubCredentialBridge(req task.TaskRequest, server *mcp.Server) task.TaskRequest {
+	capability := server.Token()
+	if capability == "" {
+		return req
+	}
+	req.GitHubCredentialURL = runnerGitHubCredentialURL(r, server)
+	req.GitHubCredentialToken = capability
+	return req
 }
 
 func (r *Runner) startFinalizationHeartbeat(req task.TaskRequest) func() {
@@ -422,6 +480,10 @@ func runnerMCPURL(r *Runner, mcpServer *mcp.Server) string {
 	return "http://" + net.JoinHostPort(runnerIP, port) + "/mcp"
 }
 
+func runnerGitHubCredentialURL(r *Runner, mcpServer *mcp.Server) string {
+	return strings.TrimSuffix(runnerMCPURL(r, mcpServer), "/mcp") + mcp.GitHubCredentialPath
+}
+
 func (r *Runner) taskChetterMCPURL() string {
 	if r.cfg.ChetterMCP.URL == "" {
 		return ""
@@ -544,7 +606,7 @@ func gvisorHostAliases() []string {
 }
 
 func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.ServeHarness) {
-	env := os.Environ()
+	env := agentenv.TaskProcessEnv()
 	for k, v := range req.Env {
 		if agentenv.IsManagedEnv(k, req) {
 			continue
@@ -1243,12 +1305,8 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	defer removeTaskContainer(containerName)
 
 	gvisor := r.cfg.Execution.UseGVisor
-	netName := ""
-	runnerIP := ""
-	if gvisor {
-		netName = runcNetwork()
-		runnerIP = hostIP(netName)
-	}
+	netName := runcNetwork()
+	runnerIP := hostIP(netName)
 
 	dockerArgs, err := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, r.cfg.Runner.WorkspaceRoot, containerName, h, args, gvisor, netName, runnerIP, r.cfg.Execution)
 	if err != nil {
@@ -1281,9 +1339,11 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, contain
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")
-		dockerArgs = append(dockerArgs, "--network", netName)
 		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
+	}
+	if netName != "" {
+		dockerArgs = append(dockerArgs, "--network", netName)
 	}
 	dockerArgs = appendContainerLimits(dockerArgs, exec, req)
 	dockerArgs = append(dockerArgs,
@@ -1526,7 +1586,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 }
 
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
-	env := os.Environ()
+	env := agentenv.TaskProcessEnv()
 	for k, v := range req.Env {
 		if agentenv.IsManagedEnv(k, req) {
 			continue

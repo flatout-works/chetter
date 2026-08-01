@@ -13,7 +13,32 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
-const gitAskpassFilename = ".chetter-git-askpass"
+const (
+	gitAskpassFilename       = ".chetter-git-askpass"
+	GitHubCredentialURLEnv   = "CHETTER_GITHUB_CREDENTIAL_URL"
+	GitHubCredentialTokenEnv = "CHETTER_GITHUB_CREDENTIAL_TOKEN"
+)
+
+const gitAskpassScript = `#!/bin/sh
+case "${1:-}" in
+  *Username*) printf '%s\n' x-access-token; exit 0 ;;
+esac
+if [ -n "${CHETTER_GITHUB_CREDENTIAL_URL:-}" ] && [ -n "${CHETTER_GITHUB_CREDENTIAL_TOKEN:-}" ]; then
+  token="$(
+    printf 'request = "POST"\nheader = "Authorization: Bearer %s"\n' "$CHETTER_GITHUB_CREDENTIAL_TOKEN" |
+      curl --fail --silent --show-error --config - "$CHETTER_GITHUB_CREDENTIAL_URL" 2>/dev/null
+  )" || token=""
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token"
+    exit 0
+  fi
+fi
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  printf '%s\n' "$GITHUB_TOKEN"
+  exit 0
+fi
+exit 1
+`
 
 // HostWorkspaceDir maps a manager-owned runner workspace path to its host bind
 // mount path when the runner is itself containerized. Both the source path and
@@ -67,6 +92,21 @@ func AppendRunnerOwnedEnv(env []string) []string {
 	return env
 }
 
+// TaskProcessEnv removes runner-control credentials from the ambient process
+// environment before it is inherited by a local task process.
+func TaskProcessEnv() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, value := range env {
+		key, _, _ := strings.Cut(value, "=")
+		if isRunnerPrivateEnv(key) {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
 // AddRunnerOwnedEnv adds non-empty runner-owned environment values to env.
 func AddRunnerOwnedEnv(env map[string]string) {
 	for _, key := range runnerOwnedEnvKeys() {
@@ -109,12 +149,18 @@ func GitIdentityEnv(req task.TaskRequest, workspace string) []string {
 		"GIT_COMMITTER_NAME=" + req.GitAuthorName,
 		"GIT_COMMITTER_EMAIL=" + req.GitAuthorEmail,
 	}
+	if req.GitHubCredentialURL != "" && req.GitHubCredentialToken != "" {
+		env = append(env,
+			GitHubCredentialURLEnv+"="+req.GitHubCredentialURL,
+			GitHubCredentialTokenEnv+"="+req.GitHubCredentialToken,
+		)
+	}
 	return append(env, GitCredentialEnv(workspace)...)
 }
 
 // WriteGitAskpass writes the GitHub token askpass helper into workspace.
 func WriteGitAskpass(workspace string) error {
-	if err := os.WriteFile(filepath.Join(workspace, gitAskpassFilename), []byte("#!/bin/sh\ncase \"$1\" in\n  *Username*) printf '%s\\n' x-access-token ;;\n  *) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\nesac\n"), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, gitAskpassFilename), []byte(gitAskpassScript), 0700); err != nil {
 		return fmt.Errorf("write Git askpass helper: %w", err)
 	}
 	return nil
@@ -125,12 +171,9 @@ func GitCloneCredentialDir(workspace string) string {
 	return filepath.Dir(workspace)
 }
 
-// GitCredentialEnv returns Git askpass variables when a GitHub token is set.
+// GitCredentialEnv returns the no-secret Git askpass configuration.
 func GitCredentialEnv(workspace string) []string {
-	if os.Getenv("GITHUB_TOKEN") == "" {
-		return nil
-	}
-	return []string{"GIT_ASKPASS=" + filepath.Join(workspace, gitAskpassFilename), "GIT_TERMINAL_PROMPT=0"}
+	return []string{"GIT_ASKPASS=" + filepath.Join(workspace, gitAskpassFilename), "GIT_ASKPASS_REQUIRE=force", "GIT_TERMINAL_PROMPT=0"}
 }
 
 // ProviderCredentialEnv returns the resolved provider credential environment.
@@ -148,7 +191,7 @@ func ProviderCredentialEnv(req task.TaskRequest) []string {
 // IsManagedEnv reports whether key is owned by the runner and must not be
 // overridden by task-provided environment values.
 func IsManagedEnv(key string, req task.TaskRequest) bool {
-	if IsRunnerOwnedEnv(key) {
+	if IsRunnerOwnedEnv(key) || isRunnerPrivateEnv(key) || key == GitHubCredentialURLEnv || key == GitHubCredentialTokenEnv {
 		return true
 	}
 	credKey := strings.TrimSpace(req.ProviderAPIKeyEnv)
@@ -161,6 +204,15 @@ func IsManagedEnv(key string, req task.TaskRequest) bool {
 		}
 	}
 	return false
+}
+
+func isRunnerPrivateEnv(key string) bool {
+	switch key {
+	case "CHETTER_RUNNER_AUTH_TOKEN", "CHETTER_RUNNER_RPC_TOKEN", "MCP_AUTH_TOKEN", "CHETTER_MCP_AUTH_TOKEN", GitHubCredentialURLEnv, GitHubCredentialTokenEnv:
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidateEndpointTokenEnvironment verifies that endpoint bearer credentials
@@ -250,14 +302,6 @@ func ShellQuoteArg(arg string) string {
 		}
 	}
 	return arg
-}
-
-// InjectPATIntoURL adds pat to an HTTPS clone URL.
-func InjectPATIntoURL(raw, pat string) string {
-	if !strings.HasPrefix(raw, "https://") || pat == "" {
-		return raw
-	}
-	return "https://" + pat + "@" + raw[len("https://"):]
 }
 
 func endpointTokenEnvKeys(endpoints []task.MCPEndpoint) []string {

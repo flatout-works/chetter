@@ -2,6 +2,9 @@ package testdb
 
 import (
 	"context"
+	"io/fs"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,12 +25,13 @@ func TestPostgresApplySchemaUpgradesVersionedDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create migration provider: %v", err)
 	}
-	results, err := provider.DownTo(ctx, 22)
+	latest := latestPostgresMigrationVersion(t)
+	results, err := provider.DownTo(ctx, latest-1)
 	if err != nil {
-		t.Fatalf("downgrade schema to migration 22: %v", err)
+		t.Fatalf("downgrade schema to migration %d: %v", latest-1, err)
 	}
-	if len(results) != 1 || results[0].Source.Version != 23 {
-		t.Fatalf("downgrade results = %#v, want migration 23", results)
+	if len(results) != 1 || results[0].Source.Version != latest {
+		t.Fatalf("downgrade results = %#v, want migration %d", results, latest)
 	}
 
 	if _, err := oldDB.DB.ExecContext(ctx, `
@@ -74,6 +78,32 @@ func TestPostgresApplySchemaUpgradesVersionedDatabase(t *testing.T) {
 	if tokenID != "token_upgrade_test" || !expiresIsNull {
 		t.Fatalf("upgraded token = (%q, expires null %v)", tokenID, expiresIsNull)
 	}
+}
+
+func latestPostgresMigrationVersion(t *testing.T) int64 {
+	t.Helper()
+	entries, err := fs.ReadDir(postgresmigrations.Files, ".")
+	if err != nil {
+		t.Fatalf("read embedded postgres migrations: %v", err)
+	}
+	var latest int64
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		versionText := strings.SplitN(filepath.Base(entry.Name()), "_", 2)[0]
+		version, err := strconv.ParseInt(versionText, 10, 64)
+		if err != nil {
+			t.Fatalf("parse migration version from %q: %v", entry.Name(), err)
+		}
+		if version > latest {
+			latest = version
+		}
+	}
+	if latest == 0 {
+		t.Fatal("no embedded postgres migrations")
+	}
+	return latest
 }
 
 func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) {

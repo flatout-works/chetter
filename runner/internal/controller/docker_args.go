@@ -53,7 +53,7 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		"-e", "CHETTER_RUNNER_IMAGE="+os.Getenv("CHETTER_RUNNER_IMAGE"),
 		"-e", "CHETTER_RUNNER_IMAGE_DIGEST="+os.Getenv("CHETTER_RUNNER_IMAGE_DIGEST"),
 	)
-	for _, value := range agentenv.GitIdentityEnv(req, workspaceDir) {
+	for _, value := range agentenv.GitIdentityEnv(req, "/workspace") {
 		dockerArgs = append(dockerArgs, "-e", value)
 	}
 	dockerArgs = append(dockerArgs, "-e", "HOME=/workspace")

@@ -104,6 +104,7 @@ func run() error {
 	}
 
 	svc := service.New(cfg, st)
+	var githubManager *webhook.Manager
 	if defs != nil {
 		svc.SetDefinitions(defs)
 		if _, err := svc.SyncDefinitions(ctx); err != nil {
@@ -111,11 +112,11 @@ func run() error {
 		}
 	}
 	if cfg.GitHubAppConfigured() {
-		gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
+		githubManager, err = newGitHubManager(cfg)
 		if err != nil {
-			return fmt.Errorf("configure github app client: %w", err)
+			return fmt.Errorf("configure github app manager: %w", err)
 		}
-		svc.SetGitHubClient(gh)
+		svc.SetGitHubManager(githubManager)
 	}
 	eventBus := webapi.NewEventBus()
 	runnerSvc := service.NewRunnerRPCService(data.New(st.DB(), st.Dialect()), st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
@@ -134,7 +135,7 @@ func run() error {
 		Logger:       slog.Default(),
 	})
 
-	whHandler := buildWebhookHandler(cfg, svc, service.NewWebhookDeliveryStoreAdapter(st.DB(), st.Dialect(), svc.LogAuditEvent))
+	whHandler := buildWebhookHandler(cfg, svc, githubManager, service.NewWebhookDeliveryStoreAdapter(st.DB(), st.Dialect(), svc.LogAuditEvent))
 
 	// Start the webhook delivery retry worker. It retries failed deliveries
 	// with exponential backoff (1s/5s/15s) and dead-letters them after 3
@@ -407,14 +408,13 @@ func runnerRPCAuthMiddleware(runnerToken string, next http.Handler) http.Handler
 // the GitHub App is not configured (in which case the route is not
 // registered). When deliveryStore is non-nil, deliveries are persisted for
 // idempotency, retry, and status tracking. See issue #102.
-func buildWebhookHandler(cfg config.Config, svc *service.Service, deliveryStore webhook.DeliveryStore) *webhook.Handler {
-	if !cfg.GitHubConfigured() {
-		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, GITHUB_INSTALLATION_ID, or GITHUB_WEBHOOK_SECRET); skipping /webhook/github route")
+func buildWebhookHandler(cfg config.Config, svc *service.Service, githubManager *webhook.Manager, deliveryStore webhook.DeliveryStore) *webhook.Handler {
+	if !cfg.GitHubWebhookConfigured() {
+		slog.Info("github webhook not configured (missing GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_B64, or GITHUB_WEBHOOK_SECRET, or disabled); skipping /webhook/github route")
 		return nil
 	}
-	gh, err := webhook.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubAppPrivateKeyB64)
-	if err != nil {
-		slog.Error("github webhook: create client", "err", err)
+	if githubManager == nil {
+		slog.Error("github webhook: app manager is unavailable")
 		return nil
 	}
 	submitter := webhook.NewServiceSubmitter(&serviceSubmitterAdapter{svc: svc})
@@ -422,7 +422,15 @@ func buildWebhookHandler(cfg config.Config, svc *service.Service, deliveryStore 
 	return webhook.NewHandler(webhook.HandlerConfig{
 		Disabled:      cfg.GitHubWebhookDisabled,
 		WebhookSecret: cfg.GitHubWebhookSecret,
-	}, gh, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc}, resumer, deliveryStore)
+	}, githubManager, submitter, svc, &auditLoggerAdapter{svc: svc}, &artifactRecorderAdapter{svc: svc}, resumer, deliveryStore)
+}
+
+func newGitHubManager(cfg config.Config) (*webhook.Manager, error) {
+	options := make([]webhook.ManagerOption, 0, 1)
+	if cfg.GitHubInstallationID > 0 {
+		options = append(options, webhook.WithLegacyInstallationID(cfg.GitHubInstallationID))
+	}
+	return webhook.NewManager(cfg.GitHubAppID, cfg.GitHubAppPrivateKeyB64, options...)
 }
 
 type auditLoggerAdapter struct{ svc *service.Service }
@@ -477,24 +485,26 @@ type serviceSubmitterAdapter struct {
 // format and calls service.SubmitTask. The TaskRecord return value is ignored.
 func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.SubmitTaskRequest) (any, error) {
 	return a.svc.SubmitTask(ctx, service.SubmitTaskRequest{
-		TeamID:           req.TeamID,
-		Prompt:           req.Prompt,
-		GitURL:           req.GitURL,
-		GitRef:           req.GitRef,
-		AgentImage:       req.AgentImage,
-		Agent:            req.Agent,
-		ProviderID:       req.ProviderID,
-		ModelID:          req.ModelID,
-		VariantID:        req.VariantID,
-		Skills:           req.Skills,
-		Env:              req.Env,
-		TimeoutSec:       req.TimeoutSec,
-		TriggerName:      req.TriggerName,
-		TriggerType:      req.TriggerType,
-		SubmissionSource: "trigger",
-		SessionMode:      req.SessionMode,
-		PauseReason:      req.PauseReason,
-		TTLHours:         req.TTLHours,
+		TeamID:               req.TeamID,
+		Prompt:               req.Prompt,
+		GitURL:               req.GitURL,
+		GitRef:               req.GitRef,
+		GitHubRepo:           req.GitHubRepo,
+		GitHubInstallationID: req.GitHubInstallationID,
+		AgentImage:           req.AgentImage,
+		Agent:                req.Agent,
+		ProviderID:           req.ProviderID,
+		ModelID:              req.ModelID,
+		VariantID:            req.VariantID,
+		Skills:               req.Skills,
+		Env:                  req.Env,
+		TimeoutSec:           req.TimeoutSec,
+		TriggerName:          req.TriggerName,
+		TriggerType:          req.TriggerType,
+		SubmissionSource:     "trigger",
+		SessionMode:          req.SessionMode,
+		PauseReason:          req.PauseReason,
+		TTLHours:             req.TTLHours,
 	})
 }
 

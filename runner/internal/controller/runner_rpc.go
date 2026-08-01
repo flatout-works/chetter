@@ -30,6 +30,7 @@ type runnerRPCClient interface {
 	GitHubIssueComment(context.Context, *connect.Request[runnerv1.GitHubIssueCommentRequest]) (*connect.Response[runnerv1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[runnerv1.GitHubCreatePRRequest]) (*connect.Response[runnerv1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[runnerv1.GitHubPRReviewRequest]) (*connect.Response[runnerv1.GitHubPRReviewResponse], error)
+	GetGitHubCredential(context.Context, *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error)
 }
 
 func (r *Runner) startConnectRPC(ctx context.Context) error {
@@ -125,6 +126,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		Prompt:                 t.Prompt,
 		GitURL:                 t.GitUrl,
 		GitRef:                 t.GitRef,
+		GitHubRepo:             t.GithubRepo,
 		Agent:                  t.Agent,
 		ProviderID:             t.ProviderId,
 		ModelID:                t.ModelId,

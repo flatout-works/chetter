@@ -19,6 +19,7 @@ type TaskRequest struct {
 	Command                []string          `json:"command,omitempty"`
 	GitURL                 string            `json:"git_url,omitempty"`
 	GitRef                 string            `json:"git_ref,omitempty"`
+	GitHubRepo             string            `json:"github_repo,omitempty"`
 	Agent                  string            `json:"agent,omitempty"`
 	ProviderID             string            `json:"provider_id,omitempty"`
 	ModelID                string            `json:"model_id,omitempty"`
@@ -46,6 +47,8 @@ type TaskRequest struct {
 	GitIdentityID          string            `json:"git_identity_id,omitempty"`
 	GitAuthorName          string            `json:"git_author_name,omitempty"`
 	GitAuthorEmail         string            `json:"git_author_email,omitempty"`
+	GitHubCredentialURL    string            `json:"-"`
+	GitHubCredentialToken  string            `json:"-"`
 }
 
 // MCPEndpoint describes a remote MCP server the agent should connect to.

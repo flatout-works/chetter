@@ -136,7 +136,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE id = ?
 `
 
@@ -163,28 +163,32 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.SubmissionSource,
 		&i.FailureCategory,
 		&i.FailureMessage,
+		&i.GithubRepo,
+		&i.GithubInstallationID,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskParams struct {
-	ID               string         `json:"id"`
-	TeamID           sql.NullString `json:"team_id"`
-	Prompt           string         `json:"prompt"`
-	GitUrl           sql.NullString `json:"git_url"`
-	GitRef           sql.NullString `json:"git_ref"`
-	TriggerName      sql.NullString `json:"trigger_name"`
-	TriggerType      sql.NullString `json:"trigger_type"`
-	SubmissionSource string         `json:"submission_source"`
-	SearchText       sql.NullString `json:"search_text"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	ID                   string         `json:"id"`
+	TeamID               sql.NullString `json:"team_id"`
+	Prompt               string         `json:"prompt"`
+	GitUrl               sql.NullString `json:"git_url"`
+	GitRef               sql.NullString `json:"git_ref"`
+	GithubRepo           sql.NullString `json:"github_repo"`
+	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
+	TriggerName          sql.NullString `json:"trigger_name"`
+	TriggerType          sql.NullString `json:"trigger_type"`
+	SubmissionSource     string         `json:"submission_source"`
+	SearchText           sql.NullString `json:"search_text"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
@@ -194,6 +198,8 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.Prompt,
 		arg.GitUrl,
 		arg.GitRef,
+		arg.GithubRepo,
+		arg.GithubInstallationID,
 		arg.TriggerName,
 		arg.TriggerType,
 		arg.SubmissionSource,
@@ -205,7 +211,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE (? = '' OR chetter_tasks.status = ?)
   AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
@@ -262,6 +268,8 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.SubmissionSource,
 			&i.FailureCategory,
 			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
 		); err != nil {
 			return nil, err
 		}
@@ -277,7 +285,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE chetter_tasks.team_id = ?
   AND (? = '' OR chetter_tasks.status = ?)
   AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
@@ -337,6 +345,8 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.SubmissionSource,
 			&i.FailureCategory,
 			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
 		); err != nil {
 			return nil, err
 		}
@@ -352,7 +362,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE chetter_tasks.team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR chetter_tasks.status = ?)
   AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
@@ -420,6 +430,8 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.SubmissionSource,
 			&i.FailureCategory,
 			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
 		); err != nil {
 			return nil, err
 		}
@@ -454,6 +466,28 @@ func (q *Queries) MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams
 	return result.RowsAffected()
 }
 
+const pinTaskGitHubInstallation = `-- name: PinTaskGitHubInstallation :execrows
+UPDATE chetter_tasks
+SET github_installation_id = ?,
+    updated_at = ?
+WHERE id = ?
+  AND github_installation_id IS NULL
+`
+
+type PinTaskGitHubInstallationParams struct {
+	GithubInstallationID sql.NullInt64 `json:"github_installation_id"`
+	UpdatedAt            time.Time     `json:"updated_at"`
+	ID                   string        `json:"id"`
+}
+
+func (q *Queries) PinTaskGitHubInstallation(ctx context.Context, arg PinTaskGitHubInstallationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pinTaskGitHubInstallation, arg.GithubInstallationID, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const requeueTaskForPrompt = `-- name: RequeueTaskForPrompt :execrows
 UPDATE chetter_tasks
 SET status = 'pending',
@@ -482,7 +516,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE (? = '' OR chetter_tasks.team_id = ?)
   AND (? = '' OR chetter_tasks.status = ?)
   AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
@@ -546,6 +580,8 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 			&i.SubmissionSource,
 			&i.FailureCategory,
 			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
 		); err != nil {
 			return nil, err
 		}
@@ -561,7 +597,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
 WHERE chetter_tasks.team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR chetter_tasks.status = ?)
   AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
@@ -632,6 +668,8 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.SubmissionSource,
 			&i.FailureCategory,
 			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
 		); err != nil {
 			return nil, err
 		}
@@ -697,7 +735,7 @@ SET search_text = CONCAT_WS(' ',
 	COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
 	COALESCE((SELECT agent FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
 	COALESCE((SELECT model_id FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
-	COALESCE(trigger_name, ''), COALESCE(git_url, '')
+	COALESCE(trigger_name, ''), COALESCE(git_url, ''), COALESCE(github_repo, '')
 )
 WHERE chetter_tasks.id = ?
 `

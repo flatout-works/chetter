@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/internal/store"
 )
 
@@ -67,34 +68,11 @@ type UsageSummaryRow struct {
 // repoFromGitURL extracts an owner/repo string from a git URL.
 // Returns empty string if extraction fails.
 func repoFromGitURL(gitURL string) string {
-	if gitURL == "" {
+	repo, err := githubrepo.Parse(gitURL)
+	if err != nil {
 		return ""
 	}
-	// Handle SSH-style: git@github.com:owner/repo.git
-	if strings.Contains(gitURL, "@") && strings.Contains(gitURL, ":") {
-		if idx := strings.LastIndex(gitURL, ":"); idx >= 0 {
-			path := gitURL[idx+1:]
-			path = strings.TrimSuffix(path, ".git")
-			path = strings.TrimSuffix(path, "/")
-			return path
-		}
-	}
-	// Handle HTTPS-style: https://github.com/owner/repo.git
-	// Strip protocol
-	s := gitURL
-	s = strings.TrimPrefix(s, "https://")
-	s = strings.TrimPrefix(s, "http://")
-	// Strip host
-	if idx := strings.Index(s, "/"); idx >= 0 {
-		s = s[idx+1:]
-	}
-	s = strings.TrimSuffix(s, ".git")
-	s = strings.TrimSuffix(s, "/")
-	// Only return if it looks like owner/repo (at least one slash)
-	if strings.Count(s, "/") >= 1 && !strings.Contains(s, " ") {
-		return s
-	}
-	return ""
+	return repo.FullName()
 }
 
 // GetUsageSummary returns aggregated token usage and cost summaries.

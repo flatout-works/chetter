@@ -10,9 +10,41 @@ import (
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	runnermcp "github.com/flatout-works/chetter/runner/internal/mcp"
+	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
 const githubToolTimeout = 30 * time.Second
+
+type githubCredentialRPCClient interface {
+	GetGitHubCredential(context.Context, *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error)
+}
+
+func requestGitHubCredential(ctx context.Context, client githubCredentialRPCClient, runnerID string, req *runnerv1.GetGitHubCredentialRequest) (string, error) {
+	req.RunnerId = runnerID
+	callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
+	defer cancel()
+	resp, err := client.GetGitHubCredential(callCtx, connect.NewRequest(req))
+	if err != nil {
+		return "", err
+	}
+	if resp.Msg.Username != "x-access-token" || strings.TrimSpace(resp.Msg.Token) == "" {
+		return "", fmt.Errorf("GitHub credential response is incomplete")
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, resp.Msg.ExpiresAt)
+	if err != nil || !expiresAt.After(time.Now()) {
+		return "", fmt.Errorf("GitHub credential response has invalid expiry")
+	}
+	return resp.Msg.Token, nil
+}
+
+func (r *Runner) getGitHubCredential(ctx context.Context, req task.TaskRequest) (string, error) {
+	if r.rpcClient == nil {
+		return "", fmt.Errorf("runner RPC client is unavailable")
+	}
+	return requestGitHubCredential(ctx, r.rpcClient, r.runnerID, &runnerv1.GetGitHubCredentialRequest{
+		TaskId: req.TaskID, ExecutionId: req.ExecutionID, Repo: req.GitHubRepo,
+	})
+}
 
 func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, executionID string) {
 	for _, def := range runnermcp.ToolDefinitions() {
@@ -44,6 +76,7 @@ func (r *Runner) githubCreateIssueTool(taskID, executionID string) runnermcp.Too
 		resp, err := r.rpcClient.GitHubCreateIssue(callCtx, connect.NewRequest(&runnerv1.GitHubCreateIssueRequest{
 			TaskId:      taskID,
 			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
 			Repo:        repo,
 			Title:       title,
 			Body:        optionalString(args, "body"),
@@ -75,6 +108,7 @@ func (r *Runner) githubIssueCommentTool(taskID, executionID string) runnermcp.To
 		resp, err := r.rpcClient.GitHubIssueComment(callCtx, connect.NewRequest(&runnerv1.GitHubIssueCommentRequest{
 			TaskId:      taskID,
 			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
 			Repo:        repo,
 			IssueNumber: int32(issueNumber),
 			Body:        body,
@@ -109,6 +143,7 @@ func (r *Runner) githubCreatePRTool(taskID, executionID string) runnermcp.ToolHa
 		resp, err := r.rpcClient.GitHubCreatePR(callCtx, connect.NewRequest(&runnerv1.GitHubCreatePRRequest{
 			TaskId:      taskID,
 			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
 			Repo:        repo,
 			Title:       title,
 			Body:        optionalString(args, "body"),
@@ -142,6 +177,7 @@ func (r *Runner) githubPRReviewTool(taskID, executionID string) runnermcp.ToolHa
 		resp, err := r.rpcClient.GitHubPRReview(callCtx, connect.NewRequest(&runnerv1.GitHubPRReviewRequest{
 			TaskId:      taskID,
 			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
 			Repo:        repo,
 			PrNumber:    int32(prNumber),
 			Body:        body,

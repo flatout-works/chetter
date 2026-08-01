@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/runner/harness/opencode"
+	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/task"
 	corev1 "k8s.io/api/core/v1"
@@ -148,7 +149,9 @@ func TestKubernetesEnvironmentManagedValuesWin(t *testing.T) {
 	t.Setenv("RUNNER_HOST_IP", "10.0.0.8")
 	r := kubernetesTestRunner()
 	req := kubernetesTestRequest()
-	req.Env = map[string]string{"OPENAI_API_KEY": "task-key", "CUSTOM": "task-value", "CHETTER_EXECUTION_ID": "wrong"}
+	req.GitHubCredentialURL = "http://10.0.0.8/internal/github-credential"
+	req.GitHubCredentialToken = "execution-capability"
+	req.Env = map[string]string{"OPENAI_API_KEY": "task-key", "CUSTOM": "task-value", "CHETTER_EXECUTION_ID": "wrong", agentenv.GitHubCredentialTokenEnv: "attacker-capability"}
 	data := r.kubernetesEnvironment(req, "/workspace", "server-secret", opencode.New())
 	if string(data["OPENAI_API_KEY"]) != "runner-key" || string(data["CHETTER_EXECUTION_ID"]) != req.ExecutionID {
 		t.Fatal("task environment overrode managed values")
@@ -158,6 +161,9 @@ func TestKubernetesEnvironmentManagedValuesWin(t *testing.T) {
 	}
 	if string(data["HTTP_PROXY"]) != "http://10.0.0.8:18080" {
 		t.Fatalf("proxy = %q", data["HTTP_PROXY"])
+	}
+	if string(data[agentenv.GitHubCredentialURLEnv]) != req.GitHubCredentialURL || string(data[agentenv.GitHubCredentialTokenEnv]) != req.GitHubCredentialToken {
+		t.Fatal("Kubernetes credential bridge environment is missing or overridden")
 	}
 }
 

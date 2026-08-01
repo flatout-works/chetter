@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flatout-works/chetter/runner/internal/agentenv"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -123,46 +122,6 @@ func TestValidateTaskResourceLimits(t *testing.T) {
 		})
 	}
 }
-
-func TestInjectPATIntoURL(t *testing.T) {
-	tests := []struct {
-		name, url, pat, want string
-	}{
-		{
-			"github with pat",
-			"https://github.com/owner/repo.git",
-			"abc123",
-			"https://abc123@github.com/owner/repo.git",
-		},
-		{
-			"gitlab with pat",
-			"https://gitlab.com/owner/repo.git",
-			"tok",
-			"https://tok@gitlab.com/owner/repo.git",
-		},
-		{
-			"empty pat",
-			"https://github.com/owner/repo.git",
-			"",
-			"https://github.com/owner/repo.git",
-		},
-		{
-			"non-https url",
-			"git@github.com:owner/repo.git",
-			"abc123",
-			"git@github.com:owner/repo.git",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := agentenv.InjectPATIntoURL(tc.url, tc.pat)
-			if got != tc.want {
-				t.Errorf("injectPATIntoURL(%q, %q) = %q, want %q", tc.url, tc.pat, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestTaskPromptTimeout(t *testing.T) {
 	tests := []struct {
 		input int

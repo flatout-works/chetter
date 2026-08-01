@@ -177,25 +177,27 @@ type ChetterRunner struct {
 }
 
 type ChetterTask struct {
-	ID               string         `json:"id"`
-	Status           string         `json:"status"`
-	Prompt           string         `json:"prompt"`
-	GitUrl           sql.NullString `json:"git_url"`
-	GitRef           sql.NullString `json:"git_ref"`
-	Summary          sql.NullString `json:"summary"`
-	Error            sql.NullString `json:"error"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	EndedAt          sql.NullTime   `json:"ended_at"`
-	TeamID           sql.NullString `json:"team_id"`
-	TriggerName      sql.NullString `json:"trigger_name"`
-	TriggerType      sql.NullString `json:"trigger_type"`
-	MaxAttempts      int32          `json:"max_attempts"`
-	SearchText       sql.NullString `json:"search_text"`
-	ErrorCategory    sql.NullString `json:"error_category"`
-	SubmissionSource string         `json:"submission_source"`
-	FailureCategory  sql.NullString `json:"failure_category"`
-	FailureMessage   sql.NullString `json:"failure_message"`
+	ID                   string         `json:"id"`
+	Status               string         `json:"status"`
+	Prompt               string         `json:"prompt"`
+	GitUrl               sql.NullString `json:"git_url"`
+	GitRef               sql.NullString `json:"git_ref"`
+	Summary              sql.NullString `json:"summary"`
+	Error                sql.NullString `json:"error"`
+	CreatedAt            time.Time      `json:"created_at"`
+	UpdatedAt            time.Time      `json:"updated_at"`
+	EndedAt              sql.NullTime   `json:"ended_at"`
+	TeamID               sql.NullString `json:"team_id"`
+	TriggerName          sql.NullString `json:"trigger_name"`
+	TriggerType          sql.NullString `json:"trigger_type"`
+	MaxAttempts          int32          `json:"max_attempts"`
+	SearchText           sql.NullString `json:"search_text"`
+	ErrorCategory        sql.NullString `json:"error_category"`
+	SubmissionSource     string         `json:"submission_source"`
+	FailureCategory      sql.NullString `json:"failure_category"`
+	FailureMessage       sql.NullString `json:"failure_message"`
+	GithubRepo           sql.NullString `json:"github_repo"`
+	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
 }
 
 type ChetterTaskArtifact struct {

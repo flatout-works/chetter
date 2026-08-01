@@ -40,6 +40,22 @@ FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = $1;
 
+-- name: GetGitHubExecutionContext :one
+SELECT attempt.id AS execution_attempt_id,
+       prompt.id AS user_prompt_id,
+       prompt.agent_session_id,
+       prompt.task_id,
+       attempt.runner_id,
+       attempt.status AS execution_status,
+       attempt.lease_expires_at,
+       task.status AS task_status,
+       task.github_repo,
+       task.github_installation_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_tasks task ON task.id = prompt.task_id
+WHERE attempt.id = $1;
+
 -- name: ListExecutionAttemptsByPrompt :many
 SELECT * FROM chetter_execution_attempts
 WHERE user_prompt_id = $1
