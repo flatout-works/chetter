@@ -361,11 +361,11 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ApplyBootstrapSchema(ctx); err != nil {
 		return err
 	}
-	if s.IsPostgres() {
-		return nil
-	}
 	if err := s.ensureTaskGitHubMetadataColumns(ctx); err != nil {
 		return err
+	}
+	if s.IsPostgres() {
+		return nil
 	}
 	if err := s.ensureTaskMetadataColumns(ctx); err != nil {
 		return err
