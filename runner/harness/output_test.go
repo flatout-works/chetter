@@ -1,10 +1,28 @@
 package harness
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 	"unicode/utf8"
 )
+
+func TestLogOutputIncludesFinalUnterminatedLine(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	LogOutput("pi", "task-1", "stdout", strings.NewReader("first line\nfinal line"))
+
+	got := logs.String()
+	for _, want := range []string{"msg=\"pi output\"", "taskID=task-1", "stream=stdout", "line=\"first line\"", "line=\"final line\""} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("logs do not contain %q:\n%s", want, got)
+		}
+	}
+}
 
 func TestTruncateOutputLine(t *testing.T) {
 	tests := []struct {
