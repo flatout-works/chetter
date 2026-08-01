@@ -91,7 +91,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	url := m.repoURLWithAuth()
 	info, err := os.Stat(m.cacheDir)
 	if err == nil && info.IsDir() {
-		cmd := exec.CommandContext(ctx, "git", "pull", "--ff-only", "origin", m.branch)
+		cmd := exec.CommandContext(ctx, "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "pull", "--ff-only", "origin", m.branch)
 		cmd.Dir = m.cacheDir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -103,7 +103,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(m.cacheDir), 0755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--branch", m.branch, url, m.cacheDir)
+	cmd := exec.CommandContext(ctx, "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "clone", "--depth", "1", "--branch", m.branch, url, m.cacheDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git clone: %w\n%s", err, string(out))
