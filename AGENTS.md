@@ -217,7 +217,7 @@ Before committing, verify:
 - **Bot-comment filtering**: the webhook handler skips comments from the Chetter GitHub App itself unless the trigger config includes `bot_comments:true`.
 - **Heartbeat events**: `opencode: server.heartbeat` events update the task lease on every occurrence, but are stored as event rows at most once per minute per task (`heartbeatEventMinInterval`). This preserves the ability to trace when a runner went silent without flooding `chetter_task_events`.
 - **Network isolation**: gVisor (`--runtime runsc`) provides sandboxing in Docker mode. The legacy bridge/netns/iptables code has been removed.
-- **Runner MCP capabilities**: each execution gets a fresh 256-bit bearer token for its runner MCP server and the runner-wide Chetter MCP relay. Listeners bind to loopback or the runner interface, harness config files containing capabilities use mode `0600`, relay capabilities are revoked on execution-server close, and local capabilities must never be serialized or logged.
+- **Runner MCP capabilities**: each execution gets a fresh 256-bit bearer token for its runner MCP server and the runner-wide Chetter MCP relay. Listeners bind to loopback or the runner interface, harness config files containing capabilities use mode `0600`, relay capabilities are revoked on execution-server close, and local capabilities must never be serialized or logged. Relay rejection counters travel in runner heartbeats; increases become system-scoped audit events and feed the aggregate `chetter_mcp_relay_rejected_requests` metric.
 
 ## Environment & Config
 

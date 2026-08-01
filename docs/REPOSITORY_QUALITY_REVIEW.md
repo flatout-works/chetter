@@ -24,7 +24,7 @@ Work started on the highest-priority, independently reviewable items:
 - [x] Fix Pi's explicit model/provider precedence and make the regression test independent of ambient Pi variables.
 - [x] Update the frontend lockfile to resolve the PostCSS security advisory; `npm audit --omit=dev` reports no vulnerabilities.
 - [x] Authenticate per-task MCP listeners with unique bearer tokens, inject credentials into every harness, and bind listeners to the runner interface instead of all interfaces.
-- [x] Authenticate the runner-wide Chetter MCP relay with active execution capabilities, revoke them at execution cleanup, and prevent unauthorized upstream contact.
+- [x] Authenticate the runner-wide Chetter MCP relay with active execution capabilities, revoke them at execution cleanup, prevent unauthorized upstream contact, and surface rejection increases through control-plane audit events and metrics.
 - [x] Make PostgreSQL startup apply embedded, advisory-locked Goose migrations before bootstrap DDL, reject unsafe unversioned schemas, and test upgrades from an older migration.
 - [x] Remove confirmed dead runner packages and stale compile-time placeholders.
 - [x] Consolidate duplicated harness output logging into the shared harness package.
