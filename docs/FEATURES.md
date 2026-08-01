@@ -98,7 +98,7 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 
 Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side). Compose currently passes it to runner containers through `CHETTER_RUNNER_AUTH_TOKEN` for compatibility with runner config fallback order.
 
-When containers use the runner-wide Chetter MCP relay, the relay accepts only capabilities registered for active executions. It replaces the execution capability with the runner's upstream credential and forwards execution/task fencing headers. Missing, invalid, and revoked capabilities are rejected before contacting the control plane.
+When containers use the runner-wide Chetter MCP relay, the relay accepts only capabilities registered for active executions. It replaces the execution capability with the runner's upstream credential and forwards execution/task fencing headers. Missing, invalid, and revoked capabilities are rejected before contacting the control plane. Runners report the cumulative rejection count in heartbeats; increases create system-scoped `runner_mcp_relay_request_rejected` audit events.
 
 ## Data Retention And Storage Pruning
 
@@ -223,7 +223,7 @@ Severity filters: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN`.
 
 Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Aggregate token usage and cost totals are available grouped by team, trigger, and repository.
 
-A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors alongside custom `chetter_*` gauges: task counts by status, runner fleet health (active/stale, available/occupied slots), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors alongside custom `chetter_*` gauges: task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejection reports, and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 Tools:
 

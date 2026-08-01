@@ -30,6 +30,7 @@ message RunnerInfo {
   // task limits may be stricter but can never raise these configured caps.
   int32 container_memory_mb = 20;
   double container_cpu = 21;
+  int64 mcp_relay_rejected_requests = 22 [(buf.validate.field).int64.gte = 0];
 }
 
 message ResourceInfo {
