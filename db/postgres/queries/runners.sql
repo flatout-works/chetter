@@ -20,6 +20,11 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = EXCLUDED.updated_at,
     metadata = EXCLUDED.metadata;
 
+-- name: GetRunnerHeartbeatMetadata :one
+SELECT metadata
+FROM chetter_runners
+WHERE id = $1;
+
 -- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
 FROM chetter_runners

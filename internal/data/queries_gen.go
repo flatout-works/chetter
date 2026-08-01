@@ -76,6 +76,7 @@ type Repository interface {
 	GetNextExecutionAttemptSequence(ctx context.Context, userPromptID string) (int32, error)
 	GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error)
 	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error)
+	GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error)
 	GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error)
 	GetTeamByID(ctx context.Context, id string) (repository.Team, error)
 	GetTeamByName(ctx context.Context, name string) (repository.Team, error)
@@ -446,6 +447,11 @@ func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID 
 func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error) {
 	value, err := q.postgres.GetPausedSessionByArtifact(ctx, convert[repositorypostgres.GetPausedSessionByArtifactParams](arg))
 	return convert[repository.ChetterAgentSession](value), err
+}
+
+func (q *Queries) GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error) {
+	value, err := q.postgres.GetRunnerHeartbeatMetadata(ctx, convert[string](id))
+	return convert[json.RawMessage](value), err
 }
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error) {

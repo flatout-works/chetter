@@ -326,7 +326,9 @@ containers. For each execution the runner creates a random capability, writes
 it only to owner-readable harness configuration, and registers it with the
 per-execution MCP server and optional Chetter MCP relay. Relay access is revoked
 when the execution server closes. Unauthorized relay requests return HTTP 401
-without contacting the configured upstream MCP service.
+without contacting the configured upstream MCP service. Rejection-count
+increases are reported in runner heartbeats and persisted as system-scoped
+`runner_mcp_relay_request_rejected` audit events.
 
 ### Definitions Repo YAML
 
@@ -646,7 +648,7 @@ curl http://localhost:18088/healthz
 
 A `/readyz` endpoint on both the MCP server (port 8080) and web API (port 8090) performs a database ping (1s timeout) and returns 503 if the schema is not applied or the database is unreachable. Use it for Kubernetes readiness probes; use `/healthz` for liveness probes.
 
-A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale, available/occupied slots), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejections (`chetter_mcp_relay_rejected_requests`), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 ### Logs
 

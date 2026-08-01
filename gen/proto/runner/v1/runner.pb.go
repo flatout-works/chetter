@@ -45,10 +45,11 @@ type RunnerInfo struct {
 	Resource          *ResourceInfo          `protobuf:"bytes,19,opt,name=resource,proto3" json:"resource,omitempty"`
 	// Runner-side per-task container safety caps (0 when unset). Individual
 	// task limits may be stricter but can never raise these configured caps.
-	ContainerMemoryMb int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
-	ContainerCpu      float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	ContainerMemoryMb        int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
+	ContainerCpu             float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
+	McpRelayRejectedRequests int64   `protobuf:"varint,22,opt,name=mcp_relay_rejected_requests,json=mcpRelayRejectedRequests,proto3" json:"mcp_relay_rejected_requests,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *RunnerInfo) Reset() {
@@ -224,6 +225,13 @@ func (x *RunnerInfo) GetContainerMemoryMb() int32 {
 func (x *RunnerInfo) GetContainerCpu() float64 {
 	if x != nil {
 		return x.ContainerCpu
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetMcpRelayRejectedRequests() int64 {
+	if x != nil {
+		return x.McpRelayRejectedRequests
 	}
 	return 0
 }
@@ -2412,7 +2420,7 @@ var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xcb\x06\n" +
+	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\x93\a\n" +
 	"\n" +
 	"RunnerInfo\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x16\n" +
@@ -2437,7 +2445,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x12current_executions\x18\x12 \x03(\v2\x1b.runner.v1.RunningExecutionR\x11currentExecutions\x123\n" +
 	"\bresource\x18\x13 \x01(\v2\x17.runner.v1.ResourceInfoR\bresource\x12.\n" +
 	"\x13container_memory_mb\x18\x14 \x01(\x05R\x11containerMemoryMb\x12#\n" +
-	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\"\xdb\x01\n" +
+	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\x12F\n" +
+	"\x1bmcp_relay_rejected_requests\x18\x16 \x01(\x03B\a\xbaH\x04\"\x02(\x00R\x18mcpRelayRejectedRequests\"\xdb\x01\n" +
 	"\fResourceInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12%\n" +

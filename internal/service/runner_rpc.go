@@ -48,6 +48,7 @@ type RunnerRPCService struct {
 	eventBus      TaskEventPublisher
 	callbacks     TaskEventCallbackDispatcher
 	ghActions     GitHubActionService
+	securityAudit RunnerSecurityAuditLogger
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -58,6 +59,12 @@ type TaskEventPublisher interface {
 
 type TaskEventCallbackDispatcher interface {
 	DispatchTaskEventCallbacks(ctx context.Context, event TaskEventCallbackContext)
+}
+
+// RunnerSecurityAuditLogger persists system-scoped security events reported
+// through runner heartbeat counters.
+type RunnerSecurityAuditLogger interface {
+	LogAuditEvent(ctx context.Context, params AuditEventParams) error
 }
 
 type TaskEventCallbackContext struct {
@@ -89,6 +96,11 @@ func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCServic
 
 func (s *RunnerRPCService) WithEventCallbacks(callbacks TaskEventCallbackDispatcher) *RunnerRPCService {
 	s.callbacks = callbacks
+	return s
+}
+
+func (s *RunnerRPCService) WithSecurityAuditLogger(logger RunnerSecurityAuditLogger) *RunnerRPCService {
+	s.securityAudit = logger
 	return s
 }
 
@@ -618,6 +630,9 @@ func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.Runn
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
+	if err := s.auditMCPRelayRejections(ctx, info); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
 	startedAt := parseOptionalTime(info.StartedAt)
 	if err := s.db.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
 		ID:             info.RunnerId,
@@ -640,6 +655,51 @@ func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.Runn
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	return nil
+}
+
+func (s *RunnerRPCService) auditMCPRelayRejections(ctx context.Context, info *runnerv1.RunnerInfo) error {
+	if s.securityAudit == nil || info.McpRelayRejectedRequests <= 0 {
+		return nil
+	}
+	previousMetadata, err := s.db.GetRunnerHeartbeatMetadata(ctx, info.RunnerId)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("get previous runner heartbeat metadata: %w", err)
+	}
+	previous := mcpRelayRejectedRequests(previousMetadata)
+	if info.McpRelayRejectedRequests <= previous {
+		return nil
+	}
+	delta := info.McpRelayRejectedRequests - previous
+	payload, err := json.Marshal(map[string]any{
+		"runner_id":                    info.RunnerId,
+		"rejected_requests_delta":      delta,
+		"rejected_requests_cumulative": info.McpRelayRejectedRequests,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal MCP relay rejection audit payload: %w", err)
+	}
+	if err := s.securityAudit.LogAuditEvent(ctx, AuditEventParams{
+		EventType:  "runner_mcp_relay_request_rejected",
+		SourceType: "runner",
+		SourceID:   info.RunnerId,
+		TargetType: "mcp_relay",
+		TargetID:   info.RunnerId,
+		Detail:     fmt.Sprintf("runner rejected %d unauthorized MCP relay request(s)", delta),
+		Payload:    payload,
+	}); err != nil {
+		return fmt.Errorf("log MCP relay rejection audit event: %w", err)
+	}
+	return nil
+}
+
+func mcpRelayRejectedRequests(metadata json.RawMessage) int64 {
+	var heartbeat struct {
+		MCPRelayRejectedRequests int64 `json:"mcp_relay_rejected_requests"`
+	}
+	if len(metadata) == 0 || json.Unmarshal(metadata, &heartbeat) != nil {
+		return 0
+	}
+	return heartbeat.MCPRelayRejectedRequests
 }
 
 func (s *RunnerRPCService) RequestDrain(runnerID string) {

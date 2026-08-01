@@ -485,6 +485,70 @@ func TestRPCRegisterRunnerPersistsRow(t *testing.T) {
 	}
 }
 
+func TestRPCHeartbeatAuditsMCPRelayRejections(t *testing.T) {
+	svc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc.WithSecurityAuditLogger(&Service{repo: q})
+
+	if _, err := svc.RegisterRunner(ctx, connect.NewRequest(&runnerv1.RegisterRunnerRequest{
+		Runner: &runnerv1.RunnerInfo{RunnerId: "runner_security_audit"},
+	})); err != nil {
+		t.Fatalf("RegisterRunner: %v", err)
+	}
+	for _, rejected := range []int64{2, 2, 5, 1, 2} {
+		if _, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
+			Runner: &runnerv1.RunnerInfo{
+				RunnerId:                 "runner_security_audit",
+				McpRelayRejectedRequests: rejected,
+			},
+		})); err != nil {
+			t.Fatalf("Heartbeat(rejected=%d): %v", rejected, err)
+		}
+	}
+
+	rows, err := tdb.DB.QueryContext(ctx, `
+		SELECT source_id, target_type, payload
+		FROM chetter_audit_log
+		WHERE event_type = 'runner_mcp_relay_request_rejected'
+	`)
+	if err != nil {
+		t.Fatalf("query security audit events: %v", err)
+	}
+	defer rows.Close()
+
+	deltas := make(map[int64]int)
+	var count int
+	for rows.Next() {
+		var sourceID, targetType sql.NullString
+		var payload json.RawMessage
+		if err := rows.Scan(&sourceID, &targetType, &payload); err != nil {
+			t.Fatalf("scan security audit event: %v", err)
+		}
+		if sourceID.String != "runner_security_audit" || targetType.String != "mcp_relay" {
+			t.Errorf("unexpected audit identity: source=%q target=%q", sourceID.String, targetType.String)
+		}
+		var detail struct {
+			Delta      int64 `json:"rejected_requests_delta"`
+			Cumulative int64 `json:"rejected_requests_cumulative"`
+		}
+		if err := json.Unmarshal(payload, &detail); err != nil {
+			t.Fatalf("decode security audit payload: %v", err)
+		}
+		if detail.Cumulative <= 0 {
+			t.Errorf("invalid cumulative count in payload: %s", payload)
+		}
+		deltas[detail.Delta]++
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("security audit rows: %v", err)
+	}
+	if count != 3 || deltas[1] != 1 || deltas[2] != 1 || deltas[3] != 1 {
+		t.Fatalf("audit deltas = %v (count %d), want one each of 1, 2, and 3", deltas, count)
+	}
+}
+
 func TestRPCRegisterRunnerRejectsEmptyID(t *testing.T) {
 	svc, _, _, cleanup := newRPCTestService(t)
 	defer cleanup()

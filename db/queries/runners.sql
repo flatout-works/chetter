@@ -20,6 +20,11 @@ ON DUPLICATE KEY UPDATE
     updated_at = VALUES(updated_at),
     metadata = VALUES(metadata);
 
+-- name: GetRunnerHeartbeatMetadata :one
+SELECT metadata
+FROM chetter_runners
+WHERE id = ?;
+
 -- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
 FROM chetter_runners

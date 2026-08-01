@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/runner/internal/config"
+	"github.com/flatout-works/chetter/runner/internal/network"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -263,6 +265,32 @@ func TestForcedExitDefaultFalse(t *testing.T) {
 	r, _ := newDrainTestRunner(t)
 	if r.ForcedExit() {
 		t.Fatal("ForcedExit should default to false on a fresh runner")
+	}
+}
+
+func TestRunnerHeartbeatReportsMCPRelayRejections(t *testing.T) {
+	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://127.0.0.1:1/mcp", "upstream-token")
+	if err != nil {
+		t.Fatalf("NewMCPRelay: %v", err)
+	}
+	if err := relay.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer relay.Stop()
+
+	resp, err := http.Get("http://" + relay.Addr() + "/mcp")
+	if err != nil {
+		t.Fatalf("unauthorized relay request: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("relay status = %d, want 401", resp.StatusCode)
+	}
+
+	r, _ := newDrainTestRunner(t)
+	r.mcpRelay = relay
+	if got := r.runnerInfoProto("active").McpRelayRejectedRequests; got != 1 {
+		t.Fatalf("heartbeat relay rejections = %d, want 1", got)
 	}
 }
 

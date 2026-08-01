@@ -5,6 +5,7 @@ package metrics
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -39,11 +40,12 @@ type collector struct {
 	db      *sql.DB
 	dialect store.Dialect
 
-	taskCount     *prometheus.Desc
-	runnerCount   *prometheus.Desc
-	runnerSlots   *prometheus.Desc
-	webhookCount  *prometheus.Desc
-	scrapeError   *prometheus.Desc
+	taskCount       *prometheus.Desc
+	runnerCount     *prometheus.Desc
+	runnerSlots     *prometheus.Desc
+	relayRejections *prometheus.Desc
+	webhookCount    *prometheus.Desc
+	scrapeError     *prometheus.Desc
 }
 
 func newCollector(db *sql.DB, dialect store.Dialect) *collector {
@@ -66,6 +68,11 @@ func newCollector(db *sql.DB, dialect store.Dialect) *collector {
 			"Runner slots across the fleet.",
 			[]string{"type"}, nil,
 		),
+		relayRejections: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "mcp_relay", "rejected_requests"),
+			"Cumulative unauthorized MCP relay requests reported by runners.",
+			nil, nil,
+		),
 		webhookCount: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "", "webhook_deliveries"),
 			"Number of webhook deliveries by status.",
@@ -84,6 +91,7 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.taskCount
 	ch <- c.runnerCount
 	ch <- c.runnerSlots
+	ch <- c.relayRejections
 	ch <- c.webhookCount
 	ch <- c.scrapeError
 }
@@ -137,6 +145,7 @@ func (c *collector) emitZeroRunnerMetrics(ch chan<- prometheus.Metric) {
 	for _, slotType := range []string{"available", "occupied"} {
 		ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, 0, slotType)
 	}
+	ch <- prometheus.MustNewConstMetric(c.relayRejections, prometheus.GaugeValue, 0)
 }
 
 func (c *collector) emitZeroWebhookMetrics(ch chan<- prometheus.Metric) {
@@ -190,7 +199,7 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 	}
 
 	query := fmt.Sprintf(`
-		SELECT %s AS last_seen_sec, max_concurrent, running_tasks, available_slots
+		SELECT %s AS last_seen_sec, max_concurrent, running_tasks, available_slots, metadata
 		FROM chetter_runners
 	`, ageExpr)
 	rows, err := c.db.QueryContext(ctx, query)
@@ -203,13 +212,16 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 	var stale float64
 	var availableSlots float64
 	var occupiedSlots float64
+	var relayRejections float64
 
 	for rows.Next() {
 		var lastSeenSec int
 		var maxConcurrent, runningTasks, availSlots int
-		if err := rows.Scan(&lastSeenSec, &maxConcurrent, &runningTasks, &availSlots); err != nil {
+		var metadata []byte
+		if err := rows.Scan(&lastSeenSec, &maxConcurrent, &runningTasks, &availSlots, &metadata); err != nil {
 			return fmt.Errorf("scan runner: %w", err)
 		}
+		relayRejections += float64(mcpRelayRejectedRequests(metadata))
 		if lastSeenSec > maxRunnerPresenceSec {
 			stale++
 		} else {
@@ -226,8 +238,19 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 	ch <- prometheus.MustNewConstMetric(c.runnerCount, prometheus.GaugeValue, stale, "stale")
 	ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, availableSlots, "available")
 	ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, occupiedSlots, "occupied")
+	ch <- prometheus.MustNewConstMetric(c.relayRejections, prometheus.GaugeValue, relayRejections)
 
 	return nil
+}
+
+func mcpRelayRejectedRequests(metadata []byte) int64 {
+	var heartbeat struct {
+		RejectedRequests int64 `json:"mcp_relay_rejected_requests"`
+	}
+	if json.Unmarshal(metadata, &heartbeat) != nil || heartbeat.RejectedRequests < 0 {
+		return 0
+	}
+	return heartbeat.RejectedRequests
 }
 
 // collectWebhookDeliveries emits chetter_webhook_deliveries gauges grouped
@@ -249,10 +272,10 @@ func (c *collector) collectWebhookDeliveries(ctx context.Context, ch chan<- prom
 	defer rows.Close()
 
 	counts := map[string]float64{
-		"received":   0,
-		"processing": 0,
-		"completed":  0,
-		"failed":     0,
+		"received":    0,
+		"processing":  0,
+		"completed":   0,
+		"failed":      0,
 		"dead_letter": 0,
 	}
 	for rows.Next() {
