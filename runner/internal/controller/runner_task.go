@@ -22,6 +22,7 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
+	"github.com/flatout-works/chetter/runner/internal/workspace"
 )
 
 const (
@@ -193,19 +194,14 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	isLocal := r.executionMode() == "local"
 
-	if len(req.ExtraFiles) > 0 {
-		for filename, content := range req.ExtraFiles {
-			filePath := filepath.Join(wsDir, filename)
-			if err := os.MkdirAll(filepath.Dir(filePath), 0750); err != nil {
-				slog.Warn("extra file mkdir", "taskID", req.TaskID, "file", filename, "err", err)
-				continue
-			}
-			if err := os.WriteFile(filePath, content, 0644); err != nil {
-				slog.Warn("extra file write", "taskID", req.TaskID, "file", filename, "err", err)
-			} else {
-				slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
-			}
+	for filename, content := range req.ExtraFiles {
+		if err := workspace.WriteFile(wsDir, filename, content); err != nil {
+			message := fmt.Sprintf("write extra workspace file: %v", err)
+			slog.Error("extra file write failed", "taskID", req.TaskID, "file", filename, "err", err)
+			r.publishStatusForRequest(req, "error", message, nil)
+			return
 		}
+		slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
 	}
 
 	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
@@ -352,7 +348,7 @@ func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
 	a.usage.CostCents += usage.CostCents
 }
 
-// delta returns the token delta since the last call to delta, and resets the
+// delta returns the token delta since the last call to delta and resets the
 // accounting so each delta is emitted exactly once. Callers that need the
 // full accumulated total without resetting should use snapshot.
 func (a *tokenUsageAccumulator) delta() task.TokenUsage {
