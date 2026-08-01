@@ -19,10 +19,12 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	servers := map[string]any{}
 
 	if runnerMCPURL != "" {
-		servers["runner-bridge"] = map[string]any{
+		runnerMCP := map[string]any{
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
+		mcpconfig.SetBearerToken(runnerMCP, req.RunnerMCPToken)
+		servers["runner-bridge"] = runnerMCP
 	}
 
 	if chetterMCPURL != "" {
@@ -30,11 +32,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			"url":     chetterMCPURL,
 			"enabled": true,
 		}
-		if chetterMCPToken != "" {
-			chetterMCP["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
+		mcpconfig.SetBearerToken(chetterMCP, chetterMCPToken)
 		servers["chetter"] = chetterMCP
 	}
 
@@ -53,7 +51,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			return err
 		}
 		agentMCPPath := codewhaleDir + "/mcp.json"
-		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
+		if err := mcpconfig.WritePrivateFile(agentMCPPath, agentMCPData); err != nil {
 			return err
 		}
 		slog.Info("wrote codewhale mcp config", "path", agentMCPPath)

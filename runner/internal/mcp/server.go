@@ -8,6 +8,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -20,11 +23,17 @@ import (
 )
 
 type Server struct {
-	sdkServer *mcplib.Server
-	httpSrv   *http.Server
-	addr      string
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
+	sdkServer  *mcplib.Server
+	httpSrv    *http.Server
+	addr       string
+	token      string
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	closeOnce  sync.Once
+	closeMu    sync.Mutex
+	closed     bool
+	closeErr   error
+	closeHooks []func()
 }
 
 // ToolHandler is the function signature for tool implementations.
@@ -37,24 +46,34 @@ type ToolDef struct {
 	InputSchema map[string]any
 }
 
-// NewServer creates a new MCP server listening on a random TCP port.
-func NewServer() (*Server, error) {
-	ln, err := net.Listen("tcp4", "0.0.0.0:0") // tcp4 to avoid IPv6 which gVisor can't reach
+// NewServer creates an authenticated MCP server on a random TCP port. The
+// optional listenHost narrows which local interface accepts task traffic; it
+// defaults to loopback for direct callers and tests.
+func NewServer(listenHost ...string) (*Server, error) {
+	host := "127.0.0.1"
+	if len(listenHost) > 0 && listenHost[0] != "" {
+		host = listenHost[0]
+	}
+	token, err := randomBearerToken()
 	if err != nil {
-		return nil, fmt.Errorf("listen: %w", err)
+		return nil, fmt.Errorf("generate MCP bearer token: %w", err)
+	}
+	ln, err := net.Listen("tcp4", net.JoinHostPort(host, "0")) // tcp4 to avoid IPv6 which gVisor can't reach
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", host, err)
 	}
 	addr := ln.Addr().String()
 
 	sdkServer := mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil)
 
 	getServer := func(_ *http.Request) *mcplib.Server { return sdkServer }
-	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	mcpHandler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", requireBearerToken(token, mcpHandler))
 
 	httpSrv := &http.Server{Handler: mux}
-	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr}
+	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr, token: token}
 	serverCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return serverCtx }
@@ -72,6 +91,10 @@ func NewServer() (*Server, error) {
 // Addr returns the listen address for the MCP server (e.g. "127.0.0.1:12345").
 func (s *Server) Addr() string { return s.addr }
 
+// Token returns the per-server bearer token to inject into the task's private
+// harness configuration.
+func (s *Server) Token() string { return s.token }
+
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 	s.sdkServer.AddTool(&mcplib.Tool{
@@ -81,16 +104,63 @@ func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 	}, adaptHandler(handler))
 }
 
-// Close shuts down the HTTP server.
-func (s *Server) Close() error {
-	s.cancel()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
-		return err
+// AddCloseHook registers cleanup that runs once after the HTTP server exits.
+// A hook added after closure runs immediately.
+func (s *Server) AddCloseHook(hook func()) {
+	if hook == nil {
+		return
 	}
-	s.wg.Wait()
-	return nil
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		hook()
+		return
+	}
+	s.closeHooks = append(s.closeHooks, hook)
+	s.closeMu.Unlock()
+}
+
+// Close shuts down the HTTP server and runs registered cleanup hooks. It is
+// safe to call more than once.
+func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		s.cancel()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		s.closeErr = s.httpSrv.Shutdown(shutdownCtx)
+		cancel()
+		s.wg.Wait()
+
+		s.closeMu.Lock()
+		s.closed = true
+		hooks := append([]func(){}, s.closeHooks...)
+		s.closeHooks = nil
+		s.closeMu.Unlock()
+		for _, hook := range hooks {
+			hook()
+		}
+	})
+	return s.closeErr
+}
+
+func randomBearerToken() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func requireBearerToken(token string, next http.Handler) http.Handler {
+	expected := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		provided := []byte(r.Header.Get("Authorization"))
+		if len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func adaptHandler(h ToolHandler) mcplib.ToolHandler {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -34,6 +35,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 	})
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+srv.Token())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -49,6 +51,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 		for range 10 {
 			time.Sleep(100 * time.Millisecond)
 			req, _ := http.NewRequest("GET", url, nil)
+			req.Header.Set("Authorization", "Bearer "+srv.Token())
 			req.Header.Set("Mcp-Session-Id", sessionID)
 			req.Header.Set("Accept", "application/json, text/event-stream")
 			r, err := client.Do(req)
@@ -77,6 +80,69 @@ func mcpInit(t *testing.T, srv *Server) {
 		"clientInfo":      map[string]string{"name": "test", "version": "1.0"},
 	})
 	time.Sleep(200 * time.Millisecond)
+}
+
+func TestServerCloseHooksRunOnce(t *testing.T) {
+	srv, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if err := srv.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if calls.Load() != 2 {
+		t.Fatalf("close hook calls = %d, want 2", calls.Load())
+	}
+}
+
+func TestServerRequiresBearerToken(t *testing.T) {
+	srv, cleanup := makeServer(t)
+	defer cleanup()
+
+	_, port, err := net.SplitHostPort(srv.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := "http://127.0.0.1:" + port + "/mcp"
+	for _, authorization := range []string{"", "Bearer wrong-token"} {
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", authorization)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("Authorization %q status = %d, want %d", authorization, resp.StatusCode, http.StatusUnauthorized)
+		}
+	}
+}
+
+func TestServerUsesUniqueTokensAndLoopbackByDefault(t *testing.T) {
+	first, firstCleanup := makeServer(t)
+	defer firstCleanup()
+	second, secondCleanup := makeServer(t)
+	defer secondCleanup()
+
+	if first.Token() == "" || first.Token() == second.Token() {
+		t.Fatalf("server tokens are empty or reused")
+	}
+	host, _, err := net.SplitHostPort(first.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host != "127.0.0.1" {
+		t.Fatalf("default listen host = %q, want loopback", host)
+	}
 }
 
 func TestServerToolsList(t *testing.T) {

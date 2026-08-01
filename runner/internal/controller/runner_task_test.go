@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1353,6 +1354,53 @@ func TestOpenCodeConfigContentIsHarnessControlled(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMCPServerRegistersAndRevokesRelayClaim(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+	relay, err := network.NewMCPRelay("127.0.0.1:0", target.URL+"/mcp", "upstream-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := relay.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = relay.Stop() })
+
+	runner := &Runner{
+		cfg:      &config.Config{Execution: config.ExecutionConfig{Backend: "local"}},
+		mcpRelay: relay,
+	}
+	server, err := runner.startWorkspaceMCP(context.Background(), "task-1", "exec-1")
+	if err != nil {
+		t.Fatalf("startWorkspaceMCP: %v", err)
+	}
+
+	callRelay := func() int {
+		req, err := http.NewRequest(http.MethodPost, "http://"+relay.Addr()+"/mcp", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+server.Token())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	if status := callRelay(); status != http.StatusNoContent {
+		t.Fatalf("active claim status = %d, want %d", status, http.StatusNoContent)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("close workspace MCP server: %v", err)
+	}
+	if status := callRelay(); status != http.StatusUnauthorized {
+		t.Fatalf("closed claim status = %d, want %d", status, http.StatusUnauthorized)
+	}
+}
+
 func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
 	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp", "")
@@ -1375,8 +1423,8 @@ func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	if got, want := runner.taskChetterMCPURL(), "http://172.21.0.3:"+port+"/mcp"; got != want {
 		t.Fatalf("task Chetter MCP URL = %q, want %q", got, want)
 	}
-	if got := runner.taskChetterMCPToken(); got != "" {
-		t.Fatalf("task Chetter MCP token = %q, want empty relay-managed token", got)
+	if got := runner.taskChetterMCPToken("claim-token"); got != "claim-token" {
+		t.Fatalf("task Chetter MCP token = %q, want claim token", got)
 	}
 }
 
@@ -1385,7 +1433,7 @@ func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
 	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
 		t.Fatalf("task Chetter MCP URL = %q", got)
 	}
-	if got := runner.taskChetterMCPToken(); got != "local-token" {
+	if got := runner.taskChetterMCPToken("claim-token"); got != "local-token" {
 		t.Fatalf("task Chetter MCP token = %q", got)
 	}
 }

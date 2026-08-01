@@ -48,6 +48,7 @@ web-check:
 		npm --prefix web ci; \
 	fi
 	npm --prefix web run check
+	npm --prefix web test
 
 migrate:
 	go run github.com/pressly/goose/v3/cmd/goose@latest -dir $(GOOSE_MIGRATIONS) $(GOOSE_DIALECT) "$(GOOSE_DSN)" up

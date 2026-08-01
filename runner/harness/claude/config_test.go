@@ -37,13 +37,22 @@ func TestGenerateConfigDeniesInteractiveQuestions(t *testing.T) {
 
 func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://runner.test/mcp", "", "", task.TaskRequest{}, false); err != nil {
+	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
+	if err := GenerateConfig(wsDir, "http://runner.test/mcp", "", "", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
-	mcpData, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))
+	mcpPath := filepath.Join(wsDir, ".mcp.json")
+	mcpData, err := os.ReadFile(mcpPath)
 	if err != nil {
 		t.Fatalf("read MCP config: %v", err)
+	}
+	info, err := os.Stat(mcpPath)
+	if err != nil {
+		t.Fatalf("stat MCP config: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("MCP config permissions = %v, want 0600", info.Mode().Perm())
 	}
 	var mcpConfig struct {
 		MCPServers map[string]map[string]any `json:"mcpServers"`
@@ -57,6 +66,10 @@ func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
 	}
 	if bridge["url"] != "http://runner.test/mcp" {
 		t.Fatalf("runner bridge URL = %v", bridge["url"])
+	}
+	headers, ok := bridge["headers"].(map[string]any)
+	if !ok || headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge headers = %#v", bridge["headers"])
 	}
 
 	settingsData, err := os.ReadFile(filepath.Join(wsDir, ".claude", "settings.json"))

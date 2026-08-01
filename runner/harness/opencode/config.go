@@ -219,11 +219,13 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 			mcpServers = make(map[string]any)
 			cfg["mcp"] = mcpServers
 		}
-		mcpServers["runner-bridge"] = map[string]any{
+		runnerMCP := map[string]any{
 			"type":    "remote",
 			"url":     runnerMCPURL,
 			"enabled": true,
 		}
+		mcpconfig.SetBearerToken(runnerMCP, req.RunnerMCPToken)
+		mcpServers["runner-bridge"] = runnerMCP
 	}
 	if chetterMCPURL != "" {
 		mcpServers, _ := cfg["mcp"].(map[string]any)
@@ -239,11 +241,7 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 			// interactive OAuth flow for a non-OAuth server.
 			"oauth": false,
 		}
-		if chetterMCPToken != "" {
-			dfm["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
+		mcpconfig.SetBearerToken(dfm, chetterMCPToken)
 		mcpServers["chetter"] = dfm
 		slog.Info("injected chetter MCP into opencode config", "url", chetterMCPURL)
 	}
@@ -297,7 +295,7 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 	if err != nil {
 		return fmt.Errorf("marshal opencode config: %w", err)
 	}
-	if err := os.WriteFile(wsConfigPath, out, 0644); err != nil {
+	if err := mcpconfig.WritePrivateFile(wsConfigPath, out); err != nil {
 		return fmt.Errorf("write opencode config: %w", err)
 	}
 	globalConfigDir := wsDir + "/.config/opencode"

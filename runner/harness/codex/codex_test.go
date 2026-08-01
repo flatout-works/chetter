@@ -17,6 +17,7 @@ import (
 func TestGenerateConfig(t *testing.T) {
 	wsDir := t.TempDir()
 	req := task.TaskRequest{
+		RunnerMCPToken:    "runner-token",
 		ProviderID:        "openai",
 		ModelID:           "gpt-5.4",
 		ProviderBaseURL:   "https://api.example.test/v1",
@@ -44,6 +45,7 @@ func TestGenerateConfig(t *testing.T) {
 		`env_key = "EXAMPLE_API_KEY"`,
 		`wire_api = "responses"`,
 		`[mcp_servers.runner-bridge]`,
+		`Authorization = "Bearer runner-token"`,
 		`[mcp_servers.chetter]`,
 		`Authorization = "Bearer secret"`,
 		`[mcp_servers.docs]`,

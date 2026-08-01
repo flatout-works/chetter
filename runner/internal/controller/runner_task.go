@@ -22,6 +22,7 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/config"
 	"github.com/flatout-works/chetter/runner/internal/mcp"
 	"github.com/flatout-works/chetter/runner/internal/task"
+	"github.com/flatout-works/chetter/runner/internal/workspace"
 )
 
 const (
@@ -116,7 +117,8 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		defer mcpServer.Close()
 		mcpURL := runnerMCPURL(r, mcpServer)
-		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, false); err != nil {
+		req.RunnerMCPToken = mcpServer.Token()
+		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, false); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
 		}
@@ -193,19 +195,14 @@ func (r *Runner) runTask(req task.TaskRequest) {
 
 	isLocal := r.executionMode() == "local"
 
-	if len(req.ExtraFiles) > 0 {
-		for filename, content := range req.ExtraFiles {
-			filePath := filepath.Join(wsDir, filename)
-			if err := os.MkdirAll(filepath.Dir(filePath), 0750); err != nil {
-				slog.Warn("extra file mkdir", "taskID", req.TaskID, "file", filename, "err", err)
-				continue
-			}
-			if err := os.WriteFile(filePath, content, 0644); err != nil {
-				slog.Warn("extra file write", "taskID", req.TaskID, "file", filename, "err", err)
-			} else {
-				slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
-			}
+	for filename, content := range req.ExtraFiles {
+		if err := workspace.WriteFile(wsDir, filename, content); err != nil {
+			message := fmt.Sprintf("write extra workspace file: %v", err)
+			slog.Error("extra file write failed", "taskID", req.TaskID, "file", filename, "err", err)
+			r.publishStatusForRequest(req, "error", message, nil)
+			return
 		}
+		slog.Info("extra file written", "taskID", req.TaskID, "file", filename, "size", len(content))
 	}
 
 	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
@@ -215,8 +212,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 	defer mcpServer.Close()
 	mcpURL := runnerMCPURL(r, mcpServer)
+	req.RunnerMCPToken = mcpServer.Token()
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(), req, isLocal); err != nil {
+	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -256,9 +254,21 @@ func (r *Runner) runTask(req task.TaskRequest) {
 }
 
 func (r *Runner) startWorkspaceMCP(ctx context.Context, taskID, executionID string) (*mcp.Server, error) {
-	mcpServer, err := mcp.NewServer()
+	listenHost := "127.0.0.1"
+	if r.executionMode() != "local" {
+		listenHost = r.runnerHostIP()
+	}
+	mcpServer, err := mcp.NewServer(listenHost)
 	if err != nil {
 		return nil, err
+	}
+	if r.mcpRelay != nil {
+		unregister, err := r.mcpRelay.RegisterClaim(mcpServer.Token(), taskID, executionID)
+		if err != nil {
+			_ = mcpServer.Close()
+			return nil, fmt.Errorf("register MCP relay claim: %w", err)
+		}
+		mcpServer.AddCloseHook(unregister)
 	}
 	r.registerGitHubMCPTools(mcpServer, taskID, executionID)
 	slog.Info("MCP server started", "taskID", taskID, "addr", mcpServer.Addr())
@@ -352,7 +362,7 @@ func (a *tokenUsageAccumulator) add(usage task.TokenUsage) {
 	a.usage.CostCents += usage.CostCents
 }
 
-// delta returns the token delta since the last call to delta, and resets the
+// delta returns the token delta since the last call to delta and resets the
 // accounting so each delta is emitted exactly once. Callers that need the
 // full accumulated total without resetting should use snapshot.
 func (a *tokenUsageAccumulator) delta() task.TokenUsage {
@@ -404,11 +414,11 @@ func (r *Runner) taskChetterMCPURL() string {
 	return "http://" + net.JoinHostPort(r.runnerHostIP(), port) + "/mcp"
 }
 
-func (r *Runner) taskChetterMCPToken() string {
+func (r *Runner) taskChetterMCPToken(claimToken string) string {
 	if r.executionMode() == "local" || r.mcpRelay == nil {
 		return r.cfg.ChetterMCP.AuthToken
 	}
-	return ""
+	return claimToken
 }
 
 // runcNetwork returns the Docker network name for the runner container,
@@ -795,13 +805,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 
 	r.publishStatusForRequest(req, "running", "Resuming agent session...", nil)
-
-	mcpServer, err := r.startWorkspaceMCP(ctx, req.TaskID, req.ExecutionID)
-	if err != nil {
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("mcp server: %v", err), nil)
-		return
-	}
-	defer mcpServer.Close()
 
 	bindAddr := os.Getenv("RUNNER_BIND_ADDR")
 	if bindAddr == "" {

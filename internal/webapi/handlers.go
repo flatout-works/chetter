@@ -10,7 +10,6 @@ import (
 
 	"connectrpc.com/connect"
 	apiv1 "github.com/flatout-works/chetter/gen/proto/api/v1"
-	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -1138,13 +1137,6 @@ func triggerSkillsToStrings(skills json.RawMessage) []string {
 	_ = json.Unmarshal(skills, &out)
 	return out
 }
-
-// Ensure service has the trigger lookup method we need for UpdateTrigger.
-// If not present, this is a compile-time check.
-var _ repository.ChetterTrigger
-
-// GetTriggerByName is a helper that delegates to the service's repo.
-// We need to expose this from service if not already available.
 
 // --- CatalogServiceHandler ---
 

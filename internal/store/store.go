@@ -347,12 +347,17 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.db.PingContext(ctx)
 }
 
-// ApplySchema creates the chetter tables if they do not exist.
+// ApplySchema creates the Chetter tables and upgrades existing schemas.
 func (s *Store) ApplySchema(ctx context.Context) error {
-	for _, stmt := range s.schemaStatements() {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("apply schema: %w", err)
+	if s.IsPostgres() {
+		// PostgreSQL upgrades can move data between tables, so apply the ordered,
+		// embedded Goose migrations before the idempotent bootstrap statements.
+		if err := s.applyPostgresMigrations(ctx); err != nil {
+			return err
 		}
+	}
+	if err := s.ApplyBootstrapSchema(ctx); err != nil {
+		return err
 	}
 	if s.IsPostgres() {
 		return nil
@@ -416,6 +421,18 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	}
 	if err := s.ensureAPITokenExpiryColumn(ctx); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ApplyBootstrapSchema creates objects from the current schema without running
+// ordered migrations. Production startup should call ApplySchema. This method is
+// exposed for schema-parity validation and initializing disposable databases.
+func (s *Store) ApplyBootstrapSchema(ctx context.Context) error {
+	for _, stmt := range s.schemaStatements() {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("apply bootstrap schema: %w", err)
+		}
 	}
 	return nil
 }
