@@ -30,8 +30,8 @@
       "template": "Ask for the task ID if not provided. Use chetter_task_export with the given ID. Return the full export markdown to the user. If no export is available, explain that the task may not have completed or the export failed."
     },
     "chetter-recover": {
-      "description": "Recover a failed Chetter task by starting a new task with the previous session export.",
-      "template": "Ask for the task ID if not provided. Use chetter_recover_task with the given ID. Confirm the new task ID and explain that the agent will receive the previous session export as a workspace file."
+      "description": "Recover a failed Chetter task by starting a new task with the previous session export, optionally with a custom prompt.",
+      "template": "Ask for the task ID if not provided. Use chetter_recover_task with the given ID and, if the user wants custom direction, pass it as the optional prompt argument. Confirm the new task ID and explain that the agent will receive the previous session export as a workspace file."
     },
     "chetter-rerun": {
       "description": "Re-run a completed, failed, or cancelled Chetter task with the same parameters as a new task.",

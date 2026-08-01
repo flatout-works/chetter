@@ -390,6 +390,9 @@ message ExportTaskResponse {
 
 message RecoverTaskRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Optional custom prompt for the recovery session. When omitted, a default
+  // recovery instruction referencing the previous session export is used.
+  string custom_prompt = 2;
 }
 
 message RecoverTaskResponse {
