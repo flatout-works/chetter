@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -23,12 +24,12 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	awsRegion := strings.TrimSpace(req.Env["__chetter_aws_region"])
 
 	if providerKind == "aws_bedrock" {
-		return generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
+		return generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 	}
-	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
+	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 }
 
-func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
+func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
@@ -46,13 +47,13 @@ func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, che
 	fmt.Fprintf(&b, "base_url = %s\n", tomlString(baseURL))
 	fmt.Fprintf(&b, "env_key = %s\n", tomlString(apiKeyEnv))
 	b.WriteString("wire_api = \"responses\"\n\n")
-	writeMCPServer(&b, "runner-bridge", runnerMCPURL, "")
+	writeMCPServer(&b, "runner-bridge", runnerMCPURL, runnerMCPToken)
 	writeMCPServer(&b, "chetter", chetterMCPURL, chetterMCPToken)
 	writeEndpointMCPServers(&b, endpoints)
-	return os.WriteFile(codexDir+"/config.toml", []byte(b.String()), 0600)
+	return mcpconfig.WritePrivateFile(codexDir+"/config.toml", []byte(b.String()))
 }
 
-func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
+func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
 	if baseURL == "" {
 		baseURL = "https://bedrock-runtime.us-east-1.amazonaws.com"
 	}
@@ -74,10 +75,10 @@ func generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsR
 		fmt.Fprintf(&b, "region = %s\n", tomlString(awsRegion))
 	}
 	b.WriteByte('\n')
-	writeMCPServer(&b, "runner-bridge", runnerMCPURL, "")
+	writeMCPServer(&b, "runner-bridge", runnerMCPURL, runnerMCPToken)
 	writeMCPServer(&b, "chetter", chetterMCPURL, chetterMCPToken)
 	writeEndpointMCPServers(&b, endpoints)
-	return os.WriteFile(codexDir+"/config.toml", []byte(b.String()), 0600)
+	return mcpconfig.WritePrivateFile(codexDir+"/config.toml", []byte(b.String()))
 }
 
 func writeMCPServer(b *strings.Builder, name, url, token string) {

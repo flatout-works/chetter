@@ -27,9 +27,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/dbmigration"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/go-sql-driver/mysql"
-	"github.com/pressly/goose/v3"
 )
 
 const (
@@ -481,10 +481,7 @@ func driverName(dialect store.Dialect) string {
 
 func applyTestSchema(ctx context.Context, db *sql.DB, dsn string, dialect store.Dialect) error {
 	if dialect == store.DialectPostgres {
-		if err := goose.SetDialect("postgres"); err != nil {
-			return fmt.Errorf("set postgres goose dialect: %w", err)
-		}
-		if err := goose.UpContext(ctx, db, postgresMigrationsDir()); err != nil {
+		if err := dbmigration.UpPostgres(ctx, db, os.DirFS(postgresMigrationsDir())); err != nil {
 			return fmt.Errorf("apply postgres migrations: %w", err)
 		}
 		return nil
@@ -564,7 +561,7 @@ func PostgresSchemaParityDBs(t testing.TB) (bootstrapDB, gooseDB *TestDB, cleanu
 		cleanupContainer(ownsContainer, containerName)
 		t.Fatalf("open store for bootstrap: %v", err)
 	}
-	if err := st.ApplySchema(context.Background()); err != nil {
+	if err := st.ApplyBootstrapSchema(context.Background()); err != nil {
 		st.Close()
 		_ = bootstrapSQL.Close()
 		dropDatabase(admin, bootstrapName, dialect)
@@ -594,16 +591,7 @@ func PostgresSchemaParityDBs(t testing.TB) (bootstrapDB, gooseDB *TestDB, cleanu
 		t.Fatalf("open goose db: %v", err)
 	}
 	configureTestDB(gooseSQL)
-	if err := goose.SetDialect("postgres"); err != nil {
-		_ = gooseSQL.Close()
-		dropDatabase(admin, gooseName, dialect)
-		_ = bootstrapSQL.Close()
-		dropDatabase(admin, bootstrapName, dialect)
-		_ = admin.Close()
-		cleanupContainer(ownsContainer, containerName)
-		t.Fatalf("set goose dialect: %v", err)
-	}
-	if err := goose.UpContext(context.Background(), gooseSQL, postgresMigrationsDir()); err != nil {
+	if err := dbmigration.UpPostgres(context.Background(), gooseSQL, os.DirFS(postgresMigrationsDir())); err != nil {
 		_ = gooseSQL.Close()
 		dropDatabase(admin, gooseName, dialect)
 		_ = bootstrapSQL.Close()

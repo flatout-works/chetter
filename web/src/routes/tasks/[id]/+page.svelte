@@ -14,7 +14,6 @@
   import { formatDuration, formatHarness, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
-  import { marked } from "marked";
 
   let { params } = $props();
   let task = $state<Task | null>(null);
@@ -43,6 +42,8 @@
 
   let recovering = $state(false);
   let rerunning = $state(false);
+  let showRecoverModal = $state(false);
+  let recoveryPrompt = $state("");
 
   let totalTokens = $derived.by(() => {
     const tu = task?.tokenUsage;
@@ -419,11 +420,25 @@
     }
   }
 
+  function defaultRecoveryPrompt(): string {
+    return `The file chetter_recovery_${params.id}.md in the workspace is the complete transcript of a previous session that attempted this work but did not succeed. Please review the previous session thoroughly, understand what was accomplished and what went wrong, then finish the work. Use the context from the previous session to continue efficiently — you don't need to redo work that was already completed successfully.
+
+Original task:
+${task?.prompt ?? ""}`;
+  }
+
   async function recoverTask() {
+    recoveryPrompt = defaultRecoveryPrompt();
+    showRecoverModal = true;
+  }
+
+  async function confirmRecover() {
+    if (!recoveryPrompt.trim()) return;
     recovering = true;
     try {
       const client = createClient(TaskService, getTransport());
-      await client.recoverTask({ taskId: params.id });
+      await client.recoverTask({ taskId: params.id, customPrompt: recoveryPrompt.trim() });
+      showRecoverModal = false;
       window.location.href = resolve("/tasks");
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to recover task";
@@ -452,7 +467,7 @@
     try {
       const client = createClient(TaskService, getTransport());
       const resp = await client.exportTask({ taskId: params.id, compact: true });
-      viewMarkdown = await marked.parse(resp.export, { breaks: true });
+      viewMarkdown = renderMarkdown(resp.export, true);
       showExportViewer = true;
     } catch (e) {
       error = e instanceof Error ? e.message : "Failed to load export";
@@ -897,6 +912,24 @@
     </div>
     <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
       {resuming ? "Resuming…" : (restartingTimedOutTask ? "Restart task" : "Resume")}
+    </Button>
+  </div>
+</Modal>
+
+<!-- Recover with prompt modal -->
+<Modal title="Recover Task" bind:open={showRecoverModal} size="md" onclose={() => showRecoverModal = false}>
+  <div class="space-y-4">
+    <Alert color="blue">
+      The previous session export is attached as a workspace file
+      <code class="font-mono">chetter_recovery_{params.id}.md</code> and will be available to the new recovery
+      session as context.
+    </Alert>
+    <div>
+      <Label for="recovery-prompt" class="mb-2">Recovery prompt</Label>
+      <Textarea id="recovery-prompt" bind:value={recoveryPrompt} rows={8} class="w-full font-mono text-xs" />
+    </div>
+    <Button color="green" disabled={!recoveryPrompt.trim() || recovering} onclick={confirmRecover} class="w-full">
+      {recovering ? "Recovering…" : "Start recovery"}
     </Button>
   </div>
 </Modal>

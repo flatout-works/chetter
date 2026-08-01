@@ -80,7 +80,9 @@ Chetter exposes runner-bridge GitHub tools to task agents so they do not need di
 - `chetter_create_pr`
 - `chetter_pr_review`
 
-These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `chetter_task_artifacts`. The runner image wraps `gh` with an explicit read-only command allowlist; arbitrary API access and all writes must use the audited Chetter tools.
+These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `chetter_task_artifacts`. The per-execution runner MCP server requires a fresh 256-bit bearer capability, binds only to loopback or the runner's routable interface, and revokes the capability when execution ends. The capability is injected into the selected harness's private MCP configuration and redacted from runner status, errors, exports, and artifacts.
+
+The runner image wraps `gh` with an explicit read-only command allowlist. Arbitrary API access and all writes must use the audited Chetter tools.
 
 Artifact browsing is available with `chetter_list_task_artifacts` and in the web UI.
 
@@ -95,6 +97,8 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 - `chetter_drain_runner` asks a runner to stop claiming new work, finish in-flight tasks, and exit for rollout.
 
 Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side). Compose currently passes it to runner containers through `CHETTER_RUNNER_AUTH_TOKEN` for compatibility with runner config fallback order.
+
+When containers use the runner-wide Chetter MCP relay, the relay accepts only capabilities registered for active executions. It replaces the execution capability with the runner's upstream credential and forwards execution/task fencing headers. Missing, invalid, and revoked capabilities are rejected before contacting the control plane.
 
 ## Data Retention And Storage Pruning
 

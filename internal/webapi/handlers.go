@@ -10,7 +10,6 @@ import (
 
 	"connectrpc.com/connect"
 	apiv1 "github.com/flatout-works/chetter/gen/proto/api/v1"
-	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/pkg/definitions"
@@ -254,6 +253,10 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 		CurrentTaskIds: r.CurrentTaskIDs,
 		StartedAt:      timeStrPtr(r.StartedAt),
 		LastHeartbeat:  r.LastSeenAt.Format(time.RFC3339),
+		// Runner-side per-task safety caps (0 = unset). Individual task limits
+		// may be stricter but cannot raise these caps. See issue #273.
+		ContainerMemoryMb: int32(r.ContainerMemoryMB),
+		ContainerCpu:      r.ContainerCPU,
 	}
 	if r.Resource != nil {
 		info.Resource = &apiv1.ResourceInfo{
@@ -367,7 +370,7 @@ func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1
 }
 
 func (h *taskHandler) RecoverTask(ctx context.Context, req *connect.Request[apiv1.RecoverTaskRequest]) (*connect.Response[apiv1.RecoverTaskResponse], error) {
-	task, err := h.svc.RecoverTask(ctx, req.Msg.TaskId)
+	task, err := h.svc.RecoverTask(ctx, req.Msg.TaskId, req.Msg.CustomPrompt)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -1138,13 +1141,6 @@ func triggerSkillsToStrings(skills json.RawMessage) []string {
 	_ = json.Unmarshal(skills, &out)
 	return out
 }
-
-// Ensure service has the trigger lookup method we need for UpdateTrigger.
-// If not present, this is a compile-time check.
-var _ repository.ChetterTrigger
-
-// GetTriggerByName is a helper that delegates to the service's repo.
-// We need to expose this from service if not already available.
 
 // --- CatalogServiceHandler ---
 

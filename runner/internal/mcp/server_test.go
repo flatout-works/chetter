@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -34,6 +35,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 	})
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+srv.Token())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -49,6 +51,7 @@ func mcpCall(t *testing.T, srv *Server, method string, params map[string]any) ma
 		for range 10 {
 			time.Sleep(100 * time.Millisecond)
 			req, _ := http.NewRequest("GET", url, nil)
+			req.Header.Set("Authorization", "Bearer "+srv.Token())
 			req.Header.Set("Mcp-Session-Id", sessionID)
 			req.Header.Set("Accept", "application/json, text/event-stream")
 			r, err := client.Do(req)
@@ -77,6 +80,69 @@ func mcpInit(t *testing.T, srv *Server) {
 		"clientInfo":      map[string]string{"name": "test", "version": "1.0"},
 	})
 	time.Sleep(200 * time.Millisecond)
+}
+
+func TestServerCloseHooksRunOnce(t *testing.T) {
+	srv, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if err := srv.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	srv.AddCloseHook(func() { calls.Add(1) })
+	if calls.Load() != 2 {
+		t.Fatalf("close hook calls = %d, want 2", calls.Load())
+	}
+}
+
+func TestServerRequiresBearerToken(t *testing.T) {
+	srv, cleanup := makeServer(t)
+	defer cleanup()
+
+	_, port, err := net.SplitHostPort(srv.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := "http://127.0.0.1:" + port + "/mcp"
+	for _, authorization := range []string{"", "Bearer wrong-token"} {
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", authorization)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("Authorization %q status = %d, want %d", authorization, resp.StatusCode, http.StatusUnauthorized)
+		}
+	}
+}
+
+func TestServerUsesUniqueTokensAndLoopbackByDefault(t *testing.T) {
+	first, firstCleanup := makeServer(t)
+	defer firstCleanup()
+	second, secondCleanup := makeServer(t)
+	defer secondCleanup()
+
+	if first.Token() == "" || first.Token() == second.Token() {
+		t.Fatalf("server tokens are empty or reused")
+	}
+	host, _, err := net.SplitHostPort(first.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host != "127.0.0.1" {
+		t.Fatalf("default listen host = %q, want loopback", host)
+	}
 }
 
 func TestServerToolsList(t *testing.T) {
@@ -141,13 +207,16 @@ func TestServerMultipleTools(t *testing.T) {
 }
 
 func TestGitHubCredentialEndpointRequiresCapabilityAndPOST(t *testing.T) {
-	srv, err := NewServer(func(context.Context) (string, error) { return "installation-token", nil })
+	srv, err := NewServer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Close()
-	if len(srv.CredentialCapability()) < 43 {
-		t.Fatalf("credential capability is too short: %d", len(srv.CredentialCapability()))
+	if err := srv.SetCredentialHandler(func(context.Context) (string, error) { return "installation-token", nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(srv.Token()) < 43 {
+		t.Fatalf("credential capability is too short: %d", len(srv.Token()))
 	}
 	_, port, _ := net.SplitHostPort(srv.Addr())
 	url := "http://127.0.0.1:" + port + GitHubCredentialPath
@@ -158,10 +227,10 @@ func TestGitHubCredentialEndpointRequiresCapabilityAndPOST(t *testing.T) {
 		auth   string
 		want   int
 	}{
-		{name: "wrong method", method: http.MethodGet, auth: "Bearer " + srv.CredentialCapability(), want: http.StatusMethodNotAllowed},
+		{name: "wrong method", method: http.MethodGet, auth: "Bearer " + srv.Token(), want: http.StatusMethodNotAllowed},
 		{name: "missing capability", method: http.MethodPost, want: http.StatusUnauthorized},
 		{name: "wrong capability", method: http.MethodPost, auth: "Bearer wrong", want: http.StatusUnauthorized},
-		{name: "success", method: http.MethodPost, auth: "Bearer " + srv.CredentialCapability(), want: http.StatusOK},
+		{name: "success", method: http.MethodPost, auth: "Bearer " + srv.Token(), want: http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req, _ := http.NewRequest(tc.method, url, nil)
@@ -186,11 +255,14 @@ func TestGitHubCredentialEndpointRequiresCapabilityAndPOST(t *testing.T) {
 }
 
 func TestGitHubCredentialEndpointIsNotAnMCPTool(t *testing.T) {
-	srv, err := NewServer(func(context.Context) (string, error) { return "token", nil })
+	srv, err := NewServer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Close()
+	if err := srv.SetCredentialHandler(func(context.Context) (string, error) { return "token", nil }); err != nil {
+		t.Fatal(err)
+	}
 	mcpInit(t, srv)
 	result := mcpCall(t, srv, "tools/list", map[string]any{})
 	resultMap, _ := result["result"].(map[string]any)

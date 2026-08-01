@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/runner/internal/config"
 )
 
 const heartbeatInterval = 5 * time.Second
@@ -144,6 +145,8 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		GvisorEnabled:     gvisorEnabled,
 		CheckpointRestore: checkpointRestore,
 		RunscVersion:      runscVersion,
+		ContainerMemoryMb: containerMemoryMB(r.cfg.Execution.ContainerMemory),
+		ContainerCpu:      r.cfg.Execution.ContainerCPU,
 	}
 
 	if snapshot.CPUPercent != nil || snapshot.MemoryPercent != nil || snapshot.DiskPercent != nil {
@@ -403,4 +406,15 @@ func firstEnv(keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// containerMemoryMB converts a Docker-style memory limit such as "512m" or
+// "1g" into whole MiB for runner capacity reporting. Unset or unparsable
+// values report 0 (unlimited), matching the proto's zero-value semantics.
+func containerMemoryMB(memory string) int32 {
+	bytes, err := config.ParseMemoryBytes(memory)
+	if err != nil {
+		return 0
+	}
+	return int32((bytes + (1 << 20) - 1) >> 20) // round up to whole MiB
 }

@@ -96,3 +96,31 @@ func TestNormalizePostgresDSN(t *testing.T) {
 		t.Fatalf("normalizePostgresDSN() changed explicit timezone: %q", got)
 	}
 }
+
+func TestContainerLimitsFromMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		metadata  []byte
+		wantMemMB int
+		wantCPU   float64
+	}{
+		{name: "empty metadata", metadata: nil, wantMemMB: 0, wantCPU: 0},
+		{name: "no limits", metadata: []byte(`{"runner_id":"r1","status":"active"}`), wantMemMB: 0, wantCPU: 0},
+		{name: "limits present", metadata: []byte(`{"runner_id":"r1","container_memory_mb":1024,"container_cpu":2}`), wantMemMB: 1024, wantCPU: 2},
+		{name: "partial limits", metadata: []byte(`{"runner_id":"r1","container_cpu":1.5}`), wantMemMB: 0, wantCPU: 1.5},
+		{name: "invalid json", metadata: []byte(`not json`), wantMemMB: 0, wantCPU: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			memMB, cpu := containerLimitsFromMetadata(tc.metadata)
+			if memMB != tc.wantMemMB {
+				t.Errorf("containerLimitsFromMetadata memory = %d, want %d", memMB, tc.wantMemMB)
+			}
+			if cpu != tc.wantCPU {
+				t.Errorf("containerLimitsFromMetadata cpu = %v, want %v", cpu, tc.wantCPU)
+			}
+		})
+	}
+}

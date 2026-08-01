@@ -221,6 +221,10 @@ message RunnerInfo {
   string runsc_version = 17;
   string last_heartbeat = 18;
   ResourceInfo resource = 19;
+  // Runner-side per-task container safety caps (0 when unset). Individual
+  // task limits may be stricter but can never raise these configured caps.
+  int32 container_memory_mb = 20;
+  double container_cpu = 21;
 }
 
 message ResourceInfo {
@@ -390,6 +394,9 @@ message ExportTaskResponse {
 
 message RecoverTaskRequest {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  // Optional custom prompt for the recovery session. When omitted, a default
+  // recovery instruction referencing the previous session export is used.
+  string custom_prompt = 2;
 }
 
 message RecoverTaskResponse {

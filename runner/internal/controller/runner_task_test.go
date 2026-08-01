@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1273,6 +1274,57 @@ func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	}
 }
 
+// TestDockerRPCArgsRunnerLimitsCapTask verifies that runner-level limits remain
+// hard safety caps when a task requests more resources.
+func TestDockerRPCArgsRunnerLimitsCapTask(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 2048, MaxCPU: 3}
+	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected runner cap --memory-swap 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "1.5") {
+		t.Fatalf("expected runner cap --cpus 1.5 in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "200") {
+		t.Fatalf("expected config --pids-limit 200 fallback in args: %v", args)
+	}
+}
+
+func TestDockerRPCArgsTaskLimitsCanTightenRunnerCaps(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
+	exec := config.ExecutionConfig{ContainerMemory: "4g", ContainerCPU: 4}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "768m") {
+		t.Fatalf("expected stricter task --memory 768m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected stricter task --cpus 2 in args: %v", args)
+	}
+}
+
+// TestDockerRPCArgsPerTaskLimitsWhenConfigUnset verifies per-task limits are
+// applied even when no runner-level config limits are configured.
+func TestDockerRPCArgsPerTaskLimitsWhenConfigUnset(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	if !hasAdjacentArgs(args, "--memory", "768m") {
+		t.Fatalf("expected --memory 768m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected --cpus 2 in args: %v", args)
+	}
+	if indexOf(args, "--pids-limit") != -1 {
+		t.Fatalf("expected no --pids-limit when unset, got: %v", args)
+	}
+}
+
 func TestDockerRPCArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
@@ -1301,6 +1353,28 @@ func TestDockerServeArgsAppliesContainerLimits(t *testing.T) {
 	}
 	if !hasAdjacentArgs(args, "--pids-limit", "256") {
 		t.Fatalf("expected --pids-limit 256 in args: %v", args)
+	}
+}
+
+// TestDockerServeArgsRunnerLimitsCapTask verifies that runner-level limits cap
+// larger task values on the serve path used by both new and resumed tasks.
+func TestDockerServeArgsRunnerLimitsCapTask(t *testing.T) {
+	r := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 2, ContainerPIDs: 256}}, runnerID: "runner-test"}
+	h := opencode.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator", MaxMemoryMB: 4096, MaxCPU: 4}
+	serveCmd := h.ServeCommand(containerPortForServe)
+	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected runner cap --memory-swap 512m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected runner cap --cpus 2 in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--pids-limit", "256") {
+		t.Fatalf("expected config --pids-limit 256 fallback in args: %v", args)
 	}
 }
 
@@ -1432,11 +1506,14 @@ func TestRequestGitHubCredentialAddsRunnerOwnedIdentity(t *testing.T) {
 }
 
 func TestGitHubCredentialBridgeURLUsesExecutionBackendHost(t *testing.T) {
-	server, err := runnermcp.NewServer(func(context.Context) (string, error) { return "token", nil })
+	server, err := runnermcp.NewServer()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
+	if err := server.SetCredentialHandler(func(context.Context) (string, error) { return "token", nil }); err != nil {
+		t.Fatal(err)
+	}
 	_, port, _ := net.SplitHostPort(server.Addr())
 
 	local := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{Backend: "local"}}}
@@ -1515,6 +1592,53 @@ func TestOpenCodeConfigContentIsHarnessControlled(t *testing.T) {
 	}
 }
 
+func TestWorkspaceMCPServerRegistersAndRevokesRelayClaim(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+	relay, err := network.NewMCPRelay("127.0.0.1:0", target.URL+"/mcp", "upstream-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := relay.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = relay.Stop() })
+
+	runner := &Runner{
+		cfg:      &config.Config{Execution: config.ExecutionConfig{Backend: "local"}},
+		mcpRelay: relay,
+	}
+	server, err := runner.startWorkspaceMCP(task.TaskRequest{TaskID: "task-1", ExecutionID: "exec-1"})
+	if err != nil {
+		t.Fatalf("startWorkspaceMCP: %v", err)
+	}
+
+	callRelay := func() int {
+		req, err := http.NewRequest(http.MethodPost, "http://"+relay.Addr()+"/mcp", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+server.Token())
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	if status := callRelay(); status != http.StatusNoContent {
+		t.Fatalf("active claim status = %d, want %d", status, http.StatusNoContent)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatalf("close workspace MCP server: %v", err)
+	}
+	if status := callRelay(); status != http.StatusUnauthorized {
+		t.Fatalf("closed claim status = %d, want %d", status, http.StatusUnauthorized)
+	}
+}
+
 func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	t.Setenv("RUNNER_HOST_IP", "172.21.0.3")
 	relay, err := network.NewMCPRelay("127.0.0.1:0", "http://chetter-mcp:8080/mcp", "")
@@ -1537,8 +1661,8 @@ func TestTaskChetterMCPURLUsesRunnerRelay(t *testing.T) {
 	if got, want := runner.taskChetterMCPURL(), "http://172.21.0.3:"+port+"/mcp"; got != want {
 		t.Fatalf("task Chetter MCP URL = %q, want %q", got, want)
 	}
-	if got := runner.taskChetterMCPToken(); got != "" {
-		t.Fatalf("task Chetter MCP token = %q, want empty relay-managed token", got)
+	if got := runner.taskChetterMCPToken("claim-token"); got != "claim-token" {
+		t.Fatalf("task Chetter MCP token = %q, want claim token", got)
 	}
 }
 
@@ -1547,7 +1671,7 @@ func TestTaskChetterMCPURLUsesConfiguredURLLocally(t *testing.T) {
 	if got := runner.taskChetterMCPURL(); got != "http://chetter-mcp:8080/mcp" {
 		t.Fatalf("task Chetter MCP URL = %q", got)
 	}
-	if got := runner.taskChetterMCPToken(); got != "local-token" {
+	if got := runner.taskChetterMCPToken("claim-token"); got != "local-token" {
 		t.Fatalf("task Chetter MCP token = %q", got)
 	}
 }

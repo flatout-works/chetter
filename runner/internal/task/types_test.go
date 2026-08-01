@@ -7,12 +7,13 @@ import (
 
 func TestTaskRequest_MarshalJSON(t *testing.T) {
 	req := TaskRequest{
-		TaskID:      "task-123",
-		AgentImage:  "ghcr.io/flatout-works/chetter-runner:latest",
-		Prompt:      "build me an api",
-		TimeoutSec:  3600,
-		MaxMemoryMB: 4096,
-		MaxCPU:      2,
+		TaskID:         "task-123",
+		AgentImage:     "ghcr.io/flatout-works/chetter-runner:latest",
+		Prompt:         "build me an api",
+		TimeoutSec:     3600,
+		MaxMemoryMB:    4096,
+		MaxCPU:         2,
+		RunnerMCPToken: "must-not-be-serialized",
 		Env: map[string]string{
 			"LLM_PROVIDER": "synthetic",
 		},
@@ -34,6 +35,9 @@ func TestTaskRequest_MarshalJSON(t *testing.T) {
 	if parsed["timeout_sec"] != float64(3600) {
 		t.Errorf("timeout_sec = %v", parsed["timeout_sec"])
 	}
+	if _, ok := parsed["runner_mcp_token"]; ok {
+		t.Fatal("locally generated runner MCP token was serialized")
+	}
 }
 
 func TestTaskRequest_Defaults(t *testing.T) {
@@ -51,9 +55,10 @@ func TestTaskRequest_Defaults(t *testing.T) {
 
 func TestTaskResponse_MarshalJSON(t *testing.T) {
 	resp := TaskResponse{
-		TaskID:  "task-1",
-		Status:  "running",
-		Summary: "everything is fine",
+		TaskID:         "task-1",
+		Status:         "running",
+		Summary:        "everything is fine",
+		RunnerMCPToken: "must-not-be-serialized",
 	}
 
 	data, err := json.Marshal(&resp)
@@ -68,6 +73,9 @@ func TestTaskResponse_MarshalJSON(t *testing.T) {
 
 	if parsed["status"] != "running" {
 		t.Errorf("status = %v", parsed["status"])
+	}
+	if _, ok := parsed["runner_mcp_token"]; ok {
+		t.Fatal("locally generated runner MCP token was serialized")
 	}
 }
 

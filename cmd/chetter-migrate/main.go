@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/dbmigration"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -36,9 +37,6 @@ func main() {
 	}
 
 	databaseDSN := strings.ReplaceAll(*dsn, "tls=tidb", "tls=true")
-	if err := goose.SetDialect(gooseDialect); err != nil {
-		log.Fatalf("set goose dialect: %v", err)
-	}
 	db, err := sql.Open(dbDriver, databaseDSN)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
@@ -50,8 +48,17 @@ func main() {
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("ping database: %v", err)
 	}
-	if err := goose.UpContext(ctx, db, *dir); err != nil {
-		log.Fatalf("apply migrations: %v", err)
+	if gooseDialect == "postgres" {
+		if err := dbmigration.UpPostgres(ctx, db, os.DirFS(*dir)); err != nil {
+			log.Fatalf("apply postgres migrations: %v", err)
+		}
+	} else {
+		if err := goose.SetDialect(gooseDialect); err != nil {
+			log.Fatalf("set goose dialect: %v", err)
+		}
+		if err := goose.UpContext(ctx, db, *dir); err != nil {
+			log.Fatalf("apply migrations: %v", err)
+		}
 	}
 	fmt.Println("database migrations applied")
 }

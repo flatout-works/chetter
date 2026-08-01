@@ -9,7 +9,6 @@ package mcp
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -27,12 +26,21 @@ import (
 const GitHubCredentialPath = "/internal/github-credential"
 
 type Server struct {
-	sdkServer            *mcplib.Server
-	httpSrv              *http.Server
-	addr                 string
-	cancel               context.CancelFunc
-	wg                   sync.WaitGroup
-	credentialCapability string
+	sdkServer  *mcplib.Server
+	httpSrv    *http.Server
+	mux        *http.ServeMux
+	addr       string
+	token      string
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	closeOnce  sync.Once
+	closeMu    sync.Mutex
+	closed     bool
+	closeErr   error
+	closeHooks []func()
+
+	credentialMu  sync.Mutex
+	credentialSet bool
 }
 
 // ToolHandler is the function signature for tool implementations.
@@ -49,37 +57,36 @@ type ToolDef struct {
 	InputSchema map[string]any
 }
 
-// NewServer creates a new MCP server listening on a random TCP port.
-func NewServer(credentialHandlers ...CredentialHandler) (*Server, error) {
-	ln, err := net.Listen("tcp4", "0.0.0.0:0") // tcp4 to avoid IPv6 which gVisor can't reach
+// NewServer creates an authenticated MCP server on a random TCP port. The
+// optional listenHost narrows which local interface accepts task traffic; it
+// defaults to loopback for direct callers and tests.
+func NewServer(listenHost ...string) (*Server, error) {
+	host := "127.0.0.1"
+	if len(listenHost) > 0 && listenHost[0] != "" {
+		host = listenHost[0]
+	}
+	token, err := randomBearerToken()
 	if err != nil {
-		return nil, fmt.Errorf("listen: %w", err)
+		return nil, fmt.Errorf("generate MCP bearer token: %w", err)
+	}
+	ln, err := net.Listen("tcp4", net.JoinHostPort(host, "0")) // tcp4 to avoid IPv6 which gVisor can't reach
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", host, err)
 	}
 	addr := ln.Addr().String()
 
 	sdkServer := mcplib.NewServer(&mcplib.Implementation{Name: "chetter-runner", Version: "0.1.0"}, nil)
-
 	getServer := func(_ *http.Request) *mcplib.Server { return sdkServer }
-	handler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	mcpHandler := mcplib.NewStreamableHTTPHandler(getServer, &mcplib.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
-	var credentialCapability string
-	if len(credentialHandlers) > 0 && credentialHandlers[0] != nil {
-		capabilityBytes := make([]byte, 32)
-		if _, err := rand.Read(capabilityBytes); err != nil {
-			_ = ln.Close()
-			return nil, fmt.Errorf("generate credential capability: %w", err)
-		}
-		credentialCapability = base64.RawURLEncoding.EncodeToString(capabilityBytes)
-		mux.Handle(GitHubCredentialPath, githubCredentialHandler(credentialCapability, credentialHandlers[0]))
-	}
+	mux.Handle("/mcp", requireBearerToken(token, mcpHandler))
 
 	httpSrv := &http.Server{Handler: mux}
-	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, addr: addr, credentialCapability: credentialCapability}
+	s := &Server{sdkServer: sdkServer, httpSrv: httpSrv, mux: mux, addr: addr, token: token}
 	serverCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
-	s.httpSrv.BaseContext = func(ln net.Listener) context.Context { return serverCtx }
+	s.httpSrv.BaseContext = func(net.Listener) context.Context { return serverCtx }
 
 	s.wg.Add(1)
 	go func() {
@@ -91,12 +98,30 @@ func NewServer(credentialHandlers ...CredentialHandler) (*Server, error) {
 	return s, nil
 }
 
-// Addr returns the listen address for the MCP server (e.g. "127.0.0.1:12345").
+// Addr returns the listen address for the MCP server.
 func (s *Server) Addr() string { return s.addr }
 
-// CredentialCapability returns the per-server bearer capability, or an empty
-// string when the private credential endpoint is disabled.
-func (s *Server) CredentialCapability() string { return s.credentialCapability }
+// Token returns the per-server bearer token used by the task's private MCP
+// configuration and credential endpoint.
+func (s *Server) Token() string { return s.token }
+
+// SetCredentialHandler enables the private, non-MCP credential endpoint. It
+// reuses the execution's MCP bearer capability and accepts no task-controlled
+// identity fields.
+func (s *Server) SetCredentialHandler(get CredentialHandler) error {
+	if get == nil {
+		return fmt.Errorf("credential handler is required")
+	}
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+	if s.credentialSet {
+		return fmt.Errorf("credential handler is already registered")
+	}
+	handler := requireBearerToken(s.token, githubCredentialHandler(get))
+	s.mux.Handle(GitHubCredentialPath, noStore(handler))
+	s.credentialSet = true
+	return nil
+}
 
 // RegisterTool registers a named tool with its definition and handler.
 func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
@@ -107,19 +132,13 @@ func (s *Server) RegisterTool(def ToolDef, handler ToolHandler) {
 	}, adaptHandler(handler))
 }
 
-func githubCredentialHandler(capability string, get CredentialHandler) http.Handler {
-	expected := sha256.Sum256([]byte("Bearer " + capability))
+func githubCredentialHandler(get CredentialHandler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		actual := sha256.Sum256([]byte(r.Header.Get("Authorization")))
-		if subtle.ConstantTimeCompare(actual[:], expected[:]) != 1 {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1))
@@ -137,16 +156,70 @@ func githubCredentialHandler(capability string, get CredentialHandler) http.Hand
 	})
 }
 
-// Close shuts down the HTTP server.
-func (s *Server) Close() error {
-	s.cancel()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.httpSrv.Shutdown(shutdownCtx); err != nil {
-		return err
+// AddCloseHook registers cleanup that runs once after the HTTP server exits.
+// A hook added after closure runs immediately.
+func (s *Server) AddCloseHook(hook func()) {
+	if hook == nil {
+		return
 	}
-	s.wg.Wait()
-	return nil
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		hook()
+		return
+	}
+	s.closeHooks = append(s.closeHooks, hook)
+	s.closeMu.Unlock()
+}
+
+// Close shuts down the HTTP server and runs registered cleanup hooks. It is
+// safe to call more than once.
+func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		s.cancel()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		s.closeErr = s.httpSrv.Shutdown(shutdownCtx)
+		cancel()
+		s.wg.Wait()
+
+		s.closeMu.Lock()
+		s.closed = true
+		hooks := append([]func(){}, s.closeHooks...)
+		s.closeHooks = nil
+		s.closeMu.Unlock()
+		for _, hook := range hooks {
+			hook()
+		}
+	})
+	return s.closeErr
+}
+
+func randomBearerToken() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func requireBearerToken(token string, next http.Handler) http.Handler {
+	expected := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		provided := []byte(r.Header.Get("Authorization"))
+		if len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func noStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func adaptHandler(h ToolHandler) mcplib.ToolHandler {
