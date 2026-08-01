@@ -127,26 +127,32 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		runscVersion = firstEnv("RUNSC_VERSION")
 	}
 
+	var mcpRelayRejectedRequests int64
+	if r.mcpRelay != nil {
+		mcpRelayRejectedRequests = int64(r.mcpRelay.RejectedRequests())
+	}
+
 	info := &runnerv1.RunnerInfo{
-		RunnerId:          r.runnerID,
-		Status:            status,
-		ImageRef:          firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
-		ImageDigest:       firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
-		Version:           firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
-		MaxConcurrent:     int32(maxConcurrent),
-		RunningTasks:      int32(len(currentExecutions)),
-		AvailableSlots:    int32(availableSlots),
-		TotalStarted:      totalStarted,
-		TotalCompleted:    totalCompleted,
-		TotalErrors:       totalErrors,
-		CurrentExecutions: currentExecutions,
-		ExecutionMode:     r.executionMode(),
-		StartedAt:         formatProtoTime(r.startedAt),
-		GvisorEnabled:     gvisorEnabled,
-		CheckpointRestore: checkpointRestore,
-		RunscVersion:      runscVersion,
-		ContainerMemoryMb: containerMemoryMB(r.cfg.Execution.ContainerMemory),
-		ContainerCpu:      r.cfg.Execution.ContainerCPU,
+		RunnerId:                 r.runnerID,
+		Status:                   status,
+		ImageRef:                 firstEnv("CHETTER_RUNNER_IMAGE", "CONTAINER_IMAGE"),
+		ImageDigest:              firstEnv("CHETTER_RUNNER_IMAGE_DIGEST"),
+		Version:                  firstEnv("CHETTER_RUNNER_VERSION", "VERSION", "GITHUB_SHA"),
+		MaxConcurrent:            int32(maxConcurrent),
+		RunningTasks:             int32(len(currentExecutions)),
+		AvailableSlots:           int32(availableSlots),
+		TotalStarted:             totalStarted,
+		TotalCompleted:           totalCompleted,
+		TotalErrors:              totalErrors,
+		CurrentExecutions:        currentExecutions,
+		ExecutionMode:            r.executionMode(),
+		StartedAt:                formatProtoTime(r.startedAt),
+		GvisorEnabled:            gvisorEnabled,
+		CheckpointRestore:        checkpointRestore,
+		RunscVersion:             runscVersion,
+		ContainerMemoryMb:        containerMemoryMB(r.cfg.Execution.ContainerMemory),
+		ContainerCpu:             r.cfg.Execution.ContainerCPU,
+		McpRelayRejectedRequests: mcpRelayRejectedRequests,
 	}
 
 	if snapshot.CPUPercent != nil || snapshot.MemoryPercent != nil || snapshot.DiskPercent != nil {

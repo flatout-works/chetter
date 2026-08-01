@@ -72,6 +72,7 @@ func TestHandler_CustomDescriptorsPresent(t *testing.T) {
 		"chetter_tasks",
 		"chetter_runners",
 		"chetter_runner_slots",
+		"chetter_mcp_relay_rejected_requests",
 		"chetter_webhook_deliveries",
 	} {
 		if !strings.Contains(body, name) {
@@ -85,8 +86,25 @@ func TestCollector_Describe(t *testing.T) {
 	if c == nil {
 		t.Fatal("expected non-nil collector")
 	}
-	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.webhookCount == nil {
+	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.relayRejections == nil || c.webhookCount == nil {
 		t.Fatal("expected all metric descriptors to be non-nil")
+	}
+}
+
+func TestMCPRelayRejectedRequests(t *testing.T) {
+	tests := []struct {
+		metadata string
+		want     int64
+	}{
+		{metadata: `{"mcp_relay_rejected_requests":7}`, want: 7},
+		{metadata: `{}`, want: 0},
+		{metadata: `{"mcp_relay_rejected_requests":-1}`, want: 0},
+		{metadata: `{invalid`, want: 0},
+	}
+	for _, tt := range tests {
+		if got := mcpRelayRejectedRequests([]byte(tt.metadata)); got != tt.want {
+			t.Errorf("mcpRelayRejectedRequests(%q) = %d, want %d", tt.metadata, got, tt.want)
+		}
 	}
 }
 
@@ -160,7 +178,7 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 	// Create minimal schema so queries don't fail.
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS chetter_tasks (id VARCHAR(64), status VARCHAR(32))`,
-		`CREATE TABLE IF NOT EXISTS chetter_runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT)`,
+		`CREATE TABLE IF NOT EXISTS chetter_runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT, metadata JSON)`,
 		`CREATE TABLE IF NOT EXISTS chetter_webhook_deliveries (id VARCHAR(64), status VARCHAR(32))`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -194,6 +212,7 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 		`chetter_runners{status="stale"} 0`,
 		`chetter_runner_slots{type="available"} 0`,
 		`chetter_runner_slots{type="occupied"} 0`,
+		`chetter_mcp_relay_rejected_requests 0`,
 	} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("expected %q in output", needle)
