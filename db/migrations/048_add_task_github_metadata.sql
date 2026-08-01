@@ -1,6 +1,7 @@
 -- +goose Up
 ALTER TABLE chetter_tasks
-    ADD COLUMN github_repo VARCHAR(255) NULL AFTER git_ref,
+    ADD COLUMN github_repo VARCHAR(255) NULL AFTER git_ref;
+ALTER TABLE chetter_tasks
     ADD COLUMN github_installation_id BIGINT NULL AFTER github_repo;
 
 -- +goose Down
