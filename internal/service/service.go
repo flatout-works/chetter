@@ -1116,7 +1116,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 }
 
 // RecoverTask starts a fresh agent session under an existing terminal task.
-func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecord, error) {
+// When customPrompt is non-empty it is used verbatim as the new task prompt;
+// otherwise a default recovery instruction referencing the previous session
+// export is used.
+func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) (TaskToolRecord, error) {
 	orig, err := s.taskForToolAccess(ctx, taskID)
 	if err != nil {
 		return TaskToolRecord{}, fmt.Errorf("get original task: %w", err)
@@ -1132,6 +1135,9 @@ func (s *Service) RecoverTask(ctx context.Context, taskID string) (TaskToolRecor
 			"Original task:\n%s",
 		recoveryFileName, orig.Prompt,
 	)
+	if trimmed := strings.TrimSpace(customPrompt); trimmed != "" {
+		recoveryPrompt = trimmed
+	}
 
 	now := time.Now().UTC()
 	newSessionID, err := randomID("sess")

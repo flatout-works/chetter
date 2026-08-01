@@ -3291,8 +3291,11 @@ func (x *ExportTaskResponse) GetExport() string {
 }
 
 type RecoverTaskRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// Optional custom prompt for the recovery session. When omitted, a default
+	// recovery instruction referencing the previous session export is used.
+	CustomPrompt  string `protobuf:"bytes,2,opt,name=custom_prompt,json=customPrompt,proto3" json:"custom_prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3330,6 +3333,13 @@ func (*RecoverTaskRequest) Descriptor() ([]byte, []int) {
 func (x *RecoverTaskRequest) GetTaskId() string {
 	if x != nil {
 		return x.TaskId
+	}
+	return ""
+}
+
+func (x *RecoverTaskRequest) GetCustomPrompt() string {
+	if x != nil {
+		return x.CustomPrompt
 	}
 	return ""
 }
@@ -9535,9 +9545,10 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x18\n" +
 	"\acompact\x18\x02 \x01(\bR\acompact\",\n" +
 	"\x12ExportTaskResponse\x12\x16\n" +
-	"\x06export\x18\x01 \x01(\tR\x06export\"6\n" +
+	"\x06export\x18\x01 \x01(\tR\x06export\"[\n" +
 	"\x12RecoverTaskRequest\x12 \n" +
-	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\"7\n" +
+	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12#\n" +
+	"\rcustom_prompt\x18\x02 \x01(\tR\fcustomPrompt\"7\n" +
 	"\x13RecoverTaskResponse\x12 \n" +
 	"\x04task\x18\x01 \x01(\v2\f.api.v1.TaskR\x04task\"4\n" +
 	"\x10RerunTaskRequest\x12 \n" +

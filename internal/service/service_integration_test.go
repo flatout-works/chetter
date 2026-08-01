@@ -670,7 +670,7 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get old session: %v", err)
 	}
-	recovered, err := svc.RecoverTask(ctx, task.ID)
+	recovered, err := svc.RecoverTask(ctx, task.ID, "")
 	if err != nil {
 		t.Fatalf("recover: %v", err)
 	}
@@ -690,6 +690,10 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 	}
 	if newPrompt.AgentSessionID != newSession.ID || newPrompt.SourceUserPromptID.String != oldPrompt.ID {
 		t.Fatalf("recovery prompt = %+v, want source %s in session %s", newPrompt, oldPrompt.ID, newSession.ID)
+	}
+	fileName := "chetter_recovery_" + task.ID + ".md"
+	if !strings.HasPrefix(newPrompt.Prompt, "The file "+fileName+" in the workspace is the complete transcript") {
+		t.Fatalf("default recovery prompt = %q, want reference to %s", newPrompt.Prompt, fileName)
 	}
 	events, err := q.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: task.ID, Limit: 20})
 	if err != nil {
@@ -715,9 +719,141 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("claim recovery: %v", err)
 	}
-	fileName := "chetter_recovery_" + task.ID + ".md"
 	if string(recoveryClaim.Msg.Task.ExtraFiles[fileName]) != "previous transcript" {
 		t.Fatalf("recovery file %q = %q", fileName, recoveryClaim.Msg.Task.ExtraFiles[fileName])
+	}
+}
+
+func TestRecoverTaskWithCustomPromptUsesPromptVerbatim(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "original prompt", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_recovery_custom", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_recovery_custom",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         task.ID,
+			ExecutionId:    claim.Msg.Task.ExecutionId,
+			AgentSessionId: claim.Msg.Task.AgentSessionId,
+			UserPromptId:   claim.Msg.Task.UserPromptId,
+			Status:         "error",
+			Error:          "agent stopped",
+			SessionExport:  "custom recovery transcript",
+		}},
+	})); err != nil {
+		t.Fatalf("report failure: %v", err)
+	}
+
+	customPrompt := "Review the previous attempt, then finish by fixing the flaky test in pkg/foo and push a PR."
+	if _, err := svc.RecoverTask(ctx, task.ID, customPrompt); err != nil {
+		t.Fatalf("recover with custom prompt: %v", err)
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	newPrompt, err := q.GetUserPromptByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get recovery prompt: %v", err)
+	}
+	if newPrompt.Prompt != customPrompt {
+		t.Fatalf("recovery prompt = %q, want custom prompt verbatim %q", newPrompt.Prompt, customPrompt)
+	}
+
+	// The previous session export must still be attached as a workspace file.
+	recoveryClaim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_recovery_custom_2", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim recovery: %v", err)
+	}
+	fileName := "chetter_recovery_" + task.ID + ".md"
+	if string(recoveryClaim.Msg.Task.ExtraFiles[fileName]) != "custom recovery transcript" {
+		t.Fatalf("recovery file %q = %q", fileName, recoveryClaim.Msg.Task.ExtraFiles[fileName])
+	}
+}
+
+func TestRecoverTaskMissingSessionExportFailsWithoutRows(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "no export here", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_recovery_noexport", WaitSeconds: 0}))
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	// Report a terminal event WITHOUT a session export.
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_recovery_noexport",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         task.ID,
+			ExecutionId:    claim.Msg.Task.ExecutionId,
+			AgentSessionId: claim.Msg.Task.AgentSessionId,
+			UserPromptId:   claim.Msg.Task.UserPromptId,
+			Status:         "error",
+			Error:          "agent stopped",
+		}},
+	})); err != nil {
+		t.Fatalf("report failure: %v", err)
+	}
+
+	q := data.New(tdb.DB, tdb.Dialect())
+	oldSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get old session: %v", err)
+	}
+	_, err = svc.RecoverTask(ctx, task.ID, "custom prompt")
+	if err == nil {
+		t.Fatal("expected error for missing session export, got nil")
+	}
+	if !strings.Contains(err.Error(), "no session export available") {
+		t.Fatalf("error = %v, want 'no session export available'", err)
+	}
+
+	// No partial task rows may be created: the task keeps the same single
+	// session, prompt, and execution attempt.
+	newSession, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("get session after failed recovery: %v", err)
+	}
+	if newSession.ID != oldSession.ID {
+		t.Fatalf("session changed after failed recovery: %s -> %s", oldSession.ID, newSession.ID)
+	}
+	attempts, err := q.ListExecutionAttemptsByPrompt(ctx, claim.Msg.Task.UserPromptId)
+	if err != nil {
+		t.Fatalf("list attempts: %v", err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("attempts after failed recovery = %d, want 1", len(attempts))
+	}
+}
+
+func TestRecoverTaskRejectsNonTerminalTask(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "still running", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	_, err = svc.RecoverTask(ctx, task.ID, "custom prompt")
+	if err == nil {
+		t.Fatal("expected error recovering pending task, got nil")
+	}
+	if !strings.Contains(err.Error(), "not a terminal state") {
+		t.Fatalf("error = %v, want 'not a terminal state'", err)
 	}
 }
 

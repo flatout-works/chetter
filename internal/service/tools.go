@@ -526,6 +526,7 @@ type TaskExportOutput struct {
 // TaskRecoverInput is the input for chetter_recover_task.
 type TaskRecoverInput struct {
 	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
+	Prompt string `json:"prompt,omitempty" jsonschema:"Optional custom prompt for the recovery session. When omitted, a default recovery instruction referencing the previous session export is used."`
 }
 
 // TaskRecoverOutput is the output for chetter_recover_task.
@@ -761,7 +762,7 @@ func (s *Service) taskExportTool(ctx context.Context, _ *mcp.CallToolRequest, in
 }
 
 func (s *Service) taskRecoverTool(ctx context.Context, _ *mcp.CallToolRequest, in TaskRecoverInput) (*mcp.CallToolResult, TaskRecoverOutput, error) {
-	task, err := s.RecoverTask(ctx, in.TaskID)
+	task, err := s.RecoverTask(ctx, in.TaskID, in.Prompt)
 	if err != nil {
 		return nil, TaskRecoverOutput{}, err
 	}

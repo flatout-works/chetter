@@ -367,7 +367,7 @@ func (h *taskHandler) ExportTask(ctx context.Context, req *connect.Request[apiv1
 }
 
 func (h *taskHandler) RecoverTask(ctx context.Context, req *connect.Request[apiv1.RecoverTaskRequest]) (*connect.Response[apiv1.RecoverTaskResponse], error) {
-	task, err := h.svc.RecoverTask(ctx, req.Msg.TaskId)
+	task, err := h.svc.RecoverTask(ctx, req.Msg.TaskId, req.Msg.CustomPrompt)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
