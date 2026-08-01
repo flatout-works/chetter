@@ -27,6 +27,7 @@ Work started on the highest-priority, independently reviewable items:
 - [ ] Decide and implement PostgreSQL startup migration behavior.
 - [x] Remove confirmed dead runner packages and stale compile-time placeholders.
 - [x] Consolidate duplicated harness output logging into the shared harness package.
+- [x] Make service shutdown idempotent, cancelable, and waiting for owned background loops.
 
 ## Immediate priorities
 
