@@ -102,7 +102,7 @@ func (c *Codex) completionResult() (string, error, bool) {
 }
 
 func (c *Codex) PipeOutput(taskID, stream string, reader io.Reader) {
-	pipeOutput(taskID, stream, reader)
+	harness.LogOutput("codex", taskID, stream, reader)
 }
 
 func (c *Codex) ResolvedModelID(req task.TaskRequest) string { return resolvedModelID(req) }

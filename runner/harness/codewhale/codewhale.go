@@ -77,7 +77,7 @@ func (cw *CodeWhale) WatchEvents(ctx context.Context, taskID, baseURL, secret st
 }
 
 func (cw *CodeWhale) PipeOutput(taskID, stream string, reader io.Reader) {
-	pipeOutput(taskID, stream, reader)
+	harness.LogOutput("codewhale", taskID, stream, reader)
 }
 
 func (cw *CodeWhale) ResolvedModelID(req task.TaskRequest) string {
