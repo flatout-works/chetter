@@ -113,9 +113,8 @@ export type RunnerInfo = Message<"runner.v1.RunnerInfo"> & {
   resource?: ResourceInfo | undefined;
 
   /**
-   * Effective per-task container limits enforced by this runner (0 when
-   * unset/unlimited). Reported so fleet observability shows the constraint
-   * actually applied to task containers.
+   * Runner-side per-task container safety caps (0 when unset). Individual
+   * task limits may be stricter but can never raise these configured caps.
    *
    * @generated from field: int32 container_memory_mb = 20;
    */

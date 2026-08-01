@@ -180,6 +180,7 @@
       case "internal_error": return "Internal error";
       case "user_cancelled": return "User cancelled";
       case "quota_exceeded": return "Quota exceeded";
+      case "resource_limit": return "Resource limit";
       case "unknown": return "Unknown";
       default: return cat;
     }
@@ -360,6 +361,7 @@
         <option value="internal_error">Internal error</option>
         <option value="user_cancelled">User cancelled</option>
         <option value="quota_exceeded">Quota exceeded</option>
+        <option value="resource_limit">Resource limit</option>
         <option value="unknown">Unknown</option>
       </Select>
       <Select

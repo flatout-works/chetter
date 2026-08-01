@@ -1196,9 +1196,8 @@ type RunnerInfo struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	IsStale        bool            `json:"is_stale"`
 	Resource       *RunnerResource `json:"resource,omitempty"`
-	// ContainerMemoryMB and ContainerCPU are the effective per-task container
-	// limits the runner enforces (0 when unset/unlimited). Reported so fleet
-	// observability shows the real constraint. See issue #273.
+	// ContainerMemoryMB and ContainerCPU are runner-side per-task safety caps.
+	// Individual task limits may be stricter but cannot raise these caps.
 	ContainerMemoryMB int     `json:"container_memory_mb,omitempty"`
 	ContainerCPU      float64 `json:"container_cpu,omitempty"`
 }

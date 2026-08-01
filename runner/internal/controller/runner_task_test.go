@@ -1265,25 +1265,37 @@ func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	}
 }
 
-// TestDockerRPCArgsPerTaskLimitsWinOverConfig verifies that per-task
-// MaxMemoryMB/MaxCPU overrides (issue #273) take precedence over the runner
-// config limits on the RPC execution path.
-func TestDockerRPCArgsPerTaskLimitsWinOverConfig(t *testing.T) {
+// TestDockerRPCArgsRunnerLimitsCapTask verifies that runner-level limits remain
+// hard safety caps when a task requests more resources.
+func TestDockerRPCArgsRunnerLimitsCapTask(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 2048, MaxCPU: 3}
 	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
 	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
-	if !hasAdjacentArgs(args, "--memory", "2048m") {
-		t.Fatalf("expected --memory 2048m (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
 	}
-	if !hasAdjacentArgs(args, "--memory-swap", "2048m") {
-		t.Fatalf("expected --memory-swap 2048m (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected runner cap --memory-swap 512m in args: %v", args)
 	}
-	if !hasAdjacentArgs(args, "--cpus", "3") {
-		t.Fatalf("expected --cpus 3 (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--cpus", "1.5") {
+		t.Fatalf("expected runner cap --cpus 1.5 in args: %v", args)
 	}
 	if !hasAdjacentArgs(args, "--pids-limit", "200") {
 		t.Fatalf("expected config --pids-limit 200 fallback in args: %v", args)
+	}
+}
+
+func TestDockerRPCArgsTaskLimitsCanTightenRunnerCaps(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
+	exec := config.ExecutionConfig{ContainerMemory: "4g", ContainerCPU: 4}
+	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "768m") {
+		t.Fatalf("expected stricter task --memory 768m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected stricter task --cpus 2 in args: %v", args)
 	}
 }
 
@@ -1335,23 +1347,22 @@ func TestDockerServeArgsAppliesContainerLimits(t *testing.T) {
 	}
 }
 
-// TestDockerServeArgsPerTaskLimitsWinOverConfig verifies that per-task
-// MaxMemoryMB/MaxCPU overrides win over the runner config on the serve path
-// (used by both serve and resume, issue #273).
-func TestDockerServeArgsPerTaskLimitsWinOverConfig(t *testing.T) {
+// TestDockerServeArgsRunnerLimitsCapTask verifies that runner-level limits cap
+// larger task values on the serve path used by both new and resumed tasks.
+func TestDockerServeArgsRunnerLimitsCapTask(t *testing.T) {
 	r := &Runner{cfg: &config.Config{Execution: config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 2, ContainerPIDs: 256}}, runnerID: "runner-test"}
 	h := opencode.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator", MaxMemoryMB: 4096, MaxCPU: 4}
 	serveCmd := h.ServeCommand(containerPortForServe)
 	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
-	if !hasAdjacentArgs(args, "--memory", "4096m") {
-		t.Fatalf("expected --memory 4096m (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--memory", "512m") {
+		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
 	}
-	if !hasAdjacentArgs(args, "--memory-swap", "4096m") {
-		t.Fatalf("expected --memory-swap 4096m (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--memory-swap", "512m") {
+		t.Fatalf("expected runner cap --memory-swap 512m in args: %v", args)
 	}
-	if !hasAdjacentArgs(args, "--cpus", "4") {
-		t.Fatalf("expected --cpus 4 (per-task wins) in args: %v", args)
+	if !hasAdjacentArgs(args, "--cpus", "2") {
+		t.Fatalf("expected runner cap --cpus 2 in args: %v", args)
 	}
 	if !hasAdjacentArgs(args, "--pids-limit", "256") {
 		t.Fatalf("expected config --pids-limit 256 fallback in args: %v", args)

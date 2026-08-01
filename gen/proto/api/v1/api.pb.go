@@ -1703,8 +1703,10 @@ type RunnerInfo struct {
 	RunscVersion      string                 `protobuf:"bytes,17,opt,name=runsc_version,json=runscVersion,proto3" json:"runsc_version,omitempty"`
 	LastHeartbeat     string                 `protobuf:"bytes,18,opt,name=last_heartbeat,json=lastHeartbeat,proto3" json:"last_heartbeat,omitempty"`
 	Resource          *ResourceInfo          `protobuf:"bytes,19,opt,name=resource,proto3" json:"resource,omitempty"`
-	ContainerMemoryMb int32                  `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
-	ContainerCpu      float64                `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
+	// Runner-side per-task container safety caps (0 when unset). Individual
+	// task limits may be stricter but can never raise these configured caps.
+	ContainerMemoryMb int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
+	ContainerCpu      float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }

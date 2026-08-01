@@ -202,7 +202,7 @@
                 {/if}
                 {#if runner.containerMemoryMb > 0 || runner.containerCpu > 0}
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Container limits: {runner.containerMemoryMb > 0 ? `${runner.containerMemoryMb} MiB` : "unlimited"} memory · {runner.containerCpu > 0 ? runner.containerCpu : "unlimited"} CPU
+                    Runner caps: {runner.containerMemoryMb > 0 ? `${runner.containerMemoryMb} MiB` : "unset"} memory · {runner.containerCpu > 0 ? runner.containerCpu : "unset"} CPU
                   </p>
                 {/if}
               </div>

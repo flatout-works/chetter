@@ -254,8 +254,8 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 		CurrentTaskIds: r.CurrentTaskIDs,
 		StartedAt:      timeStrPtr(r.StartedAt),
 		LastHeartbeat:  r.LastSeenAt.Format(time.RFC3339),
-		// Effective per-task container limits enforced by the runner (0 =
-		// unset/unlimited). See issue #273.
+		// Runner-side per-task safety caps (0 = unset). Individual task limits
+		// may be stricter but cannot raise these caps. See issue #273.
 		ContainerMemoryMb: int32(r.ContainerMemoryMB),
 		ContainerCpu:      r.ContainerCPU,
 	}

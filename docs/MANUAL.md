@@ -313,7 +313,7 @@ chetter_mcp:
 | `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
 | `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
-| `execution.container_memory` | empty | Optional Docker memory limit for task containers, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Empty means no runner-imposed limit. |
+| `execution.container_memory` | empty | Optional runner-side Docker memory cap, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Task limits may be stricter but cannot raise this cap. Empty means no runner-imposed cap. OOM-killed tasks report `failure_category=resource_limit`. |
 | `deploy.provider` | `local` | Reserved deployment provider metadata. |
 | `deploy.registry` | empty | Reserved image registry metadata. |
 | `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |

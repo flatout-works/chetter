@@ -26,9 +26,8 @@ message RunnerInfo {
   string runsc_version = 17;
   repeated RunningExecution current_executions = 18;
   ResourceInfo resource = 19;
-  // Effective per-task container limits enforced by this runner (0 when
-  // unset/unlimited). Reported so fleet observability shows the constraint
-  // actually applied to task containers.
+  // Runner-side per-task container safety caps (0 when unset). Individual
+  // task limits may be stricter but can never raise these configured caps.
   int32 container_memory_mb = 20;
   double container_cpu = 21;
 }

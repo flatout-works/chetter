@@ -1035,6 +1035,9 @@ export type RunnerInfo = Message<"api.v1.RunnerInfo"> & {
   resource?: ResourceInfo | undefined;
 
   /**
+   * Runner-side per-task container safety caps (0 when unset). Individual
+   * task limits may be stricter but can never raise these configured caps.
+   *
    * @generated from field: int32 container_memory_mb = 20;
    */
   containerMemoryMb: number;

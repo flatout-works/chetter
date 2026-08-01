@@ -280,8 +280,7 @@ func TestKubernetesHeartbeatReportsRuntimeWithoutCheckpointRestore(t *testing.T)
 }
 
 // TestRunnerInfoReportsContainerLimits verifies the heartbeat reports the
-// effective per-task container limits from runner config so fleet
-// observability shows the real constraint (issue #273).
+// runner-side per-task safety caps for fleet observability (issue #273).
 func TestRunnerInfoReportsContainerLimits(t *testing.T) {
 	r, _ := newDrainTestRunner(t)
 	r.cfg.Execution.ContainerMemory = "1g"

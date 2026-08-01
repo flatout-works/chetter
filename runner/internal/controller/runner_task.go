@@ -719,7 +719,8 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
 		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("container harness serve not ready: %v", err), nil)
+		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container harness serve not ready: %v", err))
+		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
 	slog.Info("container harness serve ready", "taskID", req.TaskID, "url", baseURL)
@@ -868,7 +869,8 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
-		r.publishStatusForRequest(req, "error", fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)), nil)
+		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)))
+		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
 	slog.Info("container harness serve ready for resume", "taskID", req.TaskID, "url", baseURL)

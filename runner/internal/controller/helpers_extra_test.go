@@ -53,6 +53,7 @@ func TestDockerOOMMessage(t *testing.T) {
 		want    string
 	}{
 		{"oom killed enriches message", true, "prompt failed: EOF", "task container exceeded its memory limit (OOMKilled): prompt failed: EOF"},
+		{"startup oom enriches readiness failure", true, "container harness serve not ready: context deadline exceeded", "task container exceeded its memory limit (OOMKilled): container harness serve not ready: context deadline exceeded"},
 		{"not oom leaves message unchanged", false, "prompt failed: EOF", "prompt failed: EOF"},
 	}
 	for _, tc := range tests {

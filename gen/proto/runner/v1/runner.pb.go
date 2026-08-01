@@ -43,9 +43,8 @@ type RunnerInfo struct {
 	RunscVersion      string                 `protobuf:"bytes,17,opt,name=runsc_version,json=runscVersion,proto3" json:"runsc_version,omitempty"`
 	CurrentExecutions []*RunningExecution    `protobuf:"bytes,18,rep,name=current_executions,json=currentExecutions,proto3" json:"current_executions,omitempty"`
 	Resource          *ResourceInfo          `protobuf:"bytes,19,opt,name=resource,proto3" json:"resource,omitempty"`
-	// Effective per-task container limits enforced by this runner (0 when
-	// unset/unlimited). Reported so fleet observability shows the constraint
-	// actually applied to task containers.
+	// Runner-side per-task container safety caps (0 when unset). Individual
+	// task limits may be stricter but can never raise these configured caps.
 	ContainerMemoryMb int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
 	ContainerCpu      float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
 	unknownFields     protoimpl.UnknownFields
