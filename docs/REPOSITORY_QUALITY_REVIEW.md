@@ -23,7 +23,7 @@ Work started on the highest-priority, independently reviewable items:
 - [x] Add contained workspace-file writing that rejects traversal and symlink paths.
 - [x] Fix Pi's explicit model/provider precedence and make the regression test independent of ambient Pi variables.
 - [x] Update the frontend lockfile to resolve the PostCSS security advisory; `npm audit --omit=dev` reports no vulnerabilities.
-- [ ] Authenticate and narrow per-task MCP listeners.
+- [x] Authenticate per-task MCP listeners with unique bearer tokens, inject credentials into every harness, and bind listeners to the runner interface instead of all interfaces.
 - [ ] Decide and implement PostgreSQL startup migration behavior.
 - [x] Remove confirmed dead runner packages and stale compile-time placeholders.
 - [x] Consolidate duplicated harness output logging into the shared harness package.
