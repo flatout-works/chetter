@@ -124,7 +124,7 @@ All column/index upgrade helpers then run only for MySQL/TiDB. This conflicts wi
 
 PostgreSQL now uses its ordered Goose migrations as the startup upgrade path. The migration files are embedded in the server binary; `ApplySchema` applies pending migrations under a PostgreSQL advisory lock before running the idempotent bootstrap DDL. This preserves data-moving ownership migrations that cannot be reconstructed safely from column-presence checks.
 
-Existing PostgreSQL application schemas without `goose_db_version` are rejected before DDL is attempted rather than assigned a guessed migration baseline. Regression coverage downgrades a real PostgreSQL database to migration 22, preserves existing token data while startup applies migration 23, verifies restart idempotency, and verifies that an unversioned existing schema fails closed.
+Existing PostgreSQL application schemas without `goose_db_version` are rejected before DDL is attempted rather than assigned a guessed migration baseline. Regression coverage downgrades a real PostgreSQL database to migration 23, preserves existing token data while startup applies migration 24, verifies restart idempotency, and verifies that an unversioned existing schema fails closed.
 
 ### 5. Authenticate and narrow per-task MCP listeners
 

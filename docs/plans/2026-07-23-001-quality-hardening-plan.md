@@ -45,7 +45,7 @@ The recent execution hierarchy, artifact attribution, and runner-cleanups work i
 | ID | Status | Current conclusion | Plan action |
 |---|---|---|---|
 | S1 | Fixed (2026-07-23) | `auth.ResolveTeamFilter` distinguishes unrestricted, scoped, and empty-intersection filters; task, session, trigger, and raw repository-filtered queries return no rows for disjoint filters. `internal/auth/auth.go:14-106`; `internal/service/api.go:69-121,637-677,768-805`. | Keep disjoint-team regression coverage. |
-| S2 | Partially fixed | GitHub RPCs now validate task/execution hierarchy, but not active status, runner ownership, or caller runner identity. `internal/service/runner_github_rpc.go:38-126`; `internal/service/github_tools.go:42-67`. | P0 runner claim authentication. |
+| S2 | Partially fixed (2026-08-02) | Runner GitHub RPCs and task-event mutations now require an active execution claim bound to task, execution, runner, claim ID, running status, and unexpired lease. Heartbeat lease renewal is claim-fenced. The shared static runner RPC bearer still does not provide unique per-runner identity. `internal/service/runner_github_rpc.go`; `internal/service/runner_rpc.go`; `db/migrations/048_add_execution_claim_id.sql`. | Replace shared runner authentication with per-runner session credentials or mTLS-bound registration. |
 | S3 | Partially fixed | Agent listing has team filtering, but definition get/list and runner materialization remain name-only. `internal/service/model_catalog_tools.go:140-163,256-293`; `internal/service/runner_rpc.go:254-310`. | P0 scoped definition resolver. |
 | S4 | Fixed (2026-07-23) | `drainRunnerTool` now requires admin access and records a `runner_drain_requested` audit event. `internal/service/tools.go:1326-1344`. | Keep regression coverage. |
 | S5 | Fixed (2026-07-23) | Team-token fleet health is aggregate-only; runner, runner-image, and running-task detail arrays are redacted. `internal/service/api.go:933-946`. | Keep team health redaction coverage. |
@@ -141,6 +141,8 @@ Use it for runner agent, skill, and MCP endpoint materialization as well as read
 Add tests for same-name global/team/repository definitions and cross-team read/write attempts.
 
 #### P0.3 Authenticate runner task services
+
+Each claimed execution now receives a fresh execution claim ID. Runner events, heartbeat lease renewal, and runner-initiated GitHub operations must present the claim ID together with the task, execution, and runner IDs; the server also requires a running attempt with an unexpired lease. Reclaimed or stale attempts cannot mutate a replacement claim. The shared static runner RPC bearer remains only process-level authentication and is not treated as caller identity.
 
 Generate an execution-scoped secret when an execution starts. Use it for:
 

@@ -104,6 +104,7 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		currentExecutions = append(currentExecutions, &runnerv1.RunningExecution{
 			TaskId: session.TaskID, ExecutionId: executionID,
 			AgentSessionId: session.Request.AgentSessionID, UserPromptId: session.Request.UserPromptID,
+			ClaimId: session.Request.ClaimID,
 		})
 	}
 	totalStarted := r.totalStarted

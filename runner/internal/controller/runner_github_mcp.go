@@ -42,26 +42,26 @@ func (r *Runner) getGitHubCredential(ctx context.Context, req task.TaskRequest) 
 		return "", fmt.Errorf("runner RPC client is unavailable")
 	}
 	return requestGitHubCredential(ctx, r.rpcClient, r.runnerID, &runnerv1.GetGitHubCredentialRequest{
-		TaskId: req.TaskID, ExecutionId: req.ExecutionID, Repo: req.GitHubRepo,
+		TaskId: req.TaskID, ExecutionId: req.ExecutionID, ClaimId: req.ClaimID, Repo: req.GitHubRepo,
 	})
 }
 
-func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, executionID string) {
+func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, executionID, claimID string) {
 	for _, def := range runnermcp.ToolDefinitions() {
 		switch def.Name {
 		case "chetter_create_issue":
-			server.RegisterTool(def, r.githubCreateIssueTool(taskID, executionID))
+			server.RegisterTool(def, r.githubCreateIssueTool(taskID, executionID, claimID))
 		case "chetter_issue_comment":
-			server.RegisterTool(def, r.githubIssueCommentTool(taskID, executionID))
+			server.RegisterTool(def, r.githubIssueCommentTool(taskID, executionID, claimID))
 		case "chetter_create_pr":
-			server.RegisterTool(def, r.githubCreatePRTool(taskID, executionID))
+			server.RegisterTool(def, r.githubCreatePRTool(taskID, executionID, claimID))
 		case "chetter_pr_review":
-			server.RegisterTool(def, r.githubPRReviewTool(taskID, executionID))
+			server.RegisterTool(def, r.githubPRReviewTool(taskID, executionID, claimID))
 		}
 	}
 }
 
-func (r *Runner) githubCreateIssueTool(taskID, executionID string) runnermcp.ToolHandler {
+func (r *Runner) githubCreateIssueTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -77,6 +77,7 @@ func (r *Runner) githubCreateIssueTool(taskID, executionID string) runnermcp.Too
 			TaskId:      taskID,
 			ExecutionId: executionID,
 			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
 			Repo:        repo,
 			Title:       title,
 			Body:        optionalString(args, "body"),
@@ -89,7 +90,7 @@ func (r *Runner) githubCreateIssueTool(taskID, executionID string) runnermcp.Too
 	}
 }
 
-func (r *Runner) githubIssueCommentTool(taskID, executionID string) runnermcp.ToolHandler {
+func (r *Runner) githubIssueCommentTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -109,6 +110,7 @@ func (r *Runner) githubIssueCommentTool(taskID, executionID string) runnermcp.To
 			TaskId:      taskID,
 			ExecutionId: executionID,
 			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
 			Repo:        repo,
 			IssueNumber: int32(issueNumber),
 			Body:        body,
@@ -120,7 +122,7 @@ func (r *Runner) githubIssueCommentTool(taskID, executionID string) runnermcp.To
 	}
 }
 
-func (r *Runner) githubCreatePRTool(taskID, executionID string) runnermcp.ToolHandler {
+func (r *Runner) githubCreatePRTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -144,6 +146,7 @@ func (r *Runner) githubCreatePRTool(taskID, executionID string) runnermcp.ToolHa
 			TaskId:      taskID,
 			ExecutionId: executionID,
 			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
 			Repo:        repo,
 			Title:       title,
 			Body:        optionalString(args, "body"),
@@ -158,7 +161,7 @@ func (r *Runner) githubCreatePRTool(taskID, executionID string) runnermcp.ToolHa
 	}
 }
 
-func (r *Runner) githubPRReviewTool(taskID, executionID string) runnermcp.ToolHandler {
+func (r *Runner) githubPRReviewTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (any, error) {
 		repo, err := requiredString(args, "repo")
 		if err != nil {
@@ -178,6 +181,7 @@ func (r *Runner) githubPRReviewTool(taskID, executionID string) runnermcp.ToolHa
 			TaskId:      taskID,
 			ExecutionId: executionID,
 			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
 			Repo:        repo,
 			PrNumber:    int32(prNumber),
 			Body:        body,

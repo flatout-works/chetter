@@ -46,6 +46,7 @@ message RunningExecution {
   string execution_id = 2 [(buf.validate.field).string.min_len = 1];
   string agent_session_id = 3 [(buf.validate.field).string.min_len = 1];
   string user_prompt_id = 4 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 5 [(buf.validate.field).string.min_len = 1];
 }
 
 message RegisterRunnerRequest {
@@ -114,6 +115,7 @@ message Task {
   string agent_session_id = 34 [(buf.validate.field).string.min_len = 1];
   string user_prompt_id = 35 [(buf.validate.field).string.min_len = 1];
   string github_repo = 36;
+  string claim_id = 37 [(buf.validate.field).string.min_len = 1];
 }
 
 message MCPEndpoint {
@@ -159,6 +161,7 @@ message TaskEvent {
   string execution_id = 19 [(buf.validate.field).string.min_len = 1];
   string agent_session_id = 20 [(buf.validate.field).string.min_len = 1];
   string user_prompt_id = 21 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 22 [(buf.validate.field).string.min_len = 1];
 }
 
 message ReportTaskEventsRequest {
@@ -197,6 +200,7 @@ message GitHubCreateIssueRequest {
   repeated string labels = 5;
   string execution_id = 6 [(buf.validate.field).string.min_len = 1];
   string runner_id = 7 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 8 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubCreateIssueResponse {
@@ -211,6 +215,7 @@ message GitHubIssueCommentRequest {
   string body = 4 [(buf.validate.field).string.min_len = 1];
   string execution_id = 5 [(buf.validate.field).string.min_len = 1];
   string runner_id = 6 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 7 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubIssueCommentResponse {
@@ -227,6 +232,7 @@ message GitHubCreatePRRequest {
   bool draft = 7;
   string execution_id = 8 [(buf.validate.field).string.min_len = 1];
   string runner_id = 9 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 10 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubCreatePRResponse {
@@ -242,6 +248,7 @@ message GitHubPRReviewRequest {
   string event = 5; // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
   string execution_id = 6 [(buf.validate.field).string.min_len = 1];
   string runner_id = 7 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 8 [(buf.validate.field).string.min_len = 1];
 }
 
 message GitHubPRReviewResponse {
@@ -253,6 +260,7 @@ message GetGitHubCredentialRequest {
   string task_id = 2 [(buf.validate.field).string.min_len = 1];
   string execution_id = 3 [(buf.validate.field).string.min_len = 1];
   string repo = 4 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 5 [(buf.validate.field).string.min_len = 1];
 }
 
 message GetGitHubCredentialResponse {

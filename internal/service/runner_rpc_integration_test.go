@@ -60,7 +60,7 @@ func insertPendingTask(t *testing.T, q data.Repository, id, prompt, agentImage s
 func runningExecution(taskID string) *runnerv1.RunningExecution {
 	return &runnerv1.RunningExecution{
 		TaskId: taskID, ExecutionId: "exec_" + taskID,
-		AgentSessionId: "sess_" + taskID, UserPromptId: "prompt_" + taskID,
+		AgentSessionId: "sess_" + taskID, UserPromptId: "prompt_" + taskID, ClaimId: "claim_" + taskID,
 	}
 }
 
@@ -68,6 +68,7 @@ func markPendingExecutionAttemptClaimed(t *testing.T, q data.Repository, taskID,
 	t.Helper()
 	if rows, err := q.MarkExecutionAttemptClaimed(context.Background(), repository.MarkExecutionAttemptClaimedParams{
 		RunnerID:       nullString(runnerID),
+		ClaimID:        "claim_" + taskID,
 		ClaimedAt:      sql.NullTime{Time: claimedAt, Valid: true},
 		LeaseExpiresAt: sql.NullTime{Time: leaseExpiresAt, Valid: true},
 		StartedAt:      sql.NullTime{Time: claimedAt, Valid: true},
@@ -115,6 +116,9 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	if resp.Msg.Task.Prompt != "do work" {
 		t.Fatalf("prompt mismatch: %s", resp.Msg.Task.Prompt)
 	}
+	if resp.Msg.Task.ClaimId == "" {
+		t.Fatal("claim_id must be generated for every execution claim")
+	}
 
 	// Verify DB state
 	row, err := q.GetTaskByID(ctx, "task_1")
@@ -130,6 +134,9 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	}
 	if !attempt.RunnerID.Valid || attempt.RunnerID.String != "runner_1" {
 		t.Errorf("expected runner_id=runner_1, got %v", attempt.RunnerID)
+	}
+	if attempt.ClaimID != resp.Msg.Task.ClaimId {
+		t.Errorf("attempt claim_id = %q, response claim_id = %q", attempt.ClaimID, resp.Msg.Task.ClaimId)
 	}
 	if !attempt.LeaseExpiresAt.Valid {
 		t.Error("expected lease_expires_at set")
@@ -198,7 +205,7 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId: "task_fenced", ExecutionId: firstExecution,
+			TaskId: "task_fenced", ExecutionId: firstExecution, ClaimId: first.Msg.Task.ClaimId,
 			AgentSessionId: first.Msg.Task.AgentSessionId, UserPromptId: first.Msg.Task.UserPromptId, Status: "done",
 		}},
 	}))
@@ -209,11 +216,88 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	if _, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
 		RunnerId: "runner_2",
 		Events: []*runnerv1.TaskEvent{{
-			TaskId: "task_fenced", ExecutionId: secondExecution,
+			TaskId: "task_fenced", ExecutionId: secondExecution, ClaimId: second.Msg.Task.ClaimId,
 			AgentSessionId: second.Msg.Task.AgentSessionId, UserPromptId: second.Msg.Task.UserPromptId, Status: "done",
 		}},
 	})); err != nil {
 		t.Fatalf("current report: %v", err)
+	}
+}
+
+func TestRPCRejectsExpiredRunningExecutionEvent(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertPendingTask(t, q, "task_expired_event", "work", "runner:latest")
+	markTaskRunning(t, q, "task_expired_event", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_expired_event", "runner_1", now, now.Add(-time.Minute))
+	before, err := q.GetExecutionAttemptByID(ctx, "exec_task_expired_event")
+	if err != nil {
+		t.Fatalf("get attempt: %v", err)
+	}
+	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId: "task_expired_event", ExecutionId: "exec_task_expired_event", ClaimId: "claim_task_expired_event",
+			AgentSessionId: "sess_task_expired_event", UserPromptId: "prompt_task_expired_event", Status: "running",
+		}},
+	}))
+	if err == nil {
+		t.Fatal("expired execution event was accepted")
+	}
+	after, err := q.GetExecutionAttemptByID(ctx, "exec_task_expired_event")
+	if err != nil {
+		t.Fatalf("get attempt after event: %v", err)
+	}
+	if after.Status != "running" || !after.LeaseExpiresAt.Time.Equal(before.LeaseExpiresAt.Time) {
+		t.Fatalf("expired attempt changed after rejected event: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestRPCRejectsWrongExecutionClaimEvent(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_claim_fence", "work", "runner:latest")
+	claim, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1"}))
+	if err != nil {
+		t.Fatalf("claim task: %v", err)
+	}
+	_, err = svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId: claim.Msg.Task.TaskId, ExecutionId: claim.Msg.Task.ExecutionId,
+			ClaimId: "clm_stale", AgentSessionId: claim.Msg.Task.AgentSessionId,
+			UserPromptId: claim.Msg.Task.UserPromptId, Status: "done",
+		}},
+	}))
+	if err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Fatalf("wrong claim event error = %v, want rejection", err)
+	}
+}
+
+func TestRPCGitHubRequiresActiveExecutionClaim(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_github_claim", "work", "runner:latest")
+	claim, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_1"}))
+	if err != nil {
+		t.Fatalf("claim task: %v", err)
+	}
+	request := func(claimID string) error {
+		_, err := svc.GitHubCreateIssue(ctx, connect.NewRequest(&runnerv1.GitHubCreateIssueRequest{
+			TaskId: claim.Msg.Task.TaskId, ExecutionId: claim.Msg.Task.ExecutionId,
+			RunnerId: "runner_1", ClaimId: claimID, Repo: "org/repo", Title: "title",
+		}))
+		return err
+	}
+	if err := request("clm_wrong"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("wrong claim GitHub error = %v, want permission denied", err)
+	}
+	if err := request(claim.Msg.Task.ClaimId); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("valid claim GitHub error = %v, want GitHub configuration error", err)
 	}
 }
 
@@ -586,6 +670,7 @@ func TestRPCReportTaskEventsPersistsEventAndUpdatesTask(t *testing.T) {
 			ExecutionId:    "exec_task_report",
 			AgentSessionId: "sess_task_report",
 			UserPromptId:   "prompt_task_report",
+			ClaimId:        "claim_task_report",
 			Status:         "done",
 			Summary:        "completed",
 			ProviderId:     "synthetic",
@@ -651,15 +736,15 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	claimAndExpire := func(id string) {
+	claim := func(id string) {
 		t.Helper()
 		markTaskRunning(t, q, id, now)
-		markPendingExecutionAttemptClaimed(t, q, id, "runner_1", now, now.Add(-time.Minute))
+		markPendingExecutionAttemptClaimed(t, q, id, "runner_1", now, now.Add(time.Minute))
 	}
 	insertPendingTask(t, q, "task_a", "x", "runner:latest")
 	insertPendingTask(t, q, "task_b", "x", "runner:latest")
-	claimAndExpire("task_a")
-	claimAndExpire("task_b")
+	claim("task_a")
+	claim("task_b")
 
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
 		Runner: &runnerv1.RunnerInfo{
@@ -682,6 +767,68 @@ func TestRPCHeartbeatRenewsLeasesForRunningTasks(t *testing.T) {
 		if !row.LeaseExpiresAt.Valid || !row.LeaseExpiresAt.Time.After(now) {
 			t.Errorf("%s lease not renewed: %v", id, row.LeaseExpiresAt)
 		}
+	}
+}
+
+func TestRPCHeartbeatRejectsWrongExecutionClaim(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertPendingTask(t, q, "task_heartbeat_claim", "x", "runner:latest")
+	markTaskRunning(t, q, "task_heartbeat_claim", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_heartbeat_claim", "runner_1", now, now.Add(-time.Minute))
+	before, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_claim")
+	if err != nil {
+		t.Fatalf("get attempt: %v", err)
+	}
+	execution := runningExecution("task_heartbeat_claim")
+	execution.ClaimId = "wrong-claim"
+	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: &runnerv1.RunnerInfo{
+		RunnerId: "runner_1", Status: "active", CurrentExecutions: []*runnerv1.RunningExecution{execution},
+	}}))
+	if err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	if len(resp.Msg.Commands) != 1 || !strings.Contains(resp.Msg.Commands[0].Reason, "claim") {
+		t.Fatalf("wrong claim commands = %+v", resp.Msg.Commands)
+	}
+	after, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_claim")
+	if err != nil {
+		t.Fatalf("get attempt after heartbeat: %v", err)
+	}
+	if !after.LeaseExpiresAt.Time.Equal(before.LeaseExpiresAt.Time) {
+		t.Fatal("wrong claim heartbeat renewed the lease")
+	}
+}
+
+func TestRPCHeartbeatDoesNotRenewExpiredExecution(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	insertPendingTask(t, q, "task_heartbeat_expired", "x", "runner:latest")
+	markTaskRunning(t, q, "task_heartbeat_expired", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_heartbeat_expired", "runner_1", now, now.Add(-time.Minute))
+	before, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_expired")
+	if err != nil {
+		t.Fatalf("get attempt: %v", err)
+	}
+	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: &runnerv1.RunnerInfo{
+		RunnerId: "runner_1", Status: "active", CurrentExecutions: []*runnerv1.RunningExecution{runningExecution("task_heartbeat_expired")},
+	}}))
+	if err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	if len(resp.Msg.Commands) != 1 || !strings.Contains(resp.Msg.Commands[0].Reason, "no longer running") {
+		t.Fatalf("expired heartbeat commands = %+v", resp.Msg.Commands)
+	}
+	after, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_expired")
+	if err != nil {
+		t.Fatalf("get attempt after heartbeat: %v", err)
+	}
+	if !after.LeaseExpiresAt.Time.Equal(before.LeaseExpiresAt.Time) {
+		t.Fatal("expired heartbeat renewed the lease")
 	}
 }
 
@@ -741,7 +888,7 @@ func TestRPCPruneWorkspacesIsAttemptScopedAndProtectsRetainedSession(t *testing.
 		RunnerId: "runner_1",
 		Events: []*runnerv1.TaskEvent{{
 			TaskId: first.TaskId, AgentSessionId: first.AgentSessionId, UserPromptId: first.UserPromptId,
-			ExecutionId: first.ExecutionId, Status: "done",
+			ExecutionId: first.ExecutionId, ClaimId: first.ClaimId, Status: "done",
 		}},
 	})); err != nil {
 		t.Fatalf("complete first attempt: %v", err)

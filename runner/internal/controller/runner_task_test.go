@@ -1529,12 +1529,12 @@ func (f *fakeGitHubCredentialClient) GetGitHubCredential(_ context.Context, req 
 func TestRequestGitHubCredentialAddsRunnerOwnedIdentity(t *testing.T) {
 	client := &fakeGitHubCredentialClient{}
 	token, err := requestGitHubCredential(context.Background(), client, "runner-owner", &runnerv1.GetGitHubCredentialRequest{
-		TaskId: "task-1", ExecutionId: "exec-1", Repo: "Acme/Repo",
+		TaskId: "task-1", ExecutionId: "exec-1", ClaimId: "claim-1", Repo: "Acme/Repo",
 	})
 	if err != nil || token != "broker-token" {
 		t.Fatalf("token = %q, err=%v", token, err)
 	}
-	if client.request.RunnerId != "runner-owner" || client.request.TaskId != "task-1" || client.request.ExecutionId != "exec-1" || client.request.Repo != "Acme/Repo" {
+	if client.request.RunnerId != "runner-owner" || client.request.TaskId != "task-1" || client.request.ExecutionId != "exec-1" || client.request.ClaimId != "claim-1" || client.request.Repo != "Acme/Repo" {
 		t.Fatalf("request = %+v", client.request)
 	}
 }
@@ -1644,7 +1644,7 @@ func TestWorkspaceMCPServerRegistersAndRevokesRelayClaim(t *testing.T) {
 		cfg:      &config.Config{Execution: config.ExecutionConfig{Backend: "local"}},
 		mcpRelay: relay,
 	}
-	server, err := runner.startWorkspaceMCP(task.TaskRequest{TaskID: "task-1", ExecutionID: "exec-1"})
+	server, err := runner.startWorkspaceMCP(task.TaskRequest{TaskID: "task-1", ExecutionID: "exec-1", ClaimID: "claim-1"})
 	if err != nil {
 		t.Fatalf("startWorkspaceMCP: %v", err)
 	}

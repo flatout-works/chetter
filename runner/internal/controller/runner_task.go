@@ -310,7 +310,7 @@ func (r *Runner) startWorkspaceMCP(req task.TaskRequest) (*mcp.Server, error) {
 			return nil, fmt.Errorf("register GitHub credential handler: %w", err)
 		}
 	}
-	r.registerGitHubMCPTools(mcpServer, req.TaskID, req.ExecutionID)
+	r.registerGitHubMCPTools(mcpServer, req.TaskID, req.ExecutionID, req.ClaimID)
 	slog.Info("MCP server started", "taskID", req.TaskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
 }

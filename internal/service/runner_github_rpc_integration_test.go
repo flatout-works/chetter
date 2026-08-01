@@ -102,6 +102,7 @@ func TestGitHubCreateIssueAuthorizesAndPinsInstallation(t *testing.T) {
 		TaskId:      "task_github_success",
 		ExecutionId: "exec_task_github_success",
 		RunnerId:    "runner_1",
+		ClaimId:     "claim_task_github_success",
 		Repo:        "acme/repo",
 		Title:       "Secure operation",
 		Body:        "Created by the active runner.",
@@ -166,7 +167,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				insertGitHubRPCTask(t, q, tdb, "task_wrong_repo", "Acme/Repo", 111)
 				activateGitHubRPCTask(t, q, "task_wrong_repo", "runner_1", time.Now().Add(time.Minute))
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_wrong_repo", ExecutionId: "exec_task_wrong_repo", RunnerId: "runner_1", Repo: "Acme/Other", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_wrong_repo", ExecutionId: "exec_task_wrong_repo", RunnerId: "runner_1", ClaimId: "claim_task_wrong_repo", Repo: "Acme/Other", Title: "denied"},
 		},
 		{
 			name:     "wrong runner",
@@ -175,7 +176,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				insertGitHubRPCTask(t, q, tdb, "task_wrong_runner", "Acme/Repo", 111)
 				activateGitHubRPCTask(t, q, "task_wrong_runner", "runner_owner", time.Now().Add(time.Minute))
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_wrong_runner", ExecutionId: "exec_task_wrong_runner", RunnerId: "runner_other", Repo: "Acme/Repo", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_wrong_runner", ExecutionId: "exec_task_wrong_runner", RunnerId: "runner_other", ClaimId: "claim_task_wrong_runner", Repo: "Acme/Repo", Title: "denied"},
 		},
 		{
 			name:     "attempt is not running",
@@ -184,7 +185,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				insertGitHubRPCTask(t, q, tdb, "task_stale_attempt", "Acme/Repo", 111)
 				markTaskRunning(t, q, "task_stale_attempt", time.Now().UTC())
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_stale_attempt", ExecutionId: "exec_task_stale_attempt", RunnerId: "runner_1", Repo: "Acme/Repo", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_stale_attempt", ExecutionId: "exec_task_stale_attempt", RunnerId: "runner_1", ClaimId: "claim_task_stale_attempt", Repo: "Acme/Repo", Title: "denied"},
 		},
 		{
 			name:     "task is not running",
@@ -194,7 +195,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				now := time.Now().UTC()
 				markPendingExecutionAttemptClaimed(t, q, "task_stale_task", "runner_1", now, now.Add(time.Minute))
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_stale_task", ExecutionId: "exec_task_stale_task", RunnerId: "runner_1", Repo: "Acme/Repo", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_stale_task", ExecutionId: "exec_task_stale_task", RunnerId: "runner_1", ClaimId: "claim_task_stale_task", Repo: "Acme/Repo", Title: "denied"},
 		},
 		{
 			name:     "lease is expired",
@@ -203,7 +204,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				insertGitHubRPCTask(t, q, tdb, "task_expired_lease", "Acme/Repo", 111)
 				activateGitHubRPCTask(t, q, "task_expired_lease", "runner_1", time.Now().Add(-time.Second))
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_expired_lease", ExecutionId: "exec_task_expired_lease", RunnerId: "runner_1", Repo: "Acme/Repo", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_expired_lease", ExecutionId: "exec_task_expired_lease", RunnerId: "runner_1", ClaimId: "claim_task_expired_lease", Repo: "Acme/Repo", Title: "denied"},
 		},
 		{
 			name:     "execution belongs to another task",
@@ -213,7 +214,7 @@ func TestGitHubCreateIssueRejectsUnauthorizedExecutionBeforeAPICall(t *testing.T
 				activateGitHubRPCTask(t, q, "task_execution_owner", "runner_1", time.Now().Add(time.Minute))
 				insertGitHubRPCTask(t, q, tdb, "task_request_owner", "Acme/Repo", 111)
 			},
-			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_request_owner", ExecutionId: "exec_task_execution_owner", RunnerId: "runner_1", Repo: "Acme/Repo", Title: "denied"},
+			request: &runnerv1.GitHubCreateIssueRequest{TaskId: "task_request_owner", ExecutionId: "exec_task_execution_owner", RunnerId: "runner_1", ClaimId: "claim_task_execution_owner", Repo: "Acme/Repo", Title: "denied"},
 		},
 	}
 
@@ -264,7 +265,7 @@ func TestGetGitHubCredentialReturnsRestrictedActiveExecutionToken(t *testing.T) 
 	activateGitHubRPCTask(t, q, "task_credential_success", "runner_1", time.Now().Add(time.Minute))
 
 	resp, err := rpc.GetGitHubCredential(context.Background(), connect.NewRequest(&runnerv1.GetGitHubCredentialRequest{
-		RunnerId: "runner_1", TaskId: "task_credential_success", ExecutionId: "exec_task_credential_success", Repo: "acme/repo",
+		RunnerId: "runner_1", TaskId: "task_credential_success", ExecutionId: "exec_task_credential_success", ClaimId: "claim_task_credential_success", Repo: "acme/repo",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -309,7 +310,7 @@ func TestGetGitHubCredentialRejectsUnauthorizedExecutionBeforeExchange(t *testin
 			activateGitHubRPCTask(t, q, taskID, "runner_1", tt.lease)
 			before := calls.Load()
 			_, err := rpc.GetGitHubCredential(context.Background(), connect.NewRequest(&runnerv1.GetGitHubCredentialRequest{
-				RunnerId: tt.runnerID, TaskId: taskID, ExecutionId: "exec_" + taskID, Repo: tt.requestRepo,
+				RunnerId: tt.runnerID, TaskId: taskID, ExecutionId: "exec_" + taskID, ClaimId: "claim_" + taskID, Repo: tt.requestRepo,
 			}))
 			if connect.CodeOf(err) != tt.wantCode {
 				t.Fatalf("code = %s, want %s: %v", connect.CodeOf(err), tt.wantCode, err)
@@ -339,7 +340,7 @@ func TestGetGitHubCredentialRechecksFenceAfterExchange(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		_, err := rpc.GetGitHubCredential(context.Background(), connect.NewRequest(&runnerv1.GetGitHubCredentialRequest{
-			RunnerId: "runner_1", TaskId: "task_credential_race", ExecutionId: "exec_task_credential_race", Repo: "Acme/Repo",
+			RunnerId: "runner_1", TaskId: "task_credential_race", ExecutionId: "exec_task_credential_race", ClaimId: "claim_task_credential_race", Repo: "Acme/Repo",
 		}))
 		errCh <- err
 	}()

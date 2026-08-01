@@ -318,6 +318,7 @@ type RunningExecution struct {
 	ExecutionId    string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	AgentSessionId string                 `protobuf:"bytes,3,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	UserPromptId   string                 `protobuf:"bytes,4,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	ClaimId        string                 `protobuf:"bytes,5,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -376,6 +377,13 @@ func (x *RunningExecution) GetAgentSessionId() string {
 func (x *RunningExecution) GetUserPromptId() string {
 	if x != nil {
 		return x.UserPromptId
+	}
+	return ""
+}
+
+func (x *RunningExecution) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
 	}
 	return ""
 }
@@ -730,6 +738,7 @@ type Task struct {
 	AgentSessionId         string                 `protobuf:"bytes,34,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	UserPromptId           string                 `protobuf:"bytes,35,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
 	GithubRepo             string                 `protobuf:"bytes,36,opt,name=github_repo,json=githubRepo,proto3" json:"github_repo,omitempty"`
+	ClaimId                string                 `protobuf:"bytes,37,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1016,6 +1025,13 @@ func (x *Task) GetGithubRepo() string {
 	return ""
 }
 
+func (x *Task) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
 type MCPEndpoint struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1243,6 +1259,7 @@ type TaskEvent struct {
 	ExecutionId       string                 `protobuf:"bytes,19,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	AgentSessionId    string                 `protobuf:"bytes,20,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
 	UserPromptId      string                 `protobuf:"bytes,21,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
+	ClaimId           string                 `protobuf:"bytes,22,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1420,6 +1437,13 @@ func (x *TaskEvent) GetAgentSessionId() string {
 func (x *TaskEvent) GetUserPromptId() string {
 	if x != nil {
 		return x.UserPromptId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
 	}
 	return ""
 }
@@ -1729,6 +1753,7 @@ type GitHubCreateIssueRequest struct {
 	Labels        []string               `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	RunnerId      string                 `protobuf:"bytes,7,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	ClaimId       string                 `protobuf:"bytes,8,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1812,6 +1837,13 @@ func (x *GitHubCreateIssueRequest) GetRunnerId() string {
 	return ""
 }
 
+func (x *GitHubCreateIssueRequest) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
 type GitHubCreateIssueResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -1872,6 +1904,7 @@ type GitHubIssueCommentRequest struct {
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,5,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	RunnerId      string                 `protobuf:"bytes,6,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	ClaimId       string                 `protobuf:"bytes,7,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1948,6 +1981,13 @@ func (x *GitHubIssueCommentRequest) GetRunnerId() string {
 	return ""
 }
 
+func (x *GitHubIssueCommentRequest) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
 type GitHubIssueCommentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
@@ -2003,6 +2043,7 @@ type GitHubCreatePRRequest struct {
 	Draft         bool                   `protobuf:"varint,7,opt,name=draft,proto3" json:"draft,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,8,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	RunnerId      string                 `protobuf:"bytes,9,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	ClaimId       string                 `protobuf:"bytes,10,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2100,6 +2141,13 @@ func (x *GitHubCreatePRRequest) GetRunnerId() string {
 	return ""
 }
 
+func (x *GitHubCreatePRRequest) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
 type GitHubCreatePRResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -2161,6 +2209,7 @@ type GitHubPRReviewRequest struct {
 	Event         string                 `protobuf:"bytes,5,opt,name=event,proto3" json:"event,omitempty"` // COMMENT | APPROVE | REQUEST_CHANGES; default COMMENT
 	ExecutionId   string                 `protobuf:"bytes,6,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	RunnerId      string                 `protobuf:"bytes,7,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	ClaimId       string                 `protobuf:"bytes,8,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2244,6 +2293,13 @@ func (x *GitHubPRReviewRequest) GetRunnerId() string {
 	return ""
 }
 
+func (x *GitHubPRReviewRequest) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
+	}
+	return ""
+}
+
 type GitHubPRReviewResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
@@ -2294,6 +2350,7 @@ type GetGitHubCredentialRequest struct {
 	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,3,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	Repo          string                 `protobuf:"bytes,4,opt,name=repo,proto3" json:"repo,omitempty"`
+	ClaimId       string                 `protobuf:"bytes,5,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2352,6 +2409,13 @@ func (x *GetGitHubCredentialRequest) GetExecutionId() string {
 func (x *GetGitHubCredentialRequest) GetRepo() string {
 	if x != nil {
 		return x.Repo
+	}
+	return ""
+}
+
+func (x *GetGitHubCredentialRequest) GetClaimId() string {
+	if x != nil {
+		return x.ClaimId
 	}
 	return ""
 }
@@ -2453,12 +2517,13 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0ememory_percent\x18\x02 \x01(\x01R\rmemoryPercent\x124\n" +
 	"\x16memory_available_bytes\x18\x03 \x01(\x03R\x14memoryAvailableBytes\x12!\n" +
 	"\fdisk_percent\x18\x04 \x01(\x01R\vdiskPercent\x12*\n" +
-	"\x11active_task_count\x18\x05 \x01(\x05R\x0factiveTaskCount\"\xc2\x01\n" +
+	"\x11active_task_count\x18\x05 \x01(\x05R\x0factiveTaskCount\"\xe6\x01\n" +
 	"\x10RunningExecution\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
 	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x121\n" +
 	"\x10agent_session_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
-	"\x0euser_prompt_id\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\"N\n" +
+	"\x0euser_prompt_id\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x12\"\n" +
+	"\bclaim_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"N\n" +
 	"\x15RegisterRunnerRequest\x125\n" +
 	"\x06runner\x18\x01 \x01(\v2\x15.runner.v1.RunnerInfoB\x06\xbaH\x03\xc8\x01\x01R\x06runner\"\x18\n" +
 	"\x16RegisterRunnerResponse\"I\n" +
@@ -2476,7 +2541,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xf2\f\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x96\r\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -2519,7 +2584,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10agent_session_id\x18\" \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
 	"\x0euser_prompt_id\x18# \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x12\x1f\n" +
 	"\vgithub_repo\x18$ \x01(\tR\n" +
-	"githubRepo\x1a6\n" +
+	"githubRepo\x12\"\n" +
+	"\bclaim_id\x18% \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -2548,7 +2614,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x12cache_write_tokens\x18\x04 \x01(\x03R\x10cacheWriteTokens\x12)\n" +
 	"\x10reasoning_tokens\x18\x05 \x01(\x03R\x0freasoningTokens\x12\x1d\n" +
 	"\n" +
-	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\x98\x06\n" +
+	"cost_cents\x18\x06 \x01(\x03R\tcostCents\"\xbc\x06\n" +
 	"\tTaskEvent\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1f\n" +
 	"\x06status\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06status\x12\x18\n" +
@@ -2575,7 +2641,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"tokenUsage\x12*\n" +
 	"\fexecution_id\x18\x13 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x121\n" +
 	"\x10agent_session_id\x18\x14 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x0eagentSessionId\x12-\n" +
-	"\x0euser_prompt_id\x18\x15 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\"w\n" +
+	"\x0euser_prompt_id\x18\x15 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x12\"\n" +
+	"\bclaim_id\x18\x16 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"w\n" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +
@@ -2593,7 +2660,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0eworkspace_path\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rworkspacePath\"\\\n" +
 	"\fWorkspaceKey\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
-	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"\xf6\x01\n" +
+	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"\x9a\x02\n" +
 	"\x18GitHubCreateIssueRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
@@ -2601,19 +2668,21 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x04body\x18\x04 \x01(\tR\x04body\x12\x16\n" +
 	"\x06labels\x18\x05 \x03(\tR\x06labels\x12*\n" +
 	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
-	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"E\n" +
+	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\"\n" +
+	"\bclaim_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"E\n" +
 	"\x19GitHubCreateIssueResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\xf5\x01\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\x99\x02\n" +
 	"\x19GitHubIssueCommentRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12*\n" +
 	"\fissue_number\x18\x03 \x01(\x05B\a\xbaH\x04\x1a\x02 \x00R\vissueNumber\x12\x1b\n" +
 	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12*\n" +
 	"\fexecution_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
-	"\trunner_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\".\n" +
+	"\trunner_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\"\n" +
+	"\bclaim_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\".\n" +
 	"\x1aGitHubIssueCommentResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\xab\x02\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\xcf\x02\n" +
 	"\x15GitHubCreatePRRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\x1d\n" +
@@ -2623,10 +2692,12 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x04base\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04base\x12\x14\n" +
 	"\x05draft\x18\a \x01(\bR\x05draft\x12*\n" +
 	"\fexecution_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
-	"\trunner_id\x18\t \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"B\n" +
+	"\trunner_id\x18\t \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\"\n" +
+	"\bclaim_id\x18\n" +
+	" \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"B\n" +
 	"\x16GitHubCreatePRResponse\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\x81\x02\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"\xa5\x02\n" +
 	"\x15GitHubPRReviewRequest\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12\x1b\n" +
 	"\x04repo\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12$\n" +
@@ -2634,14 +2705,16 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x04body\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04body\x12\x14\n" +
 	"\x05event\x18\x05 \x01(\tR\x05event\x12*\n" +
 	"\fexecution_id\x18\x06 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12$\n" +
-	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\"*\n" +
+	"\trunner_id\x18\a \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\"\n" +
+	"\bclaim_id\x18\b \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"*\n" +
 	"\x16GitHubPRReviewResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\xad\x01\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"\xd1\x01\n" +
 	"\x1aGetGitHubCredentialRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12 \n" +
 	"\atask_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
 	"\fexecution_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12\x1b\n" +
-	"\x04repo\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\"\x89\x01\n" +
+	"\x04repo\x18\x04 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x04repo\x12\"\n" +
+	"\bclaim_id\x18\x05 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\"\x89\x01\n" +
 	"\x1bGetGitHubCredentialResponse\x12#\n" +
 	"\busername\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\busername\x12\x1d\n" +
 	"\x05token\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05token\x12&\n" +

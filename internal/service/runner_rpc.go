@@ -736,8 +736,8 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 			commands = append(commands, executionCancelCommand(execution, "execution attempt is no longer owned by this runner"))
 			continue
 		}
-		if row.TaskID != execution.TaskId || row.AgentSessionID != execution.AgentSessionId || row.UserPromptID != execution.UserPromptId {
-			commands = append(commands, executionCancelCommand(execution, "execution hierarchy does not match the claimed attempt"))
+		if row.TaskID != execution.TaskId || row.AgentSessionID != execution.AgentSessionId || row.UserPromptID != execution.UserPromptId || row.ClaimID != execution.ClaimId {
+			commands = append(commands, executionCancelCommand(execution, "execution hierarchy or claim does not match the claimed attempt"))
 			continue
 		}
 		switch row.Status {
@@ -756,6 +756,7 @@ func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.Ru
 				LastEventAt:    sql.NullTime{Time: now, Valid: true},
 				ID:             executionID,
 				RunnerID:       nullString(info.RunnerId),
+				ClaimID:        execution.ClaimId,
 			})
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInternal, err)
@@ -831,6 +832,10 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		if err != nil {
 			return err
 		}
+		claimID, err := randomID("clm")
+		if err != nil {
+			return err
+		}
 		prompt, err := q.GetUserPromptByID(ctx, attempt.UserPromptID)
 		if err != nil {
 			return err
@@ -842,7 +847,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		now := time.Now().UTC()
 		eventCreatedAt = now
 		attemptRows, err := q.MarkExecutionAttemptClaimed(ctx, repository.MarkExecutionAttemptClaimedParams{
-			RunnerID: nullString(runnerID), ClaimedAt: sql.NullTime{Time: now, Valid: true},
+			RunnerID: nullString(runnerID), ClaimID: claimID, ClaimedAt: sql.NullTime{Time: now, Valid: true},
 			LeaseExpiresAt: sql.NullTime{Time: now.Add(lease), Valid: true},
 			StartedAt:      sql.NullTime{Time: now, Valid: true}, LastEventAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, ID: executionID,
 		})
@@ -870,6 +875,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		task.UpdatedAt = now
 		attempt.Status = "running"
 		attempt.RunnerID = nullString(runnerID)
+		attempt.ClaimID = claimID
 		attempt.ClaimedAt = sql.NullTime{Time: now, Valid: true}
 		attempt.LeaseExpiresAt = sql.NullTime{Time: now.Add(lease), Valid: true}
 		attempt.StartedAt = sql.NullTime{Time: now, Valid: true}
@@ -878,6 +884,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			"task_id":      task.ID,
 			"runner_id":    runnerID,
 			"execution_id": executionID,
+			"claim_id":     claimID,
 			"attempt":      attemptNumber,
 			"status":       "running",
 			"summary":      fmt.Sprintf("Task claimed by runner for attempt %d", attemptNumber),
@@ -931,6 +938,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	}
 	if event == nil || event.TaskId == "" {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("task_id is required"))
+	}
+	if event.ExecutionId == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("execution_id is required"))
 	}
 	now := time.Now().UTC()
 	payload := json.RawMessage(event.PayloadJson)
@@ -1032,6 +1042,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			UpdatedAt:             now,
 			ID:                    event.ExecutionId,
 			RunnerID:              nullString(runnerID),
+			ClaimID:               event.ClaimId,
 		})
 		if err != nil {
 			return err
@@ -1372,6 +1383,7 @@ func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSes
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		ExecutionId:            attempt.ID,
+		ClaimId:                attempt.ClaimID,
 		AgentImage:             session.AgentImage.String,
 		Prompt:                 task.Prompt,
 		GitUrl:                 task.GitUrl.String,

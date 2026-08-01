@@ -91,7 +91,8 @@ Artifact browsing is available with `chetter_list_task_artifacts` and in the web
 Runners register through ConnectRPC, poll for tasks, and heartbeat while work is in progress.
 
 - Task claiming uses `SELECT ... FOR UPDATE SKIP LOCKED`.
-- Claims have renewable leases.
+- Claims have renewable leases and fresh execution claim IDs.
+- Runner events, lease renewal, and runner-initiated GitHub operations are fenced to the active task, execution, runner, claim ID, and unexpired lease.
 - The reaper reclaims expired leases and marks stale tasks terminal when retries are exhausted.
 - `chetter_runner_health` reports fleet-wide status and optional per-task heartbeat age.
 - `chetter_drain_runner` asks a runner to stop claiming new work, finish in-flight tasks, and exit for rollout.

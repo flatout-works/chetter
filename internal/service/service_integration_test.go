@@ -698,6 +698,7 @@ func TestRunnerTerminalEventCompletesUserPrompt(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			ClaimId:           claim.Msg.Task.ClaimId,
 			AgentSessionId:    claim.Msg.Task.AgentSessionId,
 			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
@@ -772,6 +773,7 @@ func TestRecoverTaskStartsFreshSessionUnderStableTask(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:         task.ID,
 			ExecutionId:    claim.Msg.Task.ExecutionId,
+			ClaimId:        claim.Msg.Task.ClaimId,
 			AgentSessionId: claim.Msg.Task.AgentSessionId,
 			UserPromptId:   claim.Msg.Task.UserPromptId,
 			Status:         "error",
@@ -864,6 +866,7 @@ func TestRecoverTaskWithCustomPromptUsesPromptVerbatim(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:         task.ID,
 			ExecutionId:    claim.Msg.Task.ExecutionId,
+			ClaimId:        claim.Msg.Task.ClaimId,
 			AgentSessionId: claim.Msg.Task.AgentSessionId,
 			UserPromptId:   claim.Msg.Task.UserPromptId,
 			Status:         "error",
@@ -919,6 +922,7 @@ func TestRecoverTaskMissingSessionExportFailsWithoutRows(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:         task.ID,
 			ExecutionId:    claim.Msg.Task.ExecutionId,
+			ClaimId:        claim.Msg.Task.ClaimId,
 			AgentSessionId: claim.Msg.Task.AgentSessionId,
 			UserPromptId:   claim.Msg.Task.UserPromptId,
 			Status:         "error",
@@ -1014,6 +1018,7 @@ func TestRerunTaskCreatesNewTaskWithSameParameters(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:         task.ID,
 			ExecutionId:    claim.Msg.Task.ExecutionId,
+			ClaimId:        claim.Msg.Task.ClaimId,
 			AgentSessionId: claim.Msg.Task.AgentSessionId,
 			UserPromptId:   claim.Msg.Task.UserPromptId,
 			Status:         "error",
@@ -1139,6 +1144,7 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			ClaimId:           claim.Msg.Task.ClaimId,
 			AgentSessionId:    claim.Msg.Task.AgentSessionId,
 			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
@@ -1241,6 +1247,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claimResp.Msg.Task.ExecutionId,
+			ClaimId:           claimResp.Msg.Task.ClaimId,
 			AgentSessionId:    claimResp.Msg.Task.AgentSessionId,
 			UserPromptId:      claimResp.Msg.Task.UserPromptId,
 			Status:            "done",
@@ -1326,6 +1333,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            resumeOut.Task.ID,
 			ExecutionId:       resumeClaim.Msg.Task.ExecutionId,
+			ClaimId:           resumeClaim.Msg.Task.ClaimId,
 			AgentSessionId:    resumeClaim.Msg.Task.AgentSessionId,
 			UserPromptId:      resumeClaim.Msg.Task.UserPromptId,
 			Status:            "done",
@@ -1364,6 +1372,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec3.ID,
 				ExecutionId:       rec3Claim.Msg.Task.ExecutionId,
+				ClaimId:           rec3Claim.Msg.Task.ClaimId,
 				AgentSessionId:    rec3Claim.Msg.Task.AgentSessionId,
 				UserPromptId:      rec3Claim.Msg.Task.UserPromptId,
 				Status:            "error",
@@ -1422,6 +1431,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            resume3.Task.ID,
 				ExecutionId:       claim3.Msg.Task.ExecutionId,
+				ClaimId:           claim3.Msg.Task.ClaimId,
 				AgentSessionId:    claim3.Msg.Task.AgentSessionId,
 				UserPromptId:      claim3.Msg.Task.UserPromptId,
 				Status:            "done",
@@ -1452,6 +1462,7 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 			Events: []*runnerv1.TaskEvent{{
 				TaskId:            rec2.ID,
 				ExecutionId:       rec2Claim.Msg.Task.ExecutionId,
+				ClaimId:           rec2Claim.Msg.Task.ClaimId,
 				AgentSessionId:    rec2Claim.Msg.Task.AgentSessionId,
 				UserPromptId:      rec2Claim.Msg.Task.UserPromptId,
 				Status:            "done",
@@ -1521,6 +1532,7 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 		Events: []*runnerv1.TaskEvent{{
 			TaskId:            rec.ID,
 			ExecutionId:       claim.Msg.Task.ExecutionId,
+			ClaimId:           claim.Msg.Task.ClaimId,
 			AgentSessionId:    claim.Msg.Task.AgentSessionId,
 			UserPromptId:      claim.Msg.Task.UserPromptId,
 			Status:            "done",
