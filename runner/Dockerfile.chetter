@@ -17,6 +17,7 @@ ARG GIT_HASH=unknown
 WORKDIR /src
 COPY go.mod go.sum* ./
 COPY gen/ ./gen/
+COPY internal/githubrepo/ ./internal/githubrepo/
 COPY runner/go.mod runner/go.sum* ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \
