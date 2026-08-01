@@ -1437,7 +1437,7 @@ func TestDockerEnvironmentUsesContainerAskpassAndCredentialBridge(t *testing.T) 
 			agentenv.GitHubCredentialTokenEnv: "attacker-capability",
 		},
 	}
-	args := r.dockerServeArgs(req, "/host/workspace", "container", h, h.ServeCommand(containerPortForServe), "", containerPortForServe, false, "bridge", "", "")
+	args := testDockerServeArgs(t, r, req, "/host/workspace", "container", h, h.ServeCommand(containerPortForServe), "", containerPortForServe, false, "bridge", "", "")
 	for _, want := range []string{
 		"GIT_ASKPASS=/workspace/.chetter-git-askpass",
 		agentenv.GitHubCredentialURLEnv + "=http://172.20.0.2/internal/github-credential",
@@ -1459,7 +1459,7 @@ func TestDockerRPCEnvironmentIncludesCredentialBridge(t *testing.T) {
 		GitHubCredentialURL:   "http://172.20.0.2/internal/github-credential",
 		GitHubCredentialToken: "execution-capability",
 	}
-	args := dockerRPCArgs(req, "runner-test", "/host/workspace", "container", h, h.RpcCommand(req), false, "bridge", "172.20.0.2", config.ExecutionConfig{})
+	args := testDockerRPCArgs(t, req, "runner-test", "/host/workspace", "container", h, h.RpcCommand(req), false, "bridge", "172.20.0.2", config.ExecutionConfig{})
 	for _, want := range []string{
 		agentenv.GitHubCredentialURLEnv + "=http://172.20.0.2/internal/github-credential",
 		agentenv.GitHubCredentialTokenEnv + "=execution-capability",
