@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1541,6 +1542,32 @@ func TestServiceClearPendingTasksCancelsQueued(t *testing.T) {
 			t.Fatalf("execution attempts = %+v, want one cancelled attempt", attempts)
 		}
 	}
+}
+
+func TestServiceStartFailureStopsCronAndCanBeStopped(t *testing.T) {
+	svc, _, cleanup := newServiceForTest(t)
+	defer cleanup()
+
+	var calls atomic.Int32
+	if _, err := svc.cron.AddFunc("@every 1ms", func() { calls.Add(1) }); err != nil {
+		t.Fatalf("AddFunc: %v", err)
+	}
+	if err := svc.store.Close(); err != nil {
+		t.Fatalf("close store: %v", err)
+	}
+	if err := svc.Start(context.Background()); err == nil {
+		t.Fatal("Start succeeded with a closed database")
+	}
+
+	before := calls.Load()
+	time.Sleep(20 * time.Millisecond)
+	if after := calls.Load(); after != before {
+		t.Fatalf("cron continued after Start failed: calls grew from %d to %d", before, after)
+	}
+
+	// Cleanup after failed startup must be safe and idempotent.
+	svc.Stop()
+	svc.Stop()
 }
 
 func TestServiceCreateTriggerPersistsAndActivates(t *testing.T) {

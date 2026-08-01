@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/config"
+	"github.com/robfig/cron/v3"
 )
 
 func TestRunReaperCycleRecoversFromPanicAndContinues(t *testing.T) {
@@ -38,6 +39,33 @@ func TestRunReaperCycleRecoversFromPanicAndContinues(t *testing.T) {
 	}
 	if s.LastReapAt().IsZero() {
 		t.Fatalf("lastReapAt must advance after a successful cycle")
+	}
+}
+
+func TestServiceStopIsIdempotentAndWaitsForBackgroundWork(t *testing.T) {
+	s := &Service{
+		cron:       cron.New(),
+		reaperStop: make(chan struct{}),
+	}
+	workerStopped := make(chan struct{})
+	s.backgroundWG.Add(1)
+	go func() {
+		defer s.backgroundWG.Done()
+		<-s.reaperStop
+		close(workerStopped)
+	}()
+
+	s.Stop()
+	select {
+	case <-workerStopped:
+	default:
+		t.Fatal("Stop returned before background work exited")
+	}
+
+	// A repeated stop must not close the channel twice or panic.
+	s.Stop()
+	if err := s.Start(context.Background()); err == nil {
+		t.Fatal("Start succeeded after Stop")
 	}
 }
 

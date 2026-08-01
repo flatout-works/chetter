@@ -113,7 +113,13 @@ type Service struct {
 	cronEntries    map[string]cron.EntryID
 	reaperStop     chan struct{}
 	reaperSteps    []func()
+	lifecycleMu    sync.Mutex
+	startAttempted bool
+	stopped        bool
+	stopOnce       sync.Once
 	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
+	backgroundWG   sync.WaitGroup
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
@@ -194,32 +200,75 @@ func New(cfg config.Config, st *store.Store) *Service {
 	return svc
 }
 
-// Start loads triggers, starts cron, and starts the stale-task reaper.
-// The ctx is stored so long-running goroutines (reaper, sync loop) can abort
-// early on shutdown rather than blocking until their next tick. See issue #99.
+// Start loads triggers, starts cron, and starts the service-owned background
+// loops. A Service is single-use: Start may be attempted only once.
 func (s *Service) Start(ctx context.Context) error {
-	s.shutdownCtx = ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s.lifecycleMu.Lock()
+	if s.stopped {
+		s.lifecycleMu.Unlock()
+		return fmt.Errorf("service has been stopped")
+	}
+	if s.startAttempted {
+		s.lifecycleMu.Unlock()
+		return fmt.Errorf("service start already attempted")
+	}
+	s.startAttempted = true
+	s.shutdownCtx, s.shutdownCancel = context.WithCancel(ctx)
+	shutdownCtx := s.shutdownCtx
+	shutdownCancel := s.shutdownCancel
+	s.lifecycleMu.Unlock()
+
 	s.cron.Start()
-	if err := s.loadTriggers(ctx); err != nil {
+	if err := s.loadTriggers(shutdownCtx); err != nil {
+		shutdownCancel()
+		cronCtx := s.cron.Stop()
+		<-cronCtx.Done()
 		return err
 	}
-	go s.taskReaper()
-	if s.definitions != nil {
-		go s.definitionsSyncLoop()
+
+	s.lifecycleMu.Lock()
+	if s.stopped {
+		s.lifecycleMu.Unlock()
+		cronCtx := s.cron.Stop()
+		<-cronCtx.Done()
+		return fmt.Errorf("service stopped during startup")
 	}
+	s.backgroundWG.Add(1)
+	go func() {
+		defer s.backgroundWG.Done()
+		s.taskReaper()
+	}()
+	if s.definitions != nil {
+		s.backgroundWG.Add(1)
+		go func() {
+			defer s.backgroundWG.Done()
+			s.definitionsSyncLoop()
+		}()
+	}
+	s.lifecycleMu.Unlock()
 	return nil
 }
 
-// Stop stops the cron scheduler and signals the reaper and sync loop to exit.
-// The reaper's current cycle may still be in progress; its DB operations use
-// s.shutdownCtx (cancelled when the server's signal context is cancelled) so
-// they abort early rather than blocking for the full eventHandlerTimeout. See
-// issue #99.
+// Stop cancels service-owned work, stops cron, and waits for background loops
+// to exit. It is safe to call more than once, including after Start fails.
 func (s *Service) Stop() {
-	close(s.reaperStop)
-	ctx := s.cron.Stop()
-	<-ctx.Done()
-	slog.Info("service stopped — cron, reaper, and sync loops shut down")
+	s.stopOnce.Do(func() {
+		s.lifecycleMu.Lock()
+		s.stopped = true
+		if s.shutdownCancel != nil {
+			s.shutdownCancel()
+		}
+		close(s.reaperStop)
+		s.lifecycleMu.Unlock()
+
+		cronCtx := s.cron.Stop()
+		<-cronCtx.Done()
+		s.backgroundWG.Wait()
+		slog.Info("service stopped — cron, reaper, and sync loops shut down")
+	})
 }
 
 // taskReaper periodically scans for tasks that have been running without a
@@ -342,7 +391,7 @@ func (s *Service) definitionsSyncLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), definitionsSyncTimeout)
+			ctx, cancel := context.WithTimeout(s.shutdownCtx, definitionsSyncTimeout)
 			if _, err := s.SyncDefinitions(ctx); err != nil {
 				slog.Warn("periodic definitions sync failed", "err", err)
 			}
