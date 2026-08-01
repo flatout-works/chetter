@@ -1,13 +1,17 @@
 package network
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // MCPRelay exposes a runner-local MCP endpoint that forwards requests to the
@@ -20,7 +24,16 @@ type MCPRelay struct {
 	server     *http.Server
 	listener   net.Listener
 	mu         sync.Mutex
+	claims     map[[sha256.Size]byte]relayClaim
+	rejected   atomic.Uint64
 }
+
+type relayClaim struct {
+	TaskID      string
+	ExecutionID string
+}
+
+type relayClaimContextKey struct{}
 
 // NewMCPRelay creates a relay for targetURL.
 func NewMCPRelay(listenAddr, targetURL, authToken string) (*MCPRelay, error) {
@@ -34,7 +47,12 @@ func NewMCPRelay(listenAddr, targetURL, authToken string) (*MCPRelay, error) {
 	if target.Host == "" {
 		return nil, fmt.Errorf("relay target host is required")
 	}
-	return &MCPRelay{listenAddr: listenAddr, target: target, authToken: authToken}, nil
+	return &MCPRelay{
+		listenAddr: listenAddr,
+		target:     target,
+		authToken:  authToken,
+		claims:     make(map[[sha256.Size]byte]relayClaim),
+	}, nil
 }
 
 // Start begins serving the relay endpoint.
@@ -54,13 +72,18 @@ func (r *MCPRelay) Start() error {
 			req.Out.URL.RawPath = r.target.EscapedPath()
 			req.Out.URL.RawQuery = r.target.RawQuery
 			req.Out.Host = r.target.Host
+			req.Out.Header.Del("Authorization")
 			if r.authToken != "" {
 				req.Out.Header.Set("Authorization", "Bearer "+r.authToken)
+			}
+			if claim, ok := req.In.Context().Value(relayClaimContextKey{}).(relayClaim); ok {
+				req.Out.Header.Set("X-Chetter-Claim-ID", claim.ExecutionID)
+				req.Out.Header.Set("X-Chetter-Task-ID", claim.TaskID)
 			}
 		},
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", proxy)
+	mux.Handle("/mcp", r.requireClaim(proxy))
 	server := &http.Server{Handler: mux}
 
 	r.mu.Lock()
@@ -74,6 +97,61 @@ func (r *MCPRelay) Start() error {
 		}
 	}()
 	return nil
+}
+
+// RegisterClaim authorizes one active execution to use the relay. The returned
+// function removes that capability and is safe to call more than once.
+func (r *MCPRelay) RegisterClaim(token, taskID, executionID string) (func(), error) {
+	if token == "" || taskID == "" || executionID == "" {
+		return nil, fmt.Errorf("relay claim token, task ID, and execution ID are required")
+	}
+	digest := sha256.Sum256([]byte(token))
+	r.mu.Lock()
+	if _, exists := r.claims[digest]; exists {
+		r.mu.Unlock()
+		return nil, fmt.Errorf("relay claim token is already registered")
+	}
+	r.claims[digest] = relayClaim{TaskID: taskID, ExecutionID: executionID}
+	r.mu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.mu.Lock()
+			delete(r.claims, digest)
+			r.mu.Unlock()
+		})
+	}, nil
+}
+
+// RejectedRequests returns the number of requests rejected before proxying.
+func (r *MCPRelay) RejectedRequests() uint64 { return r.rejected.Load() }
+
+func (r *MCPRelay) requireClaim(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		const prefix = "Bearer "
+		authorization := req.Header.Get("Authorization")
+		if !strings.HasPrefix(authorization, prefix) {
+			r.reject(w, req)
+			return
+		}
+		digest := sha256.Sum256([]byte(strings.TrimPrefix(authorization, prefix)))
+		r.mu.Lock()
+		claim, ok := r.claims[digest]
+		r.mu.Unlock()
+		if !ok {
+			r.reject(w, req)
+			return
+		}
+		next.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), relayClaimContextKey{}, claim)))
+	})
+}
+
+func (r *MCPRelay) reject(w http.ResponseWriter, req *http.Request) {
+	r.rejected.Add(1)
+	slog.Warn("rejected unauthorized MCP relay request", "remote_addr", req.RemoteAddr)
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
 // Addr returns the listening address, or an empty string before Start.

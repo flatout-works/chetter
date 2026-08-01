@@ -159,7 +159,7 @@ func (cc *ClaudeCode) WatchEvents(ctx context.Context, taskID, baseURL, secret s
 }
 
 func (cc *ClaudeCode) PipeOutput(taskID, stream string, reader io.Reader) {
-	pipeOutput(taskID, stream, reader)
+	harness.LogOutput("claude", taskID, stream, reader)
 }
 
 func (cc *ClaudeCode) ResolvedModelID(req task.TaskRequest) string {

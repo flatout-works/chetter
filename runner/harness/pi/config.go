@@ -52,22 +52,20 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
+		runnerMCP := map[string]any{
 			"url":         runnerMCPURL,
 			"lifecycle":   "keep-alive",
 			"idleTimeout": 0,
 		}
+		mcpconfig.SetBearerToken(runnerMCP, req.RunnerMCPToken)
+		mcpServers["runner-bridge"] = runnerMCP
 	}
 	if chetterMCPURL != "" {
 		server := map[string]any{
 			"url":       chetterMCPURL,
 			"lifecycle": "keep-alive",
 		}
-		if chetterMCPToken != "" {
-			server["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
+		mcpconfig.SetBearerToken(server, chetterMCPToken)
 		mcpServers["chetter"] = server
 	}
 	if len(req.McpEndpoints) > 0 {
@@ -79,7 +77,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		mcpConfig := map[string]any{
 			"mcpServers": mcpServers,
 		}
-		if err := writeJSON(filepath.Join(wsDir, ".mcp.json"), mcpConfig, 0644); err != nil {
+		if err := writeJSON(filepath.Join(wsDir, ".mcp.json"), mcpConfig, 0600); err != nil {
 			return err
 		}
 		slog.Info("wrote pi mcp config", "path", filepath.Join(wsDir, ".mcp.json"))
@@ -140,7 +138,11 @@ func writeJSON(path string, v any, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, perm); err != nil {
+	if perm == 0600 {
+		if err := mcpconfig.WritePrivateFile(path, data); err != nil {
+			return err
+		}
+	} else if err := os.WriteFile(path, data, perm); err != nil {
 		return err
 	}
 	slog.Info("wrote pi config", "path", path)

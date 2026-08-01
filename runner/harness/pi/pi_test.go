@@ -24,15 +24,38 @@ func TestBuildRPCCommand(t *testing.T) {
 }
 
 func TestBuildRPCCommandProviderQualifiedModel(t *testing.T) {
-	// Isolate from ambient PI_PROVIDER/PI_MODEL so the qualified-model split
-	// path is exercised deterministically regardless of the host environment.
-	t.Setenv("PI_PROVIDER", "")
-	t.Setenv("PI_MODEL", "")
+	t.Setenv("PI_PROVIDER", "ambient-provider")
+	t.Setenv("PI_MODEL", "ambient-model")
 	req := task.TaskRequest{ModelID: "anthropic/claude-sonnet-4-5"}
 	got := buildRPCCommand(req)
 	want := []string{"pi", "--mode", "rpc", "--no-session", "--offline", "--approve", "--provider", "anthropic", "--model", "claude-sonnet-4-5"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildRPCCommand() = %#v, want %#v", got, want)
+	}
+}
+
+func TestModelFieldsPrecedence(t *testing.T) {
+	t.Setenv("PI_PROVIDER", "environment-provider")
+	t.Setenv("PI_MODEL", "environment-model")
+
+	tests := []struct {
+		name         string
+		req          task.TaskRequest
+		wantProvider string
+		wantModel    string
+	}{
+		{name: "explicit fields", req: task.TaskRequest{ProviderID: "explicit-provider", ModelID: "explicit-model"}, wantProvider: "explicit-provider", wantModel: "explicit-model"},
+		{name: "qualified explicit model", req: task.TaskRequest{ModelID: "model-provider/qualified-model"}, wantProvider: "model-provider", wantModel: "qualified-model"},
+		{name: "explicit provider with environment model", req: task.TaskRequest{ProviderID: "explicit-provider"}, wantProvider: "explicit-provider", wantModel: "environment-model"},
+		{name: "environment defaults", req: task.TaskRequest{}, wantProvider: "environment-provider", wantModel: "environment-model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider, model := modelFields(tt.req)
+			if provider != tt.wantProvider || model != tt.wantModel {
+				t.Fatalf("modelFields() = (%q, %q), want (%q, %q)", provider, model, tt.wantProvider, tt.wantModel)
+			}
+		})
 	}
 }
 
@@ -45,7 +68,8 @@ func TestResolvedModelID(t *testing.T) {
 
 func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	wsDir := t.TempDir()
-	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", task.TaskRequest{}, false); err != nil {
+	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -59,9 +83,17 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 		t.Fatalf("expected default adapter path, got %v", extensions[0])
 	}
 
-	data, err := os.ReadFile(filepath.Join(wsDir, ".mcp.json"))
+	mcpPath := filepath.Join(wsDir, ".mcp.json")
+	data, err := os.ReadFile(mcpPath)
 	if err != nil {
 		t.Fatalf("read .mcp.json: %v", err)
+	}
+	info, err := os.Stat(mcpPath)
+	if err != nil {
+		t.Fatalf("stat .mcp.json: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("MCP config permissions = %v, want 0600", info.Mode().Perm())
 	}
 	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -71,8 +103,13 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if !ok {
 		t.Fatal("expected mcpServers map")
 	}
-	if _, ok := servers["runner-bridge"]; !ok {
+	runner, ok := servers["runner-bridge"].(map[string]any)
+	if !ok {
 		t.Fatal("expected runner-bridge MCP server")
+	}
+	headers, ok := runner["headers"].(map[string]any)
+	if !ok || headers["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner bridge headers = %#v", runner["headers"])
 	}
 	if _, ok := servers["chetter"]; !ok {
 		t.Fatal("expected chetter MCP server")

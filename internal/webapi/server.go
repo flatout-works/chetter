@@ -1,7 +1,6 @@
 package webapi
 
 import (
-	"context"
 	"database/sql"
 	"net/http"
 	"strings"
@@ -64,15 +63,15 @@ func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sq
 
 // Ensure the handler types satisfy the generated interfaces.
 var (
-	_ apiv1connect.TaskServiceHandler    = (*taskHandler)(nil)
-	_ apiv1connect.EventServiceHandler   = (*eventHandler)(nil)
-	_ apiv1connect.SessionServiceHandler = (*sessionHandler)(nil)
+	_ apiv1connect.TaskServiceHandler          = (*taskHandler)(nil)
+	_ apiv1connect.EventServiceHandler         = (*eventHandler)(nil)
+	_ apiv1connect.SessionServiceHandler       = (*sessionHandler)(nil)
 	_ apiv1connect.TriggerServiceHandler       = (*triggerHandler)(nil)
 	_ apiv1connect.EventCallbackServiceHandler = (*eventCallbackHandler)(nil)
 	_ apiv1connect.FleetServiceHandler         = (*fleetHandler)(nil)
-	_ apiv1connect.AdminServiceHandler   = (*adminHandler)(nil)
-	_ apiv1connect.ArcaneServiceHandler  = (*arcaneHandler)(nil)
-	_ apiv1connect.CatalogServiceHandler = (*catalogHandler)(nil)
+	_ apiv1connect.AdminServiceHandler         = (*adminHandler)(nil)
+	_ apiv1connect.ArcaneServiceHandler        = (*arcaneHandler)(nil)
+	_ apiv1connect.CatalogServiceHandler       = (*catalogHandler)(nil)
 )
 
 // authMiddleware wraps an http.HandlerFunc with bearer token validation,
@@ -94,6 +93,3 @@ func authMiddleware(adminToken string, db *sql.DB, next http.HandlerFunc) http.H
 		next(w, r.WithContext(ctx))
 	}
 }
-
-var _ = context.Background
-var _ = http.StatusNotFound

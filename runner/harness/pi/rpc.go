@@ -39,16 +39,21 @@ func resolvedModelID(req task.TaskRequest) string {
 func modelFields(req task.TaskRequest) (provider, model string) {
 	provider = strings.TrimSpace(req.ProviderID)
 	model = strings.TrimSpace(req.ModelID)
+
+	// A provider embedded in an explicitly requested model takes precedence
+	// over ambient defaults. An explicitly separate ProviderID remains the
+	// highest-precedence setting.
+	if provider == "" && model != "" {
+		provider, model = splitQualifiedModel(model)
+	}
 	if model == "" {
 		model = strings.TrimSpace(os.Getenv("PI_MODEL"))
 	}
 	if provider == "" {
 		provider = strings.TrimSpace(os.Getenv("PI_PROVIDER"))
 	}
-	if provider == "" && strings.Contains(model, "/") {
-		parts := strings.SplitN(model, "/", 2)
-		provider = parts[0]
-		model = parts[1]
+	if provider == "" {
+		provider, model = splitQualifiedModel(model)
 	}
 	if model == "" {
 		model = "glm-5.2"
@@ -57,6 +62,14 @@ func modelFields(req task.TaskRequest) (provider, model string) {
 		provider = "zai"
 	}
 	return provider, model
+}
+
+func splitQualifiedModel(model string) (provider, unqualifiedModel string) {
+	parts := strings.SplitN(model, "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return "", model
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 }
 
 func thinkingLevel(variant string) string {

@@ -318,7 +318,14 @@ chetter_mcp:
 | `deploy.registry` | empty | Reserved image registry metadata. |
 | `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |
 | `chetter_mcp.url` | empty | MCP URL injected into task environments when configured. |
-| `chetter_mcp.auth_token` | `CHETTER_MCP_AUTH_TOKEN` env | MCP token injected into task environments when configured. |
+| `chetter_mcp.auth_token` | `CHETTER_MCP_AUTH_TOKEN` env | Upstream MCP credential retained by the runner relay; task containers receive an execution-scoped capability instead. |
+
+Runner-owned MCP endpoints do not use the static upstream token inside task
+containers. For each execution the runner creates a random capability, writes
+it only to owner-readable harness configuration, and registers it with the
+per-execution MCP server and optional Chetter MCP relay. Relay access is revoked
+when the execution server closes. Unauthorized relay requests return HTTP 401
+without contacting the configured upstream MCP service.
 
 ### Definitions Repo YAML
 
@@ -665,6 +672,14 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 make migrate
 make migrate-status
 ```
+
+The container entrypoint applies the matching dialect's Goose migrations before
+starting Chetter. PostgreSQL migrations are also embedded in the server binary:
+`ApplySchema` applies pending migrations under an advisory lock before checking
+the current bootstrap schema, so direct binary execution follows the same
+upgrade path. An existing PostgreSQL Chetter schema must retain its
+`goose_db_version` table; startup refuses an unversioned schema rather than
+inferring a potentially unsafe baseline across data-moving migrations.
 
 ## Deploying On Kubernetes
 

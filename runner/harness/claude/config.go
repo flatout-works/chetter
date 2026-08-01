@@ -97,10 +97,12 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 
 	if runnerMCPURL != "" {
-		mcpServers["runner-bridge"] = map[string]any{
+		runnerMCP := map[string]any{
 			"type": "http",
 			"url":  runnerMCPURL,
 		}
+		mcpconfig.SetBearerToken(runnerMCP, req.RunnerMCPToken)
+		mcpServers["runner-bridge"] = runnerMCP
 	}
 
 	if chetterMCPURL != "" {
@@ -108,11 +110,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			"type": "http",
 			"url":  chetterMCPURL,
 		}
-		if chetterMCPToken != "" {
-			chetterMCP["headers"] = map[string]string{
-				"Authorization": "Bearer " + chetterMCPToken,
-			}
-		}
+		mcpconfig.SetBearerToken(chetterMCP, chetterMCPToken)
 		mcpServers["chetter"] = chetterMCP
 	}
 
@@ -131,7 +129,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			return err
 		}
 		agentMCPPath := filepath.Join(wsDir, ".mcp.json")
-		if err := os.WriteFile(agentMCPPath, agentMCPData, 0644); err != nil {
+		if err := mcpconfig.WritePrivateFile(agentMCPPath, agentMCPData); err != nil {
 			return err
 		}
 		slog.Info("wrote claude mcp config", "path", agentMCPPath)

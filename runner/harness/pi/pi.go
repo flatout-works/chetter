@@ -36,7 +36,7 @@ func (p *Pi) ReadSessionExport(wsDir, sessionID string) (string, error) {
 }
 
 func (p *Pi) PipeOutput(taskID, stream string, reader io.Reader) {
-	pipeOutput(taskID, stream, reader)
+	harness.LogOutput("pi", taskID, stream, reader)
 }
 
 func (p *Pi) RpcCommand(req task.TaskRequest) []string { return buildRPCCommand(req) }

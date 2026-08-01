@@ -195,7 +195,12 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 		slog.Info("proxy started", "addr", r.cfg.Proxy.ListenAddr)
 		if r.cfg.ChetterMCP.URL != "" {
-			relay, err := network.NewMCPRelay(r.cfg.ChetterMCP.RelayListenAddr, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken)
+			relayAddr, err := network.NarrowListenAddr(r.cfg.ChetterMCP.RelayListenAddr, r.runnerHostIP())
+			if err != nil {
+				r.stopNetwork()
+				return fmt.Errorf("configure Chetter MCP relay listener: %w", err)
+			}
+			relay, err := network.NewMCPRelay(relayAddr, r.cfg.ChetterMCP.URL, r.cfg.ChetterMCP.AuthToken)
 			if err != nil {
 				r.stopNetwork()
 				return fmt.Errorf("create Chetter MCP relay: %w", err)
@@ -314,7 +319,22 @@ func isPromptTransportFailureMessage(lower string) bool {
 }
 
 func (r *Runner) publishTaskResponse(resp task.TaskResponse) {
+	redactRunnerMCPToken(&resp)
 	r.reportTaskResponse(resp)
+}
+
+func redactRunnerMCPToken(resp *task.TaskResponse) {
+	if resp.RunnerMCPToken == "" {
+		return
+	}
+	const replacement = "[REDACTED]"
+	resp.Summary = strings.ReplaceAll(resp.Summary, resp.RunnerMCPToken, replacement)
+	resp.Error = strings.ReplaceAll(resp.Error, resp.RunnerMCPToken, replacement)
+	resp.SessionExport = strings.ReplaceAll(resp.SessionExport, resp.RunnerMCPToken, replacement)
+	for i := range resp.Artifacts {
+		resp.Artifacts[i] = strings.ReplaceAll(resp.Artifacts[i], resp.RunnerMCPToken, replacement)
+	}
+	resp.RunnerMCPToken = ""
 }
 
 func (r *Runner) decorateTaskResponse(resp *task.TaskResponse, env map[string]string, sessionID string) {
@@ -340,6 +360,7 @@ func (r *Runner) decorateTaskResponse(resp *task.TaskResponse, env map[string]st
 
 func (r *Runner) decorateTaskResponseForRequest(resp *task.TaskResponse, req task.TaskRequest, sessionID string) {
 	resp.AgentSessionID = req.AgentSessionID
+	resp.RunnerMCPToken = req.RunnerMCPToken
 	resp.UserPromptID = req.UserPromptID
 	if resp.ProviderID == "" {
 		resp.ProviderID = req.ProviderID
