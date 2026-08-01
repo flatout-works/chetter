@@ -20,7 +20,7 @@ The recommended order is:
 Work started on the highest-priority, independently reviewable items:
 
 - [x] Sanitize task summary and session export Markdown before `{@html}` rendering, with executable-HTML regression tests enforced by `make web-check`.
-- [x] Add contained workspace-file writing that rejects traversal and symlink paths.
+- [x] Enforce manager-owned runner workspace boundaries for extra files, persisted resume paths, Docker host bind mounts, and cleanup; reject traversal and symlink escapes.
 - [x] Fix Pi's explicit model/provider precedence and make the regression test independent of ambient Pi variables.
 - [x] Update the frontend lockfile to resolve the PostCSS security advisory; `npm audit --omit=dev` reports no vulnerabilities.
 - [x] Authenticate per-task MCP listeners with unique bearer tokens, inject credentials into every harness, and bind listeners to the runner interface instead of all interfaces.
