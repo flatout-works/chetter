@@ -81,17 +81,19 @@ Reference example Dockerfiles are in `runner/images/examples/`.
 
 **Two sources of truth for schema:**
 
-1. **`internal/store/schema.go`** — `schemaStatements` + `ensureTaskMetadataColumns` / `ensureScheduleMetadataColumns` / `ensureRunnerMetadataColumns`. These run on every server startup via `ApplySchema()`. They provide **zero-downtime auto-migration** for new columns.
-2. **`db/migrations/*.sql`** — Used by Goose for explicit migrations and by **sqlc** to infer the schema for Go code generation. PostgreSQL uses `db/postgres/migrations/` and `db/postgres/queries/`.
+1. **`internal/store/schema.go`** — current bootstrap DDL plus MySQL/TiDB `ensure*` helpers. `schema_postgres.go` derives the equivalent current PostgreSQL bootstrap schema.
+2. **Dialect-specific Goose migrations** — `db/migrations/*.sql` for MySQL/TiDB and `db/postgres/migrations/*.sql` for PostgreSQL. They track ordered upgrades and provide sqlc's schema input.
+
+`ApplySchema()` runs on every server startup. For PostgreSQL it first applies the embedded Goose migrations under a PostgreSQL advisory lock, then executes the idempotent bootstrap DDL. Existing PostgreSQL application schemas must contain a `goose_db_version` table; startup rejects an unversioned schema rather than guessing a baseline across data-moving migrations. MySQL/TiDB retain the existing startup `ensure*` upgrade path.
 
 **When adding a column:**
 1. Add it to the `CREATE TABLE` in `schema.go` (MySQL/TiDB DDL).
-2. Add the same column to `internal/store/schema_postgres.go` if PostgreSQL needs a different type or syntax.
+2. Ensure `internal/store/schema_postgres.go` derives the correct PostgreSQL type or add a dialect-specific conversion there.
 3. Add an `ensure*Columns` entry in `store.go` so existing MySQL/TiDB deployments auto-migrate.
-4. Add a matching `ensure*Columns` entry for PostgreSQL in the same file if the auto-migration differs.
-5. Create a Goose migration in `db/migrations/` (MySQL) and `db/postgres/migrations/` (PostgreSQL) if the change needs to be tracked.
-6. Update the `.sql` query files in **both** `db/queries/` and `db/postgres/queries/`.
-7. Run `make generate` to regenerate sqlc models for both dialects.
+4. Create matching Goose migrations in `db/migrations/` (MySQL) and `db/postgres/migrations/` (PostgreSQL). PostgreSQL startup automatically embeds files in its migration directory.
+5. Update the `.sql` query files in **both** `db/queries/` and `db/postgres/queries/`.
+6. Run `make generate` to regenerate sqlc models for both dialects.
+7. Add an upgrade regression test that starts from the preceding migration version when the migration changes existing data or schema.
 
 ### Adding or Modifying SQL Queries (Dual-Dialect Workflow)
 

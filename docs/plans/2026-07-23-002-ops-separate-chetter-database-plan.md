@@ -29,10 +29,13 @@ writes.
   (`deploy/k8s/secrets.yaml`). No `flatoutdev` reference is committed in this
   repository.
 - Startup runs `ApplySchema`, which creates the current schema and performs
-  compatibility repairs (`main.go:57-70`, `internal/store/store.go:348-415`).
-- Goose migrations are historical and must be run on a fresh destination before
-  starting Chetter. Starting Chetter first can create latest-schema objects and
-  make older migrations fail on duplicate columns or tables.
+  compatibility repairs. PostgreSQL startup first applies the migrations
+  embedded in the server binary under an advisory lock.
+- The container entrypoint applies Goose migrations before starting Chetter for
+  every dialect. A fresh destination should still be initialized explicitly
+  before data import. For direct MySQL/TiDB binary execution, run Goose before
+  startup so latest-schema bootstrap objects do not conflict with historical
+  migrations.
 - Paused and recoverable sessions store workspace/checkpoint paths in the
   database, but the actual workspace and checkpoint bytes live on runner-local
   storage. The database move alone does not move those bytes.

@@ -1,6 +1,6 @@
 # Repository Quality Review
 
-**Date:** 2026-08-01  
+**Date:** 2026-08-01
 **Scope:** Maintained Go server and runner code, SQL/data facade, Svelte frontend, tests, dependencies, and repository organization.
 
 ## Executive summary
@@ -25,7 +25,7 @@ Work started on the highest-priority, independently reviewable items:
 - [x] Update the frontend lockfile to resolve the PostCSS security advisory; `npm audit --omit=dev` reports no vulnerabilities.
 - [x] Authenticate per-task MCP listeners with unique bearer tokens, inject credentials into every harness, and bind listeners to the runner interface instead of all interfaces.
 - [x] Authenticate the runner-wide Chetter MCP relay with active execution capabilities, revoke them at execution cleanup, and prevent unauthorized upstream contact.
-- [ ] Decide and implement PostgreSQL startup migration behavior.
+- [x] Make PostgreSQL startup apply embedded, advisory-locked Goose migrations before bootstrap DDL, reject unsafe unversioned schemas, and test upgrades from an older migration.
 - [x] Remove confirmed dead runner packages and stale compile-time placeholders.
 - [x] Consolidate duplicated harness output logging into the shared harness package.
 - [x] Make service shutdown idempotent, cancelable, and waiting for owned background loops.
@@ -120,14 +120,11 @@ if s.IsPostgres() {
 
 All column/index upgrade helpers then run only for MySQL/TiDB. This conflicts with the repository guidance that startup schema application provides zero-downtime upgrades for existing deployments across dialects. For an existing PostgreSQL table, an updated `CREATE TABLE IF NOT EXISTS` does not add new columns.
 
-**Recommendations:**
+**Resolution:**
 
-Choose and enforce one migration policy:
+PostgreSQL now uses its ordered Goose migrations as the startup upgrade path. The migration files are embedded in the server binary; `ApplySchema` applies pending migrations under a PostgreSQL advisory lock before running the idempotent bootstrap DDL. This preserves data-moving ownership migrations that cannot be reconstructed safely from column-presence checks.
 
-- Implement PostgreSQL equivalents for startup `ensure*` operations, or
-- Explicitly require Goose migrations before startup and remove claims that startup auto-migration handles PostgreSQL.
-
-Add upgrade tests that begin with an older schema and call `ApplySchema`, rather than testing only creation from an empty database.
+Existing PostgreSQL application schemas without `goose_db_version` are rejected before DDL is attempted rather than assigned a guessed migration baseline. Regression coverage downgrades a real PostgreSQL database to migration 22, preserves existing token data while startup applies migration 23, verifies restart idempotency, and verifies that an unversioned existing schema fails closed.
 
 ### 5. Authenticate and narrow per-task MCP listeners
 

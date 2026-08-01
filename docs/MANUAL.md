@@ -673,6 +673,14 @@ make migrate
 make migrate-status
 ```
 
+The container entrypoint applies the matching dialect's Goose migrations before
+starting Chetter. PostgreSQL migrations are also embedded in the server binary:
+`ApplySchema` applies pending migrations under an advisory lock before checking
+the current bootstrap schema, so direct binary execution follows the same
+upgrade path. An existing PostgreSQL Chetter schema must retain its
+`goose_db_version` table; startup refuses an unversioned schema rather than
+inferring a potentially unsafe baseline across data-moving migrations.
+
 ## Deploying On Kubernetes
 
 The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. No special protocols, no broker, no runner pre-registration. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment. Scaling is `kubectl scale deployment chetter-runner --replicas=N`.
