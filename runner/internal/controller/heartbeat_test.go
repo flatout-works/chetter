@@ -279,6 +279,39 @@ func TestKubernetesHeartbeatReportsRuntimeWithoutCheckpointRestore(t *testing.T)
 	}
 }
 
+// TestRunnerInfoReportsContainerLimits verifies the heartbeat reports the
+// runner-side per-task safety caps for fleet observability (issue #273).
+func TestRunnerInfoReportsContainerLimits(t *testing.T) {
+	r, _ := newDrainTestRunner(t)
+	r.cfg.Execution.ContainerMemory = "1g"
+	r.cfg.Execution.ContainerCPU = 2
+	info := r.runnerInfoProto("active")
+	if info.ContainerMemoryMb != 1024 {
+		t.Fatalf("ContainerMemoryMb = %d, want 1024 (1g)", info.ContainerMemoryMb)
+	}
+	if info.ContainerCpu != 2 {
+		t.Fatalf("ContainerCpu = %v, want 2", info.ContainerCpu)
+	}
+}
+
+func TestContainerMemoryMBConversion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int32
+	}{
+		{"", 0},
+		{"512m", 512},
+		{"1g", 1024},
+		{"1.5g", 1536},
+		{"invalid", 0},
+	}
+	for _, tc := range tests {
+		if got := containerMemoryMB(tc.input); got != tc.want {
+			t.Errorf("containerMemoryMB(%q) = %d, want %d", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestKubernetesHeartbeatDoesNotCallOtherRuntimeClassesGVisor(t *testing.T) {
 	r, _ := newDrainTestRunner(t)
 	r.cfg.Execution.Backend = "kubernetes"

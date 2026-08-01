@@ -1195,24 +1195,28 @@ type RunnerImageInfo struct {
 
 // RunnerInfo is one runner's latest heartbeat and lightweight counters.
 type RunnerInfo struct {
-	ID             string         `json:"id"`
-	Status         string         `json:"status"`
-	ImageRef       string         `json:"image_ref,omitempty"`
-	ImageDigest    string         `json:"image_digest,omitempty"`
-	Version        string         `json:"version,omitempty"`
-	MaxConcurrent  int            `json:"max_concurrent"`
-	RunningTasks   int            `json:"running_tasks"`
-	AvailableSlots int            `json:"available_slots"`
-	TotalStarted   int64          `json:"total_started"`
-	TotalCompleted int64          `json:"total_completed"`
-	TotalErrors    int64          `json:"total_errors"`
-	CurrentTaskIDs []string       `json:"current_task_ids"`
-	FirstSeenAt    *time.Time     `json:"first_seen_at,omitempty"`
-	LastSeenAt     time.Time      `json:"last_seen_at"`
-	LastSeenSec    int            `json:"last_seen_sec"`
-	StartedAt      *time.Time     `json:"started_at,omitempty"`
-	IsStale        bool           `json:"is_stale"`
+	ID             string          `json:"id"`
+	Status         string          `json:"status"`
+	ImageRef       string          `json:"image_ref,omitempty"`
+	ImageDigest    string          `json:"image_digest,omitempty"`
+	Version        string          `json:"version,omitempty"`
+	MaxConcurrent  int             `json:"max_concurrent"`
+	RunningTasks   int             `json:"running_tasks"`
+	AvailableSlots int             `json:"available_slots"`
+	TotalStarted   int64           `json:"total_started"`
+	TotalCompleted int64           `json:"total_completed"`
+	TotalErrors    int64           `json:"total_errors"`
+	CurrentTaskIDs []string        `json:"current_task_ids"`
+	FirstSeenAt    *time.Time      `json:"first_seen_at,omitempty"`
+	LastSeenAt     time.Time       `json:"last_seen_at"`
+	LastSeenSec    int             `json:"last_seen_sec"`
+	StartedAt      *time.Time      `json:"started_at,omitempty"`
+	IsStale        bool            `json:"is_stale"`
 	Resource       *RunnerResource `json:"resource,omitempty"`
+	// ContainerMemoryMB and ContainerCPU are runner-side per-task safety caps.
+	// Individual task limits may be stricter but cannot raise these caps.
+	ContainerMemoryMB int     `json:"container_memory_mb,omitempty"`
+	ContainerCPU      float64 `json:"container_cpu,omitempty"`
 }
 
 // RunnerResource holds a point-in-time snapshot of runner host resource usage.
@@ -1358,6 +1362,7 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		info.IsStale = info.LastSeenSec > maxRunnerPresenceSec
 		info.CurrentTaskIDs = currentTaskIDsFromMetadata(metadata)
 		info.Resource = resourceFromMetadata(metadata)
+		info.ContainerMemoryMB, info.ContainerCPU = containerLimitsFromMetadata(metadata)
 		if info.IsStale {
 			continue
 		}
@@ -1433,6 +1438,20 @@ func resourceFromMetadata(data []byte) *RunnerResource {
 		DiskPercent:          meta.Resource.DiskPercent,
 		ActiveTaskCount:      meta.Resource.ActiveTaskCount,
 	}
+}
+
+// containerLimitsFromMetadata extracts the effective per-task container limits
+// (memory MB, CPU) from runner heartbeat metadata JSON. Reports 0/0 when no
+// limit data is present.
+func containerLimitsFromMetadata(data []byte) (int, float64) {
+	var meta struct {
+		ContainerMemoryMb int32   `json:"container_memory_mb"`
+		ContainerCpu      float64 `json:"container_cpu"`
+	}
+	if len(data) == 0 || json.Unmarshal(data, &meta) != nil {
+		return 0, 0
+	}
+	return int(meta.ContainerMemoryMb), meta.ContainerCpu
 }
 
 func firstLineOrNA(s string) string {

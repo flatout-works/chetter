@@ -43,6 +43,10 @@ type RunnerInfo struct {
 	RunscVersion      string                 `protobuf:"bytes,17,opt,name=runsc_version,json=runscVersion,proto3" json:"runsc_version,omitempty"`
 	CurrentExecutions []*RunningExecution    `protobuf:"bytes,18,rep,name=current_executions,json=currentExecutions,proto3" json:"current_executions,omitempty"`
 	Resource          *ResourceInfo          `protobuf:"bytes,19,opt,name=resource,proto3" json:"resource,omitempty"`
+	// Runner-side per-task container safety caps (0 when unset). Individual
+	// task limits may be stricter but can never raise these configured caps.
+	ContainerMemoryMb int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
+	ContainerCpu      float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -208,6 +212,20 @@ func (x *RunnerInfo) GetResource() *ResourceInfo {
 		return x.Resource
 	}
 	return nil
+}
+
+func (x *RunnerInfo) GetContainerMemoryMb() int32 {
+	if x != nil {
+		return x.ContainerMemoryMb
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetContainerCpu() float64 {
+	if x != nil {
+		return x.ContainerCpu
+	}
+	return 0
 }
 
 type ResourceInfo struct {
@@ -2226,7 +2244,7 @@ var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xf6\x05\n" +
+	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xcb\x06\n" +
 	"\n" +
 	"RunnerInfo\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x16\n" +
@@ -2249,7 +2267,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x12checkpoint_restore\x18\x10 \x01(\bR\x11checkpointRestore\x12#\n" +
 	"\rrunsc_version\x18\x11 \x01(\tR\frunscVersion\x12J\n" +
 	"\x12current_executions\x18\x12 \x03(\v2\x1b.runner.v1.RunningExecutionR\x11currentExecutions\x123\n" +
-	"\bresource\x18\x13 \x01(\v2\x17.runner.v1.ResourceInfoR\bresource\"\xdb\x01\n" +
+	"\bresource\x18\x13 \x01(\v2\x17.runner.v1.ResourceInfoR\bresource\x12.\n" +
+	"\x13container_memory_mb\x18\x14 \x01(\x05R\x11containerMemoryMb\x12#\n" +
+	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\"\xdb\x01\n" +
 	"\fResourceInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12%\n" +

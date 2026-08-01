@@ -200,6 +200,11 @@
                     {/if}
                   </div>
                 {/if}
+                {#if runner.containerMemoryMb > 0 || runner.containerCpu > 0}
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Runner caps: {runner.containerMemoryMb > 0 ? `${runner.containerMemoryMb} MiB` : "unset"} memory · {runner.containerCpu > 0 ? runner.containerCpu : "unset"} CPU
+                  </p>
+                {/if}
               </div>
               <div class="flex items-center gap-3">
                 {#if runner.currentTaskIds?.length}

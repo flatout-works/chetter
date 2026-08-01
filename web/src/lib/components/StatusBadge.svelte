@@ -30,6 +30,7 @@
       case "error":
       case "failed":
       case "disabled":
+      case "resource_limit":
         return { color: "red", dot: "bg-red-500" };
       case "cancelled":
         return { color: "gray", dot: "bg-slate-400" };

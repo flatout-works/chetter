@@ -28,7 +28,7 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		dockerArgs = append(dockerArgs, "--dns", runnerIP)
 		dockerArgs = append(dockerArgs, gvisorHostAliases()...)
 	}
-	dockerArgs = appendContainerLimits(dockerArgs, r.cfg.Execution)
+	dockerArgs = appendContainerLimits(dockerArgs, r.cfg.Execution, req)
 	dockerArgs = append(dockerArgs, "--network", netName)
 	dockerArgs = append(dockerArgs, "-p", fmt.Sprintf("%s:%d:%d", harnessPublishBindAddr(bindAddr, gvisor), hostPort, containerPortForServe))
 	dockerArgs = append(dockerArgs,
@@ -88,15 +88,29 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 const containerPortForServe = 9999
 
 // appendContainerLimits adds Docker resource-limit flags for the memory, CPU,
-// and PID limits configured in exec. Each flag is only emitted when the
-// corresponding value is set, so unset limits leave container behavior
-// unchanged. The same limits are applied to serve, resume, and RPC containers
-// so a single misbehaving task cannot exhaust the host.
-func appendContainerLimits(args []string, exec config.ExecutionConfig) []string {
-	if mem := exec.ContainerMemory; mem != "" {
+// and PID limits. Runner-level limits are hard safety caps; per-task limits can
+// only tighten them. Each flag is only emitted when the corresponding value is
+// set, so unset limits leave container behavior unchanged. The same limits are
+// applied to serve, resume, and RPC containers so a single misbehaving task
+// cannot exhaust the host.
+func appendContainerLimits(args []string, exec config.ExecutionConfig, req task.TaskRequest) []string {
+	mem := exec.ContainerMemory
+	if req.MaxMemoryMB > 0 {
+		taskMem := fmt.Sprintf("%dm", req.MaxMemoryMB)
+		configuredBytes, _ := config.ParseMemoryBytes(mem)
+		taskBytes := int64(req.MaxMemoryMB) << 20
+		if configuredBytes == 0 || taskBytes < configuredBytes {
+			mem = taskMem
+		}
+	}
+	if mem != "" {
 		args = append(args, "--memory", mem, "--memory-swap", mem)
 	}
-	if cpu := exec.ContainerCPU; cpu > 0 {
+	cpu := exec.ContainerCPU
+	if req.MaxCPU > 0 && (cpu == 0 || float64(req.MaxCPU) < cpu) {
+		cpu = float64(req.MaxCPU)
+	}
+	if cpu > 0 {
 		args = append(args, "--cpus", strconv.FormatFloat(cpu, 'f', -1, 64))
 	}
 	if pids := exec.ContainerPIDs; pids > 0 {

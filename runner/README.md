@@ -154,8 +154,8 @@ Configure them in `runner.yaml`:
 
 ```yaml
 execution:
-  container_memory: 512m   # passed to docker --memory and --memory-swap
-  container_cpu: 2          # passed to docker --cpus (decimal allowed, e.g. 1.5)
+  container_memory: 512m   # hard cap passed to docker --memory and --memory-swap
+  container_cpu: 2          # hard cap passed to docker --cpus (decimal allowed, e.g. 1.5)
   container_pids: 256       # passed to docker --pids-limit
 ```
 
