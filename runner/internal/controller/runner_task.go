@@ -122,6 +122,12 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	}
 
 	if req.ResumeWorkspacePath != "" {
+		resumeWorkspace, err := r.wsManager.ResolveResumeWorkspace(req.TaskID, req.ResumeWorkspacePath)
+		if err != nil {
+			r.publishStatusForRequest(req, "error", fmt.Sprintf("invalid resume workspace: %v", err), nil)
+			return
+		}
+		req.ResumeWorkspacePath = resumeWorkspace
 		serveHarness, ok := h.(harness.ServeHarness)
 		if !ok {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s cannot resume HTTP sessions", h.Name()), nil)
@@ -699,7 +705,11 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
 		return
 	}
-	dockerArgs := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
+	dockerArgs, err := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("resolve workspace bind mount: %v", err), nil)
+		return
+	}
 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
@@ -857,7 +867,11 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
 		return
 	}
-	dockerArgs := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
+	dockerArgs, err := r.dockerServeArgs(req, session.WorkspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("resolve resume workspace bind mount: %v", err), nil)
+		return
+	}
 
 	slog.Info("starting resume Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "workspace", workspaceDir)
 	r.publishStatusForRequest(req, "running", "Starting dev container for resume...", nil)
@@ -1236,7 +1250,11 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 		runnerIP = hostIP(netName)
 	}
 
-	dockerArgs := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, containerName, h, args, gvisor, netName, runnerIP, r.cfg.Execution)
+	dockerArgs, err := dockerRPCArgs(req, r.runnerID, session.WorkspaceDir, r.cfg.Runner.WorkspaceRoot, containerName, h, args, gvisor, netName, runnerIP, r.cfg.Execution)
+	if err != nil {
+		r.publishStatusForRequest(req, "error", fmt.Sprintf("resolve RPC workspace bind mount: %v", err), nil)
+		return
+	}
 	name := h.Name()
 	slog.Info("starting Docker RPC harness", "taskID", req.TaskID, "harness", name, "image", req.AgentImage, "args", args, "gvisor", gvisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container (RPC mode)...", nil)
@@ -1246,7 +1264,11 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, containerName)
 }
 
-func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) []string {
+func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) ([]string, error) {
+	hostWorkspaceDir, err := agentenv.HostWorkspaceDir(wsDir, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
 	dockerArgs := []string{
 		"run", "-i",
 		"--entrypoint", command[0],
@@ -1265,7 +1287,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 	}
 	dockerArgs = appendContainerLimits(dockerArgs, exec, req)
 	dockerArgs = append(dockerArgs,
-		"-v", agentenv.HostWorkspaceDir(wsDir)+":"+containerWorkspaceDir,
+		"-v", hostWorkspaceDir+":"+containerWorkspaceDir,
 		"-w", containerWorkspaceDir,
 		"-e", "TASK_ID="+req.TaskID,
 		"-e", "WORKSPACE="+containerWorkspaceDir,
@@ -1317,7 +1339,7 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, containerName string, 
 	}
 	dockerArgs = append(dockerArgs, req.AgentImage)
 	dockerArgs = append(dockerArgs, command[1:]...)
-	return dockerArgs
+	return dockerArgs, nil
 }
 
 func shouldPullAgentImage(image string) bool {

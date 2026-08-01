@@ -1176,6 +1176,40 @@ func TestProtoTaskToRequestProviderTransport(t *testing.T) {
 	}
 }
 
+func testDockerRPCArgs(t *testing.T, req task.TaskRequest, runnerID, wsDir, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) []string {
+	t.Helper()
+	args, err := dockerRPCArgs(req, runnerID, wsDir, filepath.Dir(wsDir), containerName, h, command, gvisor, netName, runnerIP, exec)
+	if err != nil {
+		t.Fatalf("dockerRPCArgs: %v", err)
+	}
+	return args
+}
+
+func testDockerServeArgs(t *testing.T, r *Runner, req task.TaskRequest, workspaceDir, containerName string, h harness.ServeHarness, serveCmd []string, bindAddr string, hostPort int, gvisor bool, netName, runnerIP, secret string) []string {
+	t.Helper()
+	if r.cfg.Runner.WorkspaceRoot == "" {
+		r.cfg.Runner.WorkspaceRoot = filepath.Dir(workspaceDir)
+	}
+	args, err := r.dockerServeArgs(req, workspaceDir, containerName, h, serveCmd, bindAddr, hostPort, gvisor, netName, runnerIP, secret)
+	if err != nil {
+		t.Fatalf("dockerServeArgs: %v", err)
+	}
+	return args
+}
+
+func TestDockerArgsRejectWorkspaceOutsideRoot(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	if _, err := dockerRPCArgs(req, "runner-test", "/tmp/outside", "/tmp/workspaces", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{}); err == nil {
+		t.Fatal("dockerRPCArgs accepted workspace outside root")
+	}
+	r := &Runner{cfg: &config.Config{Runner: config.RunnerConfig{WorkspaceRoot: "/tmp/workspaces"}}, runnerID: "runner-test"}
+	serveHarness := opencode.New()
+	if _, err := r.dockerServeArgs(req, "/tmp/outside", "chetter-task-task-123", serveHarness, serveHarness.ServeCommand(containerPortForServe), "", containerPortForServe, false, "", "", ""); err == nil {
+		t.Fatal("dockerServeArgs accepted workspace outside root")
+	}
+}
+
 func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 	t.Setenv("LITELLM_API_KEY", "runner-litellm-key")
 	h := pi.New()
@@ -1192,7 +1226,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 			"LITELLM_API_KEY": "task-key",
 		},
 	}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
 
 	entrypointIdx := indexOf(args, "--entrypoint")
 	if entrypointIdx == -1 || entrypointIdx == len(args)-1 {
@@ -1234,7 +1268,7 @@ func TestDockerRPCArgsRunsHarnessInsideAgentImage(t *testing.T) {
 func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1", config.ExecutionConfig{})
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), true, "chetter_default", "172.21.0.1", config.ExecutionConfig{})
 
 	if !hasAdjacentArgs(args, "--dns", "172.21.0.1") {
 		t.Fatalf("expected runner DNS in args: %v", args)
@@ -1251,7 +1285,7 @@ func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
 	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
 	if !hasAdjacentArgs(args, "--memory", "512m") {
 		t.Fatalf("expected --memory 512m in args: %v", args)
 	}
@@ -1272,7 +1306,7 @@ func TestDockerRPCArgsRunnerLimitsCapTask(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 2048, MaxCPU: 3}
 	exec := config.ExecutionConfig{ContainerMemory: "512m", ContainerCPU: 1.5, ContainerPIDs: 200}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
 	if !hasAdjacentArgs(args, "--memory", "512m") {
 		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
 	}
@@ -1291,7 +1325,7 @@ func TestDockerRPCArgsTaskLimitsCanTightenRunnerCaps(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
 	exec := config.ExecutionConfig{ContainerMemory: "4g", ContainerCPU: 4}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
 	if !hasAdjacentArgs(args, "--memory", "768m") {
 		t.Fatalf("expected stricter task --memory 768m in args: %v", args)
 	}
@@ -1305,7 +1339,7 @@ func TestDockerRPCArgsTaskLimitsCanTightenRunnerCaps(t *testing.T) {
 func TestDockerRPCArgsPerTaskLimitsWhenConfigUnset(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 768, MaxCPU: 2}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
 	if !hasAdjacentArgs(args, "--memory", "768m") {
 		t.Fatalf("expected --memory 768m in args: %v", args)
 	}
@@ -1320,7 +1354,7 @@ func TestDockerRPCArgsPerTaskLimitsWhenConfigUnset(t *testing.T) {
 func TestDockerRPCArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
-	args := dockerRPCArgs(req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
 	for _, flag := range []string{"--memory", "--memory-swap", "--cpus", "--pids-limit"} {
 		if indexOf(args, flag) != -1 {
 			t.Fatalf("expected no %q flag when limits unset, got: %v", flag, args)
@@ -1333,7 +1367,7 @@ func TestDockerServeArgsAppliesContainerLimits(t *testing.T) {
 	h := opencode.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator"}
 	serveCmd := h.ServeCommand(containerPortForServe)
-	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	args := testDockerServeArgs(t, r, req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
 	if !hasAdjacentArgs(args, "--memory", "512m") {
 		t.Fatalf("expected --memory 512m in args: %v", args)
 	}
@@ -1355,7 +1389,7 @@ func TestDockerServeArgsRunnerLimitsCapTask(t *testing.T) {
 	h := opencode.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator", MaxMemoryMB: 4096, MaxCPU: 4}
 	serveCmd := h.ServeCommand(containerPortForServe)
-	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	args := testDockerServeArgs(t, r, req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
 	if !hasAdjacentArgs(args, "--memory", "512m") {
 		t.Fatalf("expected runner cap --memory 512m in args: %v", args)
 	}
@@ -1375,7 +1409,7 @@ func TestDockerServeArgsOmitsContainerLimitsWhenUnset(t *testing.T) {
 	h := opencode.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", Agent: "issue-creator"}
 	serveCmd := h.ServeCommand(containerPortForServe)
-	args := r.dockerServeArgs(req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
+	args := testDockerServeArgs(t, r, req, "/tmp/ws", "chetter-task-task-123", h, serveCmd, "", containerPortForServe, false, "", "", "")
 	for _, flag := range []string{"--memory", "--memory-swap", "--cpus", "--pids-limit"} {
 		if indexOf(args, flag) != -1 {
 			t.Fatalf("expected no %q flag when limits unset, got: %v", flag, args)

@@ -15,15 +15,46 @@ import (
 
 const gitAskpassFilename = ".chetter-git-askpass"
 
-// HostWorkspaceDir maps a runner container workspace path to its host bind
-// mount path when the runner is itself containerized.
-func HostWorkspaceDir(containerPath string) string {
-	if hostRoot := os.Getenv("HOST_WORKSPACE_ROOT"); hostRoot != "" {
-		if after, found := strings.CutPrefix(containerPath, "/var/lib/chetter-runner"); found {
-			return hostRoot + after
+// HostWorkspaceDir maps a manager-owned runner workspace path to its host bind
+// mount path when the runner is itself containerized. Both the source path and
+// configured host root must be absolute, and the source must remain beneath
+// workspaceRoot.
+func HostWorkspaceDir(containerPath, workspaceRoot string) (string, error) {
+	if containsTraversal(containerPath) || containsTraversal(workspaceRoot) {
+		return "", fmt.Errorf("workspace path and root must not contain traversal")
+	}
+	containerPath = filepath.Clean(containerPath)
+	workspaceRoot = filepath.Clean(workspaceRoot)
+	if !filepath.IsAbs(containerPath) || !filepath.IsAbs(workspaceRoot) {
+		return "", fmt.Errorf("workspace path and root must be absolute: path=%q root=%q", containerPath, workspaceRoot)
+	}
+	rel, err := filepath.Rel(workspaceRoot, containerPath)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("workspace path %q is not beneath root %q", containerPath, workspaceRoot)
+	}
+	hostRoot := os.Getenv("HOST_WORKSPACE_ROOT")
+	if hostRoot == "" {
+		return containerPath, nil
+	}
+	hostRoot = filepath.Clean(hostRoot)
+	if !filepath.IsAbs(hostRoot) {
+		return "", fmt.Errorf("HOST_WORKSPACE_ROOT %q must be absolute", hostRoot)
+	}
+	mapped := filepath.Join(hostRoot, rel)
+	mappedRel, err := filepath.Rel(hostRoot, mapped)
+	if err != nil || mappedRel == ".." || strings.HasPrefix(mappedRel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("mapped host workspace path escapes HOST_WORKSPACE_ROOT")
+	}
+	return mapped, nil
+}
+
+func containsTraversal(path string) bool {
+	for _, part := range strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if part == ".." {
+			return true
 		}
 	}
-	return containerPath
+	return false
 }
 
 // AppendRunnerOwnedEnv appends non-empty runner-owned environment values.

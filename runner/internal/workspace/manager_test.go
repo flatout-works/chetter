@@ -151,6 +151,61 @@ func TestDestroyNonexistent(t *testing.T) {
 	}
 }
 
+func TestResolveResumeWorkspaceRequiresOwnedPath(t *testing.T) {
+	root := t.TempDir()
+	mgr := NewManager(root)
+	workspace, err := mgr.Create("task-1", "exec-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := mgr.ResolveResumeWorkspace("task-1", workspace)
+	if err != nil {
+		t.Fatalf("ResolveResumeWorkspace: %v", err)
+	}
+	if got != workspace {
+		t.Fatalf("resolved workspace = %q, want %q", got, workspace)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "task-2", "exec-1", "workspace"),
+		filepath.Join(root, "task-1", "exec-2"),
+		filepath.Join(t.TempDir(), "task-1", "exec-1", "workspace"),
+		root + "/task-1/exec-1/../workspace",
+	} {
+		if _, err := mgr.ResolveResumeWorkspace("task-1", path); err == nil {
+			t.Fatalf("ResolveResumeWorkspace accepted %q", path)
+		}
+	}
+}
+
+func TestCreateRejectsTaskDirectorySymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "task-1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewManager(root).Create("task-1", "exec-1"); err == nil {
+		t.Fatal("Create accepted symlink task directory")
+	}
+}
+
+func TestResolveResumeWorkspaceRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	mgr := NewManager(root)
+	if _, err := mgr.Create("task-1", "exec-1"); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.RemoveAll(filepath.Join(root, "task-1", "exec-1", "workspace")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "task-1", "exec-1", "workspace")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.ResolveResumeWorkspace("task-1", filepath.Join(root, "task-1", "exec-1", "workspace")); err == nil {
+		t.Fatal("ResolveResumeWorkspace accepted symlink workspace")
+	}
+}
+
 func TestWorkspaceIDsRejectTraversal(t *testing.T) {
 	m := NewManager(t.TempDir())
 	for _, tc := range []struct{ taskID, executionID string }{
