@@ -45,6 +45,38 @@ func TestWebAPIRejectsMissingAuth(t *testing.T) {
 	}
 }
 
+func TestWebAPISelfTestRunAndStatusRequireAdmin(t *testing.T) {
+	server, cleanup := newWebAPITestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+	admin := apiv1connect.NewAdminServiceClient(authHTTPClient(server, webAPITestAdminToken), server.URL)
+
+	started, err := admin.RunSelfTest(ctx, connect.NewRequest(&apiv1.RunSelfTestRequest{Profile: "quick"}))
+	if err != nil {
+		t.Fatalf("RunSelfTest: %v", err)
+	}
+	if started.Msg.Run == nil || started.Msg.Run.Id == "" || started.Msg.Run.Profile != "quick" || len(started.Msg.Run.Checks) != 1 {
+		t.Fatalf("unexpected self-test run: %+v", started.Msg.Run)
+	}
+	status, err := admin.GetSelfTestStatus(ctx, connect.NewRequest(&apiv1.GetSelfTestStatusRequest{RunId: started.Msg.Run.Id}))
+	if err != nil {
+		t.Fatalf("GetSelfTestStatus: %v", err)
+	}
+	if status.Msg.Run == nil || status.Msg.Run.Status != "pending" {
+		t.Fatalf("unexpected self-test status: %+v", status.Msg.Run)
+	}
+
+	token, err := admin.CreateToken(ctx, connect.NewRequest(&apiv1.CreateTokenRequest{TeamName: "diagnostics-team", UserName: "operator", TokenName: "diagnostics-token"}))
+	if err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+	teamClient := apiv1connect.NewAdminServiceClient(authHTTPClient(server, token.Msg.Token), server.URL)
+	_, err = teamClient.RunSelfTest(ctx, connect.NewRequest(&apiv1.RunSelfTestRequest{Profile: "quick"}))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("team RunSelfTest code = %s, want permission_denied: %v", connect.CodeOf(err), err)
+	}
+}
+
 func TestWebAPISubmitGetAndCancelTask(t *testing.T) {
 	server, cleanup := newWebAPITestServer(t)
 	defer cleanup()

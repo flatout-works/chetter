@@ -31,6 +31,14 @@ type testAdminService struct {
 	t *testing.T
 }
 
+func (s *testAdminService) RunSelfTest(context.Context, *connect.Request[apiv1.RunSelfTestRequest]) (*connect.Response[apiv1.RunSelfTestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
+func (s *testAdminService) GetSelfTestStatus(context.Context, *connect.Request[apiv1.GetSelfTestStatusRequest]) (*connect.Response[apiv1.GetSelfTestStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, nil)
+}
+
 func (s *testAdminService) CreateToken(_ context.Context, req *connect.Request[apiv1.CreateTokenRequest]) (*connect.Response[apiv1.CreateTokenResponse], error) {
 	if len(req.Msg.TeamNames) != 1 || req.Msg.TeamNames[0] != "platform" || req.Msg.UserName != "alice" || req.Msg.TokenName != "alice-cli" {
 		s.t.Fatalf("CreateToken request = %+v", req.Msg)

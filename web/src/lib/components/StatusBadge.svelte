@@ -15,6 +15,7 @@
     switch (status) {
       case "running":
       case "enabled":
+	  case "passed":
         return { color: "green", dot: "bg-green-500" };
       case "pending":
       case "paused":

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -735,6 +736,52 @@ func (h *fleetHandler) GetRunnerHealth(ctx context.Context, req *connect.Request
 
 type adminHandler struct {
 	svc *service.Service
+}
+
+func protoSelfTestRun(run service.SelfTestRunRecord) *apiv1.SelfTestRun {
+	checks := make([]*apiv1.SelfTestCheck, 0, len(run.Checks))
+	for _, check := range run.Checks {
+		checks = append(checks, &apiv1.SelfTestCheck{
+			Name: check.Name, TaskId: check.TaskID, Harness: check.Harness,
+			ProviderId: check.ProviderID, ModelId: check.ModelID, Status: check.Status,
+			Evidence: check.Evidence, Summary: check.Summary, Error: check.Error,
+		})
+	}
+	return &apiv1.SelfTestRun{
+		Id: run.ID, Profile: run.Profile, Status: run.Status,
+		Checks: checks, CreatedAt: run.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func (h *adminHandler) RunSelfTest(ctx context.Context, req *connect.Request[apiv1.RunSelfTestRequest]) (*connect.Response[apiv1.RunSelfTestResponse], error) {
+	run, err := h.svc.RunSelfTest(ctx, req.Msg.Profile)
+	if err != nil {
+		if err.Error() == "admin access required" {
+			return nil, connect.NewError(connect.CodePermissionDenied, err)
+		}
+		if strings.Contains(err.Error(), "invalid self-test profile") {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.RunSelfTestResponse{Run: protoSelfTestRun(run)}), nil
+}
+
+func (h *adminHandler) GetSelfTestStatus(ctx context.Context, req *connect.Request[apiv1.GetSelfTestStatusRequest]) (*connect.Response[apiv1.GetSelfTestStatusResponse], error) {
+	run, err := h.svc.GetSelfTestStatus(ctx, req.Msg.RunId)
+	if err != nil {
+		if err.Error() == "admin access required" {
+			return nil, connect.NewError(connect.CodePermissionDenied, err)
+		}
+		if strings.Contains(err.Error(), "not found") {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		if strings.Contains(err.Error(), "run_id is required") {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.GetSelfTestStatusResponse{Run: protoSelfTestRun(run)}), nil
 }
 
 func protoGitIdentity(identity service.GitIdentityRecord) *apiv1.GitIdentity {

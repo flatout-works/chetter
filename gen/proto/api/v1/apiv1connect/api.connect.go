@@ -153,6 +153,12 @@ const (
 	// AdminServiceSetGitIdentityDefaultProcedure is the fully-qualified name of the AdminService's
 	// SetGitIdentityDefault RPC.
 	AdminServiceSetGitIdentityDefaultProcedure = "/api.v1.AdminService/SetGitIdentityDefault"
+	// AdminServiceRunSelfTestProcedure is the fully-qualified name of the AdminService's RunSelfTest
+	// RPC.
+	AdminServiceRunSelfTestProcedure = "/api.v1.AdminService/RunSelfTest"
+	// AdminServiceGetSelfTestStatusProcedure is the fully-qualified name of the AdminService's
+	// GetSelfTestStatus RPC.
+	AdminServiceGetSelfTestStatusProcedure = "/api.v1.AdminService/GetSelfTestStatus"
 	// EventCallbackServiceCreateEventCallbackProcedure is the fully-qualified name of the
 	// EventCallbackService's CreateEventCallback RPC.
 	EventCallbackServiceCreateEventCallbackProcedure = "/api.v1.EventCallbackService/CreateEventCallback"
@@ -1075,6 +1081,8 @@ type AdminServiceClient interface {
 	UpdateGitIdentity(context.Context, *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error)
 	DeleteGitIdentity(context.Context, *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error)
 	SetGitIdentityDefault(context.Context, *connect.Request[v1.SetGitIdentityDefaultRequest]) (*connect.Response[v1.SetGitIdentityDefaultResponse], error)
+	RunSelfTest(context.Context, *connect.Request[v1.RunSelfTestRequest]) (*connect.Response[v1.RunSelfTestResponse], error)
+	GetSelfTestStatus(context.Context, *connect.Request[v1.GetSelfTestStatusRequest]) (*connect.Response[v1.GetSelfTestStatusResponse], error)
 }
 
 // NewAdminServiceClient constructs a client for the api.v1.AdminService service. By default, it
@@ -1178,6 +1186,18 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("SetGitIdentityDefault")),
 			connect.WithClientOptions(opts...),
 		),
+		runSelfTest: connect.NewClient[v1.RunSelfTestRequest, v1.RunSelfTestResponse](
+			httpClient,
+			baseURL+AdminServiceRunSelfTestProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("RunSelfTest")),
+			connect.WithClientOptions(opts...),
+		),
+		getSelfTestStatus: connect.NewClient[v1.GetSelfTestStatusRequest, v1.GetSelfTestStatusResponse](
+			httpClient,
+			baseURL+AdminServiceGetSelfTestStatusProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetSelfTestStatus")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1198,6 +1218,8 @@ type adminServiceClient struct {
 	updateGitIdentity     *connect.Client[v1.UpdateGitIdentityRequest, v1.UpdateGitIdentityResponse]
 	deleteGitIdentity     *connect.Client[v1.DeleteGitIdentityRequest, v1.DeleteGitIdentityResponse]
 	setGitIdentityDefault *connect.Client[v1.SetGitIdentityDefaultRequest, v1.SetGitIdentityDefaultResponse]
+	runSelfTest           *connect.Client[v1.RunSelfTestRequest, v1.RunSelfTestResponse]
+	getSelfTestStatus     *connect.Client[v1.GetSelfTestStatusRequest, v1.GetSelfTestStatusResponse]
 }
 
 // CreateToken calls api.v1.AdminService.CreateToken.
@@ -1275,6 +1297,16 @@ func (c *adminServiceClient) SetGitIdentityDefault(ctx context.Context, req *con
 	return c.setGitIdentityDefault.CallUnary(ctx, req)
 }
 
+// RunSelfTest calls api.v1.AdminService.RunSelfTest.
+func (c *adminServiceClient) RunSelfTest(ctx context.Context, req *connect.Request[v1.RunSelfTestRequest]) (*connect.Response[v1.RunSelfTestResponse], error) {
+	return c.runSelfTest.CallUnary(ctx, req)
+}
+
+// GetSelfTestStatus calls api.v1.AdminService.GetSelfTestStatus.
+func (c *adminServiceClient) GetSelfTestStatus(ctx context.Context, req *connect.Request[v1.GetSelfTestStatusRequest]) (*connect.Response[v1.GetSelfTestStatusResponse], error) {
+	return c.getSelfTestStatus.CallUnary(ctx, req)
+}
+
 // AdminServiceHandler is an implementation of the api.v1.AdminService service.
 type AdminServiceHandler interface {
 	CreateToken(context.Context, *connect.Request[v1.CreateTokenRequest]) (*connect.Response[v1.CreateTokenResponse], error)
@@ -1292,6 +1324,8 @@ type AdminServiceHandler interface {
 	UpdateGitIdentity(context.Context, *connect.Request[v1.UpdateGitIdentityRequest]) (*connect.Response[v1.UpdateGitIdentityResponse], error)
 	DeleteGitIdentity(context.Context, *connect.Request[v1.DeleteGitIdentityRequest]) (*connect.Response[v1.DeleteGitIdentityResponse], error)
 	SetGitIdentityDefault(context.Context, *connect.Request[v1.SetGitIdentityDefaultRequest]) (*connect.Response[v1.SetGitIdentityDefaultResponse], error)
+	RunSelfTest(context.Context, *connect.Request[v1.RunSelfTestRequest]) (*connect.Response[v1.RunSelfTestResponse], error)
+	GetSelfTestStatus(context.Context, *connect.Request[v1.GetSelfTestStatusRequest]) (*connect.Response[v1.GetSelfTestStatusResponse], error)
 }
 
 // NewAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1391,6 +1425,18 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("SetGitIdentityDefault")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceRunSelfTestHandler := connect.NewUnaryHandler(
+		AdminServiceRunSelfTestProcedure,
+		svc.RunSelfTest,
+		connect.WithSchema(adminServiceMethods.ByName("RunSelfTest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceGetSelfTestStatusHandler := connect.NewUnaryHandler(
+		AdminServiceGetSelfTestStatusProcedure,
+		svc.GetSelfTestStatus,
+		connect.WithSchema(adminServiceMethods.ByName("GetSelfTestStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.v1.AdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AdminServiceCreateTokenProcedure:
@@ -1423,6 +1469,10 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceDeleteGitIdentityHandler.ServeHTTP(w, r)
 		case AdminServiceSetGitIdentityDefaultProcedure:
 			adminServiceSetGitIdentityDefaultHandler.ServeHTTP(w, r)
+		case AdminServiceRunSelfTestProcedure:
+			adminServiceRunSelfTestHandler.ServeHTTP(w, r)
+		case AdminServiceGetSelfTestStatusProcedure:
+			adminServiceGetSelfTestStatusHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1490,6 +1540,14 @@ func (UnimplementedAdminServiceHandler) DeleteGitIdentity(context.Context, *conn
 
 func (UnimplementedAdminServiceHandler) SetGitIdentityDefault(context.Context, *connect.Request[v1.SetGitIdentityDefaultRequest]) (*connect.Response[v1.SetGitIdentityDefaultResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.SetGitIdentityDefault is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) RunSelfTest(context.Context, *connect.Request[v1.RunSelfTestRequest]) (*connect.Response[v1.RunSelfTestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.RunSelfTest is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetSelfTestStatus(context.Context, *connect.Request[v1.GetSelfTestStatusRequest]) (*connect.Response[v1.GetSelfTestStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.AdminService.GetSelfTestStatus is not implemented"))
 }
 
 // EventCallbackServiceClient is a client for the api.v1.EventCallbackService service.

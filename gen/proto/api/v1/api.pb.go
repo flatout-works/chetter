@@ -5518,6 +5518,366 @@ func (x *FleetUpdate) GetRunner() *RunnerInfo {
 	return nil
 }
 
+type RunSelfTestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Profile       string                 `protobuf:"bytes,1,opt,name=profile,proto3" json:"profile,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunSelfTestRequest) Reset() {
+	*x = RunSelfTestRequest{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunSelfTestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunSelfTestRequest) ProtoMessage() {}
+
+func (x *RunSelfTestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunSelfTestRequest.ProtoReflect.Descriptor instead.
+func (*RunSelfTestRequest) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *RunSelfTestRequest) GetProfile() string {
+	if x != nil {
+		return x.Profile
+	}
+	return ""
+}
+
+type RunSelfTestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Run           *SelfTestRun           `protobuf:"bytes,1,opt,name=run,proto3" json:"run,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunSelfTestResponse) Reset() {
+	*x = RunSelfTestResponse{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunSelfTestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunSelfTestResponse) ProtoMessage() {}
+
+func (x *RunSelfTestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunSelfTestResponse.ProtoReflect.Descriptor instead.
+func (*RunSelfTestResponse) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *RunSelfTestResponse) GetRun() *SelfTestRun {
+	if x != nil {
+		return x.Run
+	}
+	return nil
+}
+
+type GetSelfTestStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSelfTestStatusRequest) Reset() {
+	*x = GetSelfTestStatusRequest{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSelfTestStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSelfTestStatusRequest) ProtoMessage() {}
+
+func (x *GetSelfTestStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSelfTestStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetSelfTestStatusRequest) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *GetSelfTestStatusRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+type GetSelfTestStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Run           *SelfTestRun           `protobuf:"bytes,1,opt,name=run,proto3" json:"run,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSelfTestStatusResponse) Reset() {
+	*x = GetSelfTestStatusResponse{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSelfTestStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSelfTestStatusResponse) ProtoMessage() {}
+
+func (x *GetSelfTestStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSelfTestStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetSelfTestStatusResponse) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *GetSelfTestStatusResponse) GetRun() *SelfTestRun {
+	if x != nil {
+		return x.Run
+	}
+	return nil
+}
+
+type SelfTestRun struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Profile       string                 `protobuf:"bytes,2,opt,name=profile,proto3" json:"profile,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	Checks        []*SelfTestCheck       `protobuf:"bytes,4,rep,name=checks,proto3" json:"checks,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SelfTestRun) Reset() {
+	*x = SelfTestRun{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SelfTestRun) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SelfTestRun) ProtoMessage() {}
+
+func (x *SelfTestRun) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SelfTestRun.ProtoReflect.Descriptor instead.
+func (*SelfTestRun) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *SelfTestRun) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SelfTestRun) GetProfile() string {
+	if x != nil {
+		return x.Profile
+	}
+	return ""
+}
+
+func (x *SelfTestRun) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SelfTestRun) GetChecks() []*SelfTestCheck {
+	if x != nil {
+		return x.Checks
+	}
+	return nil
+}
+
+func (x *SelfTestRun) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type SelfTestCheck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Harness       string                 `protobuf:"bytes,3,opt,name=harness,proto3" json:"harness,omitempty"`
+	ProviderId    string                 `protobuf:"bytes,4,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	ModelId       string                 `protobuf:"bytes,5,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Evidence      bool                   `protobuf:"varint,7,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	Summary       string                 `protobuf:"bytes,8,opt,name=summary,proto3" json:"summary,omitempty"`
+	Error         string                 `protobuf:"bytes,9,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SelfTestCheck) Reset() {
+	*x = SelfTestCheck{}
+	mi := &file_proto_api_v1_api_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SelfTestCheck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SelfTestCheck) ProtoMessage() {}
+
+func (x *SelfTestCheck) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_api_v1_api_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SelfTestCheck.ProtoReflect.Descriptor instead.
+func (*SelfTestCheck) Descriptor() ([]byte, []int) {
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *SelfTestCheck) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetHarness() string {
+	if x != nil {
+		return x.Harness
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetEvidence() bool {
+	if x != nil {
+		return x.Evidence
+	}
+	return false
+}
+
+func (x *SelfTestCheck) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *SelfTestCheck) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type CreateTokenRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TeamName      string                 `protobuf:"bytes,1,opt,name=team_name,json=teamName,proto3" json:"team_name,omitempty"`
@@ -5530,7 +5890,7 @@ type CreateTokenRequest struct {
 
 func (x *CreateTokenRequest) Reset() {
 	*x = CreateTokenRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[69]
+	mi := &file_proto_api_v1_api_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5542,7 +5902,7 @@ func (x *CreateTokenRequest) String() string {
 func (*CreateTokenRequest) ProtoMessage() {}
 
 func (x *CreateTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[69]
+	mi := &file_proto_api_v1_api_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5555,7 +5915,7 @@ func (x *CreateTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTokenRequest.ProtoReflect.Descriptor instead.
 func (*CreateTokenRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{69}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *CreateTokenRequest) GetTeamName() string {
@@ -5601,7 +5961,7 @@ type CreateTokenResponse struct {
 
 func (x *CreateTokenResponse) Reset() {
 	*x = CreateTokenResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[70]
+	mi := &file_proto_api_v1_api_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5613,7 +5973,7 @@ func (x *CreateTokenResponse) String() string {
 func (*CreateTokenResponse) ProtoMessage() {}
 
 func (x *CreateTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[70]
+	mi := &file_proto_api_v1_api_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5626,7 +5986,7 @@ func (x *CreateTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTokenResponse.ProtoReflect.Descriptor instead.
 func (*CreateTokenResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{70}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *CreateTokenResponse) GetToken() string {
@@ -5686,7 +6046,7 @@ type ListTokensRequest struct {
 
 func (x *ListTokensRequest) Reset() {
 	*x = ListTokensRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[71]
+	mi := &file_proto_api_v1_api_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5698,7 +6058,7 @@ func (x *ListTokensRequest) String() string {
 func (*ListTokensRequest) ProtoMessage() {}
 
 func (x *ListTokensRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[71]
+	mi := &file_proto_api_v1_api_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5711,7 +6071,7 @@ func (x *ListTokensRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTokensRequest.ProtoReflect.Descriptor instead.
 func (*ListTokensRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{71}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{77}
 }
 
 type ListTokensResponse struct {
@@ -5723,7 +6083,7 @@ type ListTokensResponse struct {
 
 func (x *ListTokensResponse) Reset() {
 	*x = ListTokensResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[72]
+	mi := &file_proto_api_v1_api_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5735,7 +6095,7 @@ func (x *ListTokensResponse) String() string {
 func (*ListTokensResponse) ProtoMessage() {}
 
 func (x *ListTokensResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[72]
+	mi := &file_proto_api_v1_api_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5748,7 +6108,7 @@ func (x *ListTokensResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTokensResponse.ProtoReflect.Descriptor instead.
 func (*ListTokensResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{72}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ListTokensResponse) GetTokens() []*TokenInfo {
@@ -5767,7 +6127,7 @@ type DeleteTokenRequest struct {
 
 func (x *DeleteTokenRequest) Reset() {
 	*x = DeleteTokenRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[73]
+	mi := &file_proto_api_v1_api_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5779,7 +6139,7 @@ func (x *DeleteTokenRequest) String() string {
 func (*DeleteTokenRequest) ProtoMessage() {}
 
 func (x *DeleteTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[73]
+	mi := &file_proto_api_v1_api_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5792,7 +6152,7 @@ func (x *DeleteTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTokenRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTokenRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{73}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *DeleteTokenRequest) GetName() string {
@@ -5811,7 +6171,7 @@ type DeleteTokenResponse struct {
 
 func (x *DeleteTokenResponse) Reset() {
 	*x = DeleteTokenResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[74]
+	mi := &file_proto_api_v1_api_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5823,7 +6183,7 @@ func (x *DeleteTokenResponse) String() string {
 func (*DeleteTokenResponse) ProtoMessage() {}
 
 func (x *DeleteTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[74]
+	mi := &file_proto_api_v1_api_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5836,7 +6196,7 @@ func (x *DeleteTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTokenResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTokenResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{74}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *DeleteTokenResponse) GetDeleted() bool {
@@ -5855,7 +6215,7 @@ type CreateTeamRequest struct {
 
 func (x *CreateTeamRequest) Reset() {
 	*x = CreateTeamRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[75]
+	mi := &file_proto_api_v1_api_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5867,7 +6227,7 @@ func (x *CreateTeamRequest) String() string {
 func (*CreateTeamRequest) ProtoMessage() {}
 
 func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[75]
+	mi := &file_proto_api_v1_api_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5880,7 +6240,7 @@ func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTeamRequest.ProtoReflect.Descriptor instead.
 func (*CreateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{75}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *CreateTeamRequest) GetName() string {
@@ -5901,7 +6261,7 @@ type CreateTeamResponse struct {
 
 func (x *CreateTeamResponse) Reset() {
 	*x = CreateTeamResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[76]
+	mi := &file_proto_api_v1_api_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5913,7 +6273,7 @@ func (x *CreateTeamResponse) String() string {
 func (*CreateTeamResponse) ProtoMessage() {}
 
 func (x *CreateTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[76]
+	mi := &file_proto_api_v1_api_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5926,7 +6286,7 @@ func (x *CreateTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTeamResponse.ProtoReflect.Descriptor instead.
 func (*CreateTeamResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{76}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *CreateTeamResponse) GetTeamId() string {
@@ -5958,7 +6318,7 @@ type ListTeamsRequest struct {
 
 func (x *ListTeamsRequest) Reset() {
 	*x = ListTeamsRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[77]
+	mi := &file_proto_api_v1_api_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5970,7 +6330,7 @@ func (x *ListTeamsRequest) String() string {
 func (*ListTeamsRequest) ProtoMessage() {}
 
 func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[77]
+	mi := &file_proto_api_v1_api_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5983,7 +6343,7 @@ func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{77}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{83}
 }
 
 type ListTeamsResponse struct {
@@ -5995,7 +6355,7 @@ type ListTeamsResponse struct {
 
 func (x *ListTeamsResponse) Reset() {
 	*x = ListTeamsResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[78]
+	mi := &file_proto_api_v1_api_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6007,7 +6367,7 @@ func (x *ListTeamsResponse) String() string {
 func (*ListTeamsResponse) ProtoMessage() {}
 
 func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[78]
+	mi := &file_proto_api_v1_api_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6020,7 +6380,7 @@ func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsResponse.ProtoReflect.Descriptor instead.
 func (*ListTeamsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{78}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ListTeamsResponse) GetTeams() []*TeamInfo {
@@ -6039,7 +6399,7 @@ type DeleteTeamRequest struct {
 
 func (x *DeleteTeamRequest) Reset() {
 	*x = DeleteTeamRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[79]
+	mi := &file_proto_api_v1_api_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6051,7 +6411,7 @@ func (x *DeleteTeamRequest) String() string {
 func (*DeleteTeamRequest) ProtoMessage() {}
 
 func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[79]
+	mi := &file_proto_api_v1_api_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6064,7 +6424,7 @@ func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTeamRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTeamRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{79}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *DeleteTeamRequest) GetName() string {
@@ -6083,7 +6443,7 @@ type DeleteTeamResponse struct {
 
 func (x *DeleteTeamResponse) Reset() {
 	*x = DeleteTeamResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[80]
+	mi := &file_proto_api_v1_api_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6095,7 +6455,7 @@ func (x *DeleteTeamResponse) String() string {
 func (*DeleteTeamResponse) ProtoMessage() {}
 
 func (x *DeleteTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[80]
+	mi := &file_proto_api_v1_api_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6108,7 +6468,7 @@ func (x *DeleteTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTeamResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTeamResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{80}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *DeleteTeamResponse) GetDeleted() bool {
@@ -6127,7 +6487,7 @@ type ListUsersRequest struct {
 
 func (x *ListUsersRequest) Reset() {
 	*x = ListUsersRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[81]
+	mi := &file_proto_api_v1_api_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6139,7 +6499,7 @@ func (x *ListUsersRequest) String() string {
 func (*ListUsersRequest) ProtoMessage() {}
 
 func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[81]
+	mi := &file_proto_api_v1_api_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6152,7 +6512,7 @@ func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
 func (*ListUsersRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{81}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ListUsersRequest) GetTeamName() string {
@@ -6171,7 +6531,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[82]
+	mi := &file_proto_api_v1_api_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6183,7 +6543,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[82]
+	mi := &file_proto_api_v1_api_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6196,7 +6556,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{82}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ListUsersResponse) GetUsers() []*UserInfo {
@@ -6225,7 +6585,7 @@ type ListAuditEventsRequest struct {
 
 func (x *ListAuditEventsRequest) Reset() {
 	*x = ListAuditEventsRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[83]
+	mi := &file_proto_api_v1_api_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6237,7 +6597,7 @@ func (x *ListAuditEventsRequest) String() string {
 func (*ListAuditEventsRequest) ProtoMessage() {}
 
 func (x *ListAuditEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[83]
+	mi := &file_proto_api_v1_api_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6250,7 +6610,7 @@ func (x *ListAuditEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEventsRequest.ProtoReflect.Descriptor instead.
 func (*ListAuditEventsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{83}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ListAuditEventsRequest) GetEventType() string {
@@ -6339,7 +6699,7 @@ type ListAuditEventsResponse struct {
 
 func (x *ListAuditEventsResponse) Reset() {
 	*x = ListAuditEventsResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[84]
+	mi := &file_proto_api_v1_api_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6351,7 +6711,7 @@ func (x *ListAuditEventsResponse) String() string {
 func (*ListAuditEventsResponse) ProtoMessage() {}
 
 func (x *ListAuditEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[84]
+	mi := &file_proto_api_v1_api_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6364,7 +6724,7 @@ func (x *ListAuditEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAuditEventsResponse.ProtoReflect.Descriptor instead.
 func (*ListAuditEventsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{84}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *ListAuditEventsResponse) GetEvents() []*AuditEvent {
@@ -6391,7 +6751,7 @@ type ListTaskArtifactsRequest struct {
 
 func (x *ListTaskArtifactsRequest) Reset() {
 	*x = ListTaskArtifactsRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[85]
+	mi := &file_proto_api_v1_api_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6403,7 +6763,7 @@ func (x *ListTaskArtifactsRequest) String() string {
 func (*ListTaskArtifactsRequest) ProtoMessage() {}
 
 func (x *ListTaskArtifactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[85]
+	mi := &file_proto_api_v1_api_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6416,7 +6776,7 @@ func (x *ListTaskArtifactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskArtifactsRequest.ProtoReflect.Descriptor instead.
 func (*ListTaskArtifactsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{85}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *ListTaskArtifactsRequest) GetTaskId() string {
@@ -6491,7 +6851,7 @@ type ListTaskArtifactsResponse struct {
 
 func (x *ListTaskArtifactsResponse) Reset() {
 	*x = ListTaskArtifactsResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[86]
+	mi := &file_proto_api_v1_api_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6503,7 +6863,7 @@ func (x *ListTaskArtifactsResponse) String() string {
 func (*ListTaskArtifactsResponse) ProtoMessage() {}
 
 func (x *ListTaskArtifactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[86]
+	mi := &file_proto_api_v1_api_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6516,7 +6876,7 @@ func (x *ListTaskArtifactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTaskArtifactsResponse.ProtoReflect.Descriptor instead.
 func (*ListTaskArtifactsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{86}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ListTaskArtifactsResponse) GetArtifacts() []*TaskArtifact {
@@ -6534,7 +6894,7 @@ type ListReposRequest struct {
 
 func (x *ListReposRequest) Reset() {
 	*x = ListReposRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[87]
+	mi := &file_proto_api_v1_api_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6546,7 +6906,7 @@ func (x *ListReposRequest) String() string {
 func (*ListReposRequest) ProtoMessage() {}
 
 func (x *ListReposRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[87]
+	mi := &file_proto_api_v1_api_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6559,7 +6919,7 @@ func (x *ListReposRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReposRequest.ProtoReflect.Descriptor instead.
 func (*ListReposRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{87}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{93}
 }
 
 type ListReposResponse struct {
@@ -6571,7 +6931,7 @@ type ListReposResponse struct {
 
 func (x *ListReposResponse) Reset() {
 	*x = ListReposResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[88]
+	mi := &file_proto_api_v1_api_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6583,7 +6943,7 @@ func (x *ListReposResponse) String() string {
 func (*ListReposResponse) ProtoMessage() {}
 
 func (x *ListReposResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[88]
+	mi := &file_proto_api_v1_api_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6596,7 +6956,7 @@ func (x *ListReposResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListReposResponse.ProtoReflect.Descriptor instead.
 func (*ListReposResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{88}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *ListReposResponse) GetRepos() []string {
@@ -6623,7 +6983,7 @@ type GitIdentity struct {
 
 func (x *GitIdentity) Reset() {
 	*x = GitIdentity{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[89]
+	mi := &file_proto_api_v1_api_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6635,7 +6995,7 @@ func (x *GitIdentity) String() string {
 func (*GitIdentity) ProtoMessage() {}
 
 func (x *GitIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[89]
+	mi := &file_proto_api_v1_api_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6648,7 +7008,7 @@ func (x *GitIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitIdentity.ProtoReflect.Descriptor instead.
 func (*GitIdentity) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{89}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *GitIdentity) GetId() string {
@@ -6728,7 +7088,7 @@ type CreateGitIdentityRequest struct {
 
 func (x *CreateGitIdentityRequest) Reset() {
 	*x = CreateGitIdentityRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[90]
+	mi := &file_proto_api_v1_api_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6740,7 +7100,7 @@ func (x *CreateGitIdentityRequest) String() string {
 func (*CreateGitIdentityRequest) ProtoMessage() {}
 
 func (x *CreateGitIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[90]
+	mi := &file_proto_api_v1_api_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6753,7 +7113,7 @@ func (x *CreateGitIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGitIdentityRequest.ProtoReflect.Descriptor instead.
 func (*CreateGitIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{90}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *CreateGitIdentityRequest) GetTeamId() string {
@@ -6807,7 +7167,7 @@ type CreateGitIdentityResponse struct {
 
 func (x *CreateGitIdentityResponse) Reset() {
 	*x = CreateGitIdentityResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[91]
+	mi := &file_proto_api_v1_api_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6819,7 +7179,7 @@ func (x *CreateGitIdentityResponse) String() string {
 func (*CreateGitIdentityResponse) ProtoMessage() {}
 
 func (x *CreateGitIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[91]
+	mi := &file_proto_api_v1_api_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6832,7 +7192,7 @@ func (x *CreateGitIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGitIdentityResponse.ProtoReflect.Descriptor instead.
 func (*CreateGitIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{91}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *CreateGitIdentityResponse) GetIdentity() *GitIdentity {
@@ -6850,7 +7210,7 @@ type ListGitIdentitiesRequest struct {
 
 func (x *ListGitIdentitiesRequest) Reset() {
 	*x = ListGitIdentitiesRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[92]
+	mi := &file_proto_api_v1_api_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6862,7 +7222,7 @@ func (x *ListGitIdentitiesRequest) String() string {
 func (*ListGitIdentitiesRequest) ProtoMessage() {}
 
 func (x *ListGitIdentitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[92]
+	mi := &file_proto_api_v1_api_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6875,7 +7235,7 @@ func (x *ListGitIdentitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGitIdentitiesRequest.ProtoReflect.Descriptor instead.
 func (*ListGitIdentitiesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{92}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{98}
 }
 
 type ListGitIdentitiesResponse struct {
@@ -6887,7 +7247,7 @@ type ListGitIdentitiesResponse struct {
 
 func (x *ListGitIdentitiesResponse) Reset() {
 	*x = ListGitIdentitiesResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[93]
+	mi := &file_proto_api_v1_api_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6899,7 +7259,7 @@ func (x *ListGitIdentitiesResponse) String() string {
 func (*ListGitIdentitiesResponse) ProtoMessage() {}
 
 func (x *ListGitIdentitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[93]
+	mi := &file_proto_api_v1_api_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6912,7 +7272,7 @@ func (x *ListGitIdentitiesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGitIdentitiesResponse.ProtoReflect.Descriptor instead.
 func (*ListGitIdentitiesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{93}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *ListGitIdentitiesResponse) GetIdentities() []*GitIdentity {
@@ -6936,7 +7296,7 @@ type UpdateGitIdentityRequest struct {
 
 func (x *UpdateGitIdentityRequest) Reset() {
 	*x = UpdateGitIdentityRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[94]
+	mi := &file_proto_api_v1_api_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6948,7 +7308,7 @@ func (x *UpdateGitIdentityRequest) String() string {
 func (*UpdateGitIdentityRequest) ProtoMessage() {}
 
 func (x *UpdateGitIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[94]
+	mi := &file_proto_api_v1_api_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6961,7 +7321,7 @@ func (x *UpdateGitIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGitIdentityRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGitIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{94}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *UpdateGitIdentityRequest) GetTeamId() string {
@@ -7015,7 +7375,7 @@ type UpdateGitIdentityResponse struct {
 
 func (x *UpdateGitIdentityResponse) Reset() {
 	*x = UpdateGitIdentityResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[95]
+	mi := &file_proto_api_v1_api_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7027,7 +7387,7 @@ func (x *UpdateGitIdentityResponse) String() string {
 func (*UpdateGitIdentityResponse) ProtoMessage() {}
 
 func (x *UpdateGitIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[95]
+	mi := &file_proto_api_v1_api_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7040,7 +7400,7 @@ func (x *UpdateGitIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGitIdentityResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGitIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{95}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *UpdateGitIdentityResponse) GetIdentity() *GitIdentity {
@@ -7061,7 +7421,7 @@ type DeleteGitIdentityRequest struct {
 
 func (x *DeleteGitIdentityRequest) Reset() {
 	*x = DeleteGitIdentityRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[96]
+	mi := &file_proto_api_v1_api_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7073,7 +7433,7 @@ func (x *DeleteGitIdentityRequest) String() string {
 func (*DeleteGitIdentityRequest) ProtoMessage() {}
 
 func (x *DeleteGitIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[96]
+	mi := &file_proto_api_v1_api_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7086,7 +7446,7 @@ func (x *DeleteGitIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGitIdentityRequest.ProtoReflect.Descriptor instead.
 func (*DeleteGitIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{96}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *DeleteGitIdentityRequest) GetTeamId() string {
@@ -7119,7 +7479,7 @@ type DeleteGitIdentityResponse struct {
 
 func (x *DeleteGitIdentityResponse) Reset() {
 	*x = DeleteGitIdentityResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[97]
+	mi := &file_proto_api_v1_api_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7131,7 +7491,7 @@ func (x *DeleteGitIdentityResponse) String() string {
 func (*DeleteGitIdentityResponse) ProtoMessage() {}
 
 func (x *DeleteGitIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[97]
+	mi := &file_proto_api_v1_api_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7144,7 +7504,7 @@ func (x *DeleteGitIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGitIdentityResponse.ProtoReflect.Descriptor instead.
 func (*DeleteGitIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{97}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *DeleteGitIdentityResponse) GetDeleted() bool {
@@ -7165,7 +7525,7 @@ type SetGitIdentityDefaultRequest struct {
 
 func (x *SetGitIdentityDefaultRequest) Reset() {
 	*x = SetGitIdentityDefaultRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[98]
+	mi := &file_proto_api_v1_api_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7177,7 +7537,7 @@ func (x *SetGitIdentityDefaultRequest) String() string {
 func (*SetGitIdentityDefaultRequest) ProtoMessage() {}
 
 func (x *SetGitIdentityDefaultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[98]
+	mi := &file_proto_api_v1_api_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7190,7 +7550,7 @@ func (x *SetGitIdentityDefaultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGitIdentityDefaultRequest.ProtoReflect.Descriptor instead.
 func (*SetGitIdentityDefaultRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{98}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *SetGitIdentityDefaultRequest) GetTeamId() string {
@@ -7223,7 +7583,7 @@ type SetGitIdentityDefaultResponse struct {
 
 func (x *SetGitIdentityDefaultResponse) Reset() {
 	*x = SetGitIdentityDefaultResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[99]
+	mi := &file_proto_api_v1_api_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7235,7 +7595,7 @@ func (x *SetGitIdentityDefaultResponse) String() string {
 func (*SetGitIdentityDefaultResponse) ProtoMessage() {}
 
 func (x *SetGitIdentityDefaultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[99]
+	mi := &file_proto_api_v1_api_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7248,7 +7608,7 @@ func (x *SetGitIdentityDefaultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGitIdentityDefaultResponse.ProtoReflect.Descriptor instead.
 func (*SetGitIdentityDefaultResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{99}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *SetGitIdentityDefaultResponse) GetIdentity() *GitIdentity {
@@ -7275,7 +7635,7 @@ type EventCallback struct {
 
 func (x *EventCallback) Reset() {
 	*x = EventCallback{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[100]
+	mi := &file_proto_api_v1_api_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7287,7 +7647,7 @@ func (x *EventCallback) String() string {
 func (*EventCallback) ProtoMessage() {}
 
 func (x *EventCallback) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[100]
+	mi := &file_proto_api_v1_api_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7300,7 +7660,7 @@ func (x *EventCallback) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventCallback.ProtoReflect.Descriptor instead.
 func (*EventCallback) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{100}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *EventCallback) GetId() string {
@@ -7381,7 +7741,7 @@ type CreateEventCallbackRequest struct {
 
 func (x *CreateEventCallbackRequest) Reset() {
 	*x = CreateEventCallbackRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[101]
+	mi := &file_proto_api_v1_api_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7393,7 +7753,7 @@ func (x *CreateEventCallbackRequest) String() string {
 func (*CreateEventCallbackRequest) ProtoMessage() {}
 
 func (x *CreateEventCallbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[101]
+	mi := &file_proto_api_v1_api_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7406,7 +7766,7 @@ func (x *CreateEventCallbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEventCallbackRequest.ProtoReflect.Descriptor instead.
 func (*CreateEventCallbackRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{101}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *CreateEventCallbackRequest) GetTeamId() string {
@@ -7467,7 +7827,7 @@ type CreateEventCallbackResponse struct {
 
 func (x *CreateEventCallbackResponse) Reset() {
 	*x = CreateEventCallbackResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[102]
+	mi := &file_proto_api_v1_api_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7479,7 +7839,7 @@ func (x *CreateEventCallbackResponse) String() string {
 func (*CreateEventCallbackResponse) ProtoMessage() {}
 
 func (x *CreateEventCallbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[102]
+	mi := &file_proto_api_v1_api_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7492,7 +7852,7 @@ func (x *CreateEventCallbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateEventCallbackResponse.ProtoReflect.Descriptor instead.
 func (*CreateEventCallbackResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{102}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *CreateEventCallbackResponse) GetCallback() *EventCallback {
@@ -7517,7 +7877,7 @@ type UpdateEventCallbackRequest struct {
 
 func (x *UpdateEventCallbackRequest) Reset() {
 	*x = UpdateEventCallbackRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[103]
+	mi := &file_proto_api_v1_api_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7529,7 +7889,7 @@ func (x *UpdateEventCallbackRequest) String() string {
 func (*UpdateEventCallbackRequest) ProtoMessage() {}
 
 func (x *UpdateEventCallbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[103]
+	mi := &file_proto_api_v1_api_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7542,7 +7902,7 @@ func (x *UpdateEventCallbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEventCallbackRequest.ProtoReflect.Descriptor instead.
 func (*UpdateEventCallbackRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{103}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *UpdateEventCallbackRequest) GetTeamId() string {
@@ -7603,7 +7963,7 @@ type UpdateEventCallbackResponse struct {
 
 func (x *UpdateEventCallbackResponse) Reset() {
 	*x = UpdateEventCallbackResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[104]
+	mi := &file_proto_api_v1_api_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7615,7 +7975,7 @@ func (x *UpdateEventCallbackResponse) String() string {
 func (*UpdateEventCallbackResponse) ProtoMessage() {}
 
 func (x *UpdateEventCallbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[104]
+	mi := &file_proto_api_v1_api_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7628,7 +7988,7 @@ func (x *UpdateEventCallbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEventCallbackResponse.ProtoReflect.Descriptor instead.
 func (*UpdateEventCallbackResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{104}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *UpdateEventCallbackResponse) GetCallback() *EventCallback {
@@ -7648,7 +8008,7 @@ type ListEventCallbacksRequest struct {
 
 func (x *ListEventCallbacksRequest) Reset() {
 	*x = ListEventCallbacksRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[105]
+	mi := &file_proto_api_v1_api_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7660,7 +8020,7 @@ func (x *ListEventCallbacksRequest) String() string {
 func (*ListEventCallbacksRequest) ProtoMessage() {}
 
 func (x *ListEventCallbacksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[105]
+	mi := &file_proto_api_v1_api_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7673,7 +8033,7 @@ func (x *ListEventCallbacksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventCallbacksRequest.ProtoReflect.Descriptor instead.
 func (*ListEventCallbacksRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{105}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ListEventCallbacksRequest) GetEnabledOnly() bool {
@@ -7699,7 +8059,7 @@ type ListEventCallbacksResponse struct {
 
 func (x *ListEventCallbacksResponse) Reset() {
 	*x = ListEventCallbacksResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[106]
+	mi := &file_proto_api_v1_api_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7711,7 +8071,7 @@ func (x *ListEventCallbacksResponse) String() string {
 func (*ListEventCallbacksResponse) ProtoMessage() {}
 
 func (x *ListEventCallbacksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[106]
+	mi := &file_proto_api_v1_api_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7724,7 +8084,7 @@ func (x *ListEventCallbacksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEventCallbacksResponse.ProtoReflect.Descriptor instead.
 func (*ListEventCallbacksResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{106}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *ListEventCallbacksResponse) GetCallbacks() []*EventCallback {
@@ -7745,7 +8105,7 @@ type DeleteEventCallbackRequest struct {
 
 func (x *DeleteEventCallbackRequest) Reset() {
 	*x = DeleteEventCallbackRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[107]
+	mi := &file_proto_api_v1_api_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7757,7 +8117,7 @@ func (x *DeleteEventCallbackRequest) String() string {
 func (*DeleteEventCallbackRequest) ProtoMessage() {}
 
 func (x *DeleteEventCallbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[107]
+	mi := &file_proto_api_v1_api_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7770,7 +8130,7 @@ func (x *DeleteEventCallbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEventCallbackRequest.ProtoReflect.Descriptor instead.
 func (*DeleteEventCallbackRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{107}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *DeleteEventCallbackRequest) GetTeamId() string {
@@ -7803,7 +8163,7 @@ type DeleteEventCallbackResponse struct {
 
 func (x *DeleteEventCallbackResponse) Reset() {
 	*x = DeleteEventCallbackResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[108]
+	mi := &file_proto_api_v1_api_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7815,7 +8175,7 @@ func (x *DeleteEventCallbackResponse) String() string {
 func (*DeleteEventCallbackResponse) ProtoMessage() {}
 
 func (x *DeleteEventCallbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[108]
+	mi := &file_proto_api_v1_api_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7828,7 +8188,7 @@ func (x *DeleteEventCallbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEventCallbackResponse.ProtoReflect.Descriptor instead.
 func (*DeleteEventCallbackResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{108}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *DeleteEventCallbackResponse) GetDeleted() bool {
@@ -7847,7 +8207,7 @@ type ArcaneScannerStatusRequest struct {
 
 func (x *ArcaneScannerStatusRequest) Reset() {
 	*x = ArcaneScannerStatusRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[109]
+	mi := &file_proto_api_v1_api_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7859,7 +8219,7 @@ func (x *ArcaneScannerStatusRequest) String() string {
 func (*ArcaneScannerStatusRequest) ProtoMessage() {}
 
 func (x *ArcaneScannerStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[109]
+	mi := &file_proto_api_v1_api_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7872,7 +8232,7 @@ func (x *ArcaneScannerStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneScannerStatusRequest.ProtoReflect.Descriptor instead.
 func (*ArcaneScannerStatusRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{109}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *ArcaneScannerStatusRequest) GetEnvironmentId() string {
@@ -7892,7 +8252,7 @@ type ArcaneScannerStatusResponse struct {
 
 func (x *ArcaneScannerStatusResponse) Reset() {
 	*x = ArcaneScannerStatusResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[110]
+	mi := &file_proto_api_v1_api_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7904,7 +8264,7 @@ func (x *ArcaneScannerStatusResponse) String() string {
 func (*ArcaneScannerStatusResponse) ProtoMessage() {}
 
 func (x *ArcaneScannerStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[110]
+	mi := &file_proto_api_v1_api_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7917,7 +8277,7 @@ func (x *ArcaneScannerStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneScannerStatusResponse.ProtoReflect.Descriptor instead.
 func (*ArcaneScannerStatusResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{110}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *ArcaneScannerStatusResponse) GetAvailable() bool {
@@ -7943,7 +8303,7 @@ type ArcaneEnvironmentSummaryRequest struct {
 
 func (x *ArcaneEnvironmentSummaryRequest) Reset() {
 	*x = ArcaneEnvironmentSummaryRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[111]
+	mi := &file_proto_api_v1_api_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7955,7 +8315,7 @@ func (x *ArcaneEnvironmentSummaryRequest) String() string {
 func (*ArcaneEnvironmentSummaryRequest) ProtoMessage() {}
 
 func (x *ArcaneEnvironmentSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[111]
+	mi := &file_proto_api_v1_api_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7968,7 +8328,7 @@ func (x *ArcaneEnvironmentSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneEnvironmentSummaryRequest.ProtoReflect.Descriptor instead.
 func (*ArcaneEnvironmentSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{111}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *ArcaneEnvironmentSummaryRequest) GetEnvironmentId() string {
@@ -7992,7 +8352,7 @@ type SeveritySummary struct {
 
 func (x *SeveritySummary) Reset() {
 	*x = SeveritySummary{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[112]
+	mi := &file_proto_api_v1_api_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8004,7 +8364,7 @@ func (x *SeveritySummary) String() string {
 func (*SeveritySummary) ProtoMessage() {}
 
 func (x *SeveritySummary) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[112]
+	mi := &file_proto_api_v1_api_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8017,7 +8377,7 @@ func (x *SeveritySummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeveritySummary.ProtoReflect.Descriptor instead.
 func (*SeveritySummary) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{112}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *SeveritySummary) GetCritical() int32 {
@@ -8073,7 +8433,7 @@ type ArcaneEnvironmentSummaryResponse struct {
 
 func (x *ArcaneEnvironmentSummaryResponse) Reset() {
 	*x = ArcaneEnvironmentSummaryResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[113]
+	mi := &file_proto_api_v1_api_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8085,7 +8445,7 @@ func (x *ArcaneEnvironmentSummaryResponse) String() string {
 func (*ArcaneEnvironmentSummaryResponse) ProtoMessage() {}
 
 func (x *ArcaneEnvironmentSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[113]
+	mi := &file_proto_api_v1_api_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8098,7 +8458,7 @@ func (x *ArcaneEnvironmentSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneEnvironmentSummaryResponse.ProtoReflect.Descriptor instead.
 func (*ArcaneEnvironmentSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{113}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *ArcaneEnvironmentSummaryResponse) GetTotalImages() int32 {
@@ -8131,7 +8491,7 @@ type ArcaneListImagesRequest struct {
 
 func (x *ArcaneListImagesRequest) Reset() {
 	*x = ArcaneListImagesRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[114]
+	mi := &file_proto_api_v1_api_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8143,7 +8503,7 @@ func (x *ArcaneListImagesRequest) String() string {
 func (*ArcaneListImagesRequest) ProtoMessage() {}
 
 func (x *ArcaneListImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[114]
+	mi := &file_proto_api_v1_api_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8156,7 +8516,7 @@ func (x *ArcaneListImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneListImagesRequest.ProtoReflect.Descriptor instead.
 func (*ArcaneListImagesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{114}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *ArcaneListImagesRequest) GetEnvironmentId() string {
@@ -8179,7 +8539,7 @@ type ImageSummaryItem struct {
 
 func (x *ImageSummaryItem) Reset() {
 	*x = ImageSummaryItem{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[115]
+	mi := &file_proto_api_v1_api_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8191,7 +8551,7 @@ func (x *ImageSummaryItem) String() string {
 func (*ImageSummaryItem) ProtoMessage() {}
 
 func (x *ImageSummaryItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[115]
+	mi := &file_proto_api_v1_api_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8204,7 +8564,7 @@ func (x *ImageSummaryItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageSummaryItem.ProtoReflect.Descriptor instead.
 func (*ImageSummaryItem) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{115}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *ImageSummaryItem) GetId() string {
@@ -8251,7 +8611,7 @@ type ArcaneListImagesResponse struct {
 
 func (x *ArcaneListImagesResponse) Reset() {
 	*x = ArcaneListImagesResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[116]
+	mi := &file_proto_api_v1_api_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8263,7 +8623,7 @@ func (x *ArcaneListImagesResponse) String() string {
 func (*ArcaneListImagesResponse) ProtoMessage() {}
 
 func (x *ArcaneListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[116]
+	mi := &file_proto_api_v1_api_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8276,7 +8636,7 @@ func (x *ArcaneListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ArcaneListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{116}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *ArcaneListImagesResponse) GetImages() []*ImageSummaryItem {
@@ -8296,7 +8656,7 @@ type ArcaneImageSummaryRequest struct {
 
 func (x *ArcaneImageSummaryRequest) Reset() {
 	*x = ArcaneImageSummaryRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[117]
+	mi := &file_proto_api_v1_api_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8308,7 +8668,7 @@ func (x *ArcaneImageSummaryRequest) String() string {
 func (*ArcaneImageSummaryRequest) ProtoMessage() {}
 
 func (x *ArcaneImageSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[117]
+	mi := &file_proto_api_v1_api_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8321,7 +8681,7 @@ func (x *ArcaneImageSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneImageSummaryRequest.ProtoReflect.Descriptor instead.
 func (*ArcaneImageSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{117}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *ArcaneImageSummaryRequest) GetEnvironmentId() string {
@@ -8350,7 +8710,7 @@ type ArcaneImageSummaryResponse struct {
 
 func (x *ArcaneImageSummaryResponse) Reset() {
 	*x = ArcaneImageSummaryResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[118]
+	mi := &file_proto_api_v1_api_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8362,7 +8722,7 @@ func (x *ArcaneImageSummaryResponse) String() string {
 func (*ArcaneImageSummaryResponse) ProtoMessage() {}
 
 func (x *ArcaneImageSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[118]
+	mi := &file_proto_api_v1_api_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8375,7 +8735,7 @@ func (x *ArcaneImageSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneImageSummaryResponse.ProtoReflect.Descriptor instead.
 func (*ArcaneImageSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{118}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *ArcaneImageSummaryResponse) GetImageId() string {
@@ -8419,7 +8779,7 @@ type ArcaneListVulnerabilitiesRequest struct {
 
 func (x *ArcaneListVulnerabilitiesRequest) Reset() {
 	*x = ArcaneListVulnerabilitiesRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[119]
+	mi := &file_proto_api_v1_api_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8431,7 +8791,7 @@ func (x *ArcaneListVulnerabilitiesRequest) String() string {
 func (*ArcaneListVulnerabilitiesRequest) ProtoMessage() {}
 
 func (x *ArcaneListVulnerabilitiesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[119]
+	mi := &file_proto_api_v1_api_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8444,7 +8804,7 @@ func (x *ArcaneListVulnerabilitiesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArcaneListVulnerabilitiesRequest.ProtoReflect.Descriptor instead.
 func (*ArcaneListVulnerabilitiesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{119}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *ArcaneListVulnerabilitiesRequest) GetEnvironmentId() string {
@@ -8497,7 +8857,7 @@ type Vulnerability struct {
 
 func (x *Vulnerability) Reset() {
 	*x = Vulnerability{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[120]
+	mi := &file_proto_api_v1_api_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8509,7 +8869,7 @@ func (x *Vulnerability) String() string {
 func (*Vulnerability) ProtoMessage() {}
 
 func (x *Vulnerability) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[120]
+	mi := &file_proto_api_v1_api_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8522,7 +8882,7 @@ func (x *Vulnerability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Vulnerability.ProtoReflect.Descriptor instead.
 func (*Vulnerability) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{120}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *Vulnerability) GetVulnerabilityId() string {
@@ -8584,7 +8944,7 @@ type ArcaneListVulnerabilitiesResponse struct {
 
 func (x *ArcaneListVulnerabilitiesResponse) Reset() {
 	*x = ArcaneListVulnerabilitiesResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[121]
+	mi := &file_proto_api_v1_api_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8596,7 +8956,7 @@ func (x *ArcaneListVulnerabilitiesResponse) String() string {
 func (*ArcaneListVulnerabilitiesResponse) ProtoMessage() {}
 
 func (x *ArcaneListVulnerabilitiesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[121]
+	mi := &file_proto_api_v1_api_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8609,7 +8969,7 @@ func (x *ArcaneListVulnerabilitiesResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ArcaneListVulnerabilitiesResponse.ProtoReflect.Descriptor instead.
 func (*ArcaneListVulnerabilitiesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{121}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *ArcaneListVulnerabilitiesResponse) GetVulnerabilities() []*Vulnerability {
@@ -8634,7 +8994,7 @@ type GetModelCatalogRequest struct {
 
 func (x *GetModelCatalogRequest) Reset() {
 	*x = GetModelCatalogRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[122]
+	mi := &file_proto_api_v1_api_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8646,7 +9006,7 @@ func (x *GetModelCatalogRequest) String() string {
 func (*GetModelCatalogRequest) ProtoMessage() {}
 
 func (x *GetModelCatalogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[122]
+	mi := &file_proto_api_v1_api_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8659,7 +9019,7 @@ func (x *GetModelCatalogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCatalogRequest.ProtoReflect.Descriptor instead.
 func (*GetModelCatalogRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{122}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{128}
 }
 
 type CatalogProvider struct {
@@ -8676,7 +9036,7 @@ type CatalogProvider struct {
 
 func (x *CatalogProvider) Reset() {
 	*x = CatalogProvider{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[123]
+	mi := &file_proto_api_v1_api_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8688,7 +9048,7 @@ func (x *CatalogProvider) String() string {
 func (*CatalogProvider) ProtoMessage() {}
 
 func (x *CatalogProvider) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[123]
+	mi := &file_proto_api_v1_api_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8701,7 +9061,7 @@ func (x *CatalogProvider) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogProvider.ProtoReflect.Descriptor instead.
 func (*CatalogProvider) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{123}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *CatalogProvider) GetId() string {
@@ -8757,7 +9117,7 @@ type CatalogHarnessDefault struct {
 
 func (x *CatalogHarnessDefault) Reset() {
 	*x = CatalogHarnessDefault{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[124]
+	mi := &file_proto_api_v1_api_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8769,7 +9129,7 @@ func (x *CatalogHarnessDefault) String() string {
 func (*CatalogHarnessDefault) ProtoMessage() {}
 
 func (x *CatalogHarnessDefault) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[124]
+	mi := &file_proto_api_v1_api_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8782,7 +9142,7 @@ func (x *CatalogHarnessDefault) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CatalogHarnessDefault.ProtoReflect.Descriptor instead.
 func (*CatalogHarnessDefault) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{124}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *CatalogHarnessDefault) GetHarness() string {
@@ -8818,7 +9178,7 @@ type GetModelCatalogResponse struct {
 
 func (x *GetModelCatalogResponse) Reset() {
 	*x = GetModelCatalogResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[125]
+	mi := &file_proto_api_v1_api_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8830,7 +9190,7 @@ func (x *GetModelCatalogResponse) String() string {
 func (*GetModelCatalogResponse) ProtoMessage() {}
 
 func (x *GetModelCatalogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[125]
+	mi := &file_proto_api_v1_api_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8843,7 +9203,7 @@ func (x *GetModelCatalogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetModelCatalogResponse.ProtoReflect.Descriptor instead.
 func (*GetModelCatalogResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{125}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *GetModelCatalogResponse) GetDefaultProvider() string {
@@ -8885,7 +9245,7 @@ type ListAgentDefinitionsRequest struct {
 
 func (x *ListAgentDefinitionsRequest) Reset() {
 	*x = ListAgentDefinitionsRequest{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[126]
+	mi := &file_proto_api_v1_api_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8897,7 +9257,7 @@ func (x *ListAgentDefinitionsRequest) String() string {
 func (*ListAgentDefinitionsRequest) ProtoMessage() {}
 
 func (x *ListAgentDefinitionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[126]
+	mi := &file_proto_api_v1_api_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8910,7 +9270,7 @@ func (x *ListAgentDefinitionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentDefinitionsRequest.ProtoReflect.Descriptor instead.
 func (*ListAgentDefinitionsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{126}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *ListAgentDefinitionsRequest) GetTeamIds() []string {
@@ -8960,7 +9320,7 @@ type AgentDefinition struct {
 
 func (x *AgentDefinition) Reset() {
 	*x = AgentDefinition{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[127]
+	mi := &file_proto_api_v1_api_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8972,7 +9332,7 @@ func (x *AgentDefinition) String() string {
 func (*AgentDefinition) ProtoMessage() {}
 
 func (x *AgentDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[127]
+	mi := &file_proto_api_v1_api_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8985,7 +9345,7 @@ func (x *AgentDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentDefinition.ProtoReflect.Descriptor instead.
 func (*AgentDefinition) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{127}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *AgentDefinition) GetId() string {
@@ -9123,7 +9483,7 @@ type ListAgentDefinitionsResponse struct {
 
 func (x *ListAgentDefinitionsResponse) Reset() {
 	*x = ListAgentDefinitionsResponse{}
-	mi := &file_proto_api_v1_api_proto_msgTypes[128]
+	mi := &file_proto_api_v1_api_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9135,7 +9495,7 @@ func (x *ListAgentDefinitionsResponse) String() string {
 func (*ListAgentDefinitionsResponse) ProtoMessage() {}
 
 func (x *ListAgentDefinitionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_api_v1_api_proto_msgTypes[128]
+	mi := &file_proto_api_v1_api_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9148,7 +9508,7 @@ func (x *ListAgentDefinitionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentDefinitionsResponse.ProtoReflect.Descriptor instead.
 func (*ListAgentDefinitionsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{128}
+	return file_proto_api_v1_api_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *ListAgentDefinitionsResponse) GetAgents() []*AgentDefinition {
@@ -9724,7 +10084,33 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\vFleetUpdate\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12 \n" +
 	"\x04task\x18\x02 \x01(\v2\f.api.v1.TaskR\x04task\x12*\n" +
-	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"\x9e\x01\n" +
+	"\x06runner\x18\x03 \x01(\v2\x12.api.v1.RunnerInfoR\x06runner\"7\n" +
+	"\x12RunSelfTestRequest\x12!\n" +
+	"\aprofile\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aprofile\"<\n" +
+	"\x13RunSelfTestResponse\x12%\n" +
+	"\x03run\x18\x01 \x01(\v2\x13.api.v1.SelfTestRunR\x03run\":\n" +
+	"\x18GetSelfTestStatusRequest\x12\x1e\n" +
+	"\x06run_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05runId\"B\n" +
+	"\x19GetSelfTestStatusResponse\x12%\n" +
+	"\x03run\x18\x01 \x01(\v2\x13.api.v1.SelfTestRunR\x03run\"\x9d\x01\n" +
+	"\vSelfTestRun\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\aprofile\x18\x02 \x01(\tR\aprofile\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12-\n" +
+	"\x06checks\x18\x04 \x03(\v2\x15.api.v1.SelfTestCheckR\x06checks\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\tR\tcreatedAt\"\xf6\x01\n" +
+	"\rSelfTestCheck\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
+	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x18\n" +
+	"\aharness\x18\x03 \x01(\tR\aharness\x12\x1f\n" +
+	"\vprovider_id\x18\x04 \x01(\tR\n" +
+	"providerId\x12\x19\n" +
+	"\bmodel_id\x18\x05 \x01(\tR\amodelId\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1a\n" +
+	"\bevidence\x18\a \x01(\bR\bevidence\x12\x18\n" +
+	"\asummary\x18\b \x01(\tR\asummary\x12\x14\n" +
+	"\x05error\x18\t \x01(\tR\x05error\"\x9e\x01\n" +
 	"\x12CreateTokenRequest\x12\x1b\n" +
 	"\tteam_name\x18\x01 \x01(\tR\bteamName\x12\x1d\n" +
 	"\n" +
@@ -10039,7 +10425,8 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0fListTriggerRuns\x12\x1e.api.v1.ListTriggerRunsRequest\x1a\x1f.api.v1.ListTriggerRunsResponse2\xb8\x01\n" +
 	"\fFleetService\x12R\n" +
 	"\x0fGetRunnerHealth\x12\x1e.api.v1.GetRunnerHealthRequest\x1a\x1f.api.v1.GetRunnerHealthResponse\x12T\n" +
-	"\x15SubscribeFleetUpdates\x12$.api.v1.SubscribeFleetUpdatesRequest\x1a\x13.api.v1.FleetUpdate0\x012\xaf\t\n" +
+	"\x15SubscribeFleetUpdates\x12$.api.v1.SubscribeFleetUpdatesRequest\x1a\x13.api.v1.FleetUpdate0\x012\xd1\n" +
+	"\n" +
 	"\fAdminService\x12F\n" +
 	"\vCreateToken\x12\x1a.api.v1.CreateTokenRequest\x1a\x1b.api.v1.CreateTokenResponse\x12C\n" +
 	"\n" +
@@ -10058,7 +10445,9 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x11ListGitIdentities\x12 .api.v1.ListGitIdentitiesRequest\x1a!.api.v1.ListGitIdentitiesResponse\x12X\n" +
 	"\x11UpdateGitIdentity\x12 .api.v1.UpdateGitIdentityRequest\x1a!.api.v1.UpdateGitIdentityResponse\x12X\n" +
 	"\x11DeleteGitIdentity\x12 .api.v1.DeleteGitIdentityRequest\x1a!.api.v1.DeleteGitIdentityResponse\x12d\n" +
-	"\x15SetGitIdentityDefault\x12$.api.v1.SetGitIdentityDefaultRequest\x1a%.api.v1.SetGitIdentityDefaultResponse2\x93\x03\n" +
+	"\x15SetGitIdentityDefault\x12$.api.v1.SetGitIdentityDefaultRequest\x1a%.api.v1.SetGitIdentityDefaultResponse\x12F\n" +
+	"\vRunSelfTest\x12\x1a.api.v1.RunSelfTestRequest\x1a\x1b.api.v1.RunSelfTestResponse\x12X\n" +
+	"\x11GetSelfTestStatus\x12 .api.v1.GetSelfTestStatusRequest\x1a!.api.v1.GetSelfTestStatusResponse2\x93\x03\n" +
 	"\x14EventCallbackService\x12^\n" +
 	"\x13CreateEventCallback\x12\".api.v1.CreateEventCallbackRequest\x1a#.api.v1.CreateEventCallbackResponse\x12^\n" +
 	"\x13UpdateEventCallback\x12\".api.v1.UpdateEventCallbackRequest\x1a#.api.v1.UpdateEventCallbackResponse\x12[\n" +
@@ -10089,7 +10478,7 @@ func file_proto_api_v1_api_proto_rawDescGZIP() []byte {
 	return file_proto_api_v1_api_proto_rawDescData
 }
 
-var file_proto_api_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 131)
+var file_proto_api_v1_api_proto_msgTypes = make([]protoimpl.MessageInfo, 137)
 var file_proto_api_v1_api_proto_goTypes = []any{
 	(*TokenUsage)(nil),                        // 0: api.v1.TokenUsage
 	(*Task)(nil),                              // 1: api.v1.Task
@@ -10160,71 +10549,77 @@ var file_proto_api_v1_api_proto_goTypes = []any{
 	(*GetRunnerHealthResponse)(nil),           // 66: api.v1.GetRunnerHealthResponse
 	(*SubscribeFleetUpdatesRequest)(nil),      // 67: api.v1.SubscribeFleetUpdatesRequest
 	(*FleetUpdate)(nil),                       // 68: api.v1.FleetUpdate
-	(*CreateTokenRequest)(nil),                // 69: api.v1.CreateTokenRequest
-	(*CreateTokenResponse)(nil),               // 70: api.v1.CreateTokenResponse
-	(*ListTokensRequest)(nil),                 // 71: api.v1.ListTokensRequest
-	(*ListTokensResponse)(nil),                // 72: api.v1.ListTokensResponse
-	(*DeleteTokenRequest)(nil),                // 73: api.v1.DeleteTokenRequest
-	(*DeleteTokenResponse)(nil),               // 74: api.v1.DeleteTokenResponse
-	(*CreateTeamRequest)(nil),                 // 75: api.v1.CreateTeamRequest
-	(*CreateTeamResponse)(nil),                // 76: api.v1.CreateTeamResponse
-	(*ListTeamsRequest)(nil),                  // 77: api.v1.ListTeamsRequest
-	(*ListTeamsResponse)(nil),                 // 78: api.v1.ListTeamsResponse
-	(*DeleteTeamRequest)(nil),                 // 79: api.v1.DeleteTeamRequest
-	(*DeleteTeamResponse)(nil),                // 80: api.v1.DeleteTeamResponse
-	(*ListUsersRequest)(nil),                  // 81: api.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),                 // 82: api.v1.ListUsersResponse
-	(*ListAuditEventsRequest)(nil),            // 83: api.v1.ListAuditEventsRequest
-	(*ListAuditEventsResponse)(nil),           // 84: api.v1.ListAuditEventsResponse
-	(*ListTaskArtifactsRequest)(nil),          // 85: api.v1.ListTaskArtifactsRequest
-	(*ListTaskArtifactsResponse)(nil),         // 86: api.v1.ListTaskArtifactsResponse
-	(*ListReposRequest)(nil),                  // 87: api.v1.ListReposRequest
-	(*ListReposResponse)(nil),                 // 88: api.v1.ListReposResponse
-	(*GitIdentity)(nil),                       // 89: api.v1.GitIdentity
-	(*CreateGitIdentityRequest)(nil),          // 90: api.v1.CreateGitIdentityRequest
-	(*CreateGitIdentityResponse)(nil),         // 91: api.v1.CreateGitIdentityResponse
-	(*ListGitIdentitiesRequest)(nil),          // 92: api.v1.ListGitIdentitiesRequest
-	(*ListGitIdentitiesResponse)(nil),         // 93: api.v1.ListGitIdentitiesResponse
-	(*UpdateGitIdentityRequest)(nil),          // 94: api.v1.UpdateGitIdentityRequest
-	(*UpdateGitIdentityResponse)(nil),         // 95: api.v1.UpdateGitIdentityResponse
-	(*DeleteGitIdentityRequest)(nil),          // 96: api.v1.DeleteGitIdentityRequest
-	(*DeleteGitIdentityResponse)(nil),         // 97: api.v1.DeleteGitIdentityResponse
-	(*SetGitIdentityDefaultRequest)(nil),      // 98: api.v1.SetGitIdentityDefaultRequest
-	(*SetGitIdentityDefaultResponse)(nil),     // 99: api.v1.SetGitIdentityDefaultResponse
-	(*EventCallback)(nil),                     // 100: api.v1.EventCallback
-	(*CreateEventCallbackRequest)(nil),        // 101: api.v1.CreateEventCallbackRequest
-	(*CreateEventCallbackResponse)(nil),       // 102: api.v1.CreateEventCallbackResponse
-	(*UpdateEventCallbackRequest)(nil),        // 103: api.v1.UpdateEventCallbackRequest
-	(*UpdateEventCallbackResponse)(nil),       // 104: api.v1.UpdateEventCallbackResponse
-	(*ListEventCallbacksRequest)(nil),         // 105: api.v1.ListEventCallbacksRequest
-	(*ListEventCallbacksResponse)(nil),        // 106: api.v1.ListEventCallbacksResponse
-	(*DeleteEventCallbackRequest)(nil),        // 107: api.v1.DeleteEventCallbackRequest
-	(*DeleteEventCallbackResponse)(nil),       // 108: api.v1.DeleteEventCallbackResponse
-	(*ArcaneScannerStatusRequest)(nil),        // 109: api.v1.ArcaneScannerStatusRequest
-	(*ArcaneScannerStatusResponse)(nil),       // 110: api.v1.ArcaneScannerStatusResponse
-	(*ArcaneEnvironmentSummaryRequest)(nil),   // 111: api.v1.ArcaneEnvironmentSummaryRequest
-	(*SeveritySummary)(nil),                   // 112: api.v1.SeveritySummary
-	(*ArcaneEnvironmentSummaryResponse)(nil),  // 113: api.v1.ArcaneEnvironmentSummaryResponse
-	(*ArcaneListImagesRequest)(nil),           // 114: api.v1.ArcaneListImagesRequest
-	(*ImageSummaryItem)(nil),                  // 115: api.v1.ImageSummaryItem
-	(*ArcaneListImagesResponse)(nil),          // 116: api.v1.ArcaneListImagesResponse
-	(*ArcaneImageSummaryRequest)(nil),         // 117: api.v1.ArcaneImageSummaryRequest
-	(*ArcaneImageSummaryResponse)(nil),        // 118: api.v1.ArcaneImageSummaryResponse
-	(*ArcaneListVulnerabilitiesRequest)(nil),  // 119: api.v1.ArcaneListVulnerabilitiesRequest
-	(*Vulnerability)(nil),                     // 120: api.v1.Vulnerability
-	(*ArcaneListVulnerabilitiesResponse)(nil), // 121: api.v1.ArcaneListVulnerabilitiesResponse
-	(*GetModelCatalogRequest)(nil),            // 122: api.v1.GetModelCatalogRequest
-	(*CatalogProvider)(nil),                   // 123: api.v1.CatalogProvider
-	(*CatalogHarnessDefault)(nil),             // 124: api.v1.CatalogHarnessDefault
-	(*GetModelCatalogResponse)(nil),           // 125: api.v1.GetModelCatalogResponse
-	(*ListAgentDefinitionsRequest)(nil),       // 126: api.v1.ListAgentDefinitionsRequest
-	(*AgentDefinition)(nil),                   // 127: api.v1.AgentDefinition
-	(*ListAgentDefinitionsResponse)(nil),      // 128: api.v1.ListAgentDefinitionsResponse
-	nil,                                       // 129: api.v1.Task.EnvEntry
-	nil,                                       // 130: api.v1.SubmitTaskRequest.EnvEntry
+	(*RunSelfTestRequest)(nil),                // 69: api.v1.RunSelfTestRequest
+	(*RunSelfTestResponse)(nil),               // 70: api.v1.RunSelfTestResponse
+	(*GetSelfTestStatusRequest)(nil),          // 71: api.v1.GetSelfTestStatusRequest
+	(*GetSelfTestStatusResponse)(nil),         // 72: api.v1.GetSelfTestStatusResponse
+	(*SelfTestRun)(nil),                       // 73: api.v1.SelfTestRun
+	(*SelfTestCheck)(nil),                     // 74: api.v1.SelfTestCheck
+	(*CreateTokenRequest)(nil),                // 75: api.v1.CreateTokenRequest
+	(*CreateTokenResponse)(nil),               // 76: api.v1.CreateTokenResponse
+	(*ListTokensRequest)(nil),                 // 77: api.v1.ListTokensRequest
+	(*ListTokensResponse)(nil),                // 78: api.v1.ListTokensResponse
+	(*DeleteTokenRequest)(nil),                // 79: api.v1.DeleteTokenRequest
+	(*DeleteTokenResponse)(nil),               // 80: api.v1.DeleteTokenResponse
+	(*CreateTeamRequest)(nil),                 // 81: api.v1.CreateTeamRequest
+	(*CreateTeamResponse)(nil),                // 82: api.v1.CreateTeamResponse
+	(*ListTeamsRequest)(nil),                  // 83: api.v1.ListTeamsRequest
+	(*ListTeamsResponse)(nil),                 // 84: api.v1.ListTeamsResponse
+	(*DeleteTeamRequest)(nil),                 // 85: api.v1.DeleteTeamRequest
+	(*DeleteTeamResponse)(nil),                // 86: api.v1.DeleteTeamResponse
+	(*ListUsersRequest)(nil),                  // 87: api.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),                 // 88: api.v1.ListUsersResponse
+	(*ListAuditEventsRequest)(nil),            // 89: api.v1.ListAuditEventsRequest
+	(*ListAuditEventsResponse)(nil),           // 90: api.v1.ListAuditEventsResponse
+	(*ListTaskArtifactsRequest)(nil),          // 91: api.v1.ListTaskArtifactsRequest
+	(*ListTaskArtifactsResponse)(nil),         // 92: api.v1.ListTaskArtifactsResponse
+	(*ListReposRequest)(nil),                  // 93: api.v1.ListReposRequest
+	(*ListReposResponse)(nil),                 // 94: api.v1.ListReposResponse
+	(*GitIdentity)(nil),                       // 95: api.v1.GitIdentity
+	(*CreateGitIdentityRequest)(nil),          // 96: api.v1.CreateGitIdentityRequest
+	(*CreateGitIdentityResponse)(nil),         // 97: api.v1.CreateGitIdentityResponse
+	(*ListGitIdentitiesRequest)(nil),          // 98: api.v1.ListGitIdentitiesRequest
+	(*ListGitIdentitiesResponse)(nil),         // 99: api.v1.ListGitIdentitiesResponse
+	(*UpdateGitIdentityRequest)(nil),          // 100: api.v1.UpdateGitIdentityRequest
+	(*UpdateGitIdentityResponse)(nil),         // 101: api.v1.UpdateGitIdentityResponse
+	(*DeleteGitIdentityRequest)(nil),          // 102: api.v1.DeleteGitIdentityRequest
+	(*DeleteGitIdentityResponse)(nil),         // 103: api.v1.DeleteGitIdentityResponse
+	(*SetGitIdentityDefaultRequest)(nil),      // 104: api.v1.SetGitIdentityDefaultRequest
+	(*SetGitIdentityDefaultResponse)(nil),     // 105: api.v1.SetGitIdentityDefaultResponse
+	(*EventCallback)(nil),                     // 106: api.v1.EventCallback
+	(*CreateEventCallbackRequest)(nil),        // 107: api.v1.CreateEventCallbackRequest
+	(*CreateEventCallbackResponse)(nil),       // 108: api.v1.CreateEventCallbackResponse
+	(*UpdateEventCallbackRequest)(nil),        // 109: api.v1.UpdateEventCallbackRequest
+	(*UpdateEventCallbackResponse)(nil),       // 110: api.v1.UpdateEventCallbackResponse
+	(*ListEventCallbacksRequest)(nil),         // 111: api.v1.ListEventCallbacksRequest
+	(*ListEventCallbacksResponse)(nil),        // 112: api.v1.ListEventCallbacksResponse
+	(*DeleteEventCallbackRequest)(nil),        // 113: api.v1.DeleteEventCallbackRequest
+	(*DeleteEventCallbackResponse)(nil),       // 114: api.v1.DeleteEventCallbackResponse
+	(*ArcaneScannerStatusRequest)(nil),        // 115: api.v1.ArcaneScannerStatusRequest
+	(*ArcaneScannerStatusResponse)(nil),       // 116: api.v1.ArcaneScannerStatusResponse
+	(*ArcaneEnvironmentSummaryRequest)(nil),   // 117: api.v1.ArcaneEnvironmentSummaryRequest
+	(*SeveritySummary)(nil),                   // 118: api.v1.SeveritySummary
+	(*ArcaneEnvironmentSummaryResponse)(nil),  // 119: api.v1.ArcaneEnvironmentSummaryResponse
+	(*ArcaneListImagesRequest)(nil),           // 120: api.v1.ArcaneListImagesRequest
+	(*ImageSummaryItem)(nil),                  // 121: api.v1.ImageSummaryItem
+	(*ArcaneListImagesResponse)(nil),          // 122: api.v1.ArcaneListImagesResponse
+	(*ArcaneImageSummaryRequest)(nil),         // 123: api.v1.ArcaneImageSummaryRequest
+	(*ArcaneImageSummaryResponse)(nil),        // 124: api.v1.ArcaneImageSummaryResponse
+	(*ArcaneListVulnerabilitiesRequest)(nil),  // 125: api.v1.ArcaneListVulnerabilitiesRequest
+	(*Vulnerability)(nil),                     // 126: api.v1.Vulnerability
+	(*ArcaneListVulnerabilitiesResponse)(nil), // 127: api.v1.ArcaneListVulnerabilitiesResponse
+	(*GetModelCatalogRequest)(nil),            // 128: api.v1.GetModelCatalogRequest
+	(*CatalogProvider)(nil),                   // 129: api.v1.CatalogProvider
+	(*CatalogHarnessDefault)(nil),             // 130: api.v1.CatalogHarnessDefault
+	(*GetModelCatalogResponse)(nil),           // 131: api.v1.GetModelCatalogResponse
+	(*ListAgentDefinitionsRequest)(nil),       // 132: api.v1.ListAgentDefinitionsRequest
+	(*AgentDefinition)(nil),                   // 133: api.v1.AgentDefinition
+	(*ListAgentDefinitionsResponse)(nil),      // 134: api.v1.ListAgentDefinitionsResponse
+	nil,                                       // 135: api.v1.Task.EnvEntry
+	nil,                                       // 136: api.v1.SubmitTaskRequest.EnvEntry
 }
 var file_proto_api_v1_api_proto_depIdxs = []int32{
-	129, // 0: api.v1.Task.env:type_name -> api.v1.Task.EnvEntry
+	135, // 0: api.v1.Task.env:type_name -> api.v1.Task.EnvEntry
 	0,   // 1: api.v1.Task.token_usage:type_name -> api.v1.TokenUsage
 	4,   // 2: api.v1.UserPrompt.attempts:type_name -> api.v1.ExecutionAttempt
 	0,   // 3: api.v1.ExecutionAttempt.token_usage:type_name -> api.v1.TokenUsage
@@ -10232,7 +10627,7 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	11,  // 5: api.v1.RunnerFleetHealth.runners:type_name -> api.v1.RunnerInfo
 	13,  // 6: api.v1.RunnerFleetHealth.running_task_infos:type_name -> api.v1.RunningTaskInfo
 	12,  // 7: api.v1.RunnerInfo.resource:type_name -> api.v1.ResourceInfo
-	130, // 8: api.v1.SubmitTaskRequest.env:type_name -> api.v1.SubmitTaskRequest.EnvEntry
+	136, // 8: api.v1.SubmitTaskRequest.env:type_name -> api.v1.SubmitTaskRequest.EnvEntry
 	1,   // 9: api.v1.SubmitTaskResponse.task:type_name -> api.v1.Task
 	1,   // 10: api.v1.GetTaskResponse.task:type_name -> api.v1.Task
 	1,   // 11: api.v1.ListTasksResponse.tasks:type_name -> api.v1.Task
@@ -10257,132 +10652,139 @@ var file_proto_api_v1_api_proto_depIdxs = []int32{
 	9,   // 30: api.v1.GetRunnerHealthResponse.health:type_name -> api.v1.RunnerFleetHealth
 	1,   // 31: api.v1.FleetUpdate.task:type_name -> api.v1.Task
 	11,  // 32: api.v1.FleetUpdate.runner:type_name -> api.v1.RunnerInfo
-	14,  // 33: api.v1.ListTokensResponse.tokens:type_name -> api.v1.TokenInfo
-	15,  // 34: api.v1.ListTeamsResponse.teams:type_name -> api.v1.TeamInfo
-	16,  // 35: api.v1.ListUsersResponse.users:type_name -> api.v1.UserInfo
-	17,  // 36: api.v1.ListAuditEventsResponse.events:type_name -> api.v1.AuditEvent
-	18,  // 37: api.v1.ListTaskArtifactsResponse.artifacts:type_name -> api.v1.TaskArtifact
-	89,  // 38: api.v1.CreateGitIdentityResponse.identity:type_name -> api.v1.GitIdentity
-	89,  // 39: api.v1.ListGitIdentitiesResponse.identities:type_name -> api.v1.GitIdentity
-	89,  // 40: api.v1.UpdateGitIdentityResponse.identity:type_name -> api.v1.GitIdentity
-	89,  // 41: api.v1.SetGitIdentityDefaultResponse.identity:type_name -> api.v1.GitIdentity
-	100, // 42: api.v1.CreateEventCallbackResponse.callback:type_name -> api.v1.EventCallback
-	100, // 43: api.v1.UpdateEventCallbackResponse.callback:type_name -> api.v1.EventCallback
-	100, // 44: api.v1.ListEventCallbacksResponse.callbacks:type_name -> api.v1.EventCallback
-	112, // 45: api.v1.ArcaneEnvironmentSummaryResponse.summary:type_name -> api.v1.SeveritySummary
-	115, // 46: api.v1.ArcaneListImagesResponse.images:type_name -> api.v1.ImageSummaryItem
-	112, // 47: api.v1.ArcaneImageSummaryResponse.summary:type_name -> api.v1.SeveritySummary
-	120, // 48: api.v1.ArcaneListVulnerabilitiesResponse.vulnerabilities:type_name -> api.v1.Vulnerability
-	124, // 49: api.v1.GetModelCatalogResponse.defaults:type_name -> api.v1.CatalogHarnessDefault
-	123, // 50: api.v1.GetModelCatalogResponse.providers:type_name -> api.v1.CatalogProvider
-	127, // 51: api.v1.ListAgentDefinitionsResponse.agents:type_name -> api.v1.AgentDefinition
-	19,  // 52: api.v1.TaskService.SubmitTask:input_type -> api.v1.SubmitTaskRequest
-	21,  // 53: api.v1.TaskService.GetTask:input_type -> api.v1.GetTaskRequest
-	23,  // 54: api.v1.TaskService.ListTasks:input_type -> api.v1.ListTasksRequest
-	25,  // 55: api.v1.TaskService.ExtendTask:input_type -> api.v1.ExtendTaskRequest
-	27,  // 56: api.v1.TaskService.CancelTask:input_type -> api.v1.CancelTaskRequest
-	29,  // 57: api.v1.TaskService.ExportTask:input_type -> api.v1.ExportTaskRequest
-	31,  // 58: api.v1.TaskService.RecoverTask:input_type -> api.v1.RecoverTaskRequest
-	33,  // 59: api.v1.TaskService.RerunTask:input_type -> api.v1.RerunTaskRequest
-	35,  // 60: api.v1.TaskService.ClearQueue:input_type -> api.v1.ClearQueueRequest
-	40,  // 61: api.v1.TaskService.SubscribeTaskEvents:input_type -> api.v1.SubscribeTaskEventsRequest
-	37,  // 62: api.v1.TaskService.Whoami:input_type -> api.v1.WhoamiRequest
-	41,  // 63: api.v1.EventService.GetTaskEvents:input_type -> api.v1.GetTaskEventsRequest
-	43,  // 64: api.v1.EventService.GetTaskProgress:input_type -> api.v1.GetTaskProgressRequest
-	45,  // 65: api.v1.EventService.GetLatestTaskEvent:input_type -> api.v1.GetLatestTaskEventRequest
-	47,  // 66: api.v1.SessionService.ListSessions:input_type -> api.v1.ListSessionsRequest
-	49,  // 67: api.v1.SessionService.GetSession:input_type -> api.v1.GetSessionRequest
-	51,  // 68: api.v1.SessionService.ResumeSession:input_type -> api.v1.ResumeSessionRequest
-	53,  // 69: api.v1.TriggerService.CreateTrigger:input_type -> api.v1.CreateTriggerRequest
-	55,  // 70: api.v1.TriggerService.UpdateTrigger:input_type -> api.v1.UpdateTriggerRequest
-	57,  // 71: api.v1.TriggerService.ListTriggers:input_type -> api.v1.ListTriggersRequest
-	59,  // 72: api.v1.TriggerService.DeleteTrigger:input_type -> api.v1.DeleteTriggerRequest
-	61,  // 73: api.v1.TriggerService.RunTrigger:input_type -> api.v1.RunTriggerRequest
-	63,  // 74: api.v1.TriggerService.ListTriggerRuns:input_type -> api.v1.ListTriggerRunsRequest
-	65,  // 75: api.v1.FleetService.GetRunnerHealth:input_type -> api.v1.GetRunnerHealthRequest
-	67,  // 76: api.v1.FleetService.SubscribeFleetUpdates:input_type -> api.v1.SubscribeFleetUpdatesRequest
-	69,  // 77: api.v1.AdminService.CreateToken:input_type -> api.v1.CreateTokenRequest
-	71,  // 78: api.v1.AdminService.ListTokens:input_type -> api.v1.ListTokensRequest
-	73,  // 79: api.v1.AdminService.DeleteToken:input_type -> api.v1.DeleteTokenRequest
-	75,  // 80: api.v1.AdminService.CreateTeam:input_type -> api.v1.CreateTeamRequest
-	77,  // 81: api.v1.AdminService.ListTeams:input_type -> api.v1.ListTeamsRequest
-	79,  // 82: api.v1.AdminService.DeleteTeam:input_type -> api.v1.DeleteTeamRequest
-	81,  // 83: api.v1.AdminService.ListUsers:input_type -> api.v1.ListUsersRequest
-	83,  // 84: api.v1.AdminService.ListAuditEvents:input_type -> api.v1.ListAuditEventsRequest
-	85,  // 85: api.v1.AdminService.ListTaskArtifacts:input_type -> api.v1.ListTaskArtifactsRequest
-	87,  // 86: api.v1.AdminService.ListRepos:input_type -> api.v1.ListReposRequest
-	90,  // 87: api.v1.AdminService.CreateGitIdentity:input_type -> api.v1.CreateGitIdentityRequest
-	92,  // 88: api.v1.AdminService.ListGitIdentities:input_type -> api.v1.ListGitIdentitiesRequest
-	94,  // 89: api.v1.AdminService.UpdateGitIdentity:input_type -> api.v1.UpdateGitIdentityRequest
-	96,  // 90: api.v1.AdminService.DeleteGitIdentity:input_type -> api.v1.DeleteGitIdentityRequest
-	98,  // 91: api.v1.AdminService.SetGitIdentityDefault:input_type -> api.v1.SetGitIdentityDefaultRequest
-	101, // 92: api.v1.EventCallbackService.CreateEventCallback:input_type -> api.v1.CreateEventCallbackRequest
-	103, // 93: api.v1.EventCallbackService.UpdateEventCallback:input_type -> api.v1.UpdateEventCallbackRequest
-	105, // 94: api.v1.EventCallbackService.ListEventCallbacks:input_type -> api.v1.ListEventCallbacksRequest
-	107, // 95: api.v1.EventCallbackService.DeleteEventCallback:input_type -> api.v1.DeleteEventCallbackRequest
-	109, // 96: api.v1.ArcaneService.GetScannerStatus:input_type -> api.v1.ArcaneScannerStatusRequest
-	111, // 97: api.v1.ArcaneService.GetEnvironmentSummary:input_type -> api.v1.ArcaneEnvironmentSummaryRequest
-	114, // 98: api.v1.ArcaneService.ListImages:input_type -> api.v1.ArcaneListImagesRequest
-	117, // 99: api.v1.ArcaneService.GetImageSummary:input_type -> api.v1.ArcaneImageSummaryRequest
-	119, // 100: api.v1.ArcaneService.ListVulnerabilities:input_type -> api.v1.ArcaneListVulnerabilitiesRequest
-	122, // 101: api.v1.CatalogService.GetModelCatalog:input_type -> api.v1.GetModelCatalogRequest
-	126, // 102: api.v1.CatalogService.ListAgentDefinitions:input_type -> api.v1.ListAgentDefinitionsRequest
-	20,  // 103: api.v1.TaskService.SubmitTask:output_type -> api.v1.SubmitTaskResponse
-	22,  // 104: api.v1.TaskService.GetTask:output_type -> api.v1.GetTaskResponse
-	24,  // 105: api.v1.TaskService.ListTasks:output_type -> api.v1.ListTasksResponse
-	26,  // 106: api.v1.TaskService.ExtendTask:output_type -> api.v1.ExtendTaskResponse
-	28,  // 107: api.v1.TaskService.CancelTask:output_type -> api.v1.CancelTaskResponse
-	30,  // 108: api.v1.TaskService.ExportTask:output_type -> api.v1.ExportTaskResponse
-	32,  // 109: api.v1.TaskService.RecoverTask:output_type -> api.v1.RecoverTaskResponse
-	34,  // 110: api.v1.TaskService.RerunTask:output_type -> api.v1.RerunTaskResponse
-	36,  // 111: api.v1.TaskService.ClearQueue:output_type -> api.v1.ClearQueueResponse
-	6,   // 112: api.v1.TaskService.SubscribeTaskEvents:output_type -> api.v1.TaskEvent
-	38,  // 113: api.v1.TaskService.Whoami:output_type -> api.v1.WhoamiResponse
-	42,  // 114: api.v1.EventService.GetTaskEvents:output_type -> api.v1.GetTaskEventsResponse
-	44,  // 115: api.v1.EventService.GetTaskProgress:output_type -> api.v1.GetTaskProgressResponse
-	46,  // 116: api.v1.EventService.GetLatestTaskEvent:output_type -> api.v1.GetLatestTaskEventResponse
-	48,  // 117: api.v1.SessionService.ListSessions:output_type -> api.v1.ListSessionsResponse
-	50,  // 118: api.v1.SessionService.GetSession:output_type -> api.v1.GetSessionResponse
-	52,  // 119: api.v1.SessionService.ResumeSession:output_type -> api.v1.ResumeSessionResponse
-	54,  // 120: api.v1.TriggerService.CreateTrigger:output_type -> api.v1.CreateTriggerResponse
-	56,  // 121: api.v1.TriggerService.UpdateTrigger:output_type -> api.v1.UpdateTriggerResponse
-	58,  // 122: api.v1.TriggerService.ListTriggers:output_type -> api.v1.ListTriggersResponse
-	60,  // 123: api.v1.TriggerService.DeleteTrigger:output_type -> api.v1.DeleteTriggerResponse
-	62,  // 124: api.v1.TriggerService.RunTrigger:output_type -> api.v1.RunTriggerResponse
-	64,  // 125: api.v1.TriggerService.ListTriggerRuns:output_type -> api.v1.ListTriggerRunsResponse
-	66,  // 126: api.v1.FleetService.GetRunnerHealth:output_type -> api.v1.GetRunnerHealthResponse
-	68,  // 127: api.v1.FleetService.SubscribeFleetUpdates:output_type -> api.v1.FleetUpdate
-	70,  // 128: api.v1.AdminService.CreateToken:output_type -> api.v1.CreateTokenResponse
-	72,  // 129: api.v1.AdminService.ListTokens:output_type -> api.v1.ListTokensResponse
-	74,  // 130: api.v1.AdminService.DeleteToken:output_type -> api.v1.DeleteTokenResponse
-	76,  // 131: api.v1.AdminService.CreateTeam:output_type -> api.v1.CreateTeamResponse
-	78,  // 132: api.v1.AdminService.ListTeams:output_type -> api.v1.ListTeamsResponse
-	80,  // 133: api.v1.AdminService.DeleteTeam:output_type -> api.v1.DeleteTeamResponse
-	82,  // 134: api.v1.AdminService.ListUsers:output_type -> api.v1.ListUsersResponse
-	84,  // 135: api.v1.AdminService.ListAuditEvents:output_type -> api.v1.ListAuditEventsResponse
-	86,  // 136: api.v1.AdminService.ListTaskArtifacts:output_type -> api.v1.ListTaskArtifactsResponse
-	88,  // 137: api.v1.AdminService.ListRepos:output_type -> api.v1.ListReposResponse
-	91,  // 138: api.v1.AdminService.CreateGitIdentity:output_type -> api.v1.CreateGitIdentityResponse
-	93,  // 139: api.v1.AdminService.ListGitIdentities:output_type -> api.v1.ListGitIdentitiesResponse
-	95,  // 140: api.v1.AdminService.UpdateGitIdentity:output_type -> api.v1.UpdateGitIdentityResponse
-	97,  // 141: api.v1.AdminService.DeleteGitIdentity:output_type -> api.v1.DeleteGitIdentityResponse
-	99,  // 142: api.v1.AdminService.SetGitIdentityDefault:output_type -> api.v1.SetGitIdentityDefaultResponse
-	102, // 143: api.v1.EventCallbackService.CreateEventCallback:output_type -> api.v1.CreateEventCallbackResponse
-	104, // 144: api.v1.EventCallbackService.UpdateEventCallback:output_type -> api.v1.UpdateEventCallbackResponse
-	106, // 145: api.v1.EventCallbackService.ListEventCallbacks:output_type -> api.v1.ListEventCallbacksResponse
-	108, // 146: api.v1.EventCallbackService.DeleteEventCallback:output_type -> api.v1.DeleteEventCallbackResponse
-	110, // 147: api.v1.ArcaneService.GetScannerStatus:output_type -> api.v1.ArcaneScannerStatusResponse
-	113, // 148: api.v1.ArcaneService.GetEnvironmentSummary:output_type -> api.v1.ArcaneEnvironmentSummaryResponse
-	116, // 149: api.v1.ArcaneService.ListImages:output_type -> api.v1.ArcaneListImagesResponse
-	118, // 150: api.v1.ArcaneService.GetImageSummary:output_type -> api.v1.ArcaneImageSummaryResponse
-	121, // 151: api.v1.ArcaneService.ListVulnerabilities:output_type -> api.v1.ArcaneListVulnerabilitiesResponse
-	125, // 152: api.v1.CatalogService.GetModelCatalog:output_type -> api.v1.GetModelCatalogResponse
-	128, // 153: api.v1.CatalogService.ListAgentDefinitions:output_type -> api.v1.ListAgentDefinitionsResponse
-	103, // [103:154] is the sub-list for method output_type
-	52,  // [52:103] is the sub-list for method input_type
-	52,  // [52:52] is the sub-list for extension type_name
-	52,  // [52:52] is the sub-list for extension extendee
-	0,   // [0:52] is the sub-list for field type_name
+	73,  // 33: api.v1.RunSelfTestResponse.run:type_name -> api.v1.SelfTestRun
+	73,  // 34: api.v1.GetSelfTestStatusResponse.run:type_name -> api.v1.SelfTestRun
+	74,  // 35: api.v1.SelfTestRun.checks:type_name -> api.v1.SelfTestCheck
+	14,  // 36: api.v1.ListTokensResponse.tokens:type_name -> api.v1.TokenInfo
+	15,  // 37: api.v1.ListTeamsResponse.teams:type_name -> api.v1.TeamInfo
+	16,  // 38: api.v1.ListUsersResponse.users:type_name -> api.v1.UserInfo
+	17,  // 39: api.v1.ListAuditEventsResponse.events:type_name -> api.v1.AuditEvent
+	18,  // 40: api.v1.ListTaskArtifactsResponse.artifacts:type_name -> api.v1.TaskArtifact
+	95,  // 41: api.v1.CreateGitIdentityResponse.identity:type_name -> api.v1.GitIdentity
+	95,  // 42: api.v1.ListGitIdentitiesResponse.identities:type_name -> api.v1.GitIdentity
+	95,  // 43: api.v1.UpdateGitIdentityResponse.identity:type_name -> api.v1.GitIdentity
+	95,  // 44: api.v1.SetGitIdentityDefaultResponse.identity:type_name -> api.v1.GitIdentity
+	106, // 45: api.v1.CreateEventCallbackResponse.callback:type_name -> api.v1.EventCallback
+	106, // 46: api.v1.UpdateEventCallbackResponse.callback:type_name -> api.v1.EventCallback
+	106, // 47: api.v1.ListEventCallbacksResponse.callbacks:type_name -> api.v1.EventCallback
+	118, // 48: api.v1.ArcaneEnvironmentSummaryResponse.summary:type_name -> api.v1.SeveritySummary
+	121, // 49: api.v1.ArcaneListImagesResponse.images:type_name -> api.v1.ImageSummaryItem
+	118, // 50: api.v1.ArcaneImageSummaryResponse.summary:type_name -> api.v1.SeveritySummary
+	126, // 51: api.v1.ArcaneListVulnerabilitiesResponse.vulnerabilities:type_name -> api.v1.Vulnerability
+	130, // 52: api.v1.GetModelCatalogResponse.defaults:type_name -> api.v1.CatalogHarnessDefault
+	129, // 53: api.v1.GetModelCatalogResponse.providers:type_name -> api.v1.CatalogProvider
+	133, // 54: api.v1.ListAgentDefinitionsResponse.agents:type_name -> api.v1.AgentDefinition
+	19,  // 55: api.v1.TaskService.SubmitTask:input_type -> api.v1.SubmitTaskRequest
+	21,  // 56: api.v1.TaskService.GetTask:input_type -> api.v1.GetTaskRequest
+	23,  // 57: api.v1.TaskService.ListTasks:input_type -> api.v1.ListTasksRequest
+	25,  // 58: api.v1.TaskService.ExtendTask:input_type -> api.v1.ExtendTaskRequest
+	27,  // 59: api.v1.TaskService.CancelTask:input_type -> api.v1.CancelTaskRequest
+	29,  // 60: api.v1.TaskService.ExportTask:input_type -> api.v1.ExportTaskRequest
+	31,  // 61: api.v1.TaskService.RecoverTask:input_type -> api.v1.RecoverTaskRequest
+	33,  // 62: api.v1.TaskService.RerunTask:input_type -> api.v1.RerunTaskRequest
+	35,  // 63: api.v1.TaskService.ClearQueue:input_type -> api.v1.ClearQueueRequest
+	40,  // 64: api.v1.TaskService.SubscribeTaskEvents:input_type -> api.v1.SubscribeTaskEventsRequest
+	37,  // 65: api.v1.TaskService.Whoami:input_type -> api.v1.WhoamiRequest
+	41,  // 66: api.v1.EventService.GetTaskEvents:input_type -> api.v1.GetTaskEventsRequest
+	43,  // 67: api.v1.EventService.GetTaskProgress:input_type -> api.v1.GetTaskProgressRequest
+	45,  // 68: api.v1.EventService.GetLatestTaskEvent:input_type -> api.v1.GetLatestTaskEventRequest
+	47,  // 69: api.v1.SessionService.ListSessions:input_type -> api.v1.ListSessionsRequest
+	49,  // 70: api.v1.SessionService.GetSession:input_type -> api.v1.GetSessionRequest
+	51,  // 71: api.v1.SessionService.ResumeSession:input_type -> api.v1.ResumeSessionRequest
+	53,  // 72: api.v1.TriggerService.CreateTrigger:input_type -> api.v1.CreateTriggerRequest
+	55,  // 73: api.v1.TriggerService.UpdateTrigger:input_type -> api.v1.UpdateTriggerRequest
+	57,  // 74: api.v1.TriggerService.ListTriggers:input_type -> api.v1.ListTriggersRequest
+	59,  // 75: api.v1.TriggerService.DeleteTrigger:input_type -> api.v1.DeleteTriggerRequest
+	61,  // 76: api.v1.TriggerService.RunTrigger:input_type -> api.v1.RunTriggerRequest
+	63,  // 77: api.v1.TriggerService.ListTriggerRuns:input_type -> api.v1.ListTriggerRunsRequest
+	65,  // 78: api.v1.FleetService.GetRunnerHealth:input_type -> api.v1.GetRunnerHealthRequest
+	67,  // 79: api.v1.FleetService.SubscribeFleetUpdates:input_type -> api.v1.SubscribeFleetUpdatesRequest
+	75,  // 80: api.v1.AdminService.CreateToken:input_type -> api.v1.CreateTokenRequest
+	77,  // 81: api.v1.AdminService.ListTokens:input_type -> api.v1.ListTokensRequest
+	79,  // 82: api.v1.AdminService.DeleteToken:input_type -> api.v1.DeleteTokenRequest
+	81,  // 83: api.v1.AdminService.CreateTeam:input_type -> api.v1.CreateTeamRequest
+	83,  // 84: api.v1.AdminService.ListTeams:input_type -> api.v1.ListTeamsRequest
+	85,  // 85: api.v1.AdminService.DeleteTeam:input_type -> api.v1.DeleteTeamRequest
+	87,  // 86: api.v1.AdminService.ListUsers:input_type -> api.v1.ListUsersRequest
+	89,  // 87: api.v1.AdminService.ListAuditEvents:input_type -> api.v1.ListAuditEventsRequest
+	91,  // 88: api.v1.AdminService.ListTaskArtifacts:input_type -> api.v1.ListTaskArtifactsRequest
+	93,  // 89: api.v1.AdminService.ListRepos:input_type -> api.v1.ListReposRequest
+	96,  // 90: api.v1.AdminService.CreateGitIdentity:input_type -> api.v1.CreateGitIdentityRequest
+	98,  // 91: api.v1.AdminService.ListGitIdentities:input_type -> api.v1.ListGitIdentitiesRequest
+	100, // 92: api.v1.AdminService.UpdateGitIdentity:input_type -> api.v1.UpdateGitIdentityRequest
+	102, // 93: api.v1.AdminService.DeleteGitIdentity:input_type -> api.v1.DeleteGitIdentityRequest
+	104, // 94: api.v1.AdminService.SetGitIdentityDefault:input_type -> api.v1.SetGitIdentityDefaultRequest
+	69,  // 95: api.v1.AdminService.RunSelfTest:input_type -> api.v1.RunSelfTestRequest
+	71,  // 96: api.v1.AdminService.GetSelfTestStatus:input_type -> api.v1.GetSelfTestStatusRequest
+	107, // 97: api.v1.EventCallbackService.CreateEventCallback:input_type -> api.v1.CreateEventCallbackRequest
+	109, // 98: api.v1.EventCallbackService.UpdateEventCallback:input_type -> api.v1.UpdateEventCallbackRequest
+	111, // 99: api.v1.EventCallbackService.ListEventCallbacks:input_type -> api.v1.ListEventCallbacksRequest
+	113, // 100: api.v1.EventCallbackService.DeleteEventCallback:input_type -> api.v1.DeleteEventCallbackRequest
+	115, // 101: api.v1.ArcaneService.GetScannerStatus:input_type -> api.v1.ArcaneScannerStatusRequest
+	117, // 102: api.v1.ArcaneService.GetEnvironmentSummary:input_type -> api.v1.ArcaneEnvironmentSummaryRequest
+	120, // 103: api.v1.ArcaneService.ListImages:input_type -> api.v1.ArcaneListImagesRequest
+	123, // 104: api.v1.ArcaneService.GetImageSummary:input_type -> api.v1.ArcaneImageSummaryRequest
+	125, // 105: api.v1.ArcaneService.ListVulnerabilities:input_type -> api.v1.ArcaneListVulnerabilitiesRequest
+	128, // 106: api.v1.CatalogService.GetModelCatalog:input_type -> api.v1.GetModelCatalogRequest
+	132, // 107: api.v1.CatalogService.ListAgentDefinitions:input_type -> api.v1.ListAgentDefinitionsRequest
+	20,  // 108: api.v1.TaskService.SubmitTask:output_type -> api.v1.SubmitTaskResponse
+	22,  // 109: api.v1.TaskService.GetTask:output_type -> api.v1.GetTaskResponse
+	24,  // 110: api.v1.TaskService.ListTasks:output_type -> api.v1.ListTasksResponse
+	26,  // 111: api.v1.TaskService.ExtendTask:output_type -> api.v1.ExtendTaskResponse
+	28,  // 112: api.v1.TaskService.CancelTask:output_type -> api.v1.CancelTaskResponse
+	30,  // 113: api.v1.TaskService.ExportTask:output_type -> api.v1.ExportTaskResponse
+	32,  // 114: api.v1.TaskService.RecoverTask:output_type -> api.v1.RecoverTaskResponse
+	34,  // 115: api.v1.TaskService.RerunTask:output_type -> api.v1.RerunTaskResponse
+	36,  // 116: api.v1.TaskService.ClearQueue:output_type -> api.v1.ClearQueueResponse
+	6,   // 117: api.v1.TaskService.SubscribeTaskEvents:output_type -> api.v1.TaskEvent
+	38,  // 118: api.v1.TaskService.Whoami:output_type -> api.v1.WhoamiResponse
+	42,  // 119: api.v1.EventService.GetTaskEvents:output_type -> api.v1.GetTaskEventsResponse
+	44,  // 120: api.v1.EventService.GetTaskProgress:output_type -> api.v1.GetTaskProgressResponse
+	46,  // 121: api.v1.EventService.GetLatestTaskEvent:output_type -> api.v1.GetLatestTaskEventResponse
+	48,  // 122: api.v1.SessionService.ListSessions:output_type -> api.v1.ListSessionsResponse
+	50,  // 123: api.v1.SessionService.GetSession:output_type -> api.v1.GetSessionResponse
+	52,  // 124: api.v1.SessionService.ResumeSession:output_type -> api.v1.ResumeSessionResponse
+	54,  // 125: api.v1.TriggerService.CreateTrigger:output_type -> api.v1.CreateTriggerResponse
+	56,  // 126: api.v1.TriggerService.UpdateTrigger:output_type -> api.v1.UpdateTriggerResponse
+	58,  // 127: api.v1.TriggerService.ListTriggers:output_type -> api.v1.ListTriggersResponse
+	60,  // 128: api.v1.TriggerService.DeleteTrigger:output_type -> api.v1.DeleteTriggerResponse
+	62,  // 129: api.v1.TriggerService.RunTrigger:output_type -> api.v1.RunTriggerResponse
+	64,  // 130: api.v1.TriggerService.ListTriggerRuns:output_type -> api.v1.ListTriggerRunsResponse
+	66,  // 131: api.v1.FleetService.GetRunnerHealth:output_type -> api.v1.GetRunnerHealthResponse
+	68,  // 132: api.v1.FleetService.SubscribeFleetUpdates:output_type -> api.v1.FleetUpdate
+	76,  // 133: api.v1.AdminService.CreateToken:output_type -> api.v1.CreateTokenResponse
+	78,  // 134: api.v1.AdminService.ListTokens:output_type -> api.v1.ListTokensResponse
+	80,  // 135: api.v1.AdminService.DeleteToken:output_type -> api.v1.DeleteTokenResponse
+	82,  // 136: api.v1.AdminService.CreateTeam:output_type -> api.v1.CreateTeamResponse
+	84,  // 137: api.v1.AdminService.ListTeams:output_type -> api.v1.ListTeamsResponse
+	86,  // 138: api.v1.AdminService.DeleteTeam:output_type -> api.v1.DeleteTeamResponse
+	88,  // 139: api.v1.AdminService.ListUsers:output_type -> api.v1.ListUsersResponse
+	90,  // 140: api.v1.AdminService.ListAuditEvents:output_type -> api.v1.ListAuditEventsResponse
+	92,  // 141: api.v1.AdminService.ListTaskArtifacts:output_type -> api.v1.ListTaskArtifactsResponse
+	94,  // 142: api.v1.AdminService.ListRepos:output_type -> api.v1.ListReposResponse
+	97,  // 143: api.v1.AdminService.CreateGitIdentity:output_type -> api.v1.CreateGitIdentityResponse
+	99,  // 144: api.v1.AdminService.ListGitIdentities:output_type -> api.v1.ListGitIdentitiesResponse
+	101, // 145: api.v1.AdminService.UpdateGitIdentity:output_type -> api.v1.UpdateGitIdentityResponse
+	103, // 146: api.v1.AdminService.DeleteGitIdentity:output_type -> api.v1.DeleteGitIdentityResponse
+	105, // 147: api.v1.AdminService.SetGitIdentityDefault:output_type -> api.v1.SetGitIdentityDefaultResponse
+	70,  // 148: api.v1.AdminService.RunSelfTest:output_type -> api.v1.RunSelfTestResponse
+	72,  // 149: api.v1.AdminService.GetSelfTestStatus:output_type -> api.v1.GetSelfTestStatusResponse
+	108, // 150: api.v1.EventCallbackService.CreateEventCallback:output_type -> api.v1.CreateEventCallbackResponse
+	110, // 151: api.v1.EventCallbackService.UpdateEventCallback:output_type -> api.v1.UpdateEventCallbackResponse
+	112, // 152: api.v1.EventCallbackService.ListEventCallbacks:output_type -> api.v1.ListEventCallbacksResponse
+	114, // 153: api.v1.EventCallbackService.DeleteEventCallback:output_type -> api.v1.DeleteEventCallbackResponse
+	116, // 154: api.v1.ArcaneService.GetScannerStatus:output_type -> api.v1.ArcaneScannerStatusResponse
+	119, // 155: api.v1.ArcaneService.GetEnvironmentSummary:output_type -> api.v1.ArcaneEnvironmentSummaryResponse
+	122, // 156: api.v1.ArcaneService.ListImages:output_type -> api.v1.ArcaneListImagesResponse
+	124, // 157: api.v1.ArcaneService.GetImageSummary:output_type -> api.v1.ArcaneImageSummaryResponse
+	127, // 158: api.v1.ArcaneService.ListVulnerabilities:output_type -> api.v1.ArcaneListVulnerabilitiesResponse
+	131, // 159: api.v1.CatalogService.GetModelCatalog:output_type -> api.v1.GetModelCatalogResponse
+	134, // 160: api.v1.CatalogService.ListAgentDefinitions:output_type -> api.v1.ListAgentDefinitionsResponse
+	108, // [108:161] is the sub-list for method output_type
+	55,  // [55:108] is the sub-list for method input_type
+	55,  // [55:55] is the sub-list for extension type_name
+	55,  // [55:55] is the sub-list for extension extendee
+	0,   // [0:55] is the sub-list for field type_name
 }
 
 func init() { file_proto_api_v1_api_proto_init() }
@@ -10396,15 +10798,15 @@ func file_proto_api_v1_api_proto_init() {
 	file_proto_api_v1_api_proto_msgTypes[4].OneofWrappers = []any{}
 	file_proto_api_v1_api_proto_msgTypes[5].OneofWrappers = []any{}
 	file_proto_api_v1_api_proto_msgTypes[55].OneofWrappers = []any{}
-	file_proto_api_v1_api_proto_msgTypes[101].OneofWrappers = []any{}
-	file_proto_api_v1_api_proto_msgTypes[103].OneofWrappers = []any{}
+	file_proto_api_v1_api_proto_msgTypes[107].OneofWrappers = []any{}
+	file_proto_api_v1_api_proto_msgTypes[109].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_api_v1_api_proto_rawDesc), len(file_proto_api_v1_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   131,
+			NumMessages:   137,
 			NumExtensions: 0,
 			NumServices:   9,
 		},

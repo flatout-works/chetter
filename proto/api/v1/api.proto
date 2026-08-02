@@ -663,6 +663,44 @@ service AdminService {
   rpc UpdateGitIdentity(UpdateGitIdentityRequest) returns (UpdateGitIdentityResponse);
   rpc DeleteGitIdentity(DeleteGitIdentityRequest) returns (DeleteGitIdentityResponse);
   rpc SetGitIdentityDefault(SetGitIdentityDefaultRequest) returns (SetGitIdentityDefaultResponse);
+  rpc RunSelfTest(RunSelfTestRequest) returns (RunSelfTestResponse);
+  rpc GetSelfTestStatus(GetSelfTestStatusRequest) returns (GetSelfTestStatusResponse);
+}
+
+message RunSelfTestRequest {
+  string profile = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message RunSelfTestResponse {
+  SelfTestRun run = 1;
+}
+
+message GetSelfTestStatusRequest {
+  string run_id = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetSelfTestStatusResponse {
+  SelfTestRun run = 1;
+}
+
+message SelfTestRun {
+  string id = 1;
+  string profile = 2;
+  string status = 3;
+  repeated SelfTestCheck checks = 4;
+  string created_at = 5;
+}
+
+message SelfTestCheck {
+  string name = 1;
+  string task_id = 2;
+  string harness = 3;
+  string provider_id = 4;
+  string model_id = 5;
+  string status = 6;
+  bool evidence = 7;
+  string summary = 8;
+  string error = 9;
 }
 
 message CreateTokenRequest {
