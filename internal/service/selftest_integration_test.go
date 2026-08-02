@@ -104,8 +104,13 @@ func TestRunSelfTestProfilesAndAuthorization(t *testing.T) {
 	}
 
 	harnesses, err := svc.selfTestSpecs(context.Background(), "harnesses")
-	if err != nil || len(harnesses) != len(selfTestHarnesses) {
+	if err != nil || len(harnesses) != 5 {
 		t.Fatalf("harness profile = %v, %v", harnesses, err)
+	}
+	for _, spec := range harnesses {
+		if spec.providerID == "" || spec.modelID == "" {
+			t.Fatalf("harness check must pin a provider/model: %+v", spec)
+		}
 	}
 	providers, err := svc.selfTestSpecs(context.Background(), "providers")
 	if err != nil || len(providers) == 0 {

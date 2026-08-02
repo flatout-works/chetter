@@ -128,6 +128,15 @@ func main() {
 }
 
 func startAppServer() (*appServer, error) {
+	home := os.Getenv("CODEX_HOME")
+	if home == "" {
+		home = "/workspace/.codex"
+	}
+	// Codex refuses to start when CODEX_HOME does not exist (e.g. a fresh
+	// workspace whose config was written after the container image was built).
+	if err := os.MkdirAll(home, 0750); err != nil {
+		return nil, fmt.Errorf("ensure CODEX_HOME %q: %w", home, err)
+	}
 	cmd := exec.Command("codex", "app-server", "--listen", "stdio://")
 	cmd.Dir = "/workspace"
 	cmd.Env = os.Environ()

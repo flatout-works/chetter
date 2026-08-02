@@ -22,8 +22,6 @@ const (
 	selfTestTimeoutSec       = 300
 )
 
-var selfTestHarnesses = []string{"opencode", "claude-code", "pi", "codewhale", "codex"}
-
 // RunSelfTestInput starts one of Chetter's built-in deployment self-test profiles.
 type RunSelfTestInput struct {
 	Profile string `json:"profile" jsonschema:"Self-test profile: quick, harnesses, providers, or full"`
@@ -209,7 +207,7 @@ func (s *Service) GetSelfTestStatus(ctx context.Context, runID string) (SelfTest
 func (s *Service) selfTestSpecs(ctx context.Context, profile string) ([]selfTestSpec, error) {
 	switch profile {
 	case "quick":
-		return []selfTestSpec{{name: "quick", harness: "opencode"}}, nil
+		return []selfTestSpec{{name: "quick", harness: "opencode", providerID: "deepseek", modelID: "deepseek-v4-flash"}}, nil
 	case "harnesses":
 		return selfTestHarnessSpecs(), nil
 	case "providers":
@@ -237,12 +235,20 @@ func (s *Service) selfTestSpecs(ctx context.Context, profile string) ([]selfTest
 	}
 }
 
+// selfTestHarnessSpecs returns one check per installed harness, pinned to
+// cheap known-good provider/model combinations. Pinning keeps deployment
+// checks on low-cost models and avoids depending on the active model
+// catalog's per-harness defaults, which may be missing or point at provider
+// names the harness CLI rejects (pi and codewhale, for example, only accept
+// their native provider names and refuse "synthetic").
 func selfTestHarnessSpecs() []selfTestSpec {
-	specs := make([]selfTestSpec, 0, len(selfTestHarnesses))
-	for _, harness := range selfTestHarnesses {
-		specs = append(specs, selfTestSpec{name: "harness:" + harness, harness: harness})
+	return []selfTestSpec{
+		{name: "harness:opencode", harness: "opencode", providerID: "deepseek", modelID: "deepseek-v4-flash"},
+		{name: "harness:claude-code", harness: "claude-code", providerID: "synthetic", modelID: "hf:zai-org/GLM-5.2"},
+		{name: "harness:pi", harness: "pi", providerID: "deepseek", modelID: "deepseek-v4-flash"},
+		{name: "harness:codewhale", harness: "codewhale", providerID: "deepseek", modelID: "deepseek-v4-flash"},
+		{name: "harness:codex", harness: "codex", providerID: "synthetic", modelID: "hf:zai-org/GLM-5.2"},
 	}
-	return specs
 }
 
 func (s *Service) selfTestProviderSpecs(ctx context.Context) ([]selfTestSpec, error) {

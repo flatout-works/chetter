@@ -405,6 +405,11 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		"--include-partial-messages",
 		"--model", model,
 		"--max-turns", "100",
+		// Claude Code v2.1.196+ ignores MCP approvals in project settings for
+		// untrusted folders (headless task workspaces are never trusted), which
+		// leaves .mcp.json servers stuck at "pending approval" with no tools.
+		// Settings passed via --settings apply even in untrusted folders.
+		"--settings", filepath.Join(srv.workspaceDir(), ".claude", "settings.json"),
 	}
 	if req.Agent != "" {
 		systemPrompt := resolveAgentFile(req.Agent)
