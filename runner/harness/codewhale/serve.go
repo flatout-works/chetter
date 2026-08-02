@@ -56,10 +56,12 @@ func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Dura
 func createSession(ctx context.Context, baseURL, secret string) (string, error) {
 	_, modelID := codewhaleModelFields(task.TaskRequest{})
 	payload, _ := json.Marshal(map[string]any{
-		"model":     modelID,
-		"workspace": "/workspace",
-		"mode":      "agent",
-		"archived":  false,
+		"model":        modelID,
+		"workspace":    "/workspace",
+		"mode":         "agent",
+		"archived":     false,
+		"auto_approve": true,
+		"allow_shell":  true,
 	})
 	resp, err := doPost(ctx, baseURL+"/v1/threads", secret, bytes.NewReader(payload))
 	if err != nil {

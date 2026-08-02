@@ -247,7 +247,9 @@ func selfTestHarnessSpecs() []selfTestSpec {
 		{name: "harness:claude-code", harness: "claude-code", providerID: "synthetic", modelID: "hf:zai-org/GLM-5.2"},
 		{name: "harness:pi", harness: "pi", providerID: "deepseek", modelID: "deepseek-v4-flash"},
 		{name: "harness:codewhale", harness: "codewhale", providerID: "deepseek", modelID: "deepseek-v4-flash"},
-		{name: "harness:codex", harness: "codex", providerID: "synthetic", modelID: "hf:zai-org/GLM-5.2"},
+		// DeepSeek's Responses API (api.deepseek.com/responses) is built for
+		// Codex and currently supports only deepseek-v4-flash.
+		{name: "harness:codex", harness: "codex", providerID: "deepseek", modelID: "deepseek-v4-flash"},
 	}
 }
 

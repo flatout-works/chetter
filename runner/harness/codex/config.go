@@ -26,15 +26,27 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	if providerKind == "aws_bedrock" {
 		return generateBedrockConfig(codexDir, model, baseURL, apiKeyEnv, awsProfile, awsRegion, runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 	}
-	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
+	// The responses wire API is the default (OpenAI, and providers such as
+	// DeepSeek that implement /responses for Codex). Providers that only
+	// speak chat completions opt in via a codex harness mapping with
+	// api: openai-completions in the model catalog.
+	wireAPI := "responses"
+	switch strings.TrimSpace(req.ProviderAPI) {
+	case "openai-completions", "chat", "chat-completions":
+		wireAPI = "chat"
+	}
+	return generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, wireAPI, runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken, req.McpEndpoints)
 }
 
-func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
+func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, wireAPI, runnerMCPURL, runnerMCPToken, chetterMCPURL, chetterMCPToken string, endpoints []task.MCPEndpoint) error {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
 	if apiKeyEnv == "" {
 		apiKeyEnv = "OPENAI_API_KEY"
+	}
+	if wireAPI == "" {
+		wireAPI = "responses"
 	}
 
 	var b strings.Builder
@@ -46,7 +58,7 @@ func generateNativeConfig(codexDir, model, baseURL, apiKeyEnv, runnerMCPURL, run
 	b.WriteString("name = \"Chetter\"\n")
 	fmt.Fprintf(&b, "base_url = %s\n", tomlString(baseURL))
 	fmt.Fprintf(&b, "env_key = %s\n", tomlString(apiKeyEnv))
-	b.WriteString("wire_api = \"responses\"\n\n")
+	fmt.Fprintf(&b, "wire_api = %s\n\n", tomlString(wireAPI))
 	writeMCPServer(&b, "runner-bridge", runnerMCPURL, runnerMCPToken)
 	writeMCPServer(&b, "chetter", chetterMCPURL, chetterMCPToken)
 	writeEndpointMCPServers(&b, endpoints)

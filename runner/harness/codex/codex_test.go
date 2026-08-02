@@ -196,3 +196,31 @@ func TestGenerateBedrockConfig(t *testing.T) {
 		t.Fatal("Bedrock config should not contain 'chetter' model provider")
 	}
 }
+
+func TestGenerateNativeConfigWireAPI(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		api      string
+		want     string
+	}{
+		{name: "default uses responses", provider: "deepseek", want: `wire_api = "responses"`},
+		{name: "chat completions opt-in", provider: "custom", api: "openai-completions", want: `wire_api = "chat"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wsDir := t.TempDir()
+			req := task.TaskRequest{ProviderID: tt.provider, ModelID: "m", ProviderBaseURL: "https://api.example.test/v1", ProviderAPI: tt.api}
+			if err := GenerateConfig(wsDir, "", "", "", req); err != nil {
+				t.Fatalf("GenerateConfig: %v", err)
+			}
+			data, err := os.ReadFile(wsDir + "/.codex/config.toml")
+			if err != nil {
+				t.Fatalf("read config: %v", err)
+			}
+			if !strings.Contains(string(data), tt.want) {
+				t.Fatalf("config missing %q:\n%s", tt.want, string(data))
+			}
+		})
+	}
+}
