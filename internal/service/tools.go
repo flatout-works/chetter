@@ -683,6 +683,8 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_recover_task", Description: "Recover a terminal task in a fresh agent session using the previous session export."}, svc.taskRecoverTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_rerun_task", Description: "Create a new task with the same parameters as an existing terminal task (done, error, or cancelled)."}, svc.taskRerunTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_clear_queue", Description: "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true."}, svc.clearQueueTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_run_self_test", Description: "Run a deployment self-test profile through real runners, harnesses, providers, and authenticated MCP tool discovery. Admin only."}, svc.runSelfTestTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_self_test_status", Description: "Get aggregate and per-check status for a deployment self-test run. Admin only."}, svc.selfTestStatusTool)
 	if svc != nil && svc.arcane != nil && svc.arcane.IsConfigured() {
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_scanner_status", Description: "Check if the Arcane Trivy vulnerability scanner is available and get its version."}, svc.arcaneScannerStatusTool)
 		mcp.AddTool(server, &mcp.Tool{Name: "chetter_arcane_environment_summary", Description: "Get aggregated vulnerability counts across all images in the Arcane environment."}, svc.arcaneEnvironmentSummaryTool)

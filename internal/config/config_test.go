@@ -202,6 +202,7 @@ func TestLoad(t *testing.T) {
 		t.Setenv("GITHUB_INSTALLATION_ID", "67890")
 		t.Setenv("GITHUB_APP_PRIVATE_KEY_B64", "cHJpdmF0ZSBrZXk=")
 		t.Setenv("GITHUB_WEBHOOK_SECRET", "secret123")
+		t.Setenv("CHETTER_SELF_TEST_GITHUB_REPO", "flatout-works/diagnostics")
 		cfg := Load()
 		if cfg.GitHubAppID != 12345 {
 			t.Errorf("expected 12345, got %d", cfg.GitHubAppID)
@@ -214,6 +215,9 @@ func TestLoad(t *testing.T) {
 		}
 		if cfg.GitHubWebhookSecret != "secret123" {
 			t.Errorf("webhook secret mismatch")
+		}
+		if cfg.SelfTestGitHubRepo != "flatout-works/diagnostics" {
+			t.Errorf("self-test GitHub repo = %q", cfg.SelfTestGitHubRepo)
 		}
 	})
 	t.Run("github not configured by default", func(t *testing.T) {

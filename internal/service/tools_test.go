@@ -44,6 +44,17 @@ func TestRegisterTools(t *testing.T) {
 			t.Errorf("control-plane MCP unexpectedly exposes %s", tool.Name)
 		}
 	}
+	want := map[string]bool{"chetter_run_self_test": false, "chetter_self_test_status": false}
+	for _, tool := range result.Tools {
+		if _, ok := want[tool.Name]; ok {
+			want[tool.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("control-plane MCP is missing %s", name)
+		}
+	}
 }
 
 func TestDrainRunnerToolRequiresAdmin(t *testing.T) {

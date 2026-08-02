@@ -30,6 +30,7 @@ type Config struct {
 	GitHubWebhookSecret    string
 	GitHubWebhookDisabled  bool
 	GitHubInstallationID   int64
+	SelfTestGitHubRepo     string
 	DefinitionsRepo        string
 	DefinitionsBranch      string
 	WebURL                 string
@@ -75,6 +76,7 @@ func Load() Config {
 		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		GitHubWebhookDisabled:  envBool("GITHUB_WEBHOOK_DISABLED", false),
 		GitHubInstallationID:   envInt64("GITHUB_INSTALLATION_ID", 0),
+		SelfTestGitHubRepo:     os.Getenv("CHETTER_SELF_TEST_GITHUB_REPO"),
 		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
 		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
 		WebURL:                 env("CHETTER_WEB_URL", ""),
