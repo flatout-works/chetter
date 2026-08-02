@@ -95,6 +95,8 @@ Reference example Dockerfiles are in `runner/images/examples/`.
 6. Run `make generate` to regenerate sqlc models for both dialects.
 7. Add an upgrade regression test that starts from the preceding migration version when the migration changes existing data or schema.
 
+**TiDB/MySQL migration peculiarity:** never add multiple columns in one `ALTER TABLE` statement when a later `AFTER` clause references a column added earlier in that same statement. TiDB rejects it with `Error 1054 (Unknown column)` even though the column is being created in the same statement (MySQL accepts it, TiDB does not). Split each column into its own `ALTER TABLE` statement, as in migration 050; 046 and 048 previously hit this. PostgreSQL migrations use no `AFTER` clauses and are unaffected. `internal/store/schema_upgrade_test.go` has regression tests that apply individual MySQL/TiDB migration files against a real TiDB.
+
 ### Adding or Modifying SQL Queries (Dual-Dialect Workflow)
 
 Chetter supports TiDB/MySQL and PostgreSQL. **Every query must exist in both dialect files** with dialect-appropriate syntax. sqlc generates two separate Go packages from these files:
@@ -135,6 +137,7 @@ cd internal/data && go run ./cmd/genfacade   # regenerates the facade methods
 - Using `INSERT IGNORE` in the PostgreSQL file — use `ON CONFLICT ... DO NOTHING` instead.
 - Using `VALUES(col)` in the PostgreSQL file — use `EXCLUDED.col` instead.
 - Forgetting to regenerate the facade after adding a query — the new method won't be callable through the `data.Repository` interface.
+- A multi-column `ALTER TABLE` in `db/migrations/` whose `AFTER` clause references a column added in the same statement — TiDB fails with `Error 1054`. Use one `ALTER TABLE` per column.
 
 ## Auth Model
 
