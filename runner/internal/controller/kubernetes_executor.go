@@ -437,7 +437,7 @@ func kubernetesObjectNotFound(get func() error) (bool, error) {
 func (r *Runner) cleanupKubernetesResourcesAndReport(req task.TaskRequest, name string) bool {
 	if err := r.cleanupKubernetesResources(name); err != nil {
 		slog.Warn("clean up kubernetes agent resources", "taskID", req.TaskID, "name", name, "err", err)
-		r.publishEvent(req.TaskID, fmt.Sprintf("kubernetes cleanup: %v", err))
+		r.publishEvent(req, fmt.Sprintf("kubernetes cleanup: %v", err))
 		return false
 	}
 	return true
@@ -492,13 +492,13 @@ func (r *Runner) runKubernetesAgent(ctx context.Context, session *task.TaskSessi
 	pod, err := r.waitForKubernetesAgent(ctx, name)
 	if err != nil {
 		diagnostics := r.kubernetesDiagnostics(name)
-		r.publishEvent(req.TaskID, diagnostics)
+		r.publishEvent(req, diagnostics)
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("agent pod not ready: %v", err), nil)
 		return
 	}
 	baseURL := "http://" + net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(kubernetesAgentPort))
 	if err := h.WaitForReady(ctx, baseURL, secret, time.Duration(r.cfg.Kubernetes.PodReadyTimeoutSec)*time.Second); err != nil {
-		r.publishEvent(req.TaskID, r.kubernetesDiagnostics(name))
+		r.publishEvent(req, r.kubernetesDiagnostics(name))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("pod harness serve not ready: %v", err), nil)
 		return
 	}
@@ -542,11 +542,11 @@ func (r *Runner) runKubernetesAgent(ctx context.Context, session *task.TaskSessi
 		workspacePath := ""
 		category := classifyErrorCategory(status, message)
 		if category == "transport_error" {
-			r.publishEvent(req.TaskID, r.kubernetesDiagnostics(name))
+			r.publishEvent(req, r.kubernetesDiagnostics(name))
 		}
 		var sessionExport string
 		if r.cleanupKubernetesResourcesAndReport(req, name) {
-			sessionExport = r.readSessionExport(req.TaskID, workspace, sid, h)
+			sessionExport = r.readSessionExport(req, workspace, sid, h)
 		}
 		if req.CheckpointAfterSuccess && (session.PreserveWorkspace || shouldPreserveWorkspaceOnPromptError(category)) {
 			session.PreserveWorkspace = true
@@ -562,7 +562,7 @@ func (r *Runner) runKubernetesAgent(ctx context.Context, session *task.TaskSessi
 	}
 	var sessionExport string
 	if r.cleanupKubernetesResourcesAndReport(req, name) {
-		sessionExport = r.readSessionExport(req.TaskID, workspace, sid, h)
+		sessionExport = r.readSessionExport(req, workspace, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 }
@@ -585,7 +585,7 @@ func (r *Runner) runKubernetesRpcAgent(ctx context.Context, session *task.TaskSe
 	defer r.cleanupKubernetesResourcesAndReport(req, name)
 	r.publishStatusForRequest(req, "running", "Waiting for Kubernetes RPC agent pod...", nil)
 	if _, err := r.waitForKubernetesAgent(ctx, name); err != nil {
-		r.publishEvent(req.TaskID, r.kubernetesDiagnostics(name))
+		r.publishEvent(req, r.kubernetesDiagnostics(name))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("RPC agent pod not ready: %v", err), nil)
 		return
 	}

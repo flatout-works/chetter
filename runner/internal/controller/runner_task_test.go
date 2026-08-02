@@ -867,10 +867,18 @@ func (f *fakeServeHarness) recordedOrder() []string {
 
 // mockEventClient records task event summaries reported via ReportTaskEvents
 // so tests can assert diagnostic events are published during cleanup.
+type recordedTaskEvent struct {
+	taskID         string
+	executionID    string
+	agentSessionID string
+	userPromptID   string
+}
+
 type mockEventClient struct {
 	runnerRPCClient
-	mu     sync.Mutex
-	events []string
+	mu        sync.Mutex
+	events    []string
+	lastEvent recordedTaskEvent
 }
 
 func (m *mockEventClient) ReportTaskEvents(_ context.Context, req *connect.Request[runnerv1.ReportTaskEventsRequest]) (*connect.Response[runnerv1.ReportTaskEventsResponse], error) {
@@ -878,6 +886,12 @@ func (m *mockEventClient) ReportTaskEvents(_ context.Context, req *connect.Reque
 	if req.Msg != nil {
 		for _, e := range req.Msg.Events {
 			m.events = append(m.events, e.Summary)
+			m.lastEvent = recordedTaskEvent{
+				taskID:         e.TaskId,
+				executionID:    e.ExecutionId,
+				agentSessionID: e.AgentSessionId,
+				userPromptID:   e.UserPromptId,
+			}
 		}
 	}
 	m.mu.Unlock()
@@ -888,6 +902,12 @@ func (m *mockEventClient) recordedEvents() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]string(nil), m.events...)
+}
+
+func (m *mockEventClient) recordedTaskEvent() recordedTaskEvent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastEvent
 }
 
 func newShutdownTestRunner() (*Runner, *mockEventClient) {
@@ -902,6 +922,22 @@ func containsEvent(events []string, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestPublishEventIncludesExecutionHierarchy(t *testing.T) {
+	r, mb := newShutdownTestRunner()
+	req := task.TaskRequest{
+		TaskID:         "task_1",
+		ExecutionID:    "exec_1",
+		AgentSessionID: "session_1",
+		UserPromptID:   "prompt_1",
+	}
+
+	r.publishEvent(req, "diagnostic")
+	event := mb.recordedTaskEvent()
+	if event.taskID != req.TaskID || event.executionID != req.ExecutionID || event.agentSessionID != req.AgentSessionID || event.userPromptID != req.UserPromptID {
+		t.Fatalf("event hierarchy = task=%q execution=%q session=%q prompt=%q, want task=%q execution=%q session=%q prompt=%q", event.taskID, event.executionID, event.agentSessionID, event.userPromptID, req.TaskID, req.ExecutionID, req.AgentSessionID, req.UserPromptID)
+	}
 }
 
 // TestShutdownDockerAgentSessionUsesBoundedNonCancelledContext verifies the

@@ -715,7 +715,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
 	if sid != "" {
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
 	if err != nil {
 		status, message := "error", fmt.Sprintf("prompt failed: %v", err)
@@ -798,9 +798,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		inspectOut, _ := exec.Command("docker", "inspect", "-f", "{{json .NetworkSettings.Networks}}", containerName).CombinedOutput()
 		selfCheckOut, _ := exec.Command("docker", "exec", containerName, "sh", "-lc", "curl -sS -o /dev/null -w 'http_code=%{http_code}' -m 2 http://127.0.0.1:9999/config || true").CombinedOutput()
 		slog.Error("harness serve not ready in container", "taskID", req.TaskID, "err", err, "baseURL", baseURL, "networks", strings.TrimSpace(string(inspectOut)), "selfCheck", strings.TrimSpace(string(selfCheckOut)), "logs", string(logs))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
-		r.publishEvent(req.TaskID, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
+		r.publishEvent(req, fmt.Sprintf("container networks: %s", truncateSummary(strings.TrimSpace(string(inspectOut)))))
+		r.publishEvent(req, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
+		r.publishEvent(req, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
 		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container harness serve not ready: %v", err))
 		r.publishStatusForRequest(req, "error", message, nil)
 		return
@@ -847,7 +847,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			statusMessage = oomMessage
 		}
 		if errorCategory == "transport_error" {
-			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+			r.publishDockerPromptFailureDiagnostics(req, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
 		}
 		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
@@ -869,7 +869,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 	if sid != "" {
 		stopTaskContainer(containerName)
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (docker)", req.TaskID), "success", truncateSummary(summary), time.Since(session.StartedAt).Milliseconds())
@@ -987,7 +987,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			statusMessage = oomMessage
 		}
 		if errorCategory == "transport_error" {
-			r.publishDockerPromptFailureDiagnostics(req.TaskID, containerName, baseURL, err)
+			r.publishDockerPromptFailureDiagnostics(req, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
 		}
 		if req.CheckpointAfterSuccess && (shouldPreserveWorkspaceOnPromptError(errorCategory) || session.PreserveWorkspace) {
@@ -1008,7 +1008,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	}
 	if sid != "" {
 		stopTaskContainer(containerName)
-		sessionExport = r.readSessionExport(req.TaskID, session.WorkspaceDir, sid, h)
+		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
 	slog.Info("agent completed on resume", "taskID", req.TaskID)
 	r.publishStatusWithMetadataAndCheckpoint(req, "done", truncateSummary(summary), nil, sid, sessionExport, "", workspacePath, tokenUsage.delta())
@@ -1057,7 +1057,7 @@ func (r *Runner) shutdownDockerAgentSession(req task.TaskRequest, baseURL, sid, 
 		slog.Info("aborting session before shutdown", "taskID", req.TaskID, "sessionID", sid)
 		if abortErr := h.AbortSession(cleanupCtx, baseURL, sid, secret); abortErr != nil {
 			slog.Warn("failed to abort session", "taskID", req.TaskID, "err", abortErr)
-			r.publishEvent(req.TaskID, fmt.Sprintf("session abort failed: %v", abortErr))
+			r.publishEvent(req, fmt.Sprintf("session abort failed: %v", abortErr))
 		}
 		cancel()
 	}
@@ -1065,10 +1065,10 @@ func (r *Runner) shutdownDockerAgentSession(req task.TaskRequest, baseURL, sid, 
 	if sid == "" {
 		return ""
 	}
-	return r.readSessionExport(req.TaskID, wsDir, sid, h)
+	return r.readSessionExport(req, wsDir, sid, h)
 }
 
-func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.ServeHarness) string {
+func (r *Runner) readSessionExport(req task.TaskRequest, wsDir, sid string, h harness.ServeHarness) string {
 	type result struct {
 		export string
 		err    error
@@ -1083,11 +1083,11 @@ func (r *Runner) readSessionExport(taskID, wsDir, sid string, h harness.ServeHar
 		if result.err == nil {
 			return result.export
 		}
-		slog.Warn("session export failed", "taskID", taskID, "err", result.err)
-		r.publishEvent(taskID, fmt.Sprintf("session export: %v", result.err))
+		slog.Warn("session export failed", "taskID", req.TaskID, "err", result.err)
+		r.publishEvent(req, fmt.Sprintf("session export: %v", result.err))
 	case <-time.After(sessionExportTimeout):
-		slog.Warn("session export timed out", "taskID", taskID)
-		r.publishEvent(taskID, "session export timed out")
+		slog.Warn("session export timed out", "taskID", req.TaskID)
+		r.publishEvent(req, "session export timed out")
 	}
 	return ""
 }
@@ -1134,7 +1134,7 @@ func dumpContainerLogs(taskID, containerName, workspaceDir string) {
 	slog.Info("dumped container logs", "taskID", taskID, "path", logPath, "bytes", len(out))
 }
 
-func (r *Runner) publishDockerPromptFailureDiagnostics(taskID, containerName, baseURL string, promptErr error) {
+func (r *Runner) publishDockerPromptFailureDiagnostics(req task.TaskRequest, containerName, baseURL string, promptErr error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -1142,11 +1142,11 @@ func (r *Runner) publishDockerPromptFailureDiagnostics(taskID, containerName, ba
 	health := probeHTTP(ctx, baseURL+"/config")
 	logs := runDiagnosticCommand(ctx, "docker", "logs", "--tail", "200", containerName)
 
-	slog.Warn("opencode prompt transport failure", "taskID", taskID, "err", promptErr, "container", containerName, "container_state", state, "http_probe", health, "logs_tail", logs)
-	r.publishEvent(taskID, fmt.Sprintf("opencode prompt transport failure: %v", promptErr))
-	r.publishEvent(taskID, fmt.Sprintf("opencode container state: %s", truncateSummary(state)))
-	r.publishEvent(taskID, fmt.Sprintf("opencode /config probe: %s", truncateSummary(health)))
-	r.publishEvent(taskID, fmt.Sprintf("opencode container logs tail: %s", truncateSummary(logs)))
+	slog.Warn("opencode prompt transport failure", "taskID", req.TaskID, "err", promptErr, "container", containerName, "container_state", state, "http_probe", health, "logs_tail", logs)
+	r.publishEvent(req, fmt.Sprintf("opencode prompt transport failure: %v", promptErr))
+	r.publishEvent(req, fmt.Sprintf("opencode container state: %s", truncateSummary(state)))
+	r.publishEvent(req, fmt.Sprintf("opencode /config probe: %s", truncateSummary(health)))
+	r.publishEvent(req, fmt.Sprintf("opencode container logs tail: %s", truncateSummary(logs)))
 }
 
 // dockerContainerOOMKilled reports whether the named Docker container was
@@ -1531,10 +1531,10 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 				resultText = text
 			}
 		} else {
-			r.publishEvent(req.TaskID, fmt.Sprintf("%s result: %v", name, err))
+			r.publishEvent(req, fmt.Sprintf("%s result: %v", name, err))
 		}
 	} else {
-		r.publishEvent(req.TaskID, fmt.Sprintf("%s result write: %v", name, err))
+		r.publishEvent(req, fmt.Sprintf("%s result write: %v", name, err))
 	}
 
 	var sessionExport string
@@ -1544,13 +1544,13 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 			sessionExport = renderRPCMessages(resp)
 			if err := writeRPCSessionExport(session.WorkspaceDir, sessionExport); err != nil {
 				slog.Warn("pi session export write failed", "taskID", req.TaskID, "err", err)
-				r.publishEvent(req.TaskID, fmt.Sprintf("session export: %v", err))
+				r.publishEvent(req, fmt.Sprintf("session export: %v", err))
 			}
 		} else {
-			r.publishEvent(req.TaskID, fmt.Sprintf("%s messages: %v", name, err))
+			r.publishEvent(req, fmt.Sprintf("%s messages: %v", name, err))
 		}
 	} else {
-		r.publishEvent(req.TaskID, fmt.Sprintf("%s messages write: %v", name, err))
+		r.publishEvent(req, fmt.Sprintf("%s messages write: %v", name, err))
 	}
 	if ctx.Err() != nil {
 		sessionExport = r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
@@ -1792,7 +1792,7 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		state.terminal = true
 	}
 	if time.Since(state.lastPublished) >= 3*time.Second && state.lastDetail != "" {
-		r.publishEvent(req.TaskID, "pi: "+state.lastDetail)
+		r.publishEvent(req, "pi: "+state.lastDetail)
 		state.lastPublished = time.Now()
 	}
 	return nil
@@ -1939,12 +1939,13 @@ func gvisorNoProxy() string {
 	return "localhost,127.0.0.1,0.0.0.0,.local"
 }
 
-func (r *Runner) publishEvent(taskID, detail string) {
+func (r *Runner) publishEvent(req task.TaskRequest, detail string) {
 	resp := task.TaskResponse{
-		TaskID:  taskID,
-		Status:  "running",
-		Summary: detail,
+		TaskID:      req.TaskID,
+		ExecutionID: req.ExecutionID,
+		Status:      "running",
+		Summary:     detail,
 	}
-	r.decorateTaskResponse(&resp, nil, "")
+	r.decorateTaskResponseForRequest(&resp, req, "")
 	r.reportTaskResponse(resp)
 }
