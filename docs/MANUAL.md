@@ -150,8 +150,20 @@ Managed Git identities control commit attribution for agent work and are configu
 | `GITHUB_APP_ID` | For GitHub app | `0` | GitHub App ID. |
 | `GITHUB_APP_PRIVATE_KEY_B64` | For GitHub app | empty | Base64-encoded GitHub App private key PEM. |
 | `GITHUB_INSTALLATION_ID` | No | `0` | Deprecated single-installation fallback. New deployments should omit it; Chetter resolves the installation from signed webhooks or repository identity. |
+| `CHETTER_SELF_TEST_GITHUB_REPO` | No | — | Dedicated `owner/repo` cloned by the `full` deployment self-test to verify GitHub App credential minting and repository access. |
 | `GITHUB_WEBHOOK_SECRET` | For GitHub webhook | empty | HMAC-SHA256 webhook secret. |
 | `GITHUB_WEBHOOK_DISABLED` | No | `false` | Webhook kill switch. |
+
+### Deployment self-tests
+
+Administrators can start an end-to-end deployment check from the Diagnostics page or with `chetter_run_self_test`. The command requires one of these profiles:
+
+- `quick` checks the default OpenCode and model path.
+- `harnesses` checks OpenCode, Claude Code, Pi, CodeWhale, and Codex with their configured defaults.
+- `providers` checks each model-catalog provider through OpenCode.
+- `full` combines harness and provider checks and adds the GitHub credential check when `CHETTER_SELF_TEST_GITHUB_REPO` is configured.
+
+Every check is a normal runner task. Passing requires a successful terminal task and runner-observed evidence that the harness discovered and invoked the authenticated `chetter_runner_self_test_echo` MCP tool. Use `chetter_self_test_status` with the returned run ID to inspect aggregate and per-check results.
 
 ### Runner And Agent Containers
 

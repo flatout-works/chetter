@@ -38,7 +38,7 @@ func TestGenerateConfigDeniesInteractiveQuestions(t *testing.T) {
 func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
 	wsDir := t.TempDir()
 	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
-	if err := GenerateConfig(wsDir, "http://runner.test/mcp", "", "", req, false); err != nil {
+	if err := GenerateConfig(wsDir, "http://runner.test/mcp", "http://chetter.test/mcp", "chetter-token", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -71,6 +71,14 @@ func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
 	if !ok || headers["Authorization"] != "Bearer runner-token" {
 		t.Fatalf("runner bridge headers = %#v", bridge["headers"])
 	}
+	chetter := mcpConfig.MCPServers["chetter"]
+	if chetter["type"] != "http" || chetter["url"] != "http://chetter.test/mcp" {
+		t.Fatalf("chetter MCP server = %#v", chetter)
+	}
+	chetterHeaders, ok := chetter["headers"].(map[string]any)
+	if !ok || chetterHeaders["Authorization"] != "Bearer chetter-token" {
+		t.Fatalf("chetter MCP headers = %#v", chetter["headers"])
+	}
 
 	settingsData, err := os.ReadFile(filepath.Join(wsDir, ".claude", "settings.json"))
 	if err != nil {
@@ -85,15 +93,21 @@ func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
 	if err := json.Unmarshal(settingsData, &settings); err != nil {
 		t.Fatalf("parse settings: %v", err)
 	}
-	for _, server := range settings.EnabledMCPServers {
-		if server == "runner-bridge" {
-			for _, rule := range settings.Permissions.Allow {
-				if rule == "mcp__runner-bridge__*" {
-					return
-				}
-			}
-			t.Fatalf("runner bridge MCP permission missing: %q", settings.Permissions.Allow)
+	for _, server := range []string{"runner-bridge", "chetter"} {
+		if !contains(settings.EnabledMCPServers, server) {
+			t.Fatalf("MCP server %q approval missing: %q", server, settings.EnabledMCPServers)
+		}
+		if !contains(settings.Permissions.Allow, "mcp__"+server+"__*") {
+			t.Fatalf("MCP server %q permission missing: %q", server, settings.Permissions.Allow)
 		}
 	}
-	t.Fatalf("runner bridge MCP server approval missing: %q", settings.EnabledMCPServers)
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

@@ -36,6 +36,13 @@ func TestGenerateConfig(t *testing.T) {
 		t.Fatalf("read config: %v", err)
 	}
 	config := string(data)
+	info, err := os.Stat(wsDir + "/.codex/config.toml")
+	if err != nil {
+		t.Fatalf("stat config: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("config permissions = %v, want 0600", info.Mode().Perm())
+	}
 	for _, want := range []string{
 		`model = "gpt-5.4"`,
 		`model_provider = "chetter"`,
@@ -44,10 +51,14 @@ func TestGenerateConfig(t *testing.T) {
 		`base_url = "https://api.example.test/v1"`,
 		`env_key = "EXAMPLE_API_KEY"`,
 		`wire_api = "responses"`,
-		`[mcp_servers.runner-bridge]`,
-		`Authorization = "Bearer runner-token"`,
-		`[mcp_servers.chetter]`,
-		`Authorization = "Bearer secret"`,
+		"[mcp_servers.runner-bridge]\n" +
+			"url = \"http://runner.test/mcp\"\n" +
+			"default_tools_approval_mode = \"approve\"\n" +
+			"http_headers = { Authorization = \"Bearer runner-token\" }",
+		"[mcp_servers.chetter]\n" +
+			"url = \"https://chetter.test/mcp\"\n" +
+			"default_tools_approval_mode = \"approve\"\n" +
+			"http_headers = { Authorization = \"Bearer secret\" }",
 		`[mcp_servers.docs]`,
 		`bearer_token_env_var = "DOCS_MCP_TOKEN"`,
 	} {

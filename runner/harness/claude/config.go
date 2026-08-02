@@ -60,6 +60,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		enabledMCPServers = append(enabledMCPServers, "runner-bridge")
 	}
 	if chetterMCPURL != "" {
+		allow = append(allow, "mcp__chetter__*")
 		enabledMCPServers = append(enabledMCPServers, "chetter")
 	}
 

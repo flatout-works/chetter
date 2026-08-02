@@ -33,7 +33,7 @@ Interactive MCP clients may expose the full Chetter API, subject to token scope 
 |---|---|
 | Tasks | `chetter_submit_task`, `chetter_list_tasks`, `chetter_task_status`, `chetter_task_progress`, `chetter_task_events`, `chetter_task_latest_event`, `chetter_task_export`, `chetter_cancel_task`, `chetter_recover_task` |
 | Sessions | `chetter_list_agent_sessions`, `chetter_agent_session_status`, `chetter_resume_agent_session` |
-| Fleet | `chetter_runner_health`, `chetter_drain_runner`, `chetter_clear_queue` |
+| Fleet | `chetter_runner_health`, `chetter_drain_runner`, `chetter_clear_queue`, `chetter_run_self_test`, `chetter_self_test_status` |
 | Triggers | `chetter_create_trigger`, `chetter_update_trigger`, `chetter_list_triggers`, `chetter_delete_trigger`, `chetter_run_trigger`, `chetter_list_trigger_runs` |
 | Event callbacks | `chetter_create_event_callback`, `chetter_update_event_callback`, `chetter_list_event_callbacks`, `chetter_delete_event_callback` |
 | Definitions | `chetter_list_definition_sources`, `chetter_get_definition_source`, `chetter_sync_definition_source`, `chetter_sync_definitions`, `chetter_list_definitions`, `chetter_get_definition`, `chetter_create_definition_proposal`, `chetter_list_definition_proposals`, `chetter_get_definition_proposal` |

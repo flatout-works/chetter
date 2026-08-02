@@ -5,6 +5,10 @@
       "description": "Show chetter runner health, running/pending tasks, and schedules.",
       "template": "Use the chetter MCP tools to produce a concise chetter operations status report. Call chetter_runner_health with include_tasks=true, chetter_list_tasks for status=running with limit=20, chetter_list_tasks for status=pending with limit=20, and chetter_list_triggers. Summarize fleet activity, runner image versions, running/stale/pending task counts, each active task, and all triggers. If an MCP call fails, include the exact error and continue. Do not edit files."
     },
+	"chetter-self-test": {
+	  "description": "Run a Chetter deployment self-test profile and track its checks.",
+	  "template": "Use $ARGUMENTS as the self-test profile (quick, harnesses, providers, or full); default to quick when it is blank. Call chetter_run_self_test with that profile, report the run ID and submitted checks, then poll chetter_self_test_status until the run passes or fails. Summarize each check, including whether runner-observed MCP evidence was recorded. Do not edit files."
+	},
     "chetter-tasks": {
       "description": "List recent Chetter tasks with status summary.",
       "template": "Run chetter_list_tasks to get recent tasks. Summarize: which are running, done, errored, and pending. For running tasks note if any are stale (>10min since last event). Keep output concise."

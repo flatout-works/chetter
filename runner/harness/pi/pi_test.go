@@ -111,8 +111,19 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if !ok || headers["Authorization"] != "Bearer runner-token" {
 		t.Fatalf("runner bridge headers = %#v", runner["headers"])
 	}
-	if _, ok := servers["chetter"]; !ok {
+	if runner["url"] != "http://localhost:9999/mcp" || runner["lifecycle"] != "keep-alive" || runner["idleTimeout"] != float64(0) {
+		t.Fatalf("runner bridge config = %#v", runner)
+	}
+	chetter, ok := servers["chetter"].(map[string]any)
+	if !ok {
 		t.Fatal("expected chetter MCP server")
+	}
+	if chetter["url"] != "https://chetter.example.com/mcp" || chetter["lifecycle"] != "keep-alive" {
+		t.Fatalf("chetter MCP config = %#v", chetter)
+	}
+	chetterHeaders, ok := chetter["headers"].(map[string]any)
+	if !ok || chetterHeaders["Authorization"] != "Bearer token" {
+		t.Fatalf("chetter MCP headers = %#v", chetter["headers"])
 	}
 }
 

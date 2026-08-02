@@ -50,6 +50,9 @@ func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 		if _, ok := config.Servers[name]["type"]; ok {
 			t.Fatalf("CodeWhale server %q must not contain an OpenCode type field: %#v", name, config.Servers[name])
 		}
+		if config.Servers[name]["enabled"] != true {
+			t.Fatalf("CodeWhale server %q is not enabled: %#v", name, config.Servers[name])
+		}
 	}
 	if got := config.Servers["docs"]["bearer_token_env_var"]; got != "DOCS_MCP_TOKEN" {
 		t.Fatalf("docs bearer token env = %v", got)
@@ -57,5 +60,13 @@ func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 	headers, ok := config.Servers["runner-bridge"]["headers"].(map[string]any)
 	if !ok || headers["Authorization"] != "Bearer runner-token" {
 		t.Fatalf("runner bridge headers = %#v", config.Servers["runner-bridge"]["headers"])
+	}
+	chetter := config.Servers["chetter"]
+	if chetter["url"] != "http://chetter.test/mcp" {
+		t.Fatalf("chetter MCP URL = %v", chetter["url"])
+	}
+	chetterHeaders, ok := chetter["headers"].(map[string]any)
+	if !ok || chetterHeaders["Authorization"] != "Bearer secret" {
+		t.Fatalf("chetter MCP headers = %#v", chetter["headers"])
 	}
 }
