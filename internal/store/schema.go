@@ -12,6 +12,10 @@ var schemaStatements = []string{
 		trigger_name VARCHAR(128) NULL,
 		trigger_type VARCHAR(32) NULL,
 		submission_source VARCHAR(32) NOT NULL DEFAULT 'manual',
+		self_test_run_id VARCHAR(64) NULL,
+		self_test_profile VARCHAR(32) NULL,
+		self_test_check VARCHAR(128) NULL,
+		self_test_nonce VARCHAR(128) NULL,
 		max_attempts INT NOT NULL DEFAULT 3,
 		summary TEXT NULL,
 		error TEXT NULL,
@@ -26,6 +30,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_status_created (status, created_at),
 		KEY idx_chetter_tasks_created (created_at),
 		KEY idx_chetter_tasks_trigger_created (trigger_name, created_at),
+		KEY idx_chetter_tasks_self_test_run (self_test_run_id, created_at),
 		FULLTEXT INDEX idx_tasks_search (search_text)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (

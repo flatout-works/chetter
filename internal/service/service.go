@@ -51,6 +51,10 @@ type SubmitTaskRequest struct {
 	TriggerName          string
 	TriggerType          string
 	SubmissionSource     string
+	SelfTestRunID        string
+	SelfTestProfile      string
+	SelfTestCheck        string
+	SelfTestNonce        string
 	SessionMode          string
 	PauseReason          string
 	TTLHours             int
@@ -1045,6 +1049,10 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerName:          nullString(in.TriggerName),
 			TriggerType:          nullString(in.TriggerType),
 			SubmissionSource:     submissionSource,
+			SelfTestRunID:        nullString(in.SelfTestRunID),
+			SelfTestProfile:      nullString(in.SelfTestProfile),
+			SelfTestCheck:        nullString(in.SelfTestCheck),
+			SelfTestNonce:        nullString(in.SelfTestNonce),
 			SearchText:           nullString(taskSearchText),
 			CreatedAt:            now,
 			UpdatedAt:            now,

@@ -545,6 +545,10 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER max_attempts"},
 		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
 		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
+		{"self_test_run_id", "ALTER TABLE chetter_tasks ADD COLUMN self_test_run_id VARCHAR(64) NULL AFTER submission_source"},
+		{"self_test_profile", "ALTER TABLE chetter_tasks ADD COLUMN self_test_profile VARCHAR(32) NULL AFTER self_test_run_id"},
+		{"self_test_check", "ALTER TABLE chetter_tasks ADD COLUMN self_test_check VARCHAR(128) NULL AFTER self_test_profile"},
+		{"self_test_nonce", "ALTER TABLE chetter_tasks ADD COLUMN self_test_nonce VARCHAR(128) NULL AFTER self_test_check"},
 		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
 		{"failure_category", "ALTER TABLE chetter_tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
 		{"failure_message", "ALTER TABLE chetter_tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
@@ -559,6 +563,15 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+		}
+	}
+	indexExists, err := s.indexExists(ctx, "chetter_tasks", "idx_chetter_tasks_self_test_run")
+	if err != nil {
+		return err
+	}
+	if !indexExists {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_chetter_tasks_self_test_run ON chetter_tasks (self_test_run_id, created_at)"); err != nil {
+			return fmt.Errorf("create self-test run index: %w", err)
 		}
 	}
 	return nil

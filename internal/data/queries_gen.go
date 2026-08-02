@@ -123,6 +123,7 @@ type Repository interface {
 	ListReclaimableExecutionAttemptsForUpdate(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExecutionAttemptsForUpdateRow, error)
 	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error)
 	ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error)
+	ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.ChetterTask, error)
 	ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.ChetterTask, error)
 	ListTasksByStatusAndTeam(ctx context.Context, arg repository.ListTasksByStatusAndTeamParams) ([]repository.ChetterTask, error)
 	ListTasksByStatusAndTeams(ctx context.Context, arg repository.ListTasksByStatusAndTeamsParams) ([]repository.ChetterTask, error)
@@ -669,6 +670,11 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg repository.ListTaskEve
 func (q *Queries) ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error) {
 	value, err := q.postgres.ListTaskEventsSince(ctx, convert[repositorypostgres.ListTaskEventsSinceParams](arg))
 	return convert[[]repository.ChetterTaskEvent](value), err
+}
+
+func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.ChetterTask, error) {
+	value, err := q.postgres.ListTasksBySelfTestRun(ctx, convert[sql.NullString](selfTestRunID))
+	return convert[[]repository.ChetterTask](value), err
 }
 
 func (q *Queries) ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.ChetterTask, error) {

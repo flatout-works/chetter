@@ -138,7 +138,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks WHERE id = $1
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks WHERE id = $1
 `
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, error) {
@@ -166,14 +166,18 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 		&i.FailureMessage,
 		&i.GithubRepo,
 		&i.GithubInstallationID,
+		&i.SelfTestRunID,
+		&i.SelfTestProfile,
+		&i.SelfTestCheck,
+		&i.SelfTestNonce,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 `
 
 type InsertTaskParams struct {
@@ -187,6 +191,10 @@ type InsertTaskParams struct {
 	TriggerName          sql.NullString `json:"trigger_name"`
 	TriggerType          sql.NullString `json:"trigger_type"`
 	SubmissionSource     string         `json:"submission_source"`
+	SelfTestRunID        sql.NullString `json:"self_test_run_id"`
+	SelfTestProfile      sql.NullString `json:"self_test_profile"`
+	SelfTestCheck        sql.NullString `json:"self_test_check"`
+	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
 	SearchText           sql.NullString `json:"search_text"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`
@@ -204,6 +212,10 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.TriggerName,
 		arg.TriggerType,
 		arg.SubmissionSource,
+		arg.SelfTestRunID,
+		arg.SelfTestProfile,
+		arg.SelfTestCheck,
+		arg.SelfTestNonce,
 		arg.SearchText,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -211,8 +223,63 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 	return err
 }
 
+const listTasksBySelfTestRun = `-- name: ListTasksBySelfTestRun :many
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
+WHERE self_test_run_id = $1
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]ChetterTask, error) {
+	rows, err := q.db.QueryContext(ctx, listTasksBySelfTestRun, selfTestRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChetterTask{}
+	for rows.Next() {
+		var i ChetterTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.TeamID,
+			&i.Status,
+			&i.Prompt,
+			&i.GitUrl,
+			&i.GitRef,
+			&i.TriggerName,
+			&i.TriggerType,
+			&i.SubmissionSource,
+			&i.MaxAttempts,
+			&i.Summary,
+			&i.Error,
+			&i.ErrorCategory,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EndedAt,
+			&i.SearchText,
+			&i.FailureCategory,
+			&i.FailureMessage,
+			&i.GithubRepo,
+			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
 WHERE ($1 = '' OR chetter_tasks.status = $1)
   AND (COALESCE($2, '') = '' OR chetter_tasks.trigger_name = $2)
   AND (COALESCE($3, '') = '' OR EXISTS (
@@ -268,6 +335,10 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.FailureMessage,
 			&i.GithubRepo,
 			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
 		); err != nil {
 			return nil, err
 		}
@@ -283,7 +354,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
 WHERE chetter_tasks.team_id = $1
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -342,6 +413,10 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.FailureMessage,
 			&i.GithubRepo,
 			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
 		); err != nil {
 			return nil, err
 		}
@@ -357,7 +432,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
 WHERE chetter_tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -416,6 +491,10 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.FailureMessage,
 			&i.GithubRepo,
 			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +579,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
 WHERE ($1 = '' OR chetter_tasks.team_id = $1)
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -562,6 +641,10 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 			&i.FailureMessage,
 			&i.GithubRepo,
 			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
 		); err != nil {
 			return nil, err
 		}
@@ -577,7 +660,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id FROM chetter_tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
 WHERE chetter_tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR chetter_tasks.status = $2)
   AND (COALESCE($3, '') = '' OR chetter_tasks.trigger_name = $3)
@@ -639,6 +722,10 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.FailureMessage,
 			&i.GithubRepo,
 			&i.GithubInstallationID,
+			&i.SelfTestRunID,
+			&i.SelfTestProfile,
+			&i.SelfTestCheck,
+			&i.SelfTestNonce,
 		); err != nil {
 			return nil, err
 		}

@@ -1,10 +1,15 @@
 -- name: InsertTask :exec
 INSERT INTO chetter_tasks
-    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
 
 -- name: GetTaskByID :one
 SELECT * FROM chetter_tasks WHERE id = $1;
+
+-- name: ListTasksBySelfTestRun :many
+SELECT * FROM chetter_tasks
+WHERE self_test_run_id = $1
+ORDER BY created_at ASC, id ASC;
 
 -- name: PinTaskGitHubInstallation :execrows
 UPDATE chetter_tasks

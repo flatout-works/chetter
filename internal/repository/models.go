@@ -199,6 +199,10 @@ type ChetterTask struct {
 	FailureMessage       sql.NullString `json:"failure_message"`
 	GithubRepo           sql.NullString `json:"github_repo"`
 	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
+	SelfTestRunID        sql.NullString `json:"self_test_run_id"`
+	SelfTestProfile      sql.NullString `json:"self_test_profile"`
+	SelfTestCheck        sql.NullString `json:"self_test_check"`
+	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
 }
 
 type ChetterTaskArtifact struct {
