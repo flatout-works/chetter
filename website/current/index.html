@@ -639,7 +639,7 @@
           <div class="cell reveal"><span class="num">01</span><h3>True open source</h3><p>MIT, no hosted service. Clone it, run it, own the execution path.</p></div>
           <div class="cell reveal"><span class="num">02</span><h3>Standard harnesses</h3><p>Execution delegated to existing CLI agents. No custom runtime.</p></div>
           <div class="cell reveal"><span class="num">03</span><h3>Docker or Kubernetes</h3><p>Standard containers anywhere. gVisor when you need a hard boundary.</p></div>
-          <div class="cell reveal"><span class="num">04</span><h3>GitHub-native</h3><p>Agents open PRs, triage issues, post reviews — with managed Git identities.</p></div>
+          <div class="cell reveal"><span class="num">04</span><h3>GitHub-native</h3><p>Agents open PRs, triage issues, post reviews — one App across many accounts, with managed Git identities.</p></div>
           <div class="cell reveal"><span class="num">05</span><h3>Plain containers</h3><p>The agent image is a normal Docker image with your stack in it.</p></div>
           <div class="cell reveal"><span class="num">06</span><h3>API &amp; MCP first</h3><p>Everything is a ConnectRPC endpoint and an MCP tool. The UI just observes.</p></div>
         </div>
@@ -658,7 +658,7 @@
           <div class="row"><span class="k">automation</span><span class="v">Cron, generic webhooks, GitHub PR-review &amp; issue triggers. Config can live in Git.</span></div>
           <div class="row"><span class="k">sessions</span><span class="v">Pause mid-task, resume on the same runner, recover with a custom prompt, re-run anything.</span></div>
           <div class="row"><span class="k">models</span><span class="v">Any provider — OpenAI-compatible, native, Bedrock, LiteLLM. Data-driven catalog.</span></div>
-          <div class="row"><span class="k">isolation</span><span class="v">Per-task Docker networks block lateral movement; CPU, PID &amp; memory limits contain runaway tasks. gVisor adds a userspace kernel.</span></div>
+          <div class="row"><span class="k">isolation</span><span class="v">Per-task Docker networks block lateral movement; per-task memory/CPU plus runner CPU/PID/memory caps contain runaway tasks, OOM classified as <code>resource_limit</code>. gVisor adds a userspace kernel.</span></div>
           <div class="row"><span class="k">operations</span><span class="v">Audit log, event streams, token &amp; cost summaries, runner fleet health.</span></div>
           <div class="row"><span class="k">database</span><span class="v">TiDB, MySQL, or PostgreSQL — auto-detected, auto-migrated.</span></div>
           <div class="row"><span class="k">clients</span><span class="v">Any MCP client, the <code>chetterctl</code> CLI, or the web UI.</span></div>
