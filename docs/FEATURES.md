@@ -157,6 +157,7 @@ Chetter supports:
 - Admin token auth for global access.
 - Team tokens stored hashed in the configured database.
 - Optional token expiry via the `expires_in_hours` field on `chetter_create_token`; expired tokens are rejected at authentication time.
+- Optional OIDC/OAuth single sign-on (Okta SSO and other OIDC-compliant IdPs) for the web UI, issuing short-lived signed session cookies.
 - Automatic `team_id` stamping for tasks, triggers, schedule runs, and sessions.
 - Team-scoped reads for non-admin tokens.
 

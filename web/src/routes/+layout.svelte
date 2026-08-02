@@ -13,6 +13,7 @@
   import { createClient } from "@connectrpc/connect";
   import { TaskService } from "$gen/proto/api/v1/api_pb";
   import { getTransport, getToken } from "$lib/api/client";
+  import { getOIDCEnabled } from "$lib/stores/serverInfo.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import FilterBar from "$lib/components/FilterBar.svelte";
@@ -22,6 +23,7 @@
 
   let serverInfo = $derived(getServerInfo());
   const webGitHash = __WEB_GIT_HASH__;
+  let oidcEnabled = $derived(getOIDCEnabled());
 
   let sidebarOpen = $state(false);
   let sidebarCollapsed = $state(false);
@@ -66,9 +68,9 @@
       (async () => {
         try {
           const token = getToken();
-          const res = await fetch("/api/v1/repos", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const headers: Record<string, string> = {};
+          if (token) headers["Authorization"] = `Bearer ${token}`;
+          const res = await fetch("/api/v1/repos", { headers });
           if (!res.ok) return;
           const data = await res.json();
           whoamiRepos = data.repos ?? [];
@@ -257,16 +259,21 @@
             {authState.error}
           </Alert>
         {/if}
-        <form onsubmit={handleLogin}>
-          <Label for="token" class="mb-2">API Token</Label>
-          <Input
-            id="token"
-            type="password"
-            bind:value={token}
-            placeholder="Enter your bearer token"
-          />
-          <Button type="submit" color="blue" class="w-full mt-4">Sign In</Button>
-        </form>
+        {#if oidcEnabled}
+          <p class="text-gray-500 dark:text-gray-400 text-sm mb-4">This Chetter instance is secured with your organization's single sign-on.</p>
+          <Button onclick={() => (window.location.href = "/auth/login")} color="blue" class="w-full">Sign in with SSO</Button>
+        {:else}
+          <form onsubmit={handleLogin}>
+            <Label for="token" class="mb-2">API Token</Label>
+            <Input
+              id="token"
+              type="password"
+              bind:value={token}
+              placeholder="Enter your bearer token"
+            />
+            <Button type="submit" color="blue" class="w-full mt-4">Sign In</Button>
+          </form>
+        {/if}
       </Card>
     </div>
   </div>

@@ -121,6 +121,17 @@ chetterctl token create --team engineering --user alice --name alice-cli
 
 Team tokens can optionally expire. The `chetter_create_token` MCP tool accepts an optional `expires_in_hours` field; omission or zero means no expiry. Expired tokens are rejected at authentication time. `chetter_list_tokens` exposes the `expires_at` timestamp (null when no expiry is set).
 
+### OIDC SSO for the Web UI
+
+When the OIDC environment variables below are set, the web UI supports login through an OIDC provider (Okta and any other OIDC-compliant IdP). The flow:
+
+- The unauthenticated UI redirects to `/auth/login`, which sends the browser to the IdP's authorization endpoint.
+- `/auth/callback` exchanges the code, verifies the ID token (signature, issuer, audience, nonce), maps the user's groups to a Chetter scope, and issues a short-lived signed session cookie (`chetter_session`, HttpOnly).
+- The ConnectRPC web API and `/api/v1/repos` accept the session cookie in addition to bearer tokens. MCP/runner endpoints remain bearer-token-only.
+- Logout clears the cookie and redirects to the IdP's end-session endpoint when the provider advertises one.
+
+Group-to-scope mapping (configurable): the `OIDC_ADMIN_GROUP` (default `chetter-admin`) grants full admin scope; any group matching `OIDC_TEAM_GROUP_PREFIX` (default `chetter-`) maps to a team named after the suffix, resolved to the matching team in the database when one exists. Sessions are stateless JWTs signed with `OIDC_SESSION_SECRET` (or a key derived from `MCP_AUTH_TOKEN`); no session table is used.
+
 Managed Git identities control commit attribution for agent work and are configured via `chetterctl identity` or the **Admin > Git Identities** UI — see [CONFIGURATION.md](CONFIGURATION.md#managed-git-identities).
 
 ## Environment Variables
@@ -153,6 +164,14 @@ Managed Git identities control commit attribution for agent work and are configu
 | `CHETTER_SELF_TEST_GITHUB_REPO` | No | — | Dedicated `owner/repo` cloned by the `full` deployment self-test to verify GitHub App credential minting and repository access. |
 | `GITHUB_WEBHOOK_SECRET` | For GitHub webhook | empty | HMAC-SHA256 webhook secret. |
 | `GITHUB_WEBHOOK_DISABLED` | No | `false` | Webhook kill switch. |
+| `OIDC_ISSUER_URL` | For OIDC SSO | empty | OIDC provider issuer URL (Okta: `https://<tenant>.okta.com`). When set with `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL`, the web UI enables SSO login. |
+| `OIDC_CLIENT_ID` | For OIDC SSO | empty | OIDC client ID registered with the IdP. |
+| `OIDC_CLIENT_SECRET` | For OIDC SSO | empty | OIDC client secret. |
+| `OIDC_REDIRECT_URL` | For OIDC SSO | empty | OIDC redirect URL, must match the IdP app registration (e.g. `https://chetter.example.com/auth/callback`). |
+| `OIDC_ADMIN_GROUP` | No | `chetter-admin` | IdP group that grants full admin scope. |
+| `OIDC_TEAM_GROUP_PREFIX` | No | `chetter-` | IdP group prefix for team mapping: `chetter-<team>` maps to team `<team>`. Empty disables team mapping. |
+| `OIDC_SESSION_SECRET` | No | derived from `MCP_AUTH_TOKEN` | HMAC key signing web session JWTs. Rotating it (or `MCP_AUTH_TOKEN` when unset) signs out all web sessions. |
+| `OIDC_SESSION_TTL` | No | `8h` | Web session lifetime (Go duration, e.g. `1h`, `24h`). |
 
 ### Deployment self-tests
 

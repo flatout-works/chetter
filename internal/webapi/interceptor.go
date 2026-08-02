@@ -11,14 +11,18 @@ import (
 )
 
 // authInterceptor implements connect.Interceptor, wrapping both unary
-// and streaming handlers with Bearer token validation.
+// and streaming handlers with authentication. Bearer tokens (admin MCP
+// token or DB API tokens) are validated first; when OIDC is configured,
+// a valid web session cookie is accepted as a fallback so the SPA can use
+// SSO sessions alongside token-based access.
 type authInterceptor struct {
 	adminToken string
 	db         *sql.DB
+	oidc       *auth.OIDCAuth
 }
 
-func NewAuthInterceptor(adminToken string, db *sql.DB) connect.Interceptor {
-	return &authInterceptor{adminToken: adminToken, db: db}
+func NewAuthInterceptor(adminToken string, db *sql.DB, oidc *auth.OIDCAuth) connect.Interceptor {
+	return &authInterceptor{adminToken: adminToken, db: db, oidc: oidc}
 }
 
 func (a *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
@@ -46,8 +50,16 @@ func (a *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) 
 }
 
 func (a *authInterceptor) resolve(ctx context.Context, h http.Header) (auth.Scope, bool) {
-	token := bearerToken(h)
-	return auth.ResolveToken(ctx, a.adminToken, a.db, token)
+	scope, ok := auth.ResolveToken(ctx, a.adminToken, a.db, bearerToken(h))
+	if ok {
+		return scope, true
+	}
+	if a.oidc != nil {
+		if sessionScope, ok := a.oidc.ScopeFromCookie(h); ok {
+			return sessionScope, true
+		}
+	}
+	return auth.Scope{}, false
 }
 
 func bearerToken(h http.Header) string {

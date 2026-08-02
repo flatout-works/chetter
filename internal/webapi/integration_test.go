@@ -407,7 +407,7 @@ func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 	svc := service.New(cfg, st)
 	bus := NewEventBus()
 	mux := http.NewServeMux()
-	RegisterHandlers(mux, NewHandlers(svc, bus), webAPITestAdminToken, st.DB())
+	RegisterHandlers(mux, NewHandlers(svc, bus), webAPITestAdminToken, st.DB(), nil)
 	server := httptest.NewServer(mux)
 	return server, func() {
 		server.Close()
