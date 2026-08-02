@@ -1,6 +1,8 @@
 # Task and Agent Session Model Refactor
 
-Status: **Completed**
+Status: **Completed design doc** — the refactor shipped. Current behavior is
+documented in [SESSIONS.md](../SESSIONS.md); this document is the historical
+design and migration record.
 
 ## Goal
 

@@ -114,7 +114,7 @@ type Harness interface {
 
 ## Task MCP Endpoints
 
-MCP endpoints let tasks connect to remote HTTP or SSE MCP servers. Each endpoint is defined as a YAML file in the config repo (see [MCP Endpoints](MANUAL.md#mcp-endpoints) in the manual). At claim time the server resolves endpoint names to full definitions and sends them to the runner; the runner validates the bearer-token environment variable, prevents task env from overriding it, and imports it into the task container with `-e NAME` (bare name, no `=value`) so the value never appears in Docker arguments.
+MCP endpoints let tasks connect to remote HTTP or SSE MCP servers. Each endpoint is defined as a YAML file in the config repo (see [MCP Endpoints](CONFIGURATION.md#mcp-endpoints)). At claim time the server resolves endpoint names to full definitions and sends them to the runner; the runner validates the bearer-token environment variable, prevents task env from overriding it, and imports it into the task container with `-e NAME` (bare name, no `=value`) so the value never appears in Docker arguments.
 
 ### Harness bearer token reference syntax
 

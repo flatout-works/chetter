@@ -482,7 +482,7 @@ Primary files:
 Primary files:
 
 - `docs/MANUAL.md`
-- `docs/REVIEWS.md`
+- `docs/TRIGGERS.md` (formerly `docs/REVIEWS.md`)
 - `docs/EKS.md`
 - `AGENTS.md`
 - `compose.yaml`

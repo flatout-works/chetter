@@ -2,7 +2,7 @@
 
 Status: **Archived implementation plan**
 
-The PR reviewer feature has shipped. Use [REVIEWS.md](REVIEWS.md) for current architecture and operations. This document remains as historical implementation context only.
+The PR reviewer feature has shipped. Use [TRIGGERS.md](../TRIGGERS.md) for current architecture and operations. This document remains as historical implementation context only.
 
 ## Overview
 

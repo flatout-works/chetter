@@ -402,7 +402,7 @@ Required regression tests for already-fixed work:
 3. Ship P1 lifecycle barriers and resource enforcement.
 4. Ship P2 SQL, migration, scheduler, webhook, callback, and stream correctness.
 5. Refactor server and runner modules behind the tested seams.
-6. Update `docs/PLAN.md`, `docs/FEATURES.md`, and `docs/TASK_SESSION_MODEL_REFACTOR.md` to distinguish data-model completion from remaining operational hardening.
+6. Update `docs/PLAN.md`, `docs/FEATURES.md`, and `docs/research/TASK_SESSION_MODEL_REFACTOR.md` to distinguish data-model completion from remaining operational hardening.
 
 Each phase should land independently with its focused tests and a rollback path. No phase should silently preserve an insecure fallback while the new path is unavailable.
 

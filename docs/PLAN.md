@@ -30,15 +30,17 @@ The docs need consolidation before or alongside this work. Several files describ
 | File | Current role | Action taken |
 |---|---|---|
 | `README.md` | Documentation index | Kept as entry point for docs navigation. |
-| `MANUAL.md` | Canonical operator guide | Trimmed: K8s deployment moved to EKS.md link, harness matrix moved to HARNESSES.md link, planned injection moved to PLAN.md. |
-| `FEATURES.md` | Capability inventory | Trimmed: env vars and MCP tool tables replaced with links to MANUAL.md; harness table replaced with link to HARNESSES.md. |
-| `SCHEDULES.md` | Cron trigger guide | Kept as focused how-to. |
-| `REVIEWS.md` | Current PR review architecture | Kept as canonical PR review docs. |
-| `CONFIGURATION.md` | Configuration-as-code + model catalog | **New**: merged from `CONFIG_IN_GIT.md` + `MODEL_CATALOG.md` (both deleted). |
+| `MANUAL.md` | Canonical operator guide | Slimmed again (2026-08): deployment and gVisor content moved to `DEPLOYMENT.md`, agent image content to `IMAGES.md`, definitions YAML reference to `CONFIGURATION.md`. |
+| `FEATURES.md` | Capability inventory | Kept; trimmed tables replaced with links to MANUAL.md. |
+| `TRIGGERS.md` | Trigger reference | **New**: merged `SCHEDULES.md` + `REVIEWS.md` into one cron + PR review guide. |
+| `SESSIONS.md` | Resumable session reference | Renamed from `PAUSED_SESSIONS.md`. |
+| `CONFIGURATION.md` | Configuration-as-code + model catalog | Absorbed the definitions-repo YAML reference, managed Git identities, and MCP endpoints sections from MANUAL.md. |
 | `HARNESSES.md` | Runner harness reference | Kept as canonical harness architecture docs. |
-| `PAUSED_SESSIONS.md` | Resumable session reference | Kept. |
-| `K3S.md` | Canonical local k3s guide | Merged k3s setup and full-stack validation into one document. |
+| `DEPLOYMENT.md` | Deployment and sandboxing | **New**: Docker + gVisor setup, Kubernetes gVisor DaemonSet/RuntimeClass, graceful shutdown, network isolation (from MANUAL.md). |
+| `IMAGES.md` | Agent images | **New**: image sources, resolution, variants, custom images, container contract (from MANUAL.md). |
+| `K3S.md` | Canonical local k3s guide | Kept. |
 | `EKS.md` | EKS production guide | Kept. |
+| `EXECUTION.md` | Execution backend contract | Kept as canonical backend reference. |
 | `PLAN.md` | This roadmap | Updated. |
 
 ### Completed Restructure
@@ -50,25 +52,34 @@ docs/
   FEATURES.md               # slim capability inventory
   PLAN.md                   # roadmap
   HARNESSES.md              # harness architecture
-  SCHEDULES.md             # cron trigger how-to
-  REVIEWS.md               # PR review automation
-  PAUSED_SESSIONS.md        # resumable sessions
-  CONFIGURATION.md          # definitions repo + model catalog (merged)
+  TRIGGERS.md               # cron schedules + PR review automation (merged)
+  SESSIONS.md               # resumable sessions (was PAUSED_SESSIONS.md)
+  CONFIGURATION.md          # definitions repo + model catalog
+  PROVIDERS.md              # provider support matrix
+  LITELLM.md                # LiteLLM gateway integration
+  EXECUTION.md              # execution backends
+  DEPLOYMENT.md             # deployment + sandboxing guides
+  IMAGES.md                 # agent images
   K3S.md                    # k3s + gVisor setup
   EKS.md                    # EKS production guide
+  PRIVATEFORK.md            # private fork workflow
+  TIDB-WOWBAGGER.md         # TiDB ops runbook
   presentation/
   testing/
     k3d-gvisor.md
+  plans/
   research/
     OPENHANDS.md
     DAYTONA.md
     GVISOR.md
-    SNAPSHOTS.md            # moved from docs/; updated to reflect partial implementation
-    REVIEWER.md             # moved from docs/; archived implementation plan
-    UNIVERSAL_HARNESS.md    # moved from docs/; implemented design doc
+    SNAPSHOTS.md
+    REVIEWER.md
+    UNIVERSAL_HARNESS.md
+    TASK_SESSION_MODEL_REFACTOR.md      # moved from docs/ (completed design doc)
+    REPOSITORY_QUALITY_REVIEW.md        # moved from docs/ (dated review)
 ```
 
-**Status:** Completed 2026-07-02. `MANUAL.md` is now the backbone document with links to specialized docs. `FEATURES.md` is a slim capability scan. `CONFIG_IN_GIT.md` and `MODEL_CATALOG.md` merged into `CONFIGURATION.md`. `REVIEWER.md`, `UNIVERSAL_HARNESS.md`, and `SNAPSHOTS.md` moved to `research/`. Overlapping env var tables, MCP tool tables, and harness matrices de-duplicated — `MANUAL.md` is the single source of truth for those.
+**Status:** Completed 2026-07-02, re-run 2026-08-02. `MANUAL.md` is the backbone document with links to specialized docs; `FEATURES.md` is a slim capability scan; `SCHEDULES.md` and `REVIEWS.md` merged into `TRIGGERS.md`; `PAUSED_SESSIONS.md` renamed to `SESSIONS.md`; deployment, images, and definitions-reference content moved out of `MANUAL.md` into `DEPLOYMENT.md`, `IMAGES.md`, and `CONFIGURATION.md`; `TASK_SESSION_MODEL_REFACTOR.md` and `REPOSITORY_QUALITY_REVIEW.md` moved to `research/`.
 
 ### Milestone 1 Documentation Fixes
 
@@ -105,6 +116,11 @@ Deliverables:
 
 ### P1: Resumable Agent Sessions And PR Feedback Loops
 
+Status: **Completed 2026-07-23** — the Task/AgentSession/UserPrompt/ExecutionAttempt model shipped
+(see `docs/research/TASK_SESSION_MODEL_REFACTOR.md`), manual resume, recovery with custom
+prompts, and webhook-driven review feedback are live. gVisor checkpoint/restore remains
+runtime-dependent; see `docs/SESSIONS.md`.
+
 Why next:
 
 Chetter's biggest product gap is that agents are still mostly one-shot. OpenHands' strongest relevant pattern is conversation lifecycle management. Chetter now has the data model and tools to build this without changing the whole control plane.
@@ -132,6 +148,10 @@ Definition of done:
 A scheduled authoring agent can create a PR, pause with a preserved workspace, receive review feedback, resume the same session on the pinned runner, update the PR branch, and expose the full session/run history in MCP and the web UI.
 
 ### P2: Configuration As Code For All Automation
+
+Status: **Completed 2026-07-30** — agents, skills, triggers, task templates, MCP endpoints,
+and the model catalog all sync from the definitions repo with read/proposal tooling; team
+scoping of definitions is enforced. See `docs/CONFIGURATION.md`.
 
 Why next:
 
@@ -194,6 +214,10 @@ Definition of done:
 Tasks show structured setup progress before agent execution, and a repo can ship its own reviewed skills and setup instructions without baking them into runner images.
 
 ### P4: Event Callbacks And More Trigger Types
+
+Status: **Partially completed** — event callbacks (list/create/edit/delete, delivery queue with
+retry/backoff and dead-lettering) shipped. A unified inbound/outbound webhook platform is
+planned in `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
 
 Why next:
 
@@ -260,109 +284,10 @@ Kubernetes mode (new):
               - operator-provided shared workspace, execution-only subPath mount
 ```
 
-#### Historical Phases
-
-The phase list below records the original proposal and is not the current implementation
-contract. In particular, the recovered executor does not use `emptyDir`, ConfigMap workspace
-archives, per-session PVC creation, or a workspace sidecar. See `docs/EXECUTION.md` for the
-current contract.
-
-**Phase 1: Execution Backend Abstraction**
-
-Extract current execution logic behind an interface.
-
-- Define `ExecutionBackend` interface in `runner/internal/controller/executor.go`.
-- Move `runDockerAgent` / `runDockerAgentResume` into `DockerExecutor`.
-- Move `runLocalAgent` into `LocalExecutor`.
-- Config: `EXECUTION_BACKEND=docker|local|kubernetes` (default: `docker`).
-  Use `EXECUTION_BACKEND` as the sole execution backend selector.
-- `KubernetesExecutor` stub: returns "not implemented".
-- No behavior change for existing paths. `make check` passes.
-
-**Phase 2: Shared Harness Driver**
-
-Extract harness HTTP interaction logic so both backends share it.
-
-- Extract into `runner/internal/controller/harness_driver.go`:
-  wait ready, create session, watch events, send prompt, abort session,
-  read export, classify errors, publish terminal result.
-- Docker and Kubernetes executors differ only in workspace creation, agent
-  process start/networking, and cleanup.
-- `make check` passes. No behavior change.
-
-**Phase 3: Kubernetes Executor — Non-Resumable MVP**
-
-Create one Pod per task with `emptyDir` workspace, connect by Pod IP.
-
-- Implement `KubernetesExecutor` in `runner/internal/controller/kubernetes_executor.go`.
-- Add Kubernetes client-go dependency to `runner/go.mod`.
-- Config: `KUBERNETES_NAMESPACE`, `KUBERNETES_RUNTIME_CLASS`,
-  `KUBERNETES_CLEANUP_AFTER_TASK`, `KUBERNETES_AGENT_IMAGE_PULL_POLICY`.
-- Pod creation: init container clones repo, agent container runs harness,
-  optional workspace-mcp sidecar, shared `emptyDir` at `/workspace`.
-- Runner flow: create Pod, wait for Running, read Pod IP, connect to
-  `http://<podIP>:9999`, drive harness via shared driver, collect export,
-  delete Pod.
-- Error handling: Pod stuck/Failed → fetch events, logs, container status;
-  classify and publish. Transport errors use same diagnostics as Docker mode.
-- Works on k3s without gVisor (empty `KUBERNETES_RUNTIME_CLASS`).
-
-**Phase 4: Runner Manifests And RBAC**
-
-Production-ready manifests for Kubernetes backend.
-
-- `deploy/k8s/runner-kubernetes-deployment.yaml` — no Docker socket.
-- `deploy/k8s/runner-rbac.yaml` — ServiceAccount, Role (pods, pods/log,
-  configmaps, secrets, PVCs), RoleBinding.
-- `deploy/k3s/kubernetes-runner.yaml` — k3s local testing variant.
-- Existing Docker-mode manifests remain unchanged.
-
-**Phase 5: gVisor Validation On k3s**
-
-Prove Kubernetes executor works with `runtimeClassName: gvisor`.
-
-- Follow `docs/K3S.md` for k3s + gVisor setup.
-- Deploy full Chetter stack on k3s per `docs/K3S.md`.
-- Submit trivial task, verify:
-  - Runner creates `chetter-task-*` Pod with `runtimeClassName: gvisor`.
-  - Agent harness starts and responds.
-  - Task reaches `done`.
-  - Pod is cleaned up.
-- Verify non-gVisor path too (empty `KUBERNETES_RUNTIME_CLASS`).
-
-Validated on single-node k3s with gVisor: task Pod creation, harness response, terminal
-`done` state, resumable-session follow-up over the preserved workspace, and Pod/Secret
-cleanup. The non-gVisor variant remains to be smoke-tested separately.
-
-**Phase 6: Resumable Sessions With PVC**
-
-Support resumable agent sessions using PVC-backed workspaces.
-
-- Resumable task → create PVC instead of `emptyDir`.
-- PVC lifecycle: created on first run, kept after Pod deletion on
-  timeout/transport failure, reused on resume, deleted on session TTL expiry.
-- Schema changes (additive): `workspace_backend`, `workspace_ref` columns
-  on `chetter_agent_sessions`. Update `schema.go`, `store.go`, migration, sqlc.
-- On recoverable failure: delete Pod, keep PVC, report workspace ref.
-- On resume: new Pod mounts same PVC, harness resumes from saved state.
-
-**Phase 7: Reaper And Cleanup**
-
-Extend cleanup for Kubernetes resources.
-
-- All resources labeled `chetter.io/task-id` and `chetter.io/session-id`.
-- Normal completion: delete Pod, ConfigMap, Secret.
-- Recoverable: delete Pod, keep PVC.
-- Expired session: delete PVC and orphaned Pods.
-- `chetter_runner_health` exposes Kubernetes executor health and orphan counts.
-
-**Phase 8: End-to-End Tests**
-
-- Unit tests: executor selection, Pod spec generation, PVC naming, error mapping.
-- Integration tests with fake Kubernetes client: Pod lifecycle, PVC retention.
-- k3s validation scripts: `scripts/k3s/create-cluster.sh`,
-  `scripts/k3s/load-images.sh`, `scripts/k3s/smoke-task.sh`,
-  `scripts/k3s/smoke-gvisor.sh`.
+The original multi-phase proposal (emptyDir workspaces, ConfigMap archives,
+per-session PVC creation, workspace sidecar) was superseded during
+implementation and is not the current contract — see
+[EXECUTION.md](EXECUTION.md) for the current Kubernetes executor contract.
 
 #### Environment Variables
 
@@ -400,6 +325,10 @@ Kubernetes-mode runner has no Docker socket mount. Agent pods use
 `runtimeClassName: gvisor` validated on k3s. Production EKS deployment is documented.
 
 ### P6: Observability, Safety, And Failure Classification
+
+Status: **Partially completed** — structured failure classification, server-side env var
+validation, secret redaction, Prometheus metrics, and `/readyz` probes shipped. Remaining:
+gVisor metrics collection, runtime sandbox monitoring, and richer dashboards.
 
 Why next:
 
@@ -458,6 +387,8 @@ Target: 1 small PR.
 
 ### Milestone 2: Manual Resumable Sessions V1
 
+Status: **Completed 2026-07-23**
+
 Target: one end-to-end resumable session flow.
 
 - Submit resumable task.
@@ -468,6 +399,9 @@ Target: one end-to-end resumable session flow.
 
 ### Milestone 3: PR Feedback Resume
 
+Status: **Completed 2026-07-23** — follow-up resume via webhook feedback shipped with the
+session model refactor.
+
 Target: close the agent feedback loop.
 
 - Add session/run IDs to Chetter-authored artifact metadata.
@@ -477,6 +411,8 @@ Target: close the agent feedback loop.
 
 ### Milestone 4: Definitions Beyond Model Catalog
 
+Status: **Completed 2026-07-30**
+
 Target: configuration as code for automation.
 
 - Sync agents, skills, triggers, and task templates from Git.
@@ -485,6 +421,10 @@ Target: configuration as code for automation.
 - Add agent-authored definition change PR workflow.
 
 ### Milestone 5: Execution Backend Separation
+
+Status: **Completed 2026-07-28** — Kubernetes pod execution shipped and validated on
+single-node k3s; remaining validation: Pi attach, cancellation, rolling runner update,
+multi-node production.
 
 Target: Docker mode and Kubernetes mode coexist cleanly.
 
@@ -499,7 +439,6 @@ See P5 above for the detailed phase breakdown.
 
 ## Open Questions
 
-- Should `SCHEDULES.md` and `REVIEWS.md` stay separate, or should they become sections of `AUTOMATION.md`?
 - Should definitions repo sync replace DB trigger edits entirely, or should DB edits remain as explicit operational overrides?
 - How long should attempt-level artifact contribution history be retained?
 - How strict should skill and agent frontmatter validation be during definitions sync?
