@@ -27,7 +27,7 @@ type githubActionAuthorization struct {
 // GitHubActionService authorizes runner-owned execution attempts, resolves the
 // task's immutable installation client, and records successful artifacts.
 type GitHubActionService interface {
-	authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, repo string) (githubActionAuthorization, error)
+	authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, repo, claimID string) (githubActionAuthorization, error)
 	RecordArtifact(ctx context.Context, params RecordArtifactParams) error
 	LogAuditEvent(ctx context.Context, params AuditEventParams) error
 }
@@ -43,7 +43,7 @@ func (s *RunnerRPCService) GitHubCreateIssue(ctx context.Context, req *connect.R
 	if strings.TrimSpace(req.Msg.Title) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title is required"))
 	}
-	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo)
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (s *RunnerRPCService) GitHubIssueComment(ctx context.Context, req *connect.
 	if req.Msg.IssueNumber <= 0 || strings.TrimSpace(req.Msg.Body) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("issue_number and body are required"))
 	}
-	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo)
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *RunnerRPCService) GitHubCreatePR(ctx context.Context, req *connect.Requ
 	if strings.TrimSpace(req.Msg.Title) == "" || strings.TrimSpace(req.Msg.Head) == "" || strings.TrimSpace(req.Msg.Base) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("title, head, and base are required"))
 	}
-	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo)
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event must be COMMENT, APPROVE, or REQUEST_CHANGES"))
 	}
-	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo)
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
 	if err != nil {
 		return nil, err
 	}
@@ -125,10 +125,10 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 }
 
 func (s *RunnerRPCService) GetGitHubCredential(ctx context.Context, req *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error) {
-	if req == nil || req.Msg == nil || strings.TrimSpace(req.Msg.RunnerId) == "" || strings.TrimSpace(req.Msg.TaskId) == "" || strings.TrimSpace(req.Msg.ExecutionId) == "" || strings.TrimSpace(req.Msg.Repo) == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id, task_id, execution_id, and repo are required"))
+	if req == nil || req.Msg == nil || strings.TrimSpace(req.Msg.RunnerId) == "" || strings.TrimSpace(req.Msg.TaskId) == "" || strings.TrimSpace(req.Msg.ExecutionId) == "" || strings.TrimSpace(req.Msg.Repo) == "" || strings.TrimSpace(req.Msg.ClaimId) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id, task_id, execution_id, repo, and claim_id are required"))
 	}
-	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo)
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *RunnerRPCService) GetGitHubCredential(ctx context.Context, req *connect
 	}
 	// The token exchange can outlive the lease that authorized it. Re-run the
 	// full task/execution/runner/repository fence immediately before disclosure.
-	if _, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo); err != nil {
+	if _, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId); err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(&runnerv1.GetGitHubCredentialResponse{
@@ -148,16 +148,38 @@ func (s *RunnerRPCService) GetGitHubCredential(ctx context.Context, req *connect
 	}), nil
 }
 
-func (s *RunnerRPCService) authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, repo string) (githubActionAuthorization, error) {
+func (s *RunnerRPCService) authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, repo, claimID string) (githubActionAuthorization, error) {
 	if s.ghActions == nil {
+		if err := s.validateRunnerExecutionClaim(ctx, taskID, executionAttemptID, runnerID, claimID); err != nil {
+			return githubActionAuthorization{}, err
+		}
 		return githubActionAuthorization{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf("GitHub App is not configured on this server"))
 	}
-	return s.ghActions.authorizeGitHubAction(ctx, taskID, executionAttemptID, runnerID, repo)
+	return s.ghActions.authorizeGitHubAction(ctx, taskID, executionAttemptID, runnerID, repo, claimID)
 }
 
-func (s *Service) authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, requestedRepo string) (githubActionAuthorization, error) {
-	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(executionAttemptID) == "" || strings.TrimSpace(runnerID) == "" || strings.TrimSpace(requestedRepo) == "" {
-		return githubActionAuthorization{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("task_id, execution_id, runner_id, and repo are required"))
+func (s *RunnerRPCService) validateRunnerExecutionClaim(ctx context.Context, taskID, executionID, runnerID, claimID string) error {
+	if taskID == "" || executionID == "" || runnerID == "" || claimID == "" {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("task_id, execution_id, runner_id, and claim_id are required"))
+	}
+	_, err := s.db.ValidateRunnerExecutionClaim(ctx, repository.ValidateRunnerExecutionClaimParams{
+		ExecutionID: executionID,
+		TaskID:      taskID,
+		RunnerID:    nullString(runnerID),
+		ClaimID:     claimID,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("execution claim is not active for this runner"))
+	}
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("validate runner execution claim: %w", err))
+	}
+	return nil
+}
+
+func (s *Service) authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, requestedRepo, claimID string) (githubActionAuthorization, error) {
+	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(executionAttemptID) == "" || strings.TrimSpace(runnerID) == "" || strings.TrimSpace(requestedRepo) == "" || strings.TrimSpace(claimID) == "" {
+		return githubActionAuthorization{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("task_id, execution_id, runner_id, repo, and claim_id are required"))
 	}
 	requested, err := githubrepo.Parse(requestedRepo)
 	if err != nil {
@@ -191,6 +213,9 @@ func (s *Service) authorizeGitHubAction(ctx context.Context, taskID, executionAt
 	}
 	if !execution.RunnerID.Valid || execution.RunnerID.String != runnerID {
 		return githubActionAuthorization{}, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("runner %q does not own execution attempt %q", runnerID, executionAttemptID))
+	}
+	if execution.ClaimID != claimID {
+		return githubActionAuthorization{}, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("claim does not own execution attempt %q", executionAttemptID))
 	}
 	if !execution.GithubRepo.Valid || strings.TrimSpace(execution.GithubRepo.String) == "" {
 		return githubActionAuthorization{}, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("task %q has no GitHub repository identity", taskID))

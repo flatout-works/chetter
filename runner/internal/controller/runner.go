@@ -359,6 +359,7 @@ func (r *Runner) decorateTaskResponse(resp *task.TaskResponse, env map[string]st
 }
 
 func (r *Runner) decorateTaskResponseForRequest(resp *task.TaskResponse, req task.TaskRequest, sessionID string) {
+	resp.ClaimID = req.ClaimID
 	resp.AgentSessionID = req.AgentSessionID
 	resp.RunnerMCPToken = req.RunnerMCPToken
 	resp.UserPromptID = req.UserPromptID

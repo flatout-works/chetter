@@ -144,6 +144,7 @@ type ChetterExecutionAttempt struct {
 	TimeoutSec            int32          `json:"timeout_sec"`
 	LastEventAt           sql.NullTime   `json:"last_event_at"`
 	RunnerImageDigest     sql.NullString `json:"runner_image_digest"`
+	ClaimID               string         `json:"claim_id"`
 }
 
 type ChetterModelCatalog struct {

@@ -686,7 +686,7 @@ inferring a potentially unsafe baseline across data-moving migrations.
 
 ## Deploying On Kubernetes
 
-The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. No special protocols, no broker, no runner pre-registration. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment. Scaling is `kubectl scale deployment chetter-runner --replicas=N`.
+The runner uses a stateless pull model: it connects to the MCP server over HTTP, long-polls `ClaimTask` to pick up work, sends heartbeats, and reports task events. Each claim receives a fresh execution claim ID; task events, lease renewal, and runner GitHub operations are rejected unless task, execution, runner, claim, running status, and lease ownership all match. No special protocols, no broker, no runner pre-registration. The MCP server's `ClaimTask` uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic task assignment. Scaling is `kubectl scale deployment chetter-runner --replicas=N`.
 
 For production Kubernetes deployment (EKS or similar), see [docs/EKS.md](EKS.md) for complete manifests, node group setup, RBAC, ingress, and gVisor node configuration. For local k3s validation, see [docs/K3S.md](K3S.md).
 

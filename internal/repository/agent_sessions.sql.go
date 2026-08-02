@@ -974,28 +974,31 @@ func (q *Queries) MarkResumingSessionsFailedForUnavailableRunner(ctx context.Con
 }
 
 const markUserPromptRunningByTask = `-- name: MarkUserPromptRunningByTask :execrows
-UPDATE chetter_user_prompts
-SET status = 'running',
-    started_at = COALESCE(started_at, ?),
-    updated_at = ?
-WHERE id = (
-    SELECT prompt.id FROM chetter_user_prompts prompt
-    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
-    WHERE prompt.task_id = ?
-    ORDER BY session.sequence DESC, prompt.sequence DESC
-    LIMIT 1
-)
-  AND status IN ('pending', 'claimed')
+UPDATE chetter_user_prompts target
+JOIN (
+    SELECT latest.id
+    FROM (
+        SELECT prompt.id FROM chetter_user_prompts prompt
+        JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+        WHERE prompt.task_id = ?
+        ORDER BY session.sequence DESC, prompt.sequence DESC
+        LIMIT 1
+    ) latest
+) selected ON selected.id = target.id
+SET target.status = 'running',
+    target.started_at = COALESCE(target.started_at, ?),
+    target.updated_at = ?
+WHERE target.status IN ('pending', 'claimed')
 `
 
 type MarkUserPromptRunningByTaskParams struct {
+	TaskID    string       `json:"task_id"`
 	StartedAt sql.NullTime `json:"started_at"`
 	UpdatedAt time.Time    `json:"updated_at"`
-	TaskID    string       `json:"task_id"`
 }
 
 func (q *Queries) MarkUserPromptRunningByTask(ctx context.Context, arg MarkUserPromptRunningByTaskParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markUserPromptRunningByTask, arg.StartedAt, arg.UpdatedAt, arg.TaskID)
+	result, err := q.db.ExecContext(ctx, markUserPromptRunningByTask, arg.TaskID, arg.StartedAt, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -1003,24 +1006,28 @@ func (q *Queries) MarkUserPromptRunningByTask(ctx context.Context, arg MarkUserP
 }
 
 const markUserPromptTerminalByTask = `-- name: MarkUserPromptTerminalByTask :execrows
-UPDATE chetter_user_prompts
-SET status = ?,
-    summary = ?,
-    error = ?,
-    session_export = COALESCE(?, session_export),
-    started_at = COALESCE(started_at, ?),
-    ended_at = COALESCE(?, ended_at),
-    updated_at = ?
-WHERE id = (
-    SELECT prompt.id FROM chetter_user_prompts prompt
-    JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
-    WHERE prompt.task_id = ?
-    ORDER BY session.sequence DESC, prompt.sequence DESC
-    LIMIT 1
-)
+UPDATE chetter_user_prompts target
+JOIN (
+    SELECT latest.id
+    FROM (
+        SELECT prompt.id FROM chetter_user_prompts prompt
+        JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+        WHERE prompt.task_id = ?
+        ORDER BY session.sequence DESC, prompt.sequence DESC
+        LIMIT 1
+    ) latest
+) selected ON selected.id = target.id
+SET target.status = ?,
+    target.summary = ?,
+    target.error = ?,
+    target.session_export = COALESCE(?, target.session_export),
+    target.started_at = COALESCE(target.started_at, ?),
+    target.ended_at = COALESCE(?, target.ended_at),
+    target.updated_at = ?
 `
 
 type MarkUserPromptTerminalByTaskParams struct {
+	TaskID        string         `json:"task_id"`
 	Status        string         `json:"status"`
 	Summary       sql.NullString `json:"summary"`
 	Error         sql.NullString `json:"error"`
@@ -1028,11 +1035,11 @@ type MarkUserPromptTerminalByTaskParams struct {
 	StartedAt     sql.NullTime   `json:"started_at"`
 	EndedAt       sql.NullTime   `json:"ended_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
-	TaskID        string         `json:"task_id"`
 }
 
 func (q *Queries) MarkUserPromptTerminalByTask(ctx context.Context, arg MarkUserPromptTerminalByTaskParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, markUserPromptTerminalByTask,
+		arg.TaskID,
 		arg.Status,
 		arg.Summary,
 		arg.Error,
@@ -1040,7 +1047,6 @@ func (q *Queries) MarkUserPromptTerminalByTask(ctx context.Context, arg MarkUser
 		arg.StartedAt,
 		arg.EndedAt,
 		arg.UpdatedAt,
-		arg.TaskID,
 	)
 	if err != nil {
 		return 0, err

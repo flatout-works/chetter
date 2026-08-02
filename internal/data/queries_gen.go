@@ -173,6 +173,7 @@ type Repository interface {
 	UpsertDefinitionSource(ctx context.Context, arg repository.UpsertDefinitionSourceParams) error
 	UpsertRunnerHeartbeat(ctx context.Context, arg repository.UpsertRunnerHeartbeatParams) error
 	UpsertTrigger(ctx context.Context, arg repository.UpsertTriggerParams) error
+	ValidateRunnerExecutionClaim(ctx context.Context, arg repository.ValidateRunnerExecutionClaimParams) (repository.ValidateRunnerExecutionClaimRow, error)
 }
 
 func (q *Queries) AbandonAgentSession(ctx context.Context, arg repository.AbandonAgentSessionParams) (int64, error) {
@@ -907,4 +908,9 @@ func (q *Queries) UpsertRunnerHeartbeat(ctx context.Context, arg repository.Upse
 
 func (q *Queries) UpsertTrigger(ctx context.Context, arg repository.UpsertTriggerParams) error {
 	return q.postgres.UpsertTrigger(ctx, convert[repositorypostgres.UpsertTriggerParams](arg))
+}
+
+func (q *Queries) ValidateRunnerExecutionClaim(ctx context.Context, arg repository.ValidateRunnerExecutionClaimParams) (repository.ValidateRunnerExecutionClaimRow, error) {
+	value, err := q.postgres.ValidateRunnerExecutionClaim(ctx, convert[repositorypostgres.ValidateRunnerExecutionClaimParams](arg))
+	return convert[repository.ValidateRunnerExecutionClaimRow](value), err
 }

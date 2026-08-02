@@ -23,13 +23,31 @@ FOR UPDATE SKIP LOCKED;
 
 -- name: MarkExecutionAttemptClaimed :execrows
 UPDATE chetter_execution_attempts
-SET status = 'running', runner_id = sqlc.narg(runner_id), claimed_at = sqlc.narg(claimed_at),
+SET status = 'running', runner_id = sqlc.narg(runner_id), claim_id = sqlc.arg(claim_id), claimed_at = sqlc.narg(claimed_at),
     lease_expires_at = sqlc.narg(lease_expires_at), started_at = sqlc.narg(started_at),
     last_event_at = sqlc.narg(last_event_at), updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND status = 'pending';
 
 -- name: GetExecutionAttemptByID :one
 SELECT * FROM chetter_execution_attempts WHERE id = ?;
+
+-- name: ValidateRunnerExecutionClaim :one
+SELECT attempt.id AS execution_attempt_id,
+       attempt.claim_id,
+       attempt.runner_id,
+       attempt.status,
+       attempt.lease_expires_at,
+       prompt.task_id,
+       prompt.agent_session_id,
+       prompt.id AS user_prompt_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE attempt.id = sqlc.arg(execution_id)
+  AND prompt.task_id = sqlc.arg(task_id)
+  AND attempt.runner_id = sqlc.arg(runner_id)
+  AND attempt.claim_id = sqlc.arg(claim_id)
+  AND attempt.status = 'running'
+  AND attempt.lease_expires_at > CURRENT_TIMESTAMP;
 
 -- name: GetExecutionAttemptContext :one
 SELECT attempt.id AS execution_attempt_id,
@@ -50,7 +68,8 @@ SELECT attempt.id AS execution_attempt_id,
        attempt.lease_expires_at,
        task.status AS task_status,
        task.github_repo,
-       task.github_installation_id
+       task.github_installation_id,
+       attempt.claim_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
@@ -86,7 +105,8 @@ WHERE prompt.task_id = ?;
 -- name: RenewExecutionAttemptLease :execrows
 UPDATE chetter_execution_attempts
 SET lease_expires_at = sqlc.narg(lease_expires_at), last_event_at = sqlc.narg(last_event_at), updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND status = 'running';
+WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND claim_id = sqlc.arg(claim_id)
+  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP;
 
 -- name: ExtendActiveExecutionAttemptTimeout :execrows
 UPDATE chetter_execution_attempts attempt
@@ -97,7 +117,7 @@ WHERE prompt.task_id = sqlc.arg(task_id)
   AND attempt.status IN ('pending', 'running');
 
 -- name: ListExecutionAttemptsForHeartbeat :many
-SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error,
+SELECT attempt.id AS execution_attempt_id, attempt.claim_id, attempt.status, attempt.error,
        prompt.task_id, prompt.agent_session_id, prompt.id AS user_prompt_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
@@ -228,4 +248,5 @@ SET status = sqlc.arg(status),
     cost_cents = cost_cents + sqlc.arg(cost_cents),
     last_event_at = sqlc.narg(last_event_at),
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND status = 'running';
+WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND claim_id = sqlc.arg(claim_id)
+  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP;

@@ -101,6 +101,7 @@ var schemaStatements = []string{
 		sequence INT NOT NULL,
 		status VARCHAR(32) NOT NULL,
 		runner_id VARCHAR(64) NULL,
+		claim_id VARCHAR(64) NOT NULL DEFAULT '',
 		required_runner_id VARCHAR(64) NULL,
 		claimed_at DATETIME(6) NULL,
 		lease_expires_at DATETIME(6) NULL,
@@ -127,7 +128,8 @@ var schemaStatements = []string{
 		PRIMARY KEY (id),
 		UNIQUE KEY uq_execution_attempts_prompt_sequence (user_prompt_id, sequence),
 		KEY idx_execution_attempts_status_lease (status, lease_expires_at),
-		KEY idx_execution_attempts_runner_status (runner_id, status)
+		KEY idx_execution_attempts_runner_status (runner_id, status),
+		KEY idx_execution_attempts_claim (claim_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chetter_agent_session_checkpoints (
 		id VARCHAR(64) NOT NULL,

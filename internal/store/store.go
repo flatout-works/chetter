@@ -598,6 +598,7 @@ func (s *Store) ensureExecutionAttemptMetadataColumns(ctx context.Context) error
 		ddl  string
 	}{
 		{"timeout_sec", "ALTER TABLE chetter_execution_attempts ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600 AFTER lease_expires_at"},
+		{"claim_id", "ALTER TABLE chetter_execution_attempts ADD COLUMN claim_id VARCHAR(64) NOT NULL DEFAULT '' AFTER runner_id"},
 		{"last_event_at", "ALTER TABLE chetter_execution_attempts ADD COLUMN last_event_at DATETIME(6) NULL AFTER timeout_sec"},
 		{"runner_image_digest", "ALTER TABLE chetter_execution_attempts ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER harness_execution_id"},
 	}
@@ -611,6 +612,18 @@ func (s *Store) ensureExecutionAttemptMetadataColumns(ctx context.Context) error
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
 			return fmt.Errorf("add chetter_execution_attempts.%s: %w", column.name, err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_execution_attempts SET claim_id = CONCAT('legacy_', LEFT(MD5(id), 57)) WHERE status = 'running' AND claim_id = ''"); err != nil {
+		return fmt.Errorf("backfill execution attempt claim IDs: %w", err)
+	}
+	claimIndexExists, err := s.indexExists(ctx, "chetter_execution_attempts", "idx_execution_attempts_claim")
+	if err != nil {
+		return err
+	}
+	if !claimIndexExists {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_execution_attempts_claim ON chetter_execution_attempts (claim_id)"); err != nil {
+			return fmt.Errorf("add execution attempt claim index: %w", err)
 		}
 	}
 	return nil

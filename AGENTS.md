@@ -208,7 +208,7 @@ Before committing, verify:
 
 - **Database support**: Chetter runs on TiDB, MySQL (including AWS Aurora MySQL), and PostgreSQL 16+. The dialect is auto-detected on startup or can be set explicitly via `CHETTER_DB_DIALECT`. The only dialect-specific feature is Full-Text Search: TiDB uses `FTS_MATCH_WORD` with `WITH PARSER MULTILINGUAL`; MySQL uses `MATCH ... AGAINST ... IN BOOLEAN MODE` with `WITH PARSER ngram`. Both fall back to `LIKE` if the FULLTEXT index is unavailable.
 - **Runner communication** uses ConnectRPC over HTTP (not NATS). The runner polls `ClaimTask` with a lease-based claim. Leases expire after 60s and are renewed on heartbeat.
-- **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming.
+- **Task claiming** uses `SELECT ... FOR UPDATE SKIP LOCKED` for atomic pending-task claiming. Each attempt receives a fresh claim ID; runner events, lease renewal, and GitHub RPC mutations are fenced to the active task/execution/runner/claim and unexpired lease.
 - **Reaper** runs every 30s to reclaim expired leases and mark stale tasks. `reaperHealthMaxEventSec = 120`. `max_attempts` defaults to 5.
 - **GitHub webhook** is optional. If `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_B64`, and `GITHUB_WEBHOOK_SECRET` are set, the webhook handler is registered. One App may have multiple installations; signed webhooks select `installation.id`, while repository-scoped work discovers its installation. `GITHUB_INSTALLATION_ID` is only a deprecated legacy fallback.
 - **Arcane tools** are conditionally registered only if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.

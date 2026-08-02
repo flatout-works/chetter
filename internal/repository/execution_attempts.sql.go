@@ -239,7 +239,7 @@ func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, run
 }
 
 const getExecutionAttemptByID = `-- name: GetExecutionAttemptByID :one
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest FROM chetter_execution_attempts WHERE id = ?
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM chetter_execution_attempts WHERE id = ?
 `
 
 func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (ChetterExecutionAttempt, error) {
@@ -274,6 +274,7 @@ func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (Chett
 		&i.TimeoutSec,
 		&i.LastEventAt,
 		&i.RunnerImageDigest,
+		&i.ClaimID,
 	)
 	return i, err
 }
@@ -352,7 +353,8 @@ SELECT attempt.id AS execution_attempt_id,
        attempt.lease_expires_at,
        task.status AS task_status,
        task.github_repo,
-       task.github_installation_id
+       task.github_installation_id,
+       attempt.claim_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
@@ -370,6 +372,7 @@ type GetGitHubExecutionContextRow struct {
 	TaskStatus           string         `json:"task_status"`
 	GithubRepo           sql.NullString `json:"github_repo"`
 	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
+	ClaimID              string         `json:"claim_id"`
 }
 
 func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (GetGitHubExecutionContextRow, error) {
@@ -386,6 +389,7 @@ func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (Get
 		&i.TaskStatus,
 		&i.GithubRepo,
 		&i.GithubInstallationID,
+		&i.ClaimID,
 	)
 	return i, err
 }
@@ -472,7 +476,7 @@ func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg InsertP
 }
 
 const listExecutionAttemptsByPrompt = `-- name: ListExecutionAttemptsByPrompt :many
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest FROM chetter_execution_attempts
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM chetter_execution_attempts
 WHERE user_prompt_id = ?
 ORDER BY sequence ASC, created_at ASC
 `
@@ -515,6 +519,7 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 			&i.TimeoutSec,
 			&i.LastEventAt,
 			&i.RunnerImageDigest,
+			&i.ClaimID,
 		); err != nil {
 			return nil, err
 		}
@@ -530,7 +535,7 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 }
 
 const listExecutionAttemptsForHeartbeat = `-- name: ListExecutionAttemptsForHeartbeat :many
-SELECT attempt.id AS execution_attempt_id, attempt.status, attempt.error,
+SELECT attempt.id AS execution_attempt_id, attempt.claim_id, attempt.status, attempt.error,
        prompt.task_id, prompt.agent_session_id, prompt.id AS user_prompt_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
@@ -545,6 +550,7 @@ type ListExecutionAttemptsForHeartbeatParams struct {
 
 type ListExecutionAttemptsForHeartbeatRow struct {
 	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ClaimID            string         `json:"claim_id"`
 	Status             string         `json:"status"`
 	Error              sql.NullString `json:"error"`
 	TaskID             string         `json:"task_id"`
@@ -574,6 +580,7 @@ func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg Lis
 		var i ListExecutionAttemptsForHeartbeatRow
 		if err := rows.Scan(
 			&i.ExecutionAttemptID,
+			&i.ClaimID,
 			&i.Status,
 			&i.Error,
 			&i.TaskID,
@@ -657,7 +664,7 @@ func (q *Queries) ListReclaimableExecutionAttemptsForUpdate(ctx context.Context,
 
 const markExecutionAttemptClaimed = `-- name: MarkExecutionAttemptClaimed :execrows
 UPDATE chetter_execution_attempts
-SET status = 'running', runner_id = ?, claimed_at = ?,
+SET status = 'running', runner_id = ?, claim_id = ?, claimed_at = ?,
     lease_expires_at = ?, started_at = ?,
     last_event_at = ?, updated_at = ?
 WHERE id = ? AND status = 'pending'
@@ -665,6 +672,7 @@ WHERE id = ? AND status = 'pending'
 
 type MarkExecutionAttemptClaimedParams struct {
 	RunnerID       sql.NullString `json:"runner_id"`
+	ClaimID        string         `json:"claim_id"`
 	ClaimedAt      sql.NullTime   `json:"claimed_at"`
 	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
 	StartedAt      sql.NullTime   `json:"started_at"`
@@ -676,6 +684,7 @@ type MarkExecutionAttemptClaimedParams struct {
 func (q *Queries) MarkExecutionAttemptClaimed(ctx context.Context, arg MarkExecutionAttemptClaimedParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, markExecutionAttemptClaimed,
 		arg.RunnerID,
+		arg.ClaimID,
 		arg.ClaimedAt,
 		arg.LeaseExpiresAt,
 		arg.StartedAt,
@@ -718,7 +727,8 @@ func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg MarkExecutio
 const renewExecutionAttemptLease = `-- name: RenewExecutionAttemptLease :execrows
 UPDATE chetter_execution_attempts
 SET lease_expires_at = ?, last_event_at = ?, updated_at = ?
-WHERE id = ? AND runner_id = ? AND status = 'running'
+WHERE id = ? AND runner_id = ? AND claim_id = ?
+  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP
 `
 
 type RenewExecutionAttemptLeaseParams struct {
@@ -727,6 +737,7 @@ type RenewExecutionAttemptLeaseParams struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 	ID             string         `json:"id"`
 	RunnerID       sql.NullString `json:"runner_id"`
+	ClaimID        string         `json:"claim_id"`
 }
 
 func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg RenewExecutionAttemptLeaseParams) (int64, error) {
@@ -736,6 +747,7 @@ func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg RenewExecu
 		arg.UpdatedAt,
 		arg.ID,
 		arg.RunnerID,
+		arg.ClaimID,
 	)
 	if err != nil {
 		return 0, err
@@ -789,7 +801,8 @@ SET status = ?,
     cost_cents = cost_cents + ?,
     last_event_at = ?,
     updated_at = ?
-WHERE id = ? AND runner_id = ? AND status = 'running'
+WHERE id = ? AND runner_id = ? AND claim_id = ?
+  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP
 `
 
 type UpdateExecutionAttemptFromRunnerEventParams struct {
@@ -814,6 +827,7 @@ type UpdateExecutionAttemptFromRunnerEventParams struct {
 	UpdatedAt             time.Time      `json:"updated_at"`
 	ID                    string         `json:"id"`
 	RunnerID              sql.NullString `json:"runner_id"`
+	ClaimID               string         `json:"claim_id"`
 }
 
 func (q *Queries) UpdateExecutionAttemptFromRunnerEvent(ctx context.Context, arg UpdateExecutionAttemptFromRunnerEventParams) (int64, error) {
@@ -839,9 +853,68 @@ func (q *Queries) UpdateExecutionAttemptFromRunnerEvent(ctx context.Context, arg
 		arg.UpdatedAt,
 		arg.ID,
 		arg.RunnerID,
+		arg.ClaimID,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const validateRunnerExecutionClaim = `-- name: ValidateRunnerExecutionClaim :one
+SELECT attempt.id AS execution_attempt_id,
+       attempt.claim_id,
+       attempt.runner_id,
+       attempt.status,
+       attempt.lease_expires_at,
+       prompt.task_id,
+       prompt.agent_session_id,
+       prompt.id AS user_prompt_id
+FROM chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+WHERE attempt.id = ?
+  AND prompt.task_id = ?
+  AND attempt.runner_id = ?
+  AND attempt.claim_id = ?
+  AND attempt.status = 'running'
+  AND attempt.lease_expires_at > CURRENT_TIMESTAMP
+`
+
+type ValidateRunnerExecutionClaimParams struct {
+	ExecutionID string         `json:"execution_id"`
+	TaskID      string         `json:"task_id"`
+	RunnerID    sql.NullString `json:"runner_id"`
+	ClaimID     string         `json:"claim_id"`
+}
+
+type ValidateRunnerExecutionClaimRow struct {
+	ExecutionAttemptID string         `json:"execution_attempt_id"`
+	ClaimID            string         `json:"claim_id"`
+	RunnerID           sql.NullString `json:"runner_id"`
+	Status             string         `json:"status"`
+	LeaseExpiresAt     sql.NullTime   `json:"lease_expires_at"`
+	TaskID             string         `json:"task_id"`
+	AgentSessionID     string         `json:"agent_session_id"`
+	UserPromptID       string         `json:"user_prompt_id"`
+}
+
+func (q *Queries) ValidateRunnerExecutionClaim(ctx context.Context, arg ValidateRunnerExecutionClaimParams) (ValidateRunnerExecutionClaimRow, error) {
+	row := q.db.QueryRowContext(ctx, validateRunnerExecutionClaim,
+		arg.ExecutionID,
+		arg.TaskID,
+		arg.RunnerID,
+		arg.ClaimID,
+	)
+	var i ValidateRunnerExecutionClaimRow
+	err := row.Scan(
+		&i.ExecutionAttemptID,
+		&i.ClaimID,
+		&i.RunnerID,
+		&i.Status,
+		&i.LeaseExpiresAt,
+		&i.TaskID,
+		&i.AgentSessionID,
+		&i.UserPromptID,
+	)
+	return i, err
 }
