@@ -1,4 +1,4 @@
-# Paused Sessions
+# Sessions
 
 Status: **Implemented**
 

@@ -183,9 +183,13 @@ claim queued tasks from the control plane over ConnectRPC.
 | Harness | Mode | Status |
 |---------|------|--------|
 | **OpenCode** | `opencode serve` (interactive, HTTP API) | **Working - Docker, Kubernetes, and local mode** |
-| **Niffler** | MCP socket integration | Planned — library patch to add `--mcp-socket` agent mode |
+| **Claude Code** | Serve via `claude-serve-proxy` | **Working** |
+| **Pi** | RPC subprocess (`pi --mode rpc`) | **Working** |
+| **CodeWhale** | HTTP/SSE runtime API (`codewhale app-server --http`) | **Working** |
+| **Codex** | Codex App Server behind `codex-serve-proxy` | **Working** |
 
-Unmodified harnesses work for public workflows (HTTP through proxy, workspace access, bash). Private git push requires harness to call MCP tools (`git_push`).
+See [docs/HARNESSES.md](../docs/HARNESSES.md) for the full capability matrix and
+[images/base/Dockerfile](images/base/Dockerfile) for installed versions.
 
 ## Execution Modes
 

@@ -42,7 +42,7 @@ Chetter tracks user prompts and resumable conversations beneath a stable task.
 - `chetter_agent_session_status` returns a session with its user prompts.
 - `chetter_resume_agent_session` appends a follow-up prompt and requeues the same task.
 
-See [PAUSED_SESSIONS.md](PAUSED_SESSIONS.md) for the current model and remaining work.
+See [SESSIONS.md](SESSIONS.md) for the current model and remaining work.
 
 ## Triggers And Schedules
 
@@ -238,6 +238,8 @@ Task events are kept separately in `chetter_task_events` and are exposed through
 ## MCP Tool Reference
 
 For the complete MCP tool reference — tasks, sessions, triggers, runner fleet, GitHub artifacts, teams, definitions, audit, and conditional Arcane tools — see [MANUAL.md](MANUAL.md#mcp-tool-reference).
+
+For cron schedules and PR review automation, see [TRIGGERS.md](TRIGGERS.md).
 
 ## Environment Reference
 

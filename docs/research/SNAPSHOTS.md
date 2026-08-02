@@ -176,7 +176,7 @@ Use `docker commit` when:
 
 ## Current State in Chetter
 
-Checkpoint/restore is partially implemented through resumable sessions. The runner passes `--runtime runsc` when `USE_GVISOR=true`, and creates Docker checkpoints for resumable session tasks after successful runs. See [PAUSED_SESSIONS.md](../PAUSED_SESSIONS.md) for the current implementation and remaining work.
+Checkpoint/restore is partially implemented through resumable sessions. The runner passes `--runtime runsc` when `USE_GVISOR=true`, and creates Docker checkpoints for resumable session tasks after successful runs. See [SESSIONS.md](../SESSIONS.md) for the current implementation and remaining work.
 
 The broader snapshot features below (periodic crash-recovery checkpoints, pre-warming pools, filesystem-only fallback via `docker commit`) are not yet implemented.
 

@@ -36,6 +36,16 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 The MCP server is at `http://localhost:18088`, the web UI at `http://localhost:18090`.
 See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and operations.
 
+### Next Steps
+
+- Configure the **GitHub App** for PR review and issue automation (webhook, label,
+  `/chetter-review`): see [docs/TRIGGERS.md](docs/TRIGGERS.md).
+- Point Chetter at a **definitions repo** for agents, skills, triggers, task
+  templates, and the model catalog: see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- Enable **gVisor** for a task security boundary: see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- For production Kubernetes, see [docs/EKS.md](docs/EKS.md); for local k3s
+  validation, [docs/K3S.md](docs/K3S.md).
+
 ## Connect Your AI Client
 
 - **OpenCode** — built-in config at `.opencode/opencode.json`; set `CHETTER_MCP_TOKEN` and point the url at your server
@@ -58,10 +68,17 @@ See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and oper
 
 ## Docs
 
-- [docs/MANUAL.md](docs/MANUAL.md) — comprehensive operations guide
+- [docs/README.md](docs/README.md) — full documentation index
+- [docs/MANUAL.md](docs/MANUAL.md) — canonical operations guide (setup, config, MCP tools, env vars)
 - [docs/FEATURES.md](docs/FEATURES.md) — shipped feature reference
 - [docs/PLAN.md](docs/PLAN.md) — roadmap and milestones
-- [docs/README.md](docs/README.md) — full docs index
+- [docs/TRIGGERS.md](docs/TRIGGERS.md) — cron schedules and PR review automation
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — definitions repo, model catalog, Git identities
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment and sandboxing (gVisor)
+- [docs/EXECUTION.md](docs/EXECUTION.md) — execution backends: docker, kubernetes, local
+- [runner/README.md](runner/README.md) — runner module: setup, resource limits, security model
+- [web/README.md](web/README.md) — web UI module: stack and structure
+- [CHANGELOG.md](CHANGELOG.md) — what's new
 
 ## Build From Source
 
