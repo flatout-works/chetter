@@ -239,7 +239,11 @@ func writeRepoFile(t *testing.T, root, rel, content string) {
 
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	// Disable background git housekeeping (gc --auto can detach and keep
+	// writing into .git after the test body finishes, racing t.TempDir()
+	// cleanup). Mirrors the flags used by the definitions manager's Sync.
+	all := append([]string{"-c", "maintenance.auto=false", "-c", "gc.auto=0", "-c", "gc.autodetach=false"}, args...)
+	cmd := exec.Command("git", all...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, string(out))
