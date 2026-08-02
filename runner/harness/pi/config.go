@@ -53,9 +53,8 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	mcpServers := map[string]any{}
 	if runnerMCPURL != "" {
 		runnerMCP := map[string]any{
-			"url":         runnerMCPURL,
-			"lifecycle":   "keep-alive",
-			"idleTimeout": 0,
+			"url":       runnerMCPURL,
+			"lifecycle": "keep-alive",
 		}
 		mcpconfig.SetBearerToken(runnerMCP, req.RunnerMCPToken)
 		mcpServers["runner-bridge"] = runnerMCP

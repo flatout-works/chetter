@@ -111,8 +111,11 @@ func TestGenerateConfigWritesSettingsAndMCP(t *testing.T) {
 	if !ok || headers["Authorization"] != "Bearer runner-token" {
 		t.Fatalf("runner bridge headers = %#v", runner["headers"])
 	}
-	if runner["url"] != "http://localhost:9999/mcp" || runner["lifecycle"] != "keep-alive" || runner["idleTimeout"] != float64(0) {
+	if runner["url"] != "http://localhost:9999/mcp" || runner["lifecycle"] != "keep-alive" {
 		t.Fatalf("runner bridge config = %#v", runner)
+	}
+	if _, ok := runner["idleTimeout"]; ok {
+		t.Fatal("runner bridge must not set idleTimeout; the pi MCP adapter treats it as a per-server idle override")
 	}
 	chetter, ok := servers["chetter"].(map[string]any)
 	if !ok {
