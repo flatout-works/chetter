@@ -56,9 +56,13 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	go r.pruneWorkspacesPeriodically(ctx)
 
 	slog.Info("claiming tasks via ConnectRPC", "url", r.cfg.Server.URL)
-	for i := 0; i < r.cfg.Runner.MaxConcurrent; i++ {
-		go r.claimLoop(ctx)
-	}
+	// A single claim loop polls for tasks; concurrency is bounded by the
+	// semaphore in runTask (one extra slot is reserved for this poller).
+	// Previously one goroutine per concurrent slot long-polled the server,
+	// each issuing a DB transaction every second while idle — that polling
+	// dominated the fleet's query rate. See internal/service/runner_rpc.go
+	// claimPollInterval.
+	go r.claimLoop(ctx)
 
 	<-ctx.Done()
 	if r.draining.Load() {
@@ -80,12 +84,28 @@ func (r *Runner) claimLoop(ctx context.Context) {
 		if r.draining.Load() {
 			return
 		}
+		// Reserve a concurrency slot before claiming so we never hold a
+		// claimed task while waiting for a free slot. The semaphore carries
+		// one extra slot (MaxConcurrent+1) reserved for this poller, so the
+		// runner still executes up to MaxConcurrent tasks concurrently. The
+		// slot is transferred to runTask on a successful claim (its defer
+		// releases it) and released here on every other path.
+		select {
+		case r.sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		if r.draining.Load() {
+			<-r.sem
+			return
+		}
 		resp, err := r.claimClient.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 			RunnerId:     r.runnerID,
 			WaitSeconds:  30,
 			LeaseSeconds: 120,
 		}))
 		if err != nil {
+			<-r.sem
 			if ctx.Err() != nil {
 				return
 			}
@@ -94,6 +114,7 @@ func (r *Runner) claimLoop(ctx context.Context) {
 			continue
 		}
 		if resp.Msg.Task == nil || resp.Msg.Task.TaskId == "" {
+			<-r.sem
 			if ctx.Err() != nil {
 				return
 			}
@@ -101,14 +122,10 @@ func (r *Runner) claimLoop(ctx context.Context) {
 		}
 
 		if r.draining.Load() {
+			<-r.sem
 			return
 		}
-		select {
-		case r.sem <- struct{}{}:
-		case <-ctx.Done():
-			return
-		}
-		r.runTask(protoTaskToRequest(resp.Msg.Task))
+		go r.runTask(protoTaskToRequest(resp.Msg.Task))
 	}
 }
 

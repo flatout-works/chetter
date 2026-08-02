@@ -95,7 +95,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		startedAt:      time.Now().UTC(),
 		terminalTasks:  make(map[string]struct{}),
 		cancelledTasks: make(map[string]struct{}),
-		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent),
+		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent+1),
 	}
 	if cfg.Execution.Backend == "kubernetes" {
 		if err := r.initializeKubernetesClient(); err != nil {

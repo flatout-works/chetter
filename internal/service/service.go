@@ -167,6 +167,16 @@ func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
 	s.runnerRPC = r
 }
 
+// notifyTaskClaimable wakes in-flight ClaimTask long-polls after a task
+// becomes claimable in this process, so idle runners pick it up immediately
+// instead of on the next safety-net poll. No-op when the RPC service is not
+// wired (unit tests).
+func (s *Service) notifyTaskClaimable() {
+	if s.runnerRPC != nil {
+		s.runnerRPC.NotifyTaskClaimable()
+	}
+}
+
 func (s *Service) SetGitHubManager(manager *webhook.Manager) {
 	s.github = manager
 }
@@ -711,6 +721,10 @@ func (s *Service) reapExpiredLeases() {
 		}
 		return
 	}
+	if reclaimed > 0 {
+		// Requeued tasks are claimable again; wake idle claim long-polls.
+		s.notifyTaskClaimable()
+	}
 	if s.runnerRPC != nil {
 		for _, event := range reclaimEvents {
 			if s.runnerRPC.eventBus != nil {
@@ -1117,6 +1131,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, err
 	}
+	s.notifyTaskClaimable()
 	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "user_prompt_id", runID)
 
 	// Register transient redaction set for this session so runner output is
@@ -1351,6 +1366,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 	if err != nil {
 		return TaskToolRecord{}, err
 	}
+	s.notifyTaskClaimable()
 	if s.runnerRPC != nil && s.runnerRPC.eventBus != nil {
 		s.runnerRPC.eventBus.PublishTaskEvent(recoveryEvent.TaskID, recoveryEvent.ID, recoveryEvent.Status, recoveryEvent.EventType, recoveryEvent.Summary, string(recoveryEvent.Payload), recoveryEvent.CreatedAt.Format(time.RFC3339))
 	}
@@ -1498,6 +1514,7 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 	if err != nil {
 		return TaskToolRecord{}, err
 	}
+	s.notifyTaskClaimable()
 
 	slog.Info("task rerun queued", "task_id", newTaskID, "source_task_id", taskID, "agent_session_id", newSessionID, "user_prompt_id", newPromptID)
 
@@ -1632,6 +1649,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	if err != nil {
 		return ResumeAgentSessionOutput{}, err
 	}
+	s.notifyTaskClaimable()
 
 	run, err := s.repo.GetUserPromptByTaskID(ctx, taskID)
 	if err != nil {

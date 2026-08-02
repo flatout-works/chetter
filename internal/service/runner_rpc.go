@@ -30,7 +30,15 @@ const (
 	// Keep the event lease longer than the runner's bounded terminal cleanup
 	// (container stop plus session export).
 	defaultTaskLeaseSec       = 120
-	claimPollInterval         = time.Second
+	// claimPollInterval is the safety-net poll inside a ClaimTask long-poll:
+	// how long a waiter sleeps after an empty claim attempt before checking
+	// the queue again. It exists to catch work that bypassed the in-process
+	// claimNotifier (other server replicas, direct database writes). In the
+	// common single-replica case every submission wakes waiters immediately
+	// via NotifyTaskClaimable, so an idle queue costs one cheap
+	// SELECT...FOR UPDATE SKIP LOCKED per runner per interval instead of
+	// continuous polling.
+	claimPollInterval         = 15 * time.Second
 	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
 )
@@ -42,6 +50,7 @@ type RunnerRPCService struct {
 	db            data.Repository
 	rawDB         *sql.DB
 	dialect       store.Dialect
+	claimNotify   *claimNotifier
 	heartbeatSeen sync.Map
 	drainRequests sync.Map // map[string]bool — runner ID → drain requested
 	redactSets    sync.Map // map[string]*redact.Set — agent session ID → redaction set
@@ -86,7 +95,18 @@ func NewRunnerRPCService(db data.Repository, rawDB *sql.DB, dialects ...store.Di
 	if len(dialects) > 0 {
 		dialect = dialects[0]
 	}
-	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect}
+	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect, claimNotify: newClaimNotifier()}
+}
+
+// NotifyTaskClaimable wakes in-flight ClaimTask long-polls so they re-check
+// the queue immediately instead of waiting out claimPollInterval. It is
+// called by Service whenever a task becomes claimable in this process
+// (submission, trigger match, reaper requeue, session resume/rerun). Safe to
+// call from any goroutine; nil-receiver safe for tests.
+func (s *RunnerRPCService) NotifyTaskClaimable() {
+	if s != nil && s.claimNotify != nil {
+		s.claimNotify.notify()
+	}
 }
 
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
@@ -156,6 +176,13 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 	deadline := time.Now().Add(time.Duration(waitSec) * time.Second)
 
 	for {
+		// Snapshot the notification channel BEFORE polling: a submission
+		// after the snapshot closes this channel and wakes us; a submission
+		// before the snapshot is observed by the poll itself (the notifier
+		// fires only after the task row commits). Either way a submission
+		// while we are waiting is picked up immediately, and the timer below
+		// is a safety net for work that bypassed the notifier.
+		waitCh := s.claimNotify.waitCh()
 		claim, err := s.claimOnce(ctx, req.Msg.RunnerId, time.Duration(leaseSec)*time.Second)
 		if err == nil {
 			task := claim.Task
@@ -216,10 +243,20 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 		if waitSec == 0 || time.Now().After(deadline) {
 			return connect.NewResponse(&runnerv1.ClaimTaskResponse{}), nil
 		}
+		wait := claimPollInterval
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
-		case <-time.After(claimPollInterval):
+		case <-waitCh:
+			// A task became claimable — re-poll immediately.
+			timer.Stop()
+		case <-timer.C:
+			// Safety-net poll for submissions that bypassed the notifier.
 		}
 	}
 }

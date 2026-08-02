@@ -111,7 +111,11 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 	totalCompleted := r.totalCompleted
 	totalErrors := r.totalErrors
 	maxConcurrent := r.cfg.Runner.MaxConcurrent
-	availableSlots := maxConcurrent - len(r.sem)
+	// The semaphore carries one extra slot reserved for the claim poller's
+	// long-poll (see claimLoop), so use its capacity rather than
+	// MaxConcurrent directly: an idle runner reports MaxConcurrent available
+	// slots, and a fully loaded one reports 0.
+	availableSlots := cap(r.sem) - len(r.sem)
 	if availableSlots < 0 {
 		availableSlots = 0
 	}

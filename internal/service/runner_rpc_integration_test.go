@@ -146,6 +146,48 @@ func TestRPCClaimTaskMarksPendingTaskRunning(t *testing.T) {
 	}
 }
 
+// TestRPCClaimTaskWokenByNotify verifies the claimNotifier path: a ClaimTask
+// long-poll that came up empty is woken immediately when a task becomes
+// claimable, instead of sleeping out the safety-net claimPollInterval. The
+// notify is fired the way Service.SubmitTask does after committing a task.
+func TestRPCClaimTaskWokenByNotify(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	claimed := make(chan *connect.Response[runnerv1.ClaimTaskResponse], 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+			RunnerId: "runner_1", WaitSeconds: 20, LeaseSeconds: 60,
+		}))
+		if err != nil {
+			errCh <- err
+			return
+		}
+		claimed <- resp
+	}()
+
+	// Give the long-poll time to snapshot the notification channel and enter
+	// its wait. Even if it has not quite done so, the test still passes: the
+	// poll after the notify observes the committed row.
+	time.Sleep(500 * time.Millisecond)
+
+	insertPendingTask(t, q, "task_wake", "do work", "runner:latest")
+	svc.NotifyTaskClaimable()
+
+	select {
+	case resp := <-claimed:
+		if resp.Msg.Task == nil || resp.Msg.Task.TaskId != "task_wake" {
+			t.Fatalf("expected task_wake, got %+v", resp.Msg.Task)
+		}
+	case err := <-errCh:
+		t.Fatalf("ClaimTask: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("ClaimTask long-poll was not woken by NotifyTaskClaimable within 5s (safety poll is 15s)")
+	}
+}
+
 func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	svc, q, tdb, cleanup := newRPCTestService(t)
 	defer cleanup()
