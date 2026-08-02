@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 
@@ -11,8 +12,27 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
+// hostWorkspaceDirForContainer maps the runner-side workspace directory to the
+// path the docker daemon must bind-mount. It also warns when the mapped host
+// path does not exist, which indicates a HOST_WORKSPACE_ROOT misconfiguration:
+// docker silently creates missing mount paths as empty directories, so the
+// task container would see an empty /workspace with none of the runner-written
+// config files.
+func hostWorkspaceDirForContainer(workspaceRoot, workspaceDir string) (string, error) {
+	hostWorkspaceDir, err := agentenv.HostWorkspaceDir(workspaceDir, workspaceRoot)
+	if err != nil {
+		return "", err
+	}
+	if info, statErr := os.Stat(hostWorkspaceDir); statErr != nil || !info.IsDir() {
+		slog.Warn("host workspace mount path does not exist; container will see an empty /workspace",
+			"workspace_dir", workspaceDir, "host_workspace_dir", hostWorkspaceDir,
+			"hint", "check HOST_WORKSPACE_ROOT: it must be the host path of RUNNER_WORKSPACE_ROOT")
+	}
+	return hostWorkspaceDir, nil
+}
+
 func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerName string, h harness.ServeHarness, serveCmd []string, bindAddr string, hostPort int, gvisor bool, netName, runnerIP, secret string) ([]string, error) {
-	hostWorkspaceDir, err := agentenv.HostWorkspaceDir(workspaceDir, r.cfg.Runner.WorkspaceRoot)
+	hostWorkspaceDir, err := hostWorkspaceDirForContainer(r.cfg.Runner.WorkspaceRoot, workspaceDir)
 	if err != nil {
 		return nil, err
 	}

@@ -47,7 +47,7 @@ services:
       EXECUTION_BACKEND: docker
       CHETTER_SERVER_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
-      HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-1
+      HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-1/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "3"
       USE_GVISOR: "true"
@@ -77,7 +77,7 @@ services:
       EXECUTION_BACKEND: docker
       CHETTER_SERVER_URL: http://chetter-mcp:8080
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
-      HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2
+      HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "3"
       USE_GVISOR: "true"

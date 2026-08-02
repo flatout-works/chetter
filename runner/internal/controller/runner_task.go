@@ -1327,7 +1327,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 }
 
 func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) ([]string, error) {
-	hostWorkspaceDir, err := agentenv.HostWorkspaceDir(wsDir, workspaceRoot)
+	hostWorkspaceDir, err := hostWorkspaceDirForContainer(workspaceRoot, wsDir)
 	if err != nil {
 		return nil, err
 	}
