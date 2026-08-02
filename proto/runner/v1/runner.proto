@@ -116,6 +116,8 @@ message Task {
   string user_prompt_id = 35 [(buf.validate.field).string.min_len = 1];
   string github_repo = 36;
   string claim_id = 37 [(buf.validate.field).string.min_len = 1];
+  string self_test_nonce = 38;
+  string self_test_check = 39;
 }
 
 message MCPEndpoint {

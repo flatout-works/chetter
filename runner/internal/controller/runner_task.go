@@ -311,6 +311,10 @@ func (r *Runner) startWorkspaceMCP(req task.TaskRequest) (*mcp.Server, error) {
 		}
 	}
 	r.registerGitHubMCPTools(mcpServer, req.TaskID, req.ExecutionID, req.ClaimID)
+	if err := r.registerSelfTestMCPTool(mcpServer, req); err != nil {
+		_ = mcpServer.Close()
+		return nil, fmt.Errorf("register self-test MCP tool: %w", err)
+	}
 	slog.Info("MCP server started", "taskID", req.TaskID, "addr", mcpServer.Addr())
 	return mcpServer, nil
 }

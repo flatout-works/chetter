@@ -47,8 +47,8 @@ func TestGeneratePassword(t *testing.T) {
 func TestGenerateConfigUsesFinalMCPOverride(t *testing.T) {
 	h := New()
 	wsDir := t.TempDir()
-	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
-	if err := h.GenerateConfig(wsDir, "http://runner.test/mcp", "http://relay.test/mcp", "", req, false); err != nil {
+	req := task.TaskRequest{RunnerMCPToken: "runner-token", SelfTestNonce: "nonce"}
+	if err := h.GenerateConfig(wsDir, "http://runner.test/mcp", "http://relay.test/mcp", "relay-token", req, false); err != nil {
 		t.Fatalf("GenerateConfig failed: %v", err)
 	}
 
@@ -70,8 +70,9 @@ func TestGenerateConfigUsesFinalMCPOverride(t *testing.T) {
 	if chetter["oauth"] != false {
 		t.Fatalf("override oauth = %v, want false", chetter["oauth"])
 	}
-	if _, ok := chetter["headers"]; ok {
-		t.Fatal("relay override must not contain an Authorization header")
+	chetterHeaders, ok := chetter["headers"].(map[string]any)
+	if !ok || chetterHeaders["Authorization"] != "Bearer relay-token" {
+		t.Fatalf("relay override Authorization = %v", chetter["headers"])
 	}
 	runner, ok := mcp["runner-bridge"].(map[string]any)
 	if !ok {
@@ -105,6 +106,31 @@ func TestGenerateConfigUsesFinalMCPOverride(t *testing.T) {
 	projectRunnerHeaders := projectRunner["headers"].(map[string]any)
 	if projectRunnerHeaders["Authorization"] != "Bearer runner-token" {
 		t.Fatalf("runner Authorization header = %v", projectRunnerHeaders["Authorization"])
+	}
+	projectChetter := projectConfig["mcp"].(map[string]any)["chetter"].(map[string]any)
+	projectChetterHeaders := projectChetter["headers"].(map[string]any)
+	if projectChetterHeaders["Authorization"] != "Bearer relay-token" {
+		t.Fatalf("chetter Authorization header = %v", projectChetterHeaders["Authorization"])
+	}
+	permissions := projectConfig["permission"].(map[string]any)
+	for _, tool := range []string{
+		"mcp__runner-bridge__chetter_create_pr",
+		"mcp__runner-bridge__chetter_pr_review",
+		"mcp__runner-bridge__chetter_runner_self_test_echo",
+		"mcp__chetter__chetter_list_tasks",
+	} {
+		if permissions[tool] != "allow" {
+			t.Fatalf("MCP tool permission %q = %v", tool, permissions[tool])
+		}
+	}
+
+	globalPath := filepath.Join(wsDir, ".config", "opencode", "config.json")
+	globalInfo, err := os.Stat(globalPath)
+	if err != nil {
+		t.Fatalf("stat global config: %v", err)
+	}
+	if globalInfo.Mode().Perm() != 0600 {
+		t.Fatalf("global config permissions = %v, want 0600", globalInfo.Mode().Perm())
 	}
 }
 

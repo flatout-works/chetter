@@ -1406,6 +1406,8 @@ func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSes
 		GitAuthorName:          session.CommitAuthorName.String,
 		GitAuthorEmail:         session.CommitAuthorEmail.String,
 		GithubRepo:             task.GithubRepo.String,
+		SelfTestNonce:          task.SelfTestNonce.String,
+		SelfTestCheck:          task.SelfTestCheck.String,
 	}
 }
 

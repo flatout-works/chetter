@@ -150,6 +150,8 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		AgentDefinition:        t.AgentDefinition,
 		SkillDefinitions:       t.SkillDefinitions,
 		ExtraFiles:             t.ExtraFiles,
+		SelfTestNonce:          t.SelfTestNonce,
+		SelfTestCheck:          t.SelfTestCheck,
 		GitIdentityID:          t.GitIdentityId,
 		GitAuthorName:          t.GitAuthorName,
 		GitAuthorEmail:         t.GitAuthorEmail,

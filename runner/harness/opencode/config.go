@@ -289,6 +289,9 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		perms["mcp__runner-bridge__chetter_issue_comment"] = "allow"
 		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
 		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
+		if req.SelfTestNonce != "" {
+			perms["mcp__runner-bridge__chetter_runner_self_test_echo"] = "allow"
+		}
 	}
 
 	if chetterMCPURL != "" {
@@ -315,7 +318,7 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		return fmt.Errorf("create opencode config dir: %w", err)
 	}
 	globalConfigPath := globalConfigDir + "/config.json"
-	if err := os.WriteFile(globalConfigPath, out, 0644); err != nil {
+	if err := mcpconfig.WritePrivateFile(globalConfigPath, out); err != nil {
 		return fmt.Errorf("write opencode global config: %w", err)
 	}
 	writeAgentAndSkillDefinitions(wsDir, req)

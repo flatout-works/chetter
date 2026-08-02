@@ -739,6 +739,8 @@ type Task struct {
 	UserPromptId           string                 `protobuf:"bytes,35,opt,name=user_prompt_id,json=userPromptId,proto3" json:"user_prompt_id,omitempty"`
 	GithubRepo             string                 `protobuf:"bytes,36,opt,name=github_repo,json=githubRepo,proto3" json:"github_repo,omitempty"`
 	ClaimId                string                 `protobuf:"bytes,37,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
+	SelfTestNonce          string                 `protobuf:"bytes,38,opt,name=self_test_nonce,json=selfTestNonce,proto3" json:"self_test_nonce,omitempty"`
+	SelfTestCheck          string                 `protobuf:"bytes,39,opt,name=self_test_check,json=selfTestCheck,proto3" json:"self_test_check,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1028,6 +1030,20 @@ func (x *Task) GetGithubRepo() string {
 func (x *Task) GetClaimId() string {
 	if x != nil {
 		return x.ClaimId
+	}
+	return ""
+}
+
+func (x *Task) GetSelfTestNonce() string {
+	if x != nil {
+		return x.SelfTestNonce
+	}
+	return ""
+}
+
+func (x *Task) GetSelfTestCheck() string {
+	if x != nil {
+		return x.SelfTestCheck
 	}
 	return ""
 }
@@ -2541,7 +2557,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x96\r\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xe6\r\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -2585,7 +2601,9 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x0euser_prompt_id\x18# \x01(\tB\a\xbaH\x04r\x02\x10\x01R\fuserPromptId\x12\x1f\n" +
 	"\vgithub_repo\x18$ \x01(\tR\n" +
 	"githubRepo\x12\"\n" +
-	"\bclaim_id\x18% \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\x1a6\n" +
+	"\bclaim_id\x18% \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\x12&\n" +
+	"\x0fself_test_nonce\x18& \x01(\tR\rselfTestNonce\x12&\n" +
+	"\x0fself_test_check\x18' \x01(\tR\rselfTestCheck\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +

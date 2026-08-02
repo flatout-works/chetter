@@ -33,6 +33,8 @@ type TaskRequest struct {
 	Skills                 []string          `json:"skills,omitempty"`
 	McpEndpoints           []MCPEndpoint     `json:"mcp_endpoints,omitempty"`
 	RunnerMCPToken         string            `json:"-"` // Generated locally per execution; never received from or reported to the control plane.
+	SelfTestNonce          string            `json:"-"` // Trusted control-plane marker for runner-observed deployment checks.
+	SelfTestCheck          string            `json:"-"`
 	Harness                string            `json:"harness,omitempty"`
 	TimeoutSec             int               `json:"timeout_sec"`
 	MaxMemoryMB            int               `json:"max_memory_mb"`
