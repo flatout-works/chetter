@@ -146,6 +146,46 @@ func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
 	rows.Close()
 }
 
+func TestMySQLApplySelfTestMetadataMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if _, err := tdb.DB.ExecContext(ctx, "DROP INDEX idx_chetter_tasks_self_test_run ON chetter_tasks"); err != nil {
+		t.Fatalf("drop self-test run index: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP COLUMN self_test_nonce, DROP COLUMN self_test_check, DROP COLUMN self_test_profile, DROP COLUMN self_test_run_id"); err != nil {
+		t.Fatalf("drop self-test metadata columns: %v", err)
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/050_add_task_self_test_metadata.sql"))
+	if err != nil {
+		t.Fatalf("read self-test metadata migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"050_add_task_self_test_metadata.sql": &fstest.MapFile{Data: migration},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply self-test metadata migration: %v", err)
+	}
+
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query migrated self-test metadata columns: %v", err)
+	}
+	rows.Close()
+}
+
 func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) {
 	bootstrapDB, _, cleanup := PostgresSchemaParityDBs(t)
 	if bootstrapDB == nil {
