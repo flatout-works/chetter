@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-08-01
+
+### Added
+
+- Task recovery with an editable custom prompt (#272): `RecoverTask` RPC and `chetter_recover_task` MCP tool accept an optional `custom_prompt` used verbatim as the recovery session's prompt while still attaching the previous session export as a workspace file; when omitted, the default recovery instruction is used. The task detail page opens a recovery modal pre-filled with the default instruction.
+- Per-task memory/CPU limits on Docker execution (#273): `MaxMemoryMB`/`MaxCPU` on tasks are translated into real Docker container limits (`--memory`, `--memory-swap`, `--cpus`) on the serve, resume, and RPC execution paths, with per-task values taking precedence over the runner config fallback. OOM-killed task containers now fail with a structured `resource_limit` failure category on all three paths, and heartbeats report the effective container memory/CPU limits surfaced in the fleet web UI.
+- GitHub multi-installation support: the GitHub App integration resolves the App installation per repository instead of requiring a single configured installation ID, with installation-isolated token and credential caches. Runner GitHub RPCs (issue/PR/comment/review) authenticate against the task repository's installation, and task GitHub metadata (`github_repo`, `github_installation_id`) is stored via new MySQL and PostgreSQL migrations. Legacy single-installation config remains supported via `GITHUB_INSTALLATION_ID`.
+- MCP relay rejection observability: runners report a cumulative count of unauthorized MCP relay requests in heartbeats, exposed as a `chetter_mcp_relay_rejected_requests` Prometheus metric.
+
+### Fixed
+
+- Web UI: agent-generated markdown is now sanitized with DOMPurify before rendering, closing a stored XSS vector on task/agent content.
+- Runner workspace path hardening: extra files and workspace writes are confined to the task workspace — absolute paths, `..` traversal, and symlink escapes are rejected instead of writing outside the workspace.
+- Runner MCP server authentication: per-task MCP servers and the execution-scoped MCP relay now require bearer-token authentication, and credential-bearing config files are written with owner-only (0600) permissions.
+- Runner: configured container resource limits now act as hard caps — per-task limits may be stricter but can never raise the configured caps.
+- Runner: OOM-style errors are prioritized and classified as `resource_limit` on both runner and server, with OOM taking precedence over deadline classification.
+- PostgreSQL: ordered Goose migrations are applied at startup (in `ApplySchema`) before the idempotent bootstrap statements, and `chetter-migrate` handles the postgres dialect.
+- Definitions: automatic git maintenance and gc are disabled during definition repo sync to prevent interruption.
+- Pi harness: explicitly qualified models are prioritized over catalog defaults.
+
+### Documentation
+
+- New `docs/REPOSITORY_QUALITY_REVIEW.md` — repository quality review.
+- New `docs/plans/2026-07-31-001-github-multi-installation-plan.md` — GitHub multi-installation support plan.
+- `docs/MANUAL.md`, `AGENTS.md`, `docs/FEATURES.md`, `docs/HARNESSES.md`, and `website/current/index.html` / `website/old/technical.html` updated for custom-prompt task recovery, the PostgreSQL startup migration policy, GitHub multi-installation, and runner MCP capability boundaries.
+
 ## 2026-07-30
 
 ### Added
