@@ -174,24 +174,36 @@ func GenerateConfigWithEnv(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 	return GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken, includeRunnerMCP, task.TaskRequest{Env: taskEnv}, isLocal)
 }
 
-func chetterMCPConfigContent(url, token string) string {
-	if strings.TrimSpace(url) == "" {
+// runnerMCPConfigContent returns the runner-owned MCP entries that must remain
+// present in OpenCode's highest-precedence inline config. Some OpenCode
+// versions replace nested MCP maps when applying OPENCODE_CONFIG_CONTENT, so
+// including only the Chetter relay here can hide the per-execution runner
+// bridge and its artifact tools.
+func runnerMCPConfigContent(runnerURL, runnerToken, chetterURL, chetterToken string) string {
+	servers := make(map[string]any)
+	if strings.TrimSpace(runnerURL) != "" {
+		runner := map[string]any{
+			"type":    "remote",
+			"url":     runnerURL,
+			"enabled": true,
+		}
+		mcpconfig.SetBearerToken(runner, runnerToken)
+		servers["runner-bridge"] = runner
+	}
+	if strings.TrimSpace(chetterURL) != "" {
+		chetter := map[string]any{
+			"type":    "remote",
+			"url":     chetterURL,
+			"enabled": true,
+			"oauth":   false,
+		}
+		mcpconfig.SetBearerToken(chetter, chetterToken)
+		servers["chetter"] = chetter
+	}
+	if len(servers) == 0 {
 		return ""
 	}
-	server := map[string]any{
-		"type":    "remote",
-		"url":     url,
-		"enabled": true,
-		"oauth":   false,
-	}
-	if token != "" {
-		server["headers"] = map[string]string{
-			"Authorization": "Bearer " + token,
-		}
-	}
-	data, err := json.Marshal(map[string]any{
-		"mcp": map[string]any{"chetter": server},
-	})
+	data, err := json.Marshal(map[string]any{"mcp": servers})
 	if err != nil {
 		return ""
 	}

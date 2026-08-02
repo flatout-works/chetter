@@ -11,11 +11,11 @@ import (
 )
 
 type OpenCode struct {
-	mu                   sync.Mutex
-	sessID               string
-	idleCh               <-chan struct{}
-	onIdle               func()
-	chetterMCPConfigJSON string
+	mu                  sync.Mutex
+	sessID              string
+	idleCh              <-chan struct{}
+	onIdle              func()
+	runnerMCPConfigJSON string
 }
 
 var _ harness.ServeHarness = (*OpenCode)(nil)
@@ -33,7 +33,7 @@ func (oc *OpenCode) GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMC
 	// Project configuration is loaded after OPENCODE_CONFIG. Re-apply the
 	// runner-owned Chetter entry through the final config source so a cloned
 	// repository cannot redirect the agent to another MCP server.
-	oc.chetterMCPConfigJSON = chetterMCPConfigContent(chetterMCPURL, chetterMCPToken)
+	oc.runnerMCPConfigJSON = runnerMCPConfigContent(runnerMCPURL, req.RunnerMCPToken, chetterMCPURL, chetterMCPToken)
 	return nil
 }
 
@@ -42,8 +42,8 @@ func (oc *OpenCode) Env(wsDir string, secret string, _ task.TaskRequest) map[str
 		"OPENCODE_CONFIG":          wsDir + "/.opencode.json",
 		"OPENCODE_SERVER_PASSWORD": secret,
 	}
-	if oc.chetterMCPConfigJSON != "" {
-		env["OPENCODE_CONFIG_CONTENT"] = oc.chetterMCPConfigJSON
+	if oc.runnerMCPConfigJSON != "" {
+		env["OPENCODE_CONFIG_CONTENT"] = oc.runnerMCPConfigJSON
 	}
 	return env
 }

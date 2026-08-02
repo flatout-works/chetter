@@ -44,7 +44,7 @@ func TestGeneratePassword(t *testing.T) {
 	}
 }
 
-func TestGenerateConfigUsesFinalChetterMCPOverride(t *testing.T) {
+func TestGenerateConfigUsesFinalMCPOverride(t *testing.T) {
 	h := New()
 	wsDir := t.TempDir()
 	req := task.TaskRequest{RunnerMCPToken: "runner-token"}
@@ -73,6 +73,17 @@ func TestGenerateConfigUsesFinalChetterMCPOverride(t *testing.T) {
 	if _, ok := chetter["headers"]; ok {
 		t.Fatal("relay override must not contain an Authorization header")
 	}
+	runner, ok := mcp["runner-bridge"].(map[string]any)
+	if !ok {
+		t.Fatal("final override must preserve the runner-bridge MCP server")
+	}
+	if runner["url"] != "http://runner.test/mcp" {
+		t.Fatalf("runner override URL = %v", runner["url"])
+	}
+	runnerHeaders, ok := runner["headers"].(map[string]any)
+	if !ok || runnerHeaders["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner override Authorization = %v", runner["headers"])
+	}
 
 	projectPath := filepath.Join(wsDir, ".opencode.json")
 	projectData, err := os.ReadFile(projectPath)
@@ -90,10 +101,10 @@ func TestGenerateConfigUsesFinalChetterMCPOverride(t *testing.T) {
 	if err := json.Unmarshal(projectData, &projectConfig); err != nil {
 		t.Fatalf("parse project config: %v", err)
 	}
-	runner := projectConfig["mcp"].(map[string]any)["runner-bridge"].(map[string]any)
-	runnerHeaders := runner["headers"].(map[string]any)
-	if runnerHeaders["Authorization"] != "Bearer runner-token" {
-		t.Fatalf("runner Authorization header = %v", runnerHeaders["Authorization"])
+	projectRunner := projectConfig["mcp"].(map[string]any)["runner-bridge"].(map[string]any)
+	projectRunnerHeaders := projectRunner["headers"].(map[string]any)
+	if projectRunnerHeaders["Authorization"] != "Bearer runner-token" {
+		t.Fatalf("runner Authorization header = %v", projectRunnerHeaders["Authorization"])
 	}
 }
 
