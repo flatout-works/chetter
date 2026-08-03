@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -128,6 +129,33 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig) (*OIDCAuth, error) {
 // SessionTTL returns the configured session lifetime.
 func (a *OIDCAuth) SessionTTL() time.Duration {
 	return a.cfg.SessionTTL
+}
+
+// RedirectOrigin returns the scheme://host of the configured redirect URL
+// (OIDC_REDIRECT_URL). It is the externally visible origin registered with
+// the IdP, so logout redirects never depend on request headers. It returns
+// "" when the configured URL is missing or cannot be parsed.
+func (a *OIDCAuth) RedirectOrigin() string {
+	if a == nil {
+		return ""
+	}
+	u, err := url.Parse(a.cfg.RedirectURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// TeamGroupPrefix returns the configured team group prefix ("chetter-" by
+// default). Group-to-team mapping strips it to derive the team name.
+func (a *OIDCAuth) TeamGroupPrefix() string {
+	if a == nil {
+		return DefaultTeamGroupPrefix
+	}
+	if a.cfg.TeamGroupPrefix == "" {
+		return DefaultTeamGroupPrefix
+	}
+	return a.cfg.TeamGroupPrefix
 }
 
 // EndSessionEndpoint returns the IdP's end-session endpoint (Okta logout), if

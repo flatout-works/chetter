@@ -337,6 +337,75 @@ func TestEndSessionEndpoint(t *testing.T) {
 	}
 }
 
+func TestRedirectOrigin(t *testing.T) {
+	provider := oidctest.New(t, "test-client")
+	cfg := OIDCConfig{
+		IssuerURL:     provider.Issuer,
+		ClientID:      "test-client",
+		ClientSecret:  "test-secret",
+		RedirectURL:   "https://chetter.example.com/auth/callback",
+		SessionSecret: testSessionSecret,
+		SessionTTL:    time.Hour,
+	}
+	a, err := NewOIDCAuth(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewOIDCAuth: %v", err)
+	}
+	tests := []struct {
+		name     string
+		auth     *OIDCAuth
+		redirect string
+		want     string
+	}{
+		{name: "plain origin", auth: a, want: "https://chetter.example.com"},
+		{name: "with port", auth: a, redirect: "http://localhost:8090/auth/callback", want: "http://localhost:8090"},
+		{name: "nil auth", auth: nil, want: ""},
+		{name: "unparseable", auth: a, redirect: "not a url", want: ""},
+		{name: "no host", auth: a, redirect: "http://", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.auth != nil && tt.redirect != "" {
+				tt.auth.cfg.RedirectURL = tt.redirect
+			}
+			if got := tt.auth.RedirectOrigin(); got != tt.want {
+				t.Errorf("RedirectOrigin() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTeamGroupPrefix(t *testing.T) {
+	provider := oidctest.New(t, "test-client")
+	cfg := OIDCConfig{
+		IssuerURL:     provider.Issuer,
+		ClientID:      "test-client",
+		ClientSecret:  "test-secret",
+		RedirectURL:   "http://localhost:8090/auth/callback",
+		SessionSecret: testSessionSecret,
+		SessionTTL:    time.Hour,
+	}
+	a, err := NewOIDCAuth(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("NewOIDCAuth: %v", err)
+	}
+	if got := a.TeamGroupPrefix(); got != DefaultTeamGroupPrefix {
+		t.Errorf("default TeamGroupPrefix = %q, want %q", got, DefaultTeamGroupPrefix)
+	}
+	a.cfg.TeamGroupPrefix = "team-"
+	if got := a.TeamGroupPrefix(); got != "team-" {
+		t.Errorf("custom TeamGroupPrefix = %q, want %q", got, "team-")
+	}
+	a.cfg.TeamGroupPrefix = ""
+	if got := a.TeamGroupPrefix(); got != DefaultTeamGroupPrefix {
+		t.Errorf("empty TeamGroupPrefix = %q, want %q", got, DefaultTeamGroupPrefix)
+	}
+	var nilAuth *OIDCAuth
+	if got := nilAuth.TeamGroupPrefix(); got != DefaultTeamGroupPrefix {
+		t.Errorf("nil TeamGroupPrefix = %q, want %q", got, DefaultTeamGroupPrefix)
+	}
+}
+
 func TestStringGroups(t *testing.T) {
 	tests := []struct {
 		name string

@@ -128,9 +128,9 @@ When the OIDC environment variables below are set, the web UI supports login thr
 - The unauthenticated UI redirects to `/auth/login`, which sends the browser to the IdP's authorization endpoint.
 - `/auth/callback` exchanges the code, verifies the ID token (signature, issuer, audience, nonce), maps the user's groups to a Chetter scope, and issues a short-lived signed session cookie (`chetter_session`, HttpOnly).
 - The ConnectRPC web API and `/api/v1/repos` accept the session cookie in addition to bearer tokens. MCP/runner endpoints remain bearer-token-only.
-- Logout clears the cookie and redirects to the IdP's end-session endpoint when the provider advertises one.
+- Logout clears the cookie and redirects to the IdP's end-session endpoint when the provider advertises one, sending the browser back to the app origin derived from `OIDC_REDIRECT_URL` (not request headers).
 
-Group-to-scope mapping (configurable): the `OIDC_ADMIN_GROUP` (default `chetter-admin`) grants full admin scope; any group matching `OIDC_TEAM_GROUP_PREFIX` (default `chetter-`) maps to a team named after the suffix, resolved to the matching team in the database when one exists. Sessions are stateless JWTs signed with `OIDC_SESSION_SECRET` (or a key derived from `MCP_AUTH_TOKEN`); no session table is used.
+Group-to-scope mapping (configurable): the `OIDC_ADMIN_GROUP` (default `chetter-admin`) grants full admin scope; any group matching `OIDC_TEAM_GROUP_PREFIX` (default `chetter-`) maps to a team named after the suffix, resolved to the matching team in the database when one exists. A team's `okta_group_id` or `okta_group_name` column, when populated, overrides that convention: a group matching either value binds directly to that team, even when the team name does not follow the prefix. Sessions are stateless JWTs signed with `OIDC_SESSION_SECRET` (or a key derived from `MCP_AUTH_TOKEN`); no session table is used.
 
 Managed Git identities control commit attribution for agent work and are configured via `chetterctl identity` or the **Admin > Git Identities** UI — see [CONFIGURATION.md](CONFIGURATION.md#managed-git-identities).
 

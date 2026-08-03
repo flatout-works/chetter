@@ -41,8 +41,9 @@ func NewHandlers(svc *service.Service, bus *EventBus) *Handlers {
 // RegisterHandlers mounts all ConnectRPC service handlers on the given mux.
 // The ArcaneService is only registered if Arcane is configured. When oidc is
 // non-nil the web UI OIDC login flow is registered and session cookies are
-// accepted alongside bearer tokens.
-func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sql.DB, oidc *auth.OIDCAuth) {
+// accepted alongside bearer tokens. teams backs the OIDC group-to-team
+// mapping and may be nil (group names are then kept as-is).
+func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sql.DB, oidc *auth.OIDCAuth, teams TeamResolver) {
 	interceptor := NewAuthInterceptor(adminToken, db, oidc)
 
 	mux.Handle(apiv1connect.NewTaskServiceHandler(h.Task, connect.WithInterceptors(interceptor)))
@@ -62,7 +63,7 @@ func RegisterHandlers(mux *http.ServeMux, h *Handlers, adminToken string, db *sq
 	mux.HandleFunc("/api/v1/repos", authMiddleware(adminToken, db, oidc, h.Admin.HandleListRepos))
 
 	// Web UI OIDC login flow (no-op when OIDC is not configured).
-	RegisterOIDCRoutes(mux, oidc, db)
+	RegisterOIDCRoutes(mux, oidc, teams)
 }
 
 // Ensure the handler types satisfy the generated interfaces.

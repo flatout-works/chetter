@@ -119,7 +119,8 @@ func run() error {
 		svc.SetGitHubManager(githubManager)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(data.New(st.DB(), st.Dialect()), st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
+	repo := data.New(st.DB(), st.Dialect())
+	runnerSvc := service.NewRunnerRPCService(repo, st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
@@ -212,7 +213,7 @@ func run() error {
 		}
 		slog.Info("oidc web auth configured", "issuer", cfg.OIDCIssuerURL, "redirect_url", cfg.OIDCRedirectURL)
 	}
-	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB(), oidcAuth)
+	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB(), oidcAuth, repo)
 	webMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))

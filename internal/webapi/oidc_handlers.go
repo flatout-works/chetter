@@ -3,7 +3,6 @@ package webapi
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
@@ -12,20 +11,32 @@ import (
 	"strings"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/repository"
 )
 
+// TeamResolver is the team lookup surface the OIDC handlers need. It is
+// satisfied by the dialect-agnostic data facade (internal/data), so
+// group-to-team mapping goes through the generated dual-dialect queries
+// instead of hand-rolled SQL with dialect fallbacks.
+type TeamResolver interface {
+	// ListTeams returns all teams, used to resolve group-derived names to
+	// team IDs and to apply okta_group_id/okta_group_name overrides.
+	ListTeams(ctx context.Context) ([]repository.Team, error)
+}
+
 // RegisterOIDCRoutes mounts the web UI OIDC login flow. It is a no-op when
-// oidc is nil (OIDC not configured).
+// oidc is nil (OIDC not configured). teams may be nil; group-derived team
+// names are then kept as-is.
 //
 //	GET /auth/login    — redirect to the IdP authorization endpoint
 //	GET /auth/callback — exchange the code, mint a session, set the cookie
 //	GET/POST /auth/logout — clear the session cookie, redirect to IdP logout
 //	GET /auth/session  — report session state to the SPA (200/401)
-func RegisterOIDCRoutes(mux *http.ServeMux, oidc *auth.OIDCAuth, db *sql.DB) {
+func RegisterOIDCRoutes(mux *http.ServeMux, oidc *auth.OIDCAuth, teams TeamResolver) {
 	if oidc == nil {
 		return
 	}
-	h := &oidcHandlers{oidc: oidc, db: db}
+	h := &oidcHandlers{oidc: oidc, teams: teams}
 	mux.HandleFunc("GET /auth/login", h.handleLogin)
 	mux.HandleFunc("GET /auth/callback", h.handleCallback)
 	mux.HandleFunc("GET /auth/logout", h.handleLogout)
@@ -34,8 +45,8 @@ func RegisterOIDCRoutes(mux *http.ServeMux, oidc *auth.OIDCAuth, db *sql.DB) {
 }
 
 type oidcHandlers struct {
-	oidc *auth.OIDCAuth
-	db   *sql.DB
+	oidc  *auth.OIDCAuth
+	teams TeamResolver
 }
 
 // handleLogin starts the authorization code flow: it sets a short-lived
@@ -109,7 +120,7 @@ func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scope := h.oidc.ScopeForGroups(identity.Groups)
-	scope.TeamIDs = resolveTeamIDs(r.Context(), h.db, scope.TeamIDs)
+	scope.TeamIDs = h.resolveTeamIDs(r.Context(), identity.Groups, scope.TeamIDs)
 	if len(scope.TeamIDs) > 0 {
 		scope.TeamID = scope.TeamIDs[0]
 	}
@@ -152,13 +163,29 @@ func (h *oidcHandlers) handleLogout(w http.ResponseWriter, r *http.Request) {
 			if rawIDToken != "" {
 				q.Set("id_token_hint", rawIDToken)
 			}
-			q.Set("post_logout_redirect_uri", appBaseURL(r)+"/")
+			q.Set("post_logout_redirect_uri", h.logoutRedirectURI(r))
 			u.RawQuery = q.Encode()
 			http.Redirect(w, r, u.String(), http.StatusFound)
 			return
 		}
 	}
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// logoutRedirectURI returns the absolute URL the IdP should send the browser
+// back to after logout. It is derived from the configured OIDC_REDIRECT_URL
+// origin (guaranteed to be registered with the IdP) rather than from request
+// headers, which may be spoofed or rewritten by proxies. The request-based
+// fallback only applies when the configured URL cannot be parsed.
+func (h *oidcHandlers) logoutRedirectURI(r *http.Request) string {
+	origin := ""
+	if h.oidc != nil {
+		origin = h.oidc.RedirectOrigin()
+	}
+	if origin == "" {
+		return appBaseURL(r) + "/"
+	}
+	return origin + "/"
 }
 
 // handleSession reports whether the request carries a valid session cookie.
@@ -208,40 +235,72 @@ func (h *oidcHandlers) clearSessionCookie(w http.ResponseWriter, r *http.Request
 }
 
 // resolveTeamIDs maps group-derived team names to real team IDs via the
-// teams table. Names that do not resolve are kept as-is (the issue's
-// literal mapping chetter-<name> -> TeamID "<name>"), which safely yields an
-// empty result set for unknown teams.
-func resolveTeamIDs(ctx context.Context, db *sql.DB, teamNames []string) []string {
-	if db == nil || len(teamNames) == 0 {
+// teams table. A team whose okta_group_id or okta_group_name matches one of
+// the user's groups exactly wins over the prefix-based name mapping (issue
+// #94 okta override). Names that do not resolve are kept as-is (the issue's
+// literal mapping chetter-<name> -> TeamID "<name>"), which safely yields
+// an empty result set for unknown teams.
+func (h *oidcHandlers) resolveTeamIDs(ctx context.Context, groups, teamNames []string) []string {
+	if h.teams == nil || len(teamNames) == 0 && len(groups) == 0 {
 		return teamNames
 	}
+	all, err := h.teams.ListTeams(ctx)
+	if err != nil {
+		slog.Warn("oidc: list teams for group mapping", "error", err)
+		return teamNames
+	}
+	byName := make(map[string]string, len(all))
+	byOkta := make(map[string]string, len(all))
+	for _, t := range all {
+		if t.Name != "" {
+			byName[t.Name] = t.ID
+		}
+		if t.OktaGroupID.Valid && t.OktaGroupID.String != "" {
+			byOkta[t.OktaGroupID.String] = t.ID
+		}
+		if t.OktaGroupName.Valid && t.OktaGroupName.String != "" {
+			byOkta[t.OktaGroupName.String] = t.ID
+		}
+	}
 	resolved := make([]string, 0, len(teamNames))
+	seen := make(map[string]bool, len(teamNames)+len(groups))
+	add := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		resolved = append(resolved, id)
+	}
+	// Exact okta_group_id / okta_group_name bindings are the most specific
+	// match and win over the prefix-derived team name.
+	for _, g := range groups {
+		if g == "" {
+			continue
+		}
+		if id, ok := byOkta[g]; ok {
+			add(id)
+		}
+	}
+	prefix := ""
+	if h.oidc != nil {
+		prefix = h.oidc.TeamGroupPrefix()
+	}
 	for _, name := range teamNames {
 		if name == "" {
 			continue
 		}
-		id := lookupTeamIDByName(ctx, db, name)
-		if id == "" {
-			id = name
+		if prefix != "" {
+			if _, ok := byOkta[prefix+name]; ok {
+				continue // group already added via the exact okta binding
+			}
 		}
-		resolved = append(resolved, id)
+		if id, ok := byName[name]; ok {
+			add(id)
+		} else {
+			add(name) // literal mapping for unknown teams
+		}
 	}
 	return resolved
-}
-
-func lookupTeamIDByName(ctx context.Context, db *sql.DB, name string) string {
-	// The teams table is not part of the generated repository surface; use
-	// the same ? -> $1 fallback as auth.lookupTokenScope for PostgreSQL.
-	const query = `SELECT id FROM teams WHERE name = ?`
-	var id string
-	err := db.QueryRowContext(ctx, query, name).Scan(&id)
-	if err != nil {
-		err = db.QueryRowContext(ctx, strings.Replace(query, "?", "$1", 1), name).Scan(&id)
-	}
-	if err != nil {
-		return ""
-	}
-	return id
 }
 
 // randomToken returns a hex-encoded cryptographically random token.

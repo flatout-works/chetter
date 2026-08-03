@@ -2,14 +2,18 @@ package webapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/oidctest"
+	"github.com/flatout-works/chetter/internal/repository"
 )
 
 const testSessionSecret = "test-session-secret"
@@ -34,7 +38,6 @@ func newTestOIDC(t *testing.T) (*auth.OIDCAuth, *oidctest.FakeProvider) {
 	}
 	return a, provider
 }
-
 
 func newNoRedirectClient() *http.Client {
 	return &http.Client{
@@ -278,10 +281,12 @@ func TestOIDCLogout(t *testing.T) {
 	}
 
 	// The fake provider advertises an end-session endpoint; the redirect
-	// must go there with a post-logout redirect back to the app.
+	// must go there with a post-logout redirect back to the app. The URI is
+	// derived from the configured OIDC_REDIRECT_URL origin, not request
+	// headers (the httptest server URL differs from the config).
 	location := resp.Header.Get("Location")
-	if got := oidctest.Query(location, "post_logout_redirect_uri"); got != server.URL+"/" {
-		t.Errorf("post_logout_redirect_uri = %q, want %q", got, server.URL+"/")
+	if got := oidctest.Query(location, "post_logout_redirect_uri"); got != "http://localhost:8090/" {
+		t.Errorf("post_logout_redirect_uri = %q, want %q", got, "http://localhost:8090/")
 	}
 
 	// The session cookie must be cleared.
@@ -353,4 +358,161 @@ func cookieValue(t *testing.T, jar cookieJar, name string) string {
 	}
 	t.Fatalf("cookie %q not found in jar %v", name, jar)
 	return ""
+}
+
+// fakeTeamResolver is a TeamResolver for tests.
+type fakeTeamResolver struct {
+	teams []repository.Team
+	err   error
+}
+
+func (f fakeTeamResolver) ListTeams(context.Context) ([]repository.Team, error) {
+	return f.teams, f.err
+}
+
+func teamWithOkta(id, groupID, groupName string) repository.Team {
+	t := repository.Team{ID: id, Name: "platform"}
+	if groupID != "" {
+		t.OktaGroupID = sql.NullString{String: groupID, Valid: true}
+	}
+	if groupName != "" {
+		t.OktaGroupName = sql.NullString{String: groupName, Valid: true}
+	}
+	return t
+}
+
+func TestResolveTeamIDs(t *testing.T) {
+	a, _ := newTestOIDC(t)
+	tests := []struct {
+		name     string
+		resolver TeamResolver
+		groups   []string
+		names    []string
+		want     []string
+	}{
+		{
+			name:   "nil resolver keeps derived names",
+			groups: []string{"chetter-platform"},
+			names:  []string{"platform"},
+			want:   []string{"platform"},
+		},
+		{
+			name:     "name lookup resolves to team id",
+			resolver: fakeTeamResolver{teams: []repository.Team{{ID: "t1", Name: "platform"}}},
+			groups:   []string{"chetter-platform"},
+			names:    []string{"platform"},
+			want:     []string{"t1"},
+		},
+		{
+			name:     "unknown team kept literal",
+			resolver: fakeTeamResolver{},
+			groups:   []string{"chetter-platform"},
+			names:    []string{"platform"},
+			want:     []string{"platform"},
+		},
+		{
+			name: "okta group name binding wins over name lookup",
+			resolver: fakeTeamResolver{teams: []repository.Team{
+				{ID: "t-platform", Name: "platform"},
+				teamWithOkta("t-eng", "", "chetter-platform"),
+			}},
+			groups: []string{"chetter-platform"},
+			names:  []string{"platform"},
+			want:   []string{"t-eng"},
+		},
+		{
+			name:     "okta group id binding maps without prefix",
+			resolver: fakeTeamResolver{teams: []repository.Team{teamWithOkta("t-eng", "00g123", "")}},
+			groups:   []string{"00g123"},
+			names:    []string{},
+			want:     []string{"t-eng"},
+		},
+		{
+			name:     "non-prefixed group bound via okta group name",
+			resolver: fakeTeamResolver{teams: []repository.Team{teamWithOkta("t-pay", "", "payments")}},
+			groups:   []string{"payments"},
+			names:    []string{},
+			want:     []string{"t-pay"},
+		},
+		{
+			name:     "duplicate groups and names deduplicated",
+			resolver: fakeTeamResolver{teams: []repository.Team{{ID: "t1", Name: "platform"}}},
+			groups:   []string{"chetter-platform", "chetter-platform"},
+			names:    []string{"platform", "platform"},
+			want:     []string{"t1"},
+		},
+		{
+			name:     "list error falls back to derived names",
+			resolver: fakeTeamResolver{err: errors.New("boom")},
+			groups:   []string{"chetter-platform"},
+			names:    []string{"platform"},
+			want:     []string{"platform"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &oidcHandlers{oidc: a, teams: tt.resolver}
+			got := h.resolveTeamIDs(context.Background(), tt.groups, tt.names)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("resolveTeamIDs(%v, %v) = %v, want %v", tt.groups, tt.names, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOIDCCallbackResolvesTeamsViaFacade(t *testing.T) {
+	a, provider := newTestOIDC(t)
+	resolver := fakeTeamResolver{teams: []repository.Team{{ID: "team-platform-id", Name: "platform"}}}
+	mux := http.NewServeMux()
+	RegisterOIDCRoutes(mux, a, resolver)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	// Login to capture the state/nonce cookies.
+	loginResp, err := newNoRedirectClient().Get(server.URL + "/auth/login")
+	if err != nil {
+		t.Fatalf("GET /auth/login: %v", err)
+	}
+	loginResp.Body.Close()
+	jar := newCookieJar(loginResp.Cookies())
+
+	// Callback with a team group; the facade-backed resolver must turn the
+	// derived team name into a real team ID in the session scope.
+	code := provider.IssueCode(oidctest.TokenSpec{
+		Subject: "user-1",
+		Email:   "carol@example.com",
+		Groups:  []string{"chetter-platform"},
+		Nonce:   cookieValue(t, jar, auth.OAuthNonceCookieName),
+	})
+	callbackReq, err := http.NewRequest(http.MethodGet, server.URL+"/auth/callback?code="+code+"&state="+cookieValue(t, jar, auth.OAuthStateCookieName), nil)
+	if err != nil {
+		t.Fatalf("build callback request: %v", err)
+	}
+	for _, c := range jar {
+		callbackReq.AddCookie(c)
+	}
+	callbackResp, err := newNoRedirectClient().Do(callbackReq)
+	if err != nil {
+		t.Fatalf("GET /auth/callback: %v", err)
+	}
+	callbackResp.Body.Close()
+	if callbackResp.StatusCode != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302", callbackResp.StatusCode)
+	}
+	var sessionCookie *http.Cookie
+	for _, c := range callbackResp.Cookies() {
+		if c.Name == auth.SessionCookieName {
+			sessionCookie = c
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("callback did not set session cookie")
+	}
+	claims, err := a.ParseSession(sessionCookie.Value)
+	if err != nil {
+		t.Fatalf("parse session: %v", err)
+	}
+	if !claims.Scope().HasTeam("team-platform-id") {
+		t.Errorf("session scope = %+v, want resolved team team-platform-id", claims.Scope())
+	}
 }
