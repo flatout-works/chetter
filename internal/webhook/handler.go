@@ -114,6 +114,8 @@ type ReviewTrigger struct {
 	SessionMode string
 	PauseReason string
 	TTLHours    int
+	// Isolation marks review tasks as requiring enforced isolation (issue #291).
+	Isolation string
 }
 
 // TaskSubmitter is the subset of service.Service that the webhook needs to
@@ -152,6 +154,8 @@ type ReviewContext struct {
 	SessionMode          string
 	PauseReason          string
 	TTLHours             int
+	// Isolation marks review tasks as requiring enforced isolation (issue #291).
+	Isolation string
 }
 
 // Handler serves GitHub webhook events. Implements http.Handler.
@@ -850,6 +854,7 @@ func (h *Handler) submitReviewForTrigger(ctx ReviewContext, gh *Client, triggers
 		rc.SessionMode = t.SessionMode
 		rc.PauseReason = t.PauseReason
 		rc.TTLHours = t.TTLHours
+		rc.Isolation = t.Isolation
 		if err := h.submitter.SubmitReviewTask(asyncCtx(30*time.Second), rc); err != nil {
 			if firstErr == nil {
 				firstErr = err

@@ -1,0 +1,14 @@
+{
+  "compaction": {
+    "enabled": true,
+    "keepRecentTokens": 20000,
+    "reserveTokens": 16384
+  },
+  "defaultProjectTrust": "always",
+  "enableInstallTelemetry": false,
+  "quietStartup": true,
+  "retry": {
+    "enabled": true,
+    "maxRetries": 3
+  }
+}

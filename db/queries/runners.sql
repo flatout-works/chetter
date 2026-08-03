@@ -1,9 +1,9 @@
 -- name: UpsertRunnerHeartbeat :exec
 INSERT INTO chetter_runners
     (id, status, image_ref, image_digest, version,
-     max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
+     max_concurrent, running_tasks, available_slots, isolation_enabled, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     image_ref = VALUES(image_ref),
@@ -12,6 +12,7 @@ ON DUPLICATE KEY UPDATE
     max_concurrent = VALUES(max_concurrent),
     running_tasks = VALUES(running_tasks),
     available_slots = VALUES(available_slots),
+    isolation_enabled = VALUES(isolation_enabled),
     total_started = VALUES(total_started),
     total_completed = VALUES(total_completed),
     total_errors = VALUES(total_errors),
@@ -30,3 +31,8 @@ SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tas
 FROM chetter_runners
 WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC;
+
+-- name: GetRunnerIsolationEnabled :one
+SELECT isolation_enabled
+FROM chetter_runners
+WHERE id = ?;

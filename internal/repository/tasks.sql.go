@@ -110,6 +110,38 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 	return result.RowsAffected()
 }
 
+const failPendingIsolationTasks = `-- name: FailPendingIsolationTasks :execrows
+UPDATE chetter_tasks task
+JOIN chetter_user_prompts prompt ON prompt.task_id = task.id
+JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+SET task.status = 'error',
+    task.error = 'no active runner enforces isolation (gVisor) for this task',
+    task.error_category = 'isolation_unavailable',
+    task.failure_category = 'harness_error',
+    task.failure_message = 'No active runner enforces isolation (gVisor) for this task; it cannot run unsandboxed.',
+    task.ended_at = ?,
+    task.updated_at = ?
+WHERE task.status = 'pending'
+  AND attempt.status = 'error'
+  AND attempt.error_category = 'isolation_unavailable'
+`
+
+type FailPendingIsolationTasksParams struct {
+	EndedAt   sql.NullTime `json:"ended_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// Marks pending tasks whose execution attempts failed with
+// isolation_unavailable as terminal errors. Companion to
+// FailPendingIsolationAttemptsWithoutCapableRunner (issue #291).
+func (q *Queries) FailPendingIsolationTasks(ctx context.Context, arg FailPendingIsolationTasksParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingIsolationTasks, arg.EndedAt, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getLatestTaskEvent = `-- name: GetLatestTaskEvent :one
 SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM chetter_task_events
 WHERE task_id = ?

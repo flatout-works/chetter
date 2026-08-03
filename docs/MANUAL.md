@@ -145,6 +145,7 @@ Managed Git identities control commit attribution for agent work and are configu
 | `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `chetter_task_artifacts` and `chetter_agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
+| `CHETTER_ALLOW_UNISOLATED` | No | `false` | Documented escape hatch for single-tenant/trusted deployments that intentionally run without gVisor. When unset (hardened default), every task requires enforced isolation (gVisor/runsc) and is refused by runners that cannot enforce it. When `true`, only resumable sessions and tasks explicitly configured with `isolation: required` require isolation. Set it on the server **and** on every runner in the trusted deployment. See issue #291. |
 | `ARCANE_SERVER_URL` | No | empty | Optional Arcane scanner URL. |
 | `ARCANE_API_KEY` | No | empty | Optional Arcane API key. |
 | `GITHUB_APP_ID` | For GitHub app | `0` | GitHub App ID. |
@@ -179,6 +180,7 @@ Every check is a normal runner task. Passing requires a successful terminal task
 | `CHETTER_EXECUTION_ID` | Protected immutable ExecutionAttempt identifier used for attribution and fencing. |
 | `EXECUTION_BACKEND` | Execution backend selector: `docker`, `kubernetes`, or development-only `local`. Default `docker`. |
 | `USE_GVISOR` | Enables Docker `runsc` execution when `true`. |
+| `CHETTER_ALLOW_UNISOLATED` | Escape hatch for single-tenant/trusted deployments without gVisor: accept isolation-requiring tasks even when the runner cannot enforce a sandbox. Must match the server setting. See issue #291. |
 | `CHETTER_PROXY_ALLOWED_DOMAINS` | Optional HTTP/HTTPS egress allowlist. |
 | `CHETTER_PROXY_BLOCKED_DOMAINS` | Optional HTTP/HTTPS egress blocklist. |
 | `CHETTER_DNS_BLOCKED_DOMAINS` | Optional DNS blocklist. |
@@ -342,6 +344,7 @@ chetter_mcp:
 | `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
 | `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
+| `execution.allow_unisolated` | `CHETTER_ALLOW_UNISOLATED=true` env | Escape hatch for trusted single-tenant deployments without gVisor: the runner accepts isolation-requiring tasks even when it cannot enforce a sandbox. See issue #291. |
 | `execution.container_memory` | empty | Optional runner-side Docker memory cap, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Task limits may be stricter but cannot raise this cap. Empty means no runner-imposed cap. OOM-killed tasks report `failure_category=resource_limit`. |
 | `execution.container_cpu` | empty | Optional CPU cap in cores, passed as `--cpus` (for example `1.5`). |
 | `execution.container_pids` | empty | Optional PID cap, passed as `--pids-limit` (for example `256`). |
@@ -401,6 +404,23 @@ For a resumable session:
   "ttl_hours": 72
 }
 ```
+
+To require enforced isolation (gVisor) for a specific task, for example
+untrusted input in a deployment that otherwise opted out via
+`CHETTER_ALLOW_UNISOLATED`:
+
+```json
+{
+  "prompt": "Triage this untrusted repository report.",
+  "agent_image": "chetter-agent:golang",
+  "isolation": "required"
+}
+```
+
+Isolation-requiring tasks (resumable, explicitly configured, or every task in a
+hardened deployment) only run on runners that enforce a sandbox and fail fast
+with `failure_category=harness_error` / `error_category=isolation_unavailable`
+when no capable runner exists. See issue #291.
 
 ## MCP Tool Reference
 

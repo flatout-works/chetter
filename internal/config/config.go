@@ -54,6 +54,14 @@ type Config struct {
 	// artifacts (checkpoints, session exports) are eligible for garbage
 	// collection by the reaper. A value of 0 disables GC. Default: 24h.
 	SessionArtifactTTL time.Duration
+
+	// AllowUnisolated is the documented escape hatch for single-tenant /
+	// trusted deployments that intentionally run without gVisor. When true,
+	// tasks are only marked isolation-requiring when explicitly configured
+	// (isolation: required) or resumable; when false (default, hardened mode),
+	// every task requires enforced isolation and is refused by runners that
+	// cannot enforce it. See issue #291 and CHETTER_ALLOW_UNISOLATED.
+	AllowUnisolated bool
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -86,6 +94,7 @@ func Load() Config {
 		EnvValidation:          envValidationConfig(),
 		TaskLimits:             taskLimitsConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
+		AllowUnisolated:        envBool("CHETTER_ALLOW_UNISOLATED", false),
 	}
 }
 

@@ -208,19 +208,66 @@ func (q *Queries) FailPendingExecutionAttemptsForMissingRunner(ctx context.Conte
 	return result.RowsAffected()
 }
 
+const failPendingIsolationAttemptsWithoutCapableRunner = `-- name: FailPendingIsolationAttemptsWithoutCapableRunner :execrows
+UPDATE chetter_execution_attempts attempt
+SET status = 'error',
+    error = 'no active runner enforces isolation (gVisor) for this task',
+    error_category = 'isolation_unavailable',
+    ended_at = $1,
+    updated_at = $2
+FROM chetter_user_prompts prompt, chetter_agent_sessions session
+WHERE prompt.id = attempt.user_prompt_id
+  AND session.id = prompt.agent_session_id
+  AND attempt.status = 'pending'
+  AND session.isolation_required = true
+  AND NOT EXISTS (
+      SELECT 1 FROM chetter_runners capable
+      WHERE capable.isolation_enabled = true
+        AND capable.status = 'active'
+        AND capable.last_seen_at > NOW() - ($3 * INTERVAL '1 second')
+  )
+`
+
+type FailPendingIsolationAttemptsWithoutCapableRunnerParams struct {
+	EndedAt      sql.NullTime `json:"ended_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	StaleSeconds interface{}  `json:"stale_seconds"`
+}
+
+// Fails pending attempts whose session requires enforced isolation when no
+// live runner advertises isolation_enabled. The task must never run
+// unsandboxed; without a capable runner it fails fast with
+// error_category isolation_unavailable instead of waiting forever. See issue
+// #291.
+func (q *Queries) FailPendingIsolationAttemptsWithoutCapableRunner(ctx context.Context, arg FailPendingIsolationAttemptsWithoutCapableRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, failPendingIsolationAttemptsWithoutCapableRunner, arg.EndedAt, arg.UpdatedAt, arg.StaleSeconds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getClaimableExecutionAttemptForUpdate = `-- name: GetClaimableExecutionAttemptForUpdate :one
 SELECT attempt.id AS execution_attempt_id, attempt.sequence,
        prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = $1)
+  -- Isolation admission (issue #291): see db/queries/execution_attempts.sql.
+  AND (session.isolation_required = false OR $2 = true)
 ORDER BY attempt.created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED
 `
+
+type GetClaimableExecutionAttemptForUpdateParams struct {
+	RunnerID         sql.NullString `json:"runner_id"`
+	IsolationEnabled interface{}    `json:"isolation_enabled"`
+}
 
 type GetClaimableExecutionAttemptForUpdateRow struct {
 	ExecutionAttemptID string `json:"execution_attempt_id"`
@@ -230,8 +277,8 @@ type GetClaimableExecutionAttemptForUpdateRow struct {
 	LockedTaskID       string `json:"locked_task_id"`
 }
 
-func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (GetClaimableExecutionAttemptForUpdateRow, error) {
-	row := q.db.QueryRowContext(ctx, getClaimableExecutionAttemptForUpdate, runnerID)
+func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg GetClaimableExecutionAttemptForUpdateParams) (GetClaimableExecutionAttemptForUpdateRow, error) {
+	row := q.db.QueryRowContext(ctx, getClaimableExecutionAttemptForUpdate, arg.RunnerID, arg.IsolationEnabled)
 	var i GetClaimableExecutionAttemptForUpdateRow
 	err := row.Scan(
 		&i.ExecutionAttemptID,

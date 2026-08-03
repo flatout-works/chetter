@@ -51,12 +51,14 @@ type Repository interface {
 	FailExpiredExecutionAttempts(ctx context.Context, arg repository.FailExpiredExecutionAttemptsParams) (int64, error)
 	FailExpiredLeases(ctx context.Context, arg repository.FailExpiredLeasesParams) (int64, error)
 	FailPendingExecutionAttemptsForMissingRunner(ctx context.Context, arg repository.FailPendingExecutionAttemptsForMissingRunnerParams) (int64, error)
+	FailPendingIsolationAttemptsWithoutCapableRunner(ctx context.Context, arg repository.FailPendingIsolationAttemptsWithoutCapableRunnerParams) (int64, error)
+	FailPendingIsolationTasks(ctx context.Context, arg repository.FailPendingIsolationTasksParams) (int64, error)
 	FailPendingResumeTasksForMissingRunner(ctx context.Context, arg repository.FailPendingResumeTasksForMissingRunnerParams) (int64, error)
 	FailPendingUserPromptsForUnavailableRunner(ctx context.Context, arg repository.FailPendingUserPromptsForUnavailableRunnerParams) (int64, error)
 	GetActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, error)
 	GetAgentSessionByID(ctx context.Context, id string) (repository.ChetterAgentSession, error)
 	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSession, error)
-	GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (repository.GetClaimableExecutionAttemptForUpdateRow, error)
+	GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error)
 	GetDefinitionBySourceTypeName(ctx context.Context, arg repository.GetDefinitionBySourceTypeNameParams) (repository.Definition, error)
 	GetDefinitionChangeProposal(ctx context.Context, id string) (repository.DefinitionChangeProposal, error)
 	GetDefinitionChangeProposalByPR(ctx context.Context, arg repository.GetDefinitionChangeProposalByPRParams) (repository.DefinitionChangeProposal, error)
@@ -77,6 +79,7 @@ type Repository interface {
 	GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error)
 	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error)
 	GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error)
+	GetRunnerIsolationEnabled(ctx context.Context, id string) (bool, error)
 	GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error)
 	GetTeamByID(ctx context.Context, id string) (repository.Team, error)
 	GetTeamByName(ctx context.Context, name string) (repository.Team, error)
@@ -118,7 +121,7 @@ type Repository interface {
 	ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.ChetterEventCallback, error)
 	ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ChetterExecutionAttempt, error)
 	ListExecutionAttemptsForHeartbeat(ctx context.Context, arg repository.ListExecutionAttemptsForHeartbeatParams) ([]repository.ListExecutionAttemptsForHeartbeatRow, error)
-	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ChetterRunner, error)
+	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ListLiveRunnersRow, error)
 	ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error)
 	ListReclaimableExecutionAttemptsForUpdate(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExecutionAttemptsForUpdateRow, error)
 	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error)
@@ -326,6 +329,16 @@ func (q *Queries) FailPendingExecutionAttemptsForMissingRunner(ctx context.Conte
 	return convert[int64](value), err
 }
 
+func (q *Queries) FailPendingIsolationAttemptsWithoutCapableRunner(ctx context.Context, arg repository.FailPendingIsolationAttemptsWithoutCapableRunnerParams) (int64, error) {
+	value, err := q.postgres.FailPendingIsolationAttemptsWithoutCapableRunner(ctx, convert[repositorypostgres.FailPendingIsolationAttemptsWithoutCapableRunnerParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) FailPendingIsolationTasks(ctx context.Context, arg repository.FailPendingIsolationTasksParams) (int64, error) {
+	value, err := q.postgres.FailPendingIsolationTasks(ctx, convert[repositorypostgres.FailPendingIsolationTasksParams](arg))
+	return convert[int64](value), err
+}
+
 func (q *Queries) FailPendingResumeTasksForMissingRunner(ctx context.Context, arg repository.FailPendingResumeTasksForMissingRunnerParams) (int64, error) {
 	value, err := q.postgres.FailPendingResumeTasksForMissingRunner(ctx, convert[repositorypostgres.FailPendingResumeTasksForMissingRunnerParams](arg))
 	return convert[int64](value), err
@@ -351,8 +364,8 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (r
 	return convert[repository.ChetterAgentSession](value), err
 }
 
-func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, runnerID sql.NullString) (repository.GetClaimableExecutionAttemptForUpdateRow, error) {
-	value, err := q.postgres.GetClaimableExecutionAttemptForUpdate(ctx, convert[sql.NullString](runnerID))
+func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error) {
+	value, err := q.postgres.GetClaimableExecutionAttemptForUpdate(ctx, convert[repositorypostgres.GetClaimableExecutionAttemptForUpdateParams](arg))
 	return convert[repository.GetClaimableExecutionAttemptForUpdateRow](value), err
 }
 
@@ -454,6 +467,11 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg repository
 func (q *Queries) GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error) {
 	value, err := q.postgres.GetRunnerHeartbeatMetadata(ctx, convert[string](id))
 	return convert[json.RawMessage](value), err
+}
+
+func (q *Queries) GetRunnerIsolationEnabled(ctx context.Context, id string) (bool, error) {
+	value, err := q.postgres.GetRunnerIsolationEnabled(ctx, convert[string](id))
+	return convert[bool](value), err
 }
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error) {
@@ -647,9 +665,9 @@ func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg rep
 	return convert[[]repository.ListExecutionAttemptsForHeartbeatRow](value), err
 }
 
-func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ChetterRunner, error) {
+func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ListLiveRunnersRow, error) {
 	value, err := q.postgres.ListLiveRunners(ctx, convert[time.Time](lastSeenAt))
-	return convert[[]repository.ChetterRunner](value), err
+	return convert[[]repository.ListLiveRunnersRow](value), err
 }
 
 func (q *Queries) ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error) {

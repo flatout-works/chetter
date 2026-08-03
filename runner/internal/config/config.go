@@ -71,6 +71,7 @@ type ExecutionConfig struct {
 	Runtime         string  `yaml:"runtime"`
 	Harness         string  `yaml:"harness"`
 	UseGVisor       bool    `yaml:"use_gvisor"`
+	AllowUnisolated bool    `yaml:"allow_unisolated"`
 	ContainerMemory string  `yaml:"container_memory"`
 	ContainerCPU    float64 `yaml:"container_cpu"`
 	ContainerPIDs   int     `yaml:"container_pids"`
@@ -231,6 +232,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if !cfg.Execution.UseGVisor {
 		cfg.Execution.UseGVisor = os.Getenv("USE_GVISOR") == "true"
+	}
+	// Documented escape hatch for single-tenant / trusted deployments that
+	// intentionally run without gVisor: accept isolation-requiring tasks even
+	// when enforced isolation is unavailable. See CHETTER_ALLOW_UNISOLATED.
+	if !cfg.Execution.AllowUnisolated {
+		cfg.Execution.AllowUnisolated = strings.EqualFold(strings.TrimSpace(os.Getenv("CHETTER_ALLOW_UNISOLATED")), "true")
 	}
 	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_MEMORY")); value != "" {
 		if _, err := ParseMemoryBytes(value); err == nil {

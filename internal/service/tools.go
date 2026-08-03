@@ -34,6 +34,7 @@ type SubmitTaskInput struct {
 	SessionMode  string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason  string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
 	TTLHours     int               `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	Isolation    string            `json:"isolation,omitempty" jsonschema:"Isolation requirement: required forces enforced sandboxing (gVisor); empty uses the deployment default (hardened fleets require isolation for every task unless CHETTER_ALLOW_UNISOLATED is set)"`
 }
 
 // SubmitTaskOutput is the output for chetter_submit_task.
@@ -137,6 +138,7 @@ type CreateTriggerInput struct {
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
 	TTLHours    int      `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
 	MatchLabels []string `json:"match_labels,omitempty" jsonschema:"Required issue labels (e.g. bug) to filter issue triggers; empty = all labels match"`
+	Isolation   string   `json:"isolation,omitempty" jsonschema:"Isolation requirement: required forces enforced sandboxing (gVisor) for tasks this trigger submits; empty uses the deployment default"`
 }
 
 // CreateTriggerOutput is the output for chetter_create_trigger.
@@ -167,6 +169,7 @@ type UpdateTriggerInput struct {
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
 	TTLHours    int      `json:"ttl_hours,omitempty" jsonschema:"Hours before paused session expires (default 72)"`
+	Isolation   string   `json:"isolation,omitempty" jsonschema:"Isolation requirement: required forces enforced sandboxing (gVisor) for tasks this trigger submits; empty uses the deployment default"`
 }
 
 // UpdateTriggerOutput is the output for chetter_update_trigger.
@@ -994,7 +997,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 			return nil, CreateTriggerOutput{}, fmt.Errorf("agent is required for pr_review triggers")
 		}
 		cfg := map[string]any{"repo": in.Repo}
-		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours, in.Isolation)
 		data, err := json.Marshal(cfg)
 		if err != nil {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
@@ -1014,7 +1017,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		if len(in.MatchLabels) > 0 {
 			cfg["match_labels"] = in.MatchLabels
 		}
-		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours, in.Isolation)
 		data, err := json.Marshal(cfg)
 		if err != nil {
 			return nil, CreateTriggerOutput{}, fmt.Errorf("marshal trigger config: %w", err)
@@ -1022,7 +1025,7 @@ func (s *Service) createTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		triggerConfig = string(data)
 	default:
 		cfg := map[string]any{}
-		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours)
+		applyTriggerRuntimeConfig(cfg, in.SessionMode, in.PauseReason, in.TTLHours, in.Isolation)
 		if len(cfg) > 0 {
 			data, err := json.Marshal(cfg)
 			if err != nil {
@@ -1209,7 +1212,7 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 		enabled = *in.Enabled
 	}
 	triggerType := store.NonZero(in.TriggerType, existing.TriggerType)
-	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels, in.SessionMode, in.PauseReason, in.TTLHours)
+	triggerConfig := MergeTriggerConfig(existing.TriggerConfig, in.Repo, in.Event, in.MatchLabels, in.SessionMode, in.PauseReason, in.TTLHours, in.Isolation)
 	merged := store.TriggerInput{
 		Name:          in.Name,
 		TriggerType:   triggerType,
@@ -1236,8 +1239,8 @@ func (s *Service) updateTriggerTool(ctx context.Context, _ *mcp.CallToolRequest,
 
 // MergeTriggerConfig merges updated fields into an existing trigger_config JSON.
 // Empty strings mean "keep existing" unless overridden.
-func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabels []string, sessionMode, pauseReason string, ttlHours int) string {
-	needsMerge := repo != "" || event != "" || len(matchLabels) > 0 || sessionMode != "" || pauseReason != "" || ttlHours > 0
+func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabels []string, sessionMode, pauseReason string, ttlHours int, isolation string) string {
+	needsMerge := repo != "" || event != "" || len(matchLabels) > 0 || sessionMode != "" || pauseReason != "" || ttlHours > 0 || isolation != ""
 	if !needsMerge {
 		return string(existing)
 	}
@@ -1257,7 +1260,7 @@ func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabel
 	if len(matchLabels) > 0 {
 		cfg["match_labels"] = matchLabels
 	}
-	applyTriggerRuntimeConfig(cfg, sessionMode, pauseReason, ttlHours)
+	applyTriggerRuntimeConfig(cfg, sessionMode, pauseReason, ttlHours, isolation)
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		slog.Warn("failed to marshal merged trigger config", "err", err)
@@ -1266,7 +1269,7 @@ func MergeTriggerConfig(existing json.RawMessage, repo, event string, matchLabel
 	return string(data)
 }
 
-func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason string, ttlHours int) {
+func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason string, ttlHours int, isolation string) {
 	if sessionMode != "" {
 		cfg["session_mode"] = sessionMode
 	}
@@ -1275,6 +1278,9 @@ func applyTriggerRuntimeConfig(cfg map[string]any, sessionMode, pauseReason stri
 	}
 	if ttlHours > 0 {
 		cfg["ttl_hours"] = ttlHours
+	}
+	if isolation != "" {
+		cfg["isolation"] = isolation
 	}
 }
 

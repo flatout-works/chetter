@@ -382,6 +382,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureRunnerMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureAgentSessionIsolationColumn(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTaskArtifactSessionColumns(ctx); err != nil {
 		return err
 	}
@@ -695,6 +698,7 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		{"max_concurrent", "ALTER TABLE chetter_runners ADD COLUMN max_concurrent INT NOT NULL DEFAULT 0 AFTER version"},
 		{"running_tasks", "ALTER TABLE chetter_runners ADD COLUMN running_tasks INT NOT NULL DEFAULT 0 AFTER max_concurrent"},
 		{"available_slots", "ALTER TABLE chetter_runners ADD COLUMN available_slots INT NOT NULL DEFAULT 0 AFTER running_tasks"},
+		{"isolation_enabled", "ALTER TABLE chetter_runners ADD COLUMN isolation_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER available_slots"},
 		{"total_started", "ALTER TABLE chetter_runners ADD COLUMN total_started BIGINT NOT NULL DEFAULT 0 AFTER available_slots"},
 		{"total_completed", "ALTER TABLE chetter_runners ADD COLUMN total_completed BIGINT NOT NULL DEFAULT 0 AFTER total_started"},
 		{"total_errors", "ALTER TABLE chetter_runners ADD COLUMN total_errors BIGINT NOT NULL DEFAULT 0 AFTER total_completed"},
@@ -946,6 +950,22 @@ func (s *Store) ensureTriggerRunTeamIDColumn(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_trigger_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER trigger_id")
 	if err != nil {
 		return fmt.Errorf("add chetter_trigger_runs.team_id: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ensureAgentSessionIsolationColumn(ctx context.Context) error {
+	exists, err := s.columnExists(ctx, "chetter_agent_sessions", "isolation_required")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	// One ALTER per column: a later AFTER clause must never reference a column
+	// added in the same statement (TiDB rejects it). See AGENTS.md.
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD COLUMN isolation_required TINYINT(1) NOT NULL DEFAULT 0 AFTER resume_mode"); err != nil {
+		return fmt.Errorf("add chetter_agent_sessions.isolation_required: %w", err)
 	}
 	return nil
 }

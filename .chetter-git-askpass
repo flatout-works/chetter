@@ -1,0 +1,19 @@
+#!/bin/sh
+case "${1:-}" in
+  *Username*) printf '%s\n' x-access-token; exit 0 ;;
+esac
+if [ -n "${CHETTER_GITHUB_CREDENTIAL_URL:-}" ] && [ -n "${CHETTER_GITHUB_CREDENTIAL_TOKEN:-}" ]; then
+  token="$(
+    printf 'request = "POST"\nheader = "Authorization: Bearer %s"\n' "$CHETTER_GITHUB_CREDENTIAL_TOKEN" |
+      curl --fail --silent --show-error --config - "$CHETTER_GITHUB_CREDENTIAL_URL" 2>/dev/null
+  )" || token=""
+  if [ -n "$token" ]; then
+    printf '%s\n' "$token"
+    exit 0
+  fi
+fi
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  printf '%s\n' "$GITHUB_TOKEN"
+  exit 0
+fi
+exit 1

@@ -15,7 +15,7 @@
     },
     "chetter-submit": {
       "description": "Submit a new task to the Chetter runner fleet.",
-      "template": "Ask the user for the task prompt, then submit via chetter_submit_task. Ask for git_url if not obvious, default git_ref to main. Suggest agent_image if known. Let the user optionally specify agent, provider_id, model_id, and timeout_sec. Return the task ID."
+      "template": "Ask the user for the task prompt, then submit via chetter_submit_task. Ask for git_url if not obvious, default git_ref to main. Suggest agent_image if known. Let the user optionally specify agent, provider_id, model_id, timeout_sec, and — for untrusted input or when the deployment requires it — isolation=\"required\". Return the task ID."
     },
     "chetter-triggers": {
       "description": "List Chetter triggers (cron schedules and PR review webhooks).",

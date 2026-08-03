@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "chetter": {
+      "headers": {
+        "Authorization": "Bearer ljGc6I5YXEfYL8pp4i4Jyqvcl8nZI-G3-IEAGUtL9vY"
+      },
+      "lifecycle": "keep-alive",
+      "url": "http://172.21.0.3:18081/mcp"
+    },
+    "runner-bridge": {
+      "headers": {
+        "Authorization": "Bearer ljGc6I5YXEfYL8pp4i4Jyqvcl8nZI-G3-IEAGUtL9vY"
+      },
+      "lifecycle": "keep-alive",
+      "url": "http://172.21.0.3:42971/mcp"
+    }
+  }
+}

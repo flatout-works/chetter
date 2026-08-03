@@ -44,6 +44,11 @@ type TaskRequest struct {
 	ResumeCheckpointPath   string            `json:"resume_checkpoint_path,omitempty"`
 	ResumeWorkspacePath    string            `json:"resume_workspace_path,omitempty"`
 	ResumeHarnessSessionID string            `json:"resume_harness_session_id,omitempty"`
+	// IsolationRequired marks a task that must run inside an enforced sandbox
+	// (gVisor/runsc). The runner refuses such tasks at claim time when it
+	// cannot enforce isolation, unless the deployment opted out via
+	// CHETTER_ALLOW_UNISOLATED. See issue #291.
+	IsolationRequired bool              `json:"isolation_required,omitempty"`
 	AgentDefinition        string            `json:"agent_definition,omitempty"`
 	SkillDefinitions       map[string][]byte `json:"skill_definitions,omitempty"`
 	ExtraFiles             map[string][]byte `json:"extra_files,omitempty"`

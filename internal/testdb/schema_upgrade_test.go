@@ -186,6 +186,54 @@ func TestMySQLApplySelfTestMetadataMigration(t *testing.T) {
 	rows.Close()
 }
 
+func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Drop the columns added by migration 051 so we can prove the migration
+	// re-adds them (TiDB rejects multi-column ALTERs with cross-referencing
+	// AFTER clauses, so the migration uses one ALTER per column — issue #291).
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_runners DROP COLUMN isolation_enabled"); err != nil {
+		t.Fatalf("drop isolation_enabled: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions DROP COLUMN isolation_required"); err != nil {
+		t.Fatalf("drop isolation_required: %v", err)
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/051_add_isolation_columns.sql"))
+	if err != nil {
+		t.Fatalf("read isolation columns migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"051_add_isolation_columns.sql": &fstest.MapFile{Data: migration},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply isolation columns migration: %v", err)
+	}
+
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT isolation_required FROM chetter_agent_sessions WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query migrated isolation_required column: %v", err)
+	}
+	rows.Close()
+	rows, err = tdb.DB.QueryContext(ctx, "SELECT isolation_enabled FROM chetter_runners WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query migrated isolation_enabled column: %v", err)
+	}
+	rows.Close()
+}
+
 func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) {
 	bootstrapDB, _, cleanup := PostgresSchemaParityDBs(t)
 	if bootstrapDB == nil {

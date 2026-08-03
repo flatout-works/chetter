@@ -31,6 +31,11 @@ message RunnerInfo {
   int32 container_memory_mb = 20;
   double container_cpu = 21;
   int64 mcp_relay_rejected_requests = 22 [(buf.validate.field).int64.gte = 0];
+  // True when the runner enforces a sandbox for task containers (gVisor/runsc
+  // configured and available): docker backend with `--runtime runsc` active, or
+  // kubernetes with a gVisor runtime class. Advertised so the control plane can
+  // admit isolation-requiring tasks only to capable runners. See issue #291.
+  bool enforced_isolation = 23;
 }
 
 message ResourceInfo {
@@ -118,6 +123,13 @@ message Task {
   string claim_id = 37 [(buf.validate.field).string.min_len = 1];
   string self_test_nonce = 38;
   string self_test_check = 39;
+  // True when this task must run inside an enforced sandbox (gVisor/runsc).
+  // The server marks resumable sessions, explicitly configured tasks, and —
+  // unless the deployment opted out via CHETTER_ALLOW_UNISOLATED — every task
+  // in a hardened fleet. Runners that cannot enforce isolation refuse such
+  // tasks at claim time with error_category isolation_unavailable. See issue
+  // #291.
+  bool isolation_required = 40;
 }
 
 message MCPEndpoint {

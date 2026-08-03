@@ -1,0 +1,5 @@
+{
+  "extensions": [
+    "/opt/pi-extensions/node_modules/pi-mcp-adapter"
+  ]
+}

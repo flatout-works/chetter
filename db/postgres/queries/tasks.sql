@@ -166,3 +166,22 @@ SET search_text = concat_ws(' ',
 	COALESCE(trigger_name, ''), COALESCE(git_url, ''), COALESCE(github_repo, '')
 )
 WHERE chetter_tasks.id = sqlc.arg(id);
+
+-- name: FailPendingIsolationTasks :execrows
+-- Marks pending tasks whose execution attempts failed with
+-- isolation_unavailable as terminal errors. Companion to
+-- FailPendingIsolationAttemptsWithoutCapableRunner (issue #291).
+UPDATE chetter_tasks task
+SET status = 'error',
+    error = 'no active runner enforces isolation (gVisor) for this task',
+    error_category = 'isolation_unavailable',
+    failure_category = 'harness_error',
+    failure_message = 'No active runner enforces isolation (gVisor) for this task; it cannot run unsandboxed.',
+    ended_at = sqlc.arg(ended_at),
+    updated_at = sqlc.arg(updated_at)
+FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
+WHERE prompt.task_id = task.id
+  AND attempt.user_prompt_id = prompt.id
+  AND task.status = 'pending'
+  AND attempt.status = 'error'
+  AND attempt.error_category = 'isolation_unavailable';

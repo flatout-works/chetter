@@ -25,6 +25,19 @@ func (q *Queries) GetRunnerHeartbeatMetadata(ctx context.Context, id string) (js
 	return metadata, err
 }
 
+const getRunnerIsolationEnabled = `-- name: GetRunnerIsolationEnabled :one
+SELECT isolation_enabled
+FROM chetter_runners
+WHERE id = ?
+`
+
+func (q *Queries) GetRunnerIsolationEnabled(ctx context.Context, id string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, getRunnerIsolationEnabled, id)
+	var isolation_enabled bool
+	err := row.Scan(&isolation_enabled)
+	return isolation_enabled, err
+}
+
 const listLiveRunners = `-- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
 FROM chetter_runners
@@ -32,15 +45,34 @@ WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC
 `
 
-func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]ChetterRunner, error) {
+type ListLiveRunnersRow struct {
+	ID             string          `json:"id"`
+	Status         string          `json:"status"`
+	ImageRef       sql.NullString  `json:"image_ref"`
+	ImageDigest    sql.NullString  `json:"image_digest"`
+	Version        sql.NullString  `json:"version"`
+	MaxConcurrent  int32           `json:"max_concurrent"`
+	RunningTasks   int32           `json:"running_tasks"`
+	AvailableSlots int32           `json:"available_slots"`
+	TotalStarted   int64           `json:"total_started"`
+	TotalCompleted int64           `json:"total_completed"`
+	TotalErrors    int64           `json:"total_errors"`
+	StartedAt      sql.NullTime    `json:"started_at"`
+	FirstSeenAt    time.Time       `json:"first_seen_at"`
+	LastSeenAt     time.Time       `json:"last_seen_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	Metadata       json.RawMessage `json:"metadata"`
+}
+
+func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]ListLiveRunnersRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLiveRunners, lastSeenAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterRunner{}
+	items := []ListLiveRunnersRow{}
 	for rows.Next() {
-		var i ChetterRunner
+		var i ListLiveRunnersRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -75,9 +107,9 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 const upsertRunnerHeartbeat = `-- name: UpsertRunnerHeartbeat :exec
 INSERT INTO chetter_runners
     (id, status, image_ref, image_digest, version,
-     max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
+     max_concurrent, running_tasks, available_slots, isolation_enabled, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     image_ref = VALUES(image_ref),
@@ -86,6 +118,7 @@ ON DUPLICATE KEY UPDATE
     max_concurrent = VALUES(max_concurrent),
     running_tasks = VALUES(running_tasks),
     available_slots = VALUES(available_slots),
+    isolation_enabled = VALUES(isolation_enabled),
     total_started = VALUES(total_started),
     total_completed = VALUES(total_completed),
     total_errors = VALUES(total_errors),
@@ -96,22 +129,23 @@ ON DUPLICATE KEY UPDATE
 `
 
 type UpsertRunnerHeartbeatParams struct {
-	ID             string          `json:"id"`
-	Status         string          `json:"status"`
-	ImageRef       sql.NullString  `json:"image_ref"`
-	ImageDigest    sql.NullString  `json:"image_digest"`
-	Version        sql.NullString  `json:"version"`
-	MaxConcurrent  int32           `json:"max_concurrent"`
-	RunningTasks   int32           `json:"running_tasks"`
-	AvailableSlots int32           `json:"available_slots"`
-	TotalStarted   int64           `json:"total_started"`
-	TotalCompleted int64           `json:"total_completed"`
-	TotalErrors    int64           `json:"total_errors"`
-	StartedAt      sql.NullTime    `json:"started_at"`
-	FirstSeenAt    time.Time       `json:"first_seen_at"`
-	LastSeenAt     time.Time       `json:"last_seen_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	Metadata       json.RawMessage `json:"metadata"`
+	ID               string          `json:"id"`
+	Status           string          `json:"status"`
+	ImageRef         sql.NullString  `json:"image_ref"`
+	ImageDigest      sql.NullString  `json:"image_digest"`
+	Version          sql.NullString  `json:"version"`
+	MaxConcurrent    int32           `json:"max_concurrent"`
+	RunningTasks     int32           `json:"running_tasks"`
+	AvailableSlots   int32           `json:"available_slots"`
+	IsolationEnabled bool            `json:"isolation_enabled"`
+	TotalStarted     int64           `json:"total_started"`
+	TotalCompleted   int64           `json:"total_completed"`
+	TotalErrors      int64           `json:"total_errors"`
+	StartedAt        sql.NullTime    `json:"started_at"`
+	FirstSeenAt      time.Time       `json:"first_seen_at"`
+	LastSeenAt       time.Time       `json:"last_seen_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Metadata         json.RawMessage `json:"metadata"`
 }
 
 func (q *Queries) UpsertRunnerHeartbeat(ctx context.Context, arg UpsertRunnerHeartbeatParams) error {
@@ -124,6 +158,7 @@ func (q *Queries) UpsertRunnerHeartbeat(ctx context.Context, arg UpsertRunnerHea
 		arg.MaxConcurrent,
 		arg.RunningTasks,
 		arg.AvailableSlots,
+		arg.IsolationEnabled,
 		arg.TotalStarted,
 		arg.TotalCompleted,
 		arg.TotalErrors,

@@ -680,6 +680,7 @@ func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.Runn
 		MaxConcurrent:  info.MaxConcurrent,
 		RunningTasks:   info.RunningTasks,
 		AvailableSlots: info.AvailableSlots,
+		IsolationEnabled: info.EnforcedIsolation,
 		TotalStarted:   info.TotalStarted,
 		TotalCompleted: info.TotalCompleted,
 		TotalErrors:    info.TotalErrors,
@@ -845,8 +846,24 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	if err != nil {
 		return claimedExecution{}, connect.NewError(connect.CodeInternal, err)
 	}
+	// Resolve the runner's enforced-isolation capability from its heartbeat
+	// metadata before the locking read. The claim query filters
+	// isolation-requiring tasks to capable runners (issue #291); passing the
+	// capability in keeps chetter_runners rows out of the FOR UPDATE SKIP
+	// LOCKED scan so concurrent claims do not contend on runner rows.
+	// Unregistered runners are treated as non-isolated.
+	isolationEnabled, runnerErr := s.db.GetRunnerIsolationEnabled(ctx, runnerID)
+	if runnerErr != nil && !errors.Is(runnerErr, sql.ErrNoRows) {
+		return claimedExecution{}, connect.NewError(connect.CodeInternal, fmt.Errorf("get runner isolation capability: %w", runnerErr))
+	}
+	if errors.Is(runnerErr, sql.ErrNoRows) {
+		isolationEnabled = false
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		queued, err := q.GetClaimableExecutionAttemptForUpdate(ctx, sql.NullString{String: runnerID, Valid: true})
+		queued, err := q.GetClaimableExecutionAttemptForUpdate(ctx, repository.GetClaimableExecutionAttemptForUpdateParams{
+			RunnerID:         sql.NullString{String: runnerID, Valid: true},
+			IsolationEnabled: isolationEnabled,
+		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNoClaimableTask
 		}
@@ -1333,7 +1350,9 @@ func classifyTaskErrorCategory(status, message string) string {
 // classifyFailureCategory maps a per-attempt error_category to a task-level failure_category.
 // Values per the issue #98 specification: timeout, harness_error, runner_lost,
 // internal_error, user_cancelled, quota_exceeded, unknown. resource_limit is an
-// additional value introduced by #273 for containers killed by their memory limit.
+// additional value introduced by #273 for containers killed by their memory
+// limit; isolation_unavailable (#291) maps to harness_error because it is a
+// runner-side infrastructure inability to run the task.
 func classifyFailureCategory(errorCategory string) string {
 	switch errorCategory {
 	case "timeout":
@@ -1346,7 +1365,7 @@ func classifyFailureCategory(errorCategory string) string {
 		return "internal_error"
 	case "resource_limit":
 		return "resource_limit"
-	case "runtime_error", "transport_error", "stuck":
+	case "runtime_error", "transport_error", "stuck", "isolation_unavailable":
 		return "harness_error"
 	default:
 		return "unknown"
@@ -1445,6 +1464,7 @@ func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSes
 		GithubRepo:             task.GithubRepo.String,
 		SelfTestNonce:          task.SelfTestNonce.String,
 		SelfTestCheck:          task.SelfTestCheck.String,
+		IsolationRequired:      session.IsolationRequired,
 	}
 }
 
