@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-08-02
+
+### Added
+
+- Profile-based deployment self-tests: new `chetter_run_self_test` and `chetter_self_test_status` MCP tools (admin only) backed by `RunSelfTest`/`GetSelfTestStatus` AdminService RPCs. Four profiles — `quick` (default OpenCode harness), `harnesses` (opencode, claude-code, pi, codewhale, codex), `providers` (every model provider enabled for the reference OpenCode harness), and `full` (all harness and provider checks plus a GitHub App credential check when `CHETTER_SELF_TEST_GITHUB_REPO` is set). Each check submits a real task that must call the runner-bridge `chetter_runner_self_test_echo` MCP tool with a signed nonce; a completed task only counts as passed when the server observes that runner-side MCP evidence. Harness checks are pinned to cheap known-good provider/model combinations. Self-test metadata columns on tasks (`self_test_run_id`, `self_test_profile`, `self_test_check`, `self_test_nonce`) via new migrations (MySQL 050, PostgreSQL 026), with `self_test.started` audit events.
+- Web UI Diagnostics page (`/diagnostics`) with self-test profile selection, run controls, live polling, and per-check status/evidence display; nav entry placed below Admin.
+- In-process claim notifier cutting idle DB polling for task claiming ~20x: `ClaimTask` long-polls are woken immediately by a broadcast whenever work becomes claimable (SubmitTask, RecoverTask, RerunTask, ResumeAgentSession, and the reaper lease-requeue path), and the server safety-net poll interval rose from 1s to 15s. Runners claim via a single per-runner loop instead of one long-polling goroutine per concurrent slot, so an idle fleet costs roughly one `SELECT ... FOR UPDATE SKIP LOCKED` per runner per 15s instead of ~1 tx/s per slot. The single-replica assumption is documented in AGENTS.md.
+
+### Fixed
+
+- Pi harness: removed the `idleTimeout` override from the runner-bridge MCP config — the pi MCP adapter misreads it as a per-server idle override.
+- Claude Code harness: `claude-serve-proxy` now passes `--settings` explicitly because Claude Code v2.1.196+ ignores MCP approvals in project settings for untrusted folders, which left `.mcp.json` servers stuck at "pending approval".
+- Codex harness: `codex-serve-proxy` creates `CODEX_HOME` when missing (Codex refuses to start if the directory does not exist); native configs default to the `responses` wire API with an `openai-completions` opt-in for providers that only speak chat completions.
+- Self-test harness checks: CodeWhale sessions now create threads with `auto_approve` and `allow_shell`, and Codex checks use DeepSeek's Responses API (supports `deepseek-v4-flash`) instead of the synthetic provider.
+- OpenCode harness: the runner-bridge MCP server is preserved alongside the Chetter relay in the inline config — some OpenCode versions replace nested MCP maps when applying `OPENCODE_CONFIG_CONTENT`, previously hiding the per-execution runner bridge and its artifact tools.
+- Runner: diagnostic events are now published with the task request so they retain correct execution attribution on the Docker and Kubernetes paths.
+- Deploy: `deploy/compose.yaml` corrected `HOST_WORKSPACE_ROOT` to point at the `workspaces` subdirectory, and the runner warns when the mapped host workspace mount path does not exist (Docker silently creates missing mounts as empty directories).
+- Migrations: self-test metadata column additions split into separate `ALTER TABLE` statements, avoiding TiDB's rejection of multi-column additions whose `AFTER` clause references a column added in the same statement.
+
+### Documentation
+
+- Docs restructured into a MANUAL-backed layout: `SCHEDULES.md` + `REVIEWS.md` merged into `TRIGGERS.md`; `PAUSED_SESSIONS.md` renamed to `SESSIONS.md`; deployment/gVisor content extracted to new `DEPLOYMENT.md`, agent-image content to new `IMAGES.md`, and definitions-repo YAML/Git identities/MCP endpoints moved into `CONFIGURATION.md`; completed design docs (`TASK_SESSION_MODEL_REFACTOR.md`, `REPOSITORY_QUALITY_REVIEW.md`) moved to `docs/research/`; `MANUAL.md` slimmed to the canonical operator guide.
+- Root `README.md` gains a "Next Steps" section and a full docs index; new `LASTWEEK.md` with a 7-day feature summary.
+- `AGENTS.md` documents the single-replica claim-notifier assumption and the TiDB multi-column `ALTER TABLE` limitation.
+
 ## 2026-08-01
 
 ### Added
