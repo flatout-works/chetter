@@ -119,7 +119,8 @@ func run() error {
 		svc.SetGitHubManager(githubManager)
 	}
 	eventBus := webapi.NewEventBus()
-	runnerSvc := service.NewRunnerRPCService(data.New(st.DB(), st.Dialect()), st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
+	repo := data.New(st.DB(), st.Dialect())
+	runnerSvc := service.NewRunnerRPCService(repo, st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)
@@ -201,7 +202,18 @@ func run() error {
 	// Web API + UI server
 	webMux := http.NewServeMux()
 	webHandlers := webapi.NewHandlers(svc, eventBus)
-	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB())
+
+	// OIDC web UI SSO (issue #94). Provider discovery runs at startup so a
+	// misconfigured or unreachable IdP fails fast.
+	var oidcAuth *auth.OIDCAuth
+	if cfg.OIDCConfigured() {
+		oidcAuth, err = auth.NewOIDCAuth(ctx, cfg.OIDCConfig())
+		if err != nil {
+			return fmt.Errorf("configure oidc: %w", err)
+		}
+		slog.Info("oidc web auth configured", "issuer", cfg.OIDCIssuerURL, "redirect_url", cfg.OIDCRedirectURL)
+	}
+	webapi.RegisterHandlers(webMux, webHandlers, cfg.MCPAuthToken, st.DB(), oidcAuth, repo)
 	webMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
@@ -232,8 +244,8 @@ func run() error {
 			lastReapField = fmt.Sprintf("%q", lastReap.Format(time.RFC3339Nano))
 		}
 		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t,"lastReapAt":%s}`,
-			serverVersion, _gitHash, svc.QuotaExhausted(), lastReapField,
+			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t}`,
+			serverVersion, _gitHash, svc.QuotaExhausted(), lastReapField, oidcAuth != nil,
 		)))
 	})
 	webMux.Handle("/", webui.Handler())

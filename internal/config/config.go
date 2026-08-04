@@ -2,12 +2,15 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/validation"
 )
 
@@ -34,6 +37,16 @@ type Config struct {
 	DefinitionsRepo        string
 	DefinitionsBranch      string
 	WebURL                 string
+	// OIDC web UI SSO (issue #94). See OIDC_* env vars; OIDCConfigured()
+	// reports whether the flow is enabled.
+	OIDCIssuerURL       string
+	OIDCClientID        string
+	OIDCClientSecret    string
+	OIDCRedirectURL     string
+	OIDCAdminGroup      string
+	OIDCTeamGroupPrefix string
+	OIDCSessionSecret   string
+	OIDCSessionTTL      time.Duration
 	// Retention TTLs (in days) for the reaper's storage pruner. A value of 0
 	// disables pruning for that table, so existing deployments are unaffected
 	// until an operator opts in. See issue #112.
@@ -80,6 +93,14 @@ func Load() Config {
 		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
 		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
 		WebURL:                 env("CHETTER_WEB_URL", ""),
+		OIDCIssuerURL:          os.Getenv("OIDC_ISSUER_URL"),
+		OIDCClientID:           os.Getenv("OIDC_CLIENT_ID"),
+		OIDCClientSecret:       os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:        os.Getenv("OIDC_REDIRECT_URL"),
+		OIDCAdminGroup:         env("OIDC_ADMIN_GROUP", auth.DefaultAdminGroup),
+		OIDCTeamGroupPrefix:    env("OIDC_TEAM_GROUP_PREFIX", auth.DefaultTeamGroupPrefix),
+		OIDCSessionSecret:      os.Getenv("OIDC_SESSION_SECRET"),
+		OIDCSessionTTL:         envDuration("OIDC_SESSION_TTL", auth.DefaultSessionTTL),
 		EventsRetentionDays:    envInt("EVENTS_RETENTION_DAYS", 0),
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
@@ -111,6 +132,35 @@ func (c Config) Validate() error {
 
 func isPlaceholderAuthToken(token string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(token)), "change-me")
+}
+
+// OIDCConfigured reports whether OIDC web UI SSO is fully configured.
+func (c Config) OIDCConfigured() bool {
+	return c.OIDCIssuerURL != "" &&
+		c.OIDCClientID != "" &&
+		c.OIDCClientSecret != "" &&
+		c.OIDCRedirectURL != ""
+}
+
+// OIDCConfig converts the OIDC_* settings into the auth-package view. When
+// OIDC_SESSION_SECRET is unset, the session signing key is derived from the
+// admin MCP token so sessions are invalidated when the admin token rotates.
+func (c Config) OIDCConfig() auth.OIDCConfig {
+	sessionSecret := c.OIDCSessionSecret
+	if sessionSecret == "" {
+		sum := sha256.Sum256([]byte(c.MCPAuthToken + "|" + c.OIDCIssuerURL))
+		sessionSecret = hex.EncodeToString(sum[:])
+	}
+	return auth.OIDCConfig{
+		IssuerURL:       c.OIDCIssuerURL,
+		ClientID:        c.OIDCClientID,
+		ClientSecret:    c.OIDCClientSecret,
+		RedirectURL:     c.OIDCRedirectURL,
+		AdminGroup:      c.OIDCAdminGroup,
+		TeamGroupPrefix: c.OIDCTeamGroupPrefix,
+		SessionSecret:   sessionSecret,
+		SessionTTL:      c.OIDCSessionTTL,
+	}
 }
 
 // GitHubWebhookConfigured reports whether signed webhook processing is ready.

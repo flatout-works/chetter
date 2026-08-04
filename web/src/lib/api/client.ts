@@ -35,13 +35,16 @@ export function getTransport() {
   if (currentTransport) return currentTransport;
 
   const token = getToken();
-  if (!token) throw new Error("Not authenticated");
-
   currentTransport = createConnectTransport({
     baseUrl: window.location.origin,
     interceptors: [
       (next) => (req) => {
-        req.header.set("Authorization", `Bearer ${token}`);
+        // Bearer tokens are the primary credential; OIDC sessions ride along
+        // on the browser's HttpOnly session cookie, so no Authorization
+        // header is needed (and none is set) when no token is present.
+        if (token) {
+          req.header.set("Authorization", `Bearer ${token}`);
+        }
         return next(req);
       },
     ],
