@@ -22,6 +22,8 @@ LOCAL_DSN=${LOCAL_DSN:-}
 EXPORT_DIR=${EXPORT_DIR:-${HOME}/chetter-migration}
 DUMP_FILE=${DUMP_FILE:-${EXPORT_DIR}/chetter-data.sql}
 CHETTER_REPO_ROOT=${CHETTER_REPO_ROOT:-${SCRIPT_DIR}/..}
+PRE_IMPORT_SQL=${PRE_IMPORT_SQL:-}
+POST_IMPORT_SQL=${POST_IMPORT_SQL:-}
 
 TABLES=(
   chetter_tasks
@@ -67,6 +69,8 @@ Source variables:
 Local variables:
   LOCAL_HOST=127.0.0.1, LOCAL_PORT=4000, LOCAL_USER=chetter
   LOCAL_PASSWORD, LOCAL_DATABASE=chetter, LOCAL_DSN
+  MIGRATE_DRIVER=tidb|mysql|postgres, PREPARE_CMD (e.g. /path/to/chetter-migrate)
+  PRE_IMPORT_SQL, POST_IMPORT_SQL (optional SQL files around the import)
   EXPORT_DIR=${HOME}/chetter-migration, DUMP_FILE=.../chetter-data.sql
   CHETTER_REPO_ROOT (required for prepare; defaults to repository root)
 
@@ -151,13 +155,16 @@ sanitize_dump() {
   fi
 }
 
+MIGRATE_DRIVER=${MIGRATE_DRIVER:-tidb}
+PREPARE_CMD=${PREPARE_CMD:-go run ./cmd/chetter-migrate}
+
 prepare_local_schema() {
   [[ -n "$LOCAL_DSN" ]] || tidb_die 'LOCAL_DSN is required for prepare'
   [[ -d "$CHETTER_REPO_ROOT/db/migrations" ]] || tidb_die "migration directory not found: $CHETTER_REPO_ROOT/db/migrations"
-  printf 'Applying current TiDB migrations to %s.\n' "$LOCAL_DATABASE"
+  printf 'Applying current %s migrations to %s.\n' "$MIGRATE_DRIVER" "$LOCAL_DATABASE"
   (
     cd "$CHETTER_REPO_ROOT"
-    DATABASE_DSN="$LOCAL_DSN" go run ./cmd/chetter-migrate -dir db/migrations -driver tidb
+    DATABASE_DSN="$LOCAL_DSN" $PREPARE_CMD -dir db/migrations -driver "$MIGRATE_DRIVER"
   )
 }
 
@@ -169,7 +176,7 @@ case "$COMMAND" in
     MYSQL_SOURCE=(mysqldump --defaults-extra-file="$SOURCE_DEFAULTS" --protocol=tcp)
     printf 'Exporting %d Chetter tables from %s into %s.\n' "${#TABLES[@]}" "$SOURCE_DATABASE" "$DUMP_FILE"
     "${MYSQL_SOURCE[@]}" \
-      --single-transaction --quick --skip-lock-tables \
+      --quick --skip-lock-tables \
       --no-create-info --no-create-db --skip-triggers \
       --complete-insert --hex-blob --set-gtid-purged=OFF \
       --result-file="$DUMP_FILE" "$SOURCE_DATABASE" "${TABLES[@]}"
@@ -185,8 +192,18 @@ case "$COMMAND" in
     make_local_defaults
     MYSQL_LOCAL=(mysql --defaults-extra-file="$LOCAL_DEFAULTS" --protocol=tcp)
     sanitize_dump
+    if [[ -n "$PRE_IMPORT_SQL" ]]; then
+      [[ -f "$PRE_IMPORT_SQL" ]] || tidb_die "pre-import SQL not found: $PRE_IMPORT_SQL"
+      printf 'Applying pre-import SQL %s.\n' "$PRE_IMPORT_SQL"
+      mysql_local <"$PRE_IMPORT_SQL"
+    fi
     printf 'Importing %s into %s.\n' "$DUMP_FILE" "$LOCAL_DATABASE"
     mysql_local <"$DUMP_FILE"
+    if [[ -n "$POST_IMPORT_SQL" ]]; then
+      [[ -f "$POST_IMPORT_SQL" ]] || tidb_die "post-import SQL not found: $POST_IMPORT_SQL"
+      printf 'Applying post-import SQL %s.\n' "$POST_IMPORT_SQL"
+      mysql_local <"$POST_IMPORT_SQL"
+    fi
     printf 'Import complete.\n'
     ;;
   verify)
@@ -197,8 +214,8 @@ case "$COMMAND" in
     mismatch=0
     printf '%-42s %12s %12s\n' table source local
     for table in "${TABLES[@]}"; do
-      source_count=$(mysql_source --execute "SELECT COUNT(*) FROM \\`${table}\\`;")
-      local_count=$(mysql_local --execute "SELECT COUNT(*) FROM \\`${table}\\`;")
+      source_count=$(mysql_source --execute "SELECT COUNT(*) FROM \`${table}\`;")
+      local_count=$(mysql_local --execute "SELECT COUNT(*) FROM \`${table}\`;")
       printf '%-42s %12s %12s\n' "$table" "$source_count" "$local_count"
       if [[ "$source_count" != "$local_count" ]]; then
         mismatch=1
