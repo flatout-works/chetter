@@ -1145,6 +1145,10 @@ func TestRunnerTerminalEventPausesResumableSession(t *testing.T) {
 	}
 
 	q := data.New(tdb.DB, tdb.Dialect())
+	// Resumable sessions require enforced isolation (issue #291), so the
+	// claiming runner must advertise it, mirroring a real gVisor runner's
+	// heartbeat; otherwise the isolation admission refuses the claim.
+	registerIsolationCapableRunner(t, q, "runner_1")
 	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
 	if err != nil {
 		t.Fatalf("get user prompt: %v", err)
