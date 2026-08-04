@@ -556,7 +556,7 @@ func (h *triggerHandler) UpdateTrigger(ctx context.Context, req *connect.Request
 		enabled = *req.Msg.Enabled
 	}
 	triggerType := store.NonZero(req.Msg.TriggerType, existing.TriggerType)
-	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours))
+	triggerConfig := service.MergeTriggerConfig(existing.TriggerConfig, req.Msg.Repo, req.Msg.Event, req.Msg.MatchLabels, req.Msg.SessionMode, req.Msg.PauseReason, int(req.Msg.TtlHours), "")
 	merged := store.TriggerInput{
 		Name:          req.Msg.Name,
 		TriggerType:   triggerType,

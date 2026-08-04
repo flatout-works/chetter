@@ -517,6 +517,7 @@ func (a *serviceSubmitterAdapter) SubmitTask(ctx context.Context, req webhook.Su
 		SessionMode:          req.SessionMode,
 		PauseReason:          req.PauseReason,
 		TTLHours:             req.TTLHours,
+		Isolation:            req.Isolation,
 	})
 }
 

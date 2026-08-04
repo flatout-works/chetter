@@ -14,9 +14,16 @@ SELECT attempt.id AS execution_attempt_id, attempt.sequence,
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = sqlc.arg(runner_id))
+  -- Isolation admission (issue #291): a task that requires enforced isolation
+  -- is only claimable by a runner advertising it. The capability is passed in
+  -- (resolved from the runner's heartbeat metadata before the locking read) so
+  -- the FOR UPDATE SKIP LOCKED scan does not take locks on chetter_runners
+  -- rows, which would serialize claims across the fleet.
+  AND (session.isolation_required = 0 OR sqlc.arg(isolation_enabled) = 1)
 ORDER BY attempt.created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED;
@@ -250,3 +257,26 @@ SET status = sqlc.arg(status),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND claim_id = sqlc.arg(claim_id)
   AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP;
+
+-- name: FailPendingIsolationAttemptsWithoutCapableRunner :execrows
+-- Fails pending attempts whose session requires enforced isolation when no
+-- live runner advertises isolation_enabled. The task must never run
+-- unsandboxed; without a capable runner it fails fast with
+-- error_category isolation_unavailable instead of waiting forever. See issue
+-- #291.
+UPDATE chetter_execution_attempts attempt
+JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+SET attempt.status = 'error',
+    attempt.error = 'no active runner enforces isolation (gVisor) for this task',
+    attempt.error_category = 'isolation_unavailable',
+    attempt.ended_at = sqlc.arg(ended_at),
+    attempt.updated_at = sqlc.arg(updated_at)
+WHERE attempt.status = 'pending'
+  AND session.isolation_required = 1
+  AND NOT EXISTS (
+      SELECT 1 FROM chetter_runners capable
+      WHERE capable.isolation_enabled = 1
+        AND capable.status = 'active'
+        AND capable.last_seen_at > DATE_SUB(NOW(), INTERVAL sqlc.arg(stale_seconds) SECOND)
+  );

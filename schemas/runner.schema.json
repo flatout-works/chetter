@@ -76,6 +76,7 @@
         "runtime": { "type": "string" },
         "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex"] },
         "use_gvisor": { "type": "boolean" },
+        "allow_unisolated": { "type": "boolean" },
         "container_memory": { "type": "string" },
         "container_cpu": { "type": "number", "minimum": 0 },
         "container_pids": { "type": "integer", "minimum": 0 }

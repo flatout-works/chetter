@@ -79,6 +79,16 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
+	// Claim-time isolation gate (issue #291): never run an isolation-requiring
+	// task unsandboxed. The refusal is terminal with error_category
+	// isolation_unavailable so the control plane does not treat it as a
+	// retryable failure.
+	if message := r.checkIsolationPolicy(req); message != "" {
+		slog.Warn("refusing isolation-requiring task on non-isolated runner",
+			"task_id", req.TaskID, "execution_id", req.ExecutionID, "reason", message)
+		r.publishStatusWithErrorCategory(req, "error", message, "isolation_unavailable", nil)
+		return
+	}
 
 	parent := r.runCtx
 	if parent == nil {

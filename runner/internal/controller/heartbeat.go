@@ -155,6 +155,7 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		GvisorEnabled:            gvisorEnabled,
 		CheckpointRestore:        checkpointRestore,
 		RunscVersion:             runscVersion,
+		EnforcedIsolation:        r.enforcedIsolation(),
 		ContainerMemoryMb:        containerMemoryMB(r.cfg.Execution.ContainerMemory),
 		ContainerCpu:             r.cfg.Execution.ContainerCPU,
 		McpRelayRejectedRequests: mcpRelayRejectedRequests,

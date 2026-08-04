@@ -251,6 +251,25 @@ func (r *Runner) publishStatusForRequest(req task.TaskRequest, status, message s
 	r.publishStatusWithToken(req, status, message, artifacts, task.TokenUsage{})
 }
 
+// publishStatusWithErrorCategory is like publishStatusForRequest but forces a
+// specific error_category on terminal error responses instead of deriving it
+// from the message text. Used by the claim-time isolation gate so the control
+// plane sees a clear isolation_unavailable classification. See issue #291.
+func (r *Runner) publishStatusWithErrorCategory(req task.TaskRequest, status, message, errorCategory string, artifacts []string) {
+	resp := task.TaskResponse{
+		TaskID:         req.TaskID,
+		ExecutionID:    req.ExecutionID,
+		AgentSessionID: req.AgentSessionID,
+		UserPromptID:   req.UserPromptID,
+		Status:         status,
+		Artifacts:      artifacts,
+		ErrorCategory:  errorCategory,
+	}
+	r.decorateTaskResponseForRequest(&resp, req, "")
+	r.finishStatusResponse(&resp, status, message)
+	r.publishTaskResponse(resp)
+}
+
 // publishStatusWithToken is like publishStatusForRequest but carries a token
 // usage delta that the server accumulates into the running task totals.
 func (r *Runner) publishStatusWithToken(req task.TaskRequest, status, message string, artifacts []string, tokenUsage task.TokenUsage) {

@@ -204,7 +204,7 @@ func (q *Queries) FailPendingUserPromptsForUnavailableRunner(ctx context.Context
 }
 
 const getAgentSessionByID = `-- name: GetAgentSessionByID :one
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE id = ?
 `
 
@@ -248,12 +248,13 @@ func (q *Queries) GetAgentSessionByID(ctx context.Context, id string) (ChetterAg
 		&i.Summary,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.IsolationRequired,
 	)
 	return i, err
 }
 
 const getAgentSessionByTaskID = `-- name: GetAgentSessionByTaskID :one
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE task_id = ?
 ORDER BY sequence DESC
 LIMIT 1
@@ -299,6 +300,7 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (C
 		&i.Summary,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.IsolationRequired,
 	)
 	return i, err
 }
@@ -391,7 +393,7 @@ func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID 
 }
 
 const getPausedSessionByArtifact = `-- name: GetPausedSessionByArtifact :one
-SELECT s.id, s.team_id, s.status, s.resume_mode, s.pinned_runner_id, s.pinned_runner_name, s.checkpoint_id, s.workspace_path, s.container_name, s.harness_session_id, s.git_url, s.git_ref, s.agent_image, s.agent, s.provider_id, s.model_id, s.variant_id, s.created_at, s.updated_at, s.paused_at, s.expires_at, s.pause_reason, s.error, s.search_text, s.sequence, s.task_id, s.harness, s.mcp_endpoints, s.commit_author_name, s.commit_author_email, s.git_identity_id, s.skills, s.env, s.summary, s.started_at, s.ended_at FROM chetter_agent_sessions s
+SELECT s.id, s.team_id, s.status, s.resume_mode, s.pinned_runner_id, s.pinned_runner_name, s.checkpoint_id, s.workspace_path, s.container_name, s.harness_session_id, s.git_url, s.git_ref, s.agent_image, s.agent, s.provider_id, s.model_id, s.variant_id, s.created_at, s.updated_at, s.paused_at, s.expires_at, s.pause_reason, s.error, s.search_text, s.sequence, s.task_id, s.harness, s.mcp_endpoints, s.commit_author_name, s.commit_author_email, s.git_identity_id, s.skills, s.env, s.summary, s.started_at, s.ended_at, s.isolation_required FROM chetter_agent_sessions s
 JOIN chetter_task_artifacts a ON a.agent_session_id = s.id
 WHERE a.repo = ?
   AND a.number = ?
@@ -448,6 +450,7 @@ func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg GetPausedS
 		&i.Summary,
 		&i.StartedAt,
 		&i.EndedAt,
+		&i.IsolationRequired,
 	)
 	return i, err
 }
@@ -510,8 +513,8 @@ func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (Che
 
 const insertAgentSession = `-- name: InsertAgentSession :exec
 INSERT INTO chetter_agent_sessions
-    (id, task_id, sequence, team_id, status, resume_mode, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at, started_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, task_id, sequence, team_id, status, resume_mode, isolation_required, pause_reason, expires_at, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, search_text, created_at, updated_at, started_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertAgentSessionParams struct {
@@ -521,6 +524,7 @@ type InsertAgentSessionParams struct {
 	TeamID            sql.NullString   `json:"team_id"`
 	Status            string           `json:"status"`
 	ResumeMode        string           `json:"resume_mode"`
+	IsolationRequired bool             `json:"isolation_required"`
 	PauseReason       sql.NullString   `json:"pause_reason"`
 	ExpiresAt         sql.NullTime     `json:"expires_at"`
 	GitUrl            sql.NullString   `json:"git_url"`
@@ -551,6 +555,7 @@ func (q *Queries) InsertAgentSession(ctx context.Context, arg InsertAgentSession
 		arg.TeamID,
 		arg.Status,
 		arg.ResumeMode,
+		arg.IsolationRequired,
 		arg.PauseReason,
 		arg.ExpiresAt,
 		arg.GitUrl,
@@ -673,7 +678,7 @@ func (q *Queries) IsRunnerAlive(ctx context.Context, arg IsRunnerAliveParams) (b
 }
 
 const listAgentSessions = `-- name: ListAgentSessions :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE (? = '' OR COALESCE(team_id, '') = ?)
   AND (? = '' OR status = ?)
 ORDER BY updated_at DESC
@@ -740,6 +745,7 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 			&i.Summary,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.IsolationRequired,
 		); err != nil {
 			return nil, err
 		}
@@ -755,7 +761,7 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 }
 
 const listAgentSessionsByTeams = `-- name: ListAgentSessionsByTeams :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
 ORDER BY updated_at DESC
@@ -829,6 +835,7 @@ func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg ListAgentSes
 			&i.Summary,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.IsolationRequired,
 		); err != nil {
 			return nil, err
 		}
@@ -1166,7 +1173,7 @@ func (q *Queries) RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, 
 }
 
 const searchAgentSessions = `-- name: SearchAgentSessions :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE (? = '' OR COALESCE(team_id, '') = ?)
   AND (? = '' OR status = ?)
   AND (search_text LIKE CONCAT('%', ?, '%'))
@@ -1236,6 +1243,7 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 			&i.Summary,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.IsolationRequired,
 		); err != nil {
 			return nil, err
 		}
@@ -1251,7 +1259,7 @@ func (q *Queries) SearchAgentSessions(ctx context.Context, arg SearchAgentSessio
 }
 
 const searchAgentSessionsByTeams = `-- name: SearchAgentSessionsByTeams :many
-SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at FROM chetter_agent_sessions
+SELECT id, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, created_at, updated_at, paused_at, expires_at, pause_reason, error, search_text, sequence, task_id, harness, mcp_endpoints, commit_author_name, commit_author_email, git_identity_id, skills, env, summary, started_at, ended_at, isolation_required FROM chetter_agent_sessions
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR status = ?)
   AND (search_text LIKE CONCAT('%', ?, '%'))
@@ -1328,6 +1336,7 @@ func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg SearchAgen
 			&i.Summary,
 			&i.StartedAt,
 			&i.EndedAt,
+			&i.IsolationRequired,
 		); err != nil {
 			return nil, err
 		}

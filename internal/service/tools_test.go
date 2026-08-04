@@ -222,8 +222,8 @@ func TestExpandChetterPromptVars(t *testing.T) {
 }
 
 func TestMergeTriggerConfigIncludesRuntimeFields(t *testing.T) {
-	got := MergeTriggerConfig(json.RawMessage(`{"repo":"flatout-works/chetter","event":"opened"}`), "", "labeled", []string{"bug"}, "resumable", "waiting_for_pr_feedback", 48)
-	want := `{"event":"labeled","match_labels":["bug"],"pause_reason":"waiting_for_pr_feedback","repo":"flatout-works/chetter","session_mode":"resumable","ttl_hours":48}`
+	got := MergeTriggerConfig(json.RawMessage(`{"repo":"flatout-works/chetter","event":"opened"}`), "", "labeled", []string{"bug"}, "resumable", "waiting_for_pr_feedback", 48, "required")
+	want := `{"event":"labeled","isolation":"required","match_labels":["bug"],"pause_reason":"waiting_for_pr_feedback","repo":"flatout-works/chetter","session_mode":"resumable","ttl_hours":48}`
 	if got != want {
 		t.Fatalf("MergeTriggerConfig() = %q, want %q", got, want)
 	}

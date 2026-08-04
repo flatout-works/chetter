@@ -36,6 +36,8 @@ func postgresSchema() []string {
 			field = strings.ReplaceAll(field, "DATETIME(6)", "TIMESTAMPTZ")
 			field = strings.ReplaceAll(field, "MEDIUMTEXT", "TEXT")
 			field = strings.ReplaceAll(field, " JSON", " JSONB")
+			field = strings.ReplaceAll(field, "TINYINT(1) NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE")
+			field = strings.ReplaceAll(field, "TINYINT(1)", "BOOLEAN")
 			fields = append(fields, field)
 			if (table == "chetter_tasks" || table == "chetter_triggers") && field == "id VARCHAR(64) NOT NULL" {
 				fields = append(fields, "team_id VARCHAR(64) NULL")

@@ -144,6 +144,14 @@ docker run -d --name chetter-runner \
 
 > **Note:** gVisor only works on Linux hosts. It is not available on Docker Desktop for macOS or Windows.
 
+### Enforced isolation gate (issue #291)
+
+Runners advertise enforced isolation — `use_gvisor` configured **and** the `runsc` binary available on PATH (docker), or a gVisor runtime class (kubernetes) — in their claim/heartbeat metadata. The control plane only hands isolation-requiring tasks (resumable sessions, tasks submitted with `isolation: "required"`, and — unless the deployment opts out — every task in a hardened fleet) to runners that can enforce it, and fails them fast when no such runner exists.
+
+As a second line of defense, a runner that receives an isolation-requiring task it cannot sandbox refuses it at claim time with a terminal `error_category=isolation_unavailable`, never running it unsandboxed.
+
+**Single-tenant / trusted deployments that intentionally run without gVisor** opt out with `CHETTER_ALLOW_UNISOLATED=true` on **both** the server and every runner. With the escape hatch set, ordinary tasks no longer require isolation; only resumable sessions and explicitly configured tasks still do.
+
 If the container exits immediately, check `docker logs chetter-runner`. Common causes are a missing `server.url` or lack of access to the mounted Docker socket.
 
 ## Container resource limits
@@ -218,6 +226,7 @@ See [docs/HARNESSES.md](../docs/HARNESSES.md) for the full capability matrix and
 | `CHETTER_RUNNER_AUTH_TOKEN` | | Auth token (also checks `CHETTER_RUNNER_RPC_TOKEN`, `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN`) |
 | `EXECUTION_BACKEND` | `docker` | `docker`, `kubernetes`, or development-only `local` execution |
 | `USE_GVISOR` | `false` | Pass `--runtime=runsc` to Docker for gVisor sandboxing |
+| `CHETTER_ALLOW_UNISOLATED` | `false` | Escape hatch for trusted single-tenant deployments without gVisor: accept isolation-requiring tasks even when the runner cannot enforce a sandbox. Must match the server setting. See issue #291. |
 | `MAX_CONCURRENT` | `10` | Max parallel tasks |
 | `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit passed to `docker --memory`/`--memory-swap` (see [Container resource limits](#container-resource-limits)) |
 | `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores passed to `docker --cpus` (decimal allowed) |

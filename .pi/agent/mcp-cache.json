@@ -1,0 +1,1772 @@
+{
+  "version": 1,
+  "servers": {
+    "chetter": {
+      "configHash": "7dd28a8b5024f8abc27c8933a5e31193a5fe39aadad360d4e692ed359fdbbc29",
+      "tools": [
+        {
+          "name": "chetter_agent_session_status",
+          "description": "Get an agent session with its user prompts.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "Agent session identifier"
+              }
+            },
+            "required": [
+              "session_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_arcane_environment_summary",
+          "description": "Get aggregated vulnerability counts across all images in the Arcane environment.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "environment_id": {
+                "type": "string",
+                "description": "Arcane environment ID (default: 0)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_arcane_image_summary",
+          "description": "Get vulnerability summary for a specific Docker image by its ID.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "environment_id": {
+                "type": "string",
+                "description": "Arcane environment ID (default: 0)"
+              },
+              "image_id": {
+                "type": "string",
+                "description": "Docker image ID (sha256:...)"
+              }
+            },
+            "required": [
+              "image_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_arcane_list_images",
+          "description": "List all Docker images in the Arcane environment with their IDs and tags.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "environment_id": {
+                "type": "string",
+                "description": "Arcane environment ID (default: 0)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_arcane_list_vulnerabilities",
+          "description": "List detailed vulnerabilities for an image with optional severity filtering and pagination.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "environment_id": {
+                "type": "string",
+                "description": "Arcane environment ID (default: 0)"
+              },
+              "image_id": {
+                "type": "string",
+                "description": "Docker image ID (sha256:...)"
+              },
+              "severity": {
+                "type": "string",
+                "description": "Filter by severity: CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN"
+              },
+              "page": {
+                "type": "integer",
+                "description": "Page number (default: 1)"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Items per page (default: 20)"
+              }
+            },
+            "required": [
+              "image_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_arcane_scanner_status",
+          "description": "Check if the Arcane Trivy vulnerability scanner is available and get its version.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "environment_id": {
+                "type": "string",
+                "description": "Arcane environment ID (default: 0)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_cancel_task",
+          "description": "Cancel a single chetter task by ID. Only works for pending or running tasks.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier to cancel"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Optional cancellation reason"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_clear_queue",
+          "description": "Clear queued chetter tasks by cancelling pending DB-backed tasks. Admin only; requires confirm=true.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "confirm": {
+                "type": "boolean",
+                "description": "Set true to cancel pending DB-backed tasks"
+              }
+            },
+            "required": [
+              "confirm"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_definition_proposal",
+          "description": "Create a GitHub pull request proposing definition file changes.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Chetter task ID from CHETTER_TASK_ID; required for task artifact tracking"
+              },
+              "execution_attempt_id": {
+                "type": "string",
+                "description": "Execution attempt ID from CHETTER_EXECUTION_ID; required with task_id"
+              },
+              "source_id": {
+                "type": "string",
+                "description": "Definition source ID; defaults to the configured default source"
+              },
+              "title": {
+                "type": "string",
+                "description": "Pull request title"
+              },
+              "body": {
+                "type": "string",
+                "description": "Pull request body with rationale and evidence"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Proposal branch name; generated if omitted"
+              },
+              "base_branch": {
+                "type": "string",
+                "description": "Base branch; defaults to the source branch"
+              },
+              "commit_message": {
+                "type": "string",
+                "description": "Commit message for definition file updates"
+              },
+              "files": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Path inside the definitions repository"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Complete replacement file content"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "Files to create or replace in the definitions repository"
+              },
+              "draft": {
+                "type": "boolean",
+                "description": "Create a draft pull request"
+              }
+            },
+            "required": [
+              "title",
+              "files"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_event_callback",
+          "description": "Create an event callback that reacts to task events with create_task, webhook, or slack actions.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; required when a non-admin token belongs to multiple teams"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Unique event callback name"
+              },
+              "event_type": {
+                "type": "string",
+                "description": "Event type to match, e.g. task.completed, task.failed.*, task.failed.model_error"
+              },
+              "action_type": {
+                "type": "string",
+                "description": "Action type: create_task, webhook, or slack"
+              },
+              "action_config": {
+                "type": "string",
+                "description": "Action config as JSON. create_task uses prompt/git/model fields; webhook/slack use url, headers, template/text."
+              },
+              "enabled": {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "description": "Enable the callback (default true)"
+              }
+            },
+            "required": [
+              "name",
+              "event_type",
+              "action_type",
+              "action_config"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_git_identity",
+          "description": "Create a managed Git author identity. Credentials remain server-managed.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; empty creates a global identity for admins"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Stable lowercase identity reference used by agent definitions"
+              },
+              "git_author_name": {
+                "type": "string",
+                "description": "Git commit author and committer name"
+              },
+              "git_author_email": {
+                "type": "string",
+                "description": "Git commit author and committer email"
+              },
+              "credential_type": {
+                "type": "string",
+                "description": "Credential provider; github_app is currently supported"
+              }
+            },
+            "required": [
+              "name",
+              "git_author_name",
+              "git_author_email"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_team",
+          "description": "Create a new team. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the team to create"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_token",
+          "description": "Create a new API token for a team and user. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_name": {
+                "type": "string",
+                "description": "Name of the team (created if it does not exist)"
+              },
+              "team_names": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Names of teams this token should belong to; defaults to team_name"
+              },
+              "user_name": {
+                "type": "string",
+                "description": "Name of the user (created if it does not exist)"
+              },
+              "token_name": {
+                "type": "string",
+                "description": "A short name for the token (e.g. 'alice-cli')"
+              },
+              "expires_in_hours": {
+                "type": "integer",
+                "description": "Optional token lifetime in hours; omission means no expiry"
+              }
+            },
+            "required": [
+              "team_name",
+              "user_name",
+              "token_name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_create_trigger",
+          "description": "Create a trigger (cron trigger or PR review webhook).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; required when a non-admin token belongs to multiple teams"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Unique trigger name"
+              },
+              "trigger_type": {
+                "type": "string",
+                "description": "Trigger type: cron, pr_review, or issue"
+              },
+              "cron_expr": {
+                "type": "string",
+                "description": "Five-field cron expression or descriptor like @hourly (required for cron)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Repository to watch (required for pr_review and issue, e.g. flatout-works/chetter)"
+              },
+              "event": {
+                "type": "string",
+                "description": "Webhook event to respond to (for issue triggers: opened, comment; optional, defaults to all)"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Task prompt to submit when the trigger fires (optional for pr_review; defaults to built-in review template)"
+              },
+              "git_url": {
+                "type": "string",
+                "description": "Repository URL to clone before running each task"
+              },
+              "git_ref": {
+                "type": "string",
+                "description": "Branch tag or commit to check out"
+              },
+              "agent_image": {
+                "type": "string",
+                "description": "Runner harness image override"
+              },
+              "agent": {
+                "type": "string",
+                "description": "OpenCode agent to use"
+              },
+              "provider_id": {
+                "type": "string",
+                "description": "OpenCode provider id for model selection"
+              },
+              "model_id": {
+                "type": "string",
+                "description": "OpenCode model id, optionally provider-qualified"
+              },
+              "variant_id": {
+                "type": "string",
+                "description": "OpenCode model variant, such as high or minimal"
+              },
+              "skills": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Skill names or hints for the runner"
+              },
+              "harness": {
+                "type": "string",
+                "description": "Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "description": "Task timeout in seconds"
+              },
+              "session_mode": {
+                "type": "string",
+                "description": "Session mode: none (default) or resumable (requires gVisor)"
+              },
+              "pause_reason": {
+                "type": "string",
+                "description": "Reason for pausing after run (for resumable sessions)"
+              },
+              "ttl_hours": {
+                "type": "integer",
+                "description": "Hours before paused session expires (default 72)"
+              },
+              "match_labels": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Required issue labels (e.g. bug) to filter issue triggers; empty = all labels match"
+              }
+            },
+            "required": [
+              "name",
+              "trigger_type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_delete_event_callback",
+          "description": "Delete an event callback by name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; required when a non-admin token belongs to multiple teams"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the event callback to delete"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_delete_git_identity",
+          "description": "Delete an unused managed Git author identity.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; empty selects a global identity for admins"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Identity reference to delete"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_delete_team",
+          "description": "Delete a team and cascade to its users, tokens, tasks, and triggers. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the team to delete. Cascades to users, tokens, tasks, and triggers."
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_delete_token",
+          "description": "Delete an API token by name. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the token to delete"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_delete_trigger",
+          "description": "Delete a trigger by name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the trigger to delete"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_drain_runner",
+          "description": "Drain a runner: stop claiming new tasks and wait for running tasks to finish before exiting. The runner will restart automatically.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "runner_id": {
+                "type": "string",
+                "description": "Runner ID to drain"
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "description": "Max seconds to wait for running tasks to finish (default 600)"
+              }
+            },
+            "required": [
+              "runner_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_get_definition",
+          "description": "Get an active materialized definition by type and name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "definition_type": {
+                "type": "string",
+                "description": "Definition type: agent, skill, trigger, task_template, mcp_endpoint"
+              },
+              "name": {
+                "type": "string",
+                "description": "Definition name"
+              },
+              "source_id": {
+                "type": "string",
+                "description": "Definition source ID; defaults to the configured default source"
+              },
+              "scope": {
+                "type": "string",
+                "description": "Optional scope filter: global, team, repo. If omitted, returns the highest-priority match."
+              }
+            },
+            "required": [
+              "definition_type",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_get_definition_proposal",
+          "description": "Get a definition change proposal, including live PR status when GitHub is configured.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "proposal_id": {
+                "type": "string",
+                "description": "Definition proposal ID"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Repository, e.g. flatout-works/chetter"
+              },
+              "pr_number": {
+                "type": "integer",
+                "description": "Pull request number; use with repo as an alternative to proposal_id"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_get_definition_source",
+          "description": "Get a Git-backed definition source by ID or name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "description": "Definition source ID; defaults to the configured default source"
+              },
+              "name": {
+                "type": "string",
+                "description": "Definition source name; optional alternative to source_id"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_get_model_catalog",
+          "description": "Get the current model/provider catalog and its source.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_agent_sessions",
+          "description": "List recent chetter agent sessions, optionally filtered by status.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "description": "Optional agent session status filter"
+              },
+              "search": {
+                "type": "string",
+                "description": "Free-text search across session ID, agent, model"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum sessions to return, capped at 100"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_audit_events",
+          "description": "List server-side audit log events with optional filters. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "event_type": {
+                "type": "string",
+                "description": "Filter by event type (e.g. webhook_received, task_submitted)"
+              },
+              "source_type": {
+                "type": "string",
+                "description": "Filter by source type (e.g. webhook, trigger, task)"
+              },
+              "source_id": {
+                "type": "string",
+                "description": "Filter by source ID (e.g. delivery ID, trigger name)"
+              },
+              "target_type": {
+                "type": "string",
+                "description": "Filter by target type (e.g. issue, pr, task)"
+              },
+              "target_id": {
+                "type": "string",
+                "description": "Filter by target ID"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Filter by repository (e.g. flatout-works/chetter)"
+              },
+              "search": {
+                "type": "string",
+                "description": "Free-text search across all columns (requires FULLTEXT index — TiDB or MySQL)"
+              },
+              "since_hours": {
+                "type": "integer",
+                "description": "Only return events from the last N hours (default 24)"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum events to return (default 100, max 500)"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "Number of events to skip (default 0)"
+              },
+              "exclude_types": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Event types to exclude from results"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_definition_proposals",
+          "description": "List definition change proposals created by Chetter.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "description": "Optional definition source ID filter"
+              },
+              "status": {
+                "type": "string",
+                "description": "Optional stored proposal status filter"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum proposals to return, capped at 100"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_definition_sources",
+          "description": "List configured Git-backed definition sources.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_definitions",
+          "description": "List active materialized definitions, optionally filtered by type or source.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "definition_type": {
+                "type": "string",
+                "description": "Optional definition type filter: agent, skill, trigger, task_template, mcp_endpoint"
+              },
+              "source_id": {
+                "type": "string",
+                "description": "Optional definition source ID filter"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_event_callbacks",
+          "description": "List event callbacks, optionally filtered by enabled status and event type.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "enabled_only": {
+                "type": "boolean",
+                "description": "Only return enabled callbacks"
+              },
+              "event_type": {
+                "type": "string",
+                "description": "Filter by exact event type matcher"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum callbacks to return, capped at 100"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_git_identities",
+          "description": "List managed Git author identities.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_task_artifacts",
+          "description": "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Filter by task ID"
+              },
+              "agent_session_id": {
+                "type": "string",
+                "description": "Filter by agent session ID"
+              },
+              "user_prompt_id": {
+                "type": "string",
+                "description": "Filter by user prompt ID"
+              },
+              "execution_attempt_id": {
+                "type": "string",
+                "description": "Filter by execution attempt ID"
+              },
+              "artifact_type": {
+                "type": "string",
+                "description": "Filter by artifact type (issue, pr, issue_comment, pr_review)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Filter by repository"
+              },
+              "search": {
+                "type": "string",
+                "description": "Free-text search across task_id, repo, artifact_type, and ref"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum artifacts to return (default 100, max 500)"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "Number of artifacts to skip (default 0)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_tasks",
+          "description": "List recent chetter tasks, optionally filtered by status.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "description": "Optional task status filter"
+              },
+              "trigger_name": {
+                "type": "string",
+                "description": "Optional trigger name filter"
+              },
+              "search": {
+                "type": "string",
+                "description": "Free-text search across prompt, summary, agent, model"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum tasks to return, capped at 100"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_teams",
+          "description": "List all teams. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_tokens",
+          "description": "List all API tokens with user and team info. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_trigger_runs",
+          "description": "List trigger runs for the current team, optionally filtered by trigger name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "trigger_name": {
+                "type": "string",
+                "description": "Optional trigger name to filter runs by"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum runs to return, capped at 100"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_triggers",
+          "description": "List triggers, optionally filtered by type and enabled status.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "enabled_only": {
+                "type": "boolean",
+                "description": "Only return enabled triggers"
+              },
+              "trigger_type": {
+                "type": "string",
+                "description": "Filter by trigger type (cron, pr_review)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_users",
+          "description": "List all users, optionally filtered by team name. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_name": {
+                "type": "string",
+                "description": "Optional team name to filter users by"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_list_webhook_deliveries",
+          "description": "List recent webhook delivery records with status (received, completed, failed, dead_letter), retry attempts, and error details. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "description": "Maximum deliveries to return (default 50)"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "Number of deliveries to skip (default 0)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_recover_task",
+          "description": "Recover a terminal task in a fresh agent session using the previous session export.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Optional custom prompt for the recovery session. When omitted, a default recovery instruction referencing the previous session export is used."
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_rerun_task",
+          "description": "Create a new task with the same parameters as an existing terminal task (done, error, or cancelled).",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_resume_agent_session",
+          "description": "Resume a paused or recoverable agent session with a follow-up prompt.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string",
+                "description": "Agent session identifier to resume"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Follow-up prompt for the resumed agent"
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "description": "Task timeout in seconds"
+              }
+            },
+            "required": [
+              "session_id",
+              "prompt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_run_self_test",
+          "description": "Run a deployment self-test profile through real runners, harnesses, providers, and authenticated MCP tool discovery. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "profile": {
+                "type": "string",
+                "description": "Self-test profile: quick, harnesses, providers, or full"
+              }
+            },
+            "required": [
+              "profile"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_run_trigger",
+          "description": "Run a cron trigger immediately by name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the cron trigger to run immediately"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_runner_health",
+          "description": "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "include_tasks": {
+                "type": "boolean",
+                "description": "Include per-task details for currently running tasks"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_self_test_status",
+          "description": "Get aggregate and per-check status for a deployment self-test run. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "run_id": {
+                "type": "string",
+                "description": "Self-test run identifier returned by chetter_run_self_test"
+              }
+            },
+            "required": [
+              "run_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_set_git_identity_default",
+          "description": "Set the team or global default managed Git identity.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; empty selects a global identity for admins"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Identity reference to use for agent-less tasks"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_submit_task",
+          "description": "Submit a development task to the Chetter runner fleet with optional OpenCode agent, provider, model ID, and variant selection.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; required when a non-admin token belongs to multiple teams"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Task prompt to run in the Chetter runner"
+              },
+              "git_url": {
+                "type": "string",
+                "description": "Repository URL to clone before running the task"
+              },
+              "git_ref": {
+                "type": "string",
+                "description": "Branch tag or commit to check out"
+              },
+              "agent_image": {
+                "type": "string",
+                "description": "Runner harness image override"
+              },
+              "agent": {
+                "type": "string",
+                "description": "OpenCode agent to use for the task"
+              },
+              "provider_id": {
+                "type": "string",
+                "description": "OpenCode provider id for model selection"
+              },
+              "model_id": {
+                "type": "string",
+                "description": "OpenCode model id, optionally provider-qualified"
+              },
+              "variant_id": {
+                "type": "string",
+                "description": "OpenCode model variant, such as high or minimal"
+              },
+              "skills": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Skill names or hints for the runner"
+              },
+              "mcp_endpoints": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Global or team-scoped MCP endpoint names to mount"
+              },
+              "env": {
+                "type": "object",
+                "description": "Additional non-secret environment variables",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "harness": {
+                "type": "string",
+                "description": "Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "description": "Task timeout in seconds"
+              },
+              "session_mode": {
+                "type": "string",
+                "description": "Session mode: none (default) or resumable (requires gVisor)"
+              },
+              "pause_reason": {
+                "type": "string",
+                "description": "Reason for pausing after run (for resumable sessions)"
+              },
+              "ttl_hours": {
+                "type": "integer",
+                "description": "Hours before paused session expires (default 72)"
+              }
+            },
+            "required": [
+              "prompt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_sync_definition_source",
+          "description": "Sync a Git-backed definition source. Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "description": "Definition source ID; defaults to the configured default source"
+              },
+              "name": {
+                "type": "string",
+                "description": "Definition source name; optional alternative to source_id"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_sync_definitions",
+          "description": "Re-pull the definitions repo and reload configs (model catalog, triggers, etc.). Admin only.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "confirm": {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "description": "Set true to confirm and sync (default true)"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_task_events",
+          "description": "Get the full event history for a chetter task.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum events to return, capped at 500"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "Number of events to skip for pagination (default 0)"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_task_export",
+          "description": "Get the session export (markdown transcript) for a completed chetter task.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_task_latest_event",
+          "description": "Get the most recent event for a chetter task.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_task_progress",
+          "description": "Get a distilled progress timeline for a chetter task.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum progress entries to return"
+              },
+              "offset": {
+                "type": "integer",
+                "description": "Number of entries to skip for pagination (default 0)"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_task_status",
+          "description": "Get current status and result details for a chetter task.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "description": "Task identifier returned by chetter_submit_task"
+              }
+            },
+            "required": [
+              "task_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_update_event_callback",
+          "description": "Update an event callback by name.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; required when a non-admin token belongs to multiple teams"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the event callback to update"
+              },
+              "event_type": {
+                "type": "string",
+                "description": "Updated event type matcher"
+              },
+              "action_type": {
+                "type": "string",
+                "description": "Updated action type: create_task, webhook, or slack"
+              },
+              "action_config": {
+                "type": "string",
+                "description": "Updated action config as JSON"
+              },
+              "enabled": {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "description": "Enable or disable the callback"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_update_git_identity",
+          "description": "Update a managed Git author identity.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "team_id": {
+                "type": "string",
+                "description": "Owning team ID; empty creates a global identity for admins"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Owning team name; alternative to team_id"
+              },
+              "name": {
+                "type": "string",
+                "description": "Stable lowercase identity reference used by agent definitions"
+              },
+              "git_author_name": {
+                "type": "string",
+                "description": "Git commit author and committer name"
+              },
+              "git_author_email": {
+                "type": "string",
+                "description": "Git commit author and committer email"
+              },
+              "credential_type": {
+                "type": "string",
+                "description": "Credential provider; github_app is currently supported"
+              }
+            },
+            "required": [
+              "name",
+              "git_author_name",
+              "git_author_email"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_update_trigger",
+          "description": "Update a trigger by name. Only provided fields are changed.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the trigger to update"
+              },
+              "trigger_type": {
+                "type": "string",
+                "description": "Trigger type: cron, pr_review, or issue"
+              },
+              "cron_expr": {
+                "type": "string",
+                "description": "Five-field cron expression or descriptor like @hourly"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Repository to watch (for pr_review and issue)"
+              },
+              "event": {
+                "type": "string",
+                "description": "Webhook event to respond to (for issue triggers: opened, comment; optional)"
+              },
+              "match_labels": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Required issue labels (e.g. bug) to filter issue triggers"
+              },
+              "prompt": {
+                "type": "string",
+                "description": "Task prompt to submit when the trigger fires"
+              },
+              "git_url": {
+                "type": "string",
+                "description": "Repository URL to clone before running each task"
+              },
+              "git_ref": {
+                "type": "string",
+                "description": "Branch tag or commit to check out"
+              },
+              "agent_image": {
+                "type": "string",
+                "description": "Runner harness image override"
+              },
+              "agent": {
+                "type": "string",
+                "description": "OpenCode agent to use"
+              },
+              "provider_id": {
+                "type": "string",
+                "description": "OpenCode provider id for model selection"
+              },
+              "model_id": {
+                "type": "string",
+                "description": "OpenCode model id, optionally provider-qualified"
+              },
+              "variant_id": {
+                "type": "string",
+                "description": "OpenCode model variant, such as high or minimal"
+              },
+              "skills": {
+                "type": [
+                  "null",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Skill names or hints for the runner"
+              },
+              "enabled": {
+                "type": [
+                  "null",
+                  "boolean"
+                ],
+                "description": "Enable or disable the trigger"
+              },
+              "harness": {
+                "type": "string",
+                "description": "Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"
+              },
+              "timeout_sec": {
+                "type": "integer",
+                "description": "Task timeout in seconds"
+              },
+              "session_mode": {
+                "type": "string",
+                "description": "Session mode: none (default) or resumable (requires gVisor)"
+              },
+              "pause_reason": {
+                "type": "string",
+                "description": "Reason for pausing after run (for resumable sessions)"
+              },
+              "ttl_hours": {
+                "type": "integer",
+                "description": "Hours before paused session expires (default 72)"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "chetter_usage_summary",
+          "description": "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "group_by": {
+                "type": "string",
+                "description": "Grouping dimension: team, trigger, repo, or empty for all"
+              },
+              "since_hours": {
+                "type": "integer",
+                "description": "Only include tasks from the last N hours"
+              },
+              "since": {
+                "type": "string",
+                "description": "ISO 8601 start time (inclusive)"
+              },
+              "until": {
+                "type": "string",
+                "description": "ISO 8601 end time (exclusive)"
+              },
+              "team_name": {
+                "type": "string",
+                "description": "Filter by team name"
+              },
+              "trigger_name": {
+                "type": "string",
+                "description": "Filter by trigger name"
+              },
+              "trigger_type": {
+                "type": "string",
+                "description": "Filter by trigger type (cron, pr_review, issue)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Filter by repository (e.g. flatout-works/chetter)"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      ],
+      "resources": [],
+      "cachedAt": 1785754832057
+    },
+    "runner-bridge": {
+      "configHash": "012a94c311a68438bffe6051e84325e2c74168b196fc0c003aae636cda150b6a",
+      "tools": [
+        {
+          "name": "chetter_create_issue",
+          "description": "Create a GitHub issue with a canonical Chetter signature and artifact tracking.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "description": "Issue body without the Chetter footer",
+                "type": "string"
+              },
+              "labels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "repo": {
+                "description": "Repository, e.g. flatout-works/chetter",
+                "type": "string"
+              },
+              "title": {
+                "description": "Issue title",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "title"
+            ]
+          }
+        },
+        {
+          "name": "chetter_create_pr",
+          "description": "Create a GitHub pull request with a canonical Chetter signature and artifact tracking.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "base": {
+                "description": "Base branch",
+                "type": "string"
+              },
+              "body": {
+                "description": "Pull request body without the Chetter footer",
+                "type": "string"
+              },
+              "draft": {
+                "description": "Create a draft pull request",
+                "type": "boolean"
+              },
+              "head": {
+                "description": "Head branch or owner:branch",
+                "type": "string"
+              },
+              "repo": {
+                "description": "Repository, e.g. flatout-works/chetter",
+                "type": "string"
+              },
+              "title": {
+                "description": "Pull request title",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "title",
+              "head",
+              "base"
+            ]
+          }
+        },
+        {
+          "name": "chetter_issue_comment",
+          "description": "Create a GitHub issue or PR comment with a canonical Chetter signature and artifact tracking.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "description": "Comment body without the Chetter footer",
+                "type": "string"
+              },
+              "issue_number": {
+                "description": "Issue or PR number",
+                "type": "integer"
+              },
+              "repo": {
+                "description": "Repository, e.g. flatout-works/chetter",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "issue_number",
+              "body"
+            ]
+          }
+        },
+        {
+          "name": "chetter_pr_review",
+          "description": "Create a GitHub pull request review with a canonical Chetter signature and artifact tracking.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "body": {
+                "description": "Review body without the Chetter footer",
+                "type": "string"
+              },
+              "event": {
+                "description": "COMMENT, APPROVE, or REQUEST_CHANGES",
+                "type": "string"
+              },
+              "pr_number": {
+                "description": "Pull request number",
+                "type": "integer"
+              },
+              "repo": {
+                "description": "Repository, e.g. flatout-works/chetter",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "pr_number",
+              "body"
+            ]
+          }
+        }
+      ],
+      "resources": [],
+      "cachedAt": 1785754832060
+    }
+  }
+}

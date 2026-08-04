@@ -48,8 +48,13 @@ type RunnerInfo struct {
 	ContainerMemoryMb        int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
 	ContainerCpu             float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
 	McpRelayRejectedRequests int64   `protobuf:"varint,22,opt,name=mcp_relay_rejected_requests,json=mcpRelayRejectedRequests,proto3" json:"mcp_relay_rejected_requests,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// True when the runner enforces a sandbox for task containers (gVisor/runsc
+	// configured and available): docker backend with `--runtime runsc` active, or
+	// kubernetes with a gVisor runtime class. Advertised so the control plane can
+	// admit isolation-requiring tasks only to capable runners. See issue #291.
+	EnforcedIsolation bool `protobuf:"varint,23,opt,name=enforced_isolation,json=enforcedIsolation,proto3" json:"enforced_isolation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RunnerInfo) Reset() {
@@ -234,6 +239,13 @@ func (x *RunnerInfo) GetMcpRelayRejectedRequests() int64 {
 		return x.McpRelayRejectedRequests
 	}
 	return 0
+}
+
+func (x *RunnerInfo) GetEnforcedIsolation() bool {
+	if x != nil {
+		return x.EnforcedIsolation
+	}
+	return false
 }
 
 type ResourceInfo struct {
@@ -741,8 +753,15 @@ type Task struct {
 	ClaimId                string                 `protobuf:"bytes,37,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
 	SelfTestNonce          string                 `protobuf:"bytes,38,opt,name=self_test_nonce,json=selfTestNonce,proto3" json:"self_test_nonce,omitempty"`
 	SelfTestCheck          string                 `protobuf:"bytes,39,opt,name=self_test_check,json=selfTestCheck,proto3" json:"self_test_check,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// True when this task must run inside an enforced sandbox (gVisor/runsc).
+	// The server marks resumable sessions, explicitly configured tasks, and —
+	// unless the deployment opted out via CHETTER_ALLOW_UNISOLATED — every task
+	// in a hardened fleet. Runners that cannot enforce isolation refuse such
+	// tasks at claim time with error_category isolation_unavailable. See issue
+	// #291.
+	IsolationRequired bool `protobuf:"varint,40,opt,name=isolation_required,json=isolationRequired,proto3" json:"isolation_required,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Task) Reset() {
@@ -1046,6 +1065,13 @@ func (x *Task) GetSelfTestCheck() string {
 		return x.SelfTestCheck
 	}
 	return ""
+}
+
+func (x *Task) GetIsolationRequired() bool {
+	if x != nil {
+		return x.IsolationRequired
+	}
+	return false
 }
 
 type MCPEndpoint struct {
@@ -2500,7 +2526,7 @@ var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\x93\a\n" +
+	"\x1cproto/runner/v1/runner.proto\x12\trunner.v1\x1a\x1bbuf/validate/validate.proto\"\xc2\a\n" +
 	"\n" +
 	"RunnerInfo\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12\x16\n" +
@@ -2526,7 +2552,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\bresource\x18\x13 \x01(\v2\x17.runner.v1.ResourceInfoR\bresource\x12.\n" +
 	"\x13container_memory_mb\x18\x14 \x01(\x05R\x11containerMemoryMb\x12#\n" +
 	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\x12F\n" +
-	"\x1bmcp_relay_rejected_requests\x18\x16 \x01(\x03B\a\xbaH\x04\"\x02(\x00R\x18mcpRelayRejectedRequests\"\xdb\x01\n" +
+	"\x1bmcp_relay_rejected_requests\x18\x16 \x01(\x03B\a\xbaH\x04\"\x02(\x00R\x18mcpRelayRejectedRequests\x12-\n" +
+	"\x12enforced_isolation\x18\x17 \x01(\bR\x11enforcedIsolation\"\xdb\x01\n" +
 	"\fResourceInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12%\n" +
@@ -2557,7 +2584,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xe6\r\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x95\x0e\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -2603,7 +2630,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"githubRepo\x12\"\n" +
 	"\bclaim_id\x18% \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\x12&\n" +
 	"\x0fself_test_nonce\x18& \x01(\tR\rselfTestNonce\x12&\n" +
-	"\x0fself_test_check\x18' \x01(\tR\rselfTestCheck\x1a6\n" +
+	"\x0fself_test_check\x18' \x01(\tR\rselfTestCheck\x12-\n" +
+	"\x12isolation_required\x18( \x01(\bR\x11isolationRequired\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +

@@ -58,6 +58,10 @@ type SubmitTaskRequest struct {
 	SessionMode          string
 	PauseReason          string
 	TTLHours             int
+	// Isolation overrides the deployment default for this task. "required"
+	// forces enforced isolation (gVisor); any other value keeps the default
+	// policy. See issue #291.
+	Isolation string
 }
 
 type AuditEventParams struct {
@@ -204,6 +208,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		svc.reapExpiredLeases,
 		svc.reapStaleUserPrompts,
 		svc.reapUnavailablePinnedResumeTasks,
+		svc.reapIsolationUnavailableTasks,
 		svc.reapExpiredSessions,
 		svc.reapExpiredSessionArtifacts,
 		svc.pruneRetainedRows,
@@ -566,6 +571,7 @@ func (s *Service) reapExpiredLeases() {
 				TeamID:            oldSession.TeamID,
 				Status:            "running",
 				ResumeMode:        oldSession.ResumeMode,
+				IsolationRequired: oldSession.IsolationRequired,
 				PauseReason:       oldSession.PauseReason,
 				ExpiresAt:         oldSession.ExpiresAt,
 				GitUrl:            oldSession.GitUrl,
@@ -800,6 +806,42 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 	}
 	if failedAttempts > 0 || failedTasks > 0 || failedRuns > 0 || failedSessions > 0 {
 		slog.Info("failed pinned resume work for unavailable runners", "attempts", failedAttempts, "tasks", failedTasks, "runs", failedRuns, "sessions", failedSessions)
+	}
+}
+
+// reapIsolationUnavailableTasks fails pending tasks that require enforced
+// isolation when no live runner advertises isolation_enabled. Server-side
+// admission already prevents such tasks from ever being claimed by a
+// non-isolated runner (see GetClaimableExecutionAttemptForUpdate); this step
+// turns a permanently unclaimable task into a terminal failure instead of
+// leaving it pending forever. See issue #291.
+func (s *Service) reapIsolationUnavailableTasks() {
+	ctx, cancel := s.reaperCtx()
+	defer cancel()
+	now := time.Now().UTC()
+	var failedAttempts, failedTasks int64
+	err := withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		var err error
+		failedAttempts, err = q.FailPendingIsolationAttemptsWithoutCapableRunner(ctx, repository.FailPendingIsolationAttemptsWithoutCapableRunnerParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, StaleSeconds: runnerPresenceMaxSec,
+		})
+		if err != nil {
+			return err
+		}
+		failedTasks, err = q.FailPendingIsolationTasks(ctx, repository.FailPendingIsolationTasksParams{
+			EndedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now,
+		})
+		return err
+	})
+	if err != nil {
+		slog.Error("isolation reaper failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	if failedAttempts > 0 || failedTasks > 0 {
+		slog.Info("failed isolation-requiring tasks without capable runner", "attempts", failedAttempts, "tasks", failedTasks)
 	}
 }
 
@@ -1049,6 +1091,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			expiresAt = sql.NullTime{Time: now.Add(72 * time.Hour), Valid: true}
 		}
 	}
+	// Isolation policy (issue #291): a task requires enforced isolation
+	// (gVisor/runsc) when it is resumable, explicitly configured via
+	// isolation: "required", or — in the default hardened mode — always
+	// (every task is treated as untrusted). Trusted single-tenant deployments
+	// opt out with CHETTER_ALLOW_UNISOLATED=true; resumable and explicit
+	// tasks still require isolation there.
+	isolationRequired := resumeMode != "none" || in.Isolation == "required" || !s.cfg.AllowUnisolated
 	var task repository.ChetterTask
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL+" "+githubRepo), " ")
@@ -1081,6 +1130,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TeamID:            nullString(teamID),
 			Status:            "running",
 			ResumeMode:        resumeMode,
+			IsolationRequired: isolationRequired,
 			PauseReason:       nullString(pauseReason),
 			ExpiresAt:         expiresAt,
 			GitUrl:            nullString(in.GitURL),
@@ -1285,6 +1335,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 			TeamID:            oldSession.TeamID,
 			Status:            "running",
 			ResumeMode:        oldSession.ResumeMode,
+			IsolationRequired: oldSession.IsolationRequired,
 			PauseReason:       oldSession.PauseReason,
 			ExpiresAt:         expiresAt,
 			GitUrl:            oldSession.GitUrl,
@@ -1466,6 +1517,7 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 			TeamID:            session.TeamID,
 			Status:            "running",
 			ResumeMode:        session.ResumeMode,
+			IsolationRequired: session.IsolationRequired,
 			PauseReason:       session.PauseReason,
 			ExpiresAt:         sql.NullTime{},
 			GitUrl:            session.GitUrl,
@@ -2188,6 +2240,7 @@ func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName,
 		SessionMode:      runtime.SessionMode,
 		PauseReason:      runtime.PauseReason,
 		TTLHours:         runtime.TTLHours,
+		Isolation:        runtime.Isolation,
 	})
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("submit triggered task: %w", err)
@@ -2241,6 +2294,7 @@ func (s *Service) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo st
 			SessionMode: cfg.SessionMode,
 			PauseReason: cfg.PauseReason,
 			TTLHours:    cfg.TTLHours,
+			Isolation:   cfg.Isolation,
 		}
 	}
 	return out, nil
@@ -2286,6 +2340,7 @@ type triggerRuntimeConfig struct {
 	SessionMode string   `json:"session_mode"`
 	PauseReason string   `json:"pause_reason"`
 	TTLHours    int      `json:"ttl_hours"`
+	Isolation   string   `json:"isolation"`
 }
 
 func triggerRuntimeConfigFromJSON(cfg json.RawMessage) triggerRuntimeConfig {

@@ -63,6 +63,7 @@ type ChetterAgentSession struct {
 	Summary           sql.NullString   `json:"summary"`
 	StartedAt         sql.NullTime     `json:"started_at"`
 	EndedAt           sql.NullTime     `json:"ended_at"`
+	IsolationRequired bool             `json:"isolation_required"`
 }
 
 type ChetterAgentSessionCheckpoint struct {
@@ -159,22 +160,23 @@ type ChetterModelCatalog struct {
 }
 
 type ChetterRunner struct {
-	ID             string          `json:"id"`
-	Status         string          `json:"status"`
-	ImageRef       sql.NullString  `json:"image_ref"`
-	ImageDigest    sql.NullString  `json:"image_digest"`
-	Version        sql.NullString  `json:"version"`
-	MaxConcurrent  int32           `json:"max_concurrent"`
-	RunningTasks   int32           `json:"running_tasks"`
-	AvailableSlots int32           `json:"available_slots"`
-	TotalStarted   int64           `json:"total_started"`
-	TotalCompleted int64           `json:"total_completed"`
-	TotalErrors    int64           `json:"total_errors"`
-	StartedAt      sql.NullTime    `json:"started_at"`
-	FirstSeenAt    time.Time       `json:"first_seen_at"`
-	LastSeenAt     time.Time       `json:"last_seen_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	Metadata       json.RawMessage `json:"metadata"`
+	ID               string          `json:"id"`
+	Status           string          `json:"status"`
+	ImageRef         sql.NullString  `json:"image_ref"`
+	ImageDigest      sql.NullString  `json:"image_digest"`
+	Version          sql.NullString  `json:"version"`
+	MaxConcurrent    int32           `json:"max_concurrent"`
+	RunningTasks     int32           `json:"running_tasks"`
+	AvailableSlots   int32           `json:"available_slots"`
+	TotalStarted     int64           `json:"total_started"`
+	TotalCompleted   int64           `json:"total_completed"`
+	TotalErrors      int64           `json:"total_errors"`
+	StartedAt        sql.NullTime    `json:"started_at"`
+	FirstSeenAt      time.Time       `json:"first_seen_at"`
+	LastSeenAt       time.Time       `json:"last_seen_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Metadata         json.RawMessage `json:"metadata"`
+	IsolationEnabled bool            `json:"isolation_enabled"`
 }
 
 type ChetterTask struct {

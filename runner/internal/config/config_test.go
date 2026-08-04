@@ -322,3 +322,47 @@ func TestParseMemoryBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestAllowUnisolatedEnvAndYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.yaml")
+	data := `
+execution:
+  allow_unisolated: true
+`
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Execution.AllowUnisolated {
+		t.Fatal("execution.allow_unisolated: true should be honored")
+	}
+
+	// Env var also enables the escape hatch (issue #291).
+	t.Setenv("CHETTER_ALLOW_UNISOLATED", "true")
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	if !cfg.Execution.AllowUnisolated {
+		t.Fatal("CHETTER_ALLOW_UNISOLATED=true should enable the escape hatch")
+	}
+
+	// Unset stays false (hardened default), even when the env var is cleared
+	// and the YAML does not enable it.
+	plain := filepath.Join(dir, "plain.yaml")
+	if err := os.WriteFile(plain, []byte("execution:\n  backend: docker\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CHETTER_ALLOW_UNISOLATED", "")
+	cfg, err = Load(plain)
+	if err != nil {
+		t.Fatalf("Load without env: %v", err)
+	}
+	if cfg.Execution.AllowUnisolated {
+		t.Fatal("unset CHETTER_ALLOW_UNISOLATED must default to false")
+	}
+}

@@ -34,6 +34,15 @@ func TestMain(m *testing.M) {
 }
 
 func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
+	return newServiceForTestWithIsolation(t, true)
+}
+
+// newServiceForTestWithIsolation builds the integration service with an
+// explicit isolation policy. Trusted mode (allowUnisolated=true) is the test
+// harness default so existing tests keep claiming with unregistered runners;
+// isolation-specific tests pass false to exercise the hardened default. See
+// issue #291.
+func newServiceForTestWithIsolation(t *testing.T, allowUnisolated bool) (*Service, *testdb.TestDB, func()) {
 	t.Helper()
 	if svcTestDB == nil {
 		t.Skip("database unavailable; skipping integration test")
@@ -45,6 +54,12 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 		DefaultTaskTimeoutSec: 600,
 		AutoRecovery:          true,
 		EnvValidation:         validation.Defaults(),
+		// The integration harness runs as a trusted single-tenant deployment:
+		// without this escape hatch every task would be marked
+		// isolation-requiring and non-gVisor test runners could never claim
+		// them. Isolation-specific tests opt back into hardened mode per test.
+		// See issue #291.
+		AllowUnisolated: allowUnisolated,
 	}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
@@ -62,6 +77,27 @@ func newServiceForTest(t *testing.T) (*Service, *testdb.TestDB, func()) {
 	return svc, tdb, func() {
 		_ = st.Close()
 		cleanup()
+	}
+}
+
+// registerIsolationCapableRunner upserts a runner that advertises enforced
+// isolation (issue #291). Tests that claim isolation-requiring tasks (resumable
+// or hardened-mode) must register their runner this way, mirroring a real
+// gVisor runner's heartbeat.
+func registerIsolationCapableRunner(t *testing.T, q data.Repository, runnerID string) {
+	t.Helper()
+	now := time.Now().UTC()
+	if err := q.UpsertRunnerHeartbeat(context.Background(), repository.UpsertRunnerHeartbeatParams{
+		ID:               runnerID,
+		Status:           "active",
+		MaxConcurrent:    1,
+		IsolationEnabled: true,
+		FirstSeenAt:      now,
+		LastSeenAt:       now,
+		UpdatedAt:        now,
+		Metadata:         json.RawMessage("{}"),
+	}); err != nil {
+		t.Fatalf("register isolation-capable runner %s: %v", runnerID, err)
 	}
 }
 
@@ -1212,6 +1248,10 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 		t.Fatalf("resume_mode = %s, want harness_session", session.ResumeMode)
 	}
 
+	// Resumable tasks require enforced isolation (issue #291), so the test
+	// runner must advertise it before claiming.
+	registerIsolationCapableRunner(t, q, "runner_1")
+
 	claimResp, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId: "runner_1", WaitSeconds: 1,
 	}))
@@ -1230,13 +1270,14 @@ func TestResumeAgentSessionFullFlow(t *testing.T) {
 
 	now := time.Now().UTC()
 	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
-		ID:            "runner_1",
-		Status:        "active",
-		MaxConcurrent: 1,
-		FirstSeenAt:   now,
-		LastSeenAt:    now,
-		UpdatedAt:     now,
-		Metadata:      json.RawMessage("{}"),
+		ID:               "runner_1",
+		Status:           "active",
+		MaxConcurrent:    1,
+		IsolationEnabled: true,
+		FirstSeenAt:      now,
+		LastSeenAt:       now,
+		UpdatedAt:        now,
+		Metadata:         json.RawMessage("{}"),
 	}); err != nil {
 		t.Fatalf("upsert runner: %v", err)
 	}
@@ -1509,6 +1550,9 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
+	// Resumable tasks require enforced isolation (issue #291); register the
+	// runner as isolation-capable before claiming.
+	registerIsolationCapableRunner(t, q, "runner_gone")
 	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
 		RunnerId: "runner_gone", WaitSeconds: 0,
 	}))
@@ -1517,13 +1561,14 @@ func TestReaperFailsResumeWhenPinnedRunnerDisappears(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	if err := q.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
-		ID:            "runner_gone",
-		Status:        "active",
-		MaxConcurrent: 1,
-		FirstSeenAt:   now,
-		LastSeenAt:    now,
-		UpdatedAt:     now,
-		Metadata:      json.RawMessage("{}"),
+		ID:               "runner_gone",
+		Status:           "active",
+		MaxConcurrent:    1,
+		IsolationEnabled: true,
+		FirstSeenAt:      now,
+		LastSeenAt:       now,
+		UpdatedAt:        now,
+		Metadata:         json.RawMessage("{}"),
 	}); err != nil {
 		t.Fatalf("upsert runner: %v", err)
 	}

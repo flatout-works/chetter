@@ -40,6 +40,8 @@ type SubmitTaskRequest struct {
 	SessionMode          string
 	PauseReason          string
 	TTLHours             int
+	// Isolation marks the task as requiring enforced isolation (issue #291).
+	Isolation string
 }
 
 // NewServiceSubmitter creates a TaskSubmitter that wraps the given service
@@ -120,6 +122,7 @@ func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 		SessionMode:          review.SessionMode,
 		PauseReason:          review.PauseReason,
 		TTLHours:             review.TTLHours,
+		Isolation:            review.Isolation,
 	}
 }
 
