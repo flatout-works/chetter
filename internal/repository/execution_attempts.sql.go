@@ -247,16 +247,22 @@ SELECT attempt.id AS execution_attempt_id, attempt.sequence,
 FROM chetter_execution_attempts attempt
 JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
 JOIN chetter_tasks task ON task.id = prompt.task_id
-JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = ?)
   -- Isolation admission (issue #291): a task that requires enforced isolation
   -- is only claimable by a runner advertising it. The capability is passed in
-  -- (resolved from the runner's heartbeat metadata before the locking read) so
-  -- the FOR UPDATE SKIP LOCKED scan does not take locks on chetter_runners
-  -- rows, which would serialize claims across the fleet.
-  AND (session.isolation_required = 0 OR ? = 1)
+  -- (resolved from the runner's heartbeat metadata before the locking read).
+  -- The session check uses NOT EXISTS instead of a JOIN because TiDB
+  -- serverless v8.5.x rejects SELECT ... FOR UPDATE SKIP LOCKED plans that
+  -- join chetter_agent_sessions with Error 1105 "Can't find column
+  -- chetter_agent_sessions.id in schema" (verified against the live fleet
+  -- DB). The 3-table join without the session join works.
+  AND (NOT EXISTS (
+          SELECT 1 FROM chetter_agent_sessions session
+          WHERE session.id = prompt.agent_session_id
+            AND session.isolation_required = 1
+      ) OR ? = 1)
 ORDER BY attempt.created_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED
