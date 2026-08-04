@@ -93,26 +93,57 @@ global:
   deploy_dir: "${TIDB_DEPLOY_DIR}"
   data_dir: "${TIDB_DATA_DIR}"
 
+server_configs:
+  pd:
+    replication.location-labels: ["host"]
+  tidb:
+    time-zone: "UTC"
+  tikv:
+    storage.block-cache.capacity: "512MB"
+    readpool.unified.max-thread-count: 4
+
 pd_servers:
   - host: "${TIDB_NODE_HOST}"
     client_port: 2379
     peer_port: 2380
+    resource_control:
+      memory_limit: "512M"
 
 tidb_servers:
   - host: "${TIDB_NODE_HOST}"
     port: ${TIDB_PORT}
     status_port: 10080
+    resource_control:
+      memory_limit: "2560M"
 
 tikv_servers:
   - host: "${TIDB_NODE_HOST}"
     port: 20160
     status_port: 20180
+    resource_control:
+      memory_limit: "2560M"
+    config:
+      server:
+        labels:
+          host: "tikv-1"
   - host: "${TIDB_NODE_HOST}"
     port: 20161
     status_port: 20181
+    resource_control:
+      memory_limit: "2560M"
+    config:
+      server:
+        labels:
+          host: "tikv-2"
   - host: "${TIDB_NODE_HOST}"
     port: 20162
     status_port: 20182
+    resource_control:
+      memory_limit: "2560M"
+    config:
+      server:
+        labels:
+          host: "tikv-3"
 
 monitoring_servers:
   - host: "${TIDB_NODE_HOST}"
