@@ -173,7 +173,7 @@ type TriggerRecord struct {
 	SourceID      string   `json:"source_id,omitempty"`
 	// SourceRepoURL, SourceBranch, and SourcePath are transient fields
 	// populated by the service layer from the definition_sources and
-	// definitions tables. They are not stored in chetter_triggers.
+	// definitions tables. They are not stored in triggers.
 	SourceRepoURL string     `json:"source_repo_url,omitempty"`
 	SourceBranch  string     `json:"source_branch,omitempty"`
 	SourcePath    string     `json:"source_path,omitempty"`
@@ -543,21 +543,21 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"max_attempts", "ALTER TABLE chetter_tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER git_ref"},
-		{"team_id", "ALTER TABLE chetter_tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
-		{"trigger_name", "ALTER TABLE chetter_tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER max_attempts"},
-		{"trigger_type", "ALTER TABLE chetter_tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
-		{"submission_source", "ALTER TABLE chetter_tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
-		{"self_test_run_id", "ALTER TABLE chetter_tasks ADD COLUMN self_test_run_id VARCHAR(64) NULL AFTER submission_source"},
-		{"self_test_profile", "ALTER TABLE chetter_tasks ADD COLUMN self_test_profile VARCHAR(32) NULL AFTER self_test_run_id"},
-		{"self_test_check", "ALTER TABLE chetter_tasks ADD COLUMN self_test_check VARCHAR(128) NULL AFTER self_test_profile"},
-		{"self_test_nonce", "ALTER TABLE chetter_tasks ADD COLUMN self_test_nonce VARCHAR(128) NULL AFTER self_test_check"},
-		{"error_category", "ALTER TABLE chetter_tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
-		{"failure_category", "ALTER TABLE chetter_tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
-		{"failure_message", "ALTER TABLE chetter_tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
+		{"max_attempts", "ALTER TABLE tasks ADD COLUMN max_attempts INT NOT NULL DEFAULT 3 AFTER git_ref"},
+		{"team_id", "ALTER TABLE tasks ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
+		{"trigger_name", "ALTER TABLE tasks ADD COLUMN trigger_name VARCHAR(128) NULL AFTER max_attempts"},
+		{"trigger_type", "ALTER TABLE tasks ADD COLUMN trigger_type VARCHAR(32) NULL AFTER trigger_name"},
+		{"submission_source", "ALTER TABLE tasks ADD COLUMN submission_source VARCHAR(32) NOT NULL DEFAULT 'manual' AFTER trigger_type"},
+		{"self_test_run_id", "ALTER TABLE tasks ADD COLUMN self_test_run_id VARCHAR(64) NULL AFTER submission_source"},
+		{"self_test_profile", "ALTER TABLE tasks ADD COLUMN self_test_profile VARCHAR(32) NULL AFTER self_test_run_id"},
+		{"self_test_check", "ALTER TABLE tasks ADD COLUMN self_test_check VARCHAR(128) NULL AFTER self_test_profile"},
+		{"self_test_nonce", "ALTER TABLE tasks ADD COLUMN self_test_nonce VARCHAR(128) NULL AFTER self_test_check"},
+		{"error_category", "ALTER TABLE tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
+		{"failure_category", "ALTER TABLE tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
+		{"failure_message", "ALTER TABLE tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
+		exists, err := s.columnExists(ctx, "tasks", column.name)
 		if err != nil {
 			return err
 		}
@@ -565,15 +565,15 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+			return fmt.Errorf("add tasks.%s: %w", column.name, err)
 		}
 	}
-	indexExists, err := s.indexExists(ctx, "chetter_tasks", "idx_chetter_tasks_self_test_run")
+	indexExists, err := s.indexExists(ctx, "tasks", "idx_chetter_tasks_self_test_run")
 	if err != nil {
 		return err
 	}
 	if !indexExists {
-		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_chetter_tasks_self_test_run ON chetter_tasks (self_test_run_id, created_at)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_chetter_tasks_self_test_run ON tasks (self_test_run_id, created_at)"); err != nil {
 			return fmt.Errorf("create self-test run index: %w", err)
 		}
 	}
@@ -586,11 +586,11 @@ func (s *Store) ensureTaskGitHubMetadataColumns(ctx context.Context) error {
 		mysqlDDL string
 		pgDDL    string
 	}{
-		{"github_repo", "ALTER TABLE chetter_tasks ADD COLUMN github_repo VARCHAR(255) NULL AFTER git_ref", "ALTER TABLE chetter_tasks ADD COLUMN github_repo VARCHAR(255) NULL"},
-		{"github_installation_id", "ALTER TABLE chetter_tasks ADD COLUMN github_installation_id BIGINT NULL AFTER github_repo", "ALTER TABLE chetter_tasks ADD COLUMN github_installation_id BIGINT NULL"},
+		{"github_repo", "ALTER TABLE tasks ADD COLUMN github_repo VARCHAR(255) NULL AFTER git_ref", "ALTER TABLE tasks ADD COLUMN github_repo VARCHAR(255) NULL"},
+		{"github_installation_id", "ALTER TABLE tasks ADD COLUMN github_installation_id BIGINT NULL AFTER github_repo", "ALTER TABLE tasks ADD COLUMN github_installation_id BIGINT NULL"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_tasks", column.name)
+		exists, err := s.columnExists(ctx, "tasks", column.name)
 		if err != nil {
 			return err
 		}
@@ -602,7 +602,7 @@ func (s *Store) ensureTaskGitHubMetadataColumns(ctx context.Context) error {
 			ddl = column.pgDDL
 		}
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
-			return fmt.Errorf("add chetter_tasks.%s: %w", column.name, err)
+			return fmt.Errorf("add tasks.%s: %w", column.name, err)
 		}
 	}
 	return nil
@@ -613,13 +613,13 @@ func (s *Store) ensureExecutionAttemptMetadataColumns(ctx context.Context) error
 		name string
 		ddl  string
 	}{
-		{"timeout_sec", "ALTER TABLE chetter_execution_attempts ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600 AFTER lease_expires_at"},
-		{"claim_id", "ALTER TABLE chetter_execution_attempts ADD COLUMN claim_id VARCHAR(64) NOT NULL DEFAULT '' AFTER runner_id"},
-		{"last_event_at", "ALTER TABLE chetter_execution_attempts ADD COLUMN last_event_at DATETIME(6) NULL AFTER timeout_sec"},
-		{"runner_image_digest", "ALTER TABLE chetter_execution_attempts ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER harness_execution_id"},
+		{"timeout_sec", "ALTER TABLE execution_attempts ADD COLUMN timeout_sec INT NOT NULL DEFAULT 600 AFTER lease_expires_at"},
+		{"claim_id", "ALTER TABLE execution_attempts ADD COLUMN claim_id VARCHAR(64) NOT NULL DEFAULT '' AFTER runner_id"},
+		{"last_event_at", "ALTER TABLE execution_attempts ADD COLUMN last_event_at DATETIME(6) NULL AFTER timeout_sec"},
+		{"runner_image_digest", "ALTER TABLE execution_attempts ADD COLUMN runner_image_digest VARCHAR(255) NULL AFTER harness_execution_id"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_execution_attempts", column.name)
+		exists, err := s.columnExists(ctx, "execution_attempts", column.name)
 		if err != nil {
 			return err
 		}
@@ -627,18 +627,18 @@ func (s *Store) ensureExecutionAttemptMetadataColumns(ctx context.Context) error
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_execution_attempts.%s: %w", column.name, err)
+			return fmt.Errorf("add execution_attempts.%s: %w", column.name, err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_execution_attempts SET claim_id = CONCAT('legacy_', LEFT(MD5(id), 57)) WHERE status = 'running' AND claim_id = ''"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE execution_attempts SET claim_id = CONCAT('legacy_', LEFT(MD5(id), 57)) WHERE status = 'running' AND claim_id = ''"); err != nil {
 		return fmt.Errorf("backfill execution attempt claim IDs: %w", err)
 	}
-	claimIndexExists, err := s.indexExists(ctx, "chetter_execution_attempts", "idx_execution_attempts_claim")
+	claimIndexExists, err := s.indexExists(ctx, "execution_attempts", "idx_execution_attempts_claim")
 	if err != nil {
 		return err
 	}
 	if !claimIndexExists {
-		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_execution_attempts_claim ON chetter_execution_attempts (claim_id)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_execution_attempts_claim ON execution_attempts (claim_id)"); err != nil {
 			return fmt.Errorf("add execution attempt claim index: %w", err)
 		}
 	}
@@ -664,16 +664,16 @@ func (s *Store) ensureTriggerMetadataColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"agent", "ALTER TABLE chetter_triggers ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image"},
-		{"provider_id", "ALTER TABLE chetter_triggers ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
-		{"model_id", "ALTER TABLE chetter_triggers ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
-		{"variant_id", "ALTER TABLE chetter_triggers ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
-		{"harness", "ALTER TABLE chetter_triggers ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
-		{"team_id", "ALTER TABLE chetter_triggers ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
-		{"source_id", "ALTER TABLE chetter_triggers ADD COLUMN source_id VARCHAR(64) NULL AFTER enabled"},
+		{"agent", "ALTER TABLE triggers ADD COLUMN agent VARCHAR(128) NULL AFTER agent_image"},
+		{"provider_id", "ALTER TABLE triggers ADD COLUMN provider_id VARCHAR(128) NULL AFTER agent"},
+		{"model_id", "ALTER TABLE triggers ADD COLUMN model_id VARCHAR(255) NULL AFTER provider_id"},
+		{"variant_id", "ALTER TABLE triggers ADD COLUMN variant_id VARCHAR(128) NULL AFTER model_id"},
+		{"harness", "ALTER TABLE triggers ADD COLUMN harness VARCHAR(64) NULL AFTER variant_id"},
+		{"team_id", "ALTER TABLE triggers ADD COLUMN team_id VARCHAR(64) NULL AFTER id"},
+		{"source_id", "ALTER TABLE triggers ADD COLUMN source_id VARCHAR(64) NULL AFTER enabled"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_triggers", column.name)
+		exists, err := s.columnExists(ctx, "triggers", column.name)
 		if err != nil {
 			return err
 		}
@@ -681,7 +681,7 @@ func (s *Store) ensureTriggerMetadataColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_triggers.%s: %w", column.name, err)
+			return fmt.Errorf("add triggers.%s: %w", column.name, err)
 		}
 	}
 	return nil
@@ -692,22 +692,22 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"image_ref", "ALTER TABLE chetter_runners ADD COLUMN image_ref VARCHAR(512) NULL AFTER status"},
-		{"image_digest", "ALTER TABLE chetter_runners ADD COLUMN image_digest VARCHAR(255) NULL AFTER image_ref"},
-		{"version", "ALTER TABLE chetter_runners ADD COLUMN version VARCHAR(128) NULL AFTER image_digest"},
-		{"max_concurrent", "ALTER TABLE chetter_runners ADD COLUMN max_concurrent INT NOT NULL DEFAULT 0 AFTER version"},
-		{"running_tasks", "ALTER TABLE chetter_runners ADD COLUMN running_tasks INT NOT NULL DEFAULT 0 AFTER max_concurrent"},
-		{"available_slots", "ALTER TABLE chetter_runners ADD COLUMN available_slots INT NOT NULL DEFAULT 0 AFTER running_tasks"},
-		{"isolation_enabled", "ALTER TABLE chetter_runners ADD COLUMN isolation_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER available_slots"},
-		{"total_started", "ALTER TABLE chetter_runners ADD COLUMN total_started BIGINT NOT NULL DEFAULT 0 AFTER available_slots"},
-		{"total_completed", "ALTER TABLE chetter_runners ADD COLUMN total_completed BIGINT NOT NULL DEFAULT 0 AFTER total_started"},
-		{"total_errors", "ALTER TABLE chetter_runners ADD COLUMN total_errors BIGINT NOT NULL DEFAULT 0 AFTER total_completed"},
-		{"started_at", "ALTER TABLE chetter_runners ADD COLUMN started_at DATETIME(6) NULL AFTER total_errors"},
-		{"first_seen_at", "ALTER TABLE chetter_runners ADD COLUMN first_seen_at DATETIME(6) NULL AFTER started_at"},
-		{"updated_at", "ALTER TABLE chetter_runners ADD COLUMN updated_at DATETIME(6) NULL AFTER last_seen_at"},
+		{"image_ref", "ALTER TABLE runners ADD COLUMN image_ref VARCHAR(512) NULL AFTER status"},
+		{"image_digest", "ALTER TABLE runners ADD COLUMN image_digest VARCHAR(255) NULL AFTER image_ref"},
+		{"version", "ALTER TABLE runners ADD COLUMN version VARCHAR(128) NULL AFTER image_digest"},
+		{"max_concurrent", "ALTER TABLE runners ADD COLUMN max_concurrent INT NOT NULL DEFAULT 0 AFTER version"},
+		{"running_tasks", "ALTER TABLE runners ADD COLUMN running_tasks INT NOT NULL DEFAULT 0 AFTER max_concurrent"},
+		{"available_slots", "ALTER TABLE runners ADD COLUMN available_slots INT NOT NULL DEFAULT 0 AFTER running_tasks"},
+		{"isolation_enabled", "ALTER TABLE runners ADD COLUMN isolation_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER available_slots"},
+		{"total_started", "ALTER TABLE runners ADD COLUMN total_started BIGINT NOT NULL DEFAULT 0 AFTER available_slots"},
+		{"total_completed", "ALTER TABLE runners ADD COLUMN total_completed BIGINT NOT NULL DEFAULT 0 AFTER total_started"},
+		{"total_errors", "ALTER TABLE runners ADD COLUMN total_errors BIGINT NOT NULL DEFAULT 0 AFTER total_completed"},
+		{"started_at", "ALTER TABLE runners ADD COLUMN started_at DATETIME(6) NULL AFTER total_errors"},
+		{"first_seen_at", "ALTER TABLE runners ADD COLUMN first_seen_at DATETIME(6) NULL AFTER started_at"},
+		{"updated_at", "ALTER TABLE runners ADD COLUMN updated_at DATETIME(6) NULL AFTER last_seen_at"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_runners", column.name)
+		exists, err := s.columnExists(ctx, "runners", column.name)
 		if err != nil {
 			return err
 		}
@@ -715,14 +715,14 @@ func (s *Store) ensureRunnerMetadataColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_runners.%s: %w", column.name, err)
+			return fmt.Errorf("add runners.%s: %w", column.name, err)
 		}
 	}
 	return nil
 }
 
 func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_task_artifacts_dedup")
+	exists, err := s.indexExists(ctx, "task_artifacts", "idx_task_artifacts_dedup")
 	if err != nil {
 		return err
 	}
@@ -730,7 +730,7 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 		var attemptColumns int
 		if err := s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM information_schema.statistics
-			WHERE table_schema = DATABASE() AND table_name = 'chetter_task_artifacts'
+			WHERE table_schema = DATABASE() AND table_name = 'task_artifacts'
 			  AND index_name = 'idx_task_artifacts_dedup' AND column_name = 'execution_attempt_id'
 		`).Scan(&attemptColumns); err != nil {
 			return fmt.Errorf("inspect artifact dedup index: %w", err)
@@ -738,7 +738,7 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 		if attemptColumns > 0 {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, "DROP INDEX idx_task_artifacts_dedup ON chetter_task_artifacts"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "DROP INDEX idx_task_artifacts_dedup ON task_artifacts"); err != nil {
 			return fmt.Errorf("drop old artifact dedup index: %w", err)
 		}
 	}
@@ -746,8 +746,8 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 		// Clean up existing duplicates before creating the unique index.
 		// Keep the first row for each objective artifact and contributing attempt.
 		if _, err := s.db.ExecContext(ctx, `
-			DELETE t1 FROM chetter_task_artifacts t1
-			INNER JOIN chetter_task_artifacts t2
+			DELETE t1 FROM task_artifacts t1
+			INNER JOIN task_artifacts t2
 			WHERE t1.id > t2.id
 			  AND t1.task_id = t2.task_id
 			  AND t1.artifact_type = t2.artifact_type
@@ -757,7 +757,7 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 		`); err != nil {
 			return fmt.Errorf("dedup artifacts: %w", err)
 		}
-		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON chetter_task_artifacts (task_id, artifact_type, repo, number, execution_attempt_id)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_task_artifacts_dedup ON task_artifacts (task_id, artifact_type, repo, number, execution_attempt_id)"); err != nil {
 			return fmt.Errorf("add artifact dedup index: %w", err)
 		}
 	}
@@ -765,21 +765,21 @@ func (s *Store) ensureArtifactDedupIndex(ctx context.Context) error {
 }
 
 func (s *Store) ensureTriggerRunDedupIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_trigger_runs", "idx_trigger_runs_dedup")
+	exists, err := s.indexExists(ctx, "trigger_runs", "idx_trigger_runs_dedup")
 	if err != nil {
 		return err
 	}
 	if !exists {
 		if _, err := s.db.ExecContext(ctx, `
-			DELETE t1 FROM chetter_trigger_runs t1
-			INNER JOIN chetter_trigger_runs t2
+			DELETE t1 FROM trigger_runs t1
+			INNER JOIN trigger_runs t2
 			WHERE t1.id > t2.id
 			  AND t1.trigger_id = t2.trigger_id
 			  AND t1.task_id = t2.task_id
 		`); err != nil {
 			return fmt.Errorf("dedup trigger runs: %w", err)
 		}
-		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_trigger_runs_dedup ON chetter_trigger_runs (trigger_id, task_id)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE UNIQUE INDEX idx_trigger_runs_dedup ON trigger_runs (trigger_id, task_id)"); err != nil {
 			return fmt.Errorf("add trigger run dedup index: %w", err)
 		}
 	}
@@ -787,23 +787,23 @@ func (s *Store) ensureTriggerRunDedupIndex(ctx context.Context) error {
 }
 
 func (s *Store) ensureAuditFulltextIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_audit_log", "idx_audit_search")
+	exists, err := s.indexExists(ctx, "audit_log", "idx_audit_search")
 	if err != nil {
 		return err
 	}
 	if exists {
-		col, err := s.indexColumnName(ctx, "chetter_audit_log", "idx_audit_search")
+		col, err := s.indexColumnName(ctx, "audit_log", "idx_audit_search")
 		if err != nil {
 			return err
 		}
 		if col == "search_text" {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log DROP INDEX idx_audit_search"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE audit_log DROP INDEX idx_audit_search"); err != nil {
 			return fmt.Errorf("drop old audit fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD FULLTEXT INDEX idx_audit_search (search_text)"+s.fulltextParserClause()); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE audit_log ADD FULLTEXT INDEX idx_audit_search (search_text)"+s.fulltextParserClause()); err != nil {
 		slog.Warn("failed to add audit fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
@@ -815,11 +815,11 @@ func (s *Store) ensureAuditTokenIdentityColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"token_id", "ALTER TABLE chetter_audit_log ADD COLUMN token_id VARCHAR(64) NULL AFTER payload"},
-		{"token_name", "ALTER TABLE chetter_audit_log ADD COLUMN token_name VARCHAR(128) NULL AFTER token_id"},
+		{"token_id", "ALTER TABLE audit_log ADD COLUMN token_id VARCHAR(64) NULL AFTER payload"},
+		{"token_name", "ALTER TABLE audit_log ADD COLUMN token_name VARCHAR(128) NULL AFTER token_id"},
 	}
 	for _, c := range cols {
-		exists, err := s.columnExists(ctx, "chetter_audit_log", c.name)
+		exists, err := s.columnExists(ctx, "audit_log", c.name)
 		if err != nil {
 			return err
 		}
@@ -829,12 +829,12 @@ func (s *Store) ensureAuditTokenIdentityColumns(ctx context.Context) error {
 			}
 		}
 	}
-	indexExists, err := s.indexExists(ctx, "chetter_audit_log", "idx_audit_token")
+	indexExists, err := s.indexExists(ctx, "audit_log", "idx_audit_token")
 	if err != nil {
 		return err
 	}
 	if !indexExists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_audit_log ADD KEY idx_audit_token (token_id)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE audit_log ADD KEY idx_audit_token (token_id)"); err != nil {
 			slog.Warn("failed to add audit token index", "err", err)
 		}
 	}
@@ -842,23 +842,23 @@ func (s *Store) ensureAuditTokenIdentityColumns(ctx context.Context) error {
 }
 
 func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_tasks", "idx_tasks_search")
+	exists, err := s.indexExists(ctx, "tasks", "idx_tasks_search")
 	if err != nil {
 		return err
 	}
 	if exists {
-		col, err := s.indexColumnName(ctx, "chetter_tasks", "idx_tasks_search")
+		col, err := s.indexColumnName(ctx, "tasks", "idx_tasks_search")
 		if err != nil {
 			return err
 		}
 		if col == "search_text" {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP INDEX idx_tasks_search"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE tasks DROP INDEX idx_tasks_search"); err != nil {
 			return fmt.Errorf("drop old tasks fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_tasks ADD FULLTEXT INDEX idx_tasks_search (search_text)"+s.fulltextParserClause()); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE tasks ADD FULLTEXT INDEX idx_tasks_search (search_text)"+s.fulltextParserClause()); err != nil {
 		slog.Warn("failed to add tasks fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
@@ -866,23 +866,23 @@ func (s *Store) ensureTaskFulltextIndex(ctx context.Context) error {
 }
 
 func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_agent_sessions", "idx_sessions_search")
+	exists, err := s.indexExists(ctx, "agent_sessions", "idx_sessions_search")
 	if err != nil {
 		return err
 	}
 	if exists {
-		col, err := s.indexColumnName(ctx, "chetter_agent_sessions", "idx_sessions_search")
+		col, err := s.indexColumnName(ctx, "agent_sessions", "idx_sessions_search")
 		if err != nil {
 			return err
 		}
 		if col == "search_text" {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions DROP INDEX idx_sessions_search"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE agent_sessions DROP INDEX idx_sessions_search"); err != nil {
 			return fmt.Errorf("drop old sessions fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD FULLTEXT INDEX idx_sessions_search (search_text)"+s.fulltextParserClause()); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE agent_sessions ADD FULLTEXT INDEX idx_sessions_search (search_text)"+s.fulltextParserClause()); err != nil {
 		slog.Warn("failed to add sessions fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
@@ -890,23 +890,23 @@ func (s *Store) ensureSessionFulltextIndex(ctx context.Context) error {
 }
 
 func (s *Store) ensureArtifactFulltextIndex(ctx context.Context) error {
-	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_artifacts_search")
+	exists, err := s.indexExists(ctx, "task_artifacts", "idx_artifacts_search")
 	if err != nil {
 		return err
 	}
 	if exists {
-		col, err := s.indexColumnName(ctx, "chetter_task_artifacts", "idx_artifacts_search")
+		col, err := s.indexColumnName(ctx, "task_artifacts", "idx_artifacts_search")
 		if err != nil {
 			return err
 		}
 		if col == "search_text" {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts DROP INDEX idx_artifacts_search"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE task_artifacts DROP INDEX idx_artifacts_search"); err != nil {
 			return fmt.Errorf("drop old artifacts fulltext index: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (search_text)"+s.fulltextParserClause()); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE task_artifacts ADD FULLTEXT INDEX idx_artifacts_search (search_text)"+s.fulltextParserClause()); err != nil {
 		slog.Warn("failed to add artifacts fulltext index", "err", err, "dialect", s.dialect)
 		return nil
 	}
@@ -918,11 +918,11 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"trigger_type", "ALTER TABLE chetter_triggers ADD COLUMN trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron' AFTER name"},
-		{"trigger_config", "ALTER TABLE chetter_triggers ADD COLUMN trigger_config JSON NULL AFTER trigger_type"},
+		{"trigger_type", "ALTER TABLE triggers ADD COLUMN trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron' AFTER name"},
+		{"trigger_config", "ALTER TABLE triggers ADD COLUMN trigger_config JSON NULL AFTER trigger_type"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_triggers", column.name)
+		exists, err := s.columnExists(ctx, "triggers", column.name)
 		if err != nil {
 			return err
 		}
@@ -930,32 +930,32 @@ func (s *Store) ensureTriggerColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_triggers.%s: %w", column.name, err)
+			return fmt.Errorf("add triggers.%s: %w", column.name, err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, "UPDATE chetter_triggers SET trigger_config = '{}' WHERE trigger_config IS NULL"); err != nil {
+	if _, err := s.db.ExecContext(ctx, "UPDATE triggers SET trigger_config = '{}' WHERE trigger_config IS NULL"); err != nil {
 		return fmt.Errorf("backfill trigger_config: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) ensureTriggerRunTeamIDColumn(ctx context.Context) error {
-	exists, err := s.columnExists(ctx, "chetter_trigger_runs", "team_id")
+	exists, err := s.columnExists(ctx, "trigger_runs", "team_id")
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	_, err = s.db.ExecContext(ctx, "ALTER TABLE chetter_trigger_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER trigger_id")
+	_, err = s.db.ExecContext(ctx, "ALTER TABLE trigger_runs ADD COLUMN team_id VARCHAR(64) NULL AFTER trigger_id")
 	if err != nil {
-		return fmt.Errorf("add chetter_trigger_runs.team_id: %w", err)
+		return fmt.Errorf("add trigger_runs.team_id: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) ensureAgentSessionIsolationColumn(ctx context.Context) error {
-	exists, err := s.columnExists(ctx, "chetter_agent_sessions", "isolation_required")
+	exists, err := s.columnExists(ctx, "agent_sessions", "isolation_required")
 	if err != nil {
 		return err
 	}
@@ -964,8 +964,8 @@ func (s *Store) ensureAgentSessionIsolationColumn(ctx context.Context) error {
 	}
 	// One ALTER per column: a later AFTER clause must never reference a column
 	// added in the same statement (TiDB rejects it). See AGENTS.md.
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions ADD COLUMN isolation_required TINYINT(1) NOT NULL DEFAULT 0 AFTER resume_mode"); err != nil {
-		return fmt.Errorf("add chetter_agent_sessions.isolation_required: %w", err)
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE agent_sessions ADD COLUMN isolation_required TINYINT(1) NOT NULL DEFAULT 0 AFTER resume_mode"); err != nil {
+		return fmt.Errorf("add agent_sessions.isolation_required: %w", err)
 	}
 	return nil
 }
@@ -975,12 +975,12 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 		name string
 		ddl  string
 	}{
-		{"agent_session_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN agent_session_id VARCHAR(64) NULL AFTER task_id"},
-		{"user_prompt_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN user_prompt_id VARCHAR(64) NULL AFTER agent_session_id"},
-		{"execution_attempt_id", "ALTER TABLE chetter_task_artifacts ADD COLUMN execution_attempt_id VARCHAR(64) NOT NULL DEFAULT '' AFTER user_prompt_id"},
+		{"agent_session_id", "ALTER TABLE task_artifacts ADD COLUMN agent_session_id VARCHAR(64) NULL AFTER task_id"},
+		{"user_prompt_id", "ALTER TABLE task_artifacts ADD COLUMN user_prompt_id VARCHAR(64) NULL AFTER agent_session_id"},
+		{"execution_attempt_id", "ALTER TABLE task_artifacts ADD COLUMN execution_attempt_id VARCHAR(64) NOT NULL DEFAULT '' AFTER user_prompt_id"},
 	}
 	for _, column := range columns {
-		exists, err := s.columnExists(ctx, "chetter_task_artifacts", column.name)
+		exists, err := s.columnExists(ctx, "task_artifacts", column.name)
 		if err != nil {
 			return err
 		}
@@ -988,15 +988,15 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
-			return fmt.Errorf("add chetter_task_artifacts.%s: %w", column.name, err)
+			return fmt.Errorf("add task_artifacts.%s: %w", column.name, err)
 		}
 	}
-	exists, err := s.indexExists(ctx, "chetter_task_artifacts", "idx_task_artifacts_execution_attempt")
+	exists, err := s.indexExists(ctx, "task_artifacts", "idx_task_artifacts_execution_attempt")
 	if err != nil {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_task_artifacts_execution_attempt ON chetter_task_artifacts (execution_attempt_id)"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "CREATE INDEX idx_task_artifacts_execution_attempt ON task_artifacts (execution_attempt_id)"); err != nil {
 			return fmt.Errorf("add artifact execution attempt index: %w", err)
 		}
 	}
@@ -1004,22 +1004,22 @@ func (s *Store) ensureTaskArtifactSessionColumns(ctx context.Context) error {
 }
 
 func (s *Store) ensureTaskEventTypeColumn(ctx context.Context) error {
-	exists, err := s.columnExists(ctx, "chetter_task_events", "event_type")
+	exists, err := s.columnExists(ctx, "task_events", "event_type")
 	if err != nil {
 		return err
 	}
 	if !exists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD COLUMN event_type VARCHAR(64) NOT NULL DEFAULT 'task.progress' AFTER status"); err != nil {
-			return fmt.Errorf("add chetter_task_events.event_type: %w", err)
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE task_events ADD COLUMN event_type VARCHAR(64) NOT NULL DEFAULT 'task.progress' AFTER status"); err != nil {
+			return fmt.Errorf("add task_events.event_type: %w", err)
 		}
 	}
-	indexExists, err := s.indexExists(ctx, "chetter_task_events", "idx_chetter_task_events_type_created")
+	indexExists, err := s.indexExists(ctx, "task_events", "idx_chetter_task_events_type_created")
 	if err != nil {
 		return err
 	}
 	if !indexExists {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE chetter_task_events ADD KEY idx_chetter_task_events_type_created (event_type, created_at)"); err != nil {
-			return fmt.Errorf("add chetter_task_events event_type index: %w", err)
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE task_events ADD KEY idx_chetter_task_events_type_created (event_type, created_at)"); err != nil {
+			return fmt.Errorf("add task_events event_type index: %w", err)
 		}
 	}
 	return nil
@@ -1079,10 +1079,10 @@ func (s *Store) ensureSearchTextColumns(ctx context.Context) error {
 		table string
 		ddl   string
 	}{
-		{"chetter_tasks", "ALTER TABLE chetter_tasks ADD COLUMN search_text TEXT NULL AFTER error_category"},
-		{"chetter_agent_sessions", "ALTER TABLE chetter_agent_sessions ADD COLUMN search_text TEXT NULL AFTER error"},
-		{"chetter_audit_log", "ALTER TABLE chetter_audit_log ADD COLUMN search_text TEXT NULL AFTER detail"},
-		{"chetter_task_artifacts", "ALTER TABLE chetter_task_artifacts ADD COLUMN search_text TEXT NULL AFTER discovery_source"},
+		{"tasks", "ALTER TABLE tasks ADD COLUMN search_text TEXT NULL AFTER error_category"},
+		{"agent_sessions", "ALTER TABLE agent_sessions ADD COLUMN search_text TEXT NULL AFTER error"},
+		{"audit_log", "ALTER TABLE audit_log ADD COLUMN search_text TEXT NULL AFTER detail"},
+		{"task_artifacts", "ALTER TABLE task_artifacts ADD COLUMN search_text TEXT NULL AFTER discovery_source"},
 	}
 	for _, c := range columns {
 		exists, err := s.columnExists(ctx, c.table, "search_text")
@@ -1101,21 +1101,21 @@ func (s *Store) ensureSearchTextColumns(ctx context.Context) error {
 
 func (s *Store) backfillSearchText(ctx context.Context) error {
 	backfills := []string{
-		`UPDATE chetter_tasks SET search_text = CONCAT_WS(' ',
+		`UPDATE tasks SET search_text = CONCAT_WS(' ',
 			COALESCE(prompt,''), COALESCE(summary,''), COALESCE(error,''),
 			COALESCE(agent,''), COALESCE(model_id,''), COALESCE(trigger_name,''),
 			COALESCE(git_url,'')
 		) WHERE search_text IS NULL`,
-		`UPDATE chetter_agent_sessions SET search_text = CONCAT_WS(' ',
+		`UPDATE agent_sessions SET search_text = CONCAT_WS(' ',
 			COALESCE(id,''), COALESCE(agent,''), COALESCE(model_id,''),
 			COALESCE(git_url,''), COALESCE(error,'')
 		) WHERE search_text IS NULL`,
-		`UPDATE chetter_audit_log SET search_text = CONCAT_WS(' ',
+		`UPDATE audit_log SET search_text = CONCAT_WS(' ',
 			COALESCE(detail,''), COALESCE(source_type,''), COALESCE(source_id,''),
 			COALESCE(target_type,''), COALESCE(target_id,''), COALESCE(repo,''),
 			COALESCE(event_type,'')
 		) WHERE search_text IS NULL`,
-		`UPDATE chetter_task_artifacts SET search_text = CONCAT_WS(' ',
+		`UPDATE task_artifacts SET search_text = CONCAT_WS(' ',
 			COALESCE(task_id,''), COALESCE(repo,''), COALESCE(artifact_type,''),
 			COALESCE(ref,'')
 		) WHERE search_text IS NULL`,
@@ -1133,7 +1133,7 @@ func (s *Store) backfillSearchText(ctx context.Context) error {
 func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, error) {
 	now := time.Now().UTC()
 	attemptQuery := `
-		UPDATE chetter_execution_attempts
+		UPDATE execution_attempts
 		SET status = 'error',
 		    error = CONCAT('runner timeout: execution ran for ', TIMESTAMPDIFF(SECOND, started_at, NOW()), ' seconds (timeout was ', timeout_sec, 's)'),
 		    error_category = 'timeout',
@@ -1143,9 +1143,9 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 		  AND TIMESTAMPDIFF(SECOND, started_at, NOW()) > timeout_sec + ?
 	`
 	taskQuery := `
-		UPDATE chetter_tasks task
-		JOIN chetter_user_prompts prompt ON prompt.task_id = task.id
-		JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+		UPDATE tasks task
+		JOIN user_prompts prompt ON prompt.task_id = task.id
+		JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id
 		SET task.status = 'error',
 		    task.error = attempt.error,
 		    task.error_category = 'timeout',
@@ -1158,7 +1158,7 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 	`
 	if s.IsPostgres() {
 		attemptQuery = `
-			UPDATE chetter_execution_attempts
+			UPDATE execution_attempts
 			SET status = 'error',
 			    error = CONCAT('runner timeout: execution ran for ', FLOOR(EXTRACT(EPOCH FROM NOW() - started_at))::int, ' seconds (timeout was ', timeout_sec, 's)'),
 			    error_category = 'timeout',
@@ -1168,9 +1168,9 @@ func (s *Store) ReapStaleTasks(ctx context.Context, grace time.Duration) (int, e
 			  AND EXTRACT(EPOCH FROM NOW() - started_at) > timeout_sec + $3
 		`
 		taskQuery = `
-			UPDATE chetter_tasks task
+			UPDATE tasks task
 			SET status = 'error', error = attempt.error, error_category = 'timeout', ended_at = $1, updated_at = $2
-			FROM chetter_user_prompts prompt, chetter_execution_attempts attempt
+			FROM user_prompts prompt, execution_attempts attempt
 			WHERE prompt.task_id = task.id
 			  AND attempt.user_prompt_id = prompt.id
 			  AND task.status = 'running'
@@ -1211,10 +1211,10 @@ const pruneBatchSize = 1000
 // placeholders cannot be used for identifiers), so it must be a known value. See
 // issue #112.
 var retentionTables = map[string]bool{
-	"chetter_task_events":    true,
-	"chetter_audit_log":      true,
-	"chetter_task_artifacts": true,
-	"chetter_agent_sessions": true,
+	"task_events":    true,
+	"audit_log":      true,
+	"task_artifacts": true,
+	"agent_sessions": true,
 }
 
 // PruneOldRows deletes rows older than ttl from table in batches of
@@ -1334,7 +1334,7 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 	health := RunnerFleetHealth{GeneratedAt: time.Now().UTC()}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT status, COUNT(*) FROM chetter_tasks GROUP BY status
+		SELECT status, COUNT(*) FROM tasks GROUP BY status
 	`)
 	if err != nil {
 		return health, fmt.Errorf("count by status: %w", err)
@@ -1371,10 +1371,10 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 	runningRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT task.id, task.prompt, task.summary, session.model_id, attempt.runner_image_digest, attempt.started_at,
 		       %s AS last_event_sec
-		FROM chetter_execution_attempts attempt
-		JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
-		JOIN chetter_tasks task ON task.id = prompt.task_id
-		JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+		FROM execution_attempts attempt
+		JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
+		JOIN tasks task ON task.id = prompt.task_id
+		JOIN agent_sessions session ON session.id = prompt.agent_session_id
 		WHERE attempt.status = 'running' AND task.status = 'running'
 		ORDER BY attempt.started_at ASC
 	`, runningTaskAge))
@@ -1424,7 +1424,7 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		       max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors,
 		       first_seen_at, last_seen_at, started_at, metadata,
 		       %s AS last_seen_sec
-		FROM chetter_runners
+		FROM runners
 		ORDER BY last_seen_at DESC
 	`, runnerAge))
 	if err != nil {

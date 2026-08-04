@@ -1,7 +1,7 @@
 package store
 
 var schemaStatements = []string{
-	`CREATE TABLE IF NOT EXISTS chetter_tasks (
+	`CREATE TABLE IF NOT EXISTS tasks (
 		id VARCHAR(64) NOT NULL,
 		status VARCHAR(32) NOT NULL,
 		prompt TEXT NOT NULL,
@@ -33,7 +33,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_tasks_self_test_run (self_test_run_id, created_at),
 		FULLTEXT INDEX idx_tasks_search (search_text)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_agent_sessions (
+	`CREATE TABLE IF NOT EXISTS agent_sessions (
 		id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
 		sequence INT NOT NULL DEFAULT 1,
@@ -79,7 +79,7 @@ var schemaStatements = []string{
 		KEY idx_agent_sessions_expires (expires_at),
 		FULLTEXT INDEX idx_sessions_search (search_text)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_user_prompts (
+	`CREATE TABLE IF NOT EXISTS user_prompts (
 		id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
@@ -101,7 +101,7 @@ var schemaStatements = []string{
 		KEY idx_user_prompts_session_created (agent_session_id, created_at),
 		KEY idx_user_prompts_status_created (status, created_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_execution_attempts (
+	`CREATE TABLE IF NOT EXISTS execution_attempts (
 		id VARCHAR(64) NOT NULL,
 		user_prompt_id VARCHAR(64) NOT NULL,
 		sequence INT NOT NULL,
@@ -137,7 +137,7 @@ var schemaStatements = []string{
 		KEY idx_execution_attempts_runner_status (runner_id, status),
 		KEY idx_execution_attempts_claim (claim_id)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_agent_session_checkpoints (
+	`CREATE TABLE IF NOT EXISTS agent_session_checkpoints (
 		id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NOT NULL,
 		user_prompt_id VARCHAR(64) NULL,
@@ -158,7 +158,7 @@ var schemaStatements = []string{
 		KEY idx_session_checkpoints_runner_status (runner_id, status),
 		KEY idx_session_checkpoints_expires (expires_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_task_events (
+	`CREATE TABLE IF NOT EXISTS task_events (
 		id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NULL,
@@ -175,7 +175,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_task_events_type_created (event_type, created_at),
 		KEY idx_chetter_task_events_created (created_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_event_callbacks (
+	`CREATE TABLE IF NOT EXISTS event_callbacks (
 		id VARCHAR(64) NOT NULL,
 		team_id VARCHAR(64) NULL,
 		name VARCHAR(255) NOT NULL,
@@ -190,7 +190,7 @@ var schemaStatements = []string{
 		KEY idx_event_callbacks_team_enabled (team_id, enabled),
 		KEY idx_event_callbacks_event_type (event_type, enabled)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_runners (
+	`CREATE TABLE IF NOT EXISTS runners (
 		id VARCHAR(64) NOT NULL,
 		status VARCHAR(32) NOT NULL,
 		image_ref VARCHAR(512) NULL,
@@ -212,7 +212,7 @@ var schemaStatements = []string{
 		KEY idx_chetter_runners_status_seen (status, last_seen_at),
 		KEY idx_chetter_runners_digest_seen (image_digest, last_seen_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_triggers (
+	`CREATE TABLE IF NOT EXISTS triggers (
 		id VARCHAR(64) NOT NULL,
 		name VARCHAR(128) NOT NULL,
 		trigger_type VARCHAR(32) NOT NULL DEFAULT 'cron',
@@ -239,7 +239,7 @@ var schemaStatements = []string{
 		UNIQUE KEY uq_chetter_triggers_name (name),
 		KEY idx_chetter_triggers_enabled_next (enabled, next_run_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_trigger_runs (
+	`CREATE TABLE IF NOT EXISTS trigger_runs (
 		id VARCHAR(64) NOT NULL,
 		trigger_id VARCHAR(64) NOT NULL,
 		team_id VARCHAR(64) NULL,
@@ -314,7 +314,7 @@ var schemaStatements = []string{
 		PRIMARY KEY (token_id, team_id),
 		KEY idx_api_token_teams_team (team_id)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_audit_log (
+	`CREATE TABLE IF NOT EXISTS audit_log (
 		id VARCHAR(64) NOT NULL,
 		event_type VARCHAR(64) NOT NULL,
 		created_at DATETIME(6) NOT NULL,
@@ -340,7 +340,7 @@ var schemaStatements = []string{
 		KEY idx_audit_token (token_id),
 		FULLTEXT INDEX idx_audit_search (search_text)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_task_artifacts (
+	`CREATE TABLE IF NOT EXISTS task_artifacts (
 		id VARCHAR(64) NOT NULL,
 		task_id VARCHAR(64) NOT NULL,
 		agent_session_id VARCHAR(64) NULL,
@@ -366,7 +366,7 @@ var schemaStatements = []string{
 		KEY idx_task_artifacts_number (repo, number),
 		FULLTEXT INDEX idx_artifacts_search (search_text)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_webhook_deliveries (
+	`CREATE TABLE IF NOT EXISTS webhook_deliveries (
 		id VARCHAR(64) NOT NULL,
 		delivery_id VARCHAR(64) NOT NULL,
 		event_type VARCHAR(64) NOT NULL,
@@ -385,7 +385,7 @@ var schemaStatements = []string{
 		KEY idx_webhook_deliveries_status_next (status, next_attempt_at),
 		KEY idx_webhook_deliveries_created (created_at)
 	)`,
-	`CREATE TABLE IF NOT EXISTS chetter_model_catalogs (
+	`CREATE TABLE IF NOT EXISTS model_catalogs (
 		id VARCHAR(64) NOT NULL,
 		name VARCHAR(128) NOT NULL,
 		active BOOL NOT NULL DEFAULT false,

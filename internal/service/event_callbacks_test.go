@@ -139,7 +139,7 @@ func TestRenderEventTemplate(t *testing.T) {
 
 func TestEventCallbackRecord(t *testing.T) {
 	now := time.Now().UTC()
-	row := repository.ChetterEventCallback{
+	row := repository.EventCallback{
 		ID:           "ecb_1",
 		TeamID:       sql.NullString{String: "team_1", Valid: true},
 		Name:         "my-hook",
@@ -187,7 +187,7 @@ func TestTemplateData(t *testing.T) {
 
 func TestCallbackTaskGitHubMetadata(t *testing.T) {
 	t.Parallel()
-	source := repository.ChetterTask{
+	source := repository.Task{
 		GithubRepo:           sql.NullString{String: "Flatout-Works/Chetter", Valid: true},
 		GithubInstallationID: sql.NullInt64{Int64: 12345, Valid: true},
 	}

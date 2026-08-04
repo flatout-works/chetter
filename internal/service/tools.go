@@ -283,14 +283,14 @@ type RunTriggerOutput struct {
 	Task TaskToolRecord `json:"task"`
 }
 
-// TaskEventsInput is the input for chetter_task_events.
+// TaskEventsInput is the input for task_events.
 type TaskEventsInput struct {
 	TaskID string `json:"task_id" jsonschema:"Task identifier returned by chetter_submit_task"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum events to return, capped at 500"`
 	Offset int    `json:"offset,omitempty" jsonschema:"Number of events to skip for pagination (default 0)"`
 }
 
-// TaskEventsOutput is the output for chetter_task_events.
+// TaskEventsOutput is the output for task_events.
 type TaskEventsOutput struct {
 	Events []TaskEventRecord `json:"events"`
 }
@@ -676,7 +676,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_event_callback", Description: "Update an event callback by name."}, svc.updateEventCallbackTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_event_callbacks", Description: "List event callbacks, optionally filtered by enabled status and event type."}, svc.listEventCallbacksTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_event_callback", Description: "Delete an event callback by name."}, svc.deleteEventCallbackTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_events", Description: "Get the full event history for a chetter task."}, svc.taskEventsTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "task_events", Description: "Get the full event history for a chetter task."}, svc.taskEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_progress", Description: "Get a distilled progress timeline for a chetter task."}, svc.taskProgressTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_task_latest_event", Description: "Get the most recent event for a chetter task."}, svc.taskLatestEventTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_runner_health", Description: "Check runner fleet health including running/stale task counts, active runner image versions, and per-task heartbeat age."}, svc.runnerHealthTool)
@@ -829,7 +829,7 @@ func clampListLimit(limit int) int32 {
 	return int32(limit)
 }
 
-func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionRecord {
+func agentSessionRecord(session repository.AgentSession) AgentSessionRecord {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
@@ -869,7 +869,7 @@ func agentSessionRecord(session repository.ChetterAgentSession) AgentSessionReco
 	}
 }
 
-func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
+func userPromptRecord(run repository.UserPrompt) UserPromptRecord {
 	return UserPromptRecord{
 		ID:                 run.ID,
 		AgentSessionID:     run.AgentSessionID,
@@ -888,7 +888,7 @@ func userPromptRecord(run repository.ChetterUserPrompt) UserPromptRecord {
 	}
 }
 
-func executionAttemptRecord(attempt repository.ChetterExecutionAttempt) ExecutionAttemptRecord {
+func executionAttemptRecord(attempt repository.ExecutionAttempt) ExecutionAttemptRecord {
 	return ExecutionAttemptRecord{
 		ID: attempt.ID, UserPromptID: attempt.UserPromptID, Sequence: attempt.Sequence, Status: attempt.Status,
 		RunnerID: attempt.RunnerID.String, RequiredRunnerID: attempt.RequiredRunnerID.String,
@@ -945,7 +945,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	}
 }
 
-func repoTaskToToolRecord(task repository.ChetterTask, session repository.ChetterAgentSession) TaskToolRecord {
+func repoTaskToToolRecord(task repository.Task, session repository.AgentSession) TaskToolRecord {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
@@ -1106,7 +1106,7 @@ func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 	}
 }
 
-func triggerToStoreRecord(s repository.ChetterTrigger) store.TriggerRecord {
+func triggerToStoreRecord(s repository.Trigger) store.TriggerRecord {
 	skills := parseJSON[[]string](s.Skills, "trigger:"+s.ID+" skills")
 	return store.TriggerRecord{
 		ID:            s.ID,
@@ -1561,18 +1561,18 @@ func isAdmin(ctx context.Context) bool {
 	return ok && scope.Admin
 }
 
-func (s *Service) taskForToolAccess(ctx context.Context, taskID string) (repository.ChetterTask, error) {
+func (s *Service) taskForToolAccess(ctx context.Context, taskID string) (repository.Task, error) {
 	task, err := s.repo.GetTaskByID(ctx, taskID)
 	if err != nil {
-		return repository.ChetterTask{}, err
+		return repository.Task{}, err
 	}
 	if err := authorizeTaskToolAccess(ctx, task); err != nil {
-		return repository.ChetterTask{}, err
+		return repository.Task{}, err
 	}
 	return task, nil
 }
 
-func authorizeTaskToolAccess(ctx context.Context, task repository.ChetterTask) error {
+func authorizeTaskToolAccess(ctx context.Context, task repository.Task) error {
 	scope, scoped := auth.GetScope(ctx)
 	if !scoped || scope.Admin {
 		return nil

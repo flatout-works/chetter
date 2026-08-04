@@ -114,8 +114,8 @@ func TestIsMissingTable(t *testing.T) {
 		want bool
 	}{
 		{nil, false},
-		{fmt.Errorf("Error 1146: Table 'chetter.chetter_webhook_deliveries' doesn't exist"), true},
-		{fmt.Errorf("relation \"chetter_webhook_deliveries\" does not exist"), true},
+		{fmt.Errorf("Error 1146: Table 'chetter.webhook_deliveries' doesn't exist"), true},
+		{fmt.Errorf("relation \"webhook_deliveries\" does not exist"), true},
 		{fmt.Errorf("pq: relation does not exist (SQLSTATE 42P01)"), true},
 		{fmt.Errorf("connection refused"), false},
 	}
@@ -177,9 +177,9 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 
 	// Create minimal schema so queries don't fail.
 	for _, stmt := range []string{
-		`CREATE TABLE IF NOT EXISTS chetter_tasks (id VARCHAR(64), status VARCHAR(32))`,
-		`CREATE TABLE IF NOT EXISTS chetter_runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT, metadata JSON)`,
-		`CREATE TABLE IF NOT EXISTS chetter_webhook_deliveries (id VARCHAR(64), status VARCHAR(32))`,
+		`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32))`,
+		`CREATE TABLE IF NOT EXISTS runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT, metadata JSON)`,
+		`CREATE TABLE IF NOT EXISTS webhook_deliveries (id VARCHAR(64), status VARCHAR(32))`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("create test table: %v", err)

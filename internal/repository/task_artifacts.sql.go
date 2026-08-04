@@ -12,7 +12,7 @@ import (
 )
 
 const insertTaskArtifact = `-- name: InsertTaskArtifact :exec
-INSERT IGNORE INTO chetter_task_artifacts (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
+INSERT IGNORE INTO task_artifacts (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source, search_text)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
@@ -57,7 +57,7 @@ func (q *Queries) InsertTaskArtifact(ctx context.Context, arg InsertTaskArtifact
 
 const listTaskArtifacts = `-- name: ListTaskArtifacts :many
 SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-FROM chetter_task_artifacts
+FROM task_artifacts
 WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
   AND (user_prompt_id = ? OR ? = '')
@@ -157,7 +157,7 @@ func (q *Queries) ListTaskArtifacts(ctx context.Context, arg ListTaskArtifactsPa
 
 const searchTaskArtifacts = `-- name: SearchTaskArtifacts :many
 SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-FROM chetter_task_artifacts
+FROM task_artifacts
 WHERE (task_id = ? OR ? = '')
   AND (agent_session_id = ? OR ? = '')
   AND (user_prompt_id = ? OR ? = '')

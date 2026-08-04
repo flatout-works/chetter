@@ -13,7 +13,7 @@ import (
 )
 
 const insertAuditLog = `-- name: InsertAuditLog :exec
-INSERT INTO chetter_audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload, token_id, token_name)
+INSERT INTO audit_log (id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, search_text, payload, token_id, token_name)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 `
 
@@ -62,7 +62,7 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 
 const listAuditLog = `-- name: ListAuditLog :many
 SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-FROM chetter_audit_log
+FROM audit_log
 WHERE (event_type = $1 OR $1 = '')
   AND (source_type = $2 OR $2 = '')
   AND (source_id = $3 OR $3 = '')
@@ -157,7 +157,7 @@ func (q *Queries) ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]L
 
 const searchAuditLog = `-- name: SearchAuditLog :many
 SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-FROM chetter_audit_log
+FROM audit_log
 WHERE (event_type = $1 OR $1 = '')
   AND (source_type = $2 OR $2 = '')
   AND (source_id = $3 OR $3 = '')

@@ -15,7 +15,7 @@ func TestPruneOldRowsZeroTTLIsDisabled(t *testing.T) {
 	ctx := context.Background()
 
 	for _, ttl := range []time.Duration{0, -1 * time.Second, -24 * time.Hour} {
-		n, err := s.PruneOldRows(ctx, "chetter_task_events", ttl)
+		n, err := s.PruneOldRows(ctx, "task_events", ttl)
 		if err != nil {
 			t.Fatalf("ttl=%v: expected nil error, got %v", ttl, err)
 		}
@@ -31,22 +31,22 @@ func TestPruneOldRowsZeroTTLIsDisabled(t *testing.T) {
 func TestPruneOldRowsRejectsUnknownTable(t *testing.T) {
 	s := &Store{}
 	ctx := context.Background()
-	if _, err := s.PruneOldRows(ctx, "chetter_tasks", time.Hour); err == nil {
+	if _, err := s.PruneOldRows(ctx, "tasks", time.Hour); err == nil {
 		t.Fatal("expected error for unknown table, got nil")
 	}
-	if _, err := s.PruneOldRows(ctx, "chetter_runners; DROP TABLE x", time.Hour); err == nil {
+	if _, err := s.PruneOldRows(ctx, "runners; DROP TABLE x", time.Hour); err == nil {
 		t.Fatal("expected error for injected table name, got nil")
 	}
 }
 
 // TestRetentionTablesAllowlist verifies the allowlist matches the four tables
-// named in issue #112 (sessions live in chetter_agent_sessions).
+// named in issue #112 (sessions live in agent_sessions).
 func TestRetentionTablesAllowlist(t *testing.T) {
 	want := []string{
-		"chetter_task_events",
-		"chetter_audit_log",
-		"chetter_task_artifacts",
-		"chetter_agent_sessions",
+		"task_events",
+		"audit_log",
+		"task_artifacts",
+		"agent_sessions",
 	}
 	for _, table := range want {
 		if !retentionTables[table] {

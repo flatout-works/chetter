@@ -42,14 +42,14 @@ func TestPruneOldRowsDeletesByAge(t *testing.T) {
 	insertEvent("evt_recent_2", recent)
 
 	// TTL of 24h: the 48h-old rows are pruned; the 1h-old rows stay.
-	n, err := svc.store.PruneOldRows(ctx, "chetter_task_events", 24*time.Hour)
+	n, err := svc.store.PruneOldRows(ctx, "task_events", 24*time.Hour)
 	if err != nil {
 		t.Fatalf("PruneOldRows: %v", err)
 	}
 	if n != 2 {
 		t.Fatalf("expected 2 rows pruned, got %d", n)
 	}
-	if got := countRows(t, tdb, "chetter_task_events"); got != 2 {
+	if got := countRows(t, tdb, "task_events"); got != 2 {
 		t.Fatalf("expected 2 task_events remaining, got %d", got)
 	}
 }
@@ -71,14 +71,14 @@ func TestPruneOldRowsZeroTTLDeletesNothing(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("InsertTaskEvent: %v", err)
 	}
-	n, err := svc.store.PruneOldRows(ctx, "chetter_task_events", 0)
+	n, err := svc.store.PruneOldRows(ctx, "task_events", 0)
 	if err != nil {
 		t.Fatalf("PruneOldRows: %v", err)
 	}
 	if n != 0 {
 		t.Fatalf("expected 0 rows pruned for zero TTL, got %d", n)
 	}
-	if got := countRows(t, tdb, "chetter_task_events"); got != 1 {
+	if got := countRows(t, tdb, "task_events"); got != 1 {
 		t.Fatalf("expected 1 row remaining, got %d", got)
 	}
 }
@@ -106,7 +106,7 @@ func TestPruneRetainedRowsIntegration(t *testing.T) {
 	svc.cfg.EventsRetentionDays = 1
 	svc.pruneRetainedRows()
 
-	if got := countRows(t, tdb, "chetter_task_events"); got != 1 {
+	if got := countRows(t, tdb, "task_events"); got != 1 {
 		t.Fatalf("expected 1 task_event remaining after prune step, got %d", got)
 	}
 }

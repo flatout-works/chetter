@@ -620,17 +620,17 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	}
 	query := sqlQuery(s.dialect, `SELECT CASE WHEN
 		EXISTS (
-			SELECT 1 FROM chetter_execution_attempts attempt
-			JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+			SELECT 1 FROM execution_attempts attempt
+			JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 			WHERE attempt.id = ? AND prompt.task_id = ? AND attempt.runner_id = ? AND attempt.status = 'running'
 		) OR EXISTS (
-			SELECT 1 FROM chetter_agent_sessions session
+			SELECT 1 FROM agent_sessions session
 			WHERE session.task_id = ? AND session.workspace_path = ?
 			  AND session.status IN ('running', 'resuming', 'paused', 'recoverable', 'paused_waiting_review')
 			  AND (session.pinned_runner_id IS NULL OR session.pinned_runner_id = '' OR session.pinned_runner_id = ?)
 		) OR EXISTS (
-			SELECT 1 FROM chetter_agent_session_checkpoints checkpoint
-			JOIN chetter_agent_sessions session ON session.id = checkpoint.agent_session_id
+			SELECT 1 FROM agent_session_checkpoints checkpoint
+			JOIN agent_sessions session ON session.id = checkpoint.agent_session_id
 			WHERE session.task_id = ? AND checkpoint.workspace_path = ? AND checkpoint.runner_id = ?
 			  AND checkpoint.status = 'ready'
 		) THEN 1 ELSE 0 END`)
@@ -825,10 +825,10 @@ func executionAttemptCancelCommand(row repository.ListExecutionAttemptsForHeartb
 }
 
 type claimedExecution struct {
-	Task          repository.ChetterTask
-	Session       repository.ChetterAgentSession
-	Prompt        repository.ChetterUserPrompt
-	Attempt       repository.ChetterExecutionAttempt
+	Task          repository.Task
+	Session       repository.AgentSession
+	Prompt        repository.UserPrompt
+	Attempt       repository.ExecutionAttempt
 	AttemptNumber int64
 }
 
@@ -849,7 +849,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	// Resolve the runner's enforced-isolation capability from its heartbeat
 	// metadata before the locking read. The claim query filters
 	// isolation-requiring tasks to capable runners (issue #291); passing the
-	// capability in keeps chetter_runners rows out of the FOR UPDATE SKIP
+	// capability in keeps runners rows out of the FOR UPDATE SKIP
 	// LOCKED scan so concurrent claims do not contend on runner rows.
 	// Unregistered runners are treated as non-isolated.
 	isolationEnabled, runnerErr := s.db.GetRunnerIsolationEnabled(ctx, runnerID)
@@ -1153,7 +1153,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 
 			sessionStatus := terminalSessionStatus
 			if event.WorkspacePath != "" {
-				var session repository.ChetterAgentSession
+				var session repository.AgentSession
 				if session, err = q.GetAgentSessionByTaskID(ctx, event.TaskId); err == nil {
 					switch {
 					case terminalSessionStatus == "error" && isRecoverablePromptError(errorCategory) && session.ResumeMode == "harness_session" && event.OpencodeSessionId != "":
@@ -1433,7 +1433,7 @@ func sanitizeEventTypePart(part string) string {
 	return b.String()
 }
 
-func taskToProto(task repository.ChetterTask, session repository.ChetterAgentSession, attempt repository.ChetterExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
+func taskToProto(task repository.Task, session repository.AgentSession, attempt repository.ExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	return &runnerv1.Task{

@@ -13,7 +13,7 @@ import (
 )
 
 const insertTaskEvent = `-- name: InsertTaskEvent :exec
-INSERT INTO chetter_task_events (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, subject, status, event_type, payload, created_at)
+INSERT INTO task_events (id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, subject, status, event_type, payload, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
@@ -47,7 +47,7 @@ func (q *Queries) InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams
 }
 
 const listTaskEvents = `-- name: ListTaskEvents :many
-SELECT id, task_id, subject, status, event_type, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
+SELECT id, task_id, subject, status, event_type, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id FROM task_events
 WHERE task_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
@@ -59,15 +59,15 @@ type ListTaskEventsParams struct {
 	Offset int32  `json:"offset"`
 }
 
-func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ChetterTaskEvent, error) {
+func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]TaskEvent, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskEvents, arg.TaskID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTaskEvent{}
+	items := []TaskEvent{}
 	for rows.Next() {
-		var i ChetterTaskEvent
+		var i TaskEvent
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,
@@ -94,7 +94,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const listTaskEventsSince = `-- name: ListTaskEventsSince :many
-SELECT id, task_id, subject, status, event_type, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id FROM chetter_task_events
+SELECT id, task_id, subject, status, event_type, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id FROM task_events
 WHERE task_id = $1 AND created_at > $2
 ORDER BY created_at ASC, id ASC
 `
@@ -104,15 +104,15 @@ type ListTaskEventsSinceParams struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSinceParams) ([]ChetterTaskEvent, error) {
+func (q *Queries) ListTaskEventsSince(ctx context.Context, arg ListTaskEventsSinceParams) ([]TaskEvent, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskEventsSince, arg.TaskID, arg.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTaskEvent{}
+	items := []TaskEvent{}
 	for rows.Next() {
-		var i ChetterTaskEvent
+		var i TaskEvent
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,

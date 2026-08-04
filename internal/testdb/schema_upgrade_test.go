@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -109,6 +110,19 @@ func latestPostgresMigrationVersion(t *testing.T) int64 {
 	return latest
 }
 
+// preRenameTables matches the pre-052 table names on word boundaries. The \b
+// after "chetter_" excludes index names such as idx_chetter_tasks_* (the "_"
+// before "chetter_" is a word character, so there is no boundary there).
+var preRenameTables = regexp.MustCompile(`\bchetter_(agent_session_checkpoints|agent_sessions|audit_log|event_callbacks|execution_attempts|model_catalogs|runners|task_artifacts|task_events|trigger_runs|triggers|user_prompts|webhook_deliveries|tasks)\b`)
+
+// translatePreRenameMigration rewrites pre-052 table names in a historical
+// migration to their current names so it can be replayed against the
+// post-rename schema. Only the table names change; the migration's structure
+// (e.g. one ALTER per column for TiDB) is preserved.
+func translatePreRenameMigration(sql string) string {
+	return preRenameTables.ReplaceAllString(sql, "$1")
+}
+
 func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
 	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
 		t.Skip("MySQL/TiDB migration test")
@@ -117,7 +131,7 @@ func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP COLUMN github_installation_id, DROP COLUMN github_repo"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE tasks DROP COLUMN github_installation_id, DROP COLUMN github_repo"); err != nil {
 		t.Fatalf("drop GitHub metadata columns: %v", err)
 	}
 
@@ -130,7 +144,7 @@ func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
 		t.Fatalf("read GitHub metadata migration: %v", err)
 	}
 	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
-		"048_add_task_github_metadata.sql": &fstest.MapFile{Data: migration},
+		"048_add_task_github_metadata.sql": &fstest.MapFile{Data: []byte(translatePreRenameMigration(string(migration)))},
 	})
 	if err != nil {
 		t.Fatalf("create migration provider: %v", err)
@@ -139,7 +153,7 @@ func TestMySQLApplyTaskGitHubMetadataMigration(t *testing.T) {
 		t.Fatalf("apply GitHub metadata migration: %v", err)
 	}
 
-	rows, err := tdb.DB.QueryContext(ctx, "SELECT github_repo, github_installation_id FROM chetter_tasks WHERE 1=0")
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT github_repo, github_installation_id FROM tasks WHERE 1=0")
 	if err != nil {
 		t.Fatalf("query migrated GitHub metadata columns: %v", err)
 	}
@@ -154,10 +168,10 @@ func TestMySQLApplySelfTestMetadataMigration(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	if _, err := tdb.DB.ExecContext(ctx, "DROP INDEX idx_chetter_tasks_self_test_run ON chetter_tasks"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, "DROP INDEX idx_chetter_tasks_self_test_run ON tasks"); err != nil {
 		t.Fatalf("drop self-test run index: %v", err)
 	}
-	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_tasks DROP COLUMN self_test_nonce, DROP COLUMN self_test_check, DROP COLUMN self_test_profile, DROP COLUMN self_test_run_id"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE tasks DROP COLUMN self_test_nonce, DROP COLUMN self_test_check, DROP COLUMN self_test_profile, DROP COLUMN self_test_run_id"); err != nil {
 		t.Fatalf("drop self-test metadata columns: %v", err)
 	}
 
@@ -170,7 +184,7 @@ func TestMySQLApplySelfTestMetadataMigration(t *testing.T) {
 		t.Fatalf("read self-test metadata migration: %v", err)
 	}
 	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
-		"050_add_task_self_test_metadata.sql": &fstest.MapFile{Data: migration},
+		"050_add_task_self_test_metadata.sql": &fstest.MapFile{Data: []byte(translatePreRenameMigration(string(migration)))},
 	})
 	if err != nil {
 		t.Fatalf("create migration provider: %v", err)
@@ -179,7 +193,7 @@ func TestMySQLApplySelfTestMetadataMigration(t *testing.T) {
 		t.Fatalf("apply self-test metadata migration: %v", err)
 	}
 
-	rows, err := tdb.DB.QueryContext(ctx, "SELECT self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks WHERE 1=0")
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks WHERE 1=0")
 	if err != nil {
 		t.Fatalf("query migrated self-test metadata columns: %v", err)
 	}
@@ -197,10 +211,10 @@ func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
 	// Drop the columns added by migration 051 so we can prove the migration
 	// re-adds them (TiDB rejects multi-column ALTERs with cross-referencing
 	// AFTER clauses, so the migration uses one ALTER per column — issue #291).
-	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_runners DROP COLUMN isolation_enabled"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE runners DROP COLUMN isolation_enabled"); err != nil {
 		t.Fatalf("drop isolation_enabled: %v", err)
 	}
-	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE chetter_agent_sessions DROP COLUMN isolation_required"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE agent_sessions DROP COLUMN isolation_required"); err != nil {
 		t.Fatalf("drop isolation_required: %v", err)
 	}
 
@@ -213,7 +227,7 @@ func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
 		t.Fatalf("read isolation columns migration: %v", err)
 	}
 	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
-		"051_add_isolation_columns.sql": &fstest.MapFile{Data: migration},
+		"051_add_isolation_columns.sql": &fstest.MapFile{Data: []byte(translatePreRenameMigration(string(migration)))},
 	})
 	if err != nil {
 		t.Fatalf("create migration provider: %v", err)
@@ -222,12 +236,12 @@ func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
 		t.Fatalf("apply isolation columns migration: %v", err)
 	}
 
-	rows, err := tdb.DB.QueryContext(ctx, "SELECT isolation_required FROM chetter_agent_sessions WHERE 1=0")
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT isolation_required FROM agent_sessions WHERE 1=0")
 	if err != nil {
 		t.Fatalf("query migrated isolation_required column: %v", err)
 	}
 	rows.Close()
-	rows, err = tdb.DB.QueryContext(ctx, "SELECT isolation_enabled FROM chetter_runners WHERE 1=0")
+	rows, err = tdb.DB.QueryContext(ctx, "SELECT isolation_enabled FROM runners WHERE 1=0")
 	if err != nil {
 		t.Fatalf("query migrated isolation_enabled column: %v", err)
 	}
@@ -260,7 +274,7 @@ func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) 
 	var hasTasks, hasMigrationHistory bool
 	if err := bootstrapDB.DB.QueryRow(`
 		SELECT
-			to_regclass('public.chetter_tasks') IS NOT NULL,
+			to_regclass('public.tasks') IS NOT NULL,
 			to_regclass('public.goose_db_version') IS NOT NULL
 	`).Scan(&hasTasks, &hasMigrationHistory); err != nil {
 		t.Fatalf("inspect initialized schema: %v", err)

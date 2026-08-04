@@ -43,7 +43,7 @@ func (q *Queries) DB() *sql.DB { return q.db }
 // SearchTasks has PostgreSQL-specific nullable filters and pagination names.
 // Keep that generated difference isolated here while callers use repository's
 // established parameter type.
-func (q *Queries) SearchTasks(ctx context.Context, arg repository.SearchTasksParams) ([]repository.ChetterTask, error) {
+func (q *Queries) SearchTasks(ctx context.Context, arg repository.SearchTasksParams) ([]repository.Task, error) {
 	search := sql.NullString{}
 	switch value := arg.Search.(type) {
 	case string:
@@ -59,7 +59,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg repository.SearchTasksPar
 		PageOffset:        arg.Offset,
 		PageLimit:         arg.Limit,
 	})
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
 // ListAuditLog consolidates sqlc's duplicated MySQL filter parameters into the

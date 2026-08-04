@@ -32,7 +32,7 @@ func (s *Store) postgresSchemaState(ctx context.Context) (versioned, hasApplicat
 				SELECT 1
 				FROM information_schema.tables
 				WHERE table_schema = current_schema()
-				  AND table_name IN ('chetter_tasks', 'teams', 'api_tokens')
+				  AND table_name IN ('tasks', 'teams', 'api_tokens')
 			)
 	`).Scan(&versioned, &hasApplicationSchema); err != nil {
 		return false, false, fmt.Errorf("inspect postgres schema migration state: %w", err)

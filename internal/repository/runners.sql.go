@@ -14,7 +14,7 @@ import (
 
 const getRunnerHeartbeatMetadata = `-- name: GetRunnerHeartbeatMetadata :one
 SELECT metadata
-FROM chetter_runners
+FROM runners
 WHERE id = ?
 `
 
@@ -27,7 +27,7 @@ func (q *Queries) GetRunnerHeartbeatMetadata(ctx context.Context, id string) (js
 
 const getRunnerIsolationEnabled = `-- name: GetRunnerIsolationEnabled :one
 SELECT isolation_enabled
-FROM chetter_runners
+FROM runners
 WHERE id = ?
 `
 
@@ -40,7 +40,7 @@ func (q *Queries) GetRunnerIsolationEnabled(ctx context.Context, id string) (boo
 
 const listLiveRunners = `-- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
-FROM chetter_runners
+FROM runners
 WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC
 `
@@ -105,7 +105,7 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 }
 
 const upsertRunnerHeartbeat = `-- name: UpsertRunnerHeartbeat :exec
-INSERT INTO chetter_runners
+INSERT INTO runners
     (id, status, image_ref, image_digest, version,
      max_concurrent, running_tasks, available_slots, isolation_enabled, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)

@@ -79,7 +79,7 @@ func TestGetSelfTestStatusRequiresRunnerEvidence(t *testing.T) {
 					t.Fatalf("InsertTaskEvent: %v", err)
 				}
 			}
-			if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET status='done' WHERE id=?", "UPDATE chetter_tasks SET status='done' WHERE id=$1"), taskRow.ID); err != nil {
+			if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(), "UPDATE tasks SET status='done' WHERE id=?", "UPDATE tasks SET status='done' WHERE id=$1"), taskRow.ID); err != nil {
 				t.Fatalf("complete task: %v", err)
 			}
 			status, err := svc.GetSelfTestStatus(ctx, run.ID)
@@ -133,9 +133,9 @@ func TestRunSelfTestProfilesAndAuthorization(t *testing.T) {
 
 func TestTaskToProtoCarriesTrustedSelfTestMetadata(t *testing.T) {
 	proto := taskToProto(
-		repository.ChetterTask{ID: "task_1", SelfTestNonce: nullString("nonce_1"), SelfTestCheck: nullString("harness:codex")},
-		repository.ChetterAgentSession{ID: "sess_1", ResumeMode: "none", Skills: json.RawMessage("[]"), Env: json.RawMessage("{}")},
-		repository.ChetterExecutionAttempt{ID: "exec_1", ClaimID: "claim_1"},
+		repository.Task{ID: "task_1", SelfTestNonce: nullString("nonce_1"), SelfTestCheck: nullString("harness:codex")},
+		repository.AgentSession{ID: "sess_1", ResumeMode: "none", Skills: json.RawMessage("[]"), Env: json.RawMessage("{}")},
+		repository.ExecutionAttempt{ID: "exec_1", ClaimID: "claim_1"},
 		1, "", "",
 	)
 	if proto.SelfTestNonce != "nonce_1" || proto.SelfTestCheck != "harness:codex" {
@@ -155,7 +155,7 @@ func TestSelfTestAggregateWaitsForAllChecksToFinish(t *testing.T) {
 	if err != nil || len(tasks) < 2 {
 		t.Fatalf("self-test tasks = %d, %v", len(tasks), err)
 	}
-	update := testQuery(tdb.Dialect(), "UPDATE chetter_tasks SET status=? WHERE id=?", "UPDATE chetter_tasks SET status=$1 WHERE id=$2")
+	update := testQuery(tdb.Dialect(), "UPDATE tasks SET status=? WHERE id=?", "UPDATE tasks SET status=$1 WHERE id=$2")
 	if _, err := tdb.DB.Exec(update, "error", tasks[0].ID); err != nil {
 		t.Fatalf("fail first check: %v", err)
 	}

@@ -76,7 +76,7 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	}
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
-	var tasks []repository.ChetterTask
+	var tasks []repository.Task
 	var err error
 
 	effectiveTeamIDs := teamFilter.TeamIDs
@@ -656,7 +656,7 @@ func (s *Service) ListAgentSessions(ctx context.Context, status string, limit, o
 	}
 	clamped := clampListLimit(limit)
 	clampedOffset := int32(max(offset, 0))
-	var rows []repository.ChetterAgentSession
+	var rows []repository.AgentSession
 	var err error
 
 	effectiveTeamIDs := teamFilter.TeamIDs
@@ -758,7 +758,7 @@ func (s *Service) batchUserPromptCounts(ctx context.Context, sessionIDs []string
 	for i, v := range sessionIDs {
 		args[i] = v
 	}
-	query := "SELECT agent_session_id, COUNT(*) FROM chetter_user_prompts WHERE agent_session_id IN (" + strings.Join(sqlPlaceholders(s.dialect, len(sessionIDs)), ",") + ") GROUP BY agent_session_id"
+	query := "SELECT agent_session_id, COUNT(*) FROM user_prompts WHERE agent_session_id IN (" + strings.Join(sqlPlaceholders(s.dialect, len(sessionIDs)), ",") + ") GROUP BY agent_session_id"
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		slog.ErrorContext(ctx, "batch user prompt counts", "err", err)
@@ -785,7 +785,7 @@ func (s *Service) ListTriggers(ctx context.Context, enabledOnly bool, triggerTyp
 	if teamFilter.Empty {
 		return []store.TriggerRecord{}, nil
 	}
-	var repoRecords []repository.ChetterTrigger
+	var repoRecords []repository.Trigger
 	var err error
 
 	effectiveTeamIDs := teamFilter.TeamIDs
@@ -1410,7 +1410,7 @@ func (s *Service) ArcaneIsConfigured() bool {
 	return s.arcane != nil && s.arcane.IsConfigured()
 }
 
-func (s *Service) GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error) {
+func (s *Service) GetTriggerByName(ctx context.Context, name string) (repository.Trigger, error) {
 	return s.repo.GetTriggerByName(ctx, name)
 }
 
@@ -1568,11 +1568,11 @@ func (s *Service) ListRepos(ctx context.Context) ([]string, error) {
 	if teamFilter.Empty {
 		return []string{}, nil
 	}
-	query := `SELECT repo FROM chetter_task_artifacts artifact WHERE artifact.repo IS NOT NULL AND artifact.repo != ''`
+	query := `SELECT repo FROM task_artifacts artifact WHERE artifact.repo IS NOT NULL AND artifact.repo != ''`
 	args := make([]any, 0, len(teamFilter.TeamIDs))
 	if teamFilter.Constrained {
 		placeholders := strings.Join(sqlPlaceholders(s.dialect, len(teamFilter.TeamIDs)), ",")
-		query += ` AND EXISTS (SELECT 1 FROM chetter_tasks task WHERE task.id = artifact.task_id AND task.team_id IN (` + placeholders + `))`
+		query += ` AND EXISTS (SELECT 1 FROM tasks task WHERE task.id = artifact.task_id AND task.team_id IN (` + placeholders + `))`
 		for _, teamID := range teamFilter.TeamIDs {
 			args = append(args, teamID)
 		}

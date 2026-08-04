@@ -14,14 +14,14 @@ import (
 )
 
 const cancelExecutionAttemptsByTask = `-- name: CancelExecutionAttemptsByTask :execrows
-UPDATE chetter_execution_attempts attempt
+UPDATE execution_attempts attempt
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
     lease_expires_at = NULL,
     ended_at = COALESCE(attempt.ended_at, $2),
     updated_at = $3
-FROM chetter_user_prompts prompt
+FROM user_prompts prompt
 WHERE prompt.id = attempt.user_prompt_id
   AND prompt.task_id = $4
   AND attempt.status IN ('pending', 'running')
@@ -48,7 +48,7 @@ func (q *Queries) CancelExecutionAttemptsByTask(ctx context.Context, arg CancelE
 }
 
 const cancelPendingExecutionAttempts = `-- name: CancelPendingExecutionAttempts :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET status = 'cancelled',
     error = $1,
     error_category = 'cancelled',
@@ -74,8 +74,8 @@ func (q *Queries) CancelPendingExecutionAttempts(ctx context.Context, arg Cancel
 
 const countExecutionAttemptsByTask = `-- name: CountExecutionAttemptsByTask :one
 SELECT COUNT(*)
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE prompt.task_id = $1
 `
 
@@ -87,10 +87,10 @@ func (q *Queries) CountExecutionAttemptsByTask(ctx context.Context, taskID strin
 }
 
 const extendActiveExecutionAttemptTimeout = `-- name: ExtendActiveExecutionAttemptTimeout :execrows
-UPDATE chetter_execution_attempts attempt
+UPDATE execution_attempts attempt
 SET timeout_sec = attempt.timeout_sec + $1,
     updated_at = $2
-FROM chetter_user_prompts prompt
+FROM user_prompts prompt
 WHERE prompt.id = attempt.user_prompt_id
   AND prompt.task_id = $3
   AND attempt.status IN ('pending', 'running')
@@ -111,7 +111,7 @@ func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg E
 }
 
 const failAllExpiredExecutionAttempts = `-- name: FailAllExpiredExecutionAttempts :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET status = 'error',
     error = 'runner lease expired; auto-recovery disabled',
     error_category = 'timeout',
@@ -137,16 +137,16 @@ func (q *Queries) FailAllExpiredExecutionAttempts(ctx context.Context, arg FailA
 }
 
 const failExpiredExecutionAttempts = `-- name: FailExpiredExecutionAttempts :execrows
-UPDATE chetter_execution_attempts attempt
+UPDATE execution_attempts attempt
 SET status = 'error',
     error = 'runner lease expired after ' || counts.attempt_count || ' attempts',
     error_category = 'timeout',
     ended_at = $1,
     updated_at = $2
-FROM chetter_user_prompts prompt, chetter_tasks task, (
+FROM user_prompts prompt, tasks task, (
     SELECT counted_prompt.task_id, COUNT(*) AS attempt_count
-    FROM chetter_execution_attempts counted_attempt
-    JOIN chetter_user_prompts counted_prompt ON counted_prompt.id = counted_attempt.user_prompt_id
+    FROM execution_attempts counted_attempt
+    JOIN user_prompts counted_prompt ON counted_prompt.id = counted_attempt.user_prompt_id
     GROUP BY counted_prompt.task_id
 ) counts
 WHERE prompt.id = attempt.user_prompt_id
@@ -173,13 +173,13 @@ func (q *Queries) FailExpiredExecutionAttempts(ctx context.Context, arg FailExpi
 }
 
 const failPendingExecutionAttemptsForMissingRunner = `-- name: FailPendingExecutionAttemptsForMissingRunner :execrows
-UPDATE chetter_execution_attempts attempt
+UPDATE execution_attempts attempt
 SET status = 'error',
     error = 'pinned runner ' || attempt.required_runner_id || ' is not alive',
     error_category = 'runner_unavailable',
     ended_at = $1,
     updated_at = $2
-FROM chetter_user_prompts prompt, chetter_agent_sessions session
+FROM user_prompts prompt, agent_sessions session
 WHERE prompt.id = attempt.user_prompt_id
   AND session.id = prompt.agent_session_id
   AND attempt.status = 'pending'
@@ -187,7 +187,7 @@ WHERE prompt.id = attempt.user_prompt_id
   AND attempt.required_runner_id IS NOT NULL
   AND attempt.required_runner_id <> ''
   AND NOT EXISTS (
-    SELECT 1 FROM chetter_runners runner
+    SELECT 1 FROM runners runner
     WHERE runner.id = attempt.required_runner_id
       AND runner.status = 'active'
       AND runner.last_seen_at > NOW() - ($3 * INTERVAL '1 second')
@@ -209,19 +209,19 @@ func (q *Queries) FailPendingExecutionAttemptsForMissingRunner(ctx context.Conte
 }
 
 const failPendingIsolationAttemptsWithoutCapableRunner = `-- name: FailPendingIsolationAttemptsWithoutCapableRunner :execrows
-UPDATE chetter_execution_attempts attempt
+UPDATE execution_attempts attempt
 SET status = 'error',
     error = 'no active runner enforces isolation (gVisor) for this task',
     error_category = 'isolation_unavailable',
     ended_at = $1,
     updated_at = $2
-FROM chetter_user_prompts prompt, chetter_agent_sessions session
+FROM user_prompts prompt, agent_sessions session
 WHERE prompt.id = attempt.user_prompt_id
   AND session.id = prompt.agent_session_id
   AND attempt.status = 'pending'
   AND session.isolation_required = true
   AND NOT EXISTS (
-      SELECT 1 FROM chetter_runners capable
+      SELECT 1 FROM runners capable
       WHERE capable.isolation_enabled = true
         AND capable.status = 'active'
         AND capable.last_seen_at > NOW() - ($3 * INTERVAL '1 second')
@@ -250,10 +250,10 @@ func (q *Queries) FailPendingIsolationAttemptsWithoutCapableRunner(ctx context.C
 const getClaimableExecutionAttemptForUpdate = `-- name: GetClaimableExecutionAttemptForUpdate :one
 SELECT attempt.id AS execution_attempt_id, attempt.sequence,
        prompt.task_id, prompt.id AS user_prompt_id, task.id AS locked_task_id
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
-JOIN chetter_tasks task ON task.id = prompt.task_id
-JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN tasks task ON task.id = prompt.task_id
+JOIN agent_sessions session ON session.id = prompt.agent_session_id
 WHERE attempt.status = 'pending'
   AND task.status = 'pending'
   AND (attempt.required_runner_id IS NULL OR attempt.required_runner_id = '' OR attempt.required_runner_id = $1)
@@ -291,12 +291,12 @@ func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg
 }
 
 const getExecutionAttemptByID = `-- name: GetExecutionAttemptByID :one
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM chetter_execution_attempts WHERE id = $1
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM execution_attempts WHERE id = $1
 `
 
-func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (ChetterExecutionAttempt, error) {
+func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (ExecutionAttempt, error) {
 	row := q.db.QueryRowContext(ctx, getExecutionAttemptByID, id)
-	var i ChetterExecutionAttempt
+	var i ExecutionAttempt
 	err := row.Scan(
 		&i.ID,
 		&i.UserPromptID,
@@ -336,8 +336,8 @@ SELECT attempt.id AS execution_attempt_id,
        prompt.id AS user_prompt_id,
        prompt.agent_session_id,
        prompt.task_id
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = $1
 `
 
@@ -367,8 +367,8 @@ SELECT COALESCE(SUM(attempt.total_input_tokens), 0)::bigint AS total_input_token
        COALESCE(SUM(attempt.total_cache_write_tokens), 0)::bigint AS total_cache_write_tokens,
        COALESCE(SUM(attempt.total_reasoning_tokens), 0)::bigint AS total_reasoning_tokens,
        COALESCE(SUM(attempt.cost_cents), 0)::bigint AS cost_cents
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE prompt.task_id = $1
 `
 
@@ -407,9 +407,9 @@ SELECT attempt.id AS execution_attempt_id,
        task.github_repo,
        task.github_installation_id,
        attempt.claim_id
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
-JOIN chetter_tasks task ON task.id = prompt.task_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN tasks task ON task.id = prompt.task_id
 WHERE attempt.id = $1
 `
 
@@ -448,7 +448,7 @@ func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (Get
 
 const getNextExecutionAttemptSequence = `-- name: GetNextExecutionAttemptSequence :one
 SELECT COALESCE(MAX(sequence), 0) + 1
-FROM chetter_execution_attempts
+FROM execution_attempts
 WHERE user_prompt_id = $1
 `
 
@@ -460,7 +460,7 @@ func (q *Queries) GetNextExecutionAttemptSequence(ctx context.Context, userPromp
 }
 
 const insertExecutionAttempt = `-- name: InsertExecutionAttempt :exec
-INSERT INTO chetter_execution_attempts
+INSERT INTO execution_attempts
     (id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, timeout_sec, last_event_at, started_at, created_at, updated_at)
 VALUES ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `
@@ -499,7 +499,7 @@ func (q *Queries) InsertExecutionAttempt(ctx context.Context, arg InsertExecutio
 }
 
 const insertPendingExecutionAttempt = `-- name: InsertPendingExecutionAttempt :exec
-INSERT INTO chetter_execution_attempts
+INSERT INTO execution_attempts
     (id, user_prompt_id, sequence, status, required_runner_id, timeout_sec, created_at, updated_at)
 VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 `
@@ -528,20 +528,20 @@ func (q *Queries) InsertPendingExecutionAttempt(ctx context.Context, arg InsertP
 }
 
 const listExecutionAttemptsByPrompt = `-- name: ListExecutionAttemptsByPrompt :many
-SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM chetter_execution_attempts
+SELECT id, user_prompt_id, sequence, status, runner_id, required_runner_id, claimed_at, lease_expires_at, started_at, ended_at, workspace_path, container_name, harness_execution_id, summary, error, error_category, session_export, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_write_tokens, total_reasoning_tokens, cost_cents, created_at, updated_at, timeout_sec, last_event_at, runner_image_digest, claim_id FROM execution_attempts
 WHERE user_prompt_id = $1
 ORDER BY sequence ASC, created_at ASC
 `
 
-func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]ChetterExecutionAttempt, error) {
+func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]ExecutionAttempt, error) {
 	rows, err := q.db.QueryContext(ctx, listExecutionAttemptsByPrompt, userPromptID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterExecutionAttempt{}
+	items := []ExecutionAttempt{}
 	for rows.Next() {
-		var i ChetterExecutionAttempt
+		var i ExecutionAttempt
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserPromptID,
@@ -589,8 +589,8 @@ func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptI
 const listExecutionAttemptsForHeartbeat = `-- name: ListExecutionAttemptsForHeartbeat :many
 SELECT attempt.id AS execution_attempt_id, attempt.claim_id, attempt.status, attempt.error,
        prompt.task_id, prompt.agent_session_id, prompt.id AS user_prompt_id
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = ANY($1::text[])
   AND attempt.runner_id = $2
 `
@@ -646,9 +646,9 @@ SELECT attempt.id AS execution_attempt_id, prompt.task_id, prompt.id AS user_pro
        task.id AS locked_task_id, task.team_id, attempt.runner_id, attempt.sequence AS attempt,
        task.max_attempts, attempt.timeout_sec,
        attempt.lease_expires_at
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
-JOIN chetter_tasks task ON task.id = prompt.task_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN tasks task ON task.id = prompt.task_id
 WHERE attempt.status = 'running'
   AND attempt.lease_expires_at IS NOT NULL
   AND attempt.lease_expires_at < $1
@@ -704,7 +704,7 @@ func (q *Queries) ListReclaimableExecutionAttemptsForUpdate(ctx context.Context,
 }
 
 const markExecutionAttemptClaimed = `-- name: MarkExecutionAttemptClaimed :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET status = 'running', runner_id = $1, claim_id = $2, claimed_at = $3,
     lease_expires_at = $4, started_at = $5,
     last_event_at = $6, updated_at = $7
@@ -740,7 +740,7 @@ func (q *Queries) MarkExecutionAttemptClaimed(ctx context.Context, arg MarkExecu
 }
 
 const markExecutionAttemptLost = `-- name: MarkExecutionAttemptLost :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET status = 'lost', error = $1, ended_at = $2, updated_at = $3
 WHERE id = $4 AND status = 'running'
 `
@@ -766,7 +766,7 @@ func (q *Queries) MarkExecutionAttemptLost(ctx context.Context, arg MarkExecutio
 }
 
 const renewExecutionAttemptLease = `-- name: RenewExecutionAttemptLease :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET lease_expires_at = $1, last_event_at = $2, updated_at = $3
 WHERE id = $4 AND runner_id = $5 AND claim_id = $6
   AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP
@@ -797,7 +797,7 @@ func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg RenewExecu
 }
 
 const requeueTaskAfterExecutionAttemptLost = `-- name: RequeueTaskAfterExecutionAttemptLost :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = 'pending',
     summary = NULL,
     error = NULL,
@@ -822,7 +822,7 @@ func (q *Queries) RequeueTaskAfterExecutionAttemptLost(ctx context.Context, arg 
 }
 
 const updateExecutionAttemptFromRunnerEvent = `-- name: UpdateExecutionAttemptFromRunnerEvent :execrows
-UPDATE chetter_execution_attempts
+UPDATE execution_attempts
 SET status = $1,
     summary = $2,
     error = $3,
@@ -911,8 +911,8 @@ SELECT attempt.id AS execution_attempt_id,
        prompt.task_id,
        prompt.agent_session_id,
        prompt.id AS user_prompt_id
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE attempt.id = $1
   AND prompt.task_id = $2
   AND attempt.runner_id = $3

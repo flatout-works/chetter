@@ -28,9 +28,9 @@ type sqlRowScanner interface {
 // batchTaskDetails loads the same session and execution data that ListTasks
 // used to fetch one task at a time. The task list is refreshed frequently, so
 // keeping these lookups batched avoids exhausting the database connection pool.
-func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.ChetterTask) (map[string]repository.ChetterAgentSession, map[string]sql.NullTime, map[string]taskTokenUsage, error) {
+func (s *Service) batchTaskDetails(ctx context.Context, tasks []repository.Task) (map[string]repository.AgentSession, map[string]sql.NullTime, map[string]taskTokenUsage, error) {
 	if len(tasks) == 0 {
-		return map[string]repository.ChetterAgentSession{}, map[string]sql.NullTime{}, map[string]taskTokenUsage{}, nil
+		return map[string]repository.AgentSession{}, map[string]sql.NullTime{}, map[string]taskTokenUsage{}, nil
 	}
 	ids := make([]string, len(tasks))
 	args := make([]any, len(tasks))
@@ -69,17 +69,17 @@ type taskTokenUsage struct {
 	CostCents             int64
 }
 
-func (s *Service) batchTaskSessions(ctx context.Context, ids []string, args []any) (map[string]repository.ChetterAgentSession, error) {
+func (s *Service) batchTaskSessions(ctx context.Context, ids []string, args []any) (map[string]repository.AgentSession, error) {
 	db := s.repo.DB()
 	if db == nil {
 		return nil, fmt.Errorf("repository database is unavailable")
 	}
 	placeholders := strings.Join(sqlPlaceholders(s.dialect, len(ids)), ",")
 	query := `SELECT ` + taskListAgentSessionColumns + `
-FROM chetter_agent_sessions session
+FROM agent_sessions session
 JOIN (
 	SELECT task_id, MAX(sequence) AS sequence
-	FROM chetter_agent_sessions
+	FROM agent_sessions
 	WHERE task_id IN (` + placeholders + `)
 	GROUP BY task_id
 ) latest ON latest.task_id = session.task_id AND latest.sequence = session.sequence`
@@ -89,7 +89,7 @@ JOIN (
 	}
 	defer rows.Close()
 
-	sessions := make(map[string]repository.ChetterAgentSession, len(ids))
+	sessions := make(map[string]repository.AgentSession, len(ids))
 	for rows.Next() {
 		session, err := scanTaskListAgentSession(rows)
 		if err != nil {
@@ -110,14 +110,14 @@ func (s *Service) batchTaskStartedAt(ctx context.Context, ids []string, args []a
 	}
 	placeholders := strings.Join(sqlPlaceholders(s.dialect, len(ids)), ",")
 	query := `SELECT prompt.task_id, attempt.started_at
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
-JOIN chetter_agent_sessions session ON session.id = prompt.agent_session_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
+JOIN agent_sessions session ON session.id = prompt.agent_session_id
 WHERE prompt.task_id IN (` + placeholders + `)
   AND NOT EXISTS (
     SELECT 1
-    FROM chetter_user_prompts newer_prompt
-    JOIN chetter_agent_sessions newer_session ON newer_session.id = newer_prompt.agent_session_id
+    FROM user_prompts newer_prompt
+    JOIN agent_sessions newer_session ON newer_session.id = newer_prompt.agent_session_id
     WHERE newer_prompt.task_id = prompt.task_id
       AND (newer_session.sequence > session.sequence
         OR (newer_session.sequence = session.sequence AND newer_prompt.sequence > prompt.sequence))
@@ -161,8 +161,8 @@ func (s *Service) batchTaskTokenUsage(ctx context.Context, ids []string, args []
 		COALESCE(SUM(attempt.total_cache_write_tokens), 0) AS total_cache_write_tokens,
 		COALESCE(SUM(attempt.total_reasoning_tokens), 0) AS total_reasoning_tokens,
 		COALESCE(SUM(attempt.cost_cents), 0) AS cost_cents
-FROM chetter_execution_attempts attempt
-JOIN chetter_user_prompts prompt ON prompt.id = attempt.user_prompt_id
+FROM execution_attempts attempt
+JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
 WHERE prompt.task_id IN (` + placeholders + `)
 GROUP BY prompt.task_id`
 	rows, err := db.QueryContext(ctx, query, args...)
@@ -188,8 +188,8 @@ GROUP BY prompt.task_id`
 	return usage, nil
 }
 
-func scanTaskListAgentSession(row sqlRowScanner) (repository.ChetterAgentSession, error) {
-	var session repository.ChetterAgentSession
+func scanTaskListAgentSession(row sqlRowScanner) (repository.AgentSession, error) {
+	var session repository.AgentSession
 	err := row.Scan(
 		&session.ID,
 		&session.TeamID,

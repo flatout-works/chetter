@@ -13,7 +13,7 @@ import (
 )
 
 const cancelTask = `-- name: CancelTask :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = 'cancelled',
     error = ?,
     error_category = 'cancelled',
@@ -47,7 +47,7 @@ func (q *Queries) CancelTask(ctx context.Context, arg CancelTaskParams) (int64, 
 }
 
 const clearPendingTasks = `-- name: ClearPendingTasks :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = 'cancelled',
     error = ?,
     error_category = 'cancelled',
@@ -79,9 +79,9 @@ func (q *Queries) ClearPendingTasks(ctx context.Context, arg ClearPendingTasksPa
 }
 
 const failExpiredLeases = `-- name: FailExpiredLeases :execrows
-UPDATE chetter_tasks task
-JOIN chetter_user_prompts prompt ON prompt.task_id = task.id
-JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+UPDATE tasks task
+JOIN user_prompts prompt ON prompt.task_id = task.id
+JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id
 SET task.status = 'error',
     task.error = attempt.error,
     task.error_category = 'timeout',
@@ -111,9 +111,9 @@ func (q *Queries) FailExpiredLeases(ctx context.Context, arg FailExpiredLeasesPa
 }
 
 const failPendingIsolationTasks = `-- name: FailPendingIsolationTasks :execrows
-UPDATE chetter_tasks task
-JOIN chetter_user_prompts prompt ON prompt.task_id = task.id
-JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+UPDATE tasks task
+JOIN user_prompts prompt ON prompt.task_id = task.id
+JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id
 SET task.status = 'error',
     task.error = 'no active runner enforces isolation (gVisor) for this task',
     task.error_category = 'isolation_unavailable',
@@ -143,15 +143,15 @@ func (q *Queries) FailPendingIsolationTasks(ctx context.Context, arg FailPending
 }
 
 const getLatestTaskEvent = `-- name: GetLatestTaskEvent :one
-SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM chetter_task_events
+SELECT id, task_id, subject, status, payload, created_at, agent_session_id, user_prompt_id, execution_attempt_id, event_type FROM task_events
 WHERE task_id = ?
 ORDER BY created_at DESC
 LIMIT 1
 `
 
-func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (ChetterTaskEvent, error) {
+func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskEvent, error) {
 	row := q.db.QueryRowContext(ctx, getLatestTaskEvent, taskID)
-	var i ChetterTaskEvent
+	var i TaskEvent
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
@@ -168,13 +168,13 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (Chette
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
 WHERE id = ?
 `
 
-func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, error) {
+func (q *Queries) GetTaskByID(ctx context.Context, id string) (Task, error) {
 	row := q.db.QueryRowContext(ctx, getTaskByID, id)
-	var i ChetterTask
+	var i Task
 	err := row.Scan(
 		&i.ID,
 		&i.Status,
@@ -206,7 +206,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (ChetterTask, erro
 }
 
 const insertTask = `-- name: InsertTask :exec
-INSERT INTO chetter_tasks
+INSERT INTO tasks
     (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, search_text, created_at, updated_at)
 VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
@@ -255,20 +255,20 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksBySelfTestRun = `-- name: ListTasksBySelfTestRun :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
 WHERE self_test_run_id = ?
 ORDER BY created_at ASC, id ASC
 `
 
-func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]ChetterTask, error) {
+func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listTasksBySelfTestRun, selfTestRunID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -310,14 +310,14 @@ func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
-WHERE (? = '' OR chetter_tasks.status = ?)
-  AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+WHERE (? = '' OR tasks.status = ?)
+  AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
-      SELECT 1 FROM chetter_agent_sessions session
-      WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+      SELECT 1 FROM agent_sessions session
+      WHERE session.task_id = tasks.id AND session.agent = ?
   ))
-ORDER BY chetter_tasks.created_at DESC
+ORDER BY tasks.created_at DESC
 LIMIT ? OFFSET ?
 `
 
@@ -329,7 +329,7 @@ type ListTasksByStatusParams struct {
 	Offset            int32          `json:"offset"`
 }
 
-func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusParams) ([]ChetterTask, error) {
+func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusParams) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listTasksByStatus,
 		arg.StatusFilter,
 		arg.StatusFilter,
@@ -344,9 +344,9 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -388,15 +388,15 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
-WHERE chetter_tasks.team_id = ?
-  AND (? = '' OR chetter_tasks.status = ?)
-  AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+WHERE tasks.team_id = ?
+  AND (? = '' OR tasks.status = ?)
+  AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
-      SELECT 1 FROM chetter_agent_sessions session
-      WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+      SELECT 1 FROM agent_sessions session
+      WHERE session.task_id = tasks.id AND session.agent = ?
   ))
-ORDER BY chetter_tasks.created_at DESC
+ORDER BY tasks.created_at DESC
 LIMIT ? OFFSET ?
 `
 
@@ -409,7 +409,7 @@ type ListTasksByStatusAndTeamParams struct {
 	Offset            int32          `json:"offset"`
 }
 
-func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByStatusAndTeamParams) ([]ChetterTask, error) {
+func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByStatusAndTeamParams) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listTasksByStatusAndTeam,
 		arg.TeamID,
 		arg.StatusFilter,
@@ -425,9 +425,9 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -469,15 +469,15 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
-WHERE chetter_tasks.team_id IN (/*SLICE:team_ids*/?)
-  AND (? = '' OR chetter_tasks.status = ?)
-  AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+WHERE tasks.team_id IN (/*SLICE:team_ids*/?)
+  AND (? = '' OR tasks.status = ?)
+  AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
-      SELECT 1 FROM chetter_agent_sessions session
-      WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+      SELECT 1 FROM agent_sessions session
+      WHERE session.task_id = tasks.id AND session.agent = ?
   ))
-ORDER BY chetter_tasks.created_at DESC
+ORDER BY tasks.created_at DESC
 LIMIT ? OFFSET ?
 `
 
@@ -490,7 +490,7 @@ type ListTasksByStatusAndTeamsParams struct {
 	Offset            int32            `json:"offset"`
 }
 
-func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksByStatusAndTeamsParams) ([]ChetterTask, error) {
+func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksByStatusAndTeamsParams) ([]Task, error) {
 	query := listTasksByStatusAndTeams
 	var queryParams []interface{}
 	if len(arg.TeamIds) > 0 {
@@ -514,9 +514,9 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -558,7 +558,7 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 }
 
 const markTaskRunning = `-- name: MarkTaskRunning :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = 'running',
     updated_at = ?
 WHERE id = ? AND status = 'pending'
@@ -578,7 +578,7 @@ func (q *Queries) MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams
 }
 
 const pinTaskGitHubInstallation = `-- name: PinTaskGitHubInstallation :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET github_installation_id = ?,
     updated_at = ?
 WHERE id = ?
@@ -600,7 +600,7 @@ func (q *Queries) PinTaskGitHubInstallation(ctx context.Context, arg PinTaskGitH
 }
 
 const requeueTaskForPrompt = `-- name: RequeueTaskForPrompt :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = 'pending',
     summary = NULL,
     error = NULL,
@@ -627,16 +627,16 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
-WHERE (? = '' OR chetter_tasks.team_id = ?)
-  AND (? = '' OR chetter_tasks.status = ?)
-  AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+WHERE (? = '' OR tasks.team_id = ?)
+  AND (? = '' OR tasks.status = ?)
+  AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
-      SELECT 1 FROM chetter_agent_sessions session
-      WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+      SELECT 1 FROM agent_sessions session
+      WHERE session.task_id = tasks.id AND session.agent = ?
   ))
-  AND (chetter_tasks.search_text LIKE CONCAT('%', ?, '%'))
-ORDER BY chetter_tasks.created_at DESC
+  AND (tasks.search_text LIKE CONCAT('%', ?, '%'))
+ORDER BY tasks.created_at DESC
 LIMIT ? OFFSET ?
 `
 
@@ -650,7 +650,7 @@ type SearchTasksParams struct {
 	Offset            int32          `json:"offset"`
 }
 
-func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]ChetterTask, error) {
+func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, searchTasks,
 		arg.TeamFilter,
 		arg.TeamFilter,
@@ -668,9 +668,9 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -712,16 +712,16 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Che
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM chetter_tasks
-WHERE chetter_tasks.team_id IN (/*SLICE:team_ids*/?)
-  AND (? = '' OR chetter_tasks.status = ?)
-  AND (COALESCE(?, '') = '' OR chetter_tasks.trigger_name = ?)
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+WHERE tasks.team_id IN (/*SLICE:team_ids*/?)
+  AND (? = '' OR tasks.status = ?)
+  AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
-      SELECT 1 FROM chetter_agent_sessions session
-      WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+      SELECT 1 FROM agent_sessions session
+      WHERE session.task_id = tasks.id AND session.agent = ?
   ))
-  AND (chetter_tasks.search_text LIKE CONCAT('%', ?, '%'))
-ORDER BY chetter_tasks.created_at DESC
+  AND (tasks.search_text LIKE CONCAT('%', ?, '%'))
+ORDER BY tasks.created_at DESC
 LIMIT ? OFFSET ?
 `
 
@@ -735,7 +735,7 @@ type SearchTasksByTeamsParams struct {
 	Offset            int32            `json:"offset"`
 }
 
-func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeamsParams) ([]ChetterTask, error) {
+func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeamsParams) ([]Task, error) {
 	query := searchTasksByTeams
 	var queryParams []interface{}
 	if len(arg.TeamIds) > 0 {
@@ -760,9 +760,9 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i ChetterTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.Status,
@@ -804,7 +804,7 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 }
 
 const updateTaskAggregateFromRunnerEvent = `-- name: UpdateTaskAggregateFromRunnerEvent :execrows
-UPDATE chetter_tasks
+UPDATE tasks
 SET status = ?,
     summary = ?,
     error = ?,
@@ -849,14 +849,14 @@ func (q *Queries) UpdateTaskAggregateFromRunnerEvent(ctx context.Context, arg Up
 }
 
 const updateTaskSearchText = `-- name: UpdateTaskSearchText :exec
-UPDATE chetter_tasks
+UPDATE tasks
 SET search_text = CONCAT_WS(' ',
 	COALESCE(prompt, ''), COALESCE(summary, ''), COALESCE(error, ''),
-	COALESCE((SELECT agent FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
-	COALESCE((SELECT model_id FROM chetter_agent_sessions WHERE task_id = chetter_tasks.id ORDER BY sequence DESC LIMIT 1), ''),
+	COALESCE((SELECT agent FROM agent_sessions WHERE task_id = tasks.id ORDER BY sequence DESC LIMIT 1), ''),
+	COALESCE((SELECT model_id FROM agent_sessions WHERE task_id = tasks.id ORDER BY sequence DESC LIMIT 1), ''),
 	COALESCE(trigger_name, ''), COALESCE(git_url, ''), COALESCE(github_repo, '')
 )
-WHERE chetter_tasks.id = ?
+WHERE tasks.id = ?
 `
 
 func (q *Queries) UpdateTaskSearchText(ctx context.Context, id string) error {

@@ -12,7 +12,7 @@ import (
 )
 
 const deactivateModelCatalogs = `-- name: DeactivateModelCatalogs :exec
-UPDATE chetter_model_catalogs
+UPDATE model_catalogs
 SET active = false, updated_at = ?
 WHERE active = true
 `
@@ -23,15 +23,15 @@ func (q *Queries) DeactivateModelCatalogs(ctx context.Context, updatedAt time.Ti
 }
 
 const getActiveModelCatalog = `-- name: GetActiveModelCatalog :one
-SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM chetter_model_catalogs
+SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM model_catalogs
 WHERE active = true
 ORDER BY updated_at DESC
 LIMIT 1
 `
 
-func (q *Queries) GetActiveModelCatalog(ctx context.Context) (ChetterModelCatalog, error) {
+func (q *Queries) GetActiveModelCatalog(ctx context.Context) (ModelCatalog, error) {
 	row := q.db.QueryRowContext(ctx, getActiveModelCatalog)
-	var i ChetterModelCatalog
+	var i ModelCatalog
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -46,13 +46,13 @@ func (q *Queries) GetActiveModelCatalog(ctx context.Context) (ChetterModelCatalo
 }
 
 const getModelCatalogByName = `-- name: GetModelCatalogByName :one
-SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM chetter_model_catalogs
+SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM model_catalogs
 WHERE name = ?
 `
 
-func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (ChetterModelCatalog, error) {
+func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (ModelCatalog, error) {
 	row := q.db.QueryRowContext(ctx, getModelCatalogByName, name)
-	var i ChetterModelCatalog
+	var i ModelCatalog
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -67,7 +67,7 @@ func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (Chett
 }
 
 const insertModelCatalog = `-- name: InsertModelCatalog :exec
-INSERT INTO chetter_model_catalogs (id, name, active, source, checksum, yaml, created_at, updated_at)
+INSERT INTO model_catalogs (id, name, active, source, checksum, yaml, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
     active = VALUES(active),
@@ -103,19 +103,19 @@ func (q *Queries) InsertModelCatalog(ctx context.Context, arg InsertModelCatalog
 }
 
 const listModelCatalogs = `-- name: ListModelCatalogs :many
-SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM chetter_model_catalogs
+SELECT id, name, active, source, checksum, yaml, created_at, updated_at FROM model_catalogs
 ORDER BY updated_at DESC
 `
 
-func (q *Queries) ListModelCatalogs(ctx context.Context) ([]ChetterModelCatalog, error) {
+func (q *Queries) ListModelCatalogs(ctx context.Context) ([]ModelCatalog, error) {
 	rows, err := q.db.QueryContext(ctx, listModelCatalogs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterModelCatalog{}
+	items := []ModelCatalog{}
 	for rows.Next() {
-		var i ChetterModelCatalog
+		var i ModelCatalog
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,

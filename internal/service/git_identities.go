@@ -168,7 +168,7 @@ func (s *Service) DeleteGitIdentity(ctx context.Context, teamID, teamName, name 
 		return err
 	}
 	var references int
-	if err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, `SELECT COUNT(*) FROM chetter_agent_sessions WHERE git_identity_id=?`), record.ID).Scan(&references); err != nil {
+	if err := s.rawDB.QueryRowContext(ctx, sqlQuery(s.dialect, `SELECT COUNT(*) FROM agent_sessions WHERE git_identity_id=?`), record.ID).Scan(&references); err != nil {
 		return fmt.Errorf("check Git identity usage: %w", err)
 	}
 	if references > 0 {

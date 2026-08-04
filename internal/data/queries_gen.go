@@ -15,7 +15,7 @@ import (
 // Repository is the database-independent query surface used by services.
 type Repository interface {
 	DB() *sql.DB
-	SearchTasks(context.Context, repository.SearchTasksParams) ([]repository.ChetterTask, error)
+	SearchTasks(context.Context, repository.SearchTasksParams) ([]repository.Task, error)
 	ListAuditLog(context.Context, repository.ListAuditLogParams) ([]repository.ListAuditLogRow, error)
 	ListTaskArtifacts(context.Context, repository.ListTaskArtifactsParams) ([]repository.ListTaskArtifactsRow, error)
 	AbandonAgentSession(ctx context.Context, arg repository.AbandonAgentSessionParams) (int64, error)
@@ -55,40 +55,40 @@ type Repository interface {
 	FailPendingIsolationTasks(ctx context.Context, arg repository.FailPendingIsolationTasksParams) (int64, error)
 	FailPendingResumeTasksForMissingRunner(ctx context.Context, arg repository.FailPendingResumeTasksForMissingRunnerParams) (int64, error)
 	FailPendingUserPromptsForUnavailableRunner(ctx context.Context, arg repository.FailPendingUserPromptsForUnavailableRunnerParams) (int64, error)
-	GetActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, error)
-	GetAgentSessionByID(ctx context.Context, id string) (repository.ChetterAgentSession, error)
-	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSession, error)
+	GetActiveModelCatalog(ctx context.Context) (repository.ModelCatalog, error)
+	GetAgentSessionByID(ctx context.Context, id string) (repository.AgentSession, error)
+	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.AgentSession, error)
 	GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error)
 	GetDefinitionBySourceTypeName(ctx context.Context, arg repository.GetDefinitionBySourceTypeNameParams) (repository.Definition, error)
 	GetDefinitionChangeProposal(ctx context.Context, id string) (repository.DefinitionChangeProposal, error)
 	GetDefinitionChangeProposalByPR(ctx context.Context, arg repository.GetDefinitionChangeProposalByPRParams) (repository.DefinitionChangeProposal, error)
 	GetDefinitionSource(ctx context.Context, id string) (repository.DefinitionSource, error)
 	GetDefinitionSourceByName(ctx context.Context, name string) (repository.DefinitionSource, error)
-	GetEventCallbackByID(ctx context.Context, id string) (repository.ChetterEventCallback, error)
-	GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.ChetterEventCallback, error)
-	GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error)
+	GetEventCallbackByID(ctx context.Context, id string) (repository.EventCallback, error)
+	GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.EventCallback, error)
+	GetExecutionAttemptByID(ctx context.Context, id string) (repository.ExecutionAttempt, error)
 	GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error)
 	GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error)
 	GetGitHubExecutionContext(ctx context.Context, id string) (repository.GetGitHubExecutionContextRow, error)
-	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error)
-	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSessionCheckpoint, error)
-	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error)
-	GetModelCatalogByName(ctx context.Context, name string) (repository.ChetterModelCatalog, error)
+	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.AgentSessionCheckpoint, error)
+	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.AgentSessionCheckpoint, error)
+	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.TaskEvent, error)
+	GetModelCatalogByName(ctx context.Context, name string) (repository.ModelCatalog, error)
 	GetNextAgentSessionSequence(ctx context.Context, taskID string) (int32, error)
 	GetNextExecutionAttemptSequence(ctx context.Context, userPromptID string) (int32, error)
 	GetNextUserPromptSequence(ctx context.Context, agentSessionID string) (int32, error)
-	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error)
+	GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.AgentSession, error)
 	GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error)
 	GetRunnerIsolationEnabled(ctx context.Context, id string) (bool, error)
-	GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error)
+	GetTaskByID(ctx context.Context, id string) (repository.Task, error)
 	GetTeamByID(ctx context.Context, id string) (repository.Team, error)
 	GetTeamByName(ctx context.Context, name string) (repository.Team, error)
 	GetTokenByHash(ctx context.Context, tokenHash string) (repository.GetTokenByHashRow, error)
-	GetTriggerByID(ctx context.Context, id string) (repository.ChetterTrigger, error)
-	GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error)
+	GetTriggerByID(ctx context.Context, id string) (repository.Trigger, error)
+	GetTriggerByName(ctx context.Context, name string) (repository.Trigger, error)
 	GetUserByID(ctx context.Context, id string) (repository.User, error)
-	GetUserPromptByID(ctx context.Context, id string) (repository.ChetterUserPrompt, error)
-	GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error)
+	GetUserPromptByID(ctx context.Context, id string) (repository.UserPrompt, error)
+	GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.UserPrompt, error)
 	InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error
 	InsertAgentSessionCheckpoint(ctx context.Context, arg repository.InsertAgentSessionCheckpointParams) error
 	InsertAuditLog(ctx context.Context, arg repository.InsertAuditLogParams) error
@@ -104,41 +104,41 @@ type Repository interface {
 	InsertTriggerRun(ctx context.Context, arg repository.InsertTriggerRunParams) error
 	InsertUserPrompt(ctx context.Context, arg repository.InsertUserPromptParams) error
 	IsRunnerAlive(ctx context.Context, arg repository.IsRunnerAliveParams) (bool, error)
-	ListAgentSessions(ctx context.Context, arg repository.ListAgentSessionsParams) ([]repository.ChetterAgentSession, error)
-	ListAgentSessionsByTeams(ctx context.Context, arg repository.ListAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error)
+	ListAgentSessions(ctx context.Context, arg repository.ListAgentSessionsParams) ([]repository.AgentSession, error)
+	ListAgentSessionsByTeams(ctx context.Context, arg repository.ListAgentSessionsByTeamsParams) ([]repository.AgentSession, error)
 	ListDefinitionChangeProposals(ctx context.Context, arg repository.ListDefinitionChangeProposalsParams) ([]repository.DefinitionChangeProposal, error)
 	ListDefinitionSources(ctx context.Context) ([]repository.DefinitionSource, error)
 	ListDefinitionSyncRuns(ctx context.Context, arg repository.ListDefinitionSyncRunsParams) ([]repository.DefinitionSyncRun, error)
 	ListDefinitions(ctx context.Context, arg repository.ListDefinitionsParams) ([]repository.Definition, error)
-	ListEnabledEventCallbacksForEvent(ctx context.Context, arg repository.ListEnabledEventCallbacksForEventParams) ([]repository.ChetterEventCallback, error)
-	ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.ChetterTrigger, error)
-	ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.ChetterTrigger, error)
-	ListEnabledTriggers(ctx context.Context) ([]repository.ChetterTrigger, error)
-	ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.ChetterTrigger, error)
-	ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.ChetterTrigger, error)
-	ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]repository.ChetterTrigger, error)
-	ListEventCallbacks(ctx context.Context, arg repository.ListEventCallbacksParams) ([]repository.ChetterEventCallback, error)
-	ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.ChetterEventCallback, error)
-	ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ChetterExecutionAttempt, error)
+	ListEnabledEventCallbacksForEvent(ctx context.Context, arg repository.ListEnabledEventCallbacksForEventParams) ([]repository.EventCallback, error)
+	ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.Trigger, error)
+	ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.Trigger, error)
+	ListEnabledTriggers(ctx context.Context) ([]repository.Trigger, error)
+	ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.Trigger, error)
+	ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.Trigger, error)
+	ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]repository.Trigger, error)
+	ListEventCallbacks(ctx context.Context, arg repository.ListEventCallbacksParams) ([]repository.EventCallback, error)
+	ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.EventCallback, error)
+	ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ExecutionAttempt, error)
 	ListExecutionAttemptsForHeartbeat(ctx context.Context, arg repository.ListExecutionAttemptsForHeartbeatParams) ([]repository.ListExecutionAttemptsForHeartbeatRow, error)
 	ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]repository.ListLiveRunnersRow, error)
-	ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error)
+	ListModelCatalogs(ctx context.Context) ([]repository.ModelCatalog, error)
 	ListReclaimableExecutionAttemptsForUpdate(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExecutionAttemptsForUpdateRow, error)
-	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error)
-	ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error)
-	ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.ChetterTask, error)
-	ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.ChetterTask, error)
-	ListTasksByStatusAndTeam(ctx context.Context, arg repository.ListTasksByStatusAndTeamParams) ([]repository.ChetterTask, error)
-	ListTasksByStatusAndTeams(ctx context.Context, arg repository.ListTasksByStatusAndTeamsParams) ([]repository.ChetterTask, error)
+	ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.TaskEvent, error)
+	ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.TaskEvent, error)
+	ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.Task, error)
+	ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.Task, error)
+	ListTasksByStatusAndTeam(ctx context.Context, arg repository.ListTasksByStatusAndTeamParams) ([]repository.Task, error)
+	ListTasksByStatusAndTeams(ctx context.Context, arg repository.ListTasksByStatusAndTeamsParams) ([]repository.Task, error)
 	ListTeams(ctx context.Context) ([]repository.Team, error)
 	ListTokens(ctx context.Context) ([]repository.ListTokensRow, error)
 	ListTriggerRunsByTeam(ctx context.Context, arg repository.ListTriggerRunsByTeamParams) ([]repository.ListTriggerRunsByTeamRow, error)
 	ListTriggerRunsByTeams(ctx context.Context, arg repository.ListTriggerRunsByTeamsParams) ([]repository.ListTriggerRunsByTeamsRow, error)
 	ListTriggerRunsByTrigger(ctx context.Context, arg repository.ListTriggerRunsByTriggerParams) ([]repository.ListTriggerRunsByTriggerRow, error)
-	ListTriggers(ctx context.Context) ([]repository.ChetterTrigger, error)
-	ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.ChetterTrigger, error)
-	ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.ChetterTrigger, error)
-	ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterUserPrompt, error)
+	ListTriggers(ctx context.Context) ([]repository.Trigger, error)
+	ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.Trigger, error)
+	ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.Trigger, error)
+	ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.UserPrompt, error)
 	ListUsers(ctx context.Context) ([]repository.ListUsersRow, error)
 	ListUsersByTeam(ctx context.Context, teamID string) ([]repository.ListUsersByTeamRow, error)
 	MarkAgentSessionResuming(ctx context.Context, arg repository.MarkAgentSessionResumingParams) (int64, error)
@@ -158,11 +158,11 @@ type Repository interface {
 	RequeueTaskAfterExecutionAttemptLost(ctx context.Context, arg repository.RequeueTaskAfterExecutionAttemptLostParams) (int64, error)
 	RequeueTaskForPrompt(ctx context.Context, arg repository.RequeueTaskForPromptParams) (int64, error)
 	RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, error)
-	SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.ChetterAgentSession, error)
-	SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error)
+	SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.AgentSession, error)
+	SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.AgentSession, error)
 	SearchAuditLog(ctx context.Context, arg repository.SearchAuditLogParams) ([]repository.SearchAuditLogRow, error)
 	SearchTaskArtifacts(ctx context.Context, arg repository.SearchTaskArtifactsParams) ([]repository.SearchTaskArtifactsRow, error)
-	SearchTasksByTeams(ctx context.Context, arg repository.SearchTasksByTeamsParams) ([]repository.ChetterTask, error)
+	SearchTasksByTeams(ctx context.Context, arg repository.SearchTasksByTeamsParams) ([]repository.Task, error)
 	SetTriggerLastRun(ctx context.Context, arg repository.SetTriggerLastRunParams) error
 	SetTriggerNextRun(ctx context.Context, arg repository.SetTriggerNextRunParams) error
 	UpdateAgentSessionFromRunnerEvent(ctx context.Context, arg repository.UpdateAgentSessionFromRunnerEventParams) (int64, error)
@@ -349,19 +349,19 @@ func (q *Queries) FailPendingUserPromptsForUnavailableRunner(ctx context.Context
 	return convert[int64](value), err
 }
 
-func (q *Queries) GetActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, error) {
+func (q *Queries) GetActiveModelCatalog(ctx context.Context) (repository.ModelCatalog, error) {
 	value, err := q.postgres.GetActiveModelCatalog(ctx)
-	return convert[repository.ChetterModelCatalog](value), err
+	return convert[repository.ModelCatalog](value), err
 }
 
-func (q *Queries) GetAgentSessionByID(ctx context.Context, id string) (repository.ChetterAgentSession, error) {
+func (q *Queries) GetAgentSessionByID(ctx context.Context, id string) (repository.AgentSession, error) {
 	value, err := q.postgres.GetAgentSessionByID(ctx, convert[string](id))
-	return convert[repository.ChetterAgentSession](value), err
+	return convert[repository.AgentSession](value), err
 }
 
-func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSession, error) {
+func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.AgentSession, error) {
 	value, err := q.postgres.GetAgentSessionByTaskID(ctx, convert[string](taskID))
-	return convert[repository.ChetterAgentSession](value), err
+	return convert[repository.AgentSession](value), err
 }
 
 func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error) {
@@ -394,19 +394,19 @@ func (q *Queries) GetDefinitionSourceByName(ctx context.Context, name string) (r
 	return convert[repository.DefinitionSource](value), err
 }
 
-func (q *Queries) GetEventCallbackByID(ctx context.Context, id string) (repository.ChetterEventCallback, error) {
+func (q *Queries) GetEventCallbackByID(ctx context.Context, id string) (repository.EventCallback, error) {
 	value, err := q.postgres.GetEventCallbackByID(ctx, convert[string](id))
-	return convert[repository.ChetterEventCallback](value), err
+	return convert[repository.EventCallback](value), err
 }
 
-func (q *Queries) GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.ChetterEventCallback, error) {
+func (q *Queries) GetEventCallbackByName(ctx context.Context, arg repository.GetEventCallbackByNameParams) (repository.EventCallback, error) {
 	value, err := q.postgres.GetEventCallbackByName(ctx, convert[repositorypostgres.GetEventCallbackByNameParams](arg))
-	return convert[repository.ChetterEventCallback](value), err
+	return convert[repository.EventCallback](value), err
 }
 
-func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (repository.ChetterExecutionAttempt, error) {
+func (q *Queries) GetExecutionAttemptByID(ctx context.Context, id string) (repository.ExecutionAttempt, error) {
 	value, err := q.postgres.GetExecutionAttemptByID(ctx, convert[string](id))
-	return convert[repository.ChetterExecutionAttempt](value), err
+	return convert[repository.ExecutionAttempt](value), err
 }
 
 func (q *Queries) GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error) {
@@ -424,24 +424,24 @@ func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (rep
 	return convert[repository.GetGitHubExecutionContextRow](value), err
 }
 
-func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.ChetterAgentSessionCheckpoint, error) {
+func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.AgentSessionCheckpoint, error) {
 	value, err := q.postgres.GetLatestAgentSessionCheckpoint(ctx, convert[string](agentSessionID))
-	return convert[repository.ChetterAgentSessionCheckpoint](value), err
+	return convert[repository.AgentSessionCheckpoint](value), err
 }
 
-func (q *Queries) GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.ChetterAgentSessionCheckpoint, error) {
+func (q *Queries) GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.AgentSessionCheckpoint, error) {
 	value, err := q.postgres.GetLatestAgentSessionCheckpointByTaskID(ctx, convert[string](taskID))
-	return convert[repository.ChetterAgentSessionCheckpoint](value), err
+	return convert[repository.AgentSessionCheckpoint](value), err
 }
 
-func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (repository.ChetterTaskEvent, error) {
+func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (repository.TaskEvent, error) {
 	value, err := q.postgres.GetLatestTaskEvent(ctx, convert[string](taskID))
-	return convert[repository.ChetterTaskEvent](value), err
+	return convert[repository.TaskEvent](value), err
 }
 
-func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (repository.ChetterModelCatalog, error) {
+func (q *Queries) GetModelCatalogByName(ctx context.Context, name string) (repository.ModelCatalog, error) {
 	value, err := q.postgres.GetModelCatalogByName(ctx, convert[string](name))
-	return convert[repository.ChetterModelCatalog](value), err
+	return convert[repository.ModelCatalog](value), err
 }
 
 func (q *Queries) GetNextAgentSessionSequence(ctx context.Context, taskID string) (int32, error) {
@@ -459,9 +459,9 @@ func (q *Queries) GetNextUserPromptSequence(ctx context.Context, agentSessionID 
 	return convert[int32](value), err
 }
 
-func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.ChetterAgentSession, error) {
+func (q *Queries) GetPausedSessionByArtifact(ctx context.Context, arg repository.GetPausedSessionByArtifactParams) (repository.AgentSession, error) {
 	value, err := q.postgres.GetPausedSessionByArtifact(ctx, convert[repositorypostgres.GetPausedSessionByArtifactParams](arg))
-	return convert[repository.ChetterAgentSession](value), err
+	return convert[repository.AgentSession](value), err
 }
 
 func (q *Queries) GetRunnerHeartbeatMetadata(ctx context.Context, id string) (json.RawMessage, error) {
@@ -474,9 +474,9 @@ func (q *Queries) GetRunnerIsolationEnabled(ctx context.Context, id string) (boo
 	return convert[bool](value), err
 }
 
-func (q *Queries) GetTaskByID(ctx context.Context, id string) (repository.ChetterTask, error) {
+func (q *Queries) GetTaskByID(ctx context.Context, id string) (repository.Task, error) {
 	value, err := q.postgres.GetTaskByID(ctx, convert[string](id))
-	return convert[repository.ChetterTask](value), err
+	return convert[repository.Task](value), err
 }
 
 func (q *Queries) GetTeamByID(ctx context.Context, id string) (repository.Team, error) {
@@ -494,14 +494,14 @@ func (q *Queries) GetTokenByHash(ctx context.Context, tokenHash string) (reposit
 	return convert[repository.GetTokenByHashRow](value), err
 }
 
-func (q *Queries) GetTriggerByID(ctx context.Context, id string) (repository.ChetterTrigger, error) {
+func (q *Queries) GetTriggerByID(ctx context.Context, id string) (repository.Trigger, error) {
 	value, err := q.postgres.GetTriggerByID(ctx, convert[string](id))
-	return convert[repository.ChetterTrigger](value), err
+	return convert[repository.Trigger](value), err
 }
 
-func (q *Queries) GetTriggerByName(ctx context.Context, name string) (repository.ChetterTrigger, error) {
+func (q *Queries) GetTriggerByName(ctx context.Context, name string) (repository.Trigger, error) {
 	value, err := q.postgres.GetTriggerByName(ctx, convert[string](name))
-	return convert[repository.ChetterTrigger](value), err
+	return convert[repository.Trigger](value), err
 }
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (repository.User, error) {
@@ -509,14 +509,14 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (repository.User, 
 	return convert[repository.User](value), err
 }
 
-func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (repository.ChetterUserPrompt, error) {
+func (q *Queries) GetUserPromptByID(ctx context.Context, id string) (repository.UserPrompt, error) {
 	value, err := q.postgres.GetUserPromptByID(ctx, convert[string](id))
-	return convert[repository.ChetterUserPrompt](value), err
+	return convert[repository.UserPrompt](value), err
 }
 
-func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.ChetterUserPrompt, error) {
+func (q *Queries) GetUserPromptByTaskID(ctx context.Context, taskID string) (repository.UserPrompt, error) {
 	value, err := q.postgres.GetUserPromptByTaskID(ctx, convert[string](taskID))
-	return convert[repository.ChetterUserPrompt](value), err
+	return convert[repository.UserPrompt](value), err
 }
 
 func (q *Queries) InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error {
@@ -580,14 +580,14 @@ func (q *Queries) IsRunnerAlive(ctx context.Context, arg repository.IsRunnerAliv
 	return convert[bool](value), err
 }
 
-func (q *Queries) ListAgentSessions(ctx context.Context, arg repository.ListAgentSessionsParams) ([]repository.ChetterAgentSession, error) {
+func (q *Queries) ListAgentSessions(ctx context.Context, arg repository.ListAgentSessionsParams) ([]repository.AgentSession, error) {
 	value, err := q.postgres.ListAgentSessions(ctx, convert[repositorypostgres.ListAgentSessionsParams](arg))
-	return convert[[]repository.ChetterAgentSession](value), err
+	return convert[[]repository.AgentSession](value), err
 }
 
-func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg repository.ListAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error) {
+func (q *Queries) ListAgentSessionsByTeams(ctx context.Context, arg repository.ListAgentSessionsByTeamsParams) ([]repository.AgentSession, error) {
 	value, err := q.postgres.ListAgentSessionsByTeams(ctx, convert[repositorypostgres.ListAgentSessionsByTeamsParams](arg))
-	return convert[[]repository.ChetterAgentSession](value), err
+	return convert[[]repository.AgentSession](value), err
 }
 
 func (q *Queries) ListDefinitionChangeProposals(ctx context.Context, arg repository.ListDefinitionChangeProposalsParams) ([]repository.DefinitionChangeProposal, error) {
@@ -610,54 +610,54 @@ func (q *Queries) ListDefinitions(ctx context.Context, arg repository.ListDefini
 	return convert[[]repository.Definition](value), err
 }
 
-func (q *Queries) ListEnabledEventCallbacksForEvent(ctx context.Context, arg repository.ListEnabledEventCallbacksForEventParams) ([]repository.ChetterEventCallback, error) {
+func (q *Queries) ListEnabledEventCallbacksForEvent(ctx context.Context, arg repository.ListEnabledEventCallbacksForEventParams) ([]repository.EventCallback, error) {
 	value, err := q.postgres.ListEnabledEventCallbacksForEvent(ctx, convert[repositorypostgres.ListEnabledEventCallbacksForEventParams](arg))
-	return convert[[]repository.ChetterEventCallback](value), err
+	return convert[[]repository.EventCallback](value), err
 }
 
-func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledIssueTriggersByRepo(ctx, convert[json.RawMessage](repo))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledPRReviewTriggersByRepo(ctx, convert[json.RawMessage](repo))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledTriggers(ctx)
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledTriggersByTeam(ctx, convert[sql.NullString](teamID))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledTriggersByTeams(ctx, convert[[]string](teamIds))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListEnabledTriggersByType(ctx, convert[string](triggerType))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListEventCallbacks(ctx context.Context, arg repository.ListEventCallbacksParams) ([]repository.ChetterEventCallback, error) {
+func (q *Queries) ListEventCallbacks(ctx context.Context, arg repository.ListEventCallbacksParams) ([]repository.EventCallback, error) {
 	value, err := q.postgres.ListEventCallbacks(ctx, convert[repositorypostgres.ListEventCallbacksParams](arg))
-	return convert[[]repository.ChetterEventCallback](value), err
+	return convert[[]repository.EventCallback](value), err
 }
 
-func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.ChetterEventCallback, error) {
+func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg repository.ListEventCallbacksByTeamsParams) ([]repository.EventCallback, error) {
 	value, err := q.postgres.ListEventCallbacksByTeams(ctx, convert[repositorypostgres.ListEventCallbacksByTeamsParams](arg))
-	return convert[[]repository.ChetterEventCallback](value), err
+	return convert[[]repository.EventCallback](value), err
 }
 
-func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ChetterExecutionAttempt, error) {
+func (q *Queries) ListExecutionAttemptsByPrompt(ctx context.Context, userPromptID string) ([]repository.ExecutionAttempt, error) {
 	value, err := q.postgres.ListExecutionAttemptsByPrompt(ctx, convert[string](userPromptID))
-	return convert[[]repository.ChetterExecutionAttempt](value), err
+	return convert[[]repository.ExecutionAttempt](value), err
 }
 
 func (q *Queries) ListExecutionAttemptsForHeartbeat(ctx context.Context, arg repository.ListExecutionAttemptsForHeartbeatParams) ([]repository.ListExecutionAttemptsForHeartbeatRow, error) {
@@ -670,9 +670,9 @@ func (q *Queries) ListLiveRunners(ctx context.Context, lastSeenAt time.Time) ([]
 	return convert[[]repository.ListLiveRunnersRow](value), err
 }
 
-func (q *Queries) ListModelCatalogs(ctx context.Context) ([]repository.ChetterModelCatalog, error) {
+func (q *Queries) ListModelCatalogs(ctx context.Context) ([]repository.ModelCatalog, error) {
 	value, err := q.postgres.ListModelCatalogs(ctx)
-	return convert[[]repository.ChetterModelCatalog](value), err
+	return convert[[]repository.ModelCatalog](value), err
 }
 
 func (q *Queries) ListReclaimableExecutionAttemptsForUpdate(ctx context.Context, leaseExpiresAt sql.NullTime) ([]repository.ListReclaimableExecutionAttemptsForUpdateRow, error) {
@@ -680,34 +680,34 @@ func (q *Queries) ListReclaimableExecutionAttemptsForUpdate(ctx context.Context,
 	return convert[[]repository.ListReclaimableExecutionAttemptsForUpdateRow](value), err
 }
 
-func (q *Queries) ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.ChetterTaskEvent, error) {
+func (q *Queries) ListTaskEvents(ctx context.Context, arg repository.ListTaskEventsParams) ([]repository.TaskEvent, error) {
 	value, err := q.postgres.ListTaskEvents(ctx, convert[repositorypostgres.ListTaskEventsParams](arg))
-	return convert[[]repository.ChetterTaskEvent](value), err
+	return convert[[]repository.TaskEvent](value), err
 }
 
-func (q *Queries) ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.ChetterTaskEvent, error) {
+func (q *Queries) ListTaskEventsSince(ctx context.Context, arg repository.ListTaskEventsSinceParams) ([]repository.TaskEvent, error) {
 	value, err := q.postgres.ListTaskEventsSince(ctx, convert[repositorypostgres.ListTaskEventsSinceParams](arg))
-	return convert[[]repository.ChetterTaskEvent](value), err
+	return convert[[]repository.TaskEvent](value), err
 }
 
-func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.ChetterTask, error) {
+func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.NullString) ([]repository.Task, error) {
 	value, err := q.postgres.ListTasksBySelfTestRun(ctx, convert[sql.NullString](selfTestRunID))
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
-func (q *Queries) ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.ChetterTask, error) {
+func (q *Queries) ListTasksByStatus(ctx context.Context, arg repository.ListTasksByStatusParams) ([]repository.Task, error) {
 	value, err := q.postgres.ListTasksByStatus(ctx, convert[repositorypostgres.ListTasksByStatusParams](arg))
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
-func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg repository.ListTasksByStatusAndTeamParams) ([]repository.ChetterTask, error) {
+func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg repository.ListTasksByStatusAndTeamParams) ([]repository.Task, error) {
 	value, err := q.postgres.ListTasksByStatusAndTeam(ctx, convert[repositorypostgres.ListTasksByStatusAndTeamParams](arg))
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
-func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg repository.ListTasksByStatusAndTeamsParams) ([]repository.ChetterTask, error) {
+func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg repository.ListTasksByStatusAndTeamsParams) ([]repository.Task, error) {
 	value, err := q.postgres.ListTasksByStatusAndTeams(ctx, convert[repositorypostgres.ListTasksByStatusAndTeamsParams](arg))
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
 func (q *Queries) ListTeams(ctx context.Context) ([]repository.Team, error) {
@@ -735,24 +735,24 @@ func (q *Queries) ListTriggerRunsByTrigger(ctx context.Context, arg repository.L
 	return convert[[]repository.ListTriggerRunsByTriggerRow](value), err
 }
 
-func (q *Queries) ListTriggers(ctx context.Context) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListTriggers(ctx context.Context) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListTriggers(ctx)
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListTriggersByTeam(ctx, convert[sql.NullString](teamID))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.ChetterTrigger, error) {
+func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]repository.Trigger, error) {
 	value, err := q.postgres.ListTriggersByTeams(ctx, convert[[]string](teamIds))
-	return convert[[]repository.ChetterTrigger](value), err
+	return convert[[]repository.Trigger](value), err
 }
 
-func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.ChetterUserPrompt, error) {
+func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID string) ([]repository.UserPrompt, error) {
 	value, err := q.postgres.ListUserPromptsBySession(ctx, convert[string](agentSessionID))
-	return convert[[]repository.ChetterUserPrompt](value), err
+	return convert[[]repository.UserPrompt](value), err
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]repository.ListUsersRow, error) {
@@ -849,14 +849,14 @@ func (q *Queries) RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, 
 	return convert[int64](value), err
 }
 
-func (q *Queries) SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.ChetterAgentSession, error) {
+func (q *Queries) SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.AgentSession, error) {
 	value, err := q.postgres.SearchAgentSessions(ctx, convert[repositorypostgres.SearchAgentSessionsParams](arg))
-	return convert[[]repository.ChetterAgentSession](value), err
+	return convert[[]repository.AgentSession](value), err
 }
 
-func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.ChetterAgentSession, error) {
+func (q *Queries) SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.AgentSession, error) {
 	value, err := q.postgres.SearchAgentSessionsByTeams(ctx, convert[repositorypostgres.SearchAgentSessionsByTeamsParams](arg))
-	return convert[[]repository.ChetterAgentSession](value), err
+	return convert[[]repository.AgentSession](value), err
 }
 
 func (q *Queries) SearchAuditLog(ctx context.Context, arg repository.SearchAuditLogParams) ([]repository.SearchAuditLogRow, error) {
@@ -869,9 +869,9 @@ func (q *Queries) SearchTaskArtifacts(ctx context.Context, arg repository.Search
 	return convert[[]repository.SearchTaskArtifactsRow](value), err
 }
 
-func (q *Queries) SearchTasksByTeams(ctx context.Context, arg repository.SearchTasksByTeamsParams) ([]repository.ChetterTask, error) {
+func (q *Queries) SearchTasksByTeams(ctx context.Context, arg repository.SearchTasksByTeamsParams) ([]repository.Task, error) {
 	value, err := q.postgres.SearchTasksByTeams(ctx, convert[repositorypostgres.SearchTasksByTeamsParams](arg))
-	return convert[[]repository.ChetterTask](value), err
+	return convert[[]repository.Task](value), err
 }
 
 func (q *Queries) SetTriggerLastRun(ctx context.Context, arg repository.SetTriggerLastRunParams) error {
