@@ -26,30 +26,30 @@ PRE_IMPORT_SQL=${PRE_IMPORT_SQL:-}
 POST_IMPORT_SQL=${POST_IMPORT_SQL:-}
 
 TABLES=(
-  chetter_tasks
-  chetter_agent_sessions
-  chetter_user_prompts
-  chetter_execution_attempts
-  chetter_agent_session_checkpoints
-  chetter_task_events
-  chetter_runners
-  chetter_triggers
-  chetter_trigger_runs
-  chetter_event_callbacks
+  tasks
+  agent_sessions
+  user_prompts
+  execution_attempts
+  agent_session_checkpoints
+  task_events
+  runners
+  triggers
+  trigger_runs
+  event_callbacks
   teams
   users
   api_tokens
   user_team_memberships
   api_token_teams
   git_identities
-  chetter_model_catalogs
+  model_catalogs
   definition_sources
   definitions
   definition_sync_runs
   definition_change_proposals
-  chetter_audit_log
-  chetter_task_artifacts
-  chetter_webhook_deliveries
+  audit_log
+  task_artifacts
+  webhook_deliveries
 )
 
 usage() {

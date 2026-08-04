@@ -1,6 +1,7 @@
 # Chetter Database Schema
 
-Current schema of the `chetter` database, as of migration 051 (2026-08-04).
+Current schema of the `chetter` database, as of migration 052 (2026-08-05,
+which dropped the historical `chetter_` table prefix).
 The schema is dialect-agnostic (TiDB / MySQL / PostgreSQL) and uses **no
 foreign-key constraints** — relationships below are logical, enforced by the
 application. All timestamps are UTC (`datetime(6)`). IDs are prefixed random
@@ -10,7 +11,7 @@ strings (`task_`, `sess_`, `prompt_`, `exec_`, `evt_`, ...).
 
 ```mermaid
 erDiagram
-    chetter_tasks {
+    tasks {
         string id PK
         string team_id FK
         string status
@@ -37,7 +38,7 @@ erDiagram
         datetime updated_at
         datetime ended_at
     }
-    chetter_agent_sessions {
+    agent_sessions {
         string id PK
         string task_id FK
         int sequence
@@ -76,7 +77,7 @@ erDiagram
         datetime paused_at
         datetime expires_at
     }
-    chetter_user_prompts {
+    user_prompts {
         string id PK
         string agent_session_id FK
         string task_id FK
@@ -92,7 +93,7 @@ erDiagram
         datetime started_at
         datetime ended_at
     }
-    chetter_execution_attempts {
+    execution_attempts {
         string id PK
         string user_prompt_id FK
         int sequence
@@ -123,7 +124,7 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
-    chetter_task_events {
+    task_events {
         string id PK
         string task_id FK
         string agent_session_id FK
@@ -135,7 +136,7 @@ erDiagram
         json payload
         datetime created_at
     }
-    chetter_agent_session_checkpoints {
+    agent_session_checkpoints {
         string id PK
         string agent_session_id FK
         string user_prompt_id FK
@@ -152,7 +153,7 @@ erDiagram
         datetime updated_at
         datetime expires_at
     }
-    chetter_task_artifacts {
+    task_artifacts {
         string id PK
         string task_id FK
         string agent_session_id FK
@@ -169,13 +170,13 @@ erDiagram
         datetime created_at
         datetime discovered_at
     }
-    chetter_agent_sessions }o--|| chetter_tasks : "task_id"
-    chetter_user_prompts }o--|| chetter_agent_sessions : "agent_session_id"
-    chetter_user_prompts }o--|| chetter_tasks : "task_id"
-    chetter_execution_attempts }o--|| chetter_user_prompts : "user_prompt_id"
-    chetter_task_events }o--|| chetter_tasks : "task_id"
-    chetter_agent_session_checkpoints }o--|| chetter_agent_sessions : "agent_session_id"
-    chetter_task_artifacts }o--|| chetter_tasks : "task_id"
+    agent_sessions }o--|| tasks : "task_id"
+    user_prompts }o--|| agent_sessions : "agent_session_id"
+    user_prompts }o--|| tasks : "task_id"
+    execution_attempts }o--|| user_prompts : "user_prompt_id"
+    task_events }o--|| tasks : "task_id"
+    agent_session_checkpoints }o--|| agent_sessions : "agent_session_id"
+    task_artifacts }o--|| tasks : "task_id"
 ```
 
 A **task** is a unit of work (prompt + repo context). Each task gets one or
@@ -189,7 +190,7 @@ only event log; **checkpoints** persist resumable gVisor checkpoints;
 
 ```mermaid
 erDiagram
-    chetter_runners {
+    runners {
         string id PK
         string status
         string image_ref
@@ -208,19 +209,19 @@ erDiagram
         datetime updated_at
         json metadata
     }
-    chetter_execution_attempts {
+    execution_attempts {
         string id PK
         string user_prompt_id FK
         string runner_id FK
         string status
     }
-    chetter_agent_session_checkpoints {
+    agent_session_checkpoints {
         string id PK
         string runner_id FK
         string agent_session_id FK
     }
-    chetter_execution_attempts }o--o| chetter_runners : "runner_id"
-    chetter_agent_session_checkpoints }o--|| chetter_runners : "runner_id"
+    execution_attempts }o--o| runners : "runner_id"
+    agent_session_checkpoints }o--|| runners : "runner_id"
 ```
 
 Runners register and heartbeat via ConnectRPC (upserting this row);
@@ -232,7 +233,7 @@ isolation-requiring tasks at claim time.
 
 ```mermaid
 erDiagram
-    chetter_triggers {
+    triggers {
         string id PK
         string team_id FK
         string name
@@ -257,7 +258,7 @@ erDiagram
         datetime last_run_at
         datetime next_run_at
     }
-    chetter_trigger_runs {
+    trigger_runs {
         string id PK
         string trigger_id FK
         string team_id FK
@@ -266,7 +267,7 @@ erDiagram
         datetime triggered_at
         datetime created_at
     }
-    chetter_event_callbacks {
+    event_callbacks {
         string id PK
         string team_id FK
         string name
@@ -277,7 +278,7 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
-    chetter_webhook_deliveries {
+    webhook_deliveries {
         string id PK
         string delivery_id
         string event_type
@@ -292,8 +293,8 @@ erDiagram
         datetime next_attempt_at
         datetime processed_at
     }
-    chetter_trigger_runs }o--|| chetter_triggers : "trigger_id"
-    chetter_trigger_runs }o--|| chetter_tasks : "task_id"
+    trigger_runs }o--|| triggers : "trigger_id"
+    trigger_runs }o--|| tasks : "task_id"
 ```
 
 **Triggers** fire tasks on cron, PR review, or issue events; each firing is
@@ -428,7 +429,7 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
-    chetter_model_catalogs {
+    model_catalogs {
         string id PK
         string name
         bool active
@@ -452,7 +453,7 @@ MCP-endpoint **definitions** into the database; **sync runs** log each pull;
 
 ```mermaid
 erDiagram
-    chetter_audit_log {
+    audit_log {
         string id PK
         string event_type
         datetime created_at
