@@ -1,19 +1,19 @@
 -- name: InsertEventCallback :exec
-INSERT INTO chetter_event_callbacks
+INSERT INTO event_callbacks
     (id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetEventCallbackByID :one
-SELECT * FROM chetter_event_callbacks
+SELECT * FROM event_callbacks
 WHERE id = ?;
 
 -- name: GetEventCallbackByName :one
-SELECT * FROM chetter_event_callbacks
+SELECT * FROM event_callbacks
 WHERE name = ?
   AND (team_id <=> sqlc.arg(team_id));
 
 -- name: ListEventCallbacks :many
-SELECT * FROM chetter_event_callbacks
+SELECT * FROM event_callbacks
 WHERE (sqlc.arg(enabled_only) = false OR enabled = true)
   AND (COALESCE(sqlc.arg(event_type_filter), '') = '' OR event_type = sqlc.arg(event_type_filter))
   AND (
@@ -24,7 +24,7 @@ ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: ListEventCallbacksByTeams :many
-SELECT * FROM chetter_event_callbacks
+SELECT * FROM event_callbacks
 WHERE (sqlc.arg(enabled_only) = false OR enabled = true)
   AND (COALESCE(sqlc.arg(event_type_filter), '') = '' OR event_type = sqlc.arg(event_type_filter))
   AND team_id IN (sqlc.slice(team_ids))
@@ -32,7 +32,7 @@ ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 
 -- name: ListEnabledEventCallbacksForEvent :many
-SELECT * FROM chetter_event_callbacks
+SELECT * FROM event_callbacks
 WHERE enabled = true
   AND (team_id <=> sqlc.arg(team_id) OR team_id IS NULL)
   AND (
@@ -42,7 +42,7 @@ WHERE enabled = true
 ORDER BY created_at ASC;
 
 -- name: UpdateEventCallback :execrows
-UPDATE chetter_event_callbacks
+UPDATE event_callbacks
 SET event_type = ?,
     action_type = ?,
     action_config = ?,
@@ -52,6 +52,6 @@ WHERE name = ?
   AND (team_id <=> sqlc.arg(team_id));
 
 -- name: DeleteEventCallback :execrows
-DELETE FROM chetter_event_callbacks
+DELETE FROM event_callbacks
 WHERE name = ?
   AND (team_id <=> sqlc.arg(team_id));

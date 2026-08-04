@@ -156,7 +156,7 @@ func (c *collector) emitZeroWebhookMetrics(ch chan<- prometheus.Metric) {
 
 // collectTasks emits chetter_tasks gauges for each task status.
 func (c *collector) collectTasks(ctx context.Context, ch chan<- prometheus.Metric) error {
-	rows, err := c.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM chetter_tasks GROUP BY status`)
+	rows, err := c.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM tasks GROUP BY status`)
 	if err != nil {
 		return fmt.Errorf("query task status counts: %w", err)
 	}
@@ -200,7 +200,7 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 
 	query := fmt.Sprintf(`
 		SELECT %s AS last_seen_sec, max_concurrent, running_tasks, available_slots, metadata
-		FROM chetter_runners
+		FROM runners
 	`, ageExpr)
 	rows, err := c.db.QueryContext(ctx, query)
 	if err != nil {
@@ -256,7 +256,7 @@ func mcpRelayRejectedRequests(metadata []byte) int64 {
 // collectWebhookDeliveries emits chetter_webhook_deliveries gauges grouped
 // by status (received, processing, completed, failed, dead_letter).
 func (c *collector) collectWebhookDeliveries(ctx context.Context, ch chan<- prometheus.Metric) error {
-	rows, err := c.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM chetter_webhook_deliveries GROUP BY status`)
+	rows, err := c.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM webhook_deliveries GROUP BY status`)
 	if err != nil {
 		// The webhook_deliveries table may not exist if webhooks have never
 		// been configured. Treat a missing table as zero deliveries of each

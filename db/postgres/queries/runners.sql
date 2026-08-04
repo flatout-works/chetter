@@ -1,5 +1,5 @@
 -- name: UpsertRunnerHeartbeat :exec
-INSERT INTO chetter_runners
+INSERT INTO runners
     (id, status, image_ref, image_digest, version,
      max_concurrent, running_tasks, available_slots, isolation_enabled, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
@@ -16,23 +16,23 @@ ON CONFLICT (id) DO UPDATE SET
     total_started = EXCLUDED.total_started,
     total_completed = EXCLUDED.total_completed,
     total_errors = EXCLUDED.total_errors,
-    started_at = COALESCE(EXCLUDED.started_at, chetter_runners.started_at),
+    started_at = COALESCE(EXCLUDED.started_at, runners.started_at),
     last_seen_at = EXCLUDED.last_seen_at,
     updated_at = EXCLUDED.updated_at,
     metadata = EXCLUDED.metadata;
 
 -- name: GetRunnerHeartbeatMetadata :one
 SELECT metadata
-FROM chetter_runners
+FROM runners
 WHERE id = $1;
 
 -- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
-FROM chetter_runners
+FROM runners
 WHERE last_seen_at >= $1
 ORDER BY last_seen_at DESC;
 
 -- name: GetRunnerIsolationEnabled :one
 SELECT isolation_enabled
-FROM chetter_runners
+FROM runners
 WHERE id = $1;

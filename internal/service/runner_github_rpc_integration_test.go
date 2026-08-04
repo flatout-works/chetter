@@ -48,8 +48,8 @@ func insertGitHubRPCTask(t *testing.T, q data.Repository, tdb *testdb.TestDB, ta
 		installation = installationID
 	}
 	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
-		"UPDATE chetter_tasks SET github_repo = ?, github_installation_id = ? WHERE id = ?",
-		"UPDATE chetter_tasks SET github_repo = $1, github_installation_id = $2 WHERE id = $3"), repo, installation, taskID); err != nil {
+		"UPDATE tasks SET github_repo = ?, github_installation_id = ? WHERE id = ?",
+		"UPDATE tasks SET github_repo = $1, github_installation_id = $2 WHERE id = $3"), repo, installation, taskID); err != nil {
 		t.Fatalf("set task GitHub metadata: %v", err)
 	}
 }
@@ -129,14 +129,14 @@ func TestGitHubCreateIssueAuthorizesAndPinsInstallation(t *testing.T) {
 	}
 	var artifactCount, auditCount int
 	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
-		"SELECT COUNT(*) FROM chetter_task_artifacts WHERE task_id = ? AND execution_attempt_id = ? AND repo = ?",
-		"SELECT COUNT(*) FROM chetter_task_artifacts WHERE task_id = $1 AND execution_attempt_id = $2 AND repo = $3"),
+		"SELECT COUNT(*) FROM task_artifacts WHERE task_id = ? AND execution_attempt_id = ? AND repo = ?",
+		"SELECT COUNT(*) FROM task_artifacts WHERE task_id = $1 AND execution_attempt_id = $2 AND repo = $3"),
 		"task_github_success", "exec_task_github_success", "Acme/Repo").Scan(&artifactCount); err != nil {
 		t.Fatalf("count recorded artifact: %v", err)
 	}
 	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
-		"SELECT COUNT(*) FROM chetter_audit_log WHERE source_id = ? AND detail LIKE ?",
-		"SELECT COUNT(*) FROM chetter_audit_log WHERE source_id = $1 AND detail LIKE $2"),
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = ? AND detail LIKE ?",
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = $1 AND detail LIKE $2"),
 		"task_github_success", "%installation 111%").Scan(&auditCount); err != nil {
 		t.Fatalf("count audit event: %v", err)
 	}
@@ -346,8 +346,8 @@ func TestGetGitHubCredentialRechecksFenceAfterExchange(t *testing.T) {
 	}()
 	<-started
 	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
-		"UPDATE chetter_execution_attempts SET lease_expires_at = ? WHERE id = ?",
-		"UPDATE chetter_execution_attempts SET lease_expires_at = $1 WHERE id = $2"), time.Now().Add(-time.Minute), "exec_task_credential_race"); err != nil {
+		"UPDATE execution_attempts SET lease_expires_at = ? WHERE id = ?",
+		"UPDATE execution_attempts SET lease_expires_at = $1 WHERE id = $2"), time.Now().Add(-time.Minute), "exec_task_credential_race"); err != nil {
 		t.Fatalf("expire lease: %v", err)
 	}
 	close(release)

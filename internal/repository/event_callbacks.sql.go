@@ -14,7 +14,7 @@ import (
 )
 
 const deleteEventCallback = `-- name: DeleteEventCallback :execrows
-DELETE FROM chetter_event_callbacks
+DELETE FROM event_callbacks
 WHERE name = ?
   AND (team_id <=> ?)
 `
@@ -33,13 +33,13 @@ func (q *Queries) DeleteEventCallback(ctx context.Context, arg DeleteEventCallba
 }
 
 const getEventCallbackByID = `-- name: GetEventCallbackByID :one
-SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM event_callbacks
 WHERE id = ?
 `
 
-func (q *Queries) GetEventCallbackByID(ctx context.Context, id string) (ChetterEventCallback, error) {
+func (q *Queries) GetEventCallbackByID(ctx context.Context, id string) (EventCallback, error) {
 	row := q.db.QueryRowContext(ctx, getEventCallbackByID, id)
-	var i ChetterEventCallback
+	var i EventCallback
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
@@ -55,7 +55,7 @@ func (q *Queries) GetEventCallbackByID(ctx context.Context, id string) (ChetterE
 }
 
 const getEventCallbackByName = `-- name: GetEventCallbackByName :one
-SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM event_callbacks
 WHERE name = ?
   AND (team_id <=> ?)
 `
@@ -65,9 +65,9 @@ type GetEventCallbackByNameParams struct {
 	TeamID sql.NullString `json:"team_id"`
 }
 
-func (q *Queries) GetEventCallbackByName(ctx context.Context, arg GetEventCallbackByNameParams) (ChetterEventCallback, error) {
+func (q *Queries) GetEventCallbackByName(ctx context.Context, arg GetEventCallbackByNameParams) (EventCallback, error) {
 	row := q.db.QueryRowContext(ctx, getEventCallbackByName, arg.Name, arg.TeamID)
-	var i ChetterEventCallback
+	var i EventCallback
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
@@ -83,7 +83,7 @@ func (q *Queries) GetEventCallbackByName(ctx context.Context, arg GetEventCallba
 }
 
 const insertEventCallback = `-- name: InsertEventCallback :exec
-INSERT INTO chetter_event_callbacks
+INSERT INTO event_callbacks
     (id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
@@ -116,7 +116,7 @@ func (q *Queries) InsertEventCallback(ctx context.Context, arg InsertEventCallba
 }
 
 const listEnabledEventCallbacksForEvent = `-- name: ListEnabledEventCallbacksForEvent :many
-SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM event_callbacks
 WHERE enabled = true
   AND (team_id <=> ? OR team_id IS NULL)
   AND (
@@ -131,15 +131,15 @@ type ListEnabledEventCallbacksForEventParams struct {
 	EventType string         `json:"event_type"`
 }
 
-func (q *Queries) ListEnabledEventCallbacksForEvent(ctx context.Context, arg ListEnabledEventCallbacksForEventParams) ([]ChetterEventCallback, error) {
+func (q *Queries) ListEnabledEventCallbacksForEvent(ctx context.Context, arg ListEnabledEventCallbacksForEventParams) ([]EventCallback, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledEventCallbacksForEvent, arg.TeamID, arg.EventType, arg.EventType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterEventCallback{}
+	items := []EventCallback{}
 	for rows.Next() {
-		var i ChetterEventCallback
+		var i EventCallback
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
@@ -165,7 +165,7 @@ func (q *Queries) ListEnabledEventCallbacksForEvent(ctx context.Context, arg Lis
 }
 
 const listEventCallbacks = `-- name: ListEventCallbacks :many
-SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM event_callbacks
 WHERE (? = false OR enabled = true)
   AND (COALESCE(?, '') = '' OR event_type = ?)
   AND (
@@ -185,7 +185,7 @@ type ListEventCallbacksParams struct {
 	Offset          int32          `json:"offset"`
 }
 
-func (q *Queries) ListEventCallbacks(ctx context.Context, arg ListEventCallbacksParams) ([]ChetterEventCallback, error) {
+func (q *Queries) ListEventCallbacks(ctx context.Context, arg ListEventCallbacksParams) ([]EventCallback, error) {
 	rows, err := q.db.QueryContext(ctx, listEventCallbacks,
 		arg.EnabledOnly,
 		arg.EventTypeFilter,
@@ -199,9 +199,9 @@ func (q *Queries) ListEventCallbacks(ctx context.Context, arg ListEventCallbacks
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterEventCallback{}
+	items := []EventCallback{}
 	for rows.Next() {
-		var i ChetterEventCallback
+		var i EventCallback
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
@@ -227,7 +227,7 @@ func (q *Queries) ListEventCallbacks(ctx context.Context, arg ListEventCallbacks
 }
 
 const listEventCallbacksByTeams = `-- name: ListEventCallbacksByTeams :many
-SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM chetter_event_callbacks
+SELECT id, team_id, name, event_type, action_type, action_config, enabled, created_at, updated_at FROM event_callbacks
 WHERE (? = false OR enabled = true)
   AND (COALESCE(?, '') = '' OR event_type = ?)
   AND team_id IN (/*SLICE:team_ids*/?)
@@ -243,7 +243,7 @@ type ListEventCallbacksByTeamsParams struct {
 	Offset          int32            `json:"offset"`
 }
 
-func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg ListEventCallbacksByTeamsParams) ([]ChetterEventCallback, error) {
+func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg ListEventCallbacksByTeamsParams) ([]EventCallback, error) {
 	query := listEventCallbacksByTeams
 	var queryParams []interface{}
 	queryParams = append(queryParams, arg.EnabledOnly)
@@ -264,9 +264,9 @@ func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg ListEventCa
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterEventCallback{}
+	items := []EventCallback{}
 	for rows.Next() {
-		var i ChetterEventCallback
+		var i EventCallback
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
@@ -292,7 +292,7 @@ func (q *Queries) ListEventCallbacksByTeams(ctx context.Context, arg ListEventCa
 }
 
 const updateEventCallback = `-- name: UpdateEventCallback :execrows
-UPDATE chetter_event_callbacks
+UPDATE event_callbacks
 SET event_type = ?,
     action_type = ?,
     action_config = ?,

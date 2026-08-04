@@ -25,35 +25,35 @@ type GitHubArtifactOutput struct {
 
 func (s *Service) githubManager() *webhook.Manager { return s.github }
 
-func (s *Service) githubToolTaskContext(ctx context.Context, taskID, executionAttemptID string) (repository.ChetterTask, repository.ChetterUserPrompt, error) {
+func (s *Service) githubToolTaskContext(ctx context.Context, taskID, executionAttemptID string) (repository.Task, repository.UserPrompt, error) {
 	if s.githubManager() == nil {
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("GitHub App client is not configured")
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("GitHub App client is not configured")
 	}
 	ownership, err := s.repo.GetExecutionAttemptContext(ctx, executionAttemptID)
 	if err != nil {
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("get execution attempt context: %w", err)
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("get execution attempt context: %w", err)
 	}
 	if ownership.TaskID != taskID {
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("execution attempt %q does not belong to task %q", executionAttemptID, taskID)
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("execution attempt %q does not belong to task %q", executionAttemptID, taskID)
 	}
 	task, err := s.repo.GetTaskByID(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("task %q not found", taskID)
+			return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("task %q not found", taskID)
 		}
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("get task: %w", err)
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("get task: %w", err)
 	}
 	if scope, ok := auth.GetScope(ctx); ok && !scope.Admin && (!task.TeamID.Valid || !scope.HasTeam(task.TeamID.String)) {
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("task %q not found", taskID)
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("task %q not found", taskID)
 	}
 	userPrompt, err := s.repo.GetUserPromptByID(ctx, ownership.UserPromptID)
 	if err != nil {
-		return repository.ChetterTask{}, repository.ChetterUserPrompt{}, fmt.Errorf("get user prompt: %w", err)
+		return repository.Task{}, repository.UserPrompt{}, fmt.Errorf("get user prompt: %w", err)
 	}
 	return task, userPrompt, nil
 }
 
-func (s *Service) githubToolSignature(ctx context.Context, task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, executionAttemptID string) string {
+func (s *Service) githubToolSignature(ctx context.Context, task repository.Task, userPrompt repository.UserPrompt, executionAttemptID string) string {
 	return s.githubToolSignatureForContext(ctx, task.ID, userPrompt.AgentSessionID, userPrompt.ID, executionAttemptID)
 }
 
@@ -108,7 +108,7 @@ func nonEmpty(value, fallback string) string {
 	return value
 }
 
-func (s *Service) recordGitHubToolArtifact(ctx context.Context, task repository.ChetterTask, userPrompt repository.ChetterUserPrompt, executionAttemptID, artifactType, repo string, number int, url, ref, body string, detail map[string]any) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
+func (s *Service) recordGitHubToolArtifact(ctx context.Context, task repository.Task, userPrompt repository.UserPrompt, executionAttemptID, artifactType, repo string, number int, url, ref, body string, detail map[string]any) (*mcp.CallToolResult, GitHubArtifactOutput, error) {
 	if err := s.RecordArtifact(ctx, RecordArtifactParams{
 		TaskID:             task.ID,
 		AgentSessionID:     userPrompt.AgentSessionID,

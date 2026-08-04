@@ -748,30 +748,30 @@ func (s *Service) activeModelCatalogRecord(ctx context.Context) (ModelCatalogRec
 	}, yamlText, nil
 }
 
-func (s *Service) loadActiveModelCatalog(ctx context.Context) (repository.ChetterModelCatalog, *modelcatalog.Catalog, string, error) {
+func (s *Service) loadActiveModelCatalog(ctx context.Context) (repository.ModelCatalog, *modelcatalog.Catalog, string, error) {
 	row, err := s.repo.GetActiveModelCatalog(ctx)
 	if err == nil {
 		catalog, parseErr := modelcatalog.ParseYAML([]byte(row.Yaml))
 		if parseErr != nil {
-			return repository.ChetterModelCatalog{}, nil, "", fmt.Errorf("parse active model catalog: %w", parseErr)
+			return repository.ModelCatalog{}, nil, "", fmt.Errorf("parse active model catalog: %w", parseErr)
 		}
 		return row, catalog, row.Yaml, nil
 	}
 	if err != sql.ErrNoRows {
-		return repository.ChetterModelCatalog{}, nil, "", fmt.Errorf("load active model catalog: %w", err)
+		return repository.ModelCatalog{}, nil, "", fmt.Errorf("load active model catalog: %w", err)
 	}
 	return builtInModelCatalogRow()
 }
 
-func builtInModelCatalogRow() (repository.ChetterModelCatalog, *modelcatalog.Catalog, string, error) {
+func builtInModelCatalogRow() (repository.ModelCatalog, *modelcatalog.Catalog, string, error) {
 	catalog := modelcatalog.Default()
 	yamlText, err := modelcatalog.MarshalYAML(catalog)
 	if err != nil {
-		return repository.ChetterModelCatalog{}, nil, "", err
+		return repository.ModelCatalog{}, nil, "", err
 	}
 	checksumBytes := sha256.Sum256([]byte(yamlText))
 	now := time.Now().UTC()
-	return repository.ChetterModelCatalog{
+	return repository.ModelCatalog{
 		ID:        "built-in",
 		Name:      "built-in",
 		Active:    true,
@@ -875,8 +875,8 @@ func triggerID(sourceID, name string) string {
 
 // syncedTriggersBefore returns the triggers already owned by the default
 // definition source as they were before this sync, keyed by name and by ID.
-func syncedTriggersBefore(existing []repository.ChetterTrigger) (map[string]repository.ChetterTrigger, map[string]struct{}) {
-	byName := make(map[string]repository.ChetterTrigger)
+func syncedTriggersBefore(existing []repository.Trigger) (map[string]repository.Trigger, map[string]struct{}) {
+	byName := make(map[string]repository.Trigger)
 	ids := make(map[string]struct{})
 	for _, t := range existing {
 		if !t.SourceID.Valid || t.SourceID.String != defaultDefinitionSourceID {
@@ -892,7 +892,7 @@ func syncedTriggersBefore(existing []repository.ChetterTrigger) (map[string]repo
 // after this sync, plus the subset that should hold an active cron registration
 // (cron triggers that are enabled). Existing triggers keep their stored ID
 // (preserved by the name-keyed upsert); new triggers use the deterministic ID.
-func desiredSyncedTriggerIDs(entries []triggerSyncEntry, managedBeforeByName map[string]repository.ChetterTrigger) (map[string]struct{}, map[string]struct{}) {
+func desiredSyncedTriggerIDs(entries []triggerSyncEntry, managedBeforeByName map[string]repository.Trigger) (map[string]struct{}, map[string]struct{}) {
 	desired := make(map[string]struct{}, len(entries))
 	cronEnabled := make(map[string]struct{}, len(entries))
 	for _, t := range entries {
@@ -905,7 +905,7 @@ func desiredSyncedTriggerIDs(entries []triggerSyncEntry, managedBeforeByName map
 	return desired, cronEnabled
 }
 
-func syncedTriggerStoredID(entry triggerSyncEntry, managedBeforeByName map[string]repository.ChetterTrigger) string {
+func syncedTriggerStoredID(entry triggerSyncEntry, managedBeforeByName map[string]repository.Trigger) string {
 	if existing, ok := managedBeforeByName[entry.def.Name]; ok {
 		return existing.ID
 	}

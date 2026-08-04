@@ -91,11 +91,11 @@ func bindRawQuery(dialect store.Dialect, query string) string {
 
 // listTasksRaw queries tasks with team and repo filtering applied before
 // LIMIT/OFFSET, avoiding the client-side pagination bug.
-func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, status, agent string, limit, offset int32) ([]repository.Task, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	agentClause := ` AND (? = '' OR EXISTS (SELECT 1 FROM chetter_agent_sessions session WHERE session.task_id = chetter_tasks.id AND session.agent = ?))`
-	query := `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	agentClause := ` AND (? = '' OR EXISTS (SELECT 1 FROM agent_sessions session WHERE session.task_id = tasks.id AND session.agent = ?))`
+	query := `SELECT id FROM tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args := append([]any{status, status, agent, agent}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
@@ -105,7 +105,7 @@ func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, sta
 		return nil, fmt.Errorf("list tasks raw: %w", err)
 	}
 	defer rows.Close()
-	var tasks []repository.ChetterTask
+	var tasks []repository.Task
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
@@ -121,7 +121,7 @@ func (s *Service) listTasksRaw(ctx context.Context, teamIDs, repos []string, sta
 }
 
 // searchTasksRaw queries tasks with team, repo, and FTS search filtering.
-func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, status, search, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, status, search, agent string, limit, offset int32) ([]repository.Task, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -130,19 +130,19 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 	repoClause, repoArgs := repoMatchClause(repos)
 	var query string
 	var args []any
-	agentClause := ` AND (? = '' OR EXISTS (SELECT 1 FROM chetter_agent_sessions session WHERE session.task_id = chetter_tasks.id AND session.agent = ?))`
+	agentClause := ` AND (? = '' OR EXISTS (SELECT 1 FROM agent_sessions session WHERE session.task_id = tasks.id AND session.agent = ?))`
 	if s.dialect == store.DialectPostgres {
-		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		query = `SELECT id FROM tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY created_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, search, limit, offset)
 	} else if s.dialect == store.DialectMySQL {
-		query = `SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		query = `SELECT id FROM tasks WHERE (? = '' OR status = ?)` + agentClause + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY created_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, search, limit, offset)
 	} else {
-		query = fmt.Sprintf(`SELECT id FROM chetter_tasks WHERE (? = '' OR status = ?)%s%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY created_at DESC LIMIT ? OFFSET ?`, agentClause, teamClause, repoClause, safe)
+		query = fmt.Sprintf(`SELECT id FROM tasks WHERE (? = '' OR status = ?)%s%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY created_at DESC LIMIT ? OFFSET ?`, agentClause, teamClause, repoClause, safe)
 		args = append([]any{status, status, agent, agent}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, limit, offset)
@@ -166,7 +166,7 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	tasks := make([]repository.ChetterTask, 0, len(ids))
+	tasks := make([]repository.Task, 0, len(ids))
 	for _, id := range ids {
 		t, err := s.repo.GetTaskByID(ctx, id)
 		if err != nil {
@@ -179,10 +179,10 @@ func (s *Service) searchTasksRaw(ctx context.Context, teamIDs, repos []string, s
 
 // listAgentSessionsRaw queries sessions with team and repo filtering applied
 // before LIMIT/OFFSET.
-func (s *Service) listAgentSessionsRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
+func (s *Service) listAgentSessionsRaw(ctx context.Context, teamIDs, repos []string, status string, limit, offset int32) ([]repository.AgentSession, error) {
 	teamClause, teamArgs := teamInClause(teamIDs)
 	repoClause, repoArgs := repoMatchClause(repos)
-	query := `SELECT id, task_id, sequence, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, created_at, updated_at, paused_at, expires_at, pause_reason, summary, error, started_at, ended_at, search_text FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	query := `SELECT id, task_id, sequence, team_id, status, resume_mode, pinned_runner_id, pinned_runner_name, checkpoint_id, workspace_path, container_name, harness_session_id, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, mcp_endpoints, env, commit_author_name, commit_author_email, git_identity_id, created_at, updated_at, paused_at, expires_at, pause_reason, summary, error, started_at, ended_at, search_text FROM agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args := append([]any{status, status}, teamArgs...)
 	args = append(args, repoArgs...)
 	args = append(args, limit, offset)
@@ -191,7 +191,7 @@ func (s *Service) listAgentSessionsRaw(ctx context.Context, teamIDs, repos []str
 }
 
 // searchAgentSessionsRaw queries sessions with team, repo, and FTS search filtering.
-func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []string, status, search string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
+func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []string, status, search string, limit, offset int32) ([]repository.AgentSession, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -201,17 +201,17 @@ func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []s
 	var query string
 	var args []any
 	if s.dialect == store.DialectPostgres {
-		query = `SELECT id FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+		query = `SELECT id FROM agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', ?) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, search, limit, offset)
 	} else if s.dialect == store.DialectMySQL {
-		query = `SELECT id FROM chetter_agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+		query = `SELECT id FROM agent_sessions WHERE (? = '' OR status = ?)` + teamClause + repoClause + ` AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE) ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 		args = append([]any{status, status}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, search, limit, offset)
 	} else {
-		query = fmt.Sprintf(`SELECT id FROM chetter_agent_sessions WHERE (? = '' OR status = ?)%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY updated_at DESC LIMIT ? OFFSET ?`, teamClause, repoClause, safe)
+		query = fmt.Sprintf(`SELECT id FROM agent_sessions WHERE (? = '' OR status = ?)%s%s AND FTS_MATCH_WORD(search_text, '%s') ORDER BY updated_at DESC LIMIT ? OFFSET ?`, teamClause, repoClause, safe)
 		args = append([]any{status, status}, teamArgs...)
 		args = append(args, repoArgs...)
 		args = append(args, limit, offset)
@@ -234,7 +234,7 @@ func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []s
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	sessions := make([]repository.ChetterAgentSession, 0, len(ids))
+	sessions := make([]repository.AgentSession, 0, len(ids))
 	for _, id := range ids {
 		s, err := s.repo.GetAgentSessionByID(ctx, id)
 		if err != nil {
@@ -245,16 +245,16 @@ func (s *Service) searchAgentSessionsRaw(ctx context.Context, teamIDs, repos []s
 	return sessions, nil
 }
 
-// scanAgentSessions executes a query and scans the rows into ChetterAgentSession slices.
-func (s *Service) scanAgentSessions(ctx context.Context, query string, args []any) ([]repository.ChetterAgentSession, error) {
+// scanAgentSessions executes a query and scans the rows into AgentSession slices.
+func (s *Service) scanAgentSessions(ctx context.Context, query string, args []any) ([]repository.AgentSession, error) {
 	rows, err := s.rawDB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions raw: %w", err)
 	}
 	defer rows.Close()
-	var items []repository.ChetterAgentSession
+	var items []repository.AgentSession
 	for rows.Next() {
-		var i repository.ChetterAgentSession
+		var i repository.AgentSession
 		if err := rows.Scan(
 			&i.ID, &i.TaskID, &i.Sequence, &i.TeamID, &i.Status, &i.ResumeMode, &i.PinnedRunnerID, &i.PinnedRunnerName,
 			&i.CheckpointID, &i.WorkspacePath, &i.ContainerName, &i.HarnessSessionID,
@@ -273,7 +273,7 @@ func (s *Service) scanAgentSessions(ctx context.Context, query string, args []an
 // FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
 // on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
 // If the FTS index is unavailable it falls back to the sqlc LIKE query.
-func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search, agent string, limit, offset int32) ([]repository.ChetterTask, error) {
+func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString, status, search, agent string, limit, offset int32) ([]repository.Task, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -285,12 +285,12 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 	var args []any
 	if s.dialect == store.DialectPostgres {
 		query = `
-			SELECT id FROM chetter_tasks
+			SELECT id FROM tasks
 			WHERE ($1 = '' OR team_id = $1)
 			  AND ($2 = '' OR status = $2)
 			  AND ($3 = '' OR EXISTS (
-				  SELECT 1 FROM chetter_agent_sessions session
-				  WHERE session.task_id = chetter_tasks.id AND session.agent = $3
+				  SELECT 1 FROM agent_sessions session
+				  WHERE session.task_id = tasks.id AND session.agent = $3
 			  ))
 			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $4)
 			ORDER BY created_at DESC
@@ -298,12 +298,12 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 		args = []any{teamFilter.String, status, agent, search, limit, offset}
 	} else if s.dialect == store.DialectMySQL {
 		query = `
-			SELECT id FROM chetter_tasks
+			SELECT id FROM tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
 			  AND (? = '' OR EXISTS (
-				  SELECT 1 FROM chetter_agent_sessions session
-				  WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+				  SELECT 1 FROM agent_sessions session
+				  WHERE session.task_id = tasks.id AND session.agent = ?
 			  ))
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
 			ORDER BY created_at DESC
@@ -311,12 +311,12 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 		args = []any{teamFilter.String, teamFilter.String, status, status, agent, agent, search, limit, offset}
 	} else {
 		query = fmt.Sprintf(`
-			SELECT id FROM chetter_tasks
+			SELECT id FROM tasks
 			WHERE (? = '' OR team_id = ?)
 			  AND (? = '' OR status = ?)
 			  AND (? = '' OR EXISTS (
-				  SELECT 1 FROM chetter_agent_sessions session
-				  WHERE session.task_id = chetter_tasks.id AND session.agent = ?
+				  SELECT 1 FROM agent_sessions session
+				  WHERE session.task_id = tasks.id AND session.agent = ?
 			  ))
 			  AND FTS_MATCH_WORD(search_text, '%s')
 			ORDER BY created_at DESC
@@ -347,7 +347,7 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	tasks := make([]repository.ChetterTask, 0, len(ids))
+	tasks := make([]repository.Task, 0, len(ids))
 	for _, id := range ids {
 		t, err := s.repo.GetTaskByID(ctx, id)
 		if err != nil {
@@ -361,7 +361,7 @@ func (s *Service) searchTasksFTS(ctx context.Context, teamFilter sql.NullString,
 // searchAgentSessionsFTS attempts a real full-text search. On TiDB it uses
 // FTS_MATCH_WORD; on MySQL it uses MATCH ... AGAINST ... IN BOOLEAN MODE;
 // on PostgreSQL it uses to_tsvector @@ websearch_to_tsquery.
-func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.ChetterAgentSession, error) {
+func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.NullString, status, search string, limit, offset int32) ([]repository.AgentSession, error) {
 	safe := sanitizeFTS(search)
 	if safe == "" {
 		return nil, nil
@@ -373,7 +373,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 	var args []any
 	if s.dialect == store.DialectPostgres {
 		query = `
-			SELECT id FROM chetter_agent_sessions
+			SELECT id FROM agent_sessions
 			WHERE ($1 = '' OR COALESCE(team_id, '') = $1)
 			  AND ($2 = '' OR status = $2)
 			  AND to_tsvector('simple', COALESCE(search_text, '')) @@ websearch_to_tsquery('simple', $3)
@@ -382,7 +382,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 		args = []any{teamFilter.String, status, search, limit, offset}
 	} else if s.dialect == store.DialectMySQL {
 		query = `
-			SELECT id FROM chetter_agent_sessions
+			SELECT id FROM agent_sessions
 			WHERE (? = '' OR COALESCE(team_id, '') = ?)
 			  AND (? = '' OR status = ?)
 			  AND MATCH(search_text) AGAINST(? IN BOOLEAN MODE)
@@ -391,7 +391,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 		args = []any{teamFilter.String, teamFilter.String, status, status, search, limit, offset}
 	} else {
 		query = fmt.Sprintf(`
-			SELECT id FROM chetter_agent_sessions
+			SELECT id FROM agent_sessions
 			WHERE (? = '' OR COALESCE(team_id, '') = ?)
 			  AND (? = '' OR status = ?)
 			  AND FTS_MATCH_WORD(search_text, '%s')
@@ -422,7 +422,7 @@ func (s *Service) searchAgentSessionsFTS(ctx context.Context, teamFilter sql.Nul
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	sessions := make([]repository.ChetterAgentSession, 0, len(ids))
+	sessions := make([]repository.AgentSession, 0, len(ids))
 	for _, id := range ids {
 		sess, err := s.repo.GetAgentSessionByID(ctx, id)
 		if err != nil {
@@ -444,7 +444,7 @@ func (s *Service) listAuditLogRaw(ctx context.Context, filter AuditEventFilterIn
 
 	query := `
 		SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-		FROM chetter_audit_log
+		FROM audit_log
 		WHERE (event_type = ? OR ? = '')
 		  AND (source_type = ? OR ? = '')
 		  AND (source_id = ? OR ? = '')
@@ -547,7 +547,7 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 		}
 		query = `
 			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-			FROM chetter_audit_log
+			FROM audit_log
 			WHERE (event_type = $1 OR $2 = '')
 			  AND ($3 IS NOT DISTINCT FROM source_type OR $4 = '')
 			  AND ($5 IS NOT DISTINCT FROM source_id OR $6 = '')
@@ -575,7 +575,7 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-			FROM chetter_audit_log
+			FROM audit_log
 			WHERE (event_type = ? OR ? = '')
 			  AND (source_type <=> ? OR ? = '')
 			  AND (source_id <=> ? OR ? = '')
@@ -602,7 +602,7 @@ func (s *Service) searchAuditLogFTS(ctx context.Context, filter AuditEventFilter
 	} else {
 		query = fmt.Sprintf(`
 			SELECT id, event_type, created_at, source_type, source_id, target_type, target_id, repo, github_event, github_action, github_delivery_id, parent_event_id, detail, payload, token_id, token_name
-			FROM chetter_audit_log
+			FROM audit_log
 			WHERE (event_type = ? OR ? = '')
 			  AND (source_type <=> ? OR ? = '')
 			  AND (source_id <=> ? OR ? = '')
@@ -710,7 +710,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	if s.dialect == store.DialectPostgres {
 		query = `
 			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-			FROM chetter_task_artifacts
+			FROM task_artifacts
 			WHERE (task_id = $1 OR $2 = '')
 			  AND ($3 IS NOT DISTINCT FROM agent_session_id OR $4 = '')
 			  AND ($5 IS NOT DISTINCT FROM user_prompt_id OR $6 = '')
@@ -733,7 +733,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	} else if s.dialect == store.DialectMySQL {
 		query = `
 			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-			FROM chetter_task_artifacts
+			FROM task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
 			  AND (user_prompt_id <=> ? OR ? = '')
@@ -756,7 +756,7 @@ func (s *Service) searchTaskArtifactsFTS(ctx context.Context, filter TaskArtifac
 	} else {
 		query = fmt.Sprintf(`
 			SELECT id, task_id, agent_session_id, user_prompt_id, execution_attempt_id, artifact_type, repo, number, url, ref, sha, created_at, discovered_at, discovery_source
-			FROM chetter_task_artifacts
+			FROM task_artifacts
 			WHERE (task_id = ? OR ? = '')
 			  AND (agent_session_id <=> ? OR ? = '')
 			  AND (user_prompt_id <=> ? OR ? = '')

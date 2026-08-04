@@ -14,7 +14,7 @@ import (
 )
 
 const createTrigger = `-- name: CreateTrigger :exec
-INSERT INTO chetter_triggers
+INSERT INTO triggers
     (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
 `
@@ -69,7 +69,7 @@ func (q *Queries) CreateTrigger(ctx context.Context, arg CreateTriggerParams) er
 }
 
 const deleteTrigger = `-- name: DeleteTrigger :exec
-DELETE FROM chetter_triggers
+DELETE FROM triggers
 WHERE name = ?
 `
 
@@ -79,7 +79,7 @@ func (q *Queries) DeleteTrigger(ctx context.Context, name string) error {
 }
 
 const deleteTriggersBySource = `-- name: DeleteTriggersBySource :exec
-DELETE FROM chetter_triggers
+DELETE FROM triggers
 WHERE source_id = ?
 `
 
@@ -89,13 +89,13 @@ func (q *Queries) DeleteTriggersBySource(ctx context.Context, sourceID sql.NullS
 }
 
 const getTriggerByID = `-- name: GetTriggerByID :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE id = ?
 `
 
-func (q *Queries) GetTriggerByID(ctx context.Context, id string) (ChetterTrigger, error) {
+func (q *Queries) GetTriggerByID(ctx context.Context, id string) (Trigger, error) {
 	row := q.db.QueryRowContext(ctx, getTriggerByID, id)
-	var i ChetterTrigger
+	var i Trigger
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -125,13 +125,13 @@ func (q *Queries) GetTriggerByID(ctx context.Context, id string) (ChetterTrigger
 }
 
 const getTriggerByName = `-- name: GetTriggerByName :one
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE name = ?
 `
 
-func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTrigger, error) {
+func (q *Queries) GetTriggerByName(ctx context.Context, name string) (Trigger, error) {
 	row := q.db.QueryRowContext(ctx, getTriggerByName, name)
-	var i ChetterTrigger
+	var i Trigger
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -161,7 +161,7 @@ func (q *Queries) GetTriggerByName(ctx context.Context, name string) (ChetterTri
 }
 
 const insertTriggerRun = `-- name: InsertTriggerRun :exec
-INSERT INTO chetter_trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
+INSERT INTO trigger_runs (id, trigger_id, team_id, task_id, status, triggered_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE status = VALUES(status)
 `
@@ -190,22 +190,22 @@ func (q *Queries) InsertTriggerRun(ctx context.Context, arg InsertTriggerRunPara
 }
 
 const listEnabledIssueTriggersByRepo = `-- name: ListEnabledIssueTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE enabled = TRUE
   AND trigger_type = 'issue'
   AND trigger_config->>'$.repo' = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledIssueTriggersByRepo, repo)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -245,22 +245,22 @@ func (q *Queries) ListEnabledIssueTriggersByRepo(ctx context.Context, repo json.
 }
 
 const listEnabledPRReviewTriggersByRepo = `-- name: ListEnabledPRReviewTriggersByRepo :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE enabled = TRUE
   AND trigger_type = 'pr_review'
   AND trigger_config->>'$.repo' = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo json.RawMessage) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledPRReviewTriggersByRepo, repo)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -300,20 +300,20 @@ func (q *Queries) ListEnabledPRReviewTriggersByRepo(ctx context.Context, repo js
 }
 
 const listEnabledTriggers = `-- name: ListEnabledTriggers :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE enabled = TRUE
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledTriggers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -353,21 +353,21 @@ func (q *Queries) ListEnabledTriggers(ctx context.Context) ([]ChetterTrigger, er
 }
 
 const listEnabledTriggersByTeam = `-- name: ListEnabledTriggersByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE team_id = ?
   AND enabled = TRUE
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledTriggersByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -407,13 +407,13 @@ func (q *Queries) ListEnabledTriggersByTeam(ctx context.Context, teamID sql.Null
 }
 
 const listEnabledTriggersByTeams = `-- name: ListEnabledTriggersByTeams :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE team_id IN (/*SLICE:team_ids*/?)
   AND enabled = TRUE
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]Trigger, error) {
 	query := listEnabledTriggersByTeams
 	var queryParams []interface{}
 	if len(teamIds) > 0 {
@@ -429,9 +429,9 @@ func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -471,21 +471,21 @@ func (q *Queries) ListEnabledTriggersByTeams(ctx context.Context, teamIds []sql.
 }
 
 const listEnabledTriggersByType = `-- name: ListEnabledTriggersByType :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE enabled = TRUE
   AND trigger_type = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]ChetterTrigger, error) {
+func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType string) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listEnabledTriggersByType, triggerType)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -526,8 +526,8 @@ func (q *Queries) ListEnabledTriggersByType(ctx context.Context, triggerType str
 
 const listTriggerRunsByTeam = `-- name: ListTriggerRunsByTeam :many
 SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
-FROM chetter_trigger_runs sr
-JOIN chetter_triggers s ON s.id = sr.trigger_id
+FROM trigger_runs sr
+JOIN triggers s ON s.id = sr.trigger_id
 WHERE s.team_id = ?
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?
@@ -582,8 +582,8 @@ func (q *Queries) ListTriggerRunsByTeam(ctx context.Context, arg ListTriggerRuns
 
 const listTriggerRunsByTeams = `-- name: ListTriggerRunsByTeams :many
 SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
-FROM chetter_trigger_runs sr
-JOIN chetter_triggers s ON s.id = sr.trigger_id
+FROM trigger_runs sr
+JOIN triggers s ON s.id = sr.trigger_id
 WHERE s.team_id IN (/*SLICE:team_ids*/?)
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?
@@ -650,8 +650,8 @@ func (q *Queries) ListTriggerRunsByTeams(ctx context.Context, arg ListTriggerRun
 
 const listTriggerRunsByTrigger = `-- name: ListTriggerRunsByTrigger :many
 SELECT sr.id, sr.trigger_id, s.name AS trigger_name, sr.task_id, sr.status, sr.triggered_at, sr.created_at
-FROM chetter_trigger_runs sr
-JOIN chetter_triggers s ON s.id = sr.trigger_id
+FROM trigger_runs sr
+JOIN triggers s ON s.id = sr.trigger_id
 WHERE sr.trigger_id = ?
 ORDER BY sr.created_at DESC
 LIMIT ? OFFSET ?
@@ -705,19 +705,19 @@ func (q *Queries) ListTriggerRunsByTrigger(ctx context.Context, arg ListTriggerR
 }
 
 const listTriggers = `-- name: ListTriggers :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListTriggers(ctx context.Context) ([]ChetterTrigger, error) {
+func (q *Queries) ListTriggers(ctx context.Context) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listTriggers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -757,20 +757,20 @@ func (q *Queries) ListTriggers(ctx context.Context) ([]ChetterTrigger, error) {
 }
 
 const listTriggersByTeam = `-- name: ListTriggersByTeam :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE team_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]ChetterTrigger, error) {
+func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString) ([]Trigger, error) {
 	rows, err := q.db.QueryContext(ctx, listTriggersByTeam, teamID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -810,12 +810,12 @@ func (q *Queries) ListTriggersByTeam(ctx context.Context, teamID sql.NullString)
 }
 
 const listTriggersByTeams = `-- name: ListTriggersByTeams :many
-SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM chetter_triggers
+SELECT id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, created_at, updated_at, last_run_at, next_run_at, team_id, source_id FROM triggers
 WHERE team_id IN (/*SLICE:team_ids*/?)
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]ChetterTrigger, error) {
+func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullString) ([]Trigger, error) {
 	query := listTriggersByTeams
 	var queryParams []interface{}
 	if len(teamIds) > 0 {
@@ -831,9 +831,9 @@ func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullStr
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChetterTrigger{}
+	items := []Trigger{}
 	for rows.Next() {
-		var i ChetterTrigger
+		var i Trigger
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -873,7 +873,7 @@ func (q *Queries) ListTriggersByTeams(ctx context.Context, teamIds []sql.NullStr
 }
 
 const setTriggerLastRun = `-- name: SetTriggerLastRun :exec
-UPDATE chetter_triggers
+UPDATE triggers
 SET last_run_at = ?, updated_at = ?
 WHERE id = ?
 `
@@ -890,7 +890,7 @@ func (q *Queries) SetTriggerLastRun(ctx context.Context, arg SetTriggerLastRunPa
 }
 
 const setTriggerNextRun = `-- name: SetTriggerNextRun :exec
-UPDATE chetter_triggers
+UPDATE triggers
 SET next_run_at = ?, updated_at = ?
 WHERE id = ?
 `
@@ -907,7 +907,7 @@ func (q *Queries) SetTriggerNextRun(ctx context.Context, arg SetTriggerNextRunPa
 }
 
 const updateTrigger = `-- name: UpdateTrigger :exec
-UPDATE chetter_triggers
+UPDATE triggers
 SET name = ?, trigger_type = ?, trigger_config = ?, cron_expr = ?, prompt = ?,
     git_url = ?, git_ref = ?, agent_image = ?,
     agent = ?, provider_id = ?, model_id = ?, variant_id = ?,
@@ -962,7 +962,7 @@ func (q *Queries) UpdateTrigger(ctx context.Context, arg UpdateTriggerParams) er
 }
 
 const updateTriggerRunStatusByTask = `-- name: UpdateTriggerRunStatusByTask :exec
-UPDATE chetter_trigger_runs
+UPDATE trigger_runs
 SET status = ?
 WHERE task_id = ?
 `
@@ -978,7 +978,7 @@ func (q *Queries) UpdateTriggerRunStatusByTask(ctx context.Context, arg UpdateTr
 }
 
 const upsertTrigger = `-- name: UpsertTrigger :exec
-INSERT INTO chetter_triggers
+INSERT INTO triggers
     (id, team_id, name, trigger_type, trigger_config, cron_expr, prompt, git_url, git_ref, agent_image, agent, provider_id, model_id, variant_id, harness, skills, timeout_sec, enabled, source_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE

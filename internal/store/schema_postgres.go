@@ -39,7 +39,7 @@ func postgresSchema() []string {
 			field = strings.ReplaceAll(field, "TINYINT(1) NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE")
 			field = strings.ReplaceAll(field, "TINYINT(1)", "BOOLEAN")
 			fields = append(fields, field)
-			if (table == "chetter_tasks" || table == "chetter_triggers") && field == "id VARCHAR(64) NOT NULL" {
+			if (table == "tasks" || table == "triggers") && field == "id VARCHAR(64) NOT NULL" {
 				fields = append(fields, "team_id VARCHAR(64) NULL")
 			}
 		}
@@ -47,10 +47,10 @@ func postgresSchema() []string {
 	}
 	statements = append(statements, indexes...)
 	statements = append(statements,
-		"CREATE INDEX IF NOT EXISTS idx_tasks_search ON chetter_tasks USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
-		"CREATE INDEX IF NOT EXISTS idx_sessions_search ON chetter_agent_sessions USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
-		"CREATE INDEX IF NOT EXISTS idx_audit_search ON chetter_audit_log USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
-		"CREATE INDEX IF NOT EXISTS idx_artifacts_search ON chetter_task_artifacts USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_search ON tasks USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_search ON agent_sessions USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
+		"CREATE INDEX IF NOT EXISTS idx_audit_search ON audit_log USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
+		"CREATE INDEX IF NOT EXISTS idx_artifacts_search ON task_artifacts USING GIN (to_tsvector('simple', COALESCE(search_text, '')))",
 	)
 	return statements
 }

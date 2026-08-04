@@ -23,33 +23,33 @@ func insertFTSFixture(t *testing.T, db *sql.DB, dialect store.Dialect, suffix, s
 	artifactID := "fts-artifact-" + suffix
 
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_tasks (id, status, prompt, search_text, created_at, updated_at) VALUES (?, 'completed', 'test prompt', ?, ?, ?)`,
-		`INSERT INTO chetter_tasks (id, status, prompt, search_text, created_at, updated_at) VALUES ($1, 'completed', 'test prompt', $2, $3, $4)`,
+		`INSERT INTO tasks (id, status, prompt, search_text, created_at, updated_at) VALUES (?, 'completed', 'test prompt', ?, ?, ?)`,
+		`INSERT INTO tasks (id, status, prompt, search_text, created_at, updated_at) VALUES ($1, 'completed', 'test prompt', $2, $3, $4)`,
 		taskID, searchText, now, now,
 	)
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_agent_sessions (id, task_id, sequence, status, resume_mode, skills, env, search_text, created_at, updated_at) VALUES (?, ?, 1, 'completed', 'none', '[]', '{}', ?, ?, ?)`,
-		`INSERT INTO chetter_agent_sessions (id, task_id, sequence, status, resume_mode, skills, env, search_text, created_at, updated_at) VALUES ($1, $2, 1, 'completed', 'none', '[]', '{}', $3, $4, $5)`,
+		`INSERT INTO agent_sessions (id, task_id, sequence, status, resume_mode, skills, env, search_text, created_at, updated_at) VALUES (?, ?, 1, 'completed', 'none', '[]', '{}', ?, ?, ?)`,
+		`INSERT INTO agent_sessions (id, task_id, sequence, status, resume_mode, skills, env, search_text, created_at, updated_at) VALUES ($1, $2, 1, 'completed', 'none', '[]', '{}', $3, $4, $5)`,
 		sessionID, taskID, searchText, now, now,
 	)
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES (?, ?, ?, 1, 'completed', 'test prompt', ?, ?)`,
-		`INSERT INTO chetter_user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES ($1, $2, $3, 1, 'completed', 'test prompt', $4, $5)`,
+		`INSERT INTO user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES (?, ?, ?, 1, 'completed', 'test prompt', ?, ?)`,
+		`INSERT INTO user_prompts (id, agent_session_id, task_id, sequence, status, prompt, created_at, updated_at) VALUES ($1, $2, $3, 1, 'completed', 'test prompt', $4, $5)`,
 		promptID, sessionID, taskID, now, now,
 	)
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, created_at, updated_at) VALUES (?, ?, 1, 'completed', 600, ?, ?)`,
-		`INSERT INTO chetter_execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, created_at, updated_at) VALUES ($1, $2, 1, 'completed', 600, $3, $4)`,
+		`INSERT INTO execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, created_at, updated_at) VALUES (?, ?, 1, 'completed', 600, ?, ?)`,
+		`INSERT INTO execution_attempts (id, user_prompt_id, sequence, status, timeout_sec, created_at, updated_at) VALUES ($1, $2, 1, 'completed', 600, $3, $4)`,
 		attemptID, promptID, now, now,
 	)
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.submitted', ?, ?)`,
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.submitted', $2, $3)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.submitted', ?, ?)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.submitted', $2, $3)`,
 		auditID, searchText, now,
 	)
 	execOrDie(t, db, dialect,
-		`INSERT INTO chetter_task_artifacts (id, task_id, execution_attempt_id, artifact_type, repo, search_text, created_at, discovered_at, discovery_source) VALUES (?, ?, ?, 'github_pr_review', 'test/repo', ?, ?, ?, 'webhook')`,
-		`INSERT INTO chetter_task_artifacts (id, task_id, execution_attempt_id, artifact_type, repo, search_text, created_at, discovered_at, discovery_source) VALUES ($1, $2, $3, 'github_pr_review', 'test/repo', $4, $5, $6, 'webhook')`,
+		`INSERT INTO task_artifacts (id, task_id, execution_attempt_id, artifact_type, repo, search_text, created_at, discovered_at, discovery_source) VALUES (?, ?, ?, 'github_pr_review', 'test/repo', ?, ?, ?, 'webhook')`,
+		`INSERT INTO task_artifacts (id, task_id, execution_attempt_id, artifact_type, repo, search_text, created_at, discovered_at, discovery_source) VALUES ($1, $2, $3, 'github_pr_review', 'test/repo', $4, $5, $6, 'webhook')`,
 		artifactID, taskID, attemptID, searchText, now, now,
 	)
 }
@@ -276,13 +276,13 @@ func TestPostgresFTSPreservesFilters(t *testing.T) {
 	// Both should have the same search term.
 	now := time.Now().UTC().Format("2006-01-02 15:04:05.000000")
 	execOrDie(t, tdb.DB, tdb.Dialect(),
-		`INSERT INTO chetter_tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES (?, 'completed', 'test', 'https://github.com/foo/bar', ?, ?, ?)`,
-		`INSERT INTO chetter_tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES ($1, 'completed', 'test', 'https://github.com/foo/bar', $2, $3, $4)`,
+		`INSERT INTO tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES (?, 'completed', 'test', 'https://github.com/foo/bar', ?, ?, ?)`,
+		`INSERT INTO tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES ($1, 'completed', 'test', 'https://github.com/foo/bar', $2, $3, $4)`,
 		"fts-filter-done", "filter test deployment", now, now,
 	)
 	execOrDie(t, tdb.DB, tdb.Dialect(),
-		`INSERT INTO chetter_tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES (?, 'pending', 'test', 'https://github.com/foo/bar', ?, ?, ?)`,
-		`INSERT INTO chetter_tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES ($1, 'pending', 'test', 'https://github.com/foo/bar', $2, $3, $4)`,
+		`INSERT INTO tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES (?, 'pending', 'test', 'https://github.com/foo/bar', ?, ?, ?)`,
+		`INSERT INTO tasks (id, status, prompt, git_url, search_text, created_at, updated_at) VALUES ($1, 'pending', 'test', 'https://github.com/foo/bar', $2, $3, $4)`,
 		"fts-filter-pending", "filter test deployment", now, now,
 	)
 
@@ -325,13 +325,13 @@ func TestPostgresFTSAuditExcludeTypes(t *testing.T) {
 
 	// Insert two audit events with the same search text but different event types.
 	execOrDie(t, tdb.DB, tdb.Dialect(),
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.submitted', ?, ?)`,
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.submitted', $2, $3)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.submitted', ?, ?)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.submitted', $2, $3)`,
 		"fts-audit-excl-1", "critical security audit event", now,
 	)
 	execOrDie(t, tdb.DB, tdb.Dialect(),
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.cancelled', ?, ?)`,
-		`INSERT INTO chetter_audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.cancelled', $2, $3)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES (?, 'task.cancelled', ?, ?)`,
+		`INSERT INTO audit_log (id, event_type, search_text, created_at) VALUES ($1, 'task.cancelled', $2, $3)`,
 		"fts-audit-excl-2", "critical security audit event", now,
 	)
 

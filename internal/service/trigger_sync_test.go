@@ -36,7 +36,7 @@ func TestTriggerIDDeterministic(t *testing.T) {
 // and other-source triggers are left alone.
 func TestSyncedTriggersBeforeFiltersBySource(t *testing.T) {
 	now := time.Now().UTC()
-	existing := []repository.ChetterTrigger{
+	existing := []repository.Trigger{
 		{ID: "trig_a", Name: "a", SourceID: sql.NullString{String: defaultDefinitionSourceID, Valid: true}, CreatedAt: now},
 		{ID: "trig_b", Name: "b", SourceID: sql.NullString{String: defaultDefinitionSourceID, Valid: true}, CreatedAt: now},
 		{ID: "trig_api", Name: "api", SourceID: sql.NullString{}, CreatedAt: now},
@@ -68,7 +68,7 @@ func TestSyncedTriggersBeforeFiltersBySource(t *testing.T) {
 // deterministic ID, and only enabled cron triggers land in the cron subset.
 func TestDesiredSyncedTriggerIDsReusesStoredID(t *testing.T) {
 	now := time.Now().UTC()
-	managedBefore := map[string]repository.ChetterTrigger{
+	managedBefore := map[string]repository.Trigger{
 		"keep":    {ID: "trig_existing", Name: "keep", SourceID: sql.NullString{String: defaultDefinitionSourceID, Valid: true}, CreatedAt: now},
 		"disable": {ID: "trig_disable", Name: "disable", SourceID: sql.NullString{String: defaultDefinitionSourceID, Valid: true}, CreatedAt: now},
 	}

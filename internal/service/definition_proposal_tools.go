@@ -149,8 +149,8 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		files = append(files, DefinitionProposalFile{Path: fullPath})
 	}
 	body := in.Body
-	var task repository.ChetterTask
-	var userPrompt repository.ChetterUserPrompt
+	var task repository.Task
+	var userPrompt repository.UserPrompt
 	if strings.TrimSpace(in.TaskID) != "" {
 		if strings.TrimSpace(in.ExecutionAttemptID) == "" {
 			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("execution_attempt_id is required with task_id")

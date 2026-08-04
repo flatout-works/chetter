@@ -1,5 +1,5 @@
 -- name: UpsertRunnerHeartbeat :exec
-INSERT INTO chetter_runners
+INSERT INTO runners
     (id, status, image_ref, image_digest, version,
      max_concurrent, running_tasks, available_slots, isolation_enabled, total_started, total_completed, total_errors,
      started_at, first_seen_at, last_seen_at, updated_at, metadata)
@@ -23,16 +23,16 @@ ON DUPLICATE KEY UPDATE
 
 -- name: GetRunnerHeartbeatMetadata :one
 SELECT metadata
-FROM chetter_runners
+FROM runners
 WHERE id = ?;
 
 -- name: ListLiveRunners :many
 SELECT id, status, image_ref, image_digest, version, max_concurrent, running_tasks, available_slots, total_started, total_completed, total_errors, started_at, first_seen_at, last_seen_at, updated_at, metadata
-FROM chetter_runners
+FROM runners
 WHERE last_seen_at >= ?
 ORDER BY last_seen_at DESC;
 
 -- name: GetRunnerIsolationEnabled :one
 SELECT isolation_enabled
-FROM chetter_runners
+FROM runners
 WHERE id = ?;

@@ -32,10 +32,10 @@ func TestPruneJobsFromConfig(t *testing.T) {
 		t.Fatalf("expected 4 prune jobs, got %d", len(jobs))
 	}
 	want := []pruneJob{
-		{"chetter_task_events", 30 * 24 * time.Hour},
-		{"chetter_audit_log", 90 * 24 * time.Hour},
-		{"chetter_task_artifacts", 180 * 24 * time.Hour},
-		{"chetter_agent_sessions", 180 * 24 * time.Hour},
+		{"task_events", 30 * 24 * time.Hour},
+		{"audit_log", 90 * 24 * time.Hour},
+		{"task_artifacts", 180 * 24 * time.Hour},
+		{"agent_sessions", 180 * 24 * time.Hour},
 	}
 	for i, w := range want {
 		if jobs[i].table != w.table || jobs[i].ttl != w.ttl {
@@ -52,7 +52,7 @@ func TestPruneJobsPartialConfig(t *testing.T) {
 	if len(jobs) != 1 {
 		t.Fatalf("expected 1 prune job, got %d", len(jobs))
 	}
-	if jobs[0].table != "chetter_audit_log" || jobs[0].ttl != 90*24*time.Hour {
+	if jobs[0].table != "audit_log" || jobs[0].ttl != 90*24*time.Hour {
 		t.Errorf("unexpected job: %+v", jobs[0])
 	}
 }

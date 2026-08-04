@@ -367,14 +367,14 @@ type pruneJob struct {
 func (s *Service) pruneJobs() []pruneJob {
 	var jobs []pruneJob
 	if d := s.cfg.EventsRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"chetter_task_events", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{"task_events", time.Duration(d) * 24 * time.Hour})
 	}
 	if d := s.cfg.AuditRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"chetter_audit_log", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{"audit_log", time.Duration(d) * 24 * time.Hour})
 	}
 	if d := s.cfg.ArtifactRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"chetter_task_artifacts", time.Duration(d) * 24 * time.Hour})
-		jobs = append(jobs, pruneJob{"chetter_agent_sessions", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{"task_artifacts", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{"agent_sessions", time.Duration(d) * 24 * time.Hour})
 	}
 	return jobs
 }
@@ -434,9 +434,9 @@ func (s *Service) runnerIsDeliberatelyDrained(ctx context.Context, runnerID stri
 	}
 	var query string
 	if s.dialect == store.DialectPostgres {
-		query = "SELECT status FROM chetter_runners WHERE id = $1"
+		query = "SELECT status FROM runners WHERE id = $1"
 	} else {
-		query = "SELECT status FROM chetter_runners WHERE id = ?"
+		query = "SELECT status FROM runners WHERE id = ?"
 	}
 	var status string
 	err := s.rawDB.QueryRowContext(ctx, query, runnerID).Scan(&status)
@@ -1098,7 +1098,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	// opt out with CHETTER_ALLOW_UNISOLATED=true; resumable and explicit
 	// tasks still require isolation there.
 	isolationRequired := resumeMode != "none" || in.Isolation == "required" || !s.cfg.AllowUnisolated
-	var task repository.ChetterTask
+	var task repository.Task
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL+" "+githubRepo), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
@@ -1235,7 +1235,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Detail:     fmt.Sprintf("task submitted: agent=%s model=%s prompt=%.100s", in.Agent, in.ModelID, in.Prompt),
 		})
 	}
-	record := repoTaskToStoreRecord(task, repository.ChetterAgentSession{
+	record := repoTaskToStoreRecord(task, repository.AgentSession{
 		ID:         sessionID,
 		AgentImage: nullString(in.AgentImage), Agent: nullString(in.Agent), ProviderID: nullString(in.ProviderID), ModelID: nullString(in.ModelID), VariantID: nullString(in.VariantID),
 		Harness: nullString(in.Harness), Skills: skills, McpEndpoints: nullableJSON(mcpEndpoints), Env: env,
@@ -1649,7 +1649,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		timeoutSec = s.cfg.DefaultTaskTimeoutSec
 	}
 
-	var task repository.ChetterTask
+	var task repository.Task
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		sequence, err := q.GetNextUserPromptSequence(ctx, sessionID)
 		if err != nil {
@@ -1767,7 +1767,7 @@ func (s *Service) ResumeSessionForPR(ctx context.Context, repo string, prNumber 
 	return nil
 }
 
-func repoTaskToStoreRecord(task repository.ChetterTask, session repository.ChetterAgentSession) store.TaskRecord {
+func repoTaskToStoreRecord(task repository.Task, session repository.AgentSession) store.TaskRecord {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
@@ -2429,18 +2429,18 @@ func (s *Service) resolveOwnerTeamID(ctx context.Context, requestedID, requested
 	return "", fmt.Errorf("token has no team scope")
 }
 
-func (s *Service) triggerForToolAccess(ctx context.Context, name string) (repository.ChetterTrigger, error) {
+func (s *Service) triggerForToolAccess(ctx context.Context, name string) (repository.Trigger, error) {
 	trigger, err := s.repo.GetTriggerByName(ctx, name)
 	if err != nil {
-		return repository.ChetterTrigger{}, err
+		return repository.Trigger{}, err
 	}
 	if err := authorizeTriggerAccess(ctx, trigger); err != nil {
-		return repository.ChetterTrigger{}, err
+		return repository.Trigger{}, err
 	}
 	return trigger, nil
 }
 
-func authorizeTriggerAccess(ctx context.Context, trigger repository.ChetterTrigger) error {
+func authorizeTriggerAccess(ctx context.Context, trigger repository.Trigger) error {
 	scope, scoped := auth.GetScope(ctx)
 	if !scoped || scope.Admin {
 		return nil
@@ -2451,7 +2451,7 @@ func authorizeTriggerAccess(ctx context.Context, trigger repository.ChetterTrigg
 	return nil
 }
 
-func authorizeAgentSessionAccess(ctx context.Context, session repository.ChetterAgentSession) error {
+func authorizeAgentSessionAccess(ctx context.Context, session repository.AgentSession) error {
 	scope, scoped := auth.GetScope(ctx)
 	if !scoped || scope.Admin {
 		return nil

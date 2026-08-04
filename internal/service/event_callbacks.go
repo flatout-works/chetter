@@ -180,7 +180,7 @@ func (s *Service) UpdateEventCallback(ctx context.Context, name string, in Event
 func (s *Service) ListEventCallbacks(ctx context.Context, enabledOnly bool, eventType string, limit, offset int) ([]EventCallbackRecord, error) {
 	scope, scoped := auth.GetScope(ctx)
 	includeGlobal := !scoped || scope.Admin
-	var rows []repository.ChetterEventCallback
+	var rows []repository.EventCallback
 	var err error
 	if scoped && !scope.Admin {
 		teamIDs := scope.Teams()
@@ -259,7 +259,7 @@ func (s *Service) DispatchTaskEventCallbacks(ctx context.Context, event TaskEven
 	}
 }
 
-func (s *Service) runEventCallbackAction(ctx context.Context, event TaskEventCallbackContext, callback repository.ChetterEventCallback) error {
+func (s *Service) runEventCallbackAction(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback) error {
 	switch callback.ActionType {
 	case EventCallbackActionCreateTask:
 		return s.runCreateTaskCallback(ctx, event, callback)
@@ -270,7 +270,7 @@ func (s *Service) runEventCallbackAction(ctx context.Context, event TaskEventCal
 	}
 }
 
-func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.ChetterEventCallback) error {
+func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback) error {
 	var cfg callbackCreateTaskConfig
 	if err := json.Unmarshal(callback.ActionConfig, &cfg); err != nil {
 		return fmt.Errorf("parse action_config: %w", err)
@@ -318,7 +318,7 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	return err
 }
 
-func callbackTaskGitHubMetadata(source repository.ChetterTask, gitURL string) (string, int64) {
+func callbackTaskGitHubMetadata(source repository.Task, gitURL string) (string, int64) {
 	if strings.TrimSpace(gitURL) == "" {
 		return source.GithubRepo.String, source.GithubInstallationID.Int64
 	}
@@ -333,7 +333,7 @@ func callbackTaskGitHubMetadata(source repository.ChetterTask, gitURL string) (s
 	return repo.FullName(), installationID
 }
 
-func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.ChetterEventCallback) error {
+func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback) error {
 	var cfg callbackWebhookConfig
 	if err := json.Unmarshal(callback.ActionConfig, &cfg); err != nil {
 		return fmt.Errorf("parse action_config: %w", err)
@@ -436,7 +436,7 @@ func validateEventCallbackInput(in EventCallbackInput) error {
 	return nil
 }
 
-func eventCallbackRecord(row repository.ChetterEventCallback) EventCallbackRecord {
+func eventCallbackRecord(row repository.EventCallback) EventCallbackRecord {
 	return EventCallbackRecord{
 		ID:           row.ID,
 		TeamID:       row.TeamID.String,

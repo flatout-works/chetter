@@ -206,8 +206,8 @@ func TestRPCRejectsStaleExecutionEventsAfterReclaim(t *testing.T) {
 	}
 
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
-		"UPDATE chetter_execution_attempts SET lease_expires_at = ? WHERE id = ?",
-		"UPDATE chetter_execution_attempts SET lease_expires_at = $1 WHERE id = $2"),
+		"UPDATE execution_attempts SET lease_expires_at = ? WHERE id = ?",
+		"UPDATE execution_attempts SET lease_expires_at = $1 WHERE id = $2"),
 		time.Now().UTC().Add(-time.Second), firstExecution); err != nil {
 		t.Fatalf("expire lease: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestRPCClaimTaskHonorsRequiredRunnerID(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	insertPendingTask(t, q, "task_pinned", "resume work", "runner:latest")
-	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE chetter_execution_attempts SET required_runner_id = ? WHERE id = ?", "UPDATE chetter_execution_attempts SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "exec_task_pinned"); err != nil {
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(), "UPDATE execution_attempts SET required_runner_id = ? WHERE id = ?", "UPDATE execution_attempts SET required_runner_id = $1 WHERE id = $2"), "runner_pinned", "exec_task_pinned"); err != nil {
 		t.Fatalf("pin attempt: %v", err)
 	}
 
@@ -635,7 +635,7 @@ func TestRPCHeartbeatAuditsMCPRelayRejections(t *testing.T) {
 
 	rows, err := tdb.DB.QueryContext(ctx, `
 		SELECT source_id, target_type, payload
-		FROM chetter_audit_log
+		FROM audit_log
 		WHERE event_type = 'runner_mcp_relay_request_rejected'
 	`)
 	if err != nil {
@@ -970,8 +970,8 @@ func TestRPCPruneWorkspacesIsAttemptScopedAndProtectsRetainedSession(t *testing.
 		t.Fatalf("pause retained session: %v", err)
 	}
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
-		"UPDATE chetter_execution_attempts SET status = 'succeeded' WHERE id = ?",
-		"UPDATE chetter_execution_attempts SET status = 'succeeded' WHERE id = $1"), second.ExecutionId); err != nil {
+		"UPDATE execution_attempts SET status = 'succeeded' WHERE id = ?",
+		"UPDATE execution_attempts SET status = 'succeeded' WHERE id = $1"), second.ExecutionId); err != nil {
 		t.Fatalf("finish retained attempt: %v", err)
 	}
 
@@ -992,11 +992,11 @@ func TestRPCPruneWorkspacesIsAttemptScopedAndProtectsRetainedSession(t *testing.
 
 func TestTaskToProto_UsesSessionConfig(t *testing.T) {
 	envJSON, _ := json.Marshal(map[string]string{"CUSTOM_VAR": "val"})
-	task := repository.ChetterTask{
+	task := repository.Task{
 		ID: "task-1", Prompt: "test prompt",
 		GitUrl: sql.NullString{}, GitRef: sql.NullString{},
 	}
-	session := repository.ChetterAgentSession{
+	session := repository.AgentSession{
 		ID: "sess-1", AgentImage: sql.NullString{String: "img", Valid: true}, Env: envJSON, Skills: []byte(`[]`),
 		Harness:           sql.NullString{String: "pi", Valid: true},
 		ProviderID:        sql.NullString{},
@@ -1006,7 +1006,7 @@ func TestTaskToProto_UsesSessionConfig(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, session, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
+	proto := taskToProto(task, session, repository.ExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "pi" {
 		t.Fatalf("expected harness='pi', got %q", proto.Harness)
 	}
@@ -1020,10 +1020,10 @@ func TestTaskToProto_UsesSessionConfig(t *testing.T) {
 
 func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	envJSON, _ := json.Marshal(map[string]string{"FOO": "bar"})
-	task := repository.ChetterTask{
+	task := repository.Task{
 		ID: "task-2", Prompt: "test", GitUrl: sql.NullString{}, GitRef: sql.NullString{},
 	}
-	session := repository.ChetterAgentSession{
+	session := repository.AgentSession{
 		ID: "sess-2", Env: envJSON, Skills: []byte(`[]`),
 		ProviderID:        sql.NullString{},
 		ModelID:           sql.NullString{},
@@ -1033,7 +1033,7 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 		CommitAuthorName:  sql.NullString{},
 		CommitAuthorEmail: sql.NullString{},
 	}
-	proto := taskToProto(task, session, repository.ChetterExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
+	proto := taskToProto(task, session, repository.ExecutionAttempt{ID: "exec_test", TimeoutSec: 300}, 1, "", "")
 	if proto.Harness != "" {
 		t.Fatalf("expected empty harness, got %q", proto.Harness)
 	}

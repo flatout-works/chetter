@@ -259,9 +259,9 @@ func (s *Service) queryUsageSummary(
 	groupClause := " GROUP BY " + strings.Join(groupExprs, ", ")
 
 	query := "SELECT " + strings.Join(selectExprs, ", ") +
-		" FROM chetter_tasks t" +
-		" JOIN chetter_user_prompts prompt ON prompt.task_id = t.id" +
-		" JOIN chetter_execution_attempts attempt ON attempt.user_prompt_id = prompt.id" +
+		" FROM tasks t" +
+		" JOIN user_prompts prompt ON prompt.task_id = t.id" +
+		" JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id" +
 		whereClause +
 		groupClause +
 		" ORDER BY SUM(attempt.cost_cents) DESC, COUNT(DISTINCT t.id) DESC"

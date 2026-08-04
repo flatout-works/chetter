@@ -13,7 +13,7 @@ import (
 )
 
 // webhookDeliveryStore implements webhook.DeliveryStore using raw SQL against
-// the chetter_webhook_deliveries table. It avoids the sqlc generation cycle by
+// the webhook_deliveries table. It avoids the sqlc generation cycle by
 // using direct database/sql queries, similar to store.ReapStaleTasks. See
 // issue #102.
 type webhookDeliveryStore struct {
@@ -40,7 +40,7 @@ func (d *webhookDeliveryStore) RecordDelivery(ctx context.Context, params webhoo
 	}
 	now := time.Now().UTC()
 	query := fmt.Sprintf(
-		`INSERT INTO chetter_webhook_deliveries (id, delivery_id, event_type, event_action, payload, status, attempts, max_attempts, created_at, updated_at)
+		`INSERT INTO webhook_deliveries (id, delivery_id, event_type, event_action, payload, status, attempts, max_attempts, created_at, updated_at)
 		 VALUES (%s, %s, %s, %s, %s, 'received', 0, 3, %s, %s)`,
 		d.placeholder(1), d.placeholder(2), d.placeholder(3), d.placeholder(4), d.placeholder(5), d.placeholder(6), d.placeholder(7),
 	)
@@ -58,7 +58,7 @@ func (d *webhookDeliveryStore) RecordDelivery(ctx context.Context, params webhoo
 func (d *webhookDeliveryStore) MarkDeliveryCompleted(ctx context.Context, deliveryID string) error {
 	now := time.Now().UTC()
 	query := fmt.Sprintf(
-		`UPDATE chetter_webhook_deliveries SET status = 'completed', processed_at = %s, updated_at = %s WHERE delivery_id = %s`,
+		`UPDATE webhook_deliveries SET status = 'completed', processed_at = %s, updated_at = %s WHERE delivery_id = %s`,
 		d.placeholder(1), d.placeholder(2), d.placeholder(3),
 	)
 	_, err := d.db.ExecContext(ctx, query, now, now, deliveryID)
@@ -71,7 +71,7 @@ func (d *webhookDeliveryStore) MarkDeliveryCompleted(ctx context.Context, delive
 func (d *webhookDeliveryStore) MarkDeliveryProcessing(ctx context.Context, deliveryID string) error {
 	now := time.Now().UTC()
 	query := fmt.Sprintf(
-		`UPDATE chetter_webhook_deliveries SET status = 'processing', updated_at = %s WHERE delivery_id = %s`,
+		`UPDATE webhook_deliveries SET status = 'processing', updated_at = %s WHERE delivery_id = %s`,
 		d.placeholder(1), d.placeholder(2),
 	)
 	_, err := d.db.ExecContext(ctx, query, now, deliveryID)
@@ -83,7 +83,7 @@ func (d *webhookDeliveryStore) MarkDeliveryFailed(ctx context.Context, deliveryI
 	// Exponential backoff: 1s, 5s, 15s for attempts 1, 2, 3. After 3 attempts,
 	// mark as dead_letter. See issue #102 criterion 1 and 4.
 	var attempts, maxAttempts int
-	selectQuery := fmt.Sprintf(`SELECT attempts, max_attempts FROM chetter_webhook_deliveries WHERE delivery_id = %s`, d.placeholder(1))
+	selectQuery := fmt.Sprintf(`SELECT attempts, max_attempts FROM webhook_deliveries WHERE delivery_id = %s`, d.placeholder(1))
 	if err := d.db.QueryRowContext(ctx, selectQuery, deliveryID).Scan(&attempts, &maxAttempts); err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (d *webhookDeliveryStore) MarkDeliveryFailed(ctx context.Context, deliveryI
 		nextAttempt = nil
 	}
 	query := fmt.Sprintf(
-		`UPDATE chetter_webhook_deliveries
+		`UPDATE webhook_deliveries
 		 SET status = %s,
 		     attempts = %s,
 		     error = %s,
@@ -160,13 +160,13 @@ func (s *Service) ListWebhookDeliveries(ctx context.Context, limit, offset int) 
 	if s.dialect == store.DialectPostgres {
 		query = `SELECT id, delivery_id, event_type, event_action, status, attempts, max_attempts,
 		                COALESCE(error, ''), created_at, processed_at
-		         FROM chetter_webhook_deliveries
+		         FROM webhook_deliveries
 		         ORDER BY created_at DESC
 		         LIMIT $1 OFFSET $2`
 	} else {
 		query = `SELECT id, delivery_id, event_type, event_action, status, attempts, max_attempts,
 		                COALESCE(error, ''), created_at, processed_at
-		         FROM chetter_webhook_deliveries
+		         FROM webhook_deliveries
 		         ORDER BY created_at DESC
 		         LIMIT ? OFFSET ?`
 	}
@@ -252,11 +252,11 @@ func (w *WebhookDeliveryWorker) retryFailedDeliveries() {
 	now := time.Now().UTC()
 	var query string
 	if w.dialect == store.DialectPostgres {
-		query = `SELECT id, delivery_id, event_type, payload FROM chetter_webhook_deliveries
+		query = `SELECT id, delivery_id, event_type, payload FROM webhook_deliveries
 		         WHERE status = 'failed' AND next_attempt_at <= $1
 		         ORDER BY next_attempt_at ASC LIMIT 10`
 	} else {
-		query = `SELECT id, delivery_id, event_type, payload FROM chetter_webhook_deliveries
+		query = `SELECT id, delivery_id, event_type, payload FROM webhook_deliveries
 		         WHERE status = 'failed' AND next_attempt_at <= ?
 		         ORDER BY next_attempt_at ASC LIMIT 10`
 	}
@@ -309,7 +309,7 @@ func indexOf(s, substr string) int {
 var _ json.RawMessage
 
 // NewWebhookDeliveryStoreAdapter returns a webhook.DeliveryStore backed by the
-// chetter_webhook_deliveries table. Returns nil if db is nil (delivery tracking
+// webhook_deliveries table. Returns nil if db is nil (delivery tracking
 // is disabled). See issue #102.
 func NewWebhookDeliveryStoreAdapter(db *sql.DB, dialect store.Dialect, auditLogger func(context.Context, AuditEventParams) error) webhook.DeliveryStore {
 	if db == nil {
