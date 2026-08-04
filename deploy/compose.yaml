@@ -67,6 +67,7 @@ services:
     volumes:
       - /var/lib/chetter-runner-1:/var/lib/chetter-runner
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/runsc:/usr/bin/runsc:ro
 
   chetter-runner-2:
     image: chetter-runner:latest
@@ -97,3 +98,4 @@ services:
     volumes:
       - /var/lib/chetter-runner-2:/var/lib/chetter-runner
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/runsc:/usr/bin/runsc:ro

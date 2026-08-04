@@ -67,7 +67,7 @@ chetter-runner:
     - /var/run/docker.sock:/var/run/docker.sock
 ```
 
-The runner passes `--runtime=runsc` to `docker run` when creating agent containers. Only the host Docker daemon needs `runsc` registered — the binary does not need to exist inside the runner container. The Docker socket mount is required because the runner shells out to `docker run`.
+The runner passes `--runtime=runsc` to `docker run` when creating agent containers. The host Docker daemon needs `runsc` registered, and the runner container also needs the `runsc` binary on its PATH: the isolation gate (`enforcedIsolation()` in `runner/internal/controller/isolation.go`) probes for it before advertising isolation capability to the server. The Docker socket mount is required because the runner shells out to `docker run`, and `deploy/compose.yaml` bind-mounts the host binary read-only (`/usr/bin/runsc:/usr/bin/runsc:ro`) to satisfy the probe.
 
 ## Sandbox Isolation
 
