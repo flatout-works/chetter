@@ -23,7 +23,8 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [EKS.md](EKS.md) | Production EKS (or similar managed Kubernetes) installation guide. |
 | [testing/k3d-gvisor.md](testing/k3d-gvisor.md) | Local Kubernetes and gVisor testing guide (k3d). |
 | [PRIVATEFORK.md](PRIVATEFORK.md) | Maintaining a private fork of the repository. |
-| [TIDB-WOWBAGGER.md](TIDB-WOWBAGGER.md) | TiDB cluster bootstrap and migration runbook (wowbagger). |
+| [SCHEMA.md](SCHEMA.md) | Database schema reference with mermaid ER diagrams: task model, fleet, triggers, auth, definitions, audit. |
+| [TIDB-WOWBAGGER.md](TIDB-WOWBAGGER.md) | TiDB deployment on wowbagger: cluster shape and DSN routing, UTC time-zone requirement, migration history and schema-drift gotchas, TiDB planner bug, runsc isolation. |
 
 ## Planning
 

@@ -80,7 +80,7 @@ Chetter exposes runner-bridge GitHub tools to task agents so they do not need di
 - `chetter_create_pr`
 - `chetter_pr_review`
 
-These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `chetter_task_artifacts`. The per-execution runner MCP server requires a fresh 256-bit bearer capability, binds only to loopback or the runner's routable interface, and revokes the capability when execution ends. The capability is injected into the selected harness's private MCP configuration and redacted from runner status, errors, exports, and artifacts.
+These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `task_artifacts`. The per-execution runner MCP server requires a fresh 256-bit bearer capability, binds only to loopback or the runner's routable interface, and revokes the capability when execution ends. The capability is injected into the selected harness's private MCP configuration and redacted from runner status, errors, exports, and artifacts.
 
 The runner image wraps `gh` with an explicit read-only command allowlist. Arbitrary API access and all writes must use the audited Chetter tools.
 
@@ -106,9 +106,9 @@ When containers use the runner-wide Chetter MCP relay, the relay accepts only ca
 The reaper can prune historical data from high-growth tables to keep long-running
 deployments bounded:
 
-- `EVENTS_RETENTION_DAYS` controls `chetter_task_events`.
-- `AUDIT_RETENTION_DAYS` controls `chetter_audit_log`.
-- `ARTIFACT_RETENTION_DAYS` controls `chetter_task_artifacts` and `chetter_agent_sessions`.
+- `EVENTS_RETENTION_DAYS` controls `task_events`.
+- `AUDIT_RETENTION_DAYS` controls `audit_log`.
+- `ARTIFACT_RETENTION_DAYS` controls `task_artifacts` and `agent_sessions`.
 - Rows are selected by `created_at` and deleted in batches of up to 1,000.
 - `0` or an unset variable disables pruning for that table; all three settings default to `0`.
 - The implementation is application-level and supports TiDB, MySQL, and PostgreSQL.
@@ -234,7 +234,7 @@ Tools:
 - `chetter_usage_summary`
 - `chetter_runner_health`
 
-Task events are kept separately in `chetter_task_events` and are exposed through task event/progress/latest tools.
+Task events are kept separately in `task_events` and are exposed through task event/progress/latest tools.
 
 ## MCP Tool Reference
 
