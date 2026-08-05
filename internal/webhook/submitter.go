@@ -67,7 +67,16 @@ func (s *serviceSubmitter) SubmitTask(ctx context.Context, req SubmitTaskRequest
 	return s.svc.SubmitTask(ctx, req)
 }
 
+// BuildReviewTaskRequest creates a SubmitTaskRequest for a PR review. It is
+// the canonical conversion used by both the webhook dispatch path and the
+// manual trigger test flow so the two never drift.
+func BuildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
+	return buildReviewTaskRequest(review)
+}
+
 // buildReviewTaskRequest creates a SubmitTaskRequest for a PR review.
+// BuildReviewTaskRequest is the canonical conversion used by both the webhook
+// dispatch path and the manual trigger test flow so the two never drift.
 func buildReviewTaskRequest(review ReviewContext) SubmitTaskRequest {
 	prompt := review.Prompt
 	if prompt == "" {

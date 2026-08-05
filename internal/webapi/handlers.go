@@ -615,6 +615,27 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 	})}), nil
 }
 
+// TestTrigger manually invokes an external-event trigger (pr_review or issue)
+// with a synthetic event, reusing the real webhook dispatch path. The server
+// fetches authoritative PR/issue metadata from GitHub.
+func (h *triggerHandler) TestTrigger(ctx context.Context, req *connect.Request[apiv1.TestTriggerRequest]) (*connect.Response[apiv1.TestTriggerResponse], error) {
+	out, err := h.svc.TestTrigger(ctx, service.TestTriggerInput{
+		Name:        req.Msg.Name,
+		Repo:        req.Msg.Repo,
+		PRNumber:    int(req.Msg.PrNumber),
+		Event:       req.Msg.Event,
+		IssueNumber: int(req.Msg.IssueNumber),
+		Labels:      req.Msg.Labels,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&apiv1.TestTriggerResponse{
+		Trigger: protoTrigger(out.Trigger),
+		TaskIds: out.TaskIDs,
+	}), nil
+}
+
 func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Request[apiv1.ListTriggerRunsRequest]) (*connect.Response[apiv1.ListTriggerRunsResponse], error) {
 	runs, err := h.svc.ListTriggerRuns(ctx, req.Msg.TriggerName, int(req.Msg.Limit), int(req.Msg.Offset))
 	if err != nil {

@@ -301,6 +301,11 @@ func TestWebAPITeamTokenCannotMutateOtherTeamTrigger(t *testing.T) {
 	if _, err := triggersB.RunTrigger(context.Background(), connect.NewRequest(&apiv1.RunTriggerRequest{Name: "team-a-trigger"})); err == nil {
 		t.Fatal("team-b RunTrigger should fail")
 	}
+	if _, err := triggersB.TestTrigger(context.Background(), connect.NewRequest(&apiv1.TestTriggerRequest{
+		Name: "team-a-trigger", Repo: "acme/one", Event: "opened", PrNumber: 1,
+	})); err == nil {
+		t.Fatal("team-b TestTrigger should fail")
+	}
 	if _, err := triggersB.DeleteTrigger(context.Background(), connect.NewRequest(&apiv1.DeleteTriggerRequest{Name: "team-a-trigger"})); err == nil {
 		t.Fatal("team-b DeleteTrigger should fail")
 	}

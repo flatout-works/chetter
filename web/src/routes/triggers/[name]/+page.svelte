@@ -9,7 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
-  import { Alert, Badge, Button, Card, PaginationNav, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Toggle } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Input, Label, Modal, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Toggle } from "flowbite-svelte";
 
   let { params } = $props();
   let trigger = $state<Trigger | null>(null);
@@ -44,6 +44,68 @@
     if (!trigger) return "—";
     if (trigger.cronExpr) return trigger.cronExpr;
     return triggerConfig.repo || "—";
+  }
+
+  // --- Manual test-run flow for external-event triggers (issue #271) ---
+
+  // Events the webhook dispatches for pr_review triggers (pull_request action)
+  // and issue triggers (issues action). "fork" and "comment" are derived
+  // reasons, not user-selectable events.
+  const prReviewEvents = ["opened", "synchronize", "reopened", "labeled"];
+  const issueEvents = ["opened", "reopened", "labeled"];
+
+  let showTestModal = $state(false);
+  let testRepo = $state("");
+  let testEvent = $state("");
+  let testPrNumber = $state(0);
+  let testIssueNumber = $state(0);
+  let testLabels = $state("");
+  let testTasks = $state<string[]>([]);
+  let testError = $state<string | null>(null);
+  let testing = $state(false);
+
+  let isExternalEventTrigger = $derived(trigger?.triggerType === "pr_review" || trigger?.triggerType === "issue");
+  let testEvents = $derived(trigger?.triggerType === "pr_review" ? prReviewEvents : issueEvents);
+  let needsLabels = $derived(
+    trigger?.triggerType === "issue" && Array.isArray(triggerConfig.match_labels) && triggerConfig.match_labels.length > 0
+  );
+
+  function openTestModal() {
+    testRepo = triggerConfig.repo || "";
+    testEvent = testEvents[0];
+    testPrNumber = 0;
+    testIssueNumber = 0;
+    testLabels = "";
+    testTasks = [];
+    testError = null;
+    showTestModal = true;
+  }
+
+  async function submitTest() {
+    if (!trigger) return;
+    testError = null;
+    testTasks = [];
+    testing = true;
+    try {
+      const client = createClient(TriggerService, getTransport());
+      const resp = await client.testTrigger({
+        name: trigger.name,
+        repo: testRepo.trim(),
+        event: testEvent,
+        prNumber: trigger.triggerType === "pr_review" ? testPrNumber : 0,
+        issueNumber: trigger.triggerType === "issue" ? testIssueNumber : 0,
+        labels: testLabels.split(",").map((l) => l.trim()).filter((l) => l !== ""),
+      });
+      testTasks = resp.taskIds ?? [];
+      addToast(`Test run for "${trigger.name}" submitted`, "success");
+      showTestModal = false;
+      loadRuns();
+    } catch (e) {
+      testError = e instanceof Error ? e.message : "Failed to run trigger test.";
+      addToast(testError, "error");
+    } finally {
+      testing = false;
+    }
   }
 
   function fmtTokens(n: bigint): string {
@@ -186,7 +248,10 @@
       </div>
       <div class="flex items-center gap-2">
         <Toggle checked={trigger.enabled} onchange={toggleEnabled} color="gray" size="small" disabled={isGitManaged()} />
-        <Button color="blue" size="sm" onclick={runNow}>Run Now</Button>
+        <Button color="blue" size="sm" onclick={runNow} disabled={trigger.triggerType !== "cron"}>Run Now</Button>
+        {#if isExternalEventTrigger}
+          <Button color="purple" size="sm" onclick={openTestModal}>Test Trigger</Button>
+        {/if}
         <Button color="red" size="sm" onclick={deleteTrigger} disabled={isGitManaged()}>Delete</Button>
       </div>
     </div>
@@ -385,3 +450,67 @@
     </Card>
   {/if}
 </div>
+
+{#if trigger}
+<Modal title={`Test Trigger: ${trigger.name}`} bind:open={showTestModal} size="md" onclose={() => showTestModal = false}>
+  <div class="space-y-4">
+    <Alert color="blue" class="!p-3">
+      Runs the same dispatch path as a real GitHub webhook event. The server fetches
+      authoritative PR/issue metadata from GitHub instead of trusting editable fields.
+      Test runs are marked as manual in the audit log.
+    </Alert>
+    {#if testError}
+      <Alert color="red">{testError}</Alert>
+    {/if}
+    <div>
+      <Label for="tt-repo" class="mb-2">Repository (owner/repo)</Label>
+      <Input id="tt-repo" bind:value={testRepo} placeholder="e.g. org/repo" />
+    </div>
+    <div>
+      <Label for="tt-event" class="mb-2">Event / action</Label>
+      <Select id="tt-event" bind:value={testEvent}>
+        {#each testEvents as ev}
+          <option value={ev}>{ev}</option>
+        {/each}
+      </Select>
+    </div>
+    {#if trigger.triggerType === "pr_review"}
+      <div>
+        <Label for="tt-pr" class="mb-2">PR number</Label>
+        <Input id="tt-pr" type="number" min={1} bind:value={testPrNumber} placeholder="e.g. 42" />
+      </div>
+    {:else}
+      <div>
+        <Label for="tt-issue" class="mb-2">Issue number</Label>
+        <Input id="tt-issue" type="number" min={1} bind:value={testIssueNumber} placeholder="e.g. 42" />
+      </div>
+      {#if needsLabels}
+        <div>
+          <Label for="tt-labels" class="mb-2">Simulated labels (comma-separated)</Label>
+          <Input id="tt-labels" bind:value={testLabels} placeholder="e.g. bug, triage" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Used for match_labels evaluation; leave empty to use the issue's actual GitHub labels.
+          </p>
+        </div>
+      {/if}
+    {/if}
+    <Button color="purple" disabled={testing || !testRepo.trim() || (trigger.triggerType === "pr_review" ? testPrNumber <= 0 : testIssueNumber <= 0)} onclick={submitTest} class="w-full">
+      {testing ? "Running test…" : "Run Test"}
+    </Button>
+    {#if testTasks.length > 0}
+      <div>
+        <Label class="mb-2">Submitted task(s)</Label>
+        <ul class="space-y-1">
+          {#each testTasks as taskId}
+            <li>
+              <a href={resolve("/tasks/[id]", { id: taskId })} class="font-mono text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                {taskId}
+              </a>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+  </div>
+</Modal>
+{/if}
