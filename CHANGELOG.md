@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2026-08-05
+
+### Added
+
+- OIDC/OAuth SSO for the web UI (Okta) (#94): sign-in via `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and `OIDC_REDIRECT_URL`, with admin and team-group mapping via `OIDC_ADMIN_GROUP` and `OIDC_TEAM_GROUP_PREFIX`, and session JWTs via `OIDC_SESSION_SECRET`/`OIDC_SESSION_TTL`. Ships a fake OIDC provider (`internal/oidctest`) used by handler and auth tests. Documented in `docs/MANUAL.md` and `docs/FEATURES.md`.
+- Enforced isolation admission (#291, #292): runners advertise enforced gVisor/runsc sandboxing (or a gVisor runtime class on Kubernetes) in claim/heartbeat metadata. Tasks that require isolation — resumable sessions, explicit `isolation: required`, or every task on a hardened fleet — are admitted only to isolation-capable runners and otherwise fail fast with a terminal `isolation_unavailable` error. `CHETTER_ALLOW_UNISOLATED` is the documented escape hatch for single-tenant deployments. New migrations (MySQL/TiDB 051, PostgreSQL 027) add `chetter_runners.isolation_enabled` and `chetter_agent_sessions.isolation_required`.
+
+### Fixed
+
+- Runner claiming on TiDB serverless: the isolation-admission JOIN broke the `SELECT ... FOR UPDATE SKIP LOCKED` claim query on TiDB (`Error 1105`), so the fleet could not claim any task after migration 051. The isolation check is now expressed as a `NOT EXISTS` subquery, preserving the same admission semantics and verified against the live production database.
+- Deploy: `runsc` is now bind-mounted read-only into both runner containers (`/usr/bin/runsc:/usr/bin/runsc:ro`) and `docs/DEPLOYMENT.md`'s stale claim corrected — without `runsc` on the runner's PATH no runner advertises isolation and every isolation-requiring task fails with `isolation_unavailable`.
+- ops: `tidb-cloud-migrate.sh` is now usable against MySQL targets — drops `--single-transaction` (TiDB Cloud rejects the SAVEPOINT mysqldump uses with it), adds `MIGRATE_DRIVER`/`PREPARE_CMD` and `PRE_IMPORT_SQL`/`POST_IMPORT_SQL` drift hooks, and fixes the verify backtick escaping that made bash execute the table name.
+- ops: `tidb-bootstrap.sh` topology template synced with the TiUP 1.17 schema — the old pre-1.17 format (top-level `labels`/`location_labels`) is rejected by TiUP v1.17; now uses TiKV location labels via `config.server.labels`, `server_configs.pd` replication location labels, TiDB UTC time-zone, and the memory caps.
+
+### Changed
+
+- Database table prefix dropped: the 14 `chetter_*` application tables were renamed to unprefixed names (`tasks`, `task_events`, `user_prompts`, `execution_attempts`, `agent_sessions`, `agent_session_checkpoints`, `task_artifacts`, `runners`, `triggers`, `trigger_runs`, `event_callbacks`, `model_catalogs`, `audit_log`, `webhook_deliveries`) via migration 052 (MySQL/TiDB) and 028 (PostgreSQL). Queries and sqlc output regenerated for both dialect trees, and generated struct types drop the prefix (e.g. `repository.ChetterTask` → `repository.Task`). Prometheus metric names are unchanged; index names keep their historical `idx_chetter_*` names so fresh and migrated installs stay identical.
+
+### Documentation
+
+- New `docs/SCHEMA.md`: database schema reference with domain-grouped mermaid ER diagrams covering all 24 application tables (as of migration 051), plus schema-wide notes (no FK constraints, `search_text` FTS columns, UTC time-zone requirement).
+- `docs/TIDB-WOWBAGGER.md` rewritten from a migration runbook into a current-state ops document: cluster shape and credentials, DSN routing (MCP server only), the UTC time-zone requirement that broke the fleet (`SYSTEM` tz shifted every `TIMESTAMPDIFF`-based age), migration history and schema drift gotchas, the 051 SKIP LOCKED planner bug, and the runsc isolation requirement. `AGENTS.md` gains matching gotchas.
+
 ## 2026-08-02
 
 ### Added
