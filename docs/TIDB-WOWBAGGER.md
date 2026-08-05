@@ -101,7 +101,7 @@ Notable gotchas from the migration:
   after, so the final schema matches the code. Any future source with
   `ensure*`-only history may need the same treatment; compare
   `INFORMATION_SCHEMA.COLUMNS` before import.
-- **Row counts on a live source.** `chetter_task_events` grows constantly
+- **Row counts on a live source.** `task_events` grows constantly
   (runner heartbeats), so verify against `MAX(created_at)` of the dump, not
   the current source total. At cutover, writes are frozen and counts are
   exact.

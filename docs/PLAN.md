@@ -131,7 +131,7 @@ Current foundation:
 - `session_mode`, `pause_reason`, and `ttl_hours` are accepted on task and trigger submission.
 - ExecutionAttempt `required_runner_id` supports same-runner resume affinity.
 - `chetter_list_agent_sessions`, `chetter_agent_session_status`, and `chetter_resume_agent_session` are registered.
-- GitHub artifact tools and `chetter_task_artifacts` provide server-side ownership records.
+- GitHub artifact tools and `task_artifacts` provide server-side ownership records.
 
 Next deliverables:
 

@@ -151,9 +151,9 @@ Managed Git identities control commit attribution for agent work and are configu
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
 | `CHETTER_MAX_TASK_TIMEOUT_SEC` | No | unset | Operator-configurable ceiling for `timeout_sec` on tasks and triggers. |
 | `CHETTER_MAX_SESSION_TTL_HOURS` | No | unset | Operator-configurable ceiling for resumable session TTL. |
-| `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `chetter_task_events`. A positive value enables reaper pruning; `0` disables it. |
-| `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `chetter_audit_log`. A positive value enables reaper pruning; `0` disables it. |
-| `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `chetter_task_artifacts` and `chetter_agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
+| `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `task_events`. A positive value enables reaper pruning; `0` disables it. |
+| `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `audit_log`. A positive value enables reaper pruning; `0` disables it. |
+| `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `task_artifacts` and `agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
 | `CHETTER_ALLOW_UNISOLATED` | No | `false` | Documented escape hatch for single-tenant/trusted deployments that intentionally run without gVisor. When unset (hardened default), every task requires enforced isolation (gVisor/runsc) and is refused by runners that cannot enforce it. When `true`, only resumable sessions and tasks explicitly configured with `isolation: required` require isolation. Set it on the server **and** on every runner in the trusted deployment. See issue #291. |
@@ -219,9 +219,9 @@ deletes rows whose `created_at` is older than the configured number of days:
 
 | Variable | Tables | Example |
 |---|---|---|
-| `EVENTS_RETENTION_DAYS` | `chetter_task_events` | `30` |
-| `AUDIT_RETENTION_DAYS` | `chetter_audit_log` | `90` |
-| `ARTIFACT_RETENTION_DAYS` | `chetter_task_artifacts`, `chetter_agent_sessions` | `180` |
+| `EVENTS_RETENTION_DAYS` | `task_events` | `30` |
+| `AUDIT_RETENTION_DAYS` | `audit_log` | `90` |
+| `ARTIFACT_RETENTION_DAYS` | `task_artifacts`, `agent_sessions` | `180` |
 
 Retention is disabled by default. An unset variable and an explicit value of
 `0` both preserve rows indefinitely, so existing deployments are not affected

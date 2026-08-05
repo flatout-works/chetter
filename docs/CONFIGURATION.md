@@ -381,7 +381,7 @@ Z.ai, Anthropic, OpenCode Zen).
 2. Set `DEFINITIONS_REPO` (and optionally `DEFINITIONS_BRANCH`) on the MCP
    server.
 3. Start (or restart) the server. It clones the repo, validates the catalog,
-   and stores it as the active catalog in `chetter_model_catalogs`.
+   and stores it as the active catalog in `model_catalogs`.
 4. Chetter re-pulls the definitions repo every five minutes and updates the DB.
    To refresh immediately, call `chetter_sync_definitions` (admin only) or restart.
 
