@@ -9,6 +9,7 @@
   import { startLiveUpdates, stopLiveUpdates } from "$lib/stores/tasks.svelte";
   import { clearTaskDetail } from "$lib/stores/taskDetail.svelte";
   import { startServerInfoPolling, stopServerInfoPolling, getServerInfo } from "$lib/stores/serverInfo.svelte";
+  import { formatAge } from "$lib/utils.svelte";
   import { setTeamOptions, teamFilter } from "$lib/stores/filter.svelte";
   import { createClient } from "@connectrpc/connect";
   import { TaskService } from "$gen/proto/api/v1/api_pb";
@@ -27,6 +28,19 @@
 
   let sidebarOpen = $state(false);
   let sidebarCollapsed = $state(false);
+
+  let uptimeTick = $state(0);
+  $effect(() => {
+    const id = setInterval(() => {
+      uptimeTick++;
+    }, 1000);
+    return () => clearInterval(id);
+  });
+  let uptimeText = $derived.by(() => {
+    if (!serverInfo.startedAt) return null;
+    void uptimeTick;
+    return formatAge(serverInfo.startedAt);
+  });
 
   let pageUrls = $state(new Map<string, string>());
   let whoamiTeams = $state<{ id: string; name: string }[]>([]);
@@ -233,13 +247,16 @@
           {$theme === "dark" ? "☀ Light" : "🌙 Dark"}
         </Button>
         <Button onclick={logout} color="red" size="sm" class="w-full justify-start">Sign Out</Button>
-        {#if webGitHash !== "unknown" || serverInfo.gitHash}
+        {#if webGitHash !== "unknown" || serverInfo.gitHash || serverInfo.serverVersion || uptimeText}
           <div class="space-y-1 pt-2 text-center text-[11px] font-mono text-gray-400 dark:text-gray-500">
             {#if webGitHash !== "unknown"}
               <div>web {webGitHash}</div>
             {/if}
             {#if serverInfo.gitHash}
-              <div>server {serverInfo.gitHash}</div>
+              <div>server {serverInfo.serverVersion ? `${serverInfo.serverVersion}-${serverInfo.gitHash}` : serverInfo.gitHash}</div>
+            {/if}
+            {#if uptimeText}
+              <div>up {uptimeText}</div>
             {/if}
           </div>
         {/if}

@@ -31,9 +31,11 @@ $(BUF):
 $(SQLC):
 	GOBIN=$(BIN_DIR) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
+VERSION ?= $(shell git describe --tags --always --dirty)
+
 build: web-build
 	mkdir -p bin
-	go build -ldflags="-X 'main._gitHash=$(shell git rev-parse --short HEAD)'" -o bin/chetter .
+	go build -ldflags="-X 'main.serverVersion=$(VERSION)' -X 'main._gitHash=$(shell git rev-parse --short HEAD)'" -o bin/chetter .
 	go build -o bin/chetterctl ./cmd/chetterctl
 
 web-build:

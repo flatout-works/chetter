@@ -1,5 +1,8 @@
 let quotaExhausted = $state(false);
 let gitHash = $state<string | null>(null);
+let serverVersion = $state<string | null>(null);
+let startedAt = $state<string | null>(null);
+let uptimeSeconds = $state<number | null>(null);
 let oidcEnabled = $state(false);
 
 let interval: ReturnType<typeof setInterval> | null = null;
@@ -13,6 +16,15 @@ export function fetchServerInfo(): Promise<void> {
         const info = await res.json();
         if (info.gitHash && info.gitHash !== "unknown") {
           gitHash = info.gitHash;
+        }
+        if (info.serverVersion && info.serverVersion !== "dev") {
+          serverVersion = info.serverVersion;
+        }
+        if (info.startedAt) {
+          startedAt = info.startedAt;
+        }
+        if (typeof info.uptimeSeconds === "number") {
+          uptimeSeconds = info.uptimeSeconds;
         }
         quotaExhausted = !!info.quotaExhausted;
         oidcEnabled = !!info.oidcEnabled;
@@ -50,6 +62,9 @@ export function stopServerInfoPolling() {
 export function getServerInfo() {
   return {
     get gitHash() { return gitHash; },
+    get serverVersion() { return serverVersion; },
+    get startedAt() { return startedAt; },
+    get uptimeSeconds() { return uptimeSeconds; },
     get quotaExhausted() { return quotaExhausted; },
   };
 }

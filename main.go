@@ -33,10 +33,16 @@ const (
 	startupRetryBackoff = 2 * time.Second
 )
 
-var _gitHash = "unknown"
+var (
+	// serverVersion is overridden at build time via
+	// -X 'main.serverVersion=...' (see Makefile VERSION).
+	serverVersion = "dev"
+	_gitHash      = "unknown"
+	// startedAt marks process start, used for /api/server-info uptime.
+	startedAt = time.Now()
+)
 
 const (
-	serverVersion     = "dev"
 	mcpServerName     = "chetter"
 	mcpServerVersion  = "v0.1.0"
 	initTimeout       = 30 * time.Second
@@ -244,8 +250,9 @@ func run() error {
 			lastReapField = fmt.Sprintf("%q", lastReap.Format(time.RFC3339Nano))
 		}
 		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"serverVersion":%q,"gitHash":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t}`,
-			serverVersion, _gitHash, svc.QuotaExhausted(), lastReapField, oidcAuth != nil,
+			`{"serverVersion":%q,"gitHash":%q,"uptimeSeconds":%d,"startedAt":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t}`,
+			serverVersion, _gitHash, int64(time.Since(startedAt).Seconds()), startedAt.UTC().Format(time.RFC3339),
+			svc.QuotaExhausted(), lastReapField, oidcAuth != nil,
 		)))
 	})
 	webMux.Handle("/", webui.Handler())

@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write  # needed to create the GitHub release
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            runner/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Check chetter
+        run: make check
+      - name: Test PostgreSQL support
+        run: make test-postgres
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [check]
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for `git describe` version resolution
+
+      - id: tag
+        name: Resolve tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            runner/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Checkout tag
+        run: git checkout "${{ steps.tag.outputs.tag }}"
+
+      - name: Build embedded web UI
+        run: make web-build
+
+      - name: Build binaries
+        env:
+          VERSION: ${{ steps.tag.outputs.tag }}
+        run: |
+          version="${VERSION#v}"
+          mkdir -p dist
+          for target in linux/amd64 darwin/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            go build -ldflags="-X 'main.serverVersion=${version}' -X 'main._gitHash=$(git rev-parse --short HEAD)'" \
+              -o "dist/chetter-${version}-${os}-${arch}" .
+            go build -ldflags="-X 'main.serverVersion=${version}' -X 'main._gitHash=$(git rev-parse --short HEAD)'" \
+              -o "dist/chetterctl-${version}-${os}-${arch}" ./cmd/chetterctl
+          done
+          sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Extract changelog section
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          version="${tag#v}"
+          # Pull the "## [<version>]" section from CHANGELOG.md; fall back to
+          # GitHub-generated notes if the section is missing.
+          if awk -v v="[${version}]" 'BEGIN{s=0} /^## /{if(s) exit; if($0 ~ ("^## " v)) s=1; next} s{print}' \
+              CHANGELOG.md > /tmp/release-notes.md && [ -s /tmp/release-notes.md ]; then
+            echo "notes=/tmp/release-notes.md" >> "$GITHUB_ENV"
+          else
+            echo "notes=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          version="${tag#v}"
+          if [ -n "$notes" ]; then
+            gh release create "$tag" --title "Chetter $version" --notes-file "$notes" dist/chetter-* dist/chetterctl-* dist/SHA256SUMS
+          else
+            gh release create "$tag" --title "Chetter $version" --generate-notes dist/chetter-* dist/chetterctl-* dist/SHA256SUMS
+          fi
