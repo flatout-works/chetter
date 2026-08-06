@@ -105,6 +105,9 @@ const (
 	// TriggerServiceRunTriggerProcedure is the fully-qualified name of the TriggerService's RunTrigger
 	// RPC.
 	TriggerServiceRunTriggerProcedure = "/api.v1.TriggerService/RunTrigger"
+	// TriggerServiceTestTriggerProcedure is the fully-qualified name of the TriggerService's
+	// TestTrigger RPC.
+	TriggerServiceTestTriggerProcedure = "/api.v1.TriggerService/TestTrigger"
 	// TriggerServiceListTriggerRunsProcedure is the fully-qualified name of the TriggerService's
 	// ListTriggerRuns RPC.
 	TriggerServiceListTriggerRunsProcedure = "/api.v1.TriggerService/ListTriggerRuns"
@@ -775,6 +778,7 @@ type TriggerServiceClient interface {
 	ListTriggers(context.Context, *connect.Request[v1.ListTriggersRequest]) (*connect.Response[v1.ListTriggersResponse], error)
 	DeleteTrigger(context.Context, *connect.Request[v1.DeleteTriggerRequest]) (*connect.Response[v1.DeleteTriggerResponse], error)
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
+	TestTrigger(context.Context, *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error)
 	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
 }
 
@@ -819,6 +823,12 @@ func NewTriggerServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(triggerServiceMethods.ByName("RunTrigger")),
 			connect.WithClientOptions(opts...),
 		),
+		testTrigger: connect.NewClient[v1.TestTriggerRequest, v1.TestTriggerResponse](
+			httpClient,
+			baseURL+TriggerServiceTestTriggerProcedure,
+			connect.WithSchema(triggerServiceMethods.ByName("TestTrigger")),
+			connect.WithClientOptions(opts...),
+		),
 		listTriggerRuns: connect.NewClient[v1.ListTriggerRunsRequest, v1.ListTriggerRunsResponse](
 			httpClient,
 			baseURL+TriggerServiceListTriggerRunsProcedure,
@@ -835,6 +845,7 @@ type triggerServiceClient struct {
 	listTriggers    *connect.Client[v1.ListTriggersRequest, v1.ListTriggersResponse]
 	deleteTrigger   *connect.Client[v1.DeleteTriggerRequest, v1.DeleteTriggerResponse]
 	runTrigger      *connect.Client[v1.RunTriggerRequest, v1.RunTriggerResponse]
+	testTrigger     *connect.Client[v1.TestTriggerRequest, v1.TestTriggerResponse]
 	listTriggerRuns *connect.Client[v1.ListTriggerRunsRequest, v1.ListTriggerRunsResponse]
 }
 
@@ -863,6 +874,11 @@ func (c *triggerServiceClient) RunTrigger(ctx context.Context, req *connect.Requ
 	return c.runTrigger.CallUnary(ctx, req)
 }
 
+// TestTrigger calls api.v1.TriggerService.TestTrigger.
+func (c *triggerServiceClient) TestTrigger(ctx context.Context, req *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error) {
+	return c.testTrigger.CallUnary(ctx, req)
+}
+
 // ListTriggerRuns calls api.v1.TriggerService.ListTriggerRuns.
 func (c *triggerServiceClient) ListTriggerRuns(ctx context.Context, req *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error) {
 	return c.listTriggerRuns.CallUnary(ctx, req)
@@ -875,6 +891,7 @@ type TriggerServiceHandler interface {
 	ListTriggers(context.Context, *connect.Request[v1.ListTriggersRequest]) (*connect.Response[v1.ListTriggersResponse], error)
 	DeleteTrigger(context.Context, *connect.Request[v1.DeleteTriggerRequest]) (*connect.Response[v1.DeleteTriggerResponse], error)
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
+	TestTrigger(context.Context, *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error)
 	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
 }
 
@@ -915,6 +932,12 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 		connect.WithSchema(triggerServiceMethods.ByName("RunTrigger")),
 		connect.WithHandlerOptions(opts...),
 	)
+	triggerServiceTestTriggerHandler := connect.NewUnaryHandler(
+		TriggerServiceTestTriggerProcedure,
+		svc.TestTrigger,
+		connect.WithSchema(triggerServiceMethods.ByName("TestTrigger")),
+		connect.WithHandlerOptions(opts...),
+	)
 	triggerServiceListTriggerRunsHandler := connect.NewUnaryHandler(
 		TriggerServiceListTriggerRunsProcedure,
 		svc.ListTriggerRuns,
@@ -933,6 +956,8 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 			triggerServiceDeleteTriggerHandler.ServeHTTP(w, r)
 		case TriggerServiceRunTriggerProcedure:
 			triggerServiceRunTriggerHandler.ServeHTTP(w, r)
+		case TriggerServiceTestTriggerProcedure:
+			triggerServiceTestTriggerHandler.ServeHTTP(w, r)
 		case TriggerServiceListTriggerRunsProcedure:
 			triggerServiceListTriggerRunsHandler.ServeHTTP(w, r)
 		default:
@@ -962,6 +987,10 @@ func (UnimplementedTriggerServiceHandler) DeleteTrigger(context.Context, *connec
 
 func (UnimplementedTriggerServiceHandler) RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.RunTrigger is not implemented"))
+}
+
+func (UnimplementedTriggerServiceHandler) TestTrigger(context.Context, *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.TestTrigger is not implemented"))
 }
 
 func (UnimplementedTriggerServiceHandler) ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error) {

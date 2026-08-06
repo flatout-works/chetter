@@ -164,6 +164,7 @@
       case "recovery": return "Recovery task";
       case "session_resume": return "Session resume";
       case "event_callback": return "Event callback";
+      case "trigger_test": return "Trigger test run";
       default: return "Manually submitted";
     }
   }

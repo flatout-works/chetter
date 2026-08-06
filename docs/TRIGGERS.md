@@ -346,6 +346,45 @@ the task repository.
 
 An in-memory set of recent `X-GitHub-Delivery` IDs prevents duplicate processing if GitHub retries a webhook delivery. Entries expire after 5 minutes (configurable). Not persisted across restarts — acceptable since GitHub does not redeliver after a crash.
 
+## Manually Testing External-Event Triggers (Web UI)
+
+`pr_review` and `issue` triggers fire from GitHub webhook events, so there is no
+cron expression or "Run Now" path to exercise them. The trigger detail page
+(`/triggers/{name}`) therefore shows a **Test Trigger** action for these types.
+
+A test run:
+
+1. Collects the minimum event context in a per-type form: repository,
+   event/action, and PR or issue number (plus optional simulated labels for
+   issue triggers with `match_labels`).
+2. Resolves the repository installation and fetches **authoritative metadata
+   from GitHub** — PR base/head refs and head clone URL, or issue
+   title/body/labels — rather than trusting editable branch/ref fields.
+3. Reuses the same trigger dispatch path as a real webhook delivery: the
+   trigger must be enabled and configured for the repo, the simulated event
+   must match the trigger's configured `event`, and `match_labels` must match
+   the simulated labels (or the issue's actual GitHub labels when none are
+   given). Disabled triggers, repo mismatches, event mismatches, and label
+   mismatches all fail with a clear error.
+4. Submits the task with the trigger's exact task configuration (prompt,
+   agent, model, skills, timeout, session mode, isolation), stamps it with
+   `submission_source = trigger_test`, and records a `trigger_test_run` audit
+   event so test-originated work is distinguishable from real deliveries.
+
+The resulting task IDs are shown in the UI and link to the task pages; the
+same tasks appear in the trigger's Recent Runs table.
+
+### Relationship to `chetter_submit_task` and `chetter_run_trigger`
+
+- `chetter_submit_task` is for **direct tasks** — it bypasses the webhook
+  entirely and does not model external-event context (PR refs, issue labels,
+  trigger matching).
+- `chetter_run_trigger` covers **cron triggers only** (it runs the trigger's
+  template immediately).
+- The Test Trigger flow exists specifically to test **external-event trigger
+  wiring** (matching, task configuration, and end-to-end dispatch) against a
+  real GitHub PR or issue without waiting for a new webhook event.
+
 ## Error Handling
 
 If the review task submission fails:

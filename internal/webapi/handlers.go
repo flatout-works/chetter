@@ -2,7 +2,9 @@ package webapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -613,6 +615,30 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
 		TriggerName: task.TriggerName, TriggerType: task.TriggerType, SubmissionSource: task.SubmissionSource,
 	})}), nil
+}
+
+// TestTrigger manually invokes an external-event trigger (pr_review or issue)
+// with a synthetic event, reusing the real webhook dispatch path. The server
+// fetches authoritative PR/issue metadata from GitHub.
+func (h *triggerHandler) TestTrigger(ctx context.Context, req *connect.Request[apiv1.TestTriggerRequest]) (*connect.Response[apiv1.TestTriggerResponse], error) {
+	out, err := h.svc.TestTrigger(ctx, service.TestTriggerInput{
+		Name:        req.Msg.Name,
+		Repo:        req.Msg.Repo,
+		PRNumber:    int(req.Msg.PrNumber),
+		Event:       req.Msg.Event,
+		IssueNumber: int(req.Msg.IssueNumber),
+		Labels:      req.Msg.Labels,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&apiv1.TestTriggerResponse{
+		Trigger: protoTrigger(out.Trigger),
+		TaskIds: out.TaskIDs,
+	}), nil
 }
 
 func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Request[apiv1.ListTriggerRunsRequest]) (*connect.Response[apiv1.ListTriggerRunsResponse], error) {

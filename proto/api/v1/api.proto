@@ -527,6 +527,7 @@ service TriggerService {
   rpc ListTriggers(ListTriggersRequest) returns (ListTriggersResponse);
   rpc DeleteTrigger(DeleteTriggerRequest) returns (DeleteTriggerResponse);
   rpc RunTrigger(RunTriggerRequest) returns (RunTriggerResponse);
+  rpc TestTrigger(TestTriggerRequest) returns (TestTriggerResponse);
   rpc ListTriggerRuns(ListTriggerRunsRequest) returns (ListTriggerRunsResponse);
 }
 
@@ -610,6 +611,32 @@ message RunTriggerRequest {
 
 message RunTriggerResponse {
   Task task = 1;
+}
+
+// TestTriggerRequest manually invokes an external-event trigger (pr_review or
+// issue) with a synthetic event, reusing the same dispatch path as a real
+// GitHub webhook delivery. The server fetches authoritative repository
+// metadata (PR refs, issue labels) from GitHub instead of trusting editable
+// client-supplied fields.
+message TestTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  // Event/action to simulate: for pr_review triggers one of opened,
+  // synchronize, reopened, labeled; for issue triggers one of opened,
+  // reopened, labeled.
+  string event = 3 [(buf.validate.field).string.min_len = 1];
+  // PR number for pr_review triggers.
+  int32 pr_number = 4;
+  // Issue number for issue triggers.
+  int32 issue_number = 5;
+  // Optional labels used for issue trigger match_labels evaluation. When
+  // empty, the issue's actual GitHub labels are used.
+  repeated string labels = 6;
+}
+
+message TestTriggerResponse {
+  Trigger trigger = 1;
+  repeated string task_ids = 2;
 }
 
 message ListTriggerRunsRequest {

@@ -15,6 +15,7 @@ import (
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/internal/validation"
 )
 
 const webAPITestAdminToken = "webapi-test-admin-token"
@@ -301,6 +302,11 @@ func TestWebAPITeamTokenCannotMutateOtherTeamTrigger(t *testing.T) {
 	if _, err := triggersB.RunTrigger(context.Background(), connect.NewRequest(&apiv1.RunTriggerRequest{Name: "team-a-trigger"})); err == nil {
 		t.Fatal("team-b RunTrigger should fail")
 	}
+	if _, err := triggersB.TestTrigger(context.Background(), connect.NewRequest(&apiv1.TestTriggerRequest{
+		Name: "team-a-trigger", Repo: "acme/one", Event: "opened", PrNumber: 1,
+	})); err == nil {
+		t.Fatal("team-b TestTrigger should fail")
+	}
 	if _, err := triggersB.DeleteTrigger(context.Background(), connect.NewRequest(&apiv1.DeleteTriggerRequest{Name: "team-a-trigger"})); err == nil {
 		t.Fatal("team-b DeleteTrigger should fail")
 	}
@@ -389,7 +395,7 @@ func authHTTPClient(server *httptest.Server, token string) *http.Client {
 func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 	tdb, cleanupDB := webAPITestDB.NewTestDB(t)
-	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600}
+	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600, EnvValidation: validation.Defaults()}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		cleanupDB()

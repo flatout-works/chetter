@@ -674,7 +674,7 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 		if t.Event != "" && t.Event != "comment" {
 			continue
 		}
-		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
+		if !TriggerMatchesLabels(t.MatchLabels, issueLabels) {
 			continue
 		}
 		matching = append(matching, t)
@@ -716,35 +716,15 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 				ev.Issue.Number, repo, ev.Issue.Title, ev.Issue.HTMLURL,
 				ev.Comment.User.Login, ev.Comment.Body)
 		}
-		req := SubmitTaskRequest{
-			TeamID:               t.TeamID,
-			Prompt:               prompt,
-			GitURL:               t.GitURL,
-			GitRef:               t.GitRef,
-			GitHubRepo:           repo,
-			GitHubInstallationID: ev.Installation.ID,
-			AgentImage:           t.AgentImage,
-			Agent:                t.Agent,
-			ProviderID:           t.ProviderID,
-			ModelID:              t.ModelID,
-			VariantID:            t.VariantID,
-			Skills:               t.Skills,
-			TimeoutSec:           t.TimeoutSec,
-			TriggerName:          t.Name,
-			TriggerType:          t.TriggerType,
-			SessionMode:          t.SessionMode,
-			PauseReason:          t.PauseReason,
-			TTLHours:             t.TTLHours,
-			Env: map[string]string{
-				"GITHUB_REPO":  repo,
-				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
-				"ISSUE_TITLE":  ev.Issue.Title,
-				"ISSUE_URL":    ev.Issue.HTMLURL,
-				"ISSUE_BODY":   ev.Issue.Body,
-				"COMMENT_BODY": ev.Comment.Body,
-				"COMMENT_USER": ev.Comment.User.Login,
-			},
-		}
+		req := BuildIssueTaskRequest(t, repo, ev.Installation.ID, prompt, map[string]string{
+			"GITHUB_REPO":  repo,
+			"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
+			"ISSUE_TITLE":  ev.Issue.Title,
+			"ISSUE_URL":    ev.Issue.HTMLURL,
+			"ISSUE_BODY":   ev.Issue.Body,
+			"COMMENT_BODY": ev.Comment.Body,
+			"COMMENT_USER": ev.Comment.User.Login,
+		})
 		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -935,7 +915,7 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) error {
 		if t.Event != "" && t.Event != ev.Action {
 			continue
 		}
-		if !triggerMatchesLabels(t.MatchLabels, issueLabels) {
+		if !TriggerMatchesLabels(t.MatchLabels, issueLabels) {
 			continue
 		}
 		matching = append(matching, t)
@@ -950,34 +930,14 @@ func (h *Handler) handleIssues(body []byte, deliveryID string) error {
 			prompt = fmt.Sprintf("A GitHub issue was %s in %s.\n\nTitle: %s\nURL: %s\n\nBody:\n%s",
 				ev.Action, repo, ev.Issue.Title, ev.Issue.HTMLURL, ev.Issue.Body)
 		}
-		req := SubmitTaskRequest{
-			TeamID:               t.TeamID,
-			Prompt:               prompt,
-			GitURL:               t.GitURL,
-			GitRef:               t.GitRef,
-			GitHubRepo:           repo,
-			GitHubInstallationID: ev.Installation.ID,
-			AgentImage:           t.AgentImage,
-			Agent:                t.Agent,
-			ProviderID:           t.ProviderID,
-			ModelID:              t.ModelID,
-			VariantID:            t.VariantID,
-			Skills:               t.Skills,
-			TimeoutSec:           t.TimeoutSec,
-			TriggerName:          t.Name,
-			TriggerType:          t.TriggerType,
-			SessionMode:          t.SessionMode,
-			PauseReason:          t.PauseReason,
-			TTLHours:             t.TTLHours,
-			Env: map[string]string{
-				"GITHUB_REPO":  repo,
-				"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
-				"ISSUE_TITLE":  ev.Issue.Title,
-				"ISSUE_URL":    ev.Issue.HTMLURL,
-				"ISSUE_BODY":   ev.Issue.Body,
-				"ISSUE_ACTION": ev.Action,
-			},
-		}
+		req := BuildIssueTaskRequest(t, repo, ev.Installation.ID, prompt, map[string]string{
+			"GITHUB_REPO":  repo,
+			"ISSUE_NUMBER": fmt.Sprintf("%d", ev.Issue.Number),
+			"ISSUE_TITLE":  ev.Issue.Title,
+			"ISSUE_URL":    ev.Issue.HTMLURL,
+			"ISSUE_BODY":   ev.Issue.Body,
+			"ISSUE_ACTION": ev.Action,
+		})
 		if _, err := h.submitter.SubmitTask(asyncCtx(30*time.Second), req); err != nil {
 			slog.Error("webhook: submit issue task", "err", err,
 				"trigger", t.Name, "repo", repo, "issue", ev.Issue.Number)
@@ -1135,9 +1095,36 @@ func triggerAllowsBotComments(t ReviewTrigger) bool {
 	return strings.Contains(t.Event, "bot_comments:true")
 }
 
-// triggerMatchesLabels checks if any of the issue's labels match the trigger's
+// BuildIssueTaskRequest converts a resolved issue trigger into a task
+// submission request, mirroring the dispatch used by the issues and
+// issue_comment webhook handlers.
+func BuildIssueTaskRequest(t ReviewTrigger, repo string, installationID int64, prompt string, env map[string]string) SubmitTaskRequest {
+	return SubmitTaskRequest{
+		TeamID:               t.TeamID,
+		Prompt:               prompt,
+		GitURL:               t.GitURL,
+		GitRef:               t.GitRef,
+		GitHubRepo:           repo,
+		GitHubInstallationID: installationID,
+		AgentImage:           t.AgentImage,
+		Agent:                t.Agent,
+		ProviderID:           t.ProviderID,
+		ModelID:              t.ModelID,
+		VariantID:            t.VariantID,
+		Skills:               t.Skills,
+		TimeoutSec:           t.TimeoutSec,
+		TriggerName:          t.Name,
+		TriggerType:          t.TriggerType,
+		SessionMode:          t.SessionMode,
+		PauseReason:          t.PauseReason,
+		TTLHours:             t.TTLHours,
+		Env:                   env,
+	}
+}
+
+// TriggerMatchesLabels checks if any of the issue's labels match the trigger's
 // required labels. If the trigger has no match_labels, all issues match.
-func triggerMatchesLabels(triggerLabels, issueLabels []string) bool {
+func TriggerMatchesLabels(triggerLabels, issueLabels []string) bool {
 	if len(triggerLabels) == 0 {
 		return true
 	}

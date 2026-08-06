@@ -97,8 +97,8 @@ func TestTriggerMatchesLabels(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := triggerMatchesLabels(tc.triggerLabels, tc.issueLabels); got != tc.want {
-				t.Errorf("triggerMatchesLabels = %v, want %v", got, tc.want)
+			if got := TriggerMatchesLabels(tc.triggerLabels, tc.issueLabels); got != tc.want {
+				t.Errorf("TriggerMatchesLabels = %v, want %v", got, tc.want)
 			}
 		})
 	}

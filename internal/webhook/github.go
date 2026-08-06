@@ -506,6 +506,51 @@ type CheckRunSummary struct {
 	Pending    int
 }
 
+// IssueDetails is the authoritative issue metadata used by the manual trigger
+// test flow. It is fetched from GitHub so label matching and the default
+// prompt never trust editable client-supplied fields.
+type IssueDetails struct {
+	Number  int
+	State   string
+	Title   string
+	Body    string
+	HTMLURL string
+	Labels  []string
+}
+
+// GetIssueDetails fetches the authoritative metadata for a GitHub issue.
+func (c *Client) GetIssueDetails(ctx context.Context, repo string, issueNumber int) (IssueDetails, error) {
+	url := c.manager.apiURL(fmt.Sprintf("/repos/%s/issues/%d", repo, issueNumber))
+	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return IssueDetails{}, err
+	}
+	var resp struct {
+		Number  int    `json:"number"`
+		State   string `json:"state"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		HTMLURL string `json:"html_url"`
+		Labels  []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return IssueDetails{}, err
+	}
+	details := IssueDetails{
+		Number:  resp.Number,
+		State:   resp.State,
+		Title:   resp.Title,
+		Body:    resp.Body,
+		HTMLURL: resp.HTMLURL,
+	}
+	for _, lbl := range resp.Labels {
+		details.Labels = append(details.Labels, lbl.Name)
+	}
+	return details, nil
+}
+
 func (c *Client) GetBranchSHA(ctx context.Context, repo, branch string) (string, error) {
 	url := c.manager.apiURL(fmt.Sprintf("/repos/%s/git/ref/heads/%s", repo, escapeGitHubPath(branch)))
 	req, err := c.newRequest(ctx, http.MethodGet, url, nil)
