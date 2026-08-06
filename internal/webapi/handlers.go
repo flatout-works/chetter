@@ -2,7 +2,9 @@ package webapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -628,6 +630,9 @@ func (h *triggerHandler) TestTrigger(ctx context.Context, req *connect.Request[a
 		Labels:      req.Msg.Labels,
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	return connect.NewResponse(&apiv1.TestTriggerResponse{

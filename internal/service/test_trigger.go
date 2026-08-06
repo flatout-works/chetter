@@ -59,6 +59,11 @@ func (s *Service) TestTrigger(ctx context.Context, in TestTriggerInput) (TestTri
 	if err != nil {
 		return TestTriggerOutput{}, fmt.Errorf("get trigger: %w", err)
 	}
+	switch sch.TriggerType {
+	case store.TriggerTypePRReview, store.TriggerTypeIssue:
+	default:
+		return TestTriggerOutput{}, fmt.Errorf("trigger %q is a %s trigger; test runs are only supported for pr_review and issue triggers (use Run Now for cron triggers)", in.Name, sch.TriggerType)
+	}
 	if s.github == nil {
 		return TestTriggerOutput{}, fmt.Errorf("github app is not configured; cannot test %s trigger %q", sch.TriggerType, in.Name)
 	}
@@ -77,9 +82,8 @@ func (s *Service) TestTrigger(ctx context.Context, in TestTriggerInput) (TestTri
 		}
 		out.Trigger = triggerToStoreRecord(sch)
 		return out, nil
-	default:
-		return TestTriggerOutput{}, fmt.Errorf("trigger %q is a %s trigger; test runs are only supported for pr_review and issue triggers (use Run Now for cron triggers)", in.Name, sch.TriggerType)
 	}
+	return TestTriggerOutput{}, fmt.Errorf("trigger %q is a %s trigger; test runs are only supported for pr_review and issue triggers", in.Name, sch.TriggerType)
 }
 
 // testPRReviewTrigger resolves the authoritative PR metadata from GitHub and

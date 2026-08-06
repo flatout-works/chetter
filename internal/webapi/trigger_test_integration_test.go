@@ -20,6 +20,7 @@ import (
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/internal/validation"
 	"github.com/flatout-works/chetter/internal/webhook"
 )
 
@@ -127,7 +128,7 @@ func newWebAPITestServerWithGitHub(t *testing.T, gh *httptest.Server) (*httptest
 	t.Helper()
 	manager := newGitHubTestManager(t, gh.URL)
 	tdb, cleanupDB := webAPITestDB.NewTestDB(t)
-	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600}
+	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600, EnvValidation: validation.Defaults()}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		cleanupDB()
@@ -282,7 +283,7 @@ func TestWebAPITestTriggerIssue(t *testing.T) {
 		Repo:        "acme/one",
 		Event:       "opened",
 		MatchLabels: []string{"bug"},
-		Prompt:      "Triage issue {{ISSUE_NUMBER}}",
+		Prompt:      "Triage issue",
 		Agent:       "issue-triage",
 	})); err != nil {
 		t.Fatalf("CreateTrigger: %v", err)
@@ -322,7 +323,7 @@ func TestWebAPITestTriggerIssue(t *testing.T) {
 	if task.GetSubmissionSource() != "trigger_test" {
 		t.Fatalf("submission_source = %q, want trigger_test", task.GetSubmissionSource())
 	}
-	if !strings.Contains(task.GetPrompt(), "Triage issue 7") {
+	if !strings.Contains(task.GetPrompt(), "Triage issue") {
 		t.Fatalf("prompt = %q, want trigger prompt", task.GetPrompt())
 	}
 	if task.GetEnv()["ISSUE_NUMBER"] != "7" || task.GetEnv()["ISSUE_ACTION"] != "opened" {

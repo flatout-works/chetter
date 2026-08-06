@@ -15,6 +15,7 @@ import (
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/testdb"
+	"github.com/flatout-works/chetter/internal/validation"
 )
 
 const webAPITestAdminToken = "webapi-test-admin-token"
@@ -394,7 +395,7 @@ func authHTTPClient(server *httptest.Server, token string) *http.Client {
 func newWebAPITestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 	tdb, cleanupDB := webAPITestDB.NewTestDB(t)
-	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600}
+	cfg := config.Config{DefaultAgentImage: "runner:latest", DefaultTaskTimeoutSec: 600, EnvValidation: validation.Defaults()}
 	st, err := store.Open(tdb.DSN, tdb.Dialect())
 	if err != nil {
 		cleanupDB()

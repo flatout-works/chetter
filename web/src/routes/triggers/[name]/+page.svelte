@@ -98,7 +98,6 @@
       });
       testTasks = resp.taskIds ?? [];
       addToast(`Test run for "${trigger.name}" submitted`, "success");
-      showTestModal = false;
       loadRuns();
     } catch (e) {
       testError = e instanceof Error ? e.message : "Failed to run trigger test.";

@@ -2130,6 +2130,9 @@ func (s *Service) RunTriggerNow(ctx context.Context, name string) (store.TaskRec
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("get trigger: %w", err)
 	}
+	if sch.TriggerType != store.TriggerTypeCron {
+		return store.TaskRecord{}, fmt.Errorf("trigger %q is a %s trigger; Run Now is only supported for cron triggers", name, sch.TriggerType)
+	}
 	runtime := triggerRuntimeConfigFromJSON(json.RawMessage(sch.TriggerConfig))
 	targetSkills := parseJSON[[]string](sch.Skills, "trigger:"+sch.ID+" skills")
 	task, err := s.submitTriggerTask(ctx,
@@ -2329,6 +2332,7 @@ func (s *Service) ListEnabledIssueTriggersByRepo(ctx context.Context, repo strin
 			SessionMode: cfg.SessionMode,
 			PauseReason: cfg.PauseReason,
 			TTLHours:    cfg.TTLHours,
+			Isolation:   cfg.Isolation,
 		}
 	}
 	return out, nil
