@@ -92,8 +92,10 @@ jobs:
           tag="${{ steps.tag.outputs.tag }}"
           version="${tag#v}"
           # Pull the "## [<version>]" section from CHANGELOG.md; fall back to
-          # GitHub-generated notes if the section is missing.
-          if awk -v v="[${version}]" 'BEGIN{s=0} /^## /{if(s) exit; if($0 ~ ("^## " v)) s=1; next} s{print}' \
+          # GitHub-generated notes if the section is missing. index() is used
+          # instead of a regex because the [x.y.z] header brackets would be
+          # interpreted as a character class.
+          if awk -v v="[${version}]" 'BEGIN{s=0} /^## /{if(s) exit; if(index($0, "## " v)==1) s=1; next} s{print}' \
               CHANGELOG.md > /tmp/release-notes.md && [ -s /tmp/release-notes.md ]; then
             echo "notes=/tmp/release-notes.md" >> "$GITHUB_ENV"
           else
