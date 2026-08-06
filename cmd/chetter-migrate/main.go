@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/dbmigration"
+	"github.com/flatout-works/chetter/internal/store"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -37,6 +38,18 @@ func main() {
 	}
 
 	databaseDSN := strings.ReplaceAll(*dsn, "tls=tidb", "tls=true")
+
+	// The entrypoint runs this binary before the server starts. Create the
+	// configured database if it does not exist yet, otherwise a fresh TiDB or
+	// MySQL instance makes both goose and the server crash-loop on
+	// "Unknown database". See EnsureDatabaseExists in internal/store.
+	switch dbDriver {
+	case "mysql":
+		store.EnsureDatabaseExists(databaseDSN)
+	case "postgres":
+		store.EnsurePostgresDatabaseExists(databaseDSN)
+	}
+
 	db, err := sql.Open(dbDriver, databaseDSN)
 	if err != nil {
 		log.Fatalf("open database: %v", err)

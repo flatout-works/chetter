@@ -4,6 +4,11 @@ set -euo pipefail
 # Manual fallback: run this on wowbagger after a git sync to build images.
 # Pushing to GHCR is deferred until we make proper GitHub releases.
 
+# The Dockerfiles use BuildKit-only features (--mount=type=cache). Ubuntu's
+# docker.io package defaults to the legacy builder, so enable BuildKit
+# explicitly; the buildx component (docker-buildx package) is also required.
+export DOCKER_BUILDKIT=1
+
 cd "$(dirname "$0")/.."
 
 echo "=== Building MCP image ==="

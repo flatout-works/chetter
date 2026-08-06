@@ -24,6 +24,16 @@ Chetter instead ...
 
 ## Quick Start
 
+**Prerequisites**
+
+- **Docker Engine** with the Compose plugin and **BuildKit/buildx** (the
+  Dockerfiles use BuildKit-only features). Docker from
+  [docs.docker.com](https://docs.docker.com/engine/install/) ships both; on
+  Ubuntu's `docker.io` package install `docker-buildx` too:
+  `sudo apt-get install -y docker.io docker-compose-v2 docker-buildx`
+- `git`
+- An LLM provider API key (e.g. `DEEPSEEK_API_KEY`) — set it in `.env`
+
 ```bash
 git clone https://github.com/flatout-works/chetter.git
 cd chetter
@@ -35,6 +45,41 @@ docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.ya
 
 The MCP server is at `http://localhost:18088`, the web UI at `http://localhost:18090`.
 See [docs/MANUAL.md](docs/MANUAL.md) for detailed setup, configuration, and operations.
+
+**What you get:** a dev TiDB (bundled via `deploy/compose.local.yaml`,
+single-node `unistore`, MySQL-wire compatible — the `chetter` database and
+all migrations are created automatically on startup), the MCP server, and two
+runners. To run your first task you also need a default **Git identity**
+(`chetter_create_git_identity` + `chetter_set_git_identity_default` via any
+MCP client).
+
+> **⚠ Security note:** the quickstart runs agent tasks in **plain Docker,
+> without gVisor sandboxing** (`compose.local.yaml` sets
+> `CHETTER_ALLOW_UNISOLATED=true` and `USE_GVISOR=false`). That is fine for
+> development, but it is **not a security boundary** against a malicious
+> task. For a hardened deployment, enable gVisor — see
+> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and "Verifying gVisor" below.
+
+### Verifying gVisor
+
+The server defaults to hardened mode: every task requires gVisor-enforced
+isolation unless the deployment opts out. To go from the quickstart to a
+sandboxed setup:
+
+1. Install `runsc` on the host and register it with Docker, per
+   [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) ("Docker + gVisor").
+2. In `deploy/compose.local.yaml`, set `USE_GVISOR: "true"` for the runners
+   (or drop the override) and remove `CHETTER_ALLOW_UNISOLATED`.
+3. Recreate the stack (`docker compose up -d --force-recreate`).
+4. Verify sandboxing is actually in effect:
+   - The fleet reports isolation-capable runners (`chetter_runner_health`),
+     and
+   - a running task's container uses the `runsc` runtime:
+     ```bash
+     docker inspect <task-container> --format '{{.HostConfig.Runtime}}'   # → runsc
+     ```
+   - A task submitted with `isolation="required"` runs (instead of failing
+     with `isolation_unavailable`).
 
 ### Next Steps
 

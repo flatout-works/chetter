@@ -571,7 +571,11 @@ func harnessBaseURL(bindAddr string, hostPort int, gvisor bool, network string) 
 	}
 	connectAddr := bindAddr
 	if connectAddr == "" || connectAddr == "0.0.0.0" || connectAddr == "::" {
-		connectAddr = "127.0.0.1"
+		// A containerized runner cannot reach the docker host's loopback, so a
+		// wildcard bind (RUNNER_BIND_ADDR=0.0.0.0, the containerized-runner
+		// setup) must be probed via the docker bridge gateway instead. Host
+		// runners keep the 127.0.0.1 default and are unaffected.
+		connectAddr = dockerGatewayIP(network)
 	}
 	return fmt.Sprintf("http://%s:%d", connectAddr, hostPort)
 }

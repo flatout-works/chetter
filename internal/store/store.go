@@ -217,13 +217,13 @@ func Open(dsn string, dialect Dialect) (*Store, error) {
 	openDSN := dsn
 	if dialect == DialectPostgres {
 		openDSN = normalizePostgresDSN(dsn)
-		ensurePostgresDatabaseExists(openDSN)
+		EnsurePostgresDatabaseExists(openDSN)
 	} else {
 		openDSN = normalizeDSN(dsn)
 		if err := registerTiDBTLS(openDSN); err != nil {
 			return nil, err
 		}
-		ensureDatabaseExists(openDSN)
+		EnsureDatabaseExists(openDSN)
 	}
 	db, err := sql.Open(driverName, openDSN)
 	if err != nil {
@@ -242,7 +242,7 @@ func Open(dsn string, dialect Dialect) (*Store, error) {
 	return st, nil
 }
 
-// ensureDatabaseExists best-effort creates the database named in the DSN if it
+// EnsureDatabaseExists best-effort creates the database named in the DSN if it
 // does not already exist. The server applies its schema (tables) on boot via
 // ApplySchema but does not own the database itself, so a fresh TiDB — whether a
 // local container or a new TiDB Cloud Serverless cluster — otherwise crash-loops
@@ -250,7 +250,7 @@ func Open(dsn string, dialect Dialect) (*Store, error) {
 // fatal, because the operator may have pre-created the database, or the account
 // may lack CREATE privileges, in which case the main connection below surfaces a
 // clear error of its own.
-func ensureDatabaseExists(normalizedDSN string) {
+func EnsureDatabaseExists(normalizedDSN string) {
 	cfg, err := mysql.ParseDSN(normalizedDSN)
 	if err != nil || cfg.DBName == "" || !validDatabaseName(cfg.DBName) {
 		return
@@ -1613,7 +1613,7 @@ func normalizePostgresDSN(dsn string) string {
 // ensurePostgresDatabaseExists best-effort creates the selected PostgreSQL
 // database. As with the MySQL implementation, operators may pre-create it or
 // intentionally use credentials that cannot create databases.
-func ensurePostgresDatabaseExists(dsn string) {
+func EnsurePostgresDatabaseExists(dsn string) {
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		return

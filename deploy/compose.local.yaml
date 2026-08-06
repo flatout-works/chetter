@@ -24,6 +24,25 @@ services:
       - tidb
     environment:
       DATABASE_DSN: ${DATABASE_DSN:-root@tcp(tidb:4000)/chetter?parseTime=true}
+      # LOCAL/DEV ONLY: the server defaults to hardened mode, which requires
+      # gVisor-enforced isolation for every task. This dev stack runs tasks in
+      # plain Docker instead; for a real security boundary see docs/DEPLOYMENT.md.
+      CHETTER_ALLOW_UNISOLATED: "true"
+
+  # LOCAL/DEV ONLY: the main compose enables gVisor (USE_GVISOR=true plus the
+  # runsc bind-mount) for the runners; without runsc installed on the host every
+  # task would fail with "unknown or invalid runtime name: runsc". Plain Docker
+  # is fine for development; see docs/DEPLOYMENT.md for the hardened setup.
+  # RUNNER_BIND_ADDR=0.0.0.0 is required for the containerized runner to reach
+  # the task container's published serve port via the docker bridge gateway.
+  chetter-runner:
+    environment:
+      USE_GVISOR: "false"
+      RUNNER_BIND_ADDR: "0.0.0.0"
+  chetter-runner-2:
+    environment:
+      USE_GVISOR: "false"
+      RUNNER_BIND_ADDR: "0.0.0.0"
 
 volumes:
   tidb-data:
