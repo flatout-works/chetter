@@ -24,8 +24,9 @@
 #   QS_SSH_KEY         public key injected into the VM (default ~/.ssh/id_rsa.pub)
 #   QS_USER            VM user (default test)
 #
-# Requires: /dev/kvm, libvirt tools (virt-install, virsh, cloud-localds),
-# passwordless sudo for libvirt/qemu commands, network access.
+# Requires: /dev/kvm, libvirt tooling (virt-install, virsh, cloud-localds,
+# qemu-img), curl, python3, openssl, sudo (passwordless or interactive),
+# network access. Prerequisites are validated up front.
 
 set -euo pipefail
 
@@ -72,9 +73,17 @@ vm_scp() { scp -o BatchMode=yes "$1" "$QS_USER@$VM_IP:$2"; }
 
 note "Prerequisites"
 [[ -e /dev/kvm ]] || die "KVM not available (/dev/kvm missing)"
-command -v virt-install virsh cloud-localds >/dev/null || die "install qemu-system-x86 libvirt-daemon-system libvirt-clients virtinst cloud-image-utils"
+for cmd in virt-install virsh cloud-localds qemu-img curl python3 openssl sudo; do
+  command -v "$cmd" >/dev/null || die "required command not found: $cmd (install qemu-system-x86 libvirt-daemon-system libvirt-clients virtinst cloud-image-utils cloud-utils)"
+done
 [[ -f "$SSH_KEY" ]] || die "SSH public key not found at $SSH_KEY"
-command -v mysql >/dev/null || echo "note: mysql client not on this host; DB checks run inside the VM"
+if ! systemctl is-active libvirtd >/dev/null 2>&1; then
+  echo "libvirtd not running — starting it ..."
+  sudo systemctl enable --now libvirtd || die "could not start libvirtd"
+fi
+if ! sudo -n true 2>/dev/null; then
+  echo "note: passwordless sudo not available — you will be prompted for the sudo password"
+fi
 echo "OK"
 
 # --- cloud image + seed ------------------------------------------------------
