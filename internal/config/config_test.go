@@ -332,6 +332,29 @@ func TestLoadSessionArtifactTTL(t *testing.T) {
 	})
 }
 
+func TestLoadMaxPendingTasks(t *testing.T) {
+	t.Run("defaults to zero (admission control disabled)", func(t *testing.T) {
+		cfg := Load()
+		if cfg.MaxPendingTasks != 0 {
+			t.Errorf("expected MaxPendingTasks 0, got %d", cfg.MaxPendingTasks)
+		}
+	})
+	t.Run("env override sets the limit", func(t *testing.T) {
+		t.Setenv("CHETTER_MAX_PENDING_TASKS", "25")
+		cfg := Load()
+		if cfg.MaxPendingTasks != 25 {
+			t.Errorf("expected MaxPendingTasks 25, got %d", cfg.MaxPendingTasks)
+		}
+	})
+	t.Run("invalid value falls back to zero", func(t *testing.T) {
+		t.Setenv("CHETTER_MAX_PENDING_TASKS", "notanumber")
+		cfg := Load()
+		if cfg.MaxPendingTasks != 0 {
+			t.Errorf("expected 0 for invalid value, got %d", cfg.MaxPendingTasks)
+		}
+	})
+}
+
 func TestLoadRetention(t *testing.T) {
 	t.Run("defaults to zero (pruning disabled)", func(t *testing.T) {
 		cfg := Load()

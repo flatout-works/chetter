@@ -185,3 +185,8 @@ WHERE prompt.task_id = task.id
   AND task.status = 'pending'
   AND attempt.status = 'error'
   AND attempt.error_category = 'isolation_unavailable';
+
+-- name: CountPendingTasks :one
+-- Counts tasks waiting to be claimed. Used by the global pending-task
+-- admission limit (issue #50).
+SELECT COUNT(*) FROM tasks WHERE status = 'pending';

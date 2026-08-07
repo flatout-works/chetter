@@ -78,6 +78,19 @@ func (q *Queries) ClearPendingTasks(ctx context.Context, arg ClearPendingTasksPa
 	return result.RowsAffected()
 }
 
+const countPendingTasks = `-- name: CountPendingTasks :one
+SELECT COUNT(*) FROM tasks WHERE status = 'pending'
+`
+
+// Counts tasks waiting to be claimed. Used by the global pending-task
+// admission limit (issue #50).
+func (q *Queries) CountPendingTasks(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingTasks)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const failExpiredLeases = `-- name: FailExpiredLeases :execrows
 UPDATE tasks task
 JOIN user_prompts prompt ON prompt.task_id = task.id
