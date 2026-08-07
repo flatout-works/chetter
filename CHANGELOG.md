@@ -38,6 +38,17 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-06
+
+### Added
+
+- Versioned releases: `serverVersion` is now injected via ldflags from `git describe` (Makefile `VERSION`, default `dev`), and `/api/server-info` reports `uptimeSeconds` and `startedAt`. The web UI footer shows the server version as `x.y.z-githash` with live uptime. A new `release.yml` workflow runs `make check` + the PostgreSQL tests, builds `chetter`/`chetterctl` binaries for linux/amd64 and darwin/arm64 on `v*` tags (or a manual tag input), and creates the GitHub release with notes pulled from the matching `## [x.y.z]` CHANGELOG section, falling back to GitHub-generated notes when missing.
+- Quick Start validated end-to-end on a fresh Ubuntu 24.04 machine, including a reusable KVM validation harness (`ops/test-quickstart.sh`). `deploy/build.sh` now exports `DOCKER_BUILDKIT=1` (the Dockerfiles use BuildKit-only `--mount=type=cache`, which Ubuntu's `docker.io` package lacks by default alongside the `docker-buildx` component). `chetter-migrate` creates the configured database first via the exported `EnsureDatabaseExists`/`EnsurePostgresDatabaseExists`, fixing a fresh-DB crash-loop on "Unknown database". `deploy/compose.local.yaml` opts the dev stack out of hardened mode (`CHETTER_ALLOW_UNISOLATED=true`, `USE_GVISOR=false`) since the quickstart installs no `runsc`, and sets `RUNNER_BIND_ADDR=0.0.0.0`; containerized runners without gVisor now probe the task container's published serve port via the docker bridge gateway instead of loopback. README documents prerequisites (BuildKit/buildx, `docker-buildx` on Ubuntu), the bundled dev TiDB with auto-created database, the plain-Docker security note, and how to enable and verify gVisor.
+
+### Fixed
+
+- Release notes extraction in `release.yml` uses `index()` instead of a regex to match `## [x.y.z]` headers, whose brackets would otherwise be parsed as a character class.
+
 ## 2026-08-05
 
 ### Added
