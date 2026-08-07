@@ -75,6 +75,16 @@ type Config struct {
 	// every task requires enforced isolation and is refused by runners that
 	// cannot enforce it. See issue #291 and CHETTER_ALLOW_UNISOLATED.
 	AllowUnisolated bool
+
+	// MaxPendingTasks is the global admission cap on tasks waiting to be
+	// claimed (status 'pending'). A value <= 0 disables the limit entirely.
+	// When the limit is reached, every ingress path (MCP submit, web API,
+	// webhooks, triggers, rerun, recovery, session resume) rejects the new
+	// work with a retryable PendingTaskCapacityError and records an audit
+	// event instead of storing the task. Queue depth is already exposed via
+	// the chetter_tasks{status="pending"} Prometheus gauge and the fleet
+	// health PendingTasks field. See issue #50 and CHETTER_MAX_PENDING_TASKS.
+	MaxPendingTasks int
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -116,6 +126,7 @@ func Load() Config {
 		TaskLimits:             taskLimitsConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
 		AllowUnisolated:        envBool("CHETTER_ALLOW_UNISOLATED", false),
+		MaxPendingTasks:        envInt("CHETTER_MAX_PENDING_TASKS", 0),
 	}
 }
 

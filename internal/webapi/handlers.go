@@ -315,6 +315,12 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		SubmissionSource: "ui",
 	})
 	if err != nil {
+		// Pending-task admission rejection is a retryable capacity condition
+		// (issue #50): map it to CodeResourceExhausted instead of CodeInternal.
+		var capErr *service.PendingTaskCapacityError
+		if errors.As(err, &capErr) {
+			return nil, connect.NewError(connect.CodeResourceExhausted, err)
+		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&apiv1.SubmitTaskResponse{Task: protoTask(service.TaskToolRecord{
