@@ -133,6 +133,18 @@ SET status = 'expired',
 WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
   AND expires_at < ?
+  AND NOT EXISTS (
+    SELECT 1 FROM user_prompts prompt
+    WHERE prompt.agent_session_id = agent_sessions.id
+      AND prompt.status IN ('pending', 'claimed', 'running')
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM user_prompts prompt
+    JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+    WHERE prompt.agent_session_id = agent_sessions.id
+      AND attempt.status IN ('pending', 'running')
+  )
 `
 
 type ExpirePausedSessionsParams struct {
@@ -141,6 +153,11 @@ type ExpirePausedSessionsParams struct {
 	ExpiresAt sql.NullTime `json:"expires_at"`
 }
 
+// Marks paused/recoverable sessions past their pause TTL as expired. The
+// NOT EXISTS guards provide in-flight fencing: a session with a pending,
+// claimed, or running user prompt or execution attempt is never expired,
+// even if its expires_at has elapsed, so a just-resumed session survives.
+// See issue #299.
 func (q *Queries) ExpirePausedSessions(ctx context.Context, arg ExpirePausedSessionsParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, expirePausedSessions, arg.EndedAt, arg.UpdatedAt, arg.ExpiresAt)
 	if err != nil {

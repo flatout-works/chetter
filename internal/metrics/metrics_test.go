@@ -74,6 +74,7 @@ func TestHandler_CustomDescriptorsPresent(t *testing.T) {
 		"chetter_runner_slots",
 		"chetter_mcp_relay_rejected_requests",
 		"chetter_webhook_deliveries",
+		"chetter_sessions",
 	} {
 		if !strings.Contains(body, name) {
 			t.Errorf("expected metric %q in output", name)
@@ -86,7 +87,7 @@ func TestCollector_Describe(t *testing.T) {
 	if c == nil {
 		t.Fatal("expected non-nil collector")
 	}
-	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.relayRejections == nil || c.webhookCount == nil {
+	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.relayRejections == nil || c.webhookCount == nil || c.sessionCount == nil {
 		t.Fatal("expected all metric descriptors to be non-nil")
 	}
 }
@@ -180,6 +181,7 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 		`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32))`,
 		`CREATE TABLE IF NOT EXISTS runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT, metadata JSON)`,
 		`CREATE TABLE IF NOT EXISTS webhook_deliveries (id VARCHAR(64), status VARCHAR(32))`,
+		`CREATE TABLE IF NOT EXISTS agent_sessions (id VARCHAR(64), status VARCHAR(32))`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("create test table: %v", err)
@@ -222,6 +224,14 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 	// Should have webhook delivery metrics.
 	for _, status := range []string{"received", "processing", "completed", "failed", "dead_letter"} {
 		needle := fmt.Sprintf(`chetter_webhook_deliveries{status="%s"} 0`, status)
+		if !strings.Contains(body, needle) {
+			t.Errorf("expected %q in output", needle)
+		}
+	}
+
+	// Should have session metrics.
+	for _, status := range []string{"paused", "recoverable", "paused_waiting_review", "expired", "completed", "failed", "error", "cancelled"} {
+		needle := fmt.Sprintf(`chetter_sessions{status="%s"} 0`, status)
 		if !strings.Contains(body, needle) {
 			t.Errorf("expected %q in output", needle)
 		}

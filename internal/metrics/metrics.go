@@ -45,6 +45,7 @@ type collector struct {
 	runnerSlots     *prometheus.Desc
 	relayRejections *prometheus.Desc
 	webhookCount    *prometheus.Desc
+	sessionCount    *prometheus.Desc
 	scrapeError     *prometheus.Desc
 }
 
@@ -78,6 +79,11 @@ func newCollector(db *sql.DB, dialect store.Dialect) *collector {
 			"Number of webhook deliveries by status.",
 			[]string{"status"}, nil,
 		),
+		sessionCount: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "", "sessions"),
+			"Number of agent sessions by status (paused, recoverable, expired, ...).",
+			[]string{"status"}, nil,
+		),
 		scrapeError: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "", "metrics_scrape_errors"),
 			"Number of errors during metric collection.",
@@ -93,6 +99,7 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.runnerSlots
 	ch <- c.relayRejections
 	ch <- c.webhookCount
+	ch <- c.sessionCount
 	ch <- c.scrapeError
 }
 
@@ -104,6 +111,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 		c.emitZeroTaskMetrics(ch)
 		c.emitZeroRunnerMetrics(ch)
 		c.emitZeroWebhookMetrics(ch)
+		c.emitZeroSessionMetrics(ch)
 		ch <- prometheus.MustNewConstMetric(c.scrapeError, prometheus.GaugeValue, 1)
 		return
 	}
@@ -126,6 +134,11 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	if err := c.collectWebhookDeliveries(ctx, ch); err != nil {
 		slog.Error("metrics: collect webhook deliveries", "err", err)
 		c.emitZeroWebhookMetrics(ch)
+		errors++
+	}
+	if err := c.collectSessions(ctx, ch); err != nil {
+		slog.Error("metrics: collect sessions", "err", err)
+		c.emitZeroSessionMetrics(ch)
 		errors++
 	}
 
@@ -152,6 +165,57 @@ func (c *collector) emitZeroWebhookMetrics(ch chan<- prometheus.Metric) {
 	for _, status := range []string{"received", "processing", "completed", "failed", "dead_letter"} {
 		ch <- prometheus.MustNewConstMetric(c.webhookCount, prometheus.GaugeValue, 0, status)
 	}
+}
+
+func (c *collector) emitZeroSessionMetrics(ch chan<- prometheus.Metric) {
+	for _, status := range []string{"paused", "recoverable", "paused_waiting_review", "expired", "completed", "failed", "error", "cancelled"} {
+		ch <- prometheus.MustNewConstMetric(c.sessionCount, prometheus.GaugeValue, 0, status)
+	}
+}
+
+// collectSessions emits chetter_sessions gauges grouped by agent-session
+// status. The expired bucket surfaces sessions whose pause TTL elapsed so
+// operators can see GC progress in fleet health. See issue #299.
+func (c *collector) collectSessions(ctx context.Context, ch chan<- prometheus.Metric) error {
+	rows, err := c.db.QueryContext(ctx, `SELECT status, COUNT(*) FROM agent_sessions GROUP BY status`)
+	if err != nil {
+		// The agent_sessions table may not exist if sessions have never been
+		// used (e.g. a fresh deployment mid-migration). Treat a missing table
+		// as zero sessions rather than a scrape error.
+		if isMissingTable(err) {
+			c.emitZeroSessionMetrics(ch)
+			return nil
+		}
+		return fmt.Errorf("query agent session status counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[string]float64{
+		"paused":                0,
+		"recoverable":           0,
+		"paused_waiting_review": 0,
+		"expired":               0,
+		"completed":             0,
+		"failed":                0,
+		"error":                 0,
+		"cancelled":             0,
+	}
+	for rows.Next() {
+		var status string
+		var count int64
+		if err := rows.Scan(&status, &count); err != nil {
+			return fmt.Errorf("scan agent session status count: %w", err)
+		}
+		counts[status] = float64(count)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("rows after agent session status counts: %w", err)
+	}
+
+	for status, count := range counts {
+		ch <- prometheus.MustNewConstMetric(c.sessionCount, prometheus.GaugeValue, count, status)
+	}
+	return nil
 }
 
 // collectTasks emits chetter_tasks gauges for each task status.
