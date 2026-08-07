@@ -86,6 +86,11 @@ export function formatResumeMode(mode: string): string {
   }
 }
 
+export function resumeTaskRoute(taskId: string | undefined | null): string | null {
+  if (!taskId) return null;
+  return `/tasks/${taskId}`;
+}
+
 export function formatHarness(harness: string): string {
   switch (harness) {
     case "opencode":
