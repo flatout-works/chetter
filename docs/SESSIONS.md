@@ -64,6 +64,35 @@ and ExecutionAttempt IDs, so a stale lease cannot mutate or delete newer work.
 Pruning protects active attempts and retained session/checkpoint paths. Ordinary
 non-resumable attempts never reuse a Task-level workspace.
 
+## Expiry And Garbage Collection
+
+Paused sessions expire after their pause TTL. The `ttl_hours` value accepted on
+task and trigger submission (default 72) sets `expires_at` on the AgentSession;
+the 30s reaper then runs two GC passes over the session lifecycle:
+
+1. **Session expiry** — `ExpirePausedSessions` marks `paused`, `recoverable`,
+   and `paused_waiting_review` sessions whose `expires_at` has elapsed as
+   `expired`. The transition is fenced: a session with a `pending`, `claimed`,
+   or `running` user prompt or execution attempt is never expired, even if its
+   TTL elapsed, so a freshly resumed session survives the pass. Running sessions
+   are never touched.
+2. **Artifact GC** — `reapExpiredSessionArtifacts` clears on-disk checkpoint
+   paths (`agent_session_checkpoints.checkpoint_path`) and session exports
+   (`user_prompts.session_export`, `execution_attempts.session_export`) for
+   terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`,
+   `expired`, `abandoned`, `error`) whose `updated_at` is older than
+   `SESSION_ARTIFACT_TTL` (default 24h). A TTL of `0` disables this pass.
+
+Both passes are observability-first:
+
+- Each cycle that acts records a `session.expired` or `session.artifact_gc`
+  event in the audit log (queryable via `chetter_list_audit_events`).
+- The Prometheus endpoint exposes `chetter_sessions{status=...}` gauges,
+  including the `expired` bucket, so fleet health shows GC progress.
+
+Sessions are marked `expired` (a terminal status) rather than deleted; row-level
+retention is governed separately by `ARTIFACT_RETENTION_DAYS` (issue #112).
+
 ## Artifact Attribution
 
 Chetter-created artifacts and canonical footers carry `Task:`, `Session:`,

@@ -3483,3 +3483,229 @@ func TestReapExpiredSessionArtifactsDisabledByZeroTTL(t *testing.T) {
 		t.Fatal("user-prompt session_export was cleared even though GC is disabled")
 	}
 }
+
+// TestReapExpiredSessionsExpiresPastTTL verifies that a paused resumable
+// session whose expires_at has elapsed is marked expired by the reaper, and
+// that the cleanup is recorded as a session.expired audit event. See issue
+// #299.
+func TestReapExpiredSessionsExpiresPastTTL(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "expire me",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+		PauseReason: "waiting_for_pr_feedback",
+		TTLHours:    1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+	if session.Status != "running" {
+		t.Fatalf("session status = %s, want running", session.Status)
+	}
+	if !session.ExpiresAt.Valid {
+		t.Fatalf("expected expires_at to be set for resumable session")
+	}
+
+	// Simulate a paused session whose pause TTL has fully elapsed: the
+	// terminal pause and a past expires_at, with no in-flight prompts or
+	// attempts (freshly created sessions have a pending prompt, so clear it
+	// to a completed terminal state first).
+	now := time.Now().UTC()
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE user_prompts SET status = ?, ended_at = ?, updated_at = ? WHERE agent_session_id = ?",
+		"UPDATE user_prompts SET status = $1, ended_at = $2, updated_at = $3 WHERE agent_session_id = $4"),
+		"completed", now, now, session.ID); err != nil {
+		t.Fatalf("complete user prompt: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE execution_attempts SET status = ?, ended_at = ?, updated_at = ? WHERE user_prompt_id IN (SELECT id FROM user_prompts WHERE agent_session_id = ?)",
+		"UPDATE execution_attempts SET status = $1, ended_at = $2, updated_at = $3 WHERE user_prompt_id IN (SELECT id FROM user_prompts WHERE agent_session_id = $4)"),
+		"succeeded", now, now, session.ID); err != nil {
+		t.Fatalf("complete execution attempt: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET status = ?, expires_at = ?, ended_at = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET status = $1, expires_at = $2, ended_at = $3, updated_at = $4 WHERE id = $5"),
+		"paused", now.Add(-time.Hour), now, now, session.ID); err != nil {
+		t.Fatalf("mark session paused with past expiry: %v", err)
+	}
+
+	svc.reapExpiredSessions()
+
+	updated, err := svc.repo.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "expired" {
+		t.Fatalf("session status = %s, want expired", updated.Status)
+	}
+	if !updated.EndedAt.Valid {
+		t.Fatal("expected ended_at to be set for expired session")
+	}
+
+	// The cleanup must be visible in the audit log.
+	audits, err := svc.repo.ListAuditLog(ctx, repository.ListAuditLogParams{
+		EventType:  "session.expired",
+		Column2:    "session.expired",
+		SourceType: sql.NullString{},
+		Column4:    "",
+		SourceID:   sql.NullString{},
+		Column6:    "",
+		TargetType: sql.NullString{},
+		Column8:    "",
+		TargetID:   sql.NullString{},
+		Column10:   "",
+		Repo:       sql.NullString{},
+		Column12:   "",
+		Column14:   sql.NullTime{},
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLog: %v", err)
+	}
+	if len(audits) == 0 {
+		t.Fatal("expected a session.expired audit event")
+	}
+	if audits[0].EventType != "session.expired" || !audits[0].Detail.Valid {
+		t.Fatalf("unexpected audit event: %+v", audits[0])
+	}
+}
+
+// TestReapExpiredSessionsSkipsFreshlyPaused verifies that a paused session
+// whose expires_at is still in the future is never touched by the reaper. See
+// issue #299.
+func TestReapExpiredSessionsSkipsFreshlyPaused(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "keep me",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+		PauseReason: "waiting_for_pr_feedback",
+		TTLHours:    24,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET status = ?, expires_at = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET status = $1, expires_at = $2, updated_at = $3 WHERE id = $4"),
+		"paused", now.Add(24*time.Hour), now, session.ID); err != nil {
+		t.Fatalf("mark session paused with future expiry: %v", err)
+	}
+
+	svc.reapExpiredSessions()
+
+	updated, err := svc.repo.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "paused" {
+		t.Fatalf("session status = %s, want paused (freshly paused must survive)", updated.Status)
+	}
+}
+
+// TestReapExpiredSessionsSkipsInFlight verifies the fencing guarantee: a
+// paused session past its expires_at that still has a pending, claimed, or
+// running user prompt or execution attempt is never expired, because the work
+// is still in flight (e.g. a resume that was just queued). See issue #299.
+func TestReapExpiredSessionsSkipsInFlight(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "in flight",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+		PauseReason: "waiting_for_pr_feedback",
+		TTLHours:    1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+	// Session is paused and past its TTL, but its user prompt and execution
+	// attempt remain in the pending state (as they are right after a resume
+	// was queued). The reaper must not expire it.
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET status = ?, expires_at = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET status = $1, expires_at = $2, updated_at = $3 WHERE id = $4"),
+		"paused", now.Add(-time.Hour), now, session.ID); err != nil {
+		t.Fatalf("mark session paused with past expiry: %v", err)
+	}
+
+	svc.reapExpiredSessions()
+
+	updated, err := svc.repo.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "paused" {
+		t.Fatalf("session status = %s, want paused (in-flight work must survive)", updated.Status)
+	}
+}
+
+// TestReapExpiredSessionsSkipsRunning verifies that a running session is never
+// expired, even when its expires_at is in the past (e.g. a long-lived resume
+// that outlived its original TTL while still actively executing). See issue
+// #299.
+func TestReapExpiredSessionsSkipsRunning(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "still running",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+		PauseReason: "waiting_for_pr_feedback",
+		TTLHours:    1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	session, err := svc.repo.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET expires_at = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET expires_at = $1, updated_at = $2 WHERE id = $3"),
+		now.Add(-time.Hour), now, session.ID); err != nil {
+		t.Fatalf("set past expires_at on running session: %v", err)
+	}
+
+	svc.reapExpiredSessions()
+
+	updated, err := svc.repo.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "running" {
+		t.Fatalf("session status = %s, want running (running sessions must never be expired)", updated.Status)
+	}
+}
