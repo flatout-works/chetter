@@ -59,3 +59,19 @@ func (r *Runner) checkIsolationPolicy(req task.TaskRequest) string {
 	}
 	return "task requires enforced isolation (gVisor) but this runner cannot enforce it"
 }
+
+// sandboxAvailability reports sandbox runtime availability (runsc present and
+// working) for fleet health. In docker mode it probes the runsc binary; in
+// kubernetes mode the runner cannot probe the node runtime, so it reports
+// availability from the configured runtime class. Local mode has no container
+// runtime and reports false. See issue #302 AC4.
+func (r *Runner) sandboxAvailability() bool {
+	switch r.executionMode() {
+	case "kubernetes":
+		return strings.EqualFold(strings.TrimSpace(r.cfg.Kubernetes.RuntimeClass), "gvisor")
+	case "docker":
+		return sandboxRuntimeAvailable()
+	default:
+		return false
+	}
+}

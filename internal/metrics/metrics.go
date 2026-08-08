@@ -45,6 +45,9 @@ type collector struct {
 	runnerSlots     *prometheus.Desc
 	relayRejections *prometheus.Desc
 	webhookCount    *prometheus.Desc
+	taskFailures    *prometheus.Desc
+	runnerSandbox   *prometheus.Desc
+	sandboxCounters *prometheus.Desc
 	scrapeError     *prometheus.Desc
 }
 
@@ -78,6 +81,21 @@ func newCollector(db *sql.DB, dialect store.Dialect) *collector {
 			"Number of webhook deliveries by status.",
 			[]string{"status"}, nil,
 		),
+		taskFailures: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "", "task_failures"),
+			"Number of failed tasks by task-level failure category.",
+			[]string{"failure_category"}, nil,
+		),
+		runnerSandbox: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "runner", "sandbox_available"),
+			"Number of runners by sandbox runtime availability (runsc present and working). See issue #302.",
+			[]string{"status"}, nil,
+		),
+		sandboxCounters: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "runner", "sandbox"),
+			"Cumulative per-sandbox metrics summed across active runners (total, start failures, crashes, cumulative start latency ms). See issue #302.",
+			[]string{"metric"}, nil,
+		),
 		scrapeError: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "", "metrics_scrape_errors"),
 			"Number of errors during metric collection.",
@@ -93,6 +111,9 @@ func (c *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.runnerSlots
 	ch <- c.relayRejections
 	ch <- c.webhookCount
+	ch <- c.taskFailures
+	ch <- c.runnerSandbox
+	ch <- c.sandboxCounters
 	ch <- c.scrapeError
 }
 
@@ -104,6 +125,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 		c.emitZeroTaskMetrics(ch)
 		c.emitZeroRunnerMetrics(ch)
 		c.emitZeroWebhookMetrics(ch)
+		c.emitZeroFailureMetrics(ch)
 		ch <- prometheus.MustNewConstMetric(c.scrapeError, prometheus.GaugeValue, 1)
 		return
 	}
@@ -116,6 +138,11 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 	if err := c.collectTasks(ctx, ch); err != nil {
 		slog.Error("metrics: collect tasks", "err", err)
 		c.emitZeroTaskMetrics(ch)
+		errors++
+	}
+	if err := c.collectTaskFailures(ctx, ch); err != nil {
+		slog.Error("metrics: collect task failures", "err", err)
+		c.emitZeroFailureMetrics(ch)
 		errors++
 	}
 	if err := c.collectRunners(ctx, ch); err != nil {
@@ -146,6 +173,20 @@ func (c *collector) emitZeroRunnerMetrics(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, 0, slotType)
 	}
 	ch <- prometheus.MustNewConstMetric(c.relayRejections, prometheus.GaugeValue, 0)
+	for _, status := range []string{"available", "unavailable"} {
+		ch <- prometheus.MustNewConstMetric(c.runnerSandbox, prometheus.GaugeValue, 0, status)
+	}
+	for _, metric := range []string{"total", "start_failures", "crashes", "start_latency_ms"} {
+		ch <- prometheus.MustNewConstMetric(c.sandboxCounters, prometheus.GaugeValue, 0, metric)
+	}
+}
+
+// emitZeroFailureMetrics emits zero values for all task failure categories so
+// the HELP/TYPE lines are always published.
+func (c *collector) emitZeroFailureMetrics(ch chan<- prometheus.Metric) {
+	for _, category := range []string{"timeout", "harness_error", "runner_lost", "internal_error", "user_cancelled", "quota_exceeded", "resource_limit", "unknown"} {
+		ch <- prometheus.MustNewConstMetric(c.taskFailures, prometheus.GaugeValue, 0, category)
+	}
 }
 
 func (c *collector) emitZeroWebhookMetrics(ch chan<- prometheus.Metric) {
@@ -187,6 +228,43 @@ func (c *collector) collectTasks(ctx context.Context, ch chan<- prometheus.Metri
 	return nil
 }
 
+// collectTaskFailures emits chetter_task_failures gauges grouped by the
+// task-level failure_category (timeout, harness_error, runner_lost,
+// internal_error, user_cancelled, quota_exceeded, resource_limit, unknown).
+// Sandbox infrastructure failures (sandbox_start_failed, sandbox_crashed)
+// map to harness_error, so they are counted here. See issue #302 AC5.
+func (c *collector) collectTaskFailures(ctx context.Context, ch chan<- prometheus.Metric) error {
+	rows, err := c.db.QueryContext(ctx, `SELECT COALESCE(failure_category, ''), COUNT(*) FROM tasks GROUP BY failure_category`)
+	if err != nil {
+		return fmt.Errorf("query task failure counts: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[string]float64{
+		"timeout": 0, "harness_error": 0, "runner_lost": 0, "internal_error": 0,
+		"user_cancelled": 0, "quota_exceeded": 0, "resource_limit": 0, "unknown": 0,
+	}
+	for rows.Next() {
+		var category string
+		var count int64
+		if err := rows.Scan(&category, &count); err != nil {
+			return fmt.Errorf("scan task failure count: %w", err)
+		}
+		if category == "" {
+			category = "unknown"
+		}
+		counts[category] = float64(count)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("rows after task failure counts: %w", err)
+	}
+
+	for category, count := range counts {
+		ch <- prometheus.MustNewConstMetric(c.taskFailures, prometheus.GaugeValue, count, category)
+	}
+	return nil
+}
+
 // collectRunners emits chetter_runners (active/stale) and
 // chetter_runner_slots (available/occupied) gauges.
 func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Metric) error {
@@ -213,6 +291,12 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 	var availableSlots float64
 	var occupiedSlots float64
 	var relayRejections float64
+	var sandboxAvailable float64
+	var sandboxUnavailable float64
+	var sandboxTotal float64
+	var sandboxStartFailures float64
+	var sandboxCrashes float64
+	var sandboxStartLatencyMS float64
 
 	for rows.Next() {
 		var lastSeenSec int
@@ -222,12 +306,22 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 			return fmt.Errorf("scan runner: %w", err)
 		}
 		relayRejections += float64(mcpRelayRejectedRequests(metadata))
+		available, total, startFailures, crashes, startLatencyMs, _, _, _ := sandboxMetricsFromMetadata(metadata)
 		if lastSeenSec > maxRunnerPresenceSec {
 			stale++
 		} else {
 			active++
 			availableSlots += float64(max(availSlots, 0))
 			occupiedSlots += float64(max(runningTasks, 0))
+			if available {
+				sandboxAvailable++
+			} else {
+				sandboxUnavailable++
+			}
+			sandboxTotal += float64(total)
+			sandboxStartFailures += float64(startFailures)
+			sandboxCrashes += float64(crashes)
+			sandboxStartLatencyMS += float64(startLatencyMs)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -239,8 +333,36 @@ func (c *collector) collectRunners(ctx context.Context, ch chan<- prometheus.Met
 	ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, availableSlots, "available")
 	ch <- prometheus.MustNewConstMetric(c.runnerSlots, prometheus.GaugeValue, occupiedSlots, "occupied")
 	ch <- prometheus.MustNewConstMetric(c.relayRejections, prometheus.GaugeValue, relayRejections)
+	ch <- prometheus.MustNewConstMetric(c.runnerSandbox, prometheus.GaugeValue, sandboxAvailable, "available")
+	ch <- prometheus.MustNewConstMetric(c.runnerSandbox, prometheus.GaugeValue, sandboxUnavailable, "unavailable")
+	ch <- prometheus.MustNewConstMetric(c.sandboxCounters, prometheus.GaugeValue, sandboxTotal, "total")
+	ch <- prometheus.MustNewConstMetric(c.sandboxCounters, prometheus.GaugeValue, sandboxStartFailures, "start_failures")
+	ch <- prometheus.MustNewConstMetric(c.sandboxCounters, prometheus.GaugeValue, sandboxCrashes, "crashes")
+	ch <- prometheus.MustNewConstMetric(c.sandboxCounters, prometheus.GaugeValue, sandboxStartLatencyMS, "start_latency_ms")
 
 	return nil
+}
+
+// sandboxMetricsFromMetadata extracts the sandbox runtime fields from runner
+// heartbeat metadata JSON (sandbox_available and cumulative per-sandbox
+// counters). Missing or malformed metadata reports zero values. See issue
+// #302.
+func sandboxMetricsFromMetadata(metadata []byte) (available bool, total, startFailures, crashes, startLatencyMs, lifetimeMs, maxRssMb int64, maxCpuPercent float64) {
+	var heartbeat struct {
+		SandboxAvailable      bool    `json:"sandbox_available"`
+		SandboxTotal          int64   `json:"sandbox_total"`
+		SandboxStartFailures  int64   `json:"sandbox_start_failures"`
+		SandboxCrashes        int64   `json:"sandbox_crashes"`
+		SandboxStartLatencyMs int64   `json:"sandbox_start_latency_ms"`
+		SandboxLifetimeMs     int64   `json:"sandbox_lifetime_ms"`
+		SandboxMaxRssMb       int64   `json:"sandbox_max_rss_mb"`
+		SandboxMaxCpuPercent  float64 `json:"sandbox_max_cpu_percent"`
+	}
+	if len(metadata) == 0 || json.Unmarshal(metadata, &heartbeat) != nil {
+		return false, 0, 0, 0, 0, 0, 0, 0
+	}
+	return heartbeat.SandboxAvailable, heartbeat.SandboxTotal, heartbeat.SandboxStartFailures, heartbeat.SandboxCrashes,
+		heartbeat.SandboxStartLatencyMs, heartbeat.SandboxLifetimeMs, heartbeat.SandboxMaxRssMb, heartbeat.SandboxMaxCpuPercent
 }
 
 func mcpRelayRejectedRequests(metadata []byte) int64 {

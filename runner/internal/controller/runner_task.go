@@ -794,17 +794,31 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	slog.Info("starting Docker container", "taskID", req.TaskID, "image", req.AgentImage, "hostPort", hostPort, "gvisor", r.cfg.Execution.UseGVisor)
 	r.publishStatusForRequest(req, "running", "Starting dev container...", nil)
 
+	sandboxStart := time.Now()
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
+		if gvisor && isSandboxStartFailure(err, string(out)) {
+			r.sandbox.recordStartFailure()
+			message := fmt.Sprintf("sandbox failed to start: %v\n%s", err, string(out))
+			slog.Error("gVisor sandbox start failed", "taskID", req.TaskID, "err", err, "output", string(out))
+			r.publishStatusWithErrorCategory(req, "error", message, "sandbox_start_failed", nil)
+			return
+		}
 		slog.Error("docker run failed", "taskID", req.TaskID, "err", err, "output", string(out))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
 		return
+	}
+	if gvisor {
+		r.sandbox.recordStart(time.Since(sandboxStart))
 	}
 
 	defer func() {
 		if session.PreserveWorkspace {
 			slog.Info("preserving container for checkpointed session", "taskID", req.TaskID, "container", containerName)
 			return
+		}
+		if gvisor {
+			r.recordSandboxTeardown(containerName, sandboxStart)
 		}
 		removeTaskContainer(containerName)
 	}()
@@ -820,6 +834,13 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		r.publishEvent(req, fmt.Sprintf("container self-check: %s", truncateSummary(strings.TrimSpace(string(selfCheckOut)))))
 		r.publishEvent(req, fmt.Sprintf("container logs: %s", truncateSummary(string(logs))))
 		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container harness serve not ready: %v", err))
+		if gvisor {
+			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
+				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox crashed: %s: %s", reason, message), "sandbox_crashed", nil)
+				return
+			}
+		}
 		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
@@ -864,6 +885,15 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 			errorCategory = "resource_limit"
 			statusMessage = oomMessage
 		}
+		if gvisor {
+			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
+				r.sandbox.recordCrash(time.Since(sandboxStart))
+				errorCategory = "sandbox_crashed"
+				statusMessage = fmt.Sprintf("sandbox crashed: %s: %s", reason, errorMessage)
+				slog.Error("gVisor sandbox crashed", "taskID", req.TaskID, "container", containerName, "reason", reason)
+				r.publishEvent(req, fmt.Sprintf("sandbox runtime state: %s", truncateSummary(reason)))
+			}
+		}
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, session.WorkspaceDir)
@@ -886,6 +916,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
+		if gvisor {
+			r.recordSandboxObserved(containerName)
+		}
 		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
@@ -933,15 +966,21 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	containerName := containerNameForRequest(req)
 	removeTaskContainer(containerName)
-	defer removeTaskContainer(containerName)
-
-	secret := h.ServerPassword()
+	sandboxStart := time.Now()
 	gvisor := r.cfg.Execution.UseGVisor
 	netName := runcNetwork()
 	runnerIP := ""
 	if gvisor {
 		runnerIP = hostIP(netName)
 	}
+	defer func() {
+		if gvisor {
+			r.recordSandboxTeardown(containerName, sandboxStart)
+		}
+		removeTaskContainer(containerName)
+	}()
+
+	secret := h.ServerPassword()
 	serveCmd := h.ServeCommand(containerPortForServe)
 	if len(serveCmd) == 0 {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("harness %s does not support serve mode", h.Name()), nil)
@@ -958,15 +997,32 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 
 	out, err := exec.CommandContext(ctx, "docker", dockerArgs...).CombinedOutput()
 	if err != nil {
+		if gvisor && isSandboxStartFailure(err, string(out)) {
+			r.sandbox.recordStartFailure()
+			message := fmt.Sprintf("sandbox failed to start: %v\n%s", err, string(out))
+			slog.Error("gVisor sandbox start failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
+			r.publishStatusWithErrorCategory(req, "error", message, "sandbox_start_failed", nil)
+			return
+		}
 		slog.Error("docker run failed on resume", "taskID", req.TaskID, "err", err, "output", string(out))
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("docker run: %v\n%s", err, string(out)), nil)
 		return
+	}
+	if gvisor {
+		r.sandbox.recordStart(time.Since(sandboxStart))
 	}
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
 		logs, _ := exec.Command("docker", "logs", containerName).CombinedOutput()
 		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)))
+		if gvisor {
+			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
+				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox crashed: %s: %s", reason, message), "sandbox_crashed", nil)
+				return
+			}
+		}
 		r.publishStatusForRequest(req, "error", message, nil)
 		return
 	}
@@ -1004,6 +1060,15 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 			errorCategory = "resource_limit"
 			statusMessage = oomMessage
 		}
+		if gvisor {
+			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
+				r.sandbox.recordCrash(time.Since(sandboxStart))
+				errorCategory = "sandbox_crashed"
+				statusMessage = fmt.Sprintf("sandbox crashed: %s: %s", reason, errorMessage)
+				slog.Error("gVisor sandbox crashed on resume", "taskID", req.TaskID, "container", containerName, "reason", reason)
+				r.publishEvent(req, fmt.Sprintf("sandbox runtime state: %s", truncateSummary(reason)))
+			}
+		}
 		if errorCategory == "transport_error" {
 			r.publishDockerPromptFailureDiagnostics(req, containerName, baseURL, err)
 			dumpContainerLogs(req.TaskID, containerName, workspaceDir)
@@ -1025,6 +1090,9 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		slog.Info("preserving workspace for resumable session", "taskID", req.TaskID, "workspace", workspacePath)
 	}
 	if sid != "" {
+		if gvisor {
+			r.recordSandboxObserved(containerName)
+		}
 		stopTaskContainer(containerName)
 		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
@@ -1303,7 +1371,7 @@ func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req
 	configureProcess(cmd)
 	cmd.Dir = session.WorkspaceDir
 	cmd.Env = r.agentEnv(req, session.WorkspaceDir, "", h)
-	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, "")
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, "", time.Time{})
 }
 
 func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
@@ -1320,9 +1388,15 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 
 	containerName := containerNameForRequest(req)
 	removeTaskContainer(containerName)
-	defer removeTaskContainer(containerName)
-
+	sandboxStart := time.Now()
 	gvisor := r.cfg.Execution.UseGVisor
+	defer func() {
+		if gvisor {
+			r.recordSandboxTeardown(containerName, sandboxStart)
+		}
+		removeTaskContainer(containerName)
+	}()
+
 	netName := runcNetwork()
 	runnerIP := hostIP(netName)
 
@@ -1337,7 +1411,7 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 
 	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	configureProcess(cmd)
-	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, containerName)
+	r.runRPCAgentCommand(ctx, session, req, h, &execRPCProcess{cmd: cmd}, containerName, sandboxStart)
 }
 
 func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, containerName string, h harness.RPCHarness, command []string, gvisor bool, netName, runnerIP string, exec config.ExecutionConfig) ([]string, error) {
@@ -1447,8 +1521,9 @@ func (p *execRPCProcess) Stop() error {
 	return terminateProcess(p.cmd)
 }
 
-func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd rpcProcess, containerName string) {
+func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness, cmd rpcProcess, containerName string, sandboxStart time.Time) {
 	name := h.Name()
+	gvisor := r.cfg.Execution.UseGVisor && containerName != ""
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -1467,8 +1542,16 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 
 	if err := cmd.Start(); err != nil {
+		if gvisor && isSandboxStartFailure(err, "") {
+			r.sandbox.recordStartFailure()
+			r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox failed to start: %v", err), "sandbox_start_failed", nil)
+			return
+		}
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("start %s: %v", name, err), nil)
 		return
+	}
+	if gvisor {
+		r.sandbox.recordStart(time.Since(sandboxStart))
 	}
 	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
@@ -1495,6 +1578,10 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		if ctx.Err() != nil {
 			status, message := cancellationStatus(ctx, name)
 			r.publishStatusForRequest(req, status, message, nil)
+			return
+		}
+		if msg := r.rpcSandboxCrashMessage(containerName, sandboxStart, fmt.Sprintf("%s ready: %v", name, err)); msg != "" {
+			r.publishStatusWithErrorCategory(req, "error", msg, "sandbox_crashed", nil)
 			return
 		}
 		r.publishStatusForRequest(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s ready: %v", name, err)), nil)
@@ -1586,6 +1673,10 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		return
 	}
 	if waitErr != nil {
+		if msg := r.rpcSandboxCrashMessage(containerName, sandboxStart, fmt.Sprintf("%s: %v", name, waitErr)); msg != "" {
+			r.publishStatusWithMetadata(req, "error", msg, nil, state.sessionID, sessionExport, task.TokenUsage{})
+			return
+		}
 		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)), nil, state.sessionID, sessionExport, task.TokenUsage{})
 		return
 	}
