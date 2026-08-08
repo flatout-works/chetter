@@ -132,6 +132,12 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		runscVersion = firstEnv("RUNSC_VERSION")
 	}
 
+	var sandboxTotal, sandboxStartFailures, sandboxCrashes, sandboxStartLatencyMS, sandboxLifetimeMS, sandboxMaxRSSMB int64
+	var sandboxMaxCPUPercent float64
+	if r.sandbox != nil {
+		sandboxTotal, sandboxStartFailures, sandboxCrashes, sandboxStartLatencyMS, sandboxLifetimeMS, sandboxMaxRSSMB, sandboxMaxCPUPercent = r.sandbox.snapshot()
+	}
+
 	var mcpRelayRejectedRequests int64
 	if r.mcpRelay != nil {
 		mcpRelayRejectedRequests = int64(r.mcpRelay.RejectedRequests())
@@ -159,6 +165,14 @@ func (r *Runner) runnerInfoProto(status string) *runnerv1.RunnerInfo {
 		ContainerMemoryMb:        containerMemoryMB(r.cfg.Execution.ContainerMemory),
 		ContainerCpu:             r.cfg.Execution.ContainerCPU,
 		McpRelayRejectedRequests: mcpRelayRejectedRequests,
+		SandboxAvailable:         r.sandboxAvailability(),
+		SandboxTotal:             sandboxTotal,
+		SandboxStartFailures:     sandboxStartFailures,
+		SandboxCrashes:           sandboxCrashes,
+		SandboxStartLatencyMs:    sandboxStartLatencyMS,
+		SandboxLifetimeMs:        sandboxLifetimeMS,
+		SandboxMaxRssMb:          sandboxMaxRSSMB,
+		SandboxMaxCpuPercent:     sandboxMaxCPUPercent,
 	}
 
 	if snapshot.CPUPercent != nil || snapshot.MemoryPercent != nil || snapshot.DiskPercent != nil {

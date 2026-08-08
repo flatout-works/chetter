@@ -1311,7 +1311,7 @@ func statusIsErrorCategoryCandidate(status string) bool {
 
 func normalizeErrorCategory(category string) string {
 	switch category {
-	case "budget_exceeded", "model_error", "runtime_error", "timeout", "transport_error", "stuck", "resource_limit", "cancelled", "unknown":
+	case "budget_exceeded", "model_error", "runtime_error", "timeout", "transport_error", "stuck", "resource_limit", "cancelled", "unknown", "sandbox_start_failed", "sandbox_crashed":
 		return category
 	default:
 		return ""
@@ -1328,6 +1328,10 @@ func classifyTaskErrorCategory(status, message string) string {
 	}
 	lower := strings.ToLower(message)
 	switch {
+	case strings.Contains(lower, "sandbox failed to start"), strings.Contains(lower, "sandbox_start_failed"):
+		return "sandbox_start_failed"
+	case strings.Contains(lower, "sandbox crashed"), strings.Contains(lower, "sandbox_crashed"):
+		return "sandbox_crashed"
 	case strings.Contains(lower, "budget"), strings.Contains(lower, "cost limit"), strings.Contains(lower, "max budget"):
 		return "budget_exceeded"
 	case strings.Contains(lower, "oomkilled"), strings.Contains(lower, "out of memory"), strings.Contains(lower, "memory limit"), strings.Contains(lower, "resource limit"), strings.Contains(lower, "cgroup memory"):
@@ -1352,7 +1356,10 @@ func classifyTaskErrorCategory(status, message string) string {
 // internal_error, user_cancelled, quota_exceeded, unknown. resource_limit is an
 // additional value introduced by #273 for containers killed by their memory
 // limit; isolation_unavailable (#291) maps to harness_error because it is a
-// runner-side infrastructure inability to run the task.
+// runner-side infrastructure inability to run the task. sandbox_start_failed
+// and sandbox_crashed (#302) map to harness_error for the same reason: sandbox
+// infrastructure failures are reaper/session-recovery-visible and follow the
+// standard terminal-failure retry/backoff semantics.
 func classifyFailureCategory(errorCategory string) string {
 	switch errorCategory {
 	case "timeout":
@@ -1365,7 +1372,7 @@ func classifyFailureCategory(errorCategory string) string {
 		return "internal_error"
 	case "resource_limit":
 		return "resource_limit"
-	case "runtime_error", "transport_error", "stuck", "isolation_unavailable":
+	case "runtime_error", "transport_error", "stuck", "isolation_unavailable", "sandbox_start_failed", "sandbox_crashed":
 		return "harness_error"
 	default:
 		return "unknown"

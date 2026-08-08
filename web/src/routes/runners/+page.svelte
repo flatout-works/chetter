@@ -9,7 +9,7 @@
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { formatAge } from "$lib/utils.svelte";
-  import { Alert, Button, Card, Spinner } from "flowbite-svelte";
+  import { Alert, Badge, Button, Card, Spinner } from "flowbite-svelte";
 
   let health = $state<RunnerFleetHealth | null>(null);
   let loading = $state(true);
@@ -204,6 +204,20 @@
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Runner caps: {runner.containerMemoryMb > 0 ? `${runner.containerMemoryMb} MiB` : "unset"} memory · {runner.containerCpu > 0 ? runner.containerCpu : "unset"} CPU
                   </p>
+                {/if}
+                {#if runner.gvisorEnabled || runner.sandboxAvailable || runner.sandboxTotal > 0n || runner.sandboxStartFailures > 0n || runner.sandboxCrashes > 0n}
+                  <div class="mt-1.5 flex items-center gap-2 text-xs">
+                    {#if runner.sandboxAvailable}
+                      <Badge color="green">sandbox ready</Badge>
+                    {:else}
+                      <Badge color="red">sandbox unavailable</Badge>
+                    {/if}
+                    {#if runner.sandboxTotal > 0n || runner.sandboxStartFailures > 0n || runner.sandboxCrashes > 0n}
+                      <span class="text-gray-500 dark:text-gray-400">
+                        {String(runner.sandboxTotal)} run · {String(runner.sandboxStartFailures)} start-fail · {String(runner.sandboxCrashes)} crash
+                      </span>
+                    {/if}
+                  </div>
                 {/if}
               </div>
               <div class="flex items-center gap-3">
