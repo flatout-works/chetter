@@ -10,9 +10,11 @@
 # --------------------------------------------------------------------------
 # Stage 1: Build runner binary
 # --------------------------------------------------------------------------
-FROM golang:1.26-bookworm AS runner-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS runner-builder
 
 ARG GIT_HASH=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 COPY go.mod go.sum* ./
@@ -28,7 +30,7 @@ COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/flatout-works/chetter/runner/cmd/runner._gitHash=${GIT_HASH}'" -o /out/runner ./cmd/runner
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X 'github.com/flatout-works/chetter/runner/cmd/runner._gitHash=${GIT_HASH}'" -o /out/runner ./cmd/runner
 
 # --------------------------------------------------------------------------
 # Stage 2: Download Docker CLI
@@ -40,7 +42,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 
 ARG DOCKER_VERSION=27.5.1
-RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64) docker_arch=x86_64 ;; \
+      arm64) docker_arch=aarch64 ;; \
+      *) echo "unsupported Docker CLI architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${docker_arch}/docker-${DOCKER_VERSION}.tgz" \
     | tar -C /usr/local/bin --strip-components=1 -xzf - docker/docker \
     && chmod +x /usr/local/bin/docker
 
