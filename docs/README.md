@@ -52,3 +52,4 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [research/UNIVERSAL_HARNESS.md](research/UNIVERSAL_HARNESS.md) | Universal harness architecture design (implemented; see `HARNESSES.md` for current state). |
 | [research/TASK_SESSION_MODEL_REFACTOR.md](research/TASK_SESSION_MODEL_REFACTOR.md) | Completed Task/AgentSession/UserPrompt/ExecutionAttempt refactor design; see `SESSIONS.md` for current behavior. |
 | [research/REPOSITORY_QUALITY_REVIEW.md](research/REPOSITORY_QUALITY_REVIEW.md) | Dated repository quality review (2026-08-01) with implementation progress. |
+| [STATS.md](STATS.md) | Generated code statistics (LOC by language, tables, migrations, MCP tools, routes, harnesses). Regenerate with `scripts/gen-stats.sh`. |
