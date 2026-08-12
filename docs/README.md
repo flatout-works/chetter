@@ -26,6 +26,13 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [SCHEMA.md](SCHEMA.md) | Database schema reference with mermaid ER diagrams: task model, fleet, triggers, auth, definitions, audit. |
 | [TIDB-WOWBAGGER.md](TIDB-WOWBAGGER.md) | TiDB deployment on wowbagger: cluster shape and DSN routing, UTC time-zone requirement, migration history and schema-drift gotchas, TiDB planner bug, runsc isolation. |
 
+## Architecture & Design
+
+| Document | Purpose |
+|---|---|
+| [WEBUI.md](WEBUI.md) | How the web UI is built: SvelteKit SPA, Tailwind v4 + Flowbite-Svelte, ConnectRPC/protobuf data layer, state stores, auth, and serving via `go:embed`. |
+| [BACKEND.md](BACKEND.md) | How the backend is built: the MCP server/control plane and the runner — ConnectRPC surfaces, sqlc dual-dialect data layer, lease-based task claiming, reaper, harnesses, and gVisor isolation. |
+
 ## Planning
 
 | Document | Purpose |
