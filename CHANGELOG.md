@@ -38,6 +38,18 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-13
+
+### Added
+
+- `ops/test-quickstart.sh` gained a `--gvisor` mode: after the plain-Docker run it installs `runsc` in the VM, switches the stack to hardened mode (`USE_GVISOR=true`, isolation enforced), and re-validates that runners advertise isolation, an `isolation=required` task completes under the `runsc` runtime, and the self-test passes under enforcement. Host prerequisites (`/dev/kvm`, libvirt tooling, `curl`, `python3`, `openssl`, `sudo`) are now validated up front, starting `libvirtd` if needed.
+- `scripts/gen-stats.sh` generates `docs/STATS.md` — code statistics (LOC by language plus counts for tables, migrations, MCP tools, protobuf RPCs, web routes, and harnesses), excluding generated/vendored paths so output stays deterministic.
+
+### Documentation
+
+- New architecture articles indexed from `docs/README.md`: `docs/WEBUI.md` (how the SvelteKit web UI is built — SvelteKit SPA, Tailwind v4 + Flowbite-Svelte, ConnectRPC/protobuf data layer, state stores, auth, and serving via `go:embed`) and `docs/BACKEND.md` (backend design — MCP server/control plane and runner, ConnectRPC surfaces, sqlc dual-dialect data layer, lease-based task claiming, reaper, harnesses, and gVisor isolation), both with code examples.
+- README gained a "Validating the Quick Start" section documenting `ops/test-quickstart.sh` usage for the plain-Docker and `--gvisor` validation runs.
+
 ## 2026-08-06
 
 ### Added
