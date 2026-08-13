@@ -289,6 +289,62 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 	}
 }
 
+// TestCollector_TaskFailuresExcludesNonFailures verifies that
+// chetter_task_failures only counts terminal failures: a successfully
+// completed task (failure_category NULL) must not roll up into the
+// failure_category="unknown" bucket. See issue #302 review finding 1.
+func TestCollector_TaskFailuresExcludesNonFailures(t *testing.T) {
+	db := openTestDB(t)
+	if db == nil {
+		t.Skip("no test database available")
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32), failure_category VARCHAR(32))`); err != nil {
+		t.Fatalf("create test table: %v", err)
+	}
+	// Start from a clean table (the test DB persists between runs) and remove
+	// this test's rows before the connection closes, so other tests (and
+	// future runs against the persisted test DB) see a clean table. The defer
+	// runs before defer db.Close() (LIFO).
+	if _, err := db.Exec(`DELETE FROM tasks`); err != nil {
+		t.Fatalf("clear test table: %v", err)
+	}
+	defer db.Exec(`DELETE FROM tasks`)
+
+	// One successful task plus pending/running tasks (NULL failure_category)
+	// and two terminal failures with explicit categories.
+	if _, err := db.Exec(`INSERT INTO tasks (id, status, failure_category) VALUES
+		('t-done', 'done', NULL),
+		('t-pending', 'pending', NULL),
+		('t-running', 'running', NULL),
+		('t-error', 'error', 'harness_error'),
+		('t-cancelled', 'cancelled', 'user_cancelled')`); err != nil {
+		t.Fatalf("insert test tasks: %v", err)
+	}
+
+	h := Handler(db, store.DialectMySQL)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	// The completed/pending/running tasks must not be counted as failures:
+	// the unknown bucket stays at zero instead of swallowing every row.
+	if !strings.Contains(body, `chetter_task_failures{failure_category="unknown"} 0`) {
+		t.Errorf("non-failed tasks leaked into failure_category=unknown; body:\n%s", body)
+	}
+	if !strings.Contains(body, `chetter_task_failures{failure_category="harness_error"} 1`) {
+		t.Errorf("expected harness_error count 1; body:\n%s", body)
+	}
+	if !strings.Contains(body, `chetter_task_failures{failure_category="user_cancelled"} 1`) {
+		t.Errorf("expected user_cancelled count 1; body:\n%s", body)
+	}
+}
+
 // openTestDB returns a test database connection or nil if none is available.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()

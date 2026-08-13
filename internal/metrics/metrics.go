@@ -231,10 +231,15 @@ func (c *collector) collectTasks(ctx context.Context, ch chan<- prometheus.Metri
 // collectTaskFailures emits chetter_task_failures gauges grouped by the
 // task-level failure_category (timeout, harness_error, runner_lost,
 // internal_error, user_cancelled, quota_exceeded, resource_limit, unknown).
-// Sandbox infrastructure failures (sandbox_start_failed, sandbox_crashed)
-// map to harness_error, so they are counted here. See issue #302 AC5.
+// Only terminal failures are counted: tasks that never failed have a NULL
+// failure_category and are excluded, so pending/running/completed tasks do
+// not roll up into a synthetic "unknown" bucket. The unknown category is
+// still reachable for tasks that actually failed with an unclassified
+// per-attempt error category (see classifyFailureCategory). Sandbox
+// infrastructure failures (sandbox_start_failed, sandbox_crashed) map to
+// harness_error, so they are counted here. See issue #302 AC5.
 func (c *collector) collectTaskFailures(ctx context.Context, ch chan<- prometheus.Metric) error {
-	rows, err := c.db.QueryContext(ctx, `SELECT COALESCE(failure_category, ''), COUNT(*) FROM tasks GROUP BY failure_category`)
+	rows, err := c.db.QueryContext(ctx, `SELECT COALESCE(failure_category, ''), COUNT(*) FROM tasks WHERE failure_category IS NOT NULL GROUP BY failure_category`)
 	if err != nil {
 		return fmt.Errorf("query task failure counts: %w", err)
 	}

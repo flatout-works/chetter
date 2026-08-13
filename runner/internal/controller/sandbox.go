@@ -56,11 +56,12 @@ func (m *sandboxMetrics) recordStartFailure() {
 	m.startFailures.Add(1)
 }
 
-// recordCrash accounts a sandbox that died from an infrastructure failure and
-// accumulates its lifetime.
-func (m *sandboxMetrics) recordCrash(lifetime time.Duration) {
+// recordCrash accounts a sandbox that died from an infrastructure failure.
+// Lifetime accounting is owned by the teardown path (recordFinish), which
+// runs exactly once per started sandbox, so a crash increments only the
+// crash counter here and never double-counts the sandbox's lifetime.
+func (m *sandboxMetrics) recordCrash() {
 	m.crashes.Add(1)
-	m.lifetimeMS.Add(lifetime.Milliseconds())
 }
 
 // recordFinish accumulates the lifetime of a sandbox that ended normally.
@@ -323,9 +324,10 @@ func parseDockerCPUPercent(s string) float64 {
 
 // recordSandboxTeardown captures teardown metrics for a gVisor task container
 // before removal: the sandbox lifetime, a runtime-state summary (teardown
-// reason) for the log, and peak observed RSS/CPU. Crash accounting is handled
-// by the explicit detection points in the task flows (which also set the
-// sandbox_crashed error category), so this helper never double-counts.
+// reason) for the log, and peak observed RSS/CPU. This helper is the single
+// owner of lifetime accounting (recordFinish) — crash detection call sites
+// only increment the crash counter via recordCrash, so a sandbox's lifetime
+// is recorded exactly once no matter how it ended.
 func (r *Runner) recordSandboxTeardown(containerName string, sandboxStart time.Time) {
 	st := inspectContainerState(containerName)
 	reason := sandboxTeardownReason(st)
@@ -350,9 +352,10 @@ func (r *Runner) recordSandboxObserved(containerName string) {
 // daemon-recorded runsc/sandbox runtime error. When the sandbox crashed it
 // records the crash metric and returns a terminal error message; otherwise it
 // returns "". RPC-mode containers exit with the harness's own code, so only
-// daemon-recorded sandbox runtime errors are classified as crashes there. See
-// issue #302 AC2.
-func (r *Runner) rpcSandboxCrashMessage(containerName string, sandboxStart time.Time, fallback string) string {
+// daemon-recorded sandbox runtime errors are classified as crashes there.
+// Lifetime accounting happens once in the teardown path, not here. See issue
+// #302 AC2.
+func (r *Runner) rpcSandboxCrashMessage(containerName string, fallback string) string {
 	if !r.cfg.Execution.UseGVisor || containerName == "" {
 		return ""
 	}
@@ -360,6 +363,6 @@ func (r *Runner) rpcSandboxCrashMessage(containerName string, sandboxStart time.
 	if !crashed {
 		return ""
 	}
-	r.sandbox.recordCrash(time.Since(sandboxStart))
+	r.sandbox.recordCrash()
 	return fmt.Sprintf("sandbox crashed: %s: %s", reason, fallback)
 }

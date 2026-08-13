@@ -344,8 +344,11 @@ func TestRunnerInfoReportsSandboxMetrics(t *testing.T) {
 
 	r.sandbox.recordStart(2 * time.Second)
 	r.sandbox.recordStartFailure()
-	r.sandbox.recordCrash(15 * time.Second)
+	r.sandbox.recordCrash()
 	r.sandbox.recordObserved(512, 37.5)
+	// Lifetime accounting is owned by the teardown path (recordFinish); a
+	// crash only increments the crash counter.
+	r.sandbox.recordFinish(15 * time.Second)
 
 	info := r.runnerInfoProto("active")
 	if !info.SandboxAvailable {

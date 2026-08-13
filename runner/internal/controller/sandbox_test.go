@@ -12,7 +12,7 @@ func TestSandboxMetricsCounters(t *testing.T) {
 	m.recordStart(1500 * time.Millisecond)
 	m.recordStart(500 * time.Millisecond)
 	m.recordStartFailure()
-	m.recordCrash(10 * time.Second)
+	m.recordCrash()
 	m.recordFinish(20 * time.Second)
 	m.recordObserved(256, 42.5)
 	m.recordObserved(128, 60.25)
@@ -30,9 +30,10 @@ func TestSandboxMetricsCounters(t *testing.T) {
 	if startLatencyMS != 2000 {
 		t.Errorf("startLatencyMS = %d, want 2000", startLatencyMS)
 	}
-	// 10s crash + 20s finish = 30s
-	if lifetimeMS != 30000 {
-		t.Errorf("lifetimeMS = %d, want 30000", lifetimeMS)
+	// Crashes do not accumulate lifetime (teardown owns lifetime accounting),
+	// so only the 20s finish contributes.
+	if lifetimeMS != 20000 {
+		t.Errorf("lifetimeMS = %d, want 20000", lifetimeMS)
 	}
 	if maxRSSMB != 256 {
 		t.Errorf("maxRSSMB = %d, want 256", maxRSSMB)
@@ -47,6 +48,41 @@ func TestSandboxMetricsCounters(t *testing.T) {
 	if total != 0 || startFailures != 0 || crashes != 0 || startLatencyMS != 0 || lifetimeMS != 0 || maxRSSMB != 0 || maxCPUPercent != 0 {
 		t.Errorf("fresh snapshot = (%d,%d,%d,%d,%d,%d,%v), want all zeros",
 			total, startFailures, crashes, startLatencyMS, lifetimeMS, maxRSSMB, maxCPUPercent)
+	}
+}
+
+// TestSandboxMetricsCrashedLifetimeCountedOnce models the serve-mode crash
+// flow: a sandbox starts, a crash is detected (recordCrash only bumps the
+// crash counter), and the deferred teardown records the lifetime exactly once
+// via recordFinish. The lifetime must not be double-counted. See issue #302
+// review finding 2.
+func TestSandboxMetricsCrashedLifetimeCountedOnce(t *testing.T) {
+	m := newSandboxMetrics()
+
+	// Sandbox starts; docker run took 1s.
+	m.recordStart(1 * time.Second)
+	// Crash detection partway through the sandbox's life.
+	m.recordCrash()
+	// Deferred teardown records the full start -> teardown lifetime once.
+	m.recordFinish(2 * time.Second)
+
+	total, startFailures, crashes, startLatencyMS, lifetimeMS, _, _ := m.snapshot()
+	if total != 1 {
+		t.Errorf("total = %d, want 1", total)
+	}
+	if startFailures != 0 {
+		t.Errorf("startFailures = %d, want 0", startFailures)
+	}
+	if crashes != 1 {
+		t.Errorf("crashes = %d, want 1", crashes)
+	}
+	if startLatencyMS != 1000 {
+		t.Errorf("startLatencyMS = %d, want 1000", startLatencyMS)
+	}
+	// The crashed sandbox's lifetime is exactly the teardown-recorded 2s, not
+	// 2s doubled by also accumulating it in recordCrash.
+	if lifetimeMS != 2000 {
+		t.Errorf("lifetimeMS = %d, want 2000 (crashed sandbox lifetime counted once)", lifetimeMS)
 	}
 }
 

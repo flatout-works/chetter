@@ -836,7 +836,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container harness serve not ready: %v", err))
 		if gvisor {
 			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
-				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.sandbox.recordCrash()
 				r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox crashed: %s: %s", reason, message), "sandbox_crashed", nil)
 				return
 			}
@@ -887,7 +887,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 		}
 		if gvisor {
 			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
-				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.sandbox.recordCrash()
 				errorCategory = "sandbox_crashed"
 				statusMessage = fmt.Sprintf("sandbox crashed: %s: %s", reason, errorMessage)
 				slog.Error("gVisor sandbox crashed", "taskID", req.TaskID, "container", containerName, "reason", reason)
@@ -1018,7 +1018,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		message := dockerOOMFailureMessage(containerName, fmt.Sprintf("container serve not ready: %v\n%s", err, string(logs)))
 		if gvisor {
 			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
-				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.sandbox.recordCrash()
 				r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox crashed: %s: %s", reason, message), "sandbox_crashed", nil)
 				return
 			}
@@ -1062,7 +1062,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		}
 		if gvisor {
 			if reason, crashed := dockerContainerSandboxCrashed(containerName); crashed {
-				r.sandbox.recordCrash(time.Since(sandboxStart))
+				r.sandbox.recordCrash()
 				errorCategory = "sandbox_crashed"
 				statusMessage = fmt.Sprintf("sandbox crashed: %s: %s", reason, errorMessage)
 				slog.Error("gVisor sandbox crashed on resume", "taskID", req.TaskID, "container", containerName, "reason", reason)
@@ -1390,10 +1390,11 @@ func (r *Runner) runDockerRpcAgent(ctx context.Context, session *task.TaskSessio
 	removeTaskContainer(containerName)
 	sandboxStart := time.Now()
 	gvisor := r.cfg.Execution.UseGVisor
+	// Sandbox teardown/lifetime recording happens in runRPCAgentCommand only
+	// after cmd.Start succeeds, so a start failure (the container was never
+	// created) records no sandbox lifetime. This defer only removes the
+	// container.
 	defer func() {
-		if gvisor {
-			r.recordSandboxTeardown(containerName, sandboxStart)
-		}
 		removeTaskContainer(containerName)
 	}()
 
@@ -1552,6 +1553,11 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 	if gvisor {
 		r.sandbox.recordStart(time.Since(sandboxStart))
+		// The sandbox actually started, so teardown owns lifetime accounting.
+		// Registering here (rather than in runDockerRpcAgent) keeps a start
+		// failure — where the container was never created — from recording a
+		// lifetime for a sandbox that never existed.
+		defer r.recordSandboxTeardown(containerName, sandboxStart)
 	}
 	go h.PipeOutput(req.TaskID, "stderr", stderr)
 
@@ -1580,7 +1586,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 			r.publishStatusForRequest(req, status, message, nil)
 			return
 		}
-		if msg := r.rpcSandboxCrashMessage(containerName, sandboxStart, fmt.Sprintf("%s ready: %v", name, err)); msg != "" {
+		if msg := r.rpcSandboxCrashMessage(containerName, fmt.Sprintf("%s ready: %v", name, err)); msg != "" {
 			r.publishStatusWithErrorCategory(req, "error", msg, "sandbox_crashed", nil)
 			return
 		}
@@ -1673,7 +1679,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		return
 	}
 	if waitErr != nil {
-		if msg := r.rpcSandboxCrashMessage(containerName, sandboxStart, fmt.Sprintf("%s: %v", name, waitErr)); msg != "" {
+		if msg := r.rpcSandboxCrashMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)); msg != "" {
 			r.publishStatusWithMetadata(req, "error", msg, nil, state.sessionID, sessionExport, task.TokenUsage{})
 			return
 		}
