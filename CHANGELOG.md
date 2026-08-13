@@ -49,6 +49,12 @@ Detailed per-day history of everything that went into this release is below.
 
 - Release notes extraction in `release.yml` uses `index()` instead of a regex to match `## [x.y.z]` headers, whose brackets would otherwise be parsed as a character class.
 
+## 2026-08-07
+
+### Documentation
+
+- Website updated to reflect the versioned releases feature: the technical architecture page documents the `release.yml` workflow (binaries built on `v*` tags with the version injected via ldflags, release notes pulled from the matching CHANGELOG section), `/api/server-info` reporting server version, git hash, and uptime, and the UI footer showing `x.y.z-githash` with live uptime. A new "Releases" detail card summarizes the flow. The main site's isolation card now clarifies that plain Docker execution alone is not a sandbox against a malicious task, matching the README quickstart note.
+
 ## 2026-08-05
 
 ### Added
