@@ -95,7 +95,15 @@ runner-check:
 check:
 	$(MAKE) -j3 check-root check-web check-runner
 
-check-root: test vet lint
+check-root: test vet lint check-sql-parity
+
+# SQL dialect parity check (issue #314): verifies that every query in
+# db/queries/*.sql (MySQL/TiDB) has a same-named counterpart in
+# db/postgres/queries/*.sql with dialect-appropriate syntax, and that the
+# sqlc packages + internal/data facade are regenerated. Runs as part of
+# `make check`; invoke standalone with `make check-sql-parity`.
+check-sql-parity:
+	go test ./internal/sqlparity/
 
 check-web:
 	$(MAKE) web-check
