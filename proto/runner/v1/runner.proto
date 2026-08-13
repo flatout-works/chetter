@@ -36,6 +36,20 @@ message RunnerInfo {
   // kubernetes with a gVisor runtime class. Advertised so the control plane can
   // admit isolation-requiring tasks only to capable runners. See issue #291.
   bool enforced_isolation = 23;
+  // Sandbox runtime monitoring for isolated (gVisor/runsc) executions. See
+  // issue #302. sandbox_available reports whether the runsc runtime binary is
+  // present and working on this runner (fleet health surfaces sandbox drift,
+  // not just task staleness); the remaining fields are cumulative counters for
+  // per-sandbox metrics: start failures, crashes, start latency, sandbox
+  // lifetime (start to teardown), and peak observed RSS/CPU.
+  bool sandbox_available = 24;
+  int64 sandbox_total = 25;
+  int64 sandbox_start_failures = 26;
+  int64 sandbox_crashes = 27;
+  int64 sandbox_start_latency_ms = 28;
+  int64 sandbox_lifetime_ms = 29;
+  int64 sandbox_max_rss_mb = 30;
+  double sandbox_max_cpu_percent = 31;
 }
 
 message ResourceInfo {

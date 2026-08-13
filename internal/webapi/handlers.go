@@ -260,6 +260,16 @@ func protoRunnerInfo(r store.RunnerInfo) *apiv1.RunnerInfo {
 		// may be stricter but cannot raise these caps. See issue #273.
 		ContainerMemoryMb: int32(r.ContainerMemoryMB),
 		ContainerCpu:      r.ContainerCPU,
+		// Sandbox runtime monitoring for isolated (gVisor/runsc) executions.
+		// See issue #302.
+		SandboxAvailable:      r.SandboxAvailable,
+		SandboxTotal:          r.SandboxTotal,
+		SandboxStartFailures:  r.SandboxStartFailures,
+		SandboxCrashes:        r.SandboxCrashes,
+		SandboxStartLatencyMs: r.SandboxStartLatencyMs,
+		SandboxLifetimeMs:     r.SandboxLifetimeMs,
+		SandboxMaxRssMb:       r.SandboxMaxRssMb,
+		SandboxMaxCpuPercent:  r.SandboxMaxCpuPercent,
 	}
 	if r.Resource != nil {
 		info.Resource = &apiv1.ResourceInfo{

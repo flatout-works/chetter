@@ -167,3 +167,32 @@ gVisor adds per-syscall latency because every call is intercepted by the Sentry.
 Regardless of the container runtime, Chetter runners provide outbound network filtering via a transparent HTTP proxy and DNS proxy. The proxy enforces an allowlist of domains and blocks everything else.
 
 > **Note:** gVisor sandboxes the agent process only. It does not sandbox the network or the MCP bridge. Proxy/DNS filtering is an operational control, not a task security boundary.
+
+### Monitoring The Sandbox Runtime
+
+Once a task is running inside a sandbox, operators need visibility into the sandbox runtime itself: runsc start/teardown failures, sandbox crashes, and resource pressure are distinct from ordinary agent failures. Chetter collects per-sandbox metrics on the runner and surfaces them through heartbeats, the fleet metrics endpoint, and the web UI. See issue #302.
+
+**Runner heartbeat fields** (visible in the runner fleet page and in `chetter_runner_health`):
+
+| Field | Meaning |
+|---|---|
+| `sandbox_available` | The runsc binary is present on the runner and `runsc --version` succeeds (docker mode). In Kubernetes mode this reports the configured runtime class (`gvisor` = available). A runner that was advertising isolation but now reports `sandbox_available=false` has sandbox drift — investigate before admitting new tasks. |
+| `sandbox_total` | Cumulative sandboxes started successfully since the runner started. |
+| `sandbox_start_failures` | Cumulative `docker run` failures classified as sandbox runtime failures (runsc/OCI errors). |
+| `sandbox_crashes` | Cumulative sandboxes that died from an infrastructure failure mid-task (daemon-recorded runsc/sandbox error, or an unexpected non-zero exit while the harness was still running). |
+| `sandbox_start_latency_ms` | Cumulative sandbox start latency (docker run wall time), for average start cost. |
+| `sandbox_lifetime_ms` | Cumulative sandbox lifetime (start to teardown), for average sandbox age. |
+| `sandbox_max_rss_mb`, `sandbox_max_cpu_percent` | Peak sandbox RSS/CPU observed at teardown — a proxy for in-sandbox resource pressure. |
+
+**Prometheus metrics** (`/metrics`, aggregate across active runners):
+
+- `chetter_runner_sandbox_available{status="available"|"unavailable"}` — count of runners by sandbox runtime availability.
+- `chetter_runner_sandbox{metric="total"|"start_failures"|"crashes"|"start_latency_ms"}` — cumulative per-sandbox counters summed across active runners.
+- `chetter_task_failures{failure_category="..."}` — failed tasks by task-level failure category; sandbox infrastructure failures are counted under `harness_error` (the task-level failure category shared with other runner-side infrastructure failures).
+
+**Failure categories** — sandbox lifecycle failures are reported as distinct per-attempt error categories and stored in `task_events` (e.g. `task.failed.sandbox_start_failed`, `task.failed.sandbox_crashed`):
+
+- `sandbox_start_failed` — the sandbox could not be started (`docker run` failed with a runsc/OCI runtime error). This is a terminal per-attempt failure, retried by the normal attempt/backoff machinery.
+- `sandbox_crashed` — the sandbox died while the task was running (runsc/sandbox runtime error, or an unexpected non-zero exit with a daemon-recorded error in serve mode). Also terminal per-attempt; the task is retried up to `max_attempts` like any other infrastructure failure.
+
+Both map to the task-level `harness_error` failure category, so the reaper and session-recovery paths treat them exactly like `isolation_unavailable` and other runner-side infrastructure failures: the failed attempt feeds `task_events`, the task is eligible for a fresh execution attempt, and the failure counts appear in `chetter_task_failures`. Unlike an OOM kill (which is reported as `resource_limit` and `OOMKilled`), these categories mean the sandbox runtime itself — not the agent or the memory limit — was the cause.

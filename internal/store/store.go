@@ -1306,6 +1306,18 @@ type RunnerInfo struct {
 	// Individual task limits may be stricter but cannot raise these caps.
 	ContainerMemoryMB int     `json:"container_memory_mb,omitempty"`
 	ContainerCPU      float64 `json:"container_cpu,omitempty"`
+	// Sandbox runtime monitoring for isolated (gVisor/runsc) executions.
+	// SandboxAvailable reports whether the runsc runtime is present and
+	// working; the remaining fields are cumulative per-sandbox metrics. See
+	// issue #302.
+	SandboxAvailable      bool    `json:"sandbox_available,omitempty"`
+	SandboxTotal          int64   `json:"sandbox_total,omitempty"`
+	SandboxStartFailures  int64   `json:"sandbox_start_failures,omitempty"`
+	SandboxCrashes        int64   `json:"sandbox_crashes,omitempty"`
+	SandboxStartLatencyMs int64   `json:"sandbox_start_latency_ms,omitempty"`
+	SandboxLifetimeMs     int64   `json:"sandbox_lifetime_ms,omitempty"`
+	SandboxMaxRssMb       int64   `json:"sandbox_max_rss_mb,omitempty"`
+	SandboxMaxCpuPercent  float64 `json:"sandbox_max_cpu_percent,omitempty"`
 }
 
 // RunnerResource holds a point-in-time snapshot of runner host resource usage.
@@ -1452,6 +1464,8 @@ func (s *Store) GetRunnerFleetHealth(ctx context.Context, maxEventSecForActive, 
 		info.CurrentTaskIDs = currentTaskIDsFromMetadata(metadata)
 		info.Resource = resourceFromMetadata(metadata)
 		info.ContainerMemoryMB, info.ContainerCPU = containerLimitsFromMetadata(metadata)
+		info.SandboxAvailable, info.SandboxTotal, info.SandboxStartFailures, info.SandboxCrashes,
+			info.SandboxStartLatencyMs, info.SandboxLifetimeMs, info.SandboxMaxRssMb, info.SandboxMaxCpuPercent = sandboxFromMetadata(metadata)
 		if info.IsStale {
 			continue
 		}
@@ -1541,6 +1555,27 @@ func containerLimitsFromMetadata(data []byte) (int, float64) {
 		return 0, 0
 	}
 	return int(meta.ContainerMemoryMb), meta.ContainerCpu
+}
+
+// sandboxFromMetadata extracts the runner heartbeat sandbox runtime fields
+// (sandbox_available and cumulative per-sandbox counters) from metadata JSON.
+// Reports zero values when no sandbox data is present. See issue #302.
+func sandboxFromMetadata(data []byte) (available bool, total, startFailures, crashes, startLatencyMs, lifetimeMs, maxRssMb int64, maxCpuPercent float64) {
+	var meta struct {
+		SandboxAvailable      bool    `json:"sandbox_available"`
+		SandboxTotal          int64   `json:"sandbox_total"`
+		SandboxStartFailures  int64   `json:"sandbox_start_failures"`
+		SandboxCrashes        int64   `json:"sandbox_crashes"`
+		SandboxStartLatencyMs int64   `json:"sandbox_start_latency_ms"`
+		SandboxLifetimeMs     int64   `json:"sandbox_lifetime_ms"`
+		SandboxMaxRssMb       int64   `json:"sandbox_max_rss_mb"`
+		SandboxMaxCpuPercent  float64 `json:"sandbox_max_cpu_percent"`
+	}
+	if len(data) == 0 || json.Unmarshal(data, &meta) != nil {
+		return false, 0, 0, 0, 0, 0, 0, 0
+	}
+	return meta.SandboxAvailable, meta.SandboxTotal, meta.SandboxStartFailures, meta.SandboxCrashes,
+		meta.SandboxStartLatencyMs, meta.SandboxLifetimeMs, meta.SandboxMaxRssMb, meta.SandboxMaxCpuPercent
 }
 
 func firstLineOrNA(s string) string {

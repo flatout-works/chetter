@@ -1707,8 +1707,21 @@ type RunnerInfo struct {
 	// task limits may be stricter but can never raise these configured caps.
 	ContainerMemoryMb int32   `protobuf:"varint,20,opt,name=container_memory_mb,json=containerMemoryMb,proto3" json:"container_memory_mb,omitempty"`
 	ContainerCpu      float64 `protobuf:"fixed64,21,opt,name=container_cpu,json=containerCpu,proto3" json:"container_cpu,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Sandbox runtime monitoring for isolated (gVisor/runsc) executions. See
+	// issue #302. sandbox_available reports whether the runsc runtime binary is
+	// present and working on this runner; the remaining fields are cumulative
+	// per-sandbox metrics (start failures, crashes, start latency, sandbox
+	// lifetime, peak RSS/CPU).
+	SandboxAvailable      bool    `protobuf:"varint,22,opt,name=sandbox_available,json=sandboxAvailable,proto3" json:"sandbox_available,omitempty"`
+	SandboxTotal          int64   `protobuf:"varint,23,opt,name=sandbox_total,json=sandboxTotal,proto3" json:"sandbox_total,omitempty"`
+	SandboxStartFailures  int64   `protobuf:"varint,24,opt,name=sandbox_start_failures,json=sandboxStartFailures,proto3" json:"sandbox_start_failures,omitempty"`
+	SandboxCrashes        int64   `protobuf:"varint,25,opt,name=sandbox_crashes,json=sandboxCrashes,proto3" json:"sandbox_crashes,omitempty"`
+	SandboxStartLatencyMs int64   `protobuf:"varint,26,opt,name=sandbox_start_latency_ms,json=sandboxStartLatencyMs,proto3" json:"sandbox_start_latency_ms,omitempty"`
+	SandboxLifetimeMs     int64   `protobuf:"varint,27,opt,name=sandbox_lifetime_ms,json=sandboxLifetimeMs,proto3" json:"sandbox_lifetime_ms,omitempty"`
+	SandboxMaxRssMb       int64   `protobuf:"varint,28,opt,name=sandbox_max_rss_mb,json=sandboxMaxRssMb,proto3" json:"sandbox_max_rss_mb,omitempty"`
+	SandboxMaxCpuPercent  float64 `protobuf:"fixed64,29,opt,name=sandbox_max_cpu_percent,json=sandboxMaxCpuPercent,proto3" json:"sandbox_max_cpu_percent,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *RunnerInfo) Reset() {
@@ -1884,6 +1897,62 @@ func (x *RunnerInfo) GetContainerMemoryMb() int32 {
 func (x *RunnerInfo) GetContainerCpu() float64 {
 	if x != nil {
 		return x.ContainerCpu
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxAvailable() bool {
+	if x != nil {
+		return x.SandboxAvailable
+	}
+	return false
+}
+
+func (x *RunnerInfo) GetSandboxTotal() int64 {
+	if x != nil {
+		return x.SandboxTotal
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxStartFailures() int64 {
+	if x != nil {
+		return x.SandboxStartFailures
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxCrashes() int64 {
+	if x != nil {
+		return x.SandboxCrashes
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxStartLatencyMs() int64 {
+	if x != nil {
+		return x.SandboxStartLatencyMs
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxLifetimeMs() int64 {
+	if x != nil {
+		return x.SandboxLifetimeMs
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxMaxRssMb() int64 {
+	if x != nil {
+		return x.SandboxMaxRssMb
+	}
+	return 0
+}
+
+func (x *RunnerInfo) GetSandboxMaxCpuPercent() float64 {
+	if x != nil {
+		return x.SandboxMaxCpuPercent
 	}
 	return 0
 }
@@ -9912,7 +9981,7 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1d\n" +
 	"\n" +
-	"runner_ids\x18\x03 \x03(\tR\trunnerIds\"\x9a\x06\n" +
+	"runner_ids\x18\x03 \x03(\tR\trunnerIds\"\x98\t\n" +
 	"\n" +
 	"RunnerInfo\x12\x1b\n" +
 	"\trunner_id\x18\x01 \x01(\tR\brunnerId\x12\x16\n" +
@@ -9937,7 +10006,15 @@ const file_proto_api_v1_api_proto_rawDesc = "" +
 	"\x0elast_heartbeat\x18\x12 \x01(\tR\rlastHeartbeat\x120\n" +
 	"\bresource\x18\x13 \x01(\v2\x14.api.v1.ResourceInfoR\bresource\x12.\n" +
 	"\x13container_memory_mb\x18\x14 \x01(\x05R\x11containerMemoryMb\x12#\n" +
-	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\"\xdb\x01\n" +
+	"\rcontainer_cpu\x18\x15 \x01(\x01R\fcontainerCpu\x12+\n" +
+	"\x11sandbox_available\x18\x16 \x01(\bR\x10sandboxAvailable\x12#\n" +
+	"\rsandbox_total\x18\x17 \x01(\x03R\fsandboxTotal\x124\n" +
+	"\x16sandbox_start_failures\x18\x18 \x01(\x03R\x14sandboxStartFailures\x12'\n" +
+	"\x0fsandbox_crashes\x18\x19 \x01(\x03R\x0esandboxCrashes\x127\n" +
+	"\x18sandbox_start_latency_ms\x18\x1a \x01(\x03R\x15sandboxStartLatencyMs\x12.\n" +
+	"\x13sandbox_lifetime_ms\x18\x1b \x01(\x03R\x11sandboxLifetimeMs\x12+\n" +
+	"\x12sandbox_max_rss_mb\x18\x1c \x01(\x03R\x0fsandboxMaxRssMb\x125\n" +
+	"\x17sandbox_max_cpu_percent\x18\x1d \x01(\x01R\x14sandboxMaxCpuPercent\"\xdb\x01\n" +
 	"\fResourceInfo\x12\x1f\n" +
 	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
 	"cpuPercent\x12%\n" +

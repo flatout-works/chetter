@@ -18,6 +18,8 @@ func TestNormalizeErrorCategory(t *testing.T) {
 		{"resource_limit", "resource_limit"},
 		{"cancelled", "cancelled"},
 		{"unknown", "unknown"},
+		{"sandbox_start_failed", "sandbox_start_failed"},
+		{"sandbox_crashed", "sandbox_crashed"},
 		{"", ""},
 		{"random_value", ""},
 		{"BUDGET_EXCEEDED", ""},
@@ -83,6 +85,8 @@ func TestClassifyTaskErrorCategory(t *testing.T) {
 		{"api error", "error", "API error 500", "model_error"},
 		{"empty message", "error", "", "unknown"},
 		{"generic error", "error", "something went wrong", "runtime_error"},
+		{"sandbox start failed", "error", "sandbox failed to start: runsc create failed", "sandbox_start_failed"},
+		{"sandbox crashed", "error", "sandbox crashed: status=exited exit=1 error=runsc died", "sandbox_crashed"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -161,6 +165,9 @@ func TestClassifyFailureCategory(t *testing.T) {
 		{"runtime_error", "harness_error"},
 		{"transport_error", "harness_error"},
 		{"stuck", "harness_error"},
+		{"isolation_unavailable", "harness_error"},
+		{"sandbox_start_failed", "harness_error"},
+		{"sandbox_crashed", "harness_error"},
 		{"", "unknown"},
 		{"random_value", "unknown"},
 	}

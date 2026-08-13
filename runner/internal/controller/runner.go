@@ -74,6 +74,10 @@ type Runner struct {
 	kubeClient        kubernetes.Interface
 	kubeConfig        *rest.Config
 	drainCleanupGrace time.Duration
+	// sandbox holds cumulative runtime sandbox (gVisor/runsc) metrics for
+	// isolated executions, surfaced in heartbeats and exposed via the
+	// server's Prometheus endpoint. See issue #302.
+	sandbox *sandboxMetrics
 }
 
 func NewRunner(cfg *config.Config) (*Runner, error) {
@@ -96,6 +100,7 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		terminalTasks:  make(map[string]struct{}),
 		cancelledTasks: make(map[string]struct{}),
 		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent+1),
+		sandbox:        newSandboxMetrics(),
 	}
 	if cfg.Execution.Backend == "kubernetes" {
 		if err := r.initializeKubernetesClient(); err != nil {
@@ -307,6 +312,10 @@ func classifyErrorCategory(status, message string) string {
 	}
 	lower := strings.ToLower(message)
 	switch {
+	case strings.Contains(lower, "sandbox failed to start"), strings.Contains(lower, "sandbox_start_failed"):
+		return "sandbox_start_failed"
+	case strings.Contains(lower, "sandbox crashed"), strings.Contains(lower, "sandbox_crashed"):
+		return "sandbox_crashed"
 	case strings.Contains(lower, "budget"), strings.Contains(lower, "cost limit"), strings.Contains(lower, "max budget"):
 		return "budget_exceeded"
 	case strings.Contains(lower, "oomkilled"), strings.Contains(lower, "out of memory"), strings.Contains(lower, "memory limit"), strings.Contains(lower, "resource limit"), strings.Contains(lower, "cgroup memory"):

@@ -598,7 +598,7 @@ func (r *Runner) runKubernetesRpcAgent(ctx context.Context, session *task.TaskSe
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("attach RPC agent pod: %v", err), nil)
 		return
 	}
-	r.runRPCAgentCommand(ctx, session, req, h, process, "")
+	r.runRPCAgentCommand(ctx, session, req, h, process, "", time.Time{})
 }
 
 type kubernetesRPCProcess struct {

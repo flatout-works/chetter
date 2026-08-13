@@ -59,6 +59,8 @@ func TestClassifyErrorCategory(t *testing.T) {
 		{"oom takes precedence over deadline", "error", "task container exceeded its memory limit (OOMKilled): container harness serve not ready: context deadline exceeded", "resource_limit"},
 		{"empty message", "error", "", "unknown"},
 		{"generic error", "error", "something went wrong", "runtime_error"},
+		{"sandbox start failed", "error", "sandbox failed to start: exit status 1", "sandbox_start_failed"},
+		{"sandbox crashed", "error", "sandbox crashed: status=exited exit=1 error=runsc: sandbox died", "sandbox_crashed"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
