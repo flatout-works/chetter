@@ -164,6 +164,7 @@ func TestClassifySandboxCrash(t *testing.T) {
 		{"normal stop by us", &dockerContainerState{Status: "exited", Running: false, ExitCode: 0}, false, true},
 		{"stop timeout kill", &dockerContainerState{Status: "exited", Running: false, ExitCode: 137}, false, true},
 		{"oom killed", &dockerContainerState{Status: "exited", Running: false, ExitCode: 137, OOMKilled: true}, false, true},
+		{"oom killed with sandbox error string", &dockerContainerState{Status: "exited", Running: false, ExitCode: 137, OOMKilled: true, Error: "sandbox runtime failure"}, false, true},
 		{"runsc runtime error", &dockerContainerState{Status: "exited", Running: false, ExitCode: 1, Error: "runsc: sandbox exited with error"}, true, true},
 		{"sandbox error mid-run", &dockerContainerState{Status: "exited", Running: false, ExitCode: 1, Error: "sandbox teardown failed"}, true, true},
 		{"unexpected exit with daemon error", &dockerContainerState{Status: "exited", Running: false, ExitCode: 1, Error: "container task failed to start"}, true, true},

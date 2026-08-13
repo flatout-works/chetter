@@ -227,7 +227,11 @@ func classifySandboxCrash(st *dockerContainerState) (reason string, crashed bool
 	if st == nil {
 		return "", false
 	}
-	if sandboxRuntimeErrorText(st) {
+	// An OOM-killed container is a resource_limit outcome, not a sandbox
+	// crash, even if its daemon-recorded error string mentions runsc/sandbox.
+	// Gate the runtime-error branch on !st.OOMKilled so the OOM classification
+	// set by the caller is never overwritten with sandbox_crashed.
+	if !st.OOMKilled && sandboxRuntimeErrorText(st) {
 		return reason, true
 	}
 	// Serve-mode harness containers are expected to stay alive until we stop

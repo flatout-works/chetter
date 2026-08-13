@@ -973,12 +973,6 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if gvisor {
 		runnerIP = hostIP(netName)
 	}
-	defer func() {
-		if gvisor {
-			r.recordSandboxTeardown(containerName, sandboxStart)
-		}
-		removeTaskContainer(containerName)
-	}()
 
 	secret := h.ServerPassword()
 	serveCmd := h.ServeCommand(containerPortForServe)
@@ -1011,6 +1005,18 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	if gvisor {
 		r.sandbox.recordStart(time.Since(sandboxStart))
 	}
+
+	// The sandbox actually started, so teardown owns lifetime accounting.
+	// Registering here (rather than before docker run) keeps the pre-start
+	// failure paths — serve-mode unsupported, bind-mount resolution, and
+	// docker run failures — from recording a lifetime for a sandbox that
+	// never started. See issue #302.
+	defer func() {
+		if gvisor {
+			r.recordSandboxTeardown(containerName, sandboxStart)
+		}
+		removeTaskContainer(containerName)
+	}()
 
 	baseURL := harnessBaseURL(bindAddr, hostPort, gvisor, netName)
 	if err := h.WaitForReady(ctx, baseURL, secret, 120*time.Second); err != nil {
@@ -1304,6 +1310,14 @@ func probeHTTP(ctx context.Context, url string) string {
 }
 
 func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message string, artifacts []string, sessionID, sessionExport string, tokenUsage task.TokenUsage) {
+	r.publishStatusWithMetadataAndErrorCategory(req, status, message, "", artifacts, sessionID, sessionExport, tokenUsage)
+}
+
+// publishStatusWithMetadataAndErrorCategory is like publishStatusWithMetadata
+// but forces a specific error_category instead of deriving it from the
+// message text. Used for RPC-mode sandbox crash reporting so the category
+// stays stable even if the "sandbox crashed:" message wording changes.
+func (r *Runner) publishStatusWithMetadataAndErrorCategory(req task.TaskRequest, status, message, errorCategory string, artifacts []string, sessionID, sessionExport string, tokenUsage task.TokenUsage) {
 	resp := task.TaskResponse{
 		TaskID:        req.TaskID,
 		ExecutionID:   req.ExecutionID,
@@ -1311,6 +1325,7 @@ func (r *Runner) publishStatusWithMetadata(req task.TaskRequest, status, message
 		Artifacts:     artifacts,
 		SessionExport: sessionExport,
 		TokenUsage:    tokenUsage,
+		ErrorCategory: errorCategory,
 	}
 	r.decorateTaskResponseForRequest(&resp, req, sessionID)
 	if isTerminalStatus(status) {
@@ -1543,6 +1558,12 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 
 	if err := cmd.Start(); err != nil {
+		// cmd.Start for a `docker run` process only fails on process-spawn
+		// errors (binary missing, pipe setup); runsc/OCI sandbox failures
+		// surface later at Wait time, where rpcSandboxCrashMessage handles
+		// them. isSandboxStartFailure is still worth the cheap check for
+		// parity with the serve-mode path, but it is not the primary
+		// sandbox-failure detector for RPC mode.
 		if gvisor && isSandboxStartFailure(err, "") {
 			r.sandbox.recordStartFailure()
 			r.publishStatusWithErrorCategory(req, "error", fmt.Sprintf("sandbox failed to start: %v", err), "sandbox_start_failed", nil)
@@ -1680,7 +1701,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 	if waitErr != nil {
 		if msg := r.rpcSandboxCrashMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)); msg != "" {
-			r.publishStatusWithMetadata(req, "error", msg, nil, state.sessionID, sessionExport, task.TokenUsage{})
+			r.publishStatusWithMetadataAndErrorCategory(req, "error", msg, "sandbox_crashed", nil, state.sessionID, sessionExport, task.TokenUsage{})
 			return
 		}
 		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)), nil, state.sessionID, sessionExport, task.TokenUsage{})
