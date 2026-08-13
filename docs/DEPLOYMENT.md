@@ -41,7 +41,7 @@ Both the server and runner handle SIGTERM/SIGINT gracefully for zero-downtime ro
 
 Set `CHETTER_MAX_PENDING_TASKS` (default `0` = disabled) to cap how many tasks may sit in the `pending` state waiting for a runner. When the cap is reached, every ingress path — MCP submit, web API, webhooks, triggers, rerun, recovery, and session resume — rejects new work with a retryable capacity error and records a `task_admission_rejected` audit event instead of storing the task. Completed, cancelled, and claimed tasks release pending capacity automatically, so a rejected submission can simply be retried.
 
-Concurrent submissions cannot overshoot the limit: the server serializes admission checks, so the cap is enforced strictly (the server is designed to run as a single replica). Queue depth is observable at any time via the `chetter_tasks{status="pending"}` Prometheus gauge, the fleet-health `PendingTasks` field, and the reaper's task metrics. See issue #50.
+Concurrent submissions cannot overshoot the limit: the server serializes admission checks (only while the limit is enabled), so the cap is enforced strictly on admissions (the server is designed to run as a single replica). The reaper's lease-expiry recovery can transiently push `pending` above the cap — a claimed task releases a slot, the slot is reused, and the original task's lease then expires and requeues — but no further admissions occur until the count drops back below the limit. Queue depth is observable at any time via the `chetter_tasks{status="pending"}` Prometheus gauge, the fleet-health `PendingTasks` field, and the reaper's task metrics. See issue #50.
 
 ## Docker + gVisor
 

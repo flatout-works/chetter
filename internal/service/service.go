@@ -143,7 +143,8 @@ type Service struct {
 	// inside the submission transaction so it always reflects committed state
 	// and stays correct across server restarts. Every path that can make a
 	// task pending (SubmitTask, RerunTask, RecoverTask, ResumeAgentSession)
-	// must take this lock before its submission transaction.
+	// must take this lock before its submission transaction when the limit is
+	// enabled; when disabled, submissions keep their pre-existing concurrency.
 	taskAdmissionMu sync.Mutex
 }
 
@@ -994,8 +995,9 @@ func (e *PendingTaskCapacityError) Error() string {
 }
 
 // admitPendingTask enforces the global pending-task admission limit inside the
-// submission transaction. A limit <= 0 disables admission control. Callers must
-// hold s.taskAdmissionMu so concurrent submissions cannot overshoot the limit.
+// submission transaction. A limit <= 0 disables admission control. When the
+// limit is enabled, callers must hold s.taskAdmissionMu so concurrent
+// submissions cannot overshoot the limit.
 func (s *Service) admitPendingTask(ctx context.Context, q data.Repository) error {
 	if s.cfg.MaxPendingTasks <= 0 {
 		return nil
@@ -1157,10 +1159,15 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	// tasks still require isolation there.
 	isolationRequired := resumeMode != "none" || in.Isolation == "required" || !s.cfg.AllowUnisolated
 	var task repository.Task
-	s.taskAdmissionMu.Lock()
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		// Global pending-task admission gate (issue #50). Serialized by
-		// taskAdmissionMu so concurrent submissions cannot overshoot the limit.
+		// taskAdmissionMu when enabled so concurrent submissions cannot
+		// overshoot the limit.
 		if err := s.admitPendingTask(ctx, q); err != nil {
 			return err
 		}
@@ -1242,7 +1249,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		task = row
 		return nil
 	})
-	s.taskAdmissionMu.Unlock()
 	if err != nil {
 		s.auditPendingAdmissionRejected(ctx, submissionSource, in.TriggerName, err)
 		return store.TaskRecord{}, err
@@ -1354,7 +1360,11 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 		return TaskToolRecord{}, fmt.Errorf("generate recovery event id: %w", err)
 	}
 	var recoveryEvent TaskEventCallbackContext
-	s.taskAdmissionMu.Lock()
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		// Global pending-task admission gate (issue #50); recovery requeues the
 		// task as pending, so it consumes pending capacity like a submission.
@@ -1486,7 +1496,6 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 		}
 		return nil
 	})
-	s.taskAdmissionMu.Unlock()
 	if err != nil {
 		s.auditPendingAdmissionRejected(ctx, "recover", taskID, err)
 		return TaskToolRecord{}, err
@@ -1565,7 +1574,11 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 
 	teamID := orig.TeamID.String
 
-	s.taskAdmissionMu.Lock()
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		// Global pending-task admission gate (issue #50); see SubmitTask.
 		if err := s.admitPendingTask(ctx, q); err != nil {
@@ -1642,7 +1655,6 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 
 		return nil
 	})
-	s.taskAdmissionMu.Unlock()
 	if err != nil {
 		s.auditPendingAdmissionRejected(ctx, "rerun", taskID, err)
 		return TaskToolRecord{}, err
@@ -1731,7 +1743,11 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	var task repository.Task
-	s.taskAdmissionMu.Lock()
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		// Global pending-task admission gate (issue #50); resume requeues the
 		// task as pending, so it consumes pending capacity like a submission.
@@ -1785,7 +1801,6 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		task = row
 		return nil
 	})
-	s.taskAdmissionMu.Unlock()
 	if err != nil {
 		s.auditPendingAdmissionRejected(ctx, "resume", sessionID, err)
 		return ResumeAgentSessionOutput{}, err
