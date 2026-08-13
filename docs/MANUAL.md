@@ -151,6 +151,7 @@ Managed Git identities control commit attribution for agent work and are configu
 | `DEFAULT_TASK_TIMEOUT_SEC` | No | `600` | Default task timeout. |
 | `CHETTER_MAX_TASK_TIMEOUT_SEC` | No | unset | Operator-configurable ceiling for `timeout_sec` on tasks and triggers. |
 | `CHETTER_MAX_SESSION_TTL_HOURS` | No | unset | Operator-configurable ceiling for resumable session TTL. |
+| `CHETTER_MAX_PENDING_TASKS` | No | `0` | Global admission cap on tasks waiting to be claimed (`pending`). `0` disables the limit. When reached, all ingress paths reject new work with a retryable capacity error and record a `task_admission_rejected` audit event; completed/cancelled/claimed tasks release capacity. See [DEPLOYMENT.md](DEPLOYMENT.md) and issue #50. |
 | `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `task_events`. A positive value enables reaper pruning; `0` disables it. |
 | `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `audit_log`. A positive value enables reaper pruning; `0` disables it. |
 | `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `task_artifacts` and `agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
