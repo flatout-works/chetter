@@ -229,8 +229,8 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 		}
 	}
 
-	// Should have session metrics.
-	for _, status := range []string{"paused", "recoverable", "paused_waiting_review", "expired", "completed", "failed", "error", "cancelled"} {
+	// Should have session metrics for every known status.
+	for _, status := range sessionStatuses {
 		needle := fmt.Sprintf(`chetter_sessions{status="%s"} 0`, status)
 		if !strings.Contains(body, needle) {
 			t.Errorf("expected %q in output", needle)

@@ -1704,12 +1704,16 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		}); err != nil {
 			return fmt.Errorf("insert pending execution attempt: %w", err)
 		}
-		if _, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
+		resumed, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
 			ID:        sessionID,
 			Status:    "resuming",
 			UpdatedAt: now,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("mark session resuming: %w", err)
+		}
+		if resumed == 0 {
+			return fmt.Errorf("agent session %s is no longer resumable (status changed)", sessionID)
 		}
 		row, err := q.GetTaskByID(ctx, taskID)
 		if err != nil {

@@ -33,6 +33,25 @@ func Handler(db *sql.DB, dialect store.Dialect) http.Handler {
 	})
 }
 
+// sessionStatuses is the complete set of agent-session statuses emitted as
+// chetter_sessions gauges. Keeping a single authoritative list ensures a fresh
+// or empty deployment publishes a zero series for every status, matching the
+// tasks/webhooks collectors. See issue #299.
+var sessionStatuses = []string{
+	"paused",
+	"recoverable",
+	"paused_waiting_review",
+	"running",
+	"resuming",
+	"completed",
+	"failed",
+	"error",
+	"cancelled",
+	"timed_out",
+	"expired",
+	"abandoned",
+}
+
 // collector implements prometheus.Collector by querying the database for
 // current fleet and webhook delivery state on each scrape. All gauges have
 // bounded cardinality: labels are limited to status and slot-type enums.
@@ -168,7 +187,7 @@ func (c *collector) emitZeroWebhookMetrics(ch chan<- prometheus.Metric) {
 }
 
 func (c *collector) emitZeroSessionMetrics(ch chan<- prometheus.Metric) {
-	for _, status := range []string{"paused", "recoverable", "paused_waiting_review", "expired", "completed", "failed", "error", "cancelled"} {
+	for _, status := range sessionStatuses {
 		ch <- prometheus.MustNewConstMetric(c.sessionCount, prometheus.GaugeValue, 0, status)
 	}
 }
@@ -190,15 +209,9 @@ func (c *collector) collectSessions(ctx context.Context, ch chan<- prometheus.Me
 	}
 	defer rows.Close()
 
-	counts := map[string]float64{
-		"paused":                0,
-		"recoverable":           0,
-		"paused_waiting_review": 0,
-		"expired":               0,
-		"completed":             0,
-		"failed":                0,
-		"error":                 0,
-		"cancelled":             0,
+	counts := make(map[string]float64, len(sessionStatuses))
+	for _, status := range sessionStatuses {
+		counts[status] = 0
 	}
 	for rows.Next() {
 		var status string

@@ -900,6 +900,7 @@ func (q *Queries) ListUserPromptsBySession(ctx context.Context, agentSessionID s
 
 const markAgentSessionResuming = `-- name: MarkAgentSessionResuming :execrows
 UPDATE agent_sessions SET status = $1, updated_at = $2 WHERE id = $3
+  AND status IN ('paused', 'recoverable', 'paused_waiting_review')
 `
 
 type MarkAgentSessionResumingParams struct {
@@ -908,6 +909,11 @@ type MarkAgentSessionResumingParams struct {
 	ID        string    `json:"id"`
 }
 
+// Only transitions a session that is still paused/recoverable. The status
+// guard closes the TOCTOU window where the reaper expires the session after
+// ResumeAgentSession validates it but before this update runs, so an expired
+// session can never be revived. Callers must treat 0 rows affected as a
+// failure (see issue #299).
 func (q *Queries) MarkAgentSessionResuming(ctx context.Context, arg MarkAgentSessionResumingParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, markAgentSessionResuming, arg.Status, arg.UpdatedAt, arg.ID)
 	if err != nil {

@@ -77,7 +77,13 @@ WHERE id = (SELECT agent.id FROM agent_sessions agent WHERE agent.task_id = $4 O
   AND status IN ('running', 'resuming');
 
 -- name: MarkAgentSessionResuming :execrows
-UPDATE agent_sessions SET status = $1, updated_at = $2 WHERE id = $3;
+-- Only transitions a session that is still paused/recoverable. The status
+-- guard closes the TOCTOU window where the reaper expires the session after
+-- ResumeAgentSession validates it but before this update runs, so an expired
+-- session can never be revived. Callers must treat 0 rows affected as a
+-- failure (see issue #299).
+UPDATE agent_sessions SET status = $1, updated_at = $2 WHERE id = $3
+  AND status IN ('paused', 'recoverable', 'paused_waiting_review');
 
 -- name: AbandonAgentSession :execrows
 UPDATE agent_sessions

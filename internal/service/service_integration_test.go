@@ -3709,3 +3709,83 @@ func TestReapExpiredSessionsSkipsRunning(t *testing.T) {
 		t.Fatalf("session status = %s, want running (running sessions must never be expired)", updated.Status)
 	}
 }
+
+// TestMarkAgentSessionResumingGuardsTerminalSessions verifies the status guard
+// on MarkAgentSessionResuming that closes the TOCTOU window flagged in issue
+// #299: once the reaper has expired a paused session, a concurrent resume must
+// not revive it. The update only transitions paused/recoverable/
+// paused_waiting_review sessions and reports 0 rows affected otherwise, so
+// ResumeAgentSession fails instead of silently overwriting a terminal status.
+func TestMarkAgentSessionResumingGuardsTerminalSessions(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := data.New(tdb.DB, tdb.Dialect())
+
+	task, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:      "resume guard",
+		AgentImage:  "runner:latest",
+		SessionMode: "resumable",
+	})
+	if err != nil {
+		t.Fatalf("SubmitTask: %v", err)
+	}
+	session, err := q.GetAgentSessionByTaskID(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByTaskID: %v", err)
+	}
+
+	now := time.Now().UTC()
+
+	// An expired (terminal) session must never transition back to resuming.
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET status = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET status = $1, updated_at = $2 WHERE id = $3"),
+		"expired", now, session.ID); err != nil {
+		t.Fatalf("mark session expired: %v", err)
+	}
+	rows, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
+		ID:        session.ID,
+		Status:    "resuming",
+		UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("MarkAgentSessionResuming on expired session: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("MarkAgentSessionResuming on expired session affected %d rows, want 0", rows)
+	}
+	updated, err := q.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "expired" {
+		t.Fatalf("session status = %s, want expired (terminal status must not be revived)", updated.Status)
+	}
+
+	// A still-paused session must transition normally.
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		"UPDATE agent_sessions SET status = ?, updated_at = ? WHERE id = ?",
+		"UPDATE agent_sessions SET status = $1, updated_at = $2 WHERE id = $3"),
+		"paused", now, session.ID); err != nil {
+		t.Fatalf("mark session paused: %v", err)
+	}
+	rows, err = q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
+		ID:        session.ID,
+		Status:    "resuming",
+		UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("MarkAgentSessionResuming on paused session: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("MarkAgentSessionResuming on paused session affected %d rows, want 1", rows)
+	}
+	updated, err = q.GetAgentSessionByID(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("GetAgentSessionByID: %v", err)
+	}
+	if updated.Status != "resuming" {
+		t.Fatalf("session status = %s, want resuming", updated.Status)
+	}
+}
