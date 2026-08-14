@@ -78,6 +78,27 @@ SELECT NOW(), UTC_TIMESTAMP(), @@time_zone, @@global.time_zone;
 
 `NOW()` and `UTC_TIMESTAMP()` should match.
 
+## Startup preflight guard (issue #316)
+
+The server no longer relies on the database default alone. Since issue #316:
+
+- Every TiDB/MySQL connection is forced to UTC by injecting
+  `time_zone='+00:00'` into the DSN (the driver runs
+  `SET time_zone = '+00:00'` on connect). An explicit non-UTC `time_zone`
+  in the DSN is left alone so the preflight can refuse it.
+- Startup verifies the effective session time zone before serving; a
+  database that rejects or ignores the setting refuses to start with a
+  clear error naming the offending host.
+- Dialect auto-detection is fail-closed: a failed `SELECT VERSION()` probe
+  aborts startup instead of silently defaulting to TiDB.
+- The verified session/global time zones are logged at startup and exposed
+  via `/readyz` (HTTP 503 when the session is not UTC) and
+  `/api/server-info` (`dbSessionTimeZone`, `dbGlobalTimeZone`,
+  `dbTimeZoneUTC`).
+
+The TiDB-side pinning above remains the right thing to do — the preflight
+is a second line of defense, not a replacement.
+
 ## Migration history (TiDB Cloud -> local)
 
 Data was moved with `ops/tidb-cloud-migrate.sh` (`export`, `prepare`,

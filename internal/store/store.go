@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +26,22 @@ const (
 	connMaxIdleTime       = 5 * time.Minute
 	maxListTasksLimit     = 100
 	defaultListTasksLimit = 20
+
+	// utcTimeZoneParamKey / utcTimeZoneParamValue force every TiDB/MySQL
+	// connection to a UTC session time zone. The go-sql-driver emits unknown
+	// DSN params as `SET <key> = <value>` on connect, so the value carries
+	// its own quotes: the server executes `SET time_zone = '+00:00'`. Chetter
+	// stores all timestamps as UTC and computes ages with
+	// TIMESTAMPDIFF(..., NOW()); a non-UTC session silently skews the fleet
+	// presence window, the reaper, and stale-task logic (issue #316).
+	utcTimeZoneParamKey   = "time_zone"
+	utcTimeZoneParamValue = "'+00:00'"
 )
+
+// utcTimeZoneDSNParamValue is the URL-encoded form of utcTimeZoneParamValue
+// used when appending to a raw driver DSN (the driver unescapes DSN params,
+// so the raw '+' must be %2B).
+var utcTimeZoneDSNParamValue = url.QueryEscape(utcTimeZoneParamValue)
 
 var errTiDBRequiresTCPHost = fmt.Errorf("tls=tidb requires a tcp database host")
 
@@ -234,11 +250,28 @@ func Open(dsn string, dialect Dialect) (*Store, error) {
 	db.SetConnMaxLifetime(connMaxLifetime)
 	db.SetConnMaxIdleTime(connMaxIdleTime)
 	st := &Store{db: db, dialect: dialect}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	if st.dialect == DialectUnknown {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		st.detectDialect(ctx)
+		// Fail closed: a failed probe aborts startup instead of silently
+		// assuming a dialect and running the fleet against misdirected
+		// queries (issue #316).
+		if err := st.detectDialect(ctx); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
+	// Startup preflight (issue #316): refuse to serve unless the effective
+	// session time zone is UTC. TiDB/MySQL connections are forced to UTC via
+	// the time_zone DSN parameter added by normalizeDSN; this fails fast
+	// when the database rejects or ignores that setting.
+	session, global, err := st.VerifyUTCSession(ctx)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("%w (database %s)", err, dsnHost(dsn))
+	}
+	slog.Info("database session time zone verified",
+		"dialect", st.dialect, "session", session, "global", global)
 	return st, nil
 }
 
@@ -311,23 +344,128 @@ func (s *Store) IsMySQL() bool { return s.dialect == DialectMySQL }
 func (s *Store) IsPostgres() bool { return s.dialect == DialectPostgres }
 
 // detectDialect probes the database version string to determine the backend.
-// Defaults to DialectTiDB if the probe fails (preserving existing behaviour).
-func (s *Store) detectDialect(ctx context.Context) {
+// The probe is fail-closed: an error aborts startup rather than silently
+// assuming a dialect, which would run the whole fleet against misdirected
+// queries (issue #316).
+func (s *Store) detectDialect(ctx context.Context) error {
 	var version string
 	if err := s.db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
-		slog.Warn("could not detect database dialect; defaulting to TiDB", "err", err)
-		s.dialect = DialectTiDB
-		return
+		return fmt.Errorf("detect database dialect: %w", err)
 	}
-	upperVersion := strings.ToUpper(version)
-	if strings.Contains(upperVersion, "TIDB") {
-		s.dialect = DialectTiDB
-	} else if strings.Contains(upperVersion, "POSTGRESQL") {
-		s.dialect = DialectPostgres
-	} else {
-		s.dialect = DialectMySQL
-	}
+	s.dialect = classifyVersion(version)
 	slog.Info("database dialect", "dialect", s.dialect, "version", version)
+	return nil
+}
+
+// classifyVersion maps a VERSION() string to a dialect. Wire-compatible
+// engines that do not identify themselves (MariaDB, Aurora, …) map to MySQL.
+func classifyVersion(version string) Dialect {
+	upperVersion := strings.ToUpper(version)
+	switch {
+	case strings.Contains(upperVersion, "TIDB"):
+		return DialectTiDB
+	case strings.Contains(upperVersion, "POSTGRESQL"):
+		return DialectPostgres
+	default:
+		return DialectMySQL
+	}
+}
+
+// SessionTimeZone returns the effective session and global time zone values
+// reported by the database. PostgreSQL has no global/session split for
+// timezone, so both values carry the session setting.
+func (s *Store) SessionTimeZone(ctx context.Context) (session, global string, err error) {
+	if s.dialect == DialectPostgres {
+		var tz string
+		if err := s.db.QueryRowContext(ctx, "SHOW timezone").Scan(&tz); err != nil {
+			return "", "", fmt.Errorf("query session time zone: %w", err)
+		}
+		return tz, tz, nil
+	}
+	var sess, glob string
+	if err := s.db.QueryRowContext(ctx, "SELECT @@session.time_zone, @@global.time_zone").Scan(&sess, &glob); err != nil {
+		return "", "", fmt.Errorf("query session time zone: %w", err)
+	}
+	return sess, glob, nil
+}
+
+// VerifyUTCSession checks that the effective session time zone is UTC. All
+// ages are computed with TIMESTAMPDIFF(..., NOW()) against UTC-stored
+// timestamps, so a non-UTC session silently skews the fleet presence window,
+// the reaper, and stale-task logic (issue #316). TiDB/MySQL connections are
+// forced to UTC via the time_zone DSN parameter injected by normalizeDSN;
+// this method fails startup when the database rejects or ignores it.
+func (s *Store) VerifyUTCSession(ctx context.Context) (session, global string, err error) {
+	session, global, err = s.SessionTimeZone(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if IsUTCTimeZone(session, global) {
+		return session, global, nil
+	}
+	return session, global, fmt.Errorf(
+		"database session time zone is not UTC: session=%q global=%q (dialect=%s); "+
+			"chetter requires UTC because ages are computed with TIMESTAMPDIFF(..., NOW()); "+
+			"fix by pinning the database to UTC (TiDB: server_configs.tidb time-zone: %q or "+
+			"SET GLOBAL time_zone='+00:00'; MySQL: SET GLOBAL time_zone='+00:00'; "+
+			"or add time_zone='+00:00' to DATABASE_DSN) and restart",
+		session, global, s.dialect, "UTC")
+}
+
+// IsUTCTimeZone reports whether the effective session time zone is UTC. A
+// session time zone of SYSTEM defers to the global time zone, which is the
+// misconfiguration behind the wowbagger incident (@@time_zone = SYSTEM on a
+// Europe/Vienna host inflating every age by the host offset).
+func IsUTCTimeZone(session, global string) bool {
+	if isUTCValue(session) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(session), "SYSTEM") {
+		return isUTCValue(global)
+	}
+	return false
+}
+
+// isUTCValue reports whether a time zone value represents UTC: a named UTC
+// alias (UTC, GMT, Z, …) or a numeric offset of zero hours.
+func isUTCValue(tz string) bool {
+	tz = strings.TrimSpace(tz)
+	switch strings.ToUpper(tz) {
+	case "UTC", "GMT", "Z", "UT", "UNIVERSAL", "ZULU", "ETC/UTC", "ETC/GMT":
+		return true
+	}
+	return isUTCOffset(tz)
+}
+
+// isUTCOffset reports whether tz is a numeric offset of zero hours, e.g.
+// "+00", "+00:00", "-00:00", or "+00:00:00".
+func isUTCOffset(tz string) bool {
+	if tz == "" || (tz[0] != '+' && tz[0] != '-') {
+		return false
+	}
+	parts := strings.Split(tz[1:], ":")
+	if len(parts) == 0 || len(parts) > 3 {
+		return false
+	}
+	for _, part := range parts {
+		v, err := strconv.Atoi(part)
+		if err != nil || v != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// dsnHost returns a human-readable host for error messages, falling back to
+// the DSN itself when the host cannot be parsed.
+func dsnHost(dsn string) string {
+	if parsed, err := url.Parse(dsn); err == nil && parsed.Hostname() != "" {
+		return parsed.Hostname()
+	}
+	if host, err := hostFromDriverDSN(dsn); err == nil {
+		return host
+	}
+	return dsn
 }
 
 // fulltextParserClause returns the FULLTEXT index parser clause for the
@@ -1605,6 +1743,9 @@ func normalizeDSN(dsn string) string {
 		if params.Get("parseTime") == "" {
 			params.Set("parseTime", "true")
 		}
+		if params.Get(utcTimeZoneParamKey) == "" {
+			params.Set(utcTimeZoneParamKey, utcTimeZoneParamValue)
+		}
 		if params.Get("tls") == "" && strings.HasSuffix(parsed.Hostname(), ".tidbcloud.com") {
 			params.Set("tls", "tidb")
 		}
@@ -1614,14 +1755,27 @@ func normalizeDSN(dsn string) string {
 		}
 		return fmt.Sprintf("%s@tcp(%s)/%s%s", credentials, parsed.Host, database, query)
 	}
-	if strings.Contains(dsn, "parseTime=") {
-		return dsn
-	}
+	dsn = addDSNParamIfMissing(dsn, "parseTime", "true")
+	return addDSNParamIfMissing(dsn, utcTimeZoneParamKey, utcTimeZoneDSNParamValue)
+}
+
+// addDSNParam appends key=value to a driver DSN, using ? or & as the
+// separator depending on whether the DSN already has a query string.
+func addDSNParam(dsn, key, value string) string {
 	separator := "?"
 	if strings.Contains(dsn, "?") {
 		separator = "&"
 	}
-	return dsn + separator + "parseTime=true"
+	return dsn + separator + key + "=" + value
+}
+
+// addDSNParamIfMissing appends key=value unless the key is already present
+// anywhere in the DSN.
+func addDSNParamIfMissing(dsn, key, value string) string {
+	if strings.Contains(dsn, key+"=") {
+		return dsn
+	}
+	return addDSNParam(dsn, key, value)
 }
 
 func isPostgresDSN(dsn string) bool {

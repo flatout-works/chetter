@@ -1,9 +1,18 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeDSN(t *testing.T) {
 	t.Parallel()
+
+	// normalizeDSN must force a UTC session time zone on every TiDB/MySQL
+	// connection via the time_zone DSN parameter (issue #316). The value is
+	// the URL-encoded literal '+00:00' so the go-sql-driver executes
+	// `SET time_zone = '+00:00'` on connect.
+	const utcTZ = "time_zone=%27%2B00%3A00%27"
 
 	tests := []struct {
 		name string
@@ -13,27 +22,37 @@ func TestNormalizeDSN(t *testing.T) {
 		{
 			name: "mysql url",
 			in:   "mysql://user:pass@example.com:4000/chetter",
-			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true",
+			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&" + utcTZ,
 		},
 		{
 			name: "tidbcloud url adds tls",
 			in:   "mysql://user:pass@gateway01.eu-central-1.prod.aws.tidbcloud.com:4000/chetter",
-			want: "user:pass@tcp(gateway01.eu-central-1.prod.aws.tidbcloud.com:4000)/chetter?parseTime=true&tls=tidb",
+			want: "user:pass@tcp(gateway01.eu-central-1.prod.aws.tidbcloud.com:4000)/chetter?parseTime=true&" + utcTZ + "&tls=tidb",
 		},
 		{
 			name: "mysql url preserves query",
 			in:   "mysql://user:pass@example.com:4000/chetter?tls=true",
-			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&tls=true",
+			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&" + utcTZ + "&tls=true",
 		},
 		{
 			name: "driver dsn adds parse time",
 			in:   "user:pass@tcp(example.com:4000)/chetter",
-			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true",
+			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&" + utcTZ,
 		},
 		{
 			name: "driver dsn preserves parse time",
 			in:   "user:pass@tcp(example.com:4000)/chetter?parseTime=true&tls=true",
-			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&tls=true",
+			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&tls=true&" + utcTZ,
+		},
+		{
+			name: "explicit utc time zone preserved",
+			in:   "user:pass@tcp(example.com:4000)/chetter?parseTime=true&time_zone=%27%2B00%3A00%27",
+			want: "user:pass@tcp(example.com:4000)/chetter?parseTime=true&time_zone=%27%2B00%3A00%27",
+		},
+		{
+			name: "explicit non-utc time zone preserved for preflight",
+			in:   "user:pass@tcp(example.com:4000)/chetter?time_zone=SYSTEM",
+			want: "user:pass@tcp(example.com:4000)/chetter?time_zone=SYSTEM&parseTime=true",
 		},
 	}
 
@@ -44,6 +63,72 @@ func TestNormalizeDSN(t *testing.T) {
 				t.Fatalf("normalizeDSN() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIsUTCTimeZone(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		session string
+		global  string
+		want    bool
+	}{
+		{name: "explicit zero offset", session: "+00:00", global: "+00:00", want: true},
+		{name: "negative zero offset", session: "-00:00", global: "SYSTEM", want: true},
+		{name: "named utc session", session: "UTC", global: "SYSTEM", want: true},
+		{name: "zero offset without minutes", session: "+00", global: "SYSTEM", want: true},
+		{name: "system global zero offset", session: "SYSTEM", global: "+00:00", want: true},
+		{name: "system global named utc", session: "SYSTEM", global: "UTC", want: true},
+		{name: "system global system host tz", session: "SYSTEM", global: "SYSTEM", want: false},
+		{name: "system global named tz", session: "SYSTEM", global: "Europe/Vienna", want: false},
+		{name: "positive offset", session: "+02:00", global: "SYSTEM", want: false},
+		{name: "negative offset", session: "-05:30", global: "SYSTEM", want: false},
+		{name: "session named tz", session: "Europe/Stockholm", global: "UTC", want: false},
+		{name: "unverifiable empty", session: "", global: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsUTCTimeZone(tt.session, tt.global); got != tt.want {
+				t.Errorf("IsUTCTimeZone(%q, %q) = %v, want %v", tt.session, tt.global, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsUTCValue(t *testing.T) {
+	t.Parallel()
+
+	for _, utc := range []string{"UTC", "utc", "GMT", "Z", "ETC/UTC", "+00:00", "-00:00", "+00", "+00:00:00", "-00:00:00"} {
+		if !isUTCValue(utc) {
+			t.Errorf("isUTCValue(%q) = false, want true", utc)
+		}
+	}
+	for _, nonUTC := range []string{"SYSTEM", "Europe/Vienna", "+02:00", "-05:30", "America/New_York", "", "+00:99"} {
+		if isUTCValue(nonUTC) {
+			t.Errorf("isUTCValue(%q) = true, want false", nonUTC)
+		}
+	}
+}
+
+// TestOpenFailsClosedOnDialectProbeError verifies that dialect auto-detection
+// fails closed: a database that cannot be probed aborts Open instead of
+// silently defaulting to TiDB (issue #316).
+func TestOpenFailsClosedOnDialectProbeError(t *testing.T) {
+	t.Parallel()
+
+	// A unix socket that cannot exist makes the probe fail deterministically
+	// without needing a network port.
+	dsn := "root@unix(/tmp/chetter-no-such-" + strings.ReplaceAll(t.Name(), "/", "_") + ".sock)/?timeout=500ms"
+	st, err := Open(dsn, DialectUnknown)
+	if err == nil {
+		st.Close()
+		t.Fatal("Open() with an unreachable database succeeded; want a fail-closed dialect detection error")
+	}
+	if !strings.Contains(err.Error(), "detect database dialect") {
+		t.Fatalf("Open() error = %v; want a dialect-detection failure", err)
 	}
 }
 

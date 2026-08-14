@@ -104,6 +104,18 @@ func run() error {
 	}
 	schemaReady := true
 
+	// Capture the preflight-verified session time zone for observability.
+	// The verification itself ran inside store.Open (issue #316); these
+	// values are surfaced in server-info so a drifted session is visible
+	// before symptoms appear.
+	tzCtx, tzCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	dbTZSession, dbTZGlobal, err := st.SessionTimeZone(tzCtx)
+	tzCancel()
+	if err != nil {
+		return fmt.Errorf("query database session time zone: %w", err)
+	}
+	dbTZUTC := store.IsUTCTimeZone(dbTZSession, dbTZGlobal)
+
 	var defs *definitions.Manager
 	if cfg.DefinitionsRepo != "" {
 		defs = definitions.New(cfg.DefinitionsRepo, cfg.DefinitionsBranch, "")
@@ -161,13 +173,18 @@ func run() error {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.Handle("/metrics", metrics.Handler(st.DB(), st.Dialect()))
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+
+	// readyz reports ready only when the schema is applied, the database is
+	// reachable, and the database session time zone is still UTC (issue
+	// #316). A drifted session would otherwise silently skew fleet presence
+	// and reaper age math.
+	readyzHandler := func(w http.ResponseWriter, _ *http.Request) {
 		if !schemaReady {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not ready: schema not applied\n"))
 			return
 		}
-		pingCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := st.Ping(pingCtx); err != nil {
 			slog.Warn("readiness check: database ping failed", "error", err)
@@ -175,9 +192,16 @@ func run() error {
 			_, _ = w.Write([]byte("not ready: database unreachable\n"))
 			return
 		}
+		if _, _, err := st.VerifyUTCSession(pingCtx); err != nil {
+			slog.Warn("readiness check: database session time zone is not UTC", "error", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: database session time zone is not UTC\n"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
-	})
+	}
+	mux.HandleFunc("/readyz", readyzHandler)
 	mux.Handle("/mcp", authMiddleware(cfg.MCPAuthToken, st.DB(), mcpHandler))
 	runnerPath, runnerHandler := runnerv1connect.NewRunnerServiceHandler(runnerSvc)
 	mux.Handle(runnerPath, runnerRPCAuthMiddleware(cfg.RunnerRPCToken, runnerHandler))
@@ -224,23 +248,7 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	webMux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		if !schemaReady {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready: schema not applied\n"))
-			return
-		}
-		pingCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		if err := st.Ping(pingCtx); err != nil {
-			slog.Warn("readiness check: database ping failed", "error", err)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready: database unreachable\n"))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
+	webMux.HandleFunc("/readyz", readyzHandler)
 	webMux.HandleFunc("GET /api/server-info", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -250,9 +258,10 @@ func run() error {
 			lastReapField = fmt.Sprintf("%q", lastReap.Format(time.RFC3339Nano))
 		}
 		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"serverVersion":%q,"gitHash":%q,"uptimeSeconds":%d,"startedAt":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t}`,
+			`{"serverVersion":%q,"gitHash":%q,"uptimeSeconds":%d,"startedAt":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t,"dbSessionTimeZone":%q,"dbGlobalTimeZone":%q,"dbTimeZoneUTC":%t}`,
 			serverVersion, _gitHash, int64(time.Since(startedAt).Seconds()), startedAt.UTC().Format(time.RFC3339),
 			svc.QuotaExhausted(), lastReapField, oidcAuth != nil,
+			dbTZSession, dbTZGlobal, dbTZUTC,
 		)))
 	})
 	webMux.Handle("/", webui.Handler())
