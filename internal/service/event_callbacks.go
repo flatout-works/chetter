@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -21,6 +22,14 @@ const (
 	EventCallbackActionCreateTask = "create_task"
 	EventCallbackActionWebhook    = "webhook"
 	EventCallbackActionSlack      = "slack"
+
+	// eventCallbackRecursionError is the error recorded in task_events (and
+	// the audit log) when a create_task callback would spawn a task deeper
+	// than the configured callback-depth limit (issue #312).
+	eventCallbackRecursionError = "event_callback_recursion_limit"
+	// eventCallbackRejectedEvent is the task_events event_type used to record
+	// a rejected callback spawn on the source (parent) task's event stream.
+	eventCallbackRejectedEvent = "task.callback_rejected"
 )
 
 type EventCallbackInput struct {
@@ -294,6 +303,17 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	if err != nil {
 		return fmt.Errorf("load callback source task: %w", err)
 	}
+	// Provenance chain (issue #312): the spawned task records its parent and
+	// its depth in the chain; the depth is enforced before the task is
+	// created so a misconfigured task.completed -> create_task loop cannot
+	// grow the queue unboundedly. Only the specific chain is stopped — the
+	// callback itself stays enabled for unrelated tasks.
+	childDepth := sourceTask.CallbackDepth + 1
+	if s.cfg.CallbackMaxDepth > 0 && childDepth > int32(s.cfg.CallbackMaxDepth) {
+		return s.rejectCallbackTaskSpawn(ctx, event, callback, sourceTask, childDepth)
+	}
+	env["CHETTER_EVENT_CALLBACK_DEPTH"] = strconv.Itoa(int(childDepth))
+	env["CHETTER_EVENT_PARENT_TASK_ID"] = event.TaskID
 	githubRepo, githubInstallationID := callbackTaskGitHubMetadata(sourceTask, cfg.GitURL)
 	_, err = s.SubmitTask(ctx, SubmitTaskRequest{
 		TeamID:               event.TeamID,
@@ -314,8 +334,57 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 		TriggerName:          callback.Name,
 		TriggerType:          "event_callback",
 		SubmissionSource:     "event_callback",
+		CallbackParentTaskID: event.TaskID,
+		CallbackDepth:        int(childDepth),
 	})
 	return err
+}
+
+// rejectCallbackTaskSpawn records a rejected create_task callback spawn on
+// the source (parent) task's event stream and in the audit log, then returns
+// an error so the chain stops here. The callback itself is left enabled;
+// only this recursive chain is refused (issue #312).
+func (s *Service) rejectCallbackTaskSpawn(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback, sourceTask repository.Task, childDepth int32) error {
+	now := time.Now().UTC()
+	payload := mustMarshalJSON(map[string]any{
+		"task_id":           event.TaskID,
+		"parent_task_id":    event.TaskID,
+		"callback":          callback.Name,
+		"callback_depth":    childDepth,
+		"max_depth":         s.cfg.CallbackMaxDepth,
+		"event_type":        event.EventType,
+		"error":             eventCallbackRecursionError,
+		"rejected_at":       now,
+		"source_submission": sourceTask.SubmissionSource,
+	})
+	eventID, err := randomID("evt")
+	if err != nil {
+		return fmt.Errorf("generate callback rejection event id: %w", err)
+	}
+	subject := fmt.Sprintf("control.event_callback.%s", event.TaskID)
+	if err := s.repo.InsertTaskEvent(ctx, repository.InsertTaskEventParams{
+		ID:        eventID,
+		TaskID:    event.TaskID,
+		Subject:   subject,
+		Status:    "error",
+		EventType: eventCallbackRejectedEvent,
+		Payload:   payload,
+		CreatedAt: now,
+	}); err != nil {
+		return fmt.Errorf("record callback recursion rejection: %w", err)
+	}
+	detail := fmt.Sprintf("event callback %q (event %s) rejected: callback depth %d exceeds limit %d", callback.Name, event.EventType, childDepth, s.cfg.CallbackMaxDepth)
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "event_callback_recursion_limit",
+		SourceType: "event_callback",
+		SourceID:   callback.Name,
+		TargetType: "task",
+		TargetID:   event.TaskID,
+		Detail:     detail,
+		Payload:    payload,
+	})
+	slog.Warn("event callback recursion limit hit; spawn rejected", "callback", callback.Name, "event_type", event.EventType, "task_id", event.TaskID, "depth", childDepth, "max_depth", s.cfg.CallbackMaxDepth)
+	return fmt.Errorf("%s: callback %q would create task at depth %d (limit %d)", eventCallbackRecursionError, callback.Name, childDepth, s.cfg.CallbackMaxDepth)
 }
 
 func callbackTaskGitHubMetadata(source repository.Task, gitURL string) (string, int64) {

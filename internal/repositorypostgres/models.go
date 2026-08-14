@@ -279,6 +279,8 @@ type Task struct {
 	SelfTestProfile      sql.NullString `json:"self_test_profile"`
 	SelfTestCheck        sql.NullString `json:"self_test_check"`
 	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
+	CallbackParentTaskID sql.NullString `json:"callback_parent_task_id"`
+	CallbackDepth        int32          `json:"callback_depth"`
 }
 
 type TaskArtifact struct {

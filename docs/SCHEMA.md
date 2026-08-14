@@ -1,7 +1,8 @@
 # Chetter Database Schema
 
-Current schema of the `chetter` database, as of migration 052 (2026-08-05,
-which dropped the historical `chetter_` table prefix).
+Current schema of the `chetter` database, as of migration 053 (2026-08-14,
+which added event-callback provenance columns to `tasks`; migration 052
+dropped the historical `chetter_` table prefix).
 The schema is dialect-agnostic (TiDB / MySQL / PostgreSQL) and uses **no
 foreign-key constraints** — relationships below are logical, enforced by the
 application. All timestamps are UTC (`datetime(6)`). IDs are prefixed random
@@ -27,6 +28,8 @@ erDiagram
         string self_test_profile
         string self_test_check
         string self_test_nonce
+        string callback_parent_task_id
+        int callback_depth
         int max_attempts
         text summary
         text error

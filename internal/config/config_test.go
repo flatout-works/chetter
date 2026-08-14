@@ -355,6 +355,29 @@ func TestLoadMaxPendingTasks(t *testing.T) {
 	})
 }
 
+func TestLoadCallbackMaxDepth(t *testing.T) {
+	t.Run("defaults to five", func(t *testing.T) {
+		cfg := Load()
+		if cfg.CallbackMaxDepth != 5 {
+			t.Errorf("expected CallbackMaxDepth 5, got %d", cfg.CallbackMaxDepth)
+		}
+	})
+	t.Run("env override sets the limit", func(t *testing.T) {
+		t.Setenv("CHETTER_CALLBACK_MAX_DEPTH", "3")
+		cfg := Load()
+		if cfg.CallbackMaxDepth != 3 {
+			t.Errorf("expected CallbackMaxDepth 3, got %d", cfg.CallbackMaxDepth)
+		}
+	})
+	t.Run("zero disables the guard", func(t *testing.T) {
+		t.Setenv("CHETTER_CALLBACK_MAX_DEPTH", "0")
+		cfg := Load()
+		if cfg.CallbackMaxDepth != 0 {
+			t.Errorf("expected CallbackMaxDepth 0, got %d", cfg.CallbackMaxDepth)
+		}
+	})
+}
+
 func TestLoadRetention(t *testing.T) {
 	t.Run("defaults to zero (pruning disabled)", func(t *testing.T) {
 		cfg := Load()

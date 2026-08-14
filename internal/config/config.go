@@ -85,6 +85,16 @@ type Config struct {
 	// the chetter_tasks{status="pending"} Prometheus gauge and the fleet
 	// health PendingTasks field. See issue #50 and CHETTER_MAX_PENDING_TASKS.
 	MaxPendingTasks int
+
+	// CallbackMaxDepth is the maximum depth of the provenance chain for tasks
+	// spawned by create_task event callbacks. Each callback-spawned task
+	// records its parent task (callback_parent_task_id) and its depth
+	// (callback_depth); when a callback would create a task deeper than this
+	// limit the spawn is rejected with an event_callback_recursion_limit
+	// error instead of growing the chain unboundedly. The callback itself is
+	// never disabled — only the specific recursive chain is stopped. A value
+	// <= 0 disables the guard. See issue #312 and CHETTER_CALLBACK_MAX_DEPTH.
+	CallbackMaxDepth int
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -127,6 +137,7 @@ func Load() Config {
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
 		AllowUnisolated:        envBool("CHETTER_ALLOW_UNISOLATED", false),
 		MaxPendingTasks:        envInt("CHETTER_MAX_PENDING_TASKS", 0),
+		CallbackMaxDepth:       envInt("CHETTER_CALLBACK_MAX_DEPTH", 5),
 	}
 }
 
