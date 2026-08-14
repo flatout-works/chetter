@@ -51,6 +51,12 @@ type SubmitTaskRequest struct {
 	TriggerName          string
 	TriggerType          string
 	SubmissionSource     string
+	// CallbackParentTaskID and CallbackDepth record event-callback provenance
+	// (issue #312): the task whose lifecycle event spawned this task through a
+	// create_task callback and the recursion depth of that chain. They are set
+	// by the callback dispatch path only; all other ingress leaves them empty.
+	CallbackParentTaskID string
+	CallbackDepth        int
 	SelfTestRunID        string
 	SelfTestProfile      string
 	SelfTestCheck        string
@@ -1183,6 +1189,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerName:          nullString(in.TriggerName),
 			TriggerType:          nullString(in.TriggerType),
 			SubmissionSource:     submissionSource,
+			CallbackParentTaskID: nullString(in.CallbackParentTaskID),
+			CallbackDepth:        int32(in.CallbackDepth),
 			SelfTestRunID:        nullString(in.SelfTestRunID),
 			SelfTestProfile:      nullString(in.SelfTestProfile),
 			SelfTestCheck:        nullString(in.SelfTestCheck),

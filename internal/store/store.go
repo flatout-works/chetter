@@ -552,6 +552,8 @@ func (s *Store) ensureTaskMetadataColumns(ctx context.Context) error {
 		{"self_test_profile", "ALTER TABLE tasks ADD COLUMN self_test_profile VARCHAR(32) NULL AFTER self_test_run_id"},
 		{"self_test_check", "ALTER TABLE tasks ADD COLUMN self_test_check VARCHAR(128) NULL AFTER self_test_profile"},
 		{"self_test_nonce", "ALTER TABLE tasks ADD COLUMN self_test_nonce VARCHAR(128) NULL AFTER self_test_check"},
+		{"callback_parent_task_id", "ALTER TABLE tasks ADD COLUMN callback_parent_task_id VARCHAR(64) NULL AFTER self_test_nonce"},
+		{"callback_depth", "ALTER TABLE tasks ADD COLUMN callback_depth INT NOT NULL DEFAULT 0 AFTER callback_parent_task_id"},
 		{"error_category", "ALTER TABLE tasks ADD COLUMN error_category VARCHAR(32) NULL AFTER error"},
 		{"failure_category", "ALTER TABLE tasks ADD COLUMN failure_category VARCHAR(32) NULL AFTER error_category"},
 		{"failure_message", "ALTER TABLE tasks ADD COLUMN failure_message VARCHAR(500) NULL AFTER failure_category"},
