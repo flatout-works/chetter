@@ -618,7 +618,7 @@
             <ul>
               <li><span class="y">✓</span><span><b>MIT licensed</b>, full stack, no hosted tier</span></li>
               <li><span class="y">✓</span><span>Runs on <b>your</b> Docker or Kubernetes — nothing exotic</span></li>
-              <li><span class="y">✓</span><span>Optional <b>gVisor</b> sandboxing, per-task isolated networks</span></li>
+              <li><span class="y">✓</span><span>Optional <b>gVisor</b> sandboxing, outbound egress filtering</span></li>
               <li><span class="y">✓</span><span>Standard harness CLIs — same tools you use by hand</span></li>
               <li><span class="y">✓</span><span>Code and credentials <b>never leave your network</b></span></li>
             </ul>
@@ -658,8 +658,8 @@
           <div class="row"><span class="k">automation</span><span class="v">Cron, generic webhooks, GitHub PR-review &amp; issue triggers — with one-click simulated test runs against a real PR or issue. Config can live in Git.</span></div>
           <div class="row"><span class="k">sessions</span><span class="v">Pause mid-task, resume on the same runner, recover with a custom prompt, re-run anything.</span></div>
           <div class="row"><span class="k">models</span><span class="v">Any provider — OpenAI-compatible, native, Bedrock, LiteLLM. Data-driven catalog.</span></div>
-          <div class="row"><span class="k">isolation</span><span class="v">Per-task Docker networks block lateral movement; CPU, PID &amp; memory limits contain runaway tasks. gVisor adds a userspace kernel — plain Docker alone is not a sandbox against a malicious task.</span></div>
-          <div class="row"><span class="k">operations</span><span class="v">Audit log, event streams, token &amp; cost summaries, runner fleet health — with versioned releases (server version &amp; live uptime in the UI footer).</span></div>
+          <div class="row"><span class="k">isolation</span><span class="v"><b>gVisor</b> (<code>runsc</code>) is the sandbox — a userspace kernel intercepting every syscall; plain Docker is not a boundary against a malicious task. A transparent HTTP + DNS proxy filters outbound egress by domain allowlist. CPU, PID &amp; memory limits contain runaway tasks.</span></div>
+          <div class="row"><span class="k">operations</span><span class="v">Audit log, event streams, token &amp; cost summaries, runner fleet health and live per-task execution telemetry (CPU/memory/disk, sandbox stats) — with versioned releases (server version &amp; live uptime in the UI footer).</span></div>
           <div class="row"><span class="k">database</span><span class="v">TiDB, MySQL, or PostgreSQL — auto-detected, auto-migrated.</span></div>
           <div class="row"><span class="k">clients</span><span class="v">Any MCP client, the <code>chetterctl</code> CLI, or the web UI.</span></div>
         </div>

@@ -342,11 +342,11 @@
           </div>
           <div class="spec-row">
             <dt>Isolation</dt>
-            <dd>Every task container gets its own isolated Docker network — no lateral movement, no access to runner credentials. gVisor (<code>runsc</code>) adds a userspace kernel when enabled.</dd>
+            <dd>gVisor (<code>runsc</code>) is the sandbox — a userspace kernel intercepting every syscall; plain Docker is not a boundary against a malicious task. A transparent HTTP + DNS proxy filters outbound egress by domain allowlist.</dd>
           </div>
           <div class="spec-row">
             <dt>Operations</dt>
-            <dd>Full audit log, per-task event streams, token &amp; cost summaries by team/trigger/repo, structured failure categories, runner fleet health with CPU/mem/disk utilization.</dd>
+            <dd>Full audit log, per-task event streams, token &amp; cost summaries by team/trigger/repo, structured failure categories, runner fleet health with CPU/mem/disk utilization, and live per-task execution telemetry on the task detail page.</dd>
           </div>
           <div class="spec-row">
             <dt>Database</dt>
