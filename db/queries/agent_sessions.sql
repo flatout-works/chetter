@@ -78,10 +78,16 @@ WHERE id = (SELECT agent.id FROM agent_sessions agent WHERE agent.task_id = ? OR
 AND status IN ('running', 'resuming');
 
 -- name: MarkAgentSessionResuming :execrows
+-- Only transitions a session that is still paused/recoverable. The status
+-- guard closes the TOCTOU window where the reaper expires the session after
+-- ResumeAgentSession validates it but before this update runs, so an expired
+-- session can never be revived. Callers must treat 0 rows affected as a
+-- failure (see issue #299).
 UPDATE agent_sessions
 SET status = ?,
     updated_at = ?
-WHERE id = ?;
+WHERE id = ?
+  AND status IN ('paused', 'recoverable', 'paused_waiting_review');
 
 -- name: AbandonAgentSession :execrows
 UPDATE agent_sessions
@@ -106,13 +112,30 @@ ORDER BY a.discovered_at DESC
 LIMIT 1;
 
 -- name: ExpirePausedSessions :execrows
+-- Marks paused/recoverable sessions past their pause TTL as expired. The
+-- NOT EXISTS guards provide in-flight fencing: a session with a pending,
+-- claimed, or running user prompt or execution attempt is never expired,
+-- even if its expires_at has elapsed, so a just-resumed session survives.
+-- See issue #299.
 UPDATE agent_sessions
 SET status = 'expired',
     ended_at = ?,
     updated_at = ?
 WHERE status IN ('paused', 'recoverable', 'paused_waiting_review')
   AND expires_at IS NOT NULL
-  AND expires_at < ?;
+  AND expires_at < ?
+  AND NOT EXISTS (
+    SELECT 1 FROM user_prompts prompt
+    WHERE prompt.agent_session_id = agent_sessions.id
+      AND prompt.status IN ('pending', 'claimed', 'running')
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM user_prompts prompt
+    JOIN execution_attempts attempt ON attempt.user_prompt_id = prompt.id
+    WHERE prompt.agent_session_id = agent_sessions.id
+      AND attempt.status IN ('pending', 'running')
+  );
 
 -- name: InsertUserPrompt :exec
 INSERT INTO user_prompts

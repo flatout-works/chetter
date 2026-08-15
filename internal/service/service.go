@@ -935,6 +935,16 @@ func (s *Service) reapExpiredSessions() {
 	}
 	if n > 0 {
 		slog.Info("expired paused sessions", "count", n)
+		auditCtx, auditCancel := s.reaperCtx()
+		if err := s.LogAuditEvent(auditCtx, AuditEventParams{
+			EventType:  "session.expired",
+			SourceType: "reaper",
+			TargetType: "session",
+			Detail:     fmt.Sprintf("reaper expired %d paused sessions past their ttl", n),
+		}); err != nil {
+			slog.Warn("reaper: log session.expired audit event", "err", err)
+		}
+		auditCancel()
 	}
 }
 
@@ -984,6 +994,16 @@ func (s *Service) reapExpiredSessionArtifacts() {
 
 	if total > 0 {
 		slog.Info("cleared expired session artifacts", "rows_cleared", total, "ttl", s.cfg.SessionArtifactTTL)
+		auditCtx, auditCancel := s.reaperCtx()
+		if err := s.LogAuditEvent(auditCtx, AuditEventParams{
+			EventType:  "session.artifact_gc",
+			SourceType: "reaper",
+			TargetType: "session",
+			Detail:     fmt.Sprintf("reaper cleared %d expired session artifact rows (ttl=%s)", total, s.cfg.SessionArtifactTTL),
+		}); err != nil {
+			slog.Warn("reaper: log session.artifact_gc audit event", "err", err)
+		}
+		auditCancel()
 	}
 }
 
@@ -1795,12 +1815,16 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		}); err != nil {
 			return fmt.Errorf("insert pending execution attempt: %w", err)
 		}
-		if _, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
+		resumed, err := q.MarkAgentSessionResuming(ctx, repository.MarkAgentSessionResumingParams{
 			ID:        sessionID,
 			Status:    "resuming",
 			UpdatedAt: now,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("mark session resuming: %w", err)
+		}
+		if resumed == 0 {
+			return fmt.Errorf("agent session %s is no longer resumable (status changed)", sessionID)
 		}
 		row, err := q.GetTaskByID(ctx, taskID)
 		if err != nil {

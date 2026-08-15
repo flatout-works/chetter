@@ -137,7 +137,7 @@ Next deliverables:
 
 - Document the current manual resumable-session workflow.
 - Verify gVisor checkpoint creation and restore end-to-end in Docker mode.
-- Add checkpoint garbage collection for expired sessions.
+- ~~Add checkpoint garbage collection for expired sessions.~~ **Done 2026-08-07** — the 30s reaper expires paused/recoverable sessions past their `ttl_hours` pause TTL (fenced against in-flight prompts/attempts) and clears terminal-session checkpoint paths and exports after `SESSION_ARTIFACT_TTL`; actions are recorded as `session.expired` / `session.artifact_gc` audit events and surfaced in the `chetter_sessions` fleet metric. See `docs/SESSIONS.md`.
 - Keep four-ID artifact attribution (`Task:`, `Session:`, `Prompt:`, and `Execution:`) consistent across direct tools and webhooks.
 - Add webhook-driven resume when PR review feedback arrives on a Chetter-owned PR.
 - Add web UI pages for sessions, runs, checkpoints, and resume actions.
