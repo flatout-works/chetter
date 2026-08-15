@@ -34,8 +34,9 @@ ExecutionAttempt. With `session_mode: resumable`, the AgentSession uses
 `resume_mode: harness_session`, stores the optional pause reason, and expires
 after `ttl_hours` (72 hours by default).
 
-`chetter_resume_agent_session` requires a `paused` or `recoverable` session,
-verifiable retained state, a live pinned runner, and a supported resume mode. It
+`chetter_resume_agent_session` requires a `paused`, `recoverable`, or
+`paused_waiting_review` session, verifiable retained state, a live pinned
+runner, and a supported resume mode. It
 appends a UserPrompt to the same AgentSession and queues a new ExecutionAttempt.
 Runner affinity is stored on that attempt as `required_runner_id`.
 
@@ -60,6 +61,12 @@ Attempt workspaces are keyed by immutable ExecutionAttempt ID. Retained session
 state is keyed by AgentSession ID. Heartbeats, events, cancellation, terminal
 reports, and cleanup must present the matching Task, AgentSession, UserPrompt,
 and ExecutionAttempt IDs, so a stale lease cannot mutate or delete newer work.
+
+The resume status transition is fenced the same way: the resuming update only
+applies to a session still in `paused`, `recoverable`, or
+`paused_waiting_review`. This closes the window where the reaper could expire
+the session after resume validation but before the resume commits — an expired
+session is never revived and the resume fails instead.
 
 Pruning protects active attempts and retained session/checkpoint paths. Ordinary
 non-resumable attempts never reuse a Task-level workspace.

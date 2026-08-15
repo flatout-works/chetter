@@ -493,6 +493,8 @@ model catalog syncs. `parent_event_id` links causally related events.
   MySQL/TiDB, `db/postgres/migrations/` for PostgreSQL). On MySQL/TiDB the
   startup `ensure*` path also adds columns idempotently, so a live schema
   may briefly lead the migration files (see `docs/TIDB-WOWBAGGER.md`).
-- All `*_sec` ages in queries use `TIMESTAMPDIFF(SECOND, col, NOW())`;
-  the database session must be in UTC (see the time-zone section of
+- All `*_sec` ages in TiDB/MySQL queries use `TIMESTAMPDIFF(SECOND, col,
+  NOW())`, so the TiDB/MySQL database session must be in UTC. PostgreSQL
+  queries use TIMESTAMPTZ/`NOW()` interval arithmetic and are exempt from
+  the UTC session requirement (see the time-zone section of
   `docs/TIDB-WOWBAGGER.md`).
