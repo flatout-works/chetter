@@ -104,16 +104,12 @@ func run() error {
 	}
 	schemaReady := true
 
-	// Capture the preflight-verified session time zone for observability.
-	// The verification itself ran inside store.Open (issue #316); these
-	// values are surfaced in server-info so a drifted session is visible
-	// before symptoms appear.
-	tzCtx, tzCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	dbTZSession, dbTZGlobal, err := st.SessionTimeZone(tzCtx)
-	tzCancel()
-	if err != nil {
-		return fmt.Errorf("query database session time zone: %w", err)
-	}
+	// Surface the session/global time zone captured and verified by the
+	// preflight inside store.Open (issue #316) so server-info reports
+	// exactly what was verified at startup. PostgreSQL carries its observed
+	// TimeZone setting; it is exempt from the UTC gate (TIMESTAMPTZ is
+	// zone-independent).
+	dbTZSession, dbTZGlobal := st.VerifiedSessionTimeZone()
 	dbTZUTC := store.IsUTCTimeZone(dbTZSession, dbTZGlobal)
 
 	var defs *definitions.Manager
@@ -175,9 +171,10 @@ func run() error {
 	mux.Handle("/metrics", metrics.Handler(st.DB(), st.Dialect()))
 
 	// readyz reports ready only when the schema is applied, the database is
-	// reachable, and the database session time zone is still UTC (issue
-	// #316). A drifted session would otherwise silently skew fleet presence
-	// and reaper age math.
+	// reachable, and (for TiDB/MySQL) the database session time zone is
+	// still UTC (issue #316). A drifted session would otherwise silently
+	// skew fleet presence and reaper age math. PostgreSQL is exempt: its
+	// TIMESTAMPTZ arithmetic is zone-independent.
 	readyzHandler := func(w http.ResponseWriter, _ *http.Request) {
 		if !schemaReady {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -192,11 +189,13 @@ func run() error {
 			_, _ = w.Write([]byte("not ready: database unreachable\n"))
 			return
 		}
-		if _, _, err := st.VerifyUTCSession(pingCtx); err != nil {
-			slog.Warn("readiness check: database session time zone is not UTC", "error", err)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("not ready: database session time zone is not UTC\n"))
-			return
+		if !st.IsPostgres() {
+			if _, _, err := st.VerifyUTCSession(pingCtx); err != nil {
+				slog.Warn("readiness check: database session time zone is not UTC", "error", err)
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("not ready: database session time zone is not UTC\n"))
+				return
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))

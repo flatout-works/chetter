@@ -89,6 +89,12 @@ func ParseDialect(s string) Dialect {
 type Store struct {
 	db      *sql.DB
 	dialect Dialect
+	// tzSession/tzGlobal record the session/global time zone captured by the
+	// startup preflight in Open (issue #316) so server-info reports exactly
+	// what was verified at startup without re-querying the database. Empty
+	// when the values could not be captured.
+	tzSession string
+	tzGlobal  string
 }
 
 // TaskRecord is the persisted task state exposed by MCP tools.
@@ -261,17 +267,31 @@ func Open(dsn string, dialect Dialect) (*Store, error) {
 			return nil, err
 		}
 	}
-	// Startup preflight (issue #316): refuse to serve unless the effective
-	// session time zone is UTC. TiDB/MySQL connections are forced to UTC via
-	// the time_zone DSN parameter added by normalizeDSN; this fails fast
-	// when the database rejects or ignores that setting.
-	session, global, err := st.VerifyUTCSession(ctx)
-	if err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("%w (database %s)", err, dsnHost(dsn))
+	// Startup preflight (issue #316): for TiDB/MySQL, refuse to serve unless
+	// the effective session time zone is UTC. Connections are forced to UTC
+	// via the time_zone DSN parameter added by normalizeDSN; this fails fast
+	// when the database rejects or ignores that setting. PostgreSQL is
+	// exempt: its timestamps are TIMESTAMPTZ and age queries use
+	// NOW()/interval arithmetic, so the session zone is irrelevant for
+	// correctness — the zone is captured for server-info observability only.
+	if st.dialect == DialectPostgres {
+		if session, _, err := st.SessionTimeZone(ctx); err != nil {
+			slog.Warn("could not capture PostgreSQL time zone for server-info", "error", err)
+		} else {
+			st.tzSession, st.tzGlobal = session, session
+			slog.Info("skipping UTC session preflight for PostgreSQL (TIMESTAMPTZ is zone-independent)",
+				"timezone", session)
+		}
+	} else {
+		session, global, err := st.VerifyUTCSession(ctx)
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("%w (database %s)", err, dsnHost(dsn))
+		}
+		st.tzSession, st.tzGlobal = session, global
+		slog.Info("database session time zone verified",
+			"dialect", st.dialect, "session", session, "global", global)
 	}
-	slog.Info("database session time zone verified",
-		"dialect", st.dialect, "session", session, "global", global)
 	return st, nil
 }
 
@@ -389,12 +409,23 @@ func (s *Store) SessionTimeZone(ctx context.Context) (session, global string, er
 	return sess, glob, nil
 }
 
+// VerifiedSessionTimeZone returns the session and global time zone values
+// captured by the startup preflight in Open (issue #316): the verified UTC
+// values for TiDB/MySQL, or the observed TimeZone setting for PostgreSQL
+// (which is exempt from the UTC gate). Both values are empty when they could
+// not be captured at startup.
+func (s *Store) VerifiedSessionTimeZone() (session, global string) {
+	return s.tzSession, s.tzGlobal
+}
+
 // VerifyUTCSession checks that the effective session time zone is UTC. All
 // ages are computed with TIMESTAMPDIFF(..., NOW()) against UTC-stored
 // timestamps, so a non-UTC session silently skews the fleet presence window,
 // the reaper, and stale-task logic (issue #316). TiDB/MySQL connections are
 // forced to UTC via the time_zone DSN parameter injected by normalizeDSN;
 // this method fails startup when the database rejects or ignores it.
+// PostgreSQL is exempt from this check (TIMESTAMPTZ is zone-independent), so
+// callers gate on the dialect before invoking it.
 func (s *Store) VerifyUTCSession(ctx context.Context) (session, global string, err error) {
 	session, global, err = s.SessionTimeZone(ctx)
 	if err != nil {

@@ -26,11 +26,18 @@ func TestStorePreflightForcesUTCSession(t *testing.T) {
 
 	// Make the database genuinely non-UTC: a fresh session with session time
 	// zone SYSTEM inherits the global +02:00 (the wowbagger failure mode).
+	// Capture the prior global value so cleanup restores it exactly.
+	var prevGlobal string
+	if err := tdb.DB.QueryRow("SELECT @@global.time_zone").Scan(&prevGlobal); err != nil {
+		t.Fatalf("capture global time zone: %v", err)
+	}
 	if _, err := tdb.DB.Exec("SET GLOBAL time_zone = '+02:00'"); err != nil {
 		t.Fatalf("set global time zone: %v", err)
 	}
 	defer func() {
-		_, _ = tdb.DB.Exec("SET GLOBAL time_zone = '+00:00'")
+		if _, err := tdb.DB.Exec("SET GLOBAL time_zone = '" + prevGlobal + "'"); err != nil {
+			t.Logf("restore global time zone %q: %v", prevGlobal, err)
+		}
 	}()
 
 	ctx := context.Background()
@@ -71,7 +78,11 @@ func TestStorePreflightForcesUTCSession(t *testing.T) {
 
 	// An explicit non-UTC DSN time_zone parameter must be refused by the
 	// preflight instead of silently skewing age math.
-	nonUTC := tdb.DSN + "&time_zone=" + url.QueryEscape("'+02:00'")
+	separator := "?"
+	if strings.Contains(tdb.DSN, "?") {
+		separator = "&"
+	}
+	nonUTC := tdb.DSN + separator + "time_zone=" + url.QueryEscape("'+02:00'")
 	bad, err := store.Open(nonUTC, tdb.Dialect())
 	if err == nil {
 		bad.Close()

@@ -87,12 +87,15 @@ The server no longer relies on the database default alone. Since issue #316:
   `SET time_zone = '+00:00'` on connect). An explicit non-UTC `time_zone`
   in the DSN is left alone so the preflight can refuse it.
 - Startup verifies the effective session time zone before serving; a
-  database that rejects or ignores the setting refuses to start with a
-  clear error naming the offending host.
+  TiDB/MySQL database that rejects or ignores the setting refuses to start
+  with a clear error naming the offending host. PostgreSQL is exempt: its
+  timestamps are TIMESTAMPTZ and age queries use NOW()/interval arithmetic,
+  so the session zone is irrelevant for correctness — the zone is captured
+  for server-info observability only.
 - Dialect auto-detection is fail-closed: a failed `SELECT VERSION()` probe
   aborts startup instead of silently defaulting to TiDB.
 - The verified session/global time zones are logged at startup and exposed
-  via `/readyz` (HTTP 503 when the session is not UTC) and
+  via `/readyz` (HTTP 503 when a TiDB/MySQL session is not UTC) and
   `/api/server-info` (`dbSessionTimeZone`, `dbGlobalTimeZone`,
   `dbTimeZoneUTC`).
 
