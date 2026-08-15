@@ -86,6 +86,26 @@ func TestSessionRecordsTextDeltaAndResultError(t *testing.T) {
 	}
 }
 
+func TestSessionRejectsNotLoggedInResult(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":   "result",
+		"result": "Not logged in · Please run /login",
+	})
+	if !strings.Contains(s.runErr, "not logged in") {
+		t.Fatalf("runErr = %q, want login failure", s.runErr)
+	}
+
+	s = &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":   "result",
+		"result": "genuine assistant result",
+	})
+	if s.runErr != "" {
+		t.Fatalf("runErr = %q, want empty for genuine result", s.runErr)
+	}
+}
+
 func TestPromptReportsNonzeroChildExit(t *testing.T) {
 	srv, s := testProxyServer(t, "exit 7")
 	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
