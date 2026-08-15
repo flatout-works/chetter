@@ -8,12 +8,19 @@ set -euo pipefail
 : "${DRAIN_POLL_INTERVAL:=10}"
 
 if [ -z "${CHETTER_MCP_AUTH_TOKEN:-}" ]; then
-  # Try to read from the running chetter-mcp container or compose env
-  if command -v docker >/dev/null 2>&1 && docker inspect chetter-mcp >/dev/null 2>&1; then
-    CHETTER_MCP_AUTH_TOKEN=$(docker inspect chetter-mcp --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^CHETTER_MCP_AUTH_TOKEN=' | cut -d= -f2-)
+  # Try to read from the running chetter-mcp container. The container is named
+  # chetter-chetter-mcp-1 (docker compose), while "chetter-mcp" is only a
+  # network alias, so look it up by compose service label. The server env var
+  # is MCP_AUTH_TOKEN in deploy/compose.yaml (CHETTER_MCP_AUTH_TOKEN is only
+  # the compose-side variable name).
+  if command -v docker >/dev/null 2>&1; then
+    mcp_container=$(docker ps --filter "label=com.docker.compose.service=chetter-mcp" --format '{{.Names}}' | head -1)
+    if [ -n "${mcp_container}" ]; then
+      CHETTER_MCP_AUTH_TOKEN=$(docker inspect "${mcp_container}" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E '^(MCP_AUTH_TOKEN|CHETTER_MCP_AUTH_TOKEN)=' | tail -1 | cut -d= -f2-)
+    fi
   fi
   if [ -z "${CHETTER_MCP_AUTH_TOKEN:-}" ]; then
-    echo "ERROR: CHETTER_MCP_AUTH_TOKEN is not set and could not be read from container."
+    echo "ERROR: CHETTER_MCP_AUTH_TOKEN is not set and could not be read from the chetter-mcp container."
     exit 1
   fi
 fi
