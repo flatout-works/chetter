@@ -11,7 +11,7 @@
     loadTaskEvents, loadTaskProgress, loadOlderTaskProgress, refreshTaskProgress, subscribeToTaskEvents,
     taskEvents, taskProgress, taskProgressHasMore, streamConnected, clearTaskDetail,
   } from "$lib/stores/taskDetail.svelte";
-  import { formatDuration, formatHarness, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown } from "$lib/utils.svelte";
+  import { formatDuration, formatHarness, formatResumeMode, formatTime, formatTimeShort, formatAge, humanReadableStatus, renderMarkdown, runnerHasTelemetry } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Progressbar, Select, Spinner, Textarea, Timeline, TimelineItem } from "flowbite-svelte";
 
@@ -62,12 +62,26 @@
     return v.toString();
   }
 
+  function formatLifetime(ms: bigint): string {
+    const totalSec = Math.floor(Number(ms) / 1000);
+    if (totalSec < 60) return `${totalSec}s`;
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${s}s`;
+  }
+
   let events = $state<TaskEvent[]>([]);
   let progress = $state<TaskProgressEntry[]>([]);
   let progressHasMore = $state(false);
   let loadingOlderProgress = $state(false);
   let connected = $state(false);
   let activeRunners = $state<string[]>([]);
+  // Full runner health entries from the last successful getRunnerHealth call,
+  // kept alongside activeRunners so the task's current runner and its live
+  // execution telemetry can be surfaced on the detail page.
+  let fleetRunners = $state<RunnerInfo[]>([]);
 
   let expandedProgress = new SvelteSet<string>();
   let rawEventsLoaded = $state(false);
@@ -220,6 +234,16 @@
     !taskSession?.pinnedRunnerId || activeRunners.includes(taskSession.pinnedRunnerId)
   );
 
+  // The runner currently executing this task (matched via currentTaskIds), or
+  // null when no active runner reports it. Execution telemetry is only shown
+  // when the runner actually reports non-empty telemetry.
+  let executionRunner = $derived(
+    fleetRunners.find((r) => r.currentTaskIds.includes(params.id)) ?? null
+  );
+  let executionTelemetry = $derived(
+    executionRunner && runnerHasTelemetry(executionRunner) ? executionRunner : null
+  );
+
   let canResumeTask = $derived(
     (taskSession?.status === "paused" ||
     taskSession?.status === "recoverable" ||
@@ -283,6 +307,11 @@
       progressRefreshCounter++;
       if (progressRefreshCounter % 5 === 0 && connected) {
         refreshTaskProgress(params.id);
+      }
+      // Keep execution telemetry current while the task runs, matching the
+      // fleet page's 10s refresh cadence.
+      if (progressRefreshCounter % 10 === 0 && task?.status === "running") {
+        loadActiveRunners();
       }
     }, 1000);
     await loadTaskData(params.id);
@@ -360,9 +389,12 @@
     try {
       const client = createClient(FleetService, getTransport());
       const resp = await client.getRunnerHealth({ includeTasks: false });
-      activeRunners = (resp.health?.runners ?? []).map((r) => r.runnerId);
+      const runners = resp.health?.runners ?? [];
+      activeRunners = runners.map((r) => r.runnerId);
+      fleetRunners = runners;
     } catch {
       activeRunners = [];
+      fleetRunners = [];
     }
   }
 
@@ -630,6 +662,88 @@ ${task?.prompt ?? ""}`;
         </Card>
       {/if}
     </div>
+
+    {#if executionTelemetry}
+      {@const runner = executionTelemetry}
+      {@const res = runner.resource}
+      <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Execution</h2>
+          {#if runner.gvisorEnabled || runner.sandboxAvailable || runner.sandboxTotal > 0n || runner.sandboxStartFailures > 0n || runner.sandboxCrashes > 0n}
+            {#if runner.sandboxAvailable}
+              <Badge color="green">sandbox ready</Badge>
+            {:else}
+              <Badge color="red">sandbox unavailable</Badge>
+            {/if}
+          {/if}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+          <div class="min-w-0">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Runner</p>
+            <p class="font-mono font-medium text-gray-900 dark:text-white break-all" title={runner.runnerId}>{runner.runnerId}</p>
+          </div>
+          {#if runner.containerMemoryMb > 0 || runner.containerCpu > 0}
+            <div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Runner caps</p>
+              <p class="font-medium text-gray-900 dark:text-white">
+                {runner.containerMemoryMb > 0 ? `${runner.containerMemoryMb} MiB` : "unset"} memory · {runner.containerCpu > 0 ? runner.containerCpu : "unset"} CPU
+              </p>
+            </div>
+          {/if}
+        </div>
+        {#if res}
+          <div class="mt-4 space-y-2">
+            {#each [{ label: "CPU", value: res.cpuPercent }, { label: "MEM", value: res.memoryPercent }, { label: "DSK", value: res.diskPercent }] as gauge (gauge.label)}
+              {#if gauge.value >= 0}
+                <div class="flex items-center gap-2">
+                  <span class="w-8 text-xs text-gray-500 dark:text-gray-400">{gauge.label}</span>
+                  <div class="flex-1">
+                    <Progressbar progress={Math.min(gauge.value, 100)} size="h-2" color={gauge.value > 80 ? "red" : gauge.value > 60 ? "yellow" : "green"} />
+                  </div>
+                  <span class="w-10 text-right text-xs text-gray-500 dark:text-gray-400">{gauge.value.toFixed(0)}%</span>
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {/if}
+        {#if runner.sandboxStartLatencyMs > 0n || runner.sandboxLifetimeMs > 0n || runner.sandboxMaxRssMb > 0n || runner.sandboxMaxCpuPercent > 0}
+          <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {#if runner.sandboxStartLatencyMs > 0n}
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Sandbox start latency</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{(Number(runner.sandboxStartLatencyMs) / 1000).toFixed(2)}s</p>
+              </div>
+            {/if}
+            {#if runner.sandboxLifetimeMs > 0n}
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Sandbox lifetime</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{formatLifetime(runner.sandboxLifetimeMs)}</p>
+              </div>
+            {/if}
+            {#if runner.sandboxMaxRssMb > 0n}
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Peak RSS</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{String(runner.sandboxMaxRssMb)} MiB</p>
+              </div>
+            {/if}
+            {#if runner.sandboxMaxCpuPercent > 0}
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Peak CPU</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">{runner.sandboxMaxCpuPercent.toFixed(0)}%</p>
+              </div>
+            {/if}
+          </div>
+        {/if}
+        {#if runner.sandboxTotal > 0n || runner.sandboxStartFailures > 0n || runner.sandboxCrashes > 0n}
+          <div class="mt-4">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Sandbox counters</p>
+            <p class="text-sm text-gray-900 dark:text-white">
+              {String(runner.sandboxTotal)} runs · {String(runner.sandboxStartFailures)} start failures · {String(runner.sandboxCrashes)} crashes
+            </p>
+          </div>
+        {/if}
+      </Card>
+    {/if}
 
     {#if task.gitUrl || task.gitRef || task.skills.length > 0 || visibleEnv.length > 0 || taskSession?.pauseReason || taskSession?.expiresAt}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
