@@ -51,6 +51,14 @@ type SessionContinuable interface {
 	ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error
 }
 
+// SessionStatusProbe is implemented by harnesses that can report a session's
+// state ("busy", "idle", ...) on demand. The progress watchdog uses it only
+// for stall diagnosis, to tell an in-flight hung generation from an agent
+// that completed its turn and went quiet.
+type SessionStatusProbe interface {
+	SessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error)
+}
+
 // CompletionAwareHarness is implemented by harnesses whose WatchEvents can
 // detect session completion via SSE events and signal it to the
 // polling-based completion detection in SendPrompt. This breaks the

@@ -419,9 +419,15 @@ func (r *Runner) watchHarnessProgress(ctx context.Context, h harness.ServeHarnes
 			return continuable.ContinueSession(nudgeCtx, baseURL, sessionID, secret, req, wsDir)
 		}
 	}
+	var probe func(context.Context) (string, error)
+	if statusProbe, ok := h.(harness.SessionStatusProbe); ok {
+		probe = func(probeCtx context.Context) (string, error) {
+			return statusProbe.SessionStatus(probeCtx, baseURL, sessionID, secret)
+		}
+	}
 	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(message string) {
 		r.publishStatusWithToken(req, "running", message, nil, acc.delta())
-	}, isIdle)
+	}, isIdle, probe)
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
@@ -724,7 +730,7 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	stopWatching()
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress")
+		err = watchdog.stuckError()
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.
@@ -841,7 +847,7 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, session.WorkspaceDir, taskPromptTimeout(req.TimeoutSec))
 	stopWatching()
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress")
+		err = watchdog.stuckError()
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.
@@ -981,7 +987,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 	summary, err := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspaceDir, taskPromptTimeout(req.TimeoutSec))
 	stopWatching()
 	if watchdog.isStuck() {
-		err = fmt.Errorf("stuck harness: no progress")
+		err = watchdog.stuckError()
 	}
 	// Keep the server-side lease alive while bounded cleanup and session export
 	// collection run before the terminal event is reported.

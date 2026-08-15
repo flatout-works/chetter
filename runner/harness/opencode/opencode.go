@@ -89,6 +89,11 @@ func (oc *OpenCode) AbortSession(ctx context.Context, baseURL, sessionID, secret
 	return abortSession(ctx, baseURL, sessionID, secret)
 }
 
+// SessionStatus implements harness.SessionStatusProbe.
+func (oc *OpenCode) SessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	return getSessionStatus(ctx, baseURL, sessionID, secret)
+}
+
 func (oc *OpenCode) WatchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) {
 	oc.mu.Lock()
 	sessionID := oc.sessID
