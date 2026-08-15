@@ -134,7 +134,10 @@ func (s *Service) ListTasks(ctx context.Context, status string, limit, offset in
 	for _, task := range tasks {
 		session, ok := sessions[task.ID]
 		if !ok {
-			return nil, fmt.Errorf("get latest agent session for task %s: %w", task.ID, sql.ErrNoRows)
+			// Legacy tasks predate agent session rows. Keep them listable
+			// instead of failing the whole query; session-derived fields
+			// simply stay empty.
+			slog.Warn("task has no agent session record", "task_id", task.ID)
 		}
 		record := repoTaskToToolRecord(task, session)
 		if taskStartedAt, ok := startedAt[task.ID]; ok {

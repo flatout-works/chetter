@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -226,5 +227,25 @@ func TestMergeTriggerConfigIncludesRuntimeFields(t *testing.T) {
 	want := `{"event":"labeled","isolation":"required","match_labels":["bug"],"pause_reason":"waiting_for_pr_feedback","repo":"flatout-works/chetter","session_mode":"resumable","ttl_hours":48}`
 	if got != want {
 		t.Fatalf("MergeTriggerConfig() = %q, want %q", got, want)
+	}
+}
+
+func TestRepoTaskToToolRecordHandlesMissingSession(t *testing.T) {
+	t.Parallel()
+	task := repository.Task{
+		ID:               "task_legacy",
+		Status:           "done",
+		Prompt:           "legacy prompt",
+		SubmissionSource: "ui",
+	}
+	record := repoTaskToToolRecord(task, repository.AgentSession{})
+	if record.ID != "task_legacy" || record.Status != "done" || record.Prompt != "legacy prompt" {
+		t.Fatalf("unexpected legacy task record: %+v", record)
+	}
+	if record.AgentSessionID != "" || record.Harness != "" || record.ModelID != "" {
+		t.Fatalf("missing session should leave session-derived fields empty: %+v", record)
+	}
+	if record.Skills != nil || record.McpEndpoints != nil || record.Env != nil {
+		t.Fatalf("missing session JSON should decode to nil slices/maps: %+v", record)
 	}
 }
