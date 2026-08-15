@@ -112,8 +112,8 @@ spec:
               value: "1"
             - name: CHETTER_DRAIN_TIMEOUT_SEC
               value: "60"
-            - name: CHETTER_DRAIN_CLEANUP_GRACE_SEC
-              value: "20"
+            - name: CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC
+              value: "30"
           volumeMounts:
             - name: workspaces
               mountPath: /var/lib/chetter-runner/workspaces
