@@ -16,34 +16,16 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		return err
 	}
 
+	// Claude Code headless runs can never answer a permission prompt, so every
+	// "ask" is a silent "deny". Claude's Bash matcher also splits compound
+	// commands on ;/&& and rejects pipelines, command substitution, and
+	// redirects unless every segment matches, which made the old per-binary
+	// allowlist a random denial generator (gofmt, shell chains, and gh calls
+	// with $(...) were blocked mid-task). Allow Bash wholesale and keep the
+	// deny list as the real control: it is evaluated before allow, and the
+	// gVisor task container is the actual security boundary.
 	allow := []string{
-		"Bash(ls:*)",
-		"Bash(find:*)",
-		"Bash(git:*)",
-		"Bash(make:*)",
-		"Bash(gh:*)",
-		"Bash(go:*)",
-		"Bash(cat:*)",
-		"Bash(jq:*)",
-		"Bash(sed:*)",
-		"Bash(grep:*)",
-		"Bash(curl:*)",
-		"Bash(date:*)",
-		"Bash(echo:*)",
-		"Bash(mkdir:*)",
-		"Bash(cp:*)",
-		"Bash(mv:*)",
-		"Bash(rm:*)",
-		"Bash(chmod:*)",
-		"Bash(chown:*)",
-		"Bash(ln:*)",
-		"Bash(tar:*)",
-		"Bash(unzip:*)",
-		"Bash(head:*)",
-		"Bash(tail:*)",
-		"Bash(sort:*)",
-		"Bash(uniq:*)",
-		"Bash(wc:*)",
+		"Bash",
 		"Read",
 		"Edit",
 		"Glob",
@@ -67,14 +49,23 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	settings := map[string]any{
 		"permissions": map[string]any{
 			"allow": allow,
+			// Deny is evaluated before allow, so these still block even with
+			// the bare "Bash" allow above. Anything that escapes the task
+			// container (docker socket, host package/runtime control) or can
+			// never produce output an agent can use must stay here.
 			"deny": []string{
 				"AskUserQuestion",
 				"Bash(docker:*)",
+				"Bash(podman:*)",
 				"Bash(systemctl:*)",
+				"Bash(journalctl:*)",
 				"Bash(pkill:*)",
 				"Bash(kill:*)",
 				"Bash(shutdown:*)",
 				"Bash(reboot:*)",
+				"Bash(ssh:*)",
+				"Bash(scp:*)",
+				"Bash(sudo:*)",
 			},
 		},
 		"skipPermissionsOnAllowed": true,
