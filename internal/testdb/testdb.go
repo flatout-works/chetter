@@ -421,6 +421,14 @@ func (p *PackageDB) Close() {
 	}
 }
 
+// Dialect returns the database dialect of the shared package database.
+func (p *PackageDB) Dialect() store.Dialect {
+	if p == nil {
+		return store.DialectUnknown
+	}
+	return p.dialect
+}
+
 // AdminDB returns a connection to the database server for creating test databases.
 func (p *PackageDB) AdminDB(t testing.TB) *sql.DB {
 	t.Helper()
