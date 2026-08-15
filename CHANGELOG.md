@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-14
+
+### Added
+
+- Event-callback `create_task` recursion guard (#312): each callback-spawned task now records its provenance chain on `tasks` (`callback_parent_task_id`, `callback_depth`; migrations 053 MySQL/TiDB and 029 PostgreSQL). Before spawning, the child depth is derived from the source task and checked against `CHETTER_CALLBACK_MAX_DEPTH` (default `5`; `0` disables): a spawn that would exceed the limit is rejected before task creation — a `task.callback_rejected` event with error `event_callback_recursion_limit` is recorded on the parent task's event stream and an `event_callback_recursion_limit` audit event is emitted. Only the specific recursive chain is stopped; the callback itself stays enabled, so a misconfigured `task.completed` → `create_task` loop can no longer grow the queue unboundedly.
+
+### Documentation
+
+- Website technical architecture page updated for the session-resume UX (#58) — resuming a paused or recoverable session now navigates straight to the new attempt's live task detail page, the resume form is disabled while the request is in flight with duplicate submissions guarded, and backend validation or runner-availability errors surface inline in the resume modal — and for the dual-dialect SQL parity guard now enforced by `make check`: the build fails whenever the MySQL/TiDB and PostgreSQL query sets drift apart, and every query is verified to be materialized in the generated repositories and the `internal/data/` facade.
+
 ## 2026-08-13
 
 ### Added
