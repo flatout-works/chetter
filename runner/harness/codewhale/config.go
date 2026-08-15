@@ -2,6 +2,7 @@ package codewhale
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -14,6 +15,19 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	codewhaleDir := wsDir + "/.codewhale"
 	if err := os.MkdirAll(codewhaleDir, 0750); err != nil {
 		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(req.ProviderID), "synthetic") {
+		baseURL := strings.TrimSpace(req.ProviderBaseURL)
+		apiKeyEnv := strings.TrimSpace(req.ProviderAPIKeyEnv)
+		_, model := codewhaleModelFields(req)
+		if baseURL == "" || apiKeyEnv == "" {
+			return fmt.Errorf("configure CodeWhale Synthetic provider: base URL and API key environment are required")
+		}
+		providerConfig := fmt.Sprintf("[providers.synthetic]\nkind = %q\nbase_url = %q\nmodel = %q\napi_key_env = %q\n",
+			"openai-compatible", baseURL, model, apiKeyEnv)
+		if err := mcpconfig.WritePrivateFile(codewhaleDir+"/chetter-config.toml", []byte(providerConfig)); err != nil {
+			return err
+		}
 	}
 
 	servers := map[string]any{}
@@ -73,6 +87,9 @@ func codewhaleEnv(wsDir, secret string, req task.TaskRequest) map[string]string 
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if baseURL := strings.TrimSpace(req.ProviderBaseURL); baseURL != "" {
 		env["CODEWHALE_BASE_URL"] = baseURL
+	}
+	if provider == "synthetic" {
+		env["CODEWHALE_CONFIG_PATH"] = wsDir + "/.codewhale/chetter-config.toml"
 	}
 	if provider == "deepseek" {
 		baseURL := strings.TrimSpace(req.ProviderBaseURL)

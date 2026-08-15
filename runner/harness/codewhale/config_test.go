@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -68,5 +69,50 @@ func TestGenerateConfigWritesNativeMCPConfig(t *testing.T) {
 	chetterHeaders, ok := chetter["headers"].(map[string]any)
 	if !ok || chetterHeaders["Authorization"] != "Bearer secret" {
 		t.Fatalf("chetter MCP headers = %#v", chetter["headers"])
+	}
+}
+
+func TestGenerateConfigWritesSyntheticProviderConfig(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		ProviderID:        "synthetic",
+		ModelID:           "hf:zai-org/GLM-5.2",
+		ProviderBaseURL:   "https://api.synthetic.new/openai/v1",
+		ProviderAPIKeyEnv: "SYNTHETIC_API_KEY",
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	configPath := filepath.Join(wsDir, ".codewhale", "chetter-config.toml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read provider config: %v", err)
+	}
+	for _, want := range []string{
+		"[providers.synthetic]",
+		`kind = "openai-compatible"`,
+		`base_url = "https://api.synthetic.new/openai/v1"`,
+		`model = "hf:zai-org/GLM-5.2"`,
+		`api_key_env = "SYNTHETIC_API_KEY"`,
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("provider config missing %q:\n%s", want, data)
+		}
+	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("stat provider config: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("provider config permissions = %v, want 0600", info.Mode().Perm())
+	}
+
+	env := codewhaleEnv("/workspace", "secret", req)
+	if got := env["CODEWHALE_CONFIG_PATH"]; got != "/workspace/.codewhale/chetter-config.toml" {
+		t.Fatalf("CODEWHALE_CONFIG_PATH = %q", got)
+	}
+	if got := env["CODEWHALE_PROVIDER"]; got != "synthetic" {
+		t.Fatalf("CODEWHALE_PROVIDER = %q", got)
 	}
 }

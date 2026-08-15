@@ -38,6 +38,9 @@ func TestValidateEndpointTokenEnvironment(t *testing.T) {
 	if err := ValidateEndpointTokenEnvironment([]task.MCPEndpoint{{BearerTokenEnv: "OPENCODE_CONFIG"}}); err == nil {
 		t.Fatal("harness control variable should fail")
 	}
+	if err := ValidateEndpointTokenEnvironment([]task.MCPEndpoint{{BearerTokenEnv: "CODEWHALE_CONFIG_PATH"}}); err == nil {
+		t.Fatal("CodeWhale config path should be reserved")
+	}
 }
 
 func TestPrepareGitWorkspaceWritesAskpass(t *testing.T) {
@@ -61,7 +64,7 @@ func TestManagedEnvironment(t *testing.T) {
 		ProviderAPIKeyEnv: "PROVIDER_TOKEN",
 		McpEndpoints:      []task.MCPEndpoint{{BearerTokenEnv: "MCP_TOKEN"}},
 	}
-	for _, key := range []string{"PROVIDER_TOKEN", "OPENAI_API_KEY", "MCP_TOKEN", GitHubCredentialURLEnv, GitHubCredentialTokenEnv, "CHETTER_RUNNER_AUTH_TOKEN"} {
+	for _, key := range []string{"PROVIDER_TOKEN", "OPENAI_API_KEY", "MCP_TOKEN", "CODEWHALE_CONFIG_PATH", GitHubCredentialURLEnv, GitHubCredentialTokenEnv, "CHETTER_RUNNER_AUTH_TOKEN"} {
 		if !IsManagedEnv(key, req) {
 			t.Errorf("IsManagedEnv(%q) = false, want true", key)
 		}

@@ -79,6 +79,112 @@ func TestWaitForTurnCompletionReturnsSummaryAndUsage(t *testing.T) {
 	}
 }
 
+func TestWaitForTurnCompletionCoalescesAllTextDeltas(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w,
+			sseFrame("item.delta", map[string]any{
+				"seq": 1, "turn_id": "turn_1",
+				"payload": map[string]any{"kind": "reasoning", "delta": "think "},
+			})+
+				sseFrame("item.delta", map[string]any{
+					"seq": 2, "turn_id": "turn_1",
+					"payload": map[string]any{"kind": "reasoning", "delta": "carefully. "},
+				})+
+				sseFrame("item.delta", map[string]any{
+					"seq": 3, "turn_id": "turn_1",
+					"payload": map[string]any{"kind": "agent_message", "delta": "done"},
+				})+
+				sseFrame("turn.completed", map[string]any{
+					"seq": 4, "turn_id": "turn_1",
+					"payload": map[string]any{"turn": map[string]any{"status": "completed"}},
+				}),
+		)
+	}))
+	defer server.Close()
+
+	var progress []string
+	summary, err := waitForTurnCompletion(context.Background(), server.URL, "thread_1", "turn_1", "", func(_ string, message string) {
+		progress = append(progress, message)
+	}, nil)
+	if err != nil {
+		t.Fatalf("waitForTurnCompletion returned error: %v", err)
+	}
+	if summary != "done" {
+		t.Fatalf("summary = %q, want done", summary)
+	}
+	if len(progress) != 1 || progress[0] != "codewhale: think carefully. done" {
+		t.Fatalf("progress = %q", progress)
+	}
+}
+
+func TestWaitForTurnCompletionPublishesIncrementalChunks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w,
+			sseFrame("item.delta", map[string]any{
+				"seq": 1, "turn_id": "turn_1",
+				"payload": map[string]any{"kind": "agent_message", "delta": "first "},
+			})+
+				sseFrame("approval.required", map[string]any{
+					"seq": 2, "turn_id": "turn_1", "payload": map[string]any{},
+				})+
+				sseFrame("item.delta", map[string]any{
+					"seq": 3, "turn_id": "turn_1",
+					"payload": map[string]any{"kind": "agent_message", "delta": "second"},
+				})+
+				sseFrame("turn.completed", map[string]any{
+					"seq": 4, "turn_id": "turn_1",
+					"payload": map[string]any{"turn": map[string]any{"status": "completed"}},
+				}),
+		)
+	}))
+	defer server.Close()
+
+	var progress []string
+	summary, err := waitForTurnCompletion(context.Background(), server.URL, "thread_1", "turn_1", "", func(_ string, message string) {
+		progress = append(progress, message)
+	}, nil)
+	if err != nil {
+		t.Fatalf("waitForTurnCompletion returned error: %v", err)
+	}
+	if summary != "first second" {
+		t.Fatalf("summary = %q, want first second", summary)
+	}
+	want := []string{"codewhale: first", "codewhale: approval required", "codewhale: second"}
+	if len(progress) != len(want) {
+		t.Fatalf("progress = %q, want %q", progress, want)
+	}
+	for i := range want {
+		if progress[i] != want[i] {
+			t.Fatalf("progress[%d] = %q, want %q", i, progress[i], want[i])
+		}
+	}
+}
+
+func TestCreateSessionUsesConfiguredModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if _, ok := payload["model"]; ok {
+			t.Fatalf("create thread payload must not override the configured model: %#v", payload)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = fmt.Fprint(w, `{"id":"thread_1"}`)
+	}))
+	defer server.Close()
+
+	id, err := createSession(context.Background(), server.URL, "")
+	if err != nil {
+		t.Fatalf("createSession returned error: %v", err)
+	}
+	if id != "thread_1" {
+		t.Fatalf("session id = %q", id)
+	}
+}
+
 func TestWaitForTurnCompletionReturnsTerminalError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

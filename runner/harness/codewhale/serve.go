@@ -54,9 +54,7 @@ func waitForReady(ctx context.Context, baseURL, secret string, timeout time.Dura
 }
 
 func createSession(ctx context.Context, baseURL, secret string) (string, error) {
-	_, modelID := codewhaleModelFields(task.TaskRequest{})
 	payload, _ := json.Marshal(map[string]any{
-		"model":        modelID,
 		"workspace":    "/workspace",
 		"mode":         "agent",
 		"archived":     false,
@@ -179,6 +177,7 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 
 func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage)) (string, error) {
 	var summary strings.Builder
+	var textBuf strings.Builder
 	var pending []string
 	var lastSeq uint64
 	lastFlush := time.Now()
@@ -187,8 +186,11 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 		if !force && time.Since(lastFlush) < 3*time.Second {
 			return
 		}
-		if summary.Len() > 0 && publishFn != nil {
-			publishFn("running", "codewhale: "+summary.String())
+		if textBuf.Len() > 0 {
+			if detail := strings.TrimSpace(textBuf.String()); detail != "" && publishFn != nil {
+				publishFn("running", "codewhale: "+detail)
+			}
+			textBuf.Reset()
 		}
 		for _, s := range pending {
 			if publishFn != nil {
@@ -287,8 +289,11 @@ func waitForTurnCompletion(ctx context.Context, baseURL, sessionID, turnID, secr
 			if detail == "" {
 				continue
 			}
-			if ev.Type == "item.delta" && envelope.Payload.Kind == "agent_message" {
-				summary.WriteString(detail)
+			if ev.Type == "item.delta" {
+				textBuf.WriteString(detail)
+				if envelope.Payload.Kind == "agent_message" {
+					summary.WriteString(detail)
+				}
 			} else {
 				switch ev.Type {
 				case "approval.required", "item.failed":
