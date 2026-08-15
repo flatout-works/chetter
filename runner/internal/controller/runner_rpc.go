@@ -193,6 +193,10 @@ func (r *Runner) reportTaskResponse(resp task.TaskResponse) {
 	terminal := isTerminalStatus(resp.Status)
 	if terminal {
 		r.recordTerminalStatus(resp.ExecutionID, resp.Status)
+		// Track the in-flight terminal report on the report barrier so the
+		// drain cleanup phase can join on it before exit (issue #313).
+		r.reportWG.Add(1)
+		defer r.reportWG.Done()
 	}
 	r.dispatchReport(resp, terminal)
 }
@@ -243,12 +247,31 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 		}
 		return
 	}
+	// The retry window is bounded by terminalReportRetryWindow (fixed at loop
+	// entry, preserving the pre-existing 1-minute bound), but once a forced
+	// drain has started (drainHardKillDeadline set by waitForTaskCleanup) the
+	// window is clamped to the remaining hard-kill budget each iteration so
+	// total reporting time is provably <= CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC
+	// and a blocked report can never outlive the runner. See issue #313.
 	deadline := time.Now().Add(terminalReportRetryWindow)
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if hard := r.drainHardKillDeadlineValue(); !hard.IsZero() && hard.Before(deadline) {
+			deadline = hard
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			slog.Error("terminal task event report budget exhausted", "taskID", resp.TaskID, "status", resp.Status)
+			return
+		}
+		attempt := 10 * time.Second
+		if remaining < attempt {
+			attempt = remaining
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), attempt)
 		err := report(ctx)
 		cancel()
 		if err == nil {
+			r.markTerminalReportDelivered(resp.ExecutionID)
 			return
 		}
 		if time.Now().After(deadline) {
@@ -256,12 +279,39 @@ func (r *Runner) dispatchReport(resp task.TaskResponse, terminal bool) {
 			return
 		}
 		slog.Warn("retrying terminal task event report", "taskID", resp.TaskID, "status", resp.Status, "err", err)
-		time.Sleep(2 * time.Second)
+		backoff := 2 * time.Second
+		if backoff > remaining {
+			backoff = remaining
+		}
+		time.Sleep(backoff)
 	}
 }
 
 func isTerminalStatus(status string) bool {
 	return status == "done" || status == "error" || status == "cancelled"
+}
+
+// drainHardKillDeadlineValue returns the forced-cleanup deadline, or the zero
+// time when no forced cleanup is in progress. Guarded by r.mu.
+func (r *Runner) drainHardKillDeadlineValue() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.drainHardKillDeadline
+}
+
+// markTerminalReportDelivered records that the server accepted the terminal
+// report for an execution. The hard-kill audit log uses this to report which
+// in-flight executions lost their terminal result. See issue #313.
+func (r *Runner) markTerminalReportDelivered(executionID string) {
+	if executionID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reportDelivered == nil {
+		r.reportDelivered = make(map[string]bool)
+	}
+	r.reportDelivered[executionID] = true
 }
 
 func formatProtoTime(t time.Time) string {

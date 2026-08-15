@@ -73,7 +73,30 @@ type Runner struct {
 	forcedExit        atomic.Bool
 	kubeClient        kubernetes.Interface
 	kubeConfig        *rest.Config
-	drainCleanupGrace time.Duration
+	// drainHardKillTimeout overrides CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC in
+	// tests. Zero means "use the environment/default" (see drainHardKillTimeout).
+	drainHardKillTimeout time.Duration
+	// drainHardKillDeadline is the absolute deadline of the forced-cleanup
+	// phase, set by waitForTaskCleanup when waitDrain force-cancels tasks.
+	// Terminal report retries are clamped to it so reporting provably
+	// finishes before the runner exits. See issue #313.
+	drainHardKillDeadline time.Time
+	// taskWG tracks in-flight runTask goroutines. The drain cleanup phase
+	// waits on it so the runner never exits while a task goroutine is
+	// mid-teardown (sandbox teardown, workspace destroy, session-export
+	// flush) or mid terminal report delivery. See issue #313.
+	taskWG sync.WaitGroup
+	// reportWG tracks in-flight terminal ReportTaskEvents deliveries.
+	// Terminal reports are published synchronously inside runTask, so once
+	// taskWG drains this is necessarily empty; the drain cleanup phase joins
+	// on it explicitly so no report path can be abandoned at exit. See issue
+	// #313.
+	reportWG sync.WaitGroup
+	// reportDelivered records execution IDs whose terminal report was
+	// accepted by the server (ReportTaskEvents returned success). The
+	// hard-kill audit log compares it against in-flight tasks to report lost
+	// results. See issue #313.
+	reportDelivered map[string]bool
 	// sandbox holds cumulative runtime sandbox (gVisor/runsc) metrics for
 	// isolated executions, surfaced in heartbeats and exposed via the
 	// server's Prometheus endpoint. See issue #302.
@@ -93,12 +116,13 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		defaultHarness: cfg.Execution.Harness,
 		harnessFactory: selectHarnessByName,
 		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
-		tasks:          make(map[string]*task.TaskSession),
-		tasksChanged:   make(chan struct{}),
-		runnerID:       runnerID,
-		startedAt:      time.Now().UTC(),
-		terminalTasks:  make(map[string]struct{}),
-		cancelledTasks: make(map[string]struct{}),
+		tasks:           make(map[string]*task.TaskSession),
+		tasksChanged:    make(chan struct{}),
+		runnerID:        runnerID,
+		startedAt:       time.Now().UTC(),
+		terminalTasks:   make(map[string]struct{}),
+		cancelledTasks:  make(map[string]struct{}),
+		reportDelivered: make(map[string]bool),
 		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent+1),
 		sandbox:        newSandboxMetrics(),
 	}

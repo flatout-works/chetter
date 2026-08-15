@@ -64,9 +64,8 @@ func TestNewRunnerIDUsesPerPodIdentityWithoutSharedPersistence(t *testing.T) {
 
 func TestWaitDrainWaitsForTaskChange(t *testing.T) {
 	r := &Runner{
-		tasks:             map[string]*task.TaskSession{"task-1": {}},
-		tasksChanged:      make(chan struct{}),
-		drainCleanupGrace: 20 * time.Millisecond,
+		tasks:        map[string]*task.TaskSession{"task-1": {}},
+		tasksChanged: make(chan struct{}),
 	}
 	r.draining.Store(true)
 
@@ -105,8 +104,7 @@ func TestWaitDrainCancelsRemainingTasksAtDeadline(t *testing.T) {
 		tasks: map[string]*task.TaskSession{
 			"task-1": {Cancel: func() { cancelled.Store(true) }},
 		},
-		tasksChanged:      make(chan struct{}),
-		drainCleanupGrace: 20 * time.Millisecond,
+		tasksChanged: make(chan struct{}),
 	}
 	r.draining.Store(true)
 
@@ -194,17 +192,23 @@ func newDrainTestRunner(t *testing.T) (*Runner, *mockHeartbeatClient) {
 		terminalTasks:     make(map[string]struct{}),
 		cancelledTasks:    make(map[string]struct{}),
 		sem:               make(chan struct{}, 2),
-		drainCleanupGrace: 20 * time.Millisecond,
 		sandbox:           newSandboxMetrics(),
 	}
 	return r, mb
 }
 
 func TestWaitDrainWaitsForForcedTaskCleanup(t *testing.T) {
-	r := &Runner{tasks: make(map[string]*task.TaskSession), tasksChanged: make(chan struct{}), drainCleanupGrace: time.Second}
+	r := &Runner{tasks: make(map[string]*task.TaskSession), tasksChanged: make(chan struct{})}
 	r.draining.Store(true)
+	r.mu.Lock()
 	r.tasks["exec-1"] = &task.TaskSession{Cancel: func() {
+		// The force-cancelled task goroutine continues its teardown (bounded
+		// cleanup + terminal report) on its own goroutine, exactly like a
+		// real runTask after cancellation. It is tracked on the task barrier
+		// (issue #313).
+		r.taskWG.Add(1)
 		go func() {
+			defer r.taskWG.Done()
 			time.Sleep(30 * time.Millisecond)
 			r.mu.Lock()
 			delete(r.tasks, "exec-1")
@@ -213,6 +217,7 @@ func TestWaitDrainWaitsForForcedTaskCleanup(t *testing.T) {
 			r.mu.Unlock()
 		}()
 	}}
+	r.mu.Unlock()
 	started := time.Now()
 	if !r.waitDrain(5 * time.Millisecond) {
 		t.Fatal("forced drain reported clean exit")

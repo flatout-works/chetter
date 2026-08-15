@@ -64,6 +64,13 @@ func containerNameForRequest(req task.TaskRequest) string {
 }
 
 func (r *Runner) runTask(req task.TaskRequest) {
+	// Join the task waitgroup before any report path (including the early
+	// validation failures below and the panic-recovery defer) so the drain
+	// cleanup barrier can wait on taskWG to know every task goroutine has
+	// fully finished teardown and terminal reporting. Done runs last (it is
+	// the first registered defer). See issue #313.
+	r.taskWG.Add(1)
+	defer r.taskWG.Done()
 	defer func() { <-r.sem }()
 	defer func() {
 		if rec := recover(); rec != nil {

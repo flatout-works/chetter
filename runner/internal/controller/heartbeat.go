@@ -26,7 +26,16 @@ const heartbeatInterval = 5 * time.Second
 // raise it via CHETTER_DRAIN_TIMEOUT_SEC (set it a few seconds below the pod's
 // grace period to leave time for the forced task shutdown). See issue #97.
 const defaultDrainTimeout = 30 * time.Second
-const defaultDrainCleanupGrace = 20 * time.Second
+
+// defaultDrainHardKillTimeout bounds the forced-cleanup phase that runs after
+// the drain deadline expires: sandbox teardown, workspace destroy,
+// session-export flush and terminal report delivery together must finish
+// within it, otherwise the runner logs the in-flight work and exits. The
+// default matches the terminal report retry window so a blocked report gets
+// its full window; keep drain timeout + hard kill below the pod's
+// terminationGracePeriodSeconds so the kill signal arrives before the pod is
+// SIGKILLed. See issue #313.
+const defaultDrainHardKillTimeout = 60 * time.Second
 
 func newRunnerID(workspaceRoot string) (string, error) {
 	if value := sanitizeSubjectToken(os.Getenv("RUNNER_ID")); value != "" {
@@ -306,7 +315,13 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 		r.mu.Unlock()
 		if count == 0 {
 			slog.Info("all tasks completed, drain finished", "runner_id", r.runnerID)
-			return false
+			// All tasks have left the map, but a task goroutine may still be
+			// winding down (e.g. the panic-recovery terminal report or a task
+			// claimed in the instant before draining started). Join the task
+			// barrier so the runner never exits mid-cleanup or mid-report;
+			// returns true only if the hard-kill timeout fired first. See
+			// issue #313.
+			return r.waitForTaskCleanup()
 		}
 		select {
 		case <-ctx.Done():
@@ -339,27 +354,76 @@ func (r *Runner) waitDrain(deadline time.Duration) bool {
 	}
 }
 
-func (r *Runner) waitForTaskCleanup() {
-	grace := r.drainCleanupGrace
-	if grace <= 0 {
-		grace = drainCleanupGrace()
+// waitForTaskCleanup is the drain completion barrier (issue #313). It blocks
+// until every task goroutine has finished its teardown — sandbox teardown,
+// workspace destroy, checkpoint/session-export flush — and its terminal
+// ReportTaskEvents delivery, or until the hard-kill timeout
+// (CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC, default 60s) is reached. It never
+// returns while a task is mid-cleanup: when the hard-kill fires it logs each
+// still-in-flight execution with its terminal-report delivery status so
+// operators can audit lost results, then returns true.
+func (r *Runner) waitForTaskCleanup() bool {
+	hardKill := r.drainHardKillTimeout
+	if hardKill <= 0 {
+		hardKill = drainHardKillTimeout()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	ctx, cancel := context.WithTimeout(context.Background(), hardKill)
 	defer cancel()
-	for {
-		r.mu.Lock()
-		count := len(r.tasks)
-		tasksChanged := r.tasksChanged
-		r.mu.Unlock()
-		if count == 0 {
-			return
-		}
-		select {
-		case <-tasksChanged:
-		case <-ctx.Done():
-			slog.Warn("task cleanup grace expired", "runner_id", r.runnerID, "remaining_tasks", count, "grace", grace)
-			return
-		}
+
+	r.mu.Lock()
+	r.drainHardKillDeadline = time.Now().Add(hardKill)
+	r.mu.Unlock()
+	slog.Info("waiting for task cleanup and terminal reports before exit",
+		"runner_id", r.runnerID, "hard_kill_timeout", hardKill)
+
+	// Wait for all task goroutines to finish. taskWG covers everything a
+	// task owns: the early validation reports, the synchronous teardown
+	// defers, and the synchronous terminal report (including the
+	// panic-recovery path). It is bounded by the hard-kill timeout.
+	tasksDone := make(chan struct{})
+	go func() {
+		r.taskWG.Wait()
+		close(tasksDone)
+	}()
+	select {
+	case <-tasksDone:
+	case <-ctx.Done():
+		r.auditForcedKill("task cleanup")
+		return true
+	}
+
+	// Join the terminal-report barrier explicitly. Terminal reports are
+	// published synchronously inside runTask, so once taskWG has drained this
+	// is already satisfied; the wait exists so no future detached report path
+	// can be abandoned at process exit.
+	reportsDone := make(chan struct{})
+	go func() {
+		r.reportWG.Wait()
+		close(reportsDone)
+	}()
+	select {
+	case <-reportsDone:
+	case <-ctx.Done():
+		r.auditForcedKill("terminal report")
+		return true
+	}
+	return false
+}
+
+// auditForcedKill logs every task still in flight when the hard-kill timeout
+// fired, with its terminal-report delivery status, so operators can audit
+// which executions lost their terminal result during a forced drain. See
+// issue #313.
+func (r *Runner) auditForcedKill(phase string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	slog.Error("drain hard kill timeout reached — exiting with cleanup incomplete",
+		"runner_id", r.runnerID, "phase", phase, "remaining_tasks", len(r.tasks))
+	for executionID, session := range r.tasks {
+		slog.Error("in-flight task at hard kill",
+			"runner_id", r.runnerID, "task_id", session.TaskID, "execution_id", executionID,
+			"resumable", session.Request.CheckpointAfterSuccess,
+			"terminal_report_delivered", r.reportDelivered[executionID])
 	}
 }
 
@@ -417,12 +481,12 @@ func drainTimeout() time.Duration {
 	return defaultDrainTimeout
 }
 
-func drainCleanupGrace() time.Duration {
-	seconds, err := strconv.Atoi(firstEnv("CHETTER_DRAIN_CLEANUP_GRACE_SEC"))
+func drainHardKillTimeout() time.Duration {
+	seconds, err := strconv.Atoi(firstEnv("CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC"))
 	if err == nil && seconds > 0 {
 		return time.Duration(seconds) * time.Second
 	}
-	return defaultDrainCleanupGrace
+	return defaultDrainHardKillTimeout
 }
 
 func firstEnv(keys ...string) string {
