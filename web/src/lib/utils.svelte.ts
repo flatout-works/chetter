@@ -1,4 +1,5 @@
 import { getSettings } from "$lib/stores/settings.svelte";
+import type { RunnerInfo } from "$gen/proto/api/v1/api_pb";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
@@ -106,6 +107,22 @@ export function formatHarness(harness: string): string {
     default:
       return harness || "OpenCode";
   }
+}
+
+// True when a RunnerInfo carries any non-empty execution telemetry worth
+// surfacing: resource gauges (CPU/memory/disk), sandbox availability or
+// sandbox metrics, or container caps. Used by the task detail page to decide
+// whether the "Execution" card should render.
+export function runnerHasTelemetry(runner: RunnerInfo | null | undefined): boolean {
+  if (!runner) return false;
+  const res = runner.resource;
+  if (res && (res.cpuPercent >= 0 || res.memoryPercent >= 0 || res.diskPercent >= 0)) return true;
+  if (runner.sandboxAvailable) return true;
+  if (runner.sandboxTotal > 0n || runner.sandboxStartFailures > 0n || runner.sandboxCrashes > 0n) return true;
+  if (runner.sandboxStartLatencyMs > 0n || runner.sandboxLifetimeMs > 0n || runner.sandboxMaxRssMb > 0n) return true;
+  if (runner.sandboxMaxCpuPercent > 0) return true;
+  if (runner.containerMemoryMb > 0 || runner.containerCpu > 0) return true;
+  return false;
 }
 
 export function humanReadableStatus(status: string, summary: string): string {
