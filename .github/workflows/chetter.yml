@@ -72,6 +72,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check, detect-changes]
     timeout-minutes: 120
+    # Serialize host builds and Arcane redeploys: concurrent runs race
+    # forceRecreate on wowbagger and have wedged the fleet mid-recreate
+    # (containers left in "created", project stopped) — see 2026-08-15 incident.
+    concurrency:
+      group: chetter-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 

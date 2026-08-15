@@ -625,6 +625,9 @@ func (s *session) recordStreamEvent(ev map[string]any) {
 		if errText, _ := ev["error"].(string); errText != "" {
 			s.setError(errText)
 		}
+		if looksLikeLoginFailure(ev) {
+			s.setError("Claude is not logged in")
+		}
 		isError, _ := ev["is_error"].(bool)
 		subtype, _ := ev["subtype"].(string)
 		if isError || strings.HasPrefix(subtype, "error") {
@@ -645,6 +648,16 @@ func (s *session) setError(message string) {
 	if s.runErr == "" {
 		s.runErr = message
 	}
+}
+
+// looksLikeLoginFailure reports whether a Claude stream-json result event is
+// the CLI's not-logged-in response. Claude Code prints "Not logged in · Please
+// run /login" as a successful result when no credential is available, which
+// previously surfaced as a completed task with that text as the summary.
+func looksLikeLoginFailure(ev map[string]any) bool {
+	text, _ := ev["result"].(string)
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "not logged in") || strings.Contains(lower, "please run /login")
 }
 
 func appendAssistantMessage(sb *strings.Builder, ev map[string]any) {

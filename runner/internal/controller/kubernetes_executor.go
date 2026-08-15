@@ -521,7 +521,7 @@ func (r *Runner) runKubernetesAgent(ctx context.Context, session *task.TaskSessi
 	summary, promptErr := h.SendPrompt(agentCtx, baseURL, sid, secret, req, workspace, taskPromptTimeout(req.TimeoutSec))
 	stopWatching()
 	if watchdog.isStuck() {
-		promptErr = errors.New("stuck harness: no progress")
+		promptErr = watchdog.stuckError()
 	}
 	stopFinalization := r.startFinalizationHeartbeat(req)
 	defer stopFinalization()
