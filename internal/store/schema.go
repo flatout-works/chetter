@@ -16,6 +16,8 @@ var schemaStatements = []string{
 		self_test_profile VARCHAR(32) NULL,
 		self_test_check VARCHAR(128) NULL,
 		self_test_nonce VARCHAR(128) NULL,
+		callback_parent_task_id VARCHAR(64) NULL,
+		callback_depth INT NOT NULL DEFAULT 0,
 		max_attempts INT NOT NULL DEFAULT 3,
 		summary TEXT NULL,
 		error TEXT NULL,

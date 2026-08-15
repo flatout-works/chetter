@@ -51,6 +51,12 @@ type SubmitTaskRequest struct {
 	TriggerName          string
 	TriggerType          string
 	SubmissionSource     string
+	// CallbackParentTaskID and CallbackDepth record event-callback provenance
+	// (issue #312): the task whose lifecycle event spawned this task through a
+	// create_task callback and the recursion depth of that chain. They are set
+	// by the callback dispatch path only; all other ingress leaves them empty.
+	CallbackParentTaskID string
+	CallbackDepth        int
 	SelfTestRunID        string
 	SelfTestProfile      string
 	SelfTestCheck        string
@@ -134,6 +140,18 @@ type Service struct {
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
+
+	// taskAdmissionMu serializes pending-task admission checks and inserts so
+	// the global pending-task limit (CHETTER_MAX_PENDING_TASKS, issue #50) is
+	// enforced strictly. The server runs as a single replica (the in-process
+	// claim notifier already relies on this, see AGENTS.md), so serializing
+	// admission here yields strict enforcement; the count itself is performed
+	// inside the submission transaction so it always reflects committed state
+	// and stays correct across server restarts. Every path that can make a
+	// task pending (SubmitTask, RerunTask, RecoverTask, ResumeAgentSession)
+	// must take this lock before its submission transaction when the limit is
+	// enabled; when disabled, submissions keep their pre-existing concurrency.
+	taskAdmissionMu sync.Mutex
 }
 
 func (s *Service) QuotaExhausted() bool {
@@ -989,6 +1007,54 @@ func (s *Service) reapExpiredSessionArtifacts() {
 	}
 }
 
+// PendingTaskCapacityError is returned when the global pending-task admission
+// limit (CHETTER_MAX_PENDING_TASKS, issue #50) is reached. It is retryable:
+// completed, cancelled, and claimed tasks release pending capacity, after
+// which the same submission can be retried unchanged.
+type PendingTaskCapacityError struct {
+	Limit   int
+	Current int64
+}
+
+func (e *PendingTaskCapacityError) Error() string {
+	return fmt.Sprintf("pending task admission limit reached (%d pending, limit %d): retry when capacity frees up", e.Current, e.Limit)
+}
+
+// admitPendingTask enforces the global pending-task admission limit inside the
+// submission transaction. A limit <= 0 disables admission control. When the
+// limit is enabled, callers must hold s.taskAdmissionMu so concurrent
+// submissions cannot overshoot the limit.
+func (s *Service) admitPendingTask(ctx context.Context, q data.Repository) error {
+	if s.cfg.MaxPendingTasks <= 0 {
+		return nil
+	}
+	current, err := q.CountPendingTasks(ctx)
+	if err != nil {
+		return err
+	}
+	if current >= int64(s.cfg.MaxPendingTasks) {
+		return &PendingTaskCapacityError{Limit: s.cfg.MaxPendingTasks, Current: current}
+	}
+	return nil
+}
+
+// auditPendingAdmissionRejected records an audit event for a submission that
+// was rejected by the pending-task admission limit. The rejected task is never
+// stored, so this event is the only trace of the attempt.
+func (s *Service) auditPendingAdmissionRejected(ctx context.Context, sourceType, sourceID string, err error) {
+	var capErr *PendingTaskCapacityError
+	if !errors.As(err, &capErr) {
+		return
+	}
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "task_admission_rejected",
+		SourceType: sourceType,
+		SourceID:   sourceID,
+		TargetType: "task",
+		Detail:     capErr.Error(),
+	})
+}
+
 // SubmitTask stores a pending task for runners to claim through ConnectRPC.
 func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.TaskRecord, error) {
 	if in.Prompt == "" {
@@ -1119,7 +1185,18 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	// tasks still require isolation there.
 	isolationRequired := resumeMode != "none" || in.Isolation == "required" || !s.cfg.AllowUnisolated
 	var task repository.Task
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		// Global pending-task admission gate (issue #50). Serialized by
+		// taskAdmissionMu when enabled so concurrent submissions cannot
+		// overshoot the limit.
+		if err := s.admitPendingTask(ctx, q); err != nil {
+			return err
+		}
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL+" "+githubRepo), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                   taskID,
@@ -1132,6 +1209,8 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			TriggerName:          nullString(in.TriggerName),
 			TriggerType:          nullString(in.TriggerType),
 			SubmissionSource:     submissionSource,
+			CallbackParentTaskID: nullString(in.CallbackParentTaskID),
+			CallbackDepth:        int32(in.CallbackDepth),
 			SelfTestRunID:        nullString(in.SelfTestRunID),
 			SelfTestProfile:      nullString(in.SelfTestProfile),
 			SelfTestCheck:        nullString(in.SelfTestCheck),
@@ -1199,6 +1278,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		return nil
 	})
 	if err != nil {
+		s.auditPendingAdmissionRejected(ctx, submissionSource, in.TriggerName, err)
 		return store.TaskRecord{}, err
 	}
 	s.notifyTaskClaimable()
@@ -1308,7 +1388,17 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 		return TaskToolRecord{}, fmt.Errorf("generate recovery event id: %w", err)
 	}
 	var recoveryEvent TaskEventCallbackContext
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		// Global pending-task admission gate (issue #50); recovery requeues the
+		// task as pending, so it consumes pending capacity like a submission.
+		if err := s.admitPendingTask(ctx, q); err != nil {
+			return err
+		}
 		oldSession, err := q.GetAgentSessionByTaskID(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("get recovery source session: %w", err)
@@ -1435,6 +1525,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 		return nil
 	})
 	if err != nil {
+		s.auditPendingAdmissionRejected(ctx, "recover", taskID, err)
 		return TaskToolRecord{}, err
 	}
 	s.notifyTaskClaimable()
@@ -1511,7 +1602,16 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 
 	teamID := orig.TeamID.String
 
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		// Global pending-task admission gate (issue #50); see SubmitTask.
+		if err := s.admitPendingTask(ctx, q); err != nil {
+			return err
+		}
 		taskSearchText := strings.Join(strings.Fields(orig.Prompt+" "+session.Agent.String+" "+session.ModelID.String+" "+orig.GitUrl.String), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                   newTaskID,
@@ -1584,6 +1684,7 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 		return nil
 	})
 	if err != nil {
+		s.auditPendingAdmissionRejected(ctx, "rerun", taskID, err)
 		return TaskToolRecord{}, err
 	}
 	s.notifyTaskClaimable()
@@ -1670,7 +1771,17 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	var task repository.Task
+	admissionEnabled := s.cfg.MaxPendingTasks > 0
+	if admissionEnabled {
+		s.taskAdmissionMu.Lock()
+		defer s.taskAdmissionMu.Unlock()
+	}
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
+		// Global pending-task admission gate (issue #50); resume requeues the
+		// task as pending, so it consumes pending capacity like a submission.
+		if err := s.admitPendingTask(ctx, q); err != nil {
+			return err
+		}
 		sequence, err := q.GetNextUserPromptSequence(ctx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get next prompt sequence: %w", err)
@@ -1723,6 +1834,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 		return nil
 	})
 	if err != nil {
+		s.auditPendingAdmissionRejected(ctx, "resume", sessionID, err)
 		return ResumeAgentSessionOutput{}, err
 	}
 	s.notifyTaskClaimable()

@@ -327,8 +327,9 @@ Kubernetes-mode runner has no Docker socket mount. Agent pods use
 ### P6: Observability, Safety, And Failure Classification
 
 Status: **Partially completed** — structured failure classification, server-side env var
-validation, secret redaction, Prometheus metrics, and `/readyz` probes shipped. Remaining:
-gVisor metrics collection, runtime sandbox monitoring, and richer dashboards.
+validation, secret redaction, Prometheus metrics, `/readyz` probes, gVisor sandbox metrics
+collection, and runtime sandbox monitoring (see `docs/DEPLOYMENT.md` — issue #302) shipped.
+Remaining: richer dashboards.
 
 Why next:
 
@@ -338,8 +339,8 @@ Next deliverables:
 
 - Add task failure categories such as `model_error`, `runtime_error`, `timeout`, `cancelled`, `budget_exceeded`, `restore_failed`, and `policy_blocked`.
 - Add secrets validation with blocked names, blocked prefixes, max counts, max name length, and max value length.
-- Add gVisor metrics collection for filesystem and network behavior.
-- Add optional runtime monitoring for suspicious sandbox activity.
+- ~~Add gVisor metrics collection for filesystem and network behavior~~ — shipped: per-sandbox start/lifetime latency, peak RSS/CPU, start failures and crashes are collected on the runner and surfaced via heartbeats, `/metrics`, and `task_events` (`sandbox_start_failed`, `sandbox_crashed`). See issue #302.
+- ~~Add optional runtime monitoring for suspicious sandbox activity~~ — shipped: `sandbox_available` heartbeat probe and per-sandbox teardown monitoring cover runtime sandbox health. See issue #302.
 - Add runner and session dashboards in the web UI.
 
 Definition of done:

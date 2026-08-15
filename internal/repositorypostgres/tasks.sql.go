@@ -79,6 +79,19 @@ func (q *Queries) ClearPendingTasks(ctx context.Context, arg ClearPendingTasksPa
 	return result.RowsAffected()
 }
 
+const countPendingTasks = `-- name: CountPendingTasks :one
+SELECT COUNT(*) FROM tasks WHERE status = 'pending'
+`
+
+// Counts tasks waiting to be claimed. Used by the global pending-task
+// admission limit (issue #50).
+func (q *Queries) CountPendingTasks(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingTasks)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const failExpiredLeases = `-- name: FailExpiredLeases :execrows
 UPDATE tasks task
 SET status = 'error',
@@ -171,7 +184,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskEv
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks WHERE id = $1
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks WHERE id = $1
 `
 
 func (q *Queries) GetTaskByID(ctx context.Context, id string) (Task, error) {
@@ -203,14 +216,16 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (Task, error) {
 		&i.SelfTestProfile,
 		&i.SelfTestCheck,
 		&i.SelfTestNonce,
+		&i.CallbackParentTaskID,
+		&i.CallbackDepth,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO tasks
-    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, search_text, created_at, updated_at)
-VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, search_text, created_at, updated_at)
+VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 `
 
 type InsertTaskParams struct {
@@ -228,6 +243,8 @@ type InsertTaskParams struct {
 	SelfTestProfile      sql.NullString `json:"self_test_profile"`
 	SelfTestCheck        sql.NullString `json:"self_test_check"`
 	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
+	CallbackParentTaskID sql.NullString `json:"callback_parent_task_id"`
+	CallbackDepth        int32          `json:"callback_depth"`
 	SearchText           sql.NullString `json:"search_text"`
 	CreatedAt            time.Time      `json:"created_at"`
 	UpdatedAt            time.Time      `json:"updated_at"`
@@ -249,6 +266,8 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.SelfTestProfile,
 		arg.SelfTestCheck,
 		arg.SelfTestNonce,
+		arg.CallbackParentTaskID,
+		arg.CallbackDepth,
 		arg.SearchText,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -257,7 +276,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksBySelfTestRun = `-- name: ListTasksBySelfTestRun :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE self_test_run_id = $1
 ORDER BY created_at ASC, id ASC
 `
@@ -297,6 +316,8 @@ func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -312,7 +333,7 @@ func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE ($1 = '' OR tasks.status = $1)
   AND (COALESCE($2, '') = '' OR tasks.trigger_name = $2)
   AND (COALESCE($3, '') = '' OR EXISTS (
@@ -372,6 +393,8 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -387,7 +410,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE tasks.team_id = $1
   AND ($2 = '' OR tasks.status = $2)
   AND (COALESCE($3, '') = '' OR tasks.trigger_name = $3)
@@ -450,6 +473,8 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -465,7 +490,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR tasks.status = $2)
   AND (COALESCE($3, '') = '' OR tasks.trigger_name = $3)
@@ -528,6 +553,8 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -612,7 +639,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE ($1 = '' OR tasks.team_id = $1)
   AND ($2 = '' OR tasks.status = $2)
   AND (COALESCE($3, '') = '' OR tasks.trigger_name = $3)
@@ -678,6 +705,8 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Tas
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}
@@ -693,7 +722,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Tas
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce FROM tasks
+SELECT id, team_id, status, prompt, git_url, git_ref, trigger_name, trigger_type, submission_source, max_attempts, summary, error, error_category, created_at, updated_at, ended_at, search_text, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
 WHERE tasks.team_id = ANY($1::text[])
   AND ($2 = '' OR tasks.status = $2)
   AND (COALESCE($3, '') = '' OR tasks.trigger_name = $3)
@@ -759,6 +788,8 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.SelfTestProfile,
 			&i.SelfTestCheck,
 			&i.SelfTestNonce,
+			&i.CallbackParentTaskID,
+			&i.CallbackDepth,
 		); err != nil {
 			return nil, err
 		}

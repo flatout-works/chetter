@@ -225,6 +225,19 @@ message RunnerInfo {
   // task limits may be stricter but can never raise these configured caps.
   int32 container_memory_mb = 20;
   double container_cpu = 21;
+  // Sandbox runtime monitoring for isolated (gVisor/runsc) executions. See
+  // issue #302. sandbox_available reports whether the runsc runtime binary is
+  // present and working on this runner; the remaining fields are cumulative
+  // per-sandbox metrics (start failures, crashes, start latency, sandbox
+  // lifetime, peak RSS/CPU).
+  bool sandbox_available = 22;
+  int64 sandbox_total = 23;
+  int64 sandbox_start_failures = 24;
+  int64 sandbox_crashes = 25;
+  int64 sandbox_start_latency_ms = 26;
+  int64 sandbox_lifetime_ms = 27;
+  int64 sandbox_max_rss_mb = 28;
+  double sandbox_max_cpu_percent = 29;
 }
 
 message ResourceInfo {

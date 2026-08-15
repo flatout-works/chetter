@@ -195,6 +195,7 @@ func newDrainTestRunner(t *testing.T) (*Runner, *mockHeartbeatClient) {
 		cancelledTasks:    make(map[string]struct{}),
 		sem:               make(chan struct{}, 2),
 		drainCleanupGrace: 20 * time.Millisecond,
+		sandbox:           newSandboxMetrics(),
 	}
 	return r, mb
 }
@@ -319,6 +320,78 @@ func TestRunnerInfoReportsContainerLimits(t *testing.T) {
 	}
 	if info.ContainerCpu != 2 {
 		t.Fatalf("ContainerCpu = %v, want 2", info.ContainerCpu)
+	}
+}
+
+// TestRunnerInfoReportsSandboxMetrics verifies the heartbeat surfaces sandbox
+// runtime availability and cumulative per-sandbox counters (issue #302). The
+// runsc probes are stubbed so the test does not depend on a real runtime.
+func TestRunnerInfoReportsSandboxMetrics(t *testing.T) {
+	resetRunscProbeCache()
+	t.Cleanup(resetRunscProbeCache)
+
+	origAvailable := runscAvailable
+	origProbe := runscVersionProbe
+	defer func() {
+		runscAvailable = origAvailable
+		runscVersionProbe = origProbe
+	}()
+	runscAvailable = func() bool { return true }
+	runscVersionProbe = func() (string, bool) { return "runsc version release-20240101", true }
+
+	r, _ := newDrainTestRunner(t)
+	r.cfg.Execution.Backend = "docker"
+
+	r.sandbox.recordStart(2 * time.Second)
+	r.sandbox.recordStartFailure()
+	r.sandbox.recordCrash()
+	r.sandbox.recordObserved(512, 37.5)
+	// Lifetime accounting is owned by the teardown path (recordFinish); a
+	// crash only increments the crash counter.
+	r.sandbox.recordFinish(15 * time.Second)
+
+	info := r.runnerInfoProto("active")
+	if !info.SandboxAvailable {
+		t.Fatal("SandboxAvailable = false, want true for a working runsc")
+	}
+	if info.SandboxTotal != 1 {
+		t.Fatalf("SandboxTotal = %d, want 1", info.SandboxTotal)
+	}
+	if info.SandboxStartFailures != 1 {
+		t.Fatalf("SandboxStartFailures = %d, want 1", info.SandboxStartFailures)
+	}
+	if info.SandboxCrashes != 1 {
+		t.Fatalf("SandboxCrashes = %d, want 1", info.SandboxCrashes)
+	}
+	if info.SandboxStartLatencyMs != 2000 {
+		t.Fatalf("SandboxStartLatencyMs = %d, want 2000", info.SandboxStartLatencyMs)
+	}
+	if info.SandboxLifetimeMs != 15000 {
+		t.Fatalf("SandboxLifetimeMs = %d, want 15000", info.SandboxLifetimeMs)
+	}
+	if info.SandboxMaxRssMb != 512 {
+		t.Fatalf("SandboxMaxRssMb = %d, want 512", info.SandboxMaxRssMb)
+	}
+	if info.SandboxMaxCpuPercent != 37.5 {
+		t.Fatalf("SandboxMaxCpuPercent = %v, want 37.5", info.SandboxMaxCpuPercent)
+	}
+}
+
+// TestRunnerInfoSandboxUnavailableWithoutRunsc verifies that a docker runner
+// without the runsc binary reports sandbox_available=false in heartbeats, so
+// fleet health surfaces sandbox drift (issue #302 AC4).
+func TestRunnerInfoSandboxUnavailableWithoutRunsc(t *testing.T) {
+	resetRunscProbeCache()
+	t.Cleanup(resetRunscProbeCache)
+
+	origAvailable := runscAvailable
+	defer func() { runscAvailable = origAvailable }()
+	runscAvailable = func() bool { return false }
+
+	r, _ := newDrainTestRunner(t)
+	r.cfg.Execution.Backend = "docker"
+	if info := r.runnerInfoProto("active"); info.SandboxAvailable {
+		t.Fatal("SandboxAvailable = true for a runner without runsc")
 	}
 }
 

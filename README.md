@@ -81,6 +81,27 @@ sandboxed setup:
    - A task submitted with `isolation="required"` runs (instead of failing
      with `isolation_unavailable`).
 
+### Validating the Quick Start
+
+`ops/test-quickstart.sh` runs the full Quick Start from scratch on a
+disposable Ubuntu 24.04 KVM VM and asserts every step — ideal before
+releases:
+
+```bash
+DEEPSEEK_API_KEY=sk-... ./ops/test-quickstart.sh            # plain-Docker quickstart
+DEEPSEEK_API_KEY=sk-... ./ops/test-quickstart.sh --gvisor   # ...then gVisor hardening
+```
+
+The default run provisions the VM (no Docker preinstalled), installs the
+prerequisites, and validates: image build, compose up, database
+auto-creation + migrations, MCP connect, fleet health, a real task
+execution, and the self-test. `--gvisor` additionally installs `runsc`,
+switches the stack to hardened mode and re-validates with
+`isolation="required"` tasks (including the `HostConfig.Runtime == runsc`
+check). Each step is reported PASS/FAIL; the VM is torn down afterwards
+(`QS_KEEP_VM=1` keeps it for debugging). Requires `/dev/kvm`, libvirt
+tooling, and sudo. See the script header for all options.
+
 ### Next Steps
 
 - Configure the **GitHub App** for PR review and issue automation (webhook, label,

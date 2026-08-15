@@ -38,6 +38,35 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-14
+
+### Added
+
+- Event-callback `create_task` recursion guard (#312): each callback-spawned task now records its provenance chain on `tasks` (`callback_parent_task_id`, `callback_depth`; migrations 053 MySQL/TiDB and 029 PostgreSQL). Before spawning, the child depth is derived from the source task and checked against `CHETTER_CALLBACK_MAX_DEPTH` (default `5`; `0` disables): a spawn that would exceed the limit is rejected before task creation — a `task.callback_rejected` event with error `event_callback_recursion_limit` is recorded on the parent task's event stream and an `event_callback_recursion_limit` audit event is emitted. Only the specific recursive chain is stopped; the callback itself stays enabled, so a misconfigured `task.completed` → `create_task` loop can no longer grow the queue unboundedly.
+
+### Documentation
+
+- Website technical architecture page updated for the session-resume UX (#58) — resuming a paused or recoverable session now navigates straight to the new attempt's live task detail page, the resume form is disabled while the request is in flight with duplicate submissions guarded, and backend validation or runner-availability errors surface inline in the resume modal — and for the dual-dialect SQL parity guard now enforced by `make check`: the build fails whenever the MySQL/TiDB and PostgreSQL query sets drift apart, and every query is verified to be materialized in the generated repositories and the `internal/data/` facade.
+
+## 2026-08-13
+
+### Added
+
+- `ops/test-quickstart.sh` gained a `--gvisor` mode: after the plain-Docker run it installs `runsc` in the VM, switches the stack to hardened mode (`USE_GVISOR=true`, isolation enforced), and re-validates that runners advertise isolation, an `isolation=required` task completes under the `runsc` runtime, and the self-test passes under enforcement. Host prerequisites (`/dev/kvm`, libvirt tooling, `curl`, `python3`, `openssl`, `sudo`) are now validated up front, starting `libvirtd` if needed.
+- `scripts/gen-stats.sh` generates `docs/STATS.md` — code statistics (LOC by language plus counts for tables, migrations, MCP tools, protobuf RPCs, web routes, and harnesses), excluding generated/vendored paths so output stays deterministic.
+
+### Fixed
+
+- Pending-task admission lock is now only taken when `CHETTER_MAX_PENDING_TASKS` is enabled (default `0` = disabled): submission, recovery, rerun, and session-resume transactions previously serialized on the admission mutex unconditionally, even with the limit off. The unlock is deferred so a panic or early return cannot leave it held. `docs/DEPLOYMENT.md` clarifies that the reaper's lease-expiry recovery can transiently push `pending` above the cap.
+- `chetter_task_failures` Prometheus gauge no longer counts every task row: the collector query now filters on `failure_category IS NOT NULL`, so pending, running, and successfully completed tasks no longer roll up into a synthetic `unknown` bucket (that bucket now only reflects tasks that actually failed with an unclassified per-attempt error category).
+- Runner sandbox lifetime accounting corrected: `sandbox_lifetime_ms` is no longer double-counted for crashed sandboxes (the crash counter and lifetime accounting now have separate owners), and no lifetime is recorded for sandboxes that never started — serve/resume/RPC teardown is registered only after a successful container start.
+- Sandbox crash classification: an OOM-killed container is no longer misreported as `sandbox_crashed` — the runsc/sandbox runtime-error branch is gated on `!OOMKilled`, preserving the caller's `resource_limit` classification; RPC-mode wait-error crashes report `sandbox_crashed` via an explicit error category instead of message-prefix re-derivation.
+
+### Documentation
+
+- New architecture articles indexed from `docs/README.md`: `docs/WEBUI.md` (how the SvelteKit web UI is built — SvelteKit SPA, Tailwind v4 + Flowbite-Svelte, ConnectRPC/protobuf data layer, state stores, auth, and serving via `go:embed`) and `docs/BACKEND.md` (backend design — MCP server/control plane and runner, ConnectRPC surfaces, sqlc dual-dialect data layer, lease-based task claiming, reaper, harnesses, and gVisor isolation), both with code examples.
+- README gained a "Validating the Quick Start" section documenting `ops/test-quickstart.sh` usage for the plain-Docker and `--gvisor` validation runs.
+
 ## 2026-08-06
 
 ### Added
@@ -48,6 +77,12 @@ Detailed per-day history of everything that went into this release is below.
 ### Fixed
 
 - Release notes extraction in `release.yml` uses `index()` instead of a regex to match `## [x.y.z]` headers, whose brackets would otherwise be parsed as a character class.
+
+## 2026-08-07
+
+### Documentation
+
+- Website updated to reflect the versioned releases feature: the technical architecture page documents the `release.yml` workflow (binaries built on `v*` tags with the version injected via ldflags, release notes pulled from the matching CHANGELOG section), `/api/server-info` reporting server version, git hash, and uptime, and the UI footer showing `x.y.z-githash` with live uptime. A new "Releases" detail card summarizes the flow. The main site's isolation card now clarifies that plain Docker execution alone is not a sandbox against a malicious task, matching the README quickstart note.
 
 ## 2026-08-05
 

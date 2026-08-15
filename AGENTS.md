@@ -131,6 +131,7 @@ cd internal/data && go run ./cmd/genfacade   # regenerates the facade methods
 4. Run `cd internal/data && go run ./cmd/genfacade` to add the facade method.
 5. Verify the method appears in `internal/data/queries_gen.go`.
 6. Build and test: `go build ./... && go test ./internal/config/ ./internal/store/`.
+7. Run `make check-sql-parity` (also part of `make check`) — the static dialect-parity check fails on any of the mistakes below, and it verifies query-name parity and that the sqlc packages + facade were regenerated.
 
 **Common mistakes:**
 - Forgetting the PostgreSQL query file — the build will fail because the facade method calls a missing PostgreSQL function.
@@ -138,6 +139,8 @@ cd internal/data && go run ./cmd/genfacade   # regenerates the facade methods
 - Using `VALUES(col)` in the PostgreSQL file — use `EXCLUDED.col` instead.
 - Forgetting to regenerate the facade after adding a query — the new method won't be callable through the `data.Repository` interface.
 - A multi-column `ALTER TABLE` in `db/migrations/` whose `AFTER` clause references a column added in the same statement — TiDB fails with `Error 1054`. Use one `ALTER TABLE` per column.
+
+**Dialect-parity guard:** `make check-sql-parity` (run by `make check` / CI) statically verifies that every `-- name:` query in `db/queries/*.sql` has a same-named, same-command-type counterpart in `db/postgres/queries/*.sql` (and vice versa), that PostgreSQL files contain no MySQL-only constructs (`INSERT IGNORE`, `ON DUPLICATE KEY`, `VALUES(col)` upsert targets, bare `?` placeholders) and MySQL files contain no PostgreSQL-only constructs (`ON CONFLICT`, `EXCLUDED.`, `$N` placeholders), and that every query exists in the generated `internal/repository/`, `internal/repositorypostgres/`, and `internal/data/` facade code (i.e. `make generate` + `go generate ./internal/data` were re-run). It lives in `internal/sqlparity/`; a query added to one dialect only, or a regenerated query whose facade method is missing, fails `make check`.
 
 ## Auth Model
 
@@ -218,6 +221,7 @@ Before committing, verify:
 - **Arcane tools** are conditionally registered only if `ARCANE_SERVER_URL` and `ARCANE_API_KEY` are configured.
 - **Audit log** (`audit_log` table) records server-side events: webhook receipts, trigger matches, task submissions, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Queryable via `chetter_list_audit_events` MCP tool.
 - **Task artifacts** (`task_artifacts` table) tracks GitHub artifacts (issues, PRs, comments) created by tasks, discovered passively via the `Task: task_XXX` footer signature. Queryable via `chetter_list_task_artifacts` MCP tool.
+- **Event-callback recursion guard**: `create_task` callbacks record provenance on the spawned task (`tasks.callback_parent_task_id`, `tasks.callback_depth`) and are rejected with an `event_callback_recursion_limit` error (recorded in `task_events` as `task.callback_rejected` plus an audit event) when the chain would exceed `CHETTER_CALLBACK_MAX_DEPTH` (default 5, `0` disables). Only the specific recursive chain is stopped — the callback stays enabled. New columns were added per the schema-change checklist in migrations 053 (MySQL/TiDB) and 029 (PostgreSQL). See issue #312.
 - **Bot-comment filtering**: the webhook handler skips comments from the Chetter GitHub App itself unless the trigger config includes `bot_comments:true`.
 - **Heartbeat events**: `opencode: server.heartbeat` events update the task lease on every occurrence, but are stored as event rows at most once per minute per task (`heartbeatEventMinInterval`). This preserves the ability to trace when a runner went silent without flooding `task_events`.
 - **Network isolation**: gVisor (`--runtime runsc`) provides sandboxing in Docker mode. The legacy bridge/netns/iptables code has been removed.

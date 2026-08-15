@@ -37,6 +37,16 @@ Both the server and runner handle SIGTERM/SIGINT gracefully for zero-downtime ro
 
 **Runner**: On SIGTERM, the runner marks itself `draining`, sends a final heartbeat, stops claiming new tasks, waits for in-flight tasks to finish (up to `CHETTER_DRAIN_TIMEOUT_SEC`, default 30s), and force-cancels any that overrun. Exits 0 on a clean drain, 1 if tasks were force-cancelled. The drain deadline is derived from each task's remaining timeout (clamped by `CHETTER_DRAIN_TIMEOUT_SEC`), preventing premature force-cancel of long-running tasks. Resumable sessions are paused (workspace preserved) before force-cancel, enabling later resume by a fresh runner.
 
+## Task Queue Admission Control
+
+Set `CHETTER_MAX_PENDING_TASKS` (default `0` = disabled) to cap how many tasks may sit in the `pending` state waiting for a runner. When the cap is reached, every ingress path — MCP submit, web API, webhooks, triggers, rerun, recovery, and session resume — rejects new work with a retryable capacity error and records a `task_admission_rejected` audit event instead of storing the task. Completed, cancelled, and claimed tasks release pending capacity automatically, so a rejected submission can simply be retried.
+
+Concurrent submissions cannot overshoot the limit: the server serializes admission checks (only while the limit is enabled), so the cap is enforced strictly on admissions (the server is designed to run as a single replica). The reaper's lease-expiry recovery can transiently push `pending` above the cap — a claimed task releases a slot, the slot is reused, and the original task's lease then expires and requeues — but no further admissions occur until the count drops back below the limit. Queue depth is observable at any time via the `chetter_tasks{status="pending"}` Prometheus gauge, the fleet-health `PendingTasks` field, and the reaper's task metrics. See issue #50.
+
+## Event Callback Recursion Guard
+
+`create_task` event callbacks are checked against a provenance-depth limit to stop misconfigured recursion loops (a `task.completed` → `create_task` callback whose spawned tasks also emit `task.completed` would otherwise create tasks forever). Each callback-spawned task records its parent task and its depth in the chain (`tasks.callback_parent_task_id`, `tasks.callback_depth`); when a callback would spawn a task deeper than `CHETTER_CALLBACK_MAX_DEPTH` (default `5`), the spawn is rejected — a `task.callback_rejected` event with error `event_callback_recursion_limit` is recorded on the parent task's event stream and an `event_callback_recursion_limit` audit event is emitted. Only the specific recursive chain is stopped; the callback itself remains enabled for unrelated tasks. Set `CHETTER_CALLBACK_MAX_DEPTH` to `0` to disable the guard. See issue #312.
+
 ## Docker + gVisor
 
 Install `runsc` on the host and set `USE_GVISOR=true` to enable gVisor for agent containers.
@@ -161,3 +171,32 @@ gVisor adds per-syscall latency because every call is intercepted by the Sentry.
 Regardless of the container runtime, Chetter runners provide outbound network filtering via a transparent HTTP proxy and DNS proxy. The proxy enforces an allowlist of domains and blocks everything else.
 
 > **Note:** gVisor sandboxes the agent process only. It does not sandbox the network or the MCP bridge. Proxy/DNS filtering is an operational control, not a task security boundary.
+
+### Monitoring The Sandbox Runtime
+
+Once a task is running inside a sandbox, operators need visibility into the sandbox runtime itself: runsc start/teardown failures, sandbox crashes, and resource pressure are distinct from ordinary agent failures. Chetter collects per-sandbox metrics on the runner and surfaces them through heartbeats, the fleet metrics endpoint, and the web UI. See issue #302.
+
+**Runner heartbeat fields** (visible in the runner fleet page and in `chetter_runner_health`):
+
+| Field | Meaning |
+|---|---|
+| `sandbox_available` | The runsc binary is present on the runner and `runsc --version` succeeds (docker mode). In Kubernetes mode this reports the configured runtime class (`gvisor` = available). A runner that was advertising isolation but now reports `sandbox_available=false` has sandbox drift — investigate before admitting new tasks. |
+| `sandbox_total` | Cumulative sandboxes started successfully since the runner started. |
+| `sandbox_start_failures` | Cumulative `docker run` failures classified as sandbox runtime failures (runsc/OCI errors). |
+| `sandbox_crashes` | Cumulative sandboxes that died from an infrastructure failure mid-task (daemon-recorded runsc/sandbox error, or an unexpected non-zero exit while the harness was still running). |
+| `sandbox_start_latency_ms` | Cumulative sandbox start latency (docker run wall time), for average start cost. |
+| `sandbox_lifetime_ms` | Cumulative sandbox lifetime (start to teardown), for average sandbox age. |
+| `sandbox_max_rss_mb`, `sandbox_max_cpu_percent` | Peak sandbox RSS/CPU observed at teardown — a proxy for in-sandbox resource pressure. |
+
+**Prometheus metrics** (`/metrics`, aggregate across active runners):
+
+- `chetter_runner_sandbox_available{status="available"|"unavailable"}` — count of runners by sandbox runtime availability.
+- `chetter_runner_sandbox{metric="total"|"start_failures"|"crashes"|"start_latency_ms"}` — cumulative per-sandbox counters summed across active runners.
+- `chetter_task_failures{failure_category="..."}` — failed tasks by task-level failure category; sandbox infrastructure failures are counted under `harness_error` (the task-level failure category shared with other runner-side infrastructure failures).
+
+**Failure categories** — sandbox lifecycle failures are reported as distinct per-attempt error categories and stored in `task_events` (e.g. `task.failed.sandbox_start_failed`, `task.failed.sandbox_crashed`):
+
+- `sandbox_start_failed` — the sandbox could not be started (`docker run` failed with a runsc/OCI runtime error). This is a terminal per-attempt failure, retried by the normal attempt/backoff machinery.
+- `sandbox_crashed` — the sandbox died while the task was running (runsc/sandbox runtime error, or an unexpected non-zero exit with a daemon-recorded error in serve mode). Also terminal per-attempt; the task is retried up to `max_attempts` like any other infrastructure failure.
+
+Both map to the task-level `harness_error` failure category, so the reaper and session-recovery paths treat them exactly like `isolation_unavailable` and other runner-side infrastructure failures: the failed attempt feeds `task_events`, the task is eligible for a fresh execution attempt, and the failure counts appear in `chetter_task_failures`. Unlike an OOM kill (which is reported as `resource_limit` and `OOMKilled`), these categories mean the sandbox runtime itself — not the agent or the memory limit — was the cause.

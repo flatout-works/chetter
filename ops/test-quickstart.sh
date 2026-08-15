@@ -2,13 +2,18 @@
 # Validate the README Quick Start on a disposable Ubuntu 24.04 KVM VM.
 #
 # Usage:
-#   DEEPSEEK_API_KEY=sk-... ops/test-quickstart.sh
+#   DEEPSEEK_API_KEY=sk-... ops/test-quickstart.sh [--gvisor]
 #
 # The script provisions a fresh Ubuntu 24.04 VM (no Docker preinstalled),
 # installs the quickstart prerequisites, then runs the Quick Start commands
 # from the README verbatim and asserts every step:
 #   build images -> compose up -> DB auto-created + migrations -> MCP tools ->
 #   fleet active -> real task executes -> self-test passes.
+#
+# With --gvisor, the script then installs gVisor (runsc) in the VM, switches
+# the stack to hardened mode (USE_GVISOR=true, isolation enforced for every
+# task), and re-validates: runners advertise isolation, a task runs with the
+# runsc runtime, and the self-test passes under enforcement.
 #
 # Environment:
 #   DEEPSEEK_API_KEY   required for the task/self-test steps (skipped if unset)
@@ -19,10 +24,19 @@
 #   QS_SSH_KEY         public key injected into the VM (default ~/.ssh/id_rsa.pub)
 #   QS_USER            VM user (default test)
 #
-# Requires: /dev/kvm, libvirt tools (virt-install, virsh, cloud-localds),
-# passwordless sudo for libvirt/qemu commands, network access.
+# Requires: /dev/kvm, libvirt tooling (virt-install, virsh, cloud-localds,
+# qemu-img), curl, python3, openssl, sudo (passwordless or interactive),
+# network access. Prerequisites are validated up front.
 
 set -euo pipefail
+
+GVISOR=0
+case "${1:-}" in
+  --gvisor) GVISOR=1 ;;
+  -h|--help) grep -E "^# ?(Usage|  |#   |# With)" "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  "") ;;
+  *) echo "usage: $0 [--gvisor]" >&2; exit 2 ;;
+esac
 
 VM_NAME=${QS_VM_NAME:-chetter-quickstart-test}
 MEMORY=${QS_MEMORY:-4096}
@@ -59,9 +73,17 @@ vm_scp() { scp -o BatchMode=yes "$1" "$QS_USER@$VM_IP:$2"; }
 
 note "Prerequisites"
 [[ -e /dev/kvm ]] || die "KVM not available (/dev/kvm missing)"
-command -v virt-install virsh cloud-localds >/dev/null || die "install qemu-system-x86 libvirt-daemon-system libvirt-clients virtinst cloud-image-utils"
+for cmd in virt-install virsh cloud-localds qemu-img curl python3 openssl sudo; do
+  command -v "$cmd" >/dev/null || die "required command not found: $cmd (install qemu-system-x86 libvirt-daemon-system libvirt-clients virtinst cloud-image-utils cloud-utils)"
+done
 [[ -f "$SSH_KEY" ]] || die "SSH public key not found at $SSH_KEY"
-command -v mysql >/dev/null || echo "note: mysql client not on this host; DB checks run inside the VM"
+if ! systemctl is-active libvirtd >/dev/null 2>&1; then
+  echo "libvirtd not running — starting it ..."
+  sudo systemctl enable --now libvirtd || die "could not start libvirtd"
+fi
+if ! sudo -n true 2>/dev/null; then
+  echo "note: passwordless sudo not available — you will be prompted for the sudo password"
+fi
 echo "OK"
 
 # --- cloud image + seed ------------------------------------------------------
@@ -236,6 +258,51 @@ if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
   fi
 else
   echo "DEEPSEEK_API_KEY not set — skipping task execution and self-test steps."
+fi
+
+# --- gVisor phase -------------------------------------------------------------
+
+if [[ "$GVISOR" == "1" ]]; then
+  note "gVisor phase: install runsc and switch to hardened mode"
+  vm_ssh "curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg && \
+    echo 'deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main' | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null && \
+    sudo apt-get update -qq && sudo apt-get install -y -qq runsc >/dev/null 2>&1 && \
+    sudo /usr/bin/runsc install && sudo systemctl restart docker && \
+    docker run --runtime=runsc --rm alpine dmesg 2>/dev/null | grep -q 'Starting gVisor' && echo GVISOR_OK"
+  check "runsc installed + docker runtime registered" PASS "verified with alpine dmesg"
+
+  vm_ssh "cd ~/chetter && sed -i 's/USE_GVISOR: \"false\"/USE_GVISOR: \"true\"/; s/CHETTER_ALLOW_UNISOLATED: \"true\"/CHETTER_ALLOW_UNISOLATED: \"false\"/' deploy/compose.local.yaml && \
+    sudo docker compose --env-file .env -f deploy/compose.yaml -f deploy/compose.local.yaml up -d --force-recreate >/tmp/gvisor-up.log 2>&1 && sleep 30"
+
+  ISO=$(vm_ssh "sudo docker run --rm --network deploy_default mysql:8.4 mysql -h tidb -P 4000 -u root --batch --skip-column-names -e 'SELECT COUNT(*) FROM chetter_runners WHERE status=\"active\" AND isolation_enabled=1;' 2>/dev/null" || echo 0)
+  [[ "${ISO:-0}" -ge 1 ]] && check "runners advertise isolation" PASS "isolation_enabled=1 x$ISO" || check "runners advertise isolation" FAIL
+
+  if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
+    note "gVisor: task with isolation=required + runtime check"
+    TASK=$(MCP '{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"chetter_submit_task","arguments":{"prompt":"Run the shell command echo gvisor-works && date -u and report its output. Do not modify files.","provider_id":"deepseek","model_id":"deepseek-v4-flash","timeout_sec":300,"isolation":"required"}}}' \
+      | python3 -c "import json,sys; print(json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['task']['id'])" 2>/dev/null || echo "")
+    if [[ -n "$TASK" ]]; then
+      check "gVisor task submitted (isolation=required)" PASS "id=$TASK"
+      RUNTIME=""
+      RESULT=""
+      for _ in $(seq 1 40); do
+        sleep 15
+        CID=$(vm_ssh "sudo docker ps -aq --filter label=chetter.task_id=$TASK | head -1" 2>/dev/null || echo "")
+        if [[ -n "${CID:-}" && -z "$RUNTIME" ]]; then
+          RUNTIME=$(vm_ssh "sudo docker inspect $CID --format '{{.HostConfig.Runtime}}' 2>/dev/null" || echo "")
+        fi
+        RESULT=$(MCP "{\"jsonrpc\":\"2.0\",\"id\":61,\"method\":\"tools/call\",\"params\":{\"name\":\"chetter_task_status\",\"arguments\":{\"task_id\":\"$TASK\"}}}" \
+          | python3 -c "import json,sys; t=json.loads(json.load(sys.stdin)['result']['content'][0]['text'])['task']; print(t['status'])" 2>/dev/null || echo running)
+        [[ "$RESULT" != "running" && "$RESULT" != "pending" ]] && break
+      done
+      [[ "$RESULT" == "done" ]] && check "gVisor task completed" PASS || check "gVisor task completed" FAIL "final status: $RESULT"
+      [[ "$RUNTIME" == "runsc" ]] && check "task container runtime = runsc" PASS || check "task container runtime = runsc" FAIL "got: ${RUNTIME:-<not captured>}"
+    else
+      check "gVisor task submitted (isolation=required)" FAIL
+    fi
+  else
+    echo "DEEPSEEK_API_KEY not set — skipping gVisor task/self-test steps."
+  fi
 fi
 
 # --- summary ------------------------------------------------------------------

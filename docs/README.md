@@ -26,6 +26,13 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [SCHEMA.md](SCHEMA.md) | Database schema reference with mermaid ER diagrams: task model, fleet, triggers, auth, definitions, audit. |
 | [TIDB-WOWBAGGER.md](TIDB-WOWBAGGER.md) | TiDB deployment on wowbagger: cluster shape and DSN routing, UTC time-zone requirement, migration history and schema-drift gotchas, TiDB planner bug, runsc isolation. |
 
+## Architecture & Design
+
+| Document | Purpose |
+|---|---|
+| [WEBUI.md](WEBUI.md) | How the web UI is built: SvelteKit SPA, Tailwind v4 + Flowbite-Svelte, ConnectRPC/protobuf data layer, state stores, auth, and serving via `go:embed`. |
+| [BACKEND.md](BACKEND.md) | How the backend is built: the MCP server/control plane and the runner — ConnectRPC surfaces, sqlc dual-dialect data layer, lease-based task claiming, reaper, harnesses, and gVisor isolation. |
+
 ## Planning
 
 | Document | Purpose |
@@ -45,3 +52,4 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 | [research/UNIVERSAL_HARNESS.md](research/UNIVERSAL_HARNESS.md) | Universal harness architecture design (implemented; see `HARNESSES.md` for current state). |
 | [research/TASK_SESSION_MODEL_REFACTOR.md](research/TASK_SESSION_MODEL_REFACTOR.md) | Completed Task/AgentSession/UserPrompt/ExecutionAttempt refactor design; see `SESSIONS.md` for current behavior. |
 | [research/REPOSITORY_QUALITY_REVIEW.md](research/REPOSITORY_QUALITY_REVIEW.md) | Dated repository quality review (2026-08-01) with implementation progress. |
+| [STATS.md](STATS.md) | Generated code statistics (LOC by language, tables, migrations, MCP tools, routes, harnesses). Regenerate with `scripts/gen-stats.sh`. |

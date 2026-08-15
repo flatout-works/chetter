@@ -75,6 +75,9 @@ func TestHandler_CustomDescriptorsPresent(t *testing.T) {
 		"chetter_mcp_relay_rejected_requests",
 		"chetter_webhook_deliveries",
 		"chetter_sessions",
+		"chetter_task_failures",
+		"chetter_runner_sandbox_available",
+		"chetter_runner_sandbox",
 	} {
 		if !strings.Contains(body, name) {
 			t.Errorf("expected metric %q in output", name)
@@ -87,7 +90,7 @@ func TestCollector_Describe(t *testing.T) {
 	if c == nil {
 		t.Fatal("expected non-nil collector")
 	}
-	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.relayRejections == nil || c.webhookCount == nil || c.sessionCount == nil {
+	if c.taskCount == nil || c.runnerCount == nil || c.runnerSlots == nil || c.relayRejections == nil || c.webhookCount == nil || c.sessionCount == nil || c.taskFailures == nil || c.runnerSandbox == nil || c.sandboxCounters == nil {
 		t.Fatal("expected all metric descriptors to be non-nil")
 	}
 }
@@ -106,6 +109,48 @@ func TestMCPRelayRejectedRequests(t *testing.T) {
 		if got := mcpRelayRejectedRequests([]byte(tt.metadata)); got != tt.want {
 			t.Errorf("mcpRelayRejectedRequests(%q) = %d, want %d", tt.metadata, got, tt.want)
 		}
+	}
+}
+
+func TestSandboxMetricsFromMetadata(t *testing.T) {
+	tests := []struct {
+		name               string
+		metadata           string
+		wantAvailable      bool
+		wantTotal          int64
+		wantStartFailures  int64
+		wantCrashes        int64
+		wantStartLatencyMs int64
+		wantLifetimeMs     int64
+		wantMaxRssMb       int64
+		wantMaxCpuPercent  float64
+	}{
+		{
+			name:               "full heartbeat metadata",
+			metadata:           `{"sandbox_available":true,"sandbox_total":3,"sandbox_start_failures":1,"sandbox_crashes":2,"sandbox_start_latency_ms":4500,"sandbox_lifetime_ms":90000,"sandbox_max_rss_mb":512,"sandbox_max_cpu_percent":42.5}`,
+			wantAvailable:      true,
+			wantTotal:          3,
+			wantStartFailures:  1,
+			wantCrashes:        2,
+			wantStartLatencyMs: 4500,
+			wantLifetimeMs:     90000,
+			wantMaxRssMb:       512,
+			wantMaxCpuPercent:  42.5,
+		},
+		{name: "empty object", metadata: `{}`},
+		{name: "empty metadata", metadata: ""},
+		{name: "malformed metadata", metadata: `{invalid`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			available, total, startFailures, crashes, startLatencyMs, lifetimeMs, maxRssMb, maxCpuPercent := sandboxMetricsFromMetadata([]byte(tt.metadata))
+			if available != tt.wantAvailable || total != tt.wantTotal || startFailures != tt.wantStartFailures || crashes != tt.wantCrashes ||
+				startLatencyMs != tt.wantStartLatencyMs || lifetimeMs != tt.wantLifetimeMs || maxRssMb != tt.wantMaxRssMb || maxCpuPercent != tt.wantMaxCpuPercent {
+				t.Errorf("sandboxMetricsFromMetadata(%q) = (%v,%d,%d,%d,%d,%d,%d,%v), want (%v,%d,%d,%d,%d,%d,%d,%v)",
+					tt.metadata, available, total, startFailures, crashes, startLatencyMs, lifetimeMs, maxRssMb, maxCpuPercent,
+					tt.wantAvailable, tt.wantTotal, tt.wantStartFailures, tt.wantCrashes, tt.wantStartLatencyMs, tt.wantLifetimeMs, tt.wantMaxRssMb, tt.wantMaxCpuPercent)
+			}
+		})
 	}
 }
 
@@ -178,7 +223,7 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 
 	// Create minimal schema so queries don't fail.
 	for _, stmt := range []string{
-		`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32))`,
+		`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32), failure_category VARCHAR(32))`,
 		`CREATE TABLE IF NOT EXISTS runners (id VARCHAR(64), last_seen_at DATETIME(6), max_concurrent INT, running_tasks INT, available_slots INT, metadata JSON)`,
 		`CREATE TABLE IF NOT EXISTS webhook_deliveries (id VARCHAR(64), status VARCHAR(32))`,
 		`CREATE TABLE IF NOT EXISTS agent_sessions (id VARCHAR(64), status VARCHAR(32))`,
@@ -215,10 +260,21 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 		`chetter_runner_slots{type="available"} 0`,
 		`chetter_runner_slots{type="occupied"} 0`,
 		`chetter_mcp_relay_rejected_requests 0`,
+		`chetter_runner_sandbox_available{status="available"} 0`,
+		`chetter_runner_sandbox_available{status="unavailable"} 0`,
+		`chetter_runner_sandbox{metric="total"} 0`,
+		`chetter_runner_sandbox{metric="start_failures"} 0`,
+		`chetter_runner_sandbox{metric="crashes"} 0`,
+		`chetter_runner_sandbox{metric="start_latency_ms"} 0`,
 	} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("expected %q in output", needle)
 		}
+	}
+
+	// Should have task failure metrics.
+	if !strings.Contains(body, `chetter_task_failures{failure_category="harness_error"} 0`) {
+		t.Error("expected chetter_task_failures harness_error in output")
 	}
 
 	// Should have webhook delivery metrics.
@@ -240,6 +296,62 @@ func TestCollector_WithDatabase_NoPanic(t *testing.T) {
 	// Scrape errors should be 0 when DB is available.
 	if !strings.Contains(body, "chetter_metrics_scrape_errors 0") {
 		t.Error("expected zero scrape errors with available DB")
+	}
+}
+
+// TestCollector_TaskFailuresExcludesNonFailures verifies that
+// chetter_task_failures only counts terminal failures: a successfully
+// completed task (failure_category NULL) must not roll up into the
+// failure_category="unknown" bucket. See issue #302 review finding 1.
+func TestCollector_TaskFailuresExcludesNonFailures(t *testing.T) {
+	db := openTestDB(t)
+	if db == nil {
+		t.Skip("no test database available")
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tasks (id VARCHAR(64), status VARCHAR(32), failure_category VARCHAR(32))`); err != nil {
+		t.Fatalf("create test table: %v", err)
+	}
+	// Start from a clean table (the test DB persists between runs) and remove
+	// this test's rows before the connection closes, so other tests (and
+	// future runs against the persisted test DB) see a clean table. The defer
+	// runs before defer db.Close() (LIFO).
+	if _, err := db.Exec(`DELETE FROM tasks`); err != nil {
+		t.Fatalf("clear test table: %v", err)
+	}
+	defer db.Exec(`DELETE FROM tasks`)
+
+	// One successful task plus pending/running tasks (NULL failure_category)
+	// and two terminal failures with explicit categories.
+	if _, err := db.Exec(`INSERT INTO tasks (id, status, failure_category) VALUES
+		('t-done', 'done', NULL),
+		('t-pending', 'pending', NULL),
+		('t-running', 'running', NULL),
+		('t-error', 'error', 'harness_error'),
+		('t-cancelled', 'cancelled', 'user_cancelled')`); err != nil {
+		t.Fatalf("insert test tasks: %v", err)
+	}
+
+	h := Handler(db, store.DialectMySQL)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	// The completed/pending/running tasks must not be counted as failures:
+	// the unknown bucket stays at zero instead of swallowing every row.
+	if !strings.Contains(body, `chetter_task_failures{failure_category="unknown"} 0`) {
+		t.Errorf("non-failed tasks leaked into failure_category=unknown; body:\n%s", body)
+	}
+	if !strings.Contains(body, `chetter_task_failures{failure_category="harness_error"} 1`) {
+		t.Errorf("expected harness_error count 1; body:\n%s", body)
+	}
+	if !strings.Contains(body, `chetter_task_failures{failure_category="user_cancelled"} 1`) {
+		t.Errorf("expected user_cancelled count 1; body:\n%s", body)
 	}
 }
 

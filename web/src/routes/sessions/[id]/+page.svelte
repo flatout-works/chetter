@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { SvelteMap } from "svelte/reactivity";
   import { resolve } from "$app/paths";
   import { createClient } from "@connectrpc/connect";
   import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, UserPrompt, Task } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { formatHarness, formatResumeMode, formatTime } from "$lib/utils.svelte";
+  import { formatHarness, formatResumeMode, formatTime, resumeTaskRoute } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
@@ -25,6 +26,7 @@
   let showResume = $state(false);
   let resumePrompt = $state("");
   let resuming = $state(false);
+  let resumeError = $state<string | null>(null);
 
   const promptTasks = new SvelteMap<string, Task>();
   let totalSessionTokens = $state<bigint>(0n);
@@ -73,19 +75,28 @@
 
   async function resume() {
     resumePrompt = "";
+    resumeError = null;
     showResume = true;
   }
 
   async function doResume() {
+    if (resuming) return; // guard against duplicate submissions
     if (!resumePrompt.trim()) return;
     resuming = true;
+    resumeError = null;
     try {
       const client = createClient(SessionService, getTransport());
-      await client.resumeSession({ sessionId: params.id, prompt: resumePrompt.trim() });
+      const resp = await client.resumeSession({ sessionId: params.id, prompt: resumePrompt.trim() });
       showResume = false;
-      await load();
+      const taskRoute = resumeTaskRoute(resp.task?.id);
+      if (taskRoute) {
+        // Lead the operator straight to the new attempt's live progress.
+        await goto(taskRoute);
+      } else {
+        await load();
+      }
     } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to resume session.";
+      resumeError = e instanceof Error ? e.message : "Failed to resume session.";
       console.error(e);
     } finally { resuming = false; }
   }
@@ -155,7 +166,7 @@
         </p>
       </div>
       {#if session.status === "paused" || session.status === "recoverable" || session.status === "paused_waiting_review"}
-        <Button color="green" size="sm" onclick={resume} disabled={!pinnedRunnerAvailable}>
+        <Button color="green" size="sm" onclick={resume} disabled={!pinnedRunnerAvailable || resuming}>
           Resume
           {#if !pinnedRunnerAvailable}
             <span class="ml-1 opacity-70">(pinned runner offline)</span>
@@ -304,11 +315,14 @@
   {/if}
 </div>
 
-<Modal title="Resume Session" bind:open={showResume} size="md" onclose={() => showResume = false}>
+<Modal title="Resume Session" bind:open={showResume} size="md" onclose={() => { showResume = false; resumeError = null; }}>
   <div class="space-y-4">
+    {#if resumeError}
+      <Alert color="red">{resumeError}</Alert>
+    {/if}
     <div>
       <Label for="rs-prompt" class="mb-2">Follow-up prompt</Label>
-      <Textarea id="rs-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" />
+      <Textarea id="rs-prompt" bind:value={resumePrompt} placeholder="Enter follow-up prompt for the agent" rows={4} class="w-full" disabled={resuming} />
     </div>
     <Button color="blue" disabled={!resumePrompt.trim() || resuming} onclick={doResume} class="w-full">
       {resuming ? "Resuming…" : "Resume"}

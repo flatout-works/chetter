@@ -1,7 +1,7 @@
 -- name: InsertTask :exec
 INSERT INTO tasks
-    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, search_text, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, search_text, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTaskByID :one
 SELECT * FROM tasks
@@ -184,3 +184,8 @@ SET task.status = 'error',
 WHERE task.status = 'pending'
   AND attempt.status = 'error'
   AND attempt.error_category = 'isolation_unavailable';
+
+-- name: CountPendingTasks :one
+-- Counts tasks waiting to be claimed. Used by the global pending-task
+-- admission limit (issue #50).
+SELECT COUNT(*) FROM tasks WHERE status = 'pending';
