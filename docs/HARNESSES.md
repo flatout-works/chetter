@@ -279,6 +279,18 @@ subprocess. Claude's `--output-format stream-json` output is parsed and streamed
 as SSE events. Sessions persist as JSONL files in the workspace (bind-mounted),
 enabling resume via `claude --resume`.
 
+### Permission policy (headless)
+
+Claude's interactive approval prompts are unreachable in `-p` mode, so every
+"ask" becomes a silent "deny". Its Bash matcher also splits compound commands
+on `;`/`&&` and rejects redirects and `$(...)` unless every segment matches an
+allow rule, which makes per-binary allowlists unreliable mid-task. Chetter
+therefore writes `.claude/settings.json` with a bare `"Bash"` allow plus a
+deny list that keeps container escapes and host-control commands blocked
+(`docker`, `systemctl`, `journalctl`, `sudo`, `ssh`, `scp`, `pkill`, `kill`,
+`shutdown`, `reboot`) and `AskUserQuestion` denied. Deny rules are evaluated
+before allow; the gVisor task container remains the actual security boundary.
+
 ### Why chosen
 
 Claude Code is Anthropic's official CLI. The serve-proxy brings it to parity with

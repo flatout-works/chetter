@@ -21,18 +21,49 @@ func TestGenerateConfigDeniesInteractiveQuestions(t *testing.T) {
 	}
 	var settings struct {
 		Permissions struct {
-			Deny []string `json:"deny"`
+			Allow []string `json:"allow"`
+			Deny  []string `json:"deny"`
 		} `json:"permissions"`
 	}
 	if err := json.Unmarshal(data, &settings); err != nil {
 		t.Fatalf("parse settings: %v", err)
 	}
-	for _, rule := range settings.Permissions.Deny {
-		if rule == "AskUserQuestion" {
-			return
+	if !contains(settings.Permissions.Deny, "AskUserQuestion") {
+		t.Fatalf("expected AskUserQuestion to be denied, got %q", settings.Permissions.Deny)
+	}
+}
+
+// TestGenerateConfigAllowsBashButDeniesContainerEscape documents the headless
+// permission model: Bash must be allowed wholesale (a partial binary allowlist
+// silently denied gofmt, compound commands, and $(...) forms mid-task), while
+// the deny list captures commands that escape or break the task container.
+func TestGenerateConfigAllowsBashButDeniesContainerEscape(t *testing.T) {
+	wsDir := t.TempDir()
+	if err := GenerateConfig(wsDir, "", "", "", task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(wsDir, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	var settings struct {
+		Permissions struct {
+			Allow []string `json:"allow"`
+			Deny  []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("parse settings: %v", err)
+	}
+	if !contains(settings.Permissions.Allow, "Bash") {
+		t.Fatalf("expected bare Bash allow for headless tasks, got %q", settings.Permissions.Allow)
+	}
+	for _, wantBinary := range []string{"docker", "systemctl", "pkill", "kill", "shutdown", "reboot", "sudo", "ssh"} {
+		if !contains(settings.Permissions.Deny, "Bash("+wantBinary+":*)") {
+			t.Fatalf("expected Bash(%s:*) to be denied, got %q", wantBinary, settings.Permissions.Deny)
 		}
 	}
-	t.Fatalf("expected AskUserQuestion to be denied, got %q", settings.Permissions.Deny)
 }
 
 func TestGenerateConfigIncludesRunnerBridgeHTTPServer(t *testing.T) {
