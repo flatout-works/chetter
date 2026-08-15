@@ -31,3 +31,7 @@ session-exports/
 
 # JS dependencies
 web/node_modules/
+
+# Go toolchain/build caches created in-repo
+.cache/
+.config/

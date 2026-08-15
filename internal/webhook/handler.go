@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/flatout-works/chetter/internal/requestid"
 )
 
 // TriggerResolver is the subset of the service that the webhook needs to
@@ -224,8 +226,11 @@ func (h *Handler) Shutdown(ctx context.Context) error {
 
 // ServeHTTP handles an incoming GitHub webhook request.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Correlate ingress and async processing logs with the HTTP request ID
+	// assigned by the requestid middleware (issue #87).
+	reqID := requestid.FromContext(r.Context())
 	if h.cfg.Disabled {
-		slog.Info("webhook disabled, ignoring request")
+		slog.Info("webhook disabled, ignoring request", "request_id", reqID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -236,13 +241,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody))
 	if err != nil {
-		slog.Warn("webhook: read body", "err", err)
+		slog.Warn("webhook: read body", "err", err, "request_id", reqID)
 		http.Error(w, "read error", http.StatusBadRequest)
 		return
 	}
 
 	if !verifySignature(h.cfg.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
-		slog.Warn("webhook: invalid signature")
+		slog.Warn("webhook: invalid signature", "request_id", reqID)
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
 		return
 	}
@@ -250,7 +255,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	deliveryID := r.Header.Get("X-GitHub-Delivery")
 	event := r.Header.Get("X-GitHub-Event")
 	if h.recent.Seen(deliveryID) {
-		slog.Info("webhook: duplicate delivery, ignoring", "deliveryID", deliveryID, "event", event)
+		slog.Info("webhook: duplicate delivery, ignoring", "deliveryID", deliveryID, "event", event, "request_id", reqID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -272,11 +277,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		recordCancel()
 		if rerr != nil {
-			slog.Error("webhook: record delivery failed", "err", rerr, "deliveryID", deliveryID)
+			slog.Error("webhook: record delivery failed", "err", rerr, "deliveryID", deliveryID, "request_id", reqID)
 			http.Error(w, "delivery queue unavailable", http.StatusServiceUnavailable)
 			return
 		} else if !created {
-			slog.Info("webhook: duplicate delivery in store, ignoring", "deliveryID", deliveryID, "event", event)
+			slog.Info("webhook: duplicate delivery in store, ignoring", "deliveryID", deliveryID, "event", event, "request_id", reqID)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -288,16 +293,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
-		h.processDelivery(event, body, deliveryID)
+		h.processDelivery(event, body, deliveryID, reqID)
 	}()
 }
 
 // processDelivery runs the webhook event handler and updates the delivery
 // store with the outcome. On failure, the delivery is marked failed so the
-// background worker can retry it. See issue #102.
-func (h *Handler) processDelivery(event string, body []byte, deliveryID string) {
+// background worker can retry it. requestID is the HTTP ingress correlation
+// ID from the requestid middleware (issue #87).
+func (h *Handler) processDelivery(event string, body []byte, deliveryID, requestID string) {
 	if err := h.ProcessDelivery(event, body, deliveryID); err != nil {
-		slog.Warn("webhook: delivery processing failed", "err", err, "deliveryID", deliveryID)
+		slog.Warn("webhook: delivery processing failed", "err", err, "deliveryID", deliveryID, "request_id", requestID)
 	}
 }
 
