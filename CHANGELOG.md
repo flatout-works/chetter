@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-20
+
+### Documentation
+
+- Website technical architecture page updated to reflect the runner drain completion barrier (#313): the Resilience card now describes that after the drain deadline the runner blocks exit until task teardown and terminal `ReportTaskEvents` delivery complete, bounded by `CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC` (default 60s, replacing `CHETTER_DRAIN_CLEANUP_GRACE_SEC`), with a hard-kill audit log.
+
 ## 2026-08-15
 
 ### Added
