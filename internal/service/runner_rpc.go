@@ -1170,7 +1170,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						}); err != nil {
 							return err
 						}
-						slog.Info("agent session marked recoverable after prompt failure", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID, "error_category", errorCategory)
+						slog.Info("agent session marked recoverable after prompt failure", "task_id", event.TaskId, "execution_id", event.ExecutionId, "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID, "error_category", errorCategory)
 						sessionStatus = ""
 					case terminalSessionStatus == "completed" && session.ResumeMode == "gvisor_checkpoint" && event.CheckpointPath != "":
 						chkID, _ := randomID("chk")
@@ -1201,7 +1201,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						}); err != nil {
 							return err
 						}
-						slog.Info("agent session paused with checkpoint", "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
+						slog.Info("agent session paused with checkpoint", "task_id", event.TaskId, "execution_id", event.ExecutionId, "session_id", session.ID, "checkpoint_id", chkID, "runner_id", runnerID)
 						sessionStatus = ""
 					case terminalSessionStatus == "completed" && (session.ResumeMode == "harness_session" || session.ResumeMode == "gvisor_checkpoint"):
 						if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
@@ -1217,7 +1217,7 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 						}); err != nil {
 							return err
 						}
-						slog.Info("agent session paused for resume", "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID)
+						slog.Info("agent session paused for resume", "task_id", event.TaskId, "execution_id", event.ExecutionId, "session_id", session.ID, "workspace_path", event.WorkspacePath, "runner_id", runnerID)
 						sessionStatus = ""
 					}
 				}

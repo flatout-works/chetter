@@ -1,6 +1,8 @@
 package config
 
 import (
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -411,6 +413,101 @@ func TestLoadRetention(t *testing.T) {
 		cfg := Load()
 		if cfg.EventsRetentionDays != 0 {
 			t.Errorf("expected 0 for invalid value, got %d", cfg.EventsRetentionDays)
+		}
+	})
+}
+
+func TestLoadLogging(t *testing.T) {
+	t.Run("defaults to info level and text format", func(t *testing.T) {
+		cfg := Load()
+		if cfg.Logging.Level != slog.LevelInfo {
+			t.Errorf("expected default level info, got %v", cfg.Logging.Level)
+		}
+		if cfg.Logging.LevelRaw != "" {
+			t.Errorf("expected empty LevelRaw, got %q", cfg.Logging.LevelRaw)
+		}
+		if cfg.Logging.Format != "text" {
+			t.Errorf("expected default format text, got %q", cfg.Logging.Format)
+		}
+	})
+	t.Run("env level overrides parse", func(t *testing.T) {
+		for _, tc := range []struct {
+			raw  string
+			want slog.Level
+		}{
+			{"debug", slog.LevelDebug},
+			{"info", slog.LevelInfo},
+			{"warn", slog.LevelWarn},
+			{"error", slog.LevelError},
+			{"DEBUG", slog.LevelDebug},
+		} {
+			t.Setenv("CHETTER_LOG_LEVEL", tc.raw)
+			cfg := Load()
+			if cfg.Logging.Level != tc.want {
+				t.Errorf("CHETTER_LOG_LEVEL=%q: expected level %v, got %v", tc.raw, tc.want, cfg.Logging.Level)
+			}
+			if cfg.Logging.LevelRaw != tc.raw {
+				t.Errorf("CHETTER_LOG_LEVEL=%q: expected LevelRaw %q, got %q", tc.raw, tc.raw, cfg.Logging.LevelRaw)
+			}
+		}
+	})
+	t.Run("env format overrides parse case-insensitively", func(t *testing.T) {
+		for _, raw := range []string{"json", "JSON", "  text  "} {
+			t.Setenv("CHETTER_LOG_FORMAT", raw)
+			cfg := Load()
+			want := "text"
+			if strings.ToLower(strings.TrimSpace(raw)) == "json" {
+				want = "json"
+			}
+			if cfg.Logging.Format != want {
+				t.Errorf("CHETTER_LOG_FORMAT=%q: expected format %q, got %q", raw, want, cfg.Logging.Format)
+			}
+		}
+	})
+	t.Run("invalid level keeps default but fails validation", func(t *testing.T) {
+		t.Setenv("CHETTER_LOG_LEVEL", "verbose")
+		cfg := Load()
+		if cfg.Logging.Level != slog.LevelInfo {
+			t.Errorf("expected fallback level info, got %v", cfg.Logging.Level)
+		}
+		base := Config{DatabaseDSN: "dsn", MCPAuthToken: "t", RunnerRPCToken: "r"}
+		base.Logging = cfg.Logging
+		err := base.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for invalid CHETTER_LOG_LEVEL")
+		}
+		if !strings.Contains(err.Error(), "CHETTER_LOG_LEVEL") {
+			t.Errorf("expected error to name CHETTER_LOG_LEVEL, got %q", err.Error())
+		}
+	})
+	t.Run("invalid format keeps default but fails validation", func(t *testing.T) {
+		t.Setenv("CHETTER_LOG_FORMAT", "xml")
+		cfg := Load()
+		if cfg.Logging.Format != "xml" {
+			t.Errorf("expected raw format kept for validation, got %q", cfg.Logging.Format)
+		}
+		base := Config{DatabaseDSN: "dsn", MCPAuthToken: "t", RunnerRPCToken: "r"}
+		base.Logging = cfg.Logging
+		err := base.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for invalid CHETTER_LOG_FORMAT")
+		}
+		if !strings.Contains(err.Error(), "CHETTER_LOG_FORMAT") {
+			t.Errorf("expected error to name CHETTER_LOG_FORMAT, got %q", err.Error())
+		}
+	})
+	t.Run("valid logging configuration passes validation", func(t *testing.T) {
+		cfg := Config{
+			DatabaseDSN:    "dsn",
+			MCPAuthToken:   "t",
+			RunnerRPCToken: "r",
+			Logging: Logging{
+				Level:  slog.LevelDebug,
+				Format: "json",
+			},
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
 		}
 	})
 }

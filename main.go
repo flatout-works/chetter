@@ -18,7 +18,9 @@ import (
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/logging"
 	"github.com/flatout-works/chetter/internal/metrics"
+	"github.com/flatout-works/chetter/internal/requestid"
 	"github.com/flatout-works/chetter/internal/service"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/flatout-works/chetter/internal/webapi"
@@ -59,6 +61,14 @@ func main() {
 func run() error {
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	// Configure structured logging (level + text/json format) before any
+	// other logging so startup diagnostics use the operator's settings. An
+	// invalid configuration already failed in cfg.Validate; Setup is the
+	// second line of defense for direct binary invocations (issue #87).
+	if _, err := logging.Setup(cfg.Logging); err != nil {
 		return err
 	}
 
@@ -211,7 +221,7 @@ func run() error {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           requestid.Middleware(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -267,7 +277,7 @@ func run() error {
 
 	webServer := &http.Server{
 		Addr:              cfg.WebAddr,
-		Handler:           webMux,
+		Handler:           requestid.Middleware(webMux),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 	webListener, err := net.Listen("tcp", cfg.WebAddr)
