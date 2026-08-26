@@ -74,6 +74,28 @@ func TestClaudeEnvAnthropicDefaultDoesNotOverrideEndpoint(t *testing.T) {
 	}
 }
 
+func TestClaudeEnvMCPOutputTokensKnob(t *testing.T) {
+	env := claudeEnv("/workspace", "secret", task.TaskRequest{})
+	if got := env["MAX_MCP_OUTPUT_TOKENS"]; got != "50000" {
+		t.Fatalf("MAX_MCP_OUTPUT_TOKENS = %q, want 50000", got)
+	}
+
+	t.Setenv("CHETTER_CLAUDE_MAX_MCP_OUTPUT_TOKENS", "120000")
+	env = claudeEnv("/workspace", "secret", task.TaskRequest{})
+	if got := env["MAX_MCP_OUTPUT_TOKENS"]; got != "120000" {
+		t.Fatalf("MAX_MCP_OUTPUT_TOKENS override = %q, want 120000", got)
+	}
+
+	if _, ok := env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]; ok {
+		t.Fatal("CLAUDE_CODE_MAX_OUTPUT_TOKENS must be unset without an override")
+	}
+	t.Setenv("CHETTER_CLAUDE_MAX_OUTPUT_TOKENS", "64000")
+	env = claudeEnv("/workspace", "secret", task.TaskRequest{})
+	if got := env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]; got != "64000" {
+		t.Fatalf("CLAUDE_CODE_MAX_OUTPUT_TOKENS override = %q, want 64000", got)
+	}
+}
+
 func TestClaudeEnvLiteLLMProvider(t *testing.T) {
 	t.Setenv("LITELLM_API_KEY", "litellm-proxy-key")
 

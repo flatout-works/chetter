@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +175,118 @@ func TestSessionBoundsResultErrors(t *testing.T) {
 	})
 	if len(s.runErr) != maxClaudeErrorBytes+3 || !strings.HasSuffix(s.runErr, "...") {
 		t.Fatalf("bounded error length = %d, suffix=%q", len(s.runErr), s.runErr[len(s.runErr)-3:])
+	}
+}
+
+func TestSessionParsesResultErrorList(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "error_max_turns",
+		"is_error": true,
+		"errors":   []any{"Turn limit reached", "Ran out of turns"},
+	})
+	want := "error_max_turns: Turn limit reached; Ran out of turns"
+	if s.runErr != want {
+		t.Fatalf("runErr = %q, want %q", s.runErr, want)
+	}
+
+	s = &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "error_max_budget_usd",
+		"is_error": true,
+		"errors":   []any{"Budget limit reached"},
+	})
+	if !strings.Contains(s.runErr, "error_max_budget_usd") || !strings.Contains(s.runErr, "Budget limit reached") {
+		t.Fatalf("runErr = %q, want subtype and message", s.runErr)
+	}
+
+	s = &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "success",
+		"is_error": true,
+		"errors":   []any{""}, // whitespace-only entries are dropped
+		"result":   "API Error: Request rejected (429)",
+	})
+	if s.runErr != "API Error: Request rejected (429)" {
+		t.Fatalf("runErr = %q, want result fallback after empty errors", s.runErr)
+	}
+}
+
+func TestMaxTurns(t *testing.T) {
+	if got := maxTurns(); got != defaultMaxTurns {
+		t.Fatalf("maxTurns() = %d, want %d", got, defaultMaxTurns)
+	}
+	t.Setenv("CHETTER_CLAUDE_MAX_TURNS", "1234")
+	if got := maxTurns(); got != 1234 {
+		t.Fatalf("maxTurns() = %d, want 1234", got)
+	}
+	for _, invalid := range []string{"", " ", "abc", "0", "-5"} {
+		t.Setenv("CHETTER_CLAUDE_MAX_TURNS", invalid)
+		if got := maxTurns(); got != defaultMaxTurns {
+			t.Fatalf("maxTurns() with %q = %d, want %d", invalid, got, defaultMaxTurns)
+		}
+	}
+}
+
+func TestPromptArgsHeadlessHardening(t *testing.T) {
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(t.TempDir(), `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s := newSession("proxy-session")
+	srv.sessions[s.id] = s
+
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--permission-mode", "dontAsk") {
+		t.Fatalf("args missing --permission-mode dontAsk: %q", args)
+	}
+	if !containsArgs(args, "--add-dir", "/tmp") {
+		t.Fatalf("args missing --add-dir /tmp: %q", args)
+	}
+	if !containsArgs(args, "--max-turns", strconv.Itoa(defaultMaxTurns)) {
+		t.Fatalf("args missing --max-turns %d: %q", defaultMaxTurns, args)
+	}
+	if containsArgs(args, "--strict-mcp-config") {
+		t.Fatalf("args must not include --strict-mcp-config without a config file: %q", args)
+	}
+
+	// With a runner-generated MCP config present, strict loading kicks in.
+	strictPath := filepath.Join(srv.workspaceDir(), ".claude", "chetter-mcp.json")
+	if err := os.MkdirAll(filepath.Dir(strictPath), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(strictPath, []byte(`{"mcpServers":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	argsSeen = make(chan []string, 1)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s2 := newSession("proxy-session-2")
+	srv.sessions[s2.id] = s2
+	rr = sendTestPrompt(srv, s2.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("strict status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args = <-argsSeen
+	if !containsArgs(args, "--mcp-config", strictPath) || !containsArgs(args, "--strict-mcp-config") {
+		t.Fatalf("args missing strict mcp config: %q", args)
 	}
 }
 
@@ -353,6 +466,149 @@ func TestReadSessionExportSelectsNativeSession(t *testing.T) {
 	if !strings.Contains(export, "right") || strings.Contains(export, "wrong") {
 		t.Fatalf("export selected wrong transcript: %q", export)
 	}
+}
+
+func TestPromptAppendsAgentSystemPromptInsteadOfReplacing(t *testing.T) {
+	workspace := t.TempDir()
+	agentDir := filepath.Join(workspace, ".claude", "agents")
+	if err := os.MkdirAll(agentDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentDir, "triage.md"), []byte("persona"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(workspace, `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s := newSession("proxy-session")
+	srv.sessions[s.id] = s
+
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test","agent":"triage"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--append-system-prompt-file", filepath.Join(agentDir, "triage.md")) {
+		t.Fatalf("args missing --append-system-prompt-file: %q", args)
+	}
+	for i := 0; i+len("--system-prompt") <= len(args); i++ {
+		if args[i] == "--system-prompt" {
+			t.Fatalf("args must not replace the system prompt: %q", args)
+		}
+	}
+}
+
+func TestSessionStatusReportsBusyWhileRunning(t *testing.T) {
+	srv, s := testProxyServer(t, "exec sleep 30")
+	promptDone := make(chan struct{})
+	go func() {
+		sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+		close(promptDone)
+	}()
+	waitForCommand(t, s)
+
+	rr := httptest.NewRecorder()
+	srv.handleStatus(rr, httptest.NewRequest(http.MethodGet, "/", nil), s)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"busy"`) {
+		t.Fatalf("status while running = %d %q", rr.Code, rr.Body.String())
+	}
+
+	abort := httptest.NewRecorder()
+	srv.handleAbort(abort, httptest.NewRequest(http.MethodPost, "/", nil), s)
+	if abort.Code != http.StatusOK {
+		t.Fatalf("abort status = %d", abort.Code)
+	}
+	select {
+	case <-promptDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt did not stop after abort")
+	}
+
+	rr = httptest.NewRecorder()
+	srv.handleStatus(rr, httptest.NewRequest(http.MethodGet, "/", nil), s)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"idle"`) {
+		t.Fatalf("status after completion = %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestContinueOnIdleSessionResumesNativeID(t *testing.T) {
+	workspace := t.TempDir()
+	const proxyID = "proxy-session"
+	native := filepath.Join(workspace, ".claude", "chetter-sessions", proxyID+".json")
+	if err := os.MkdirAll(filepath.Dir(native), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(native, []byte(`{"native_session_id":"native-42"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(workspace, `printf '%s\n' '{"type":"result","subtype":"success","result":"resumed"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"resumed"}'`)
+	}
+
+	// Continue on an unknown session ID must 404 (no mapping, no live session).
+	rr := sendTestContinue(srv, "missing-session")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("unknown session continue status = %d, want 404", rr.Code)
+	}
+
+	if _, err := srv.lookupSession(proxyID); err != nil {
+		t.Fatalf("lookup session: %v", err)
+	}
+	rr = sendTestContinue(srv, proxyID)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("continue status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--resume", "native-42") {
+		t.Fatalf("continue args missing --resume native-42: %q", args)
+	}
+}
+
+func TestContinueOnBusySessionConflicts(t *testing.T) {
+	srv, s := testProxyServer(t, "exec sleep 30")
+	promptDone := make(chan struct{})
+	go func() {
+		sendTestPrompt(srv, s.id, `{"prompt":"first"}`)
+		close(promptDone)
+	}()
+	waitForCommand(t, s)
+
+	rr := sendTestContinue(srv, s.id)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("busy continue status = %d, want 409; body=%s", rr.Code, rr.Body.String())
+	}
+
+	abort := httptest.NewRecorder()
+	srv.handleAbort(abort, httptest.NewRequest(http.MethodPost, "/", nil), s)
+	if abort.Code != http.StatusOK {
+		t.Fatalf("abort status = %d", abort.Code)
+	}
+	select {
+	case <-promptDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt did not stop after abort")
+	}
+}
+
+func sendTestContinue(srv *server, sessionID string) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/session/"+sessionID+"/continue", strings.NewReader(`{"prompt":"continue"}`))
+	srv.handleSession(rr, req)
+	return rr
 }
 
 func testProxyServer(t *testing.T, script string) (*server, *session) {

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -23,6 +24,26 @@ import (
 )
 
 const maxClaudeErrorBytes = 4096
+
+// defaultMaxTurns bounds the agentic loop per prompt. Long implementation
+// tasks legitimately need far more than 100 turns; the task timeout, progress
+// watchdog, and api-level budget still bound runaway loops.
+const defaultMaxTurns = 500
+
+// maxTurns resolves the --max-turns value from CHETTER_CLAUDE_MAX_TURNS,
+// falling back to defaultMaxTurns when unset or invalid.
+func maxTurns() int {
+	raw := strings.TrimSpace(os.Getenv("CHETTER_CLAUDE_MAX_TURNS"))
+	if raw == "" {
+		return defaultMaxTurns
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		slog.Warn("ignoring invalid CHETTER_CLAUDE_MAX_TURNS", "value", raw, "fallback", defaultMaxTurns)
+		return defaultMaxTurns
+	}
+	return value
+}
 
 type claudeRetry struct {
 	Attempt      int
@@ -148,6 +169,17 @@ func (srv *server) workspaceDir() string {
 		return srv.workspace
 	}
 	return "/workspace"
+}
+
+// strictMCPConfigPath returns the runner-generated MCP config path passed via
+// --strict-mcp-config, or "" when the file is absent (e.g. a task with no MCP
+// servers at all).
+func (srv *server) strictMCPConfigPath() string {
+	path := filepath.Join(srv.workspaceDir(), ".claude", "chetter-mcp.json")
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
 }
 
 func (srv *server) lookupSession(id string) (*session, error) {
@@ -366,7 +398,11 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case action == "message" && r.Method == http.MethodPost:
-		srv.handleSendPrompt(w, r, s)
+		srv.handleSendPrompt(w, r, s, false)
+	case action == "continue" && r.Method == http.MethodPost:
+		srv.handleSendPrompt(w, r, s, true)
+	case action == "status" && r.Method == http.MethodGet:
+		srv.handleStatus(w, r, s)
 	case action == "abort" && r.Method == http.MethodPost:
 		srv.handleAbort(w, r, s)
 	case action == "export" && r.Method == http.MethodGet:
@@ -374,6 +410,20 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
+}
+
+// handleStatus reports whether the session's claude subprocess is running.
+// The progress watchdog uses it to tell an in-flight hung generation (busy)
+// from an agent that finished its turn and went quiet (idle).
+func (srv *server) handleStatus(w http.ResponseWriter, r *http.Request, s *session) {
+	w.Header().Set("Content-Type", "application/json")
+	status := "idle"
+	s.mu.Lock()
+	if s.cmd != nil {
+		status = "busy"
+	}
+	s.mu.Unlock()
+	json.NewEncoder(w).Encode(map[string]string{"status": status})
 }
 
 type messageRequest struct {
@@ -384,7 +434,7 @@ type messageRequest struct {
 	ResumeID string   `json:"resume_session_id"`
 }
 
-func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session) {
+func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session, continueRun bool) {
 	var req messageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
@@ -416,30 +466,65 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		"--verbose",
 		"--include-partial-messages",
 		"--model", model,
-		"--max-turns", "100",
+		"--max-turns", strconv.Itoa(maxTurns()),
+		// Anything not explicitly allowed is denied silently in -p mode;
+		// dontAsk makes that fail-closed behavior deterministic instead of
+		// relying on the interactive default (Manual) mode.
+		"--permission-mode", "dontAsk",
 		// Claude Code v2.1.196+ ignores MCP approvals in project settings for
 		// untrusted folders (headless task workspaces are never trusted), which
 		// leaves .mcp.json servers stuck at "pending approval" with no tools.
 		// Settings passed via --settings apply even in untrusted folders.
 		"--settings", filepath.Join(srv.workspaceDir(), ".claude", "settings.json"),
+		// Scratch-space parity with OpenCode's /tmp external directory allow.
+		"--add-dir", "/tmp",
+		// Stream subagent text/thinking and hook lifecycle events so live task
+		// progress shows subagent work instead of going quiet during dispatch.
+		"--forward-subagent-text",
+		"--include-hook-events",
+	}
+	if mcpConfig := srv.strictMCPConfigPath(); mcpConfig != "" {
+		// Restrict MCP loading to the runner-generated server list so a cloned
+		// repository cannot register its own .mcp.json servers, which -p mode
+		// would otherwise load without any approval.
+		args = append(args, "--mcp-config", mcpConfig, "--strict-mcp-config")
+	}
+	if budget := strings.TrimSpace(os.Getenv("CHETTER_CLAUDE_MAX_BUDGET_USD")); budget != "" {
+		// Optional per-task spend ceiling; subagent spend counts toward it.
+		args = append(args, "--max-budget-usd", budget)
 	}
 	if req.Agent != "" {
-		systemPrompt := resolveAgentFile(req.Agent)
-		if systemPrompt != "" {
-			args = append(args, "--system-prompt", systemPrompt)
+		if systemPromptPath := srv.resolveAgentFilePath(req.Agent); systemPromptPath != "" {
+			// Append rather than replace: --system-prompt discards Claude
+			// Code's entire built-in prompt (tool guidance, coding persona,
+			// safety instructions), which degrades headless behavior.
+			args = append(args, "--append-system-prompt-file", systemPromptPath)
 		}
 	}
 	resumeID := req.ResumeID
+	if continueRun && resumeID == "" {
+		// A continuation always resumes the session's native transcript; an
+		// explicit resume_session_id still wins (and is validated below).
+		resumeID = s.id
+	}
 	s.mu.Lock()
 	if resumeID == s.id && s.nativeID != "" {
 		resumeID = s.nativeID
 	}
+	hasNative := s.nativeID != ""
 	s.mu.Unlock()
+	if resumeID != "" && !hasNative && resumeID != req.ResumeID {
+		// Nothing to resume: the session has no native transcript mapping yet
+		// and the caller did not name one explicitly.
+		cancel()
+		http.Error(w, "session has no claude transcript to resume", http.StatusConflict)
+		return
+	}
 	if resumeID != "" {
 		args = append(args, "--resume", resumeID)
 	}
 
-	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID)
+	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID, "continue", continueRun)
 
 	command := srv.command
 	if command == nil {
@@ -690,6 +775,15 @@ func claudeResultError(ev map[string]any, retry *claudeRetry) string {
 	if !isError && !strings.HasPrefix(subtype, "error") {
 		return ""
 	}
+	// The documented error arm (error_max_turns, error_during_execution,
+	// error_max_budget_usd, error_max_structured_output_retries) carries an
+	// errors array instead of a result string.
+	if messages := claudeErrorList(ev); len(messages) > 0 {
+		if strings.HasPrefix(subtype, "error") {
+			return subtype + ": " + strings.Join(messages, "; ")
+		}
+		return strings.Join(messages, "; ")
+	}
 	if message, _ := ev["message"].(string); message != "" {
 		return message
 	}
@@ -703,6 +797,17 @@ func claudeResultError(ev map[string]any, retry *claudeRetry) string {
 		return "Claude result reported " + subtype
 	}
 	return "Claude result reported an error"
+}
+
+func claudeErrorList(ev map[string]any) []string {
+	raw, _ := ev["errors"].([]any)
+	messages := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if text, _ := item.(string); strings.TrimSpace(text) != "" {
+			messages = append(messages, strings.TrimSpace(text))
+		}
+	}
+	return messages
 }
 
 func claudeRetryFromEvent(ev map[string]any) *claudeRetry {
@@ -1119,15 +1224,22 @@ func pipeStderr(reader io.Reader, sessionID string) {
 	}
 }
 
-func resolveAgentFile(agentName string) string {
+// resolveAgentFilePath returns the path of the agent persona file for
+// agentName inside the workspace, or "" when none exists. Claude's GenerateConfig
+// materializes task agent definitions at .claude/agents/<name>.md; the
+// .opencode fallback covers shared definitions written for the OpenCode layout.
+func (srv *server) resolveAgentFilePath(agentName string) string {
+	if agentName == "" || filepath.Base(agentName) != agentName {
+		return ""
+	}
+	workspace := srv.workspaceDir()
 	paths := []string{
-		"/workspace/.claude/agents/" + agentName + ".md",
-		"/workspace/.opencode/agent/" + agentName + ".md",
+		filepath.Join(workspace, ".claude", "agents", agentName+".md"),
+		filepath.Join(workspace, ".opencode", "agent", agentName+".md"),
 	}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err == nil {
-			return string(data)
+		if _, err := os.Stat(p); err == nil {
+			return p
 		}
 	}
 	return ""

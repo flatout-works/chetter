@@ -133,6 +133,62 @@ func abortSession(ctx context.Context, baseURL, sessionID, secret string) error 
 	return nil
 }
 
+// continueSession asks an idle session to resume work. The proxy maps this to
+// a fresh claude --resume run; a busy session answers 409 and the call is
+// treated as a no-op by the progress watchdog.
+func continueSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	continueCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	body, _ := json.Marshal(map[string]string{
+		"prompt": "Continue working on the current task now. Resume from the existing state and complete the requested work without waiting for more input.",
+	})
+	resp, err := doPost(continueCtx, baseURL+"/session/"+sessionID+"/continue", secret, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("POST /session/%s/continue: %w", sessionID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		slog.Info("claude session busy, continuation skipped", "sessionID", sessionID)
+		return nil
+	}
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return claudeProxyResponseError("POST /session/"+sessionID+"/continue", resp.StatusCode, respBody)
+	}
+	slog.Info("claude session continuation started", "sessionID", sessionID)
+	return nil
+}
+
+// getSessionStatus reports the proxy-side session state ("busy" while the
+// claude subprocess runs, "idle" otherwise).
+func getSessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(statusCtx, http.MethodGet, baseURL+"/session/"+sessionID+"/status", nil)
+	if err != nil {
+		return "", err
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", basicAuthHeader(secret))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET /session/%s/status: %w", sessionID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return "", claudeProxyResponseError("GET /session/"+sessionID+"/status", resp.StatusCode, body)
+	}
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("GET /session/%s/status decode: %w", sessionID, err)
+	}
+	return result.Status, nil
+}
+
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), sessionID string, onComplete func(summary string)) {
 	eventURL := baseURL + "/event"
 	if sessionID != "" {
@@ -353,8 +409,10 @@ func extractClaudeTokenUsage(data string) *task.TokenUsage {
 		return nil
 	}
 	tu := &task.TokenUsage{
-		InputTokens:  floatToInt64(usage["input_tokens"]),
-		OutputTokens: floatToInt64(usage["output_tokens"]),
+		InputTokens:      floatToInt64(usage["input_tokens"]),
+		OutputTokens:     floatToInt64(usage["output_tokens"]),
+		CacheReadTokens:  floatToInt64(usage["cache_read_input_tokens"]),
+		CacheWriteTokens: floatToInt64(usage["cache_creation_input_tokens"]),
 	}
 	if cost, ok := ev["total_cost_usd"].(float64); ok {
 		tu.CostCents = int64(cost * 100)
