@@ -9,3 +9,4 @@ resources:
   - runner-deployment.yaml
   - runner-rbac.yaml
   - runner-workspace-pvc.yaml
+  - poddisruptionbudget.yaml

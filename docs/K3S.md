@@ -398,6 +398,12 @@ kubectl -n chetter scale deployment/chetter-runner --replicas=1
 
 The supplied hostPath manifest is single-node-only. Each runner Pod gets a unique UID-based `RUNNER_ID`; child Pods are pinned to that runner's node. Use an RWX PVC instead for multi-node production.
 
+### Graceful Shutdown And Disruption
+
+The single-node `kubernetes-runner.yaml` sets `terminationGracePeriodSeconds: 120` — headroom above the drain budget (`CHETTER_DRAIN_TIMEOUT_SEC` 60s + `CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC` 30s). On SIGTERM the runner stops claiming, waits for in-flight tasks up to that budget, force-cancels any that overrun, and blocks exit until teardown and terminal reports complete. See [DEPLOYMENT.md](DEPLOYMENT.md#graceful-shutdown) for details.
+
+The generic `deploy/k8s/` kustomization adds a `PodDisruptionBudget` (`minAvailable: 1`) and autoscaler eviction annotations to gate voluntary evictions on multi-node clusters; the single-node hostPath manifest intentionally omits them (with one replica on one node, a PDB would block `kubectl drain` entirely — evict with `--disable-eviction` and let the SIGTERM drain finish in-flight tasks).
+
 ### Check TiDB
 
 ```bash

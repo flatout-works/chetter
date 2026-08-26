@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-26
+
+### Changed
+
+- Kubernetes runner deployment hardened against needless pod churn and mid-task termination: a new `PodDisruptionBudget` (`deploy/k8s/poddisruptionbudget.yaml`, `minAvailable: 1`, included in the kustomization) gates voluntary evictions (node drains, autoscaler scale-down, cluster upgrades) so in-flight tasks are not torn down when the runner pod is evicted. The runner Deployment now sets `terminationGracePeriodSeconds: 120` (headroom above the 60s drain + 30s hard-kill budget), an explicit `maxSurge: 1 / maxUnavailable: 0` rolling strategy (replacement runner comes up Ready before the old pod is terminated), best-effort `topologySpreadConstraints` across nodes for multi-replica fleets, and the `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` annotation. The k3s single-node manifest matches the 120s grace period. `docs/EKS.md`, `docs/K3S.md`, and `docs/DEPLOYMENT.md` document the disruption-protection model, its limits (node failure/OOM/spot reclamation still kill the runner pod; GC then deletes its owned agent Pods and the reaper re-queues the task after lease expiry), and the node-drain workflow (`--disable-eviction` or scale to 2 replicas first).
+
 ## 2026-08-20
 
 ### Documentation

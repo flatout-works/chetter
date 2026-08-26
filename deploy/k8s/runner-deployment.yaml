@@ -8,12 +8,29 @@ spec:
   selector:
     matchLabels:
       app: chetter-runner
+  # Roll out a replacement runner before terminating the old one so the old
+  # pod gets a full SIGTERM drain window instead of being killed immediately.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
         app: chetter-runner
+      annotations:
+        # Belt-and-braces against cluster-autoscaler scale-down churn on top of
+        # the PodDisruptionBudget (safe-to-evict is honored by cluster-autoscaler
+        # even where a PDB is not configured).
+        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
-      terminationGracePeriodSeconds: 90
+      # Grace period covers CHETTER_DRAIN_TIMEOUT_SEC (60s) + the hard-kill
+      # cleanup barrier (CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC, 30s) plus margin
+      # for scheduling and report retries. The drain code is written to stay
+      # below this number; do not shrink it without also lowering those two
+      # env values. See runner/internal/controller/heartbeat.go.
+      terminationGracePeriodSeconds: 120
       serviceAccountName: chetter-runner
       containers:
       - name: runner
@@ -83,3 +100,13 @@ spec:
       - name: runner-data
         persistentVolumeClaim:
           claimName: chetter-runner-workspaces
+      # Spread a multi-replica runner fleet across nodes (best-effort) so a
+      # single node failure or drain does not take down every runner at once.
+      # With replicas: 1 this is inert; it matters when you scale the fleet.
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: chetter-runner

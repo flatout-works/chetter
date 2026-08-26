@@ -1,0 +1,24 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: chetter-runner
+  namespace: chetter
+spec:
+  # Gate voluntary disruptions (node drains, autoscaler scale-down, cluster
+  # upgrades). Kubernetes refuses to evict the runner pod while doing so would
+  # drop availability below this budget, which prevents in-flight tasks from
+  # being torn down by GC when the runner pod is deleted.
+  #
+  # Note: a PDB protects only against *voluntary* disruption. Node failure,
+  # OOM kills, and spot reclamation are not covered — mitigate those with a
+  # dedicated node pool / stable instance types.
+  #
+  # With `replicas: 1` and `minAvailable: 1`, `kubectl drain` will block until
+  # the pod is evicted with `--disable-eviction` or the budget is raised.
+  # For node maintenance, scale the runner deployment to 2 replicas first
+  # (the budget then permits evicting one), or drain with --disable-eviction
+  # and let the runner's SIGTERM drain finish in-flight tasks.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: chetter-runner

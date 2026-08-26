@@ -310,8 +310,8 @@ EOF
 
 ## Step 7: Deploy The Runner (Kubernetes Mode)
 
-Use `deploy/k8s/runner-rbac.yaml`, `runner-workspace-pvc.yaml`, and
-`runner-deployment.yaml` as the authoritative base. Before applying them:
+Use `deploy/k8s/runner-rbac.yaml`, `runner-workspace-pvc.yaml`, `runner-deployment.yaml`, and
+`poddisruptionbudget.yaml` as the authoritative base. Before applying them:
 
 - Set `storageClassName` on the PVC to an RWX-capable EFS CSI class. The default EBS
   classes are RWO and are not suitable for runner and agent Pods on different nodes.
@@ -321,6 +321,33 @@ Use `deploy/k8s/runner-rbac.yaml`, `runner-workspace-pvc.yaml`, and
   harness CLIs; never use the tight runner daemon image as the agent image.
 - Keep the downward API values for `RUNNER_ID`, `POD_NAME`, `POD_UID`, `POD_IP`, and
   `NODE_NAME`. The Pod UID prevents runner replicas sharing a PVC from sharing identity.
+
+### Disruption and restart hardening
+
+The kustomization includes a `PodDisruptionBudget` (`poddisruptionbudget.yaml`) that
+protects the runner from **voluntary** evictions — node drains, cluster-autoscaler
+scale-down, and cluster upgrades. With `minAvailable: 1`, Kubernetes refuses to evict
+the runner pod unless a replacement can be scheduled, so in-flight tasks are not torn
+down mid-run. The runner Deployment also sets:
+
+- `terminationGracePeriodSeconds: 120` — headroom above the drain budget
+  (`CHETTER_DRAIN_TIMEOUT_SEC` 60s + `CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC` 30s) so the
+  SIGTERM drain completes before Kubernetes SIGKILLs the pod.
+- `strategy: RollingUpdate` with `maxSurge: 1, maxUnavailable: 0` — a replacement runner
+  comes up Ready before the old one is terminated, so rolling image updates trigger a
+  clean drain instead of killing the current pod immediately.
+- `topologySpreadConstraints` — spreads a multi-replica runner fleet across nodes so a
+  single node failure or maintenance does not take down every runner at once.
+- `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` — belt-and-braces against
+  autoscaler churn on top of the PDB.
+
+These protections do **not** cover involuntary disruption: node failure, OOM kills, and
+spot-instance reclamation still terminate the runner pod, and Kubernetes garbage
+collection then deletes the agent Pods it owns (`chetter.io/owned=true`), killing
+in-flight work. The task is re-queued by the reaper after lease expiry and restarts on
+another runner (resumable sessions resume from their checkpoint). To reduce involuntary
+disruption, run runners on stable on-demand nodes in a dedicated node group rather than
+spot, and keep the node group large enough that autoscaler rarely scales it down.
 
 The following is an abridged structural example, not a directly applicable manifest;
 the repository manifests include workspace volumes, owner identity, drain timing, and
@@ -712,3 +739,22 @@ kubectl -n chetter rollout status deployment/chetter-runner
 
 Use the Chetter MCP tool `chetter_drain_runner` to gracefully stop the runner before
 updating the image.
+
+The `PodDisruptionBudget` (minAvailable: 1) blocks voluntary eviction of a single
+runner replica, so a plain `kubectl drain` on the runner's node will **hang** until
+`--disable-eviction` is used or a second replica is scaled up. For node maintenance:
+
+```bash
+# Option A: let the runner drain itself during the SIGTERM window
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --disable-eviction
+
+# Option B (preferred): scale to 2 replicas first so the PDB permits evicting one,
+# then drain normally — the replacement runner claims new tasks while the old one
+# finishes its in-flight work within the SIGTERM grace window
+kubectl -n chetter scale deployment/chetter-runner --replicas=2
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
+kubectl -n chetter scale deployment/chetter-runner --replicas=1
+```
+
+Node failure and other involuntary disruptions are not covered by the PDB; the reaper
+re-queues tasks whose runner disappeared after lease expiry.

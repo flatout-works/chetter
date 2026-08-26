@@ -63,7 +63,9 @@ spec:
         app: chetter-runner
     spec:
       # Single-node k3s only: runner and child Pods must see the same hostPath.
-      terminationGracePeriodSeconds: 90
+      # Grace period covers CHETTER_DRAIN_TIMEOUT_SEC (60s) + the hard-kill
+      # barrier (30s) plus margin; keep it above that sum.
+      terminationGracePeriodSeconds: 120
       serviceAccountName: chetter-runner
       containers:
         - name: runner
