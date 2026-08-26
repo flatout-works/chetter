@@ -345,3 +345,61 @@ func TestBuildRPCCommandNoSystemPromptWithoutAgent(t *testing.T) {
 		}
 	}
 }
+
+func assertPerms(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("%s permissions = %v, want %v", path, got, want)
+	}
+}
+
+func TestGenerateConfigWritesPrivatePermissions(t *testing.T) {
+	// Task 4.1: all runner-owned config files are written 0600 to a shared
+	// workspace root (defense in depth), matching .mcp.json.
+	wsDir := t.TempDir()
+	req := task.TaskRequest{ProviderID: "zai", ModelID: "glm-5.2", ProviderBaseURL: "https://api.zai.chat/v1", ProviderAPI: "openai-completions", ProviderAPIKeyEnv: "ZAI_API_KEY"}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	for _, p := range []string{
+		filepath.Join(wsDir, ".pi", "agent", "settings.json"),
+		filepath.Join(wsDir, ".pi", "settings.json"),
+		filepath.Join(wsDir, ".pi", "agent", "models.json"),
+	} {
+		assertPerms(t, p, 0600)
+	}
+}
+
+func TestGenerateConfigSettingsShape(t *testing.T) {
+	// Task 4.2: pin the headless settings keys Pi actually consumes so a future
+	// schema rename silently breaking headless behavior is caught.
+	wsDir := t.TempDir()
+	if err := GenerateConfig(wsDir, "", "", "", task.TaskRequest{}, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+	s := assertJSONPath(t, filepath.Join(wsDir, ".pi", "agent", "settings.json"))
+
+	compaction, ok := s["compaction"].(map[string]any)
+	if !ok {
+		t.Fatal("expected compaction object")
+	}
+	for _, key := range []string{"enabled", "reserveTokens", "keepRecentTokens"} {
+		if _, ok := compaction[key]; !ok {
+			t.Fatalf("compaction missing key %q: %#v", key, compaction)
+		}
+	}
+
+	retry, ok := s["retry"].(map[string]any)
+	if !ok {
+		t.Fatal("expected retry object")
+	}
+	for _, key := range []string{"enabled", "maxRetries"} {
+		if _, ok := retry[key]; !ok {
+			t.Fatalf("retry missing key %q: %#v", key, retry)
+		}
+	}
+}

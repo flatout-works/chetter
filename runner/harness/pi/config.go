@@ -34,7 +34,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			"maxRetries": 3,
 		},
 	}
-	if err := writeJSON(filepath.Join(agentDir, "settings.json"), globalSettings, 0644); err != nil {
+	if err := writeJSON(filepath.Join(agentDir, "settings.json"), globalSettings, 0600); err != nil {
 		return err
 	}
 	if err := writeProviderConfig(agentDir, req); err != nil {
@@ -46,7 +46,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		projectSettings["extensions"] = []string{adapterPath}
 	}
 	if len(projectSettings) > 0 {
-		if err := writeJSON(filepath.Join(piDir, "settings.json"), projectSettings, 0644); err != nil {
+		if err := writeJSON(filepath.Join(piDir, "settings.json"), projectSettings, 0600); err != nil {
 			return err
 		}
 	}
@@ -150,7 +150,7 @@ func writeProviderConfig(agentDir string, req task.TaskRequest) error {
 		"providers": map[string]any{
 			req.ProviderID: provider,
 		},
-	}, 0644)
+	}, 0600)
 }
 
 func mcpAdapterPath() string {

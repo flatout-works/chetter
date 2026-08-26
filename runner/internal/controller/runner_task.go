@@ -2086,6 +2086,16 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 					state.lastDetail = delta
 					state.recordProgress(delta)
 				}
+			case "thinking_start":
+				// Long reasoning phases emit no text deltas; surface them as
+				// progress so they do not look like a stall (Task 3.1).
+				state.lastDetail = "thinking…"
+				state.recordProgress("thinking started")
+			case "thinking_delta":
+				if delta, _ := ame["delta"].(string); delta != "" {
+					state.lastDetail = "thinking…"
+					state.recordProgress("thinking")
+				}
 			case "error":
 				if reason, _ := ame["reason"].(string); reason != "" {
 					state.errorMessage = reason

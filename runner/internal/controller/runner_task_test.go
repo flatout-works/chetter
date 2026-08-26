@@ -1991,3 +1991,28 @@ func hasAdjacentArgs(values []string, key, value string) bool {
 	}
 	return false
 }
+
+func TestPiRPCThinkingDeltaSurfacesProgress(t *testing.T) {
+	// Task 3.1: long reasoning phases emit thinking events, not text deltas;
+	// they must set lastDetail so the task does not look stalled.
+	r, _ := newShutdownTestRunner()
+	state := &rpcAgentState{lastPublished: time.Now().Add(-10 * time.Second), activeTools: make(map[string]struct{})}
+	ev := map[string]any{
+		"type":                  "message_update",
+		"assistantMessageEvent": map[string]any{"type": "thinking_delta", "delta": "reasoning..."},
+	}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, ev, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.lastDetail != "thinking…" {
+		t.Fatalf("lastDetail = %q, want thinking…", state.lastDetail)
+	}
+	// thinking_start also surfaces progress without a delta.
+	ev["assistantMessageEvent"] = map[string]any{"type": "thinking_start"}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, ev, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.lastDetail != "thinking…" {
+		t.Fatalf("lastDetail after thinking_start = %q, want thinking…", state.lastDetail)
+	}
+}

@@ -418,6 +418,11 @@ and supply-chain rigor make it suitable for production.
 - **Progress watchdog uses native `follow_up`** - a stalled Pi task is resumed
   with Pi's native post-turn `follow_up` command rather than a resume-based
   continue, so no session restart or native-session mapping is needed.
+- **Thinking deltas surfaced as progress** - `thinking_start`/`thinking_delta`
+  publish `pi: thinking…` so long reasoning phases do not look like a stall;
+  reasoning tokens are counted separately in usage (`usage.reasoning`).
+- **Runner-owned config is 0600** - `settings.json`, `models.json`, project
+  `.pi/settings.json`, and `.mcp.json` are all written 0600 in the workspace.
 - **Extension UI requests** can block the agent - must auto-respond
   with `cancelled:true` in headless mode
 - **JSONL framing caveat** - must split on `\n` only, not use
