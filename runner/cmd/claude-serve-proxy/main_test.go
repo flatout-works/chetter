@@ -106,6 +106,77 @@ func TestSessionRejectsNotLoggedInResult(t *testing.T) {
 	}
 }
 
+func TestPromptPreservesFlaggedResultError(t *testing.T) {
+	srv, s := testProxyServer(t, `printf '%s\n' '{"type":"result","subtype":"success","is_error":true,"result":"API Error: Request rejected (429): subscription rate limits exceeded"}'`)
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusInternalServerError, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "API Error: Request rejected (429)") {
+		t.Fatalf("body = %q, want provider error", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "reported success") {
+		t.Fatalf("body = %q, contains misleading success fallback", rr.Body.String())
+	}
+}
+
+func TestSessionUsesRetryDetailsForEmptyResultError(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":           "system",
+		"subtype":        "api_retry",
+		"attempt":        float64(3),
+		"max_retries":    float64(3),
+		"retry_delay_ms": float64(1500),
+		"error_status":   float64(429),
+		"error":          "rate_limit",
+	})
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "success",
+		"is_error": true,
+	})
+
+	want := "Claude provider request failed after API retry: rate_limit, HTTP 429, attempt 3/3"
+	if s.runErr != want {
+		t.Fatalf("runErr = %q, want %q", s.runErr, want)
+	}
+}
+
+func TestSessionRejectsMCPInitializationErrors(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":    "system",
+		"subtype": "init",
+		"mcp_server_errors": []any{
+			map[string]any{
+				"name":    "runner-bridge",
+				"type":    "invalid_config",
+				"message": "missing URL",
+			},
+		},
+	})
+
+	for _, want := range []string{"Claude MCP initialization failed", `"runner-bridge"`, "invalid_config", "missing URL"} {
+		if !strings.Contains(s.runErr, want) {
+			t.Fatalf("runErr = %q, want substring %q", s.runErr, want)
+		}
+	}
+}
+
+func TestSessionBoundsResultErrors(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "success",
+		"is_error": true,
+		"result":   strings.Repeat("x", maxClaudeErrorBytes+100),
+	})
+	if len(s.runErr) != maxClaudeErrorBytes+3 || !strings.HasSuffix(s.runErr, "...") {
+		t.Fatalf("bounded error length = %d, suffix=%q", len(s.runErr), s.runErr[len(s.runErr)-3:])
+	}
+}
+
 func TestPromptReportsNonzeroChildExit(t *testing.T) {
 	srv, s := testProxyServer(t, "exit 7")
 	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
@@ -114,6 +185,17 @@ func TestPromptReportsNonzeroChildExit(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "exit status 7") {
 		t.Fatalf("body = %q, want child exit status", rr.Body.String())
+	}
+}
+
+func TestPromptRejectsMissingResultEvent(t *testing.T) {
+	srv, s := testProxyServer(t, `printf '%s\n' 'not-json'`)
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusInternalServerError, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Claude exited without a result event") {
+		t.Fatalf("body = %q, want missing result error", rr.Body.String())
 	}
 }
 

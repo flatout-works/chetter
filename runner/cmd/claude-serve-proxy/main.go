@@ -19,23 +19,35 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
+const maxClaudeErrorBytes = 4096
+
+type claudeRetry struct {
+	Attempt      int
+	MaxRetries   int
+	RetryDelayMS int
+	ErrorStatus  *int
+	Error        string
+}
+
 type session struct {
-	mu       sync.Mutex
-	id       string
-	cmd      *exec.Cmd
-	cancel   context.CancelFunc
-	events   chan event
-	done     chan struct{}
-	prompt   string
-	model    string
-	resumeID string
-	summary  strings.Builder
-	runErr   string
-	nativeID string
-	result   json.RawMessage
-	complete bool
+	mu        sync.Mutex
+	id        string
+	cmd       *exec.Cmd
+	cancel    context.CancelFunc
+	events    chan event
+	done      chan struct{}
+	prompt    string
+	model     string
+	resumeID  string
+	summary   strings.Builder
+	runErr    string
+	nativeID  string
+	result    json.RawMessage
+	complete  bool
+	lastRetry *claudeRetry
 }
 
 type event struct {
@@ -584,7 +596,11 @@ func (srv *server) streamEvents(ctx context.Context, s *session, stdout io.Reade
 		}
 		return
 	}
+	missingResult := ctx.Err() == nil && s.runErr == "" && len(s.result) == 0
 	s.mu.Unlock()
+	if missingResult {
+		s.setError("Claude exited without a result event")
+	}
 }
 
 func progressEventPayload(ev map[string]any) any {
@@ -621,33 +637,180 @@ func (s *session) recordStreamEvent(ev map[string]any) {
 		}
 	case "stream_event":
 		appendTextDelta(&s.summary, ev)
-	case "result":
-		if errText, _ := ev["error"].(string); errText != "" {
+	case "system":
+		if retry := claudeRetryFromEvent(ev); retry != nil {
+			s.setLastRetry(retry)
+		}
+		if errText := claudeMCPInitError(ev); errText != "" {
 			s.setError(errText)
 		}
-		if looksLikeLoginFailure(ev) {
-			s.setError("Claude is not logged in")
-		}
-		isError, _ := ev["is_error"].(bool)
-		subtype, _ := ev["subtype"].(string)
-		if isError || strings.HasPrefix(subtype, "error") {
-			if message, _ := ev["message"].(string); message != "" {
-				s.setError(message)
-			} else if subtype != "" {
-				s.setError("Claude result reported " + subtype)
-			} else {
-				s.setError("Claude result reported an error")
-			}
+	case "result":
+		if errText := claudeResultError(ev, s.getLastRetry()); errText != "" {
+			s.setError(errText)
 		}
 	}
 }
 
 func (s *session) setError(message string) {
+	message = boundedClaudeError(message)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.runErr == "" {
 		s.runErr = message
 	}
+}
+
+func (s *session) setLastRetry(retry *claudeRetry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copy := *retry
+	s.lastRetry = &copy
+}
+
+func (s *session) getLastRetry() *claudeRetry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastRetry == nil {
+		return nil
+	}
+	copy := *s.lastRetry
+	return &copy
+}
+
+func claudeResultError(ev map[string]any, retry *claudeRetry) string {
+	if errText, _ := ev["error"].(string); errText != "" {
+		return errText
+	}
+	if looksLikeLoginFailure(ev) {
+		return "Claude is not logged in"
+	}
+
+	isError, _ := ev["is_error"].(bool)
+	subtype, _ := ev["subtype"].(string)
+	if !isError && !strings.HasPrefix(subtype, "error") {
+		return ""
+	}
+	if message, _ := ev["message"].(string); message != "" {
+		return message
+	}
+	if result, _ := ev["result"].(string); result != "" {
+		return result
+	}
+	if retry != nil {
+		return retry.failureMessage()
+	}
+	if subtype != "" {
+		return "Claude result reported " + subtype
+	}
+	return "Claude result reported an error"
+}
+
+func claudeRetryFromEvent(ev map[string]any) *claudeRetry {
+	typ, _ := ev["type"].(string)
+	subtype, _ := ev["subtype"].(string)
+	if typ != "system" || subtype != "api_retry" {
+		return nil
+	}
+	retry := &claudeRetry{
+		Attempt:      intFromJSON(ev["attempt"]),
+		MaxRetries:   intFromJSON(ev["max_retries"]),
+		RetryDelayMS: intFromJSON(ev["retry_delay_ms"]),
+	}
+	retry.Error, _ = ev["error"].(string)
+	if status, ok := intFromJSONValue(ev["error_status"]); ok {
+		retry.ErrorStatus = &status
+	}
+	return retry
+}
+
+func (r *claudeRetry) failureMessage() string {
+	if r == nil {
+		return "Claude provider request failed after API retries"
+	}
+	details := make([]string, 0, 3)
+	if r.Error != "" {
+		details = append(details, r.Error)
+	}
+	if r.ErrorStatus != nil {
+		details = append(details, fmt.Sprintf("HTTP %d", *r.ErrorStatus))
+	}
+	if r.Attempt > 0 && r.MaxRetries > 0 {
+		details = append(details, fmt.Sprintf("attempt %d/%d", r.Attempt, r.MaxRetries))
+	} else if r.Attempt > 0 {
+		details = append(details, fmt.Sprintf("attempt %d", r.Attempt))
+	}
+	if len(details) == 0 {
+		return "Claude provider request failed after API retries"
+	}
+	return "Claude provider request failed after API retry: " + strings.Join(details, ", ")
+}
+
+func claudeMCPInitError(ev map[string]any) string {
+	typ, _ := ev["type"].(string)
+	subtype, _ := ev["subtype"].(string)
+	if typ != "system" || subtype != "init" {
+		return ""
+	}
+	rawErrors, _ := ev["mcp_server_errors"].([]any)
+	if len(rawErrors) == 0 {
+		return ""
+	}
+
+	details := make([]string, 0, len(rawErrors))
+	for _, raw := range rawErrors {
+		entry, _ := raw.(map[string]any)
+		if entry == nil {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		errorType, _ := entry["type"].(string)
+		message, _ := entry["message"].(string)
+		label := "MCP server"
+		if name != "" {
+			label += " " + fmt.Sprintf("%q", name)
+		}
+		if errorType != "" {
+			label += " (" + errorType + ")"
+		}
+		if message != "" {
+			label += ": " + message
+		}
+		details = append(details, label)
+	}
+	if len(details) == 0 {
+		return "Claude reported MCP server initialization errors"
+	}
+	return "Claude MCP initialization failed: " + strings.Join(details, "; ")
+}
+
+func intFromJSON(value any) int {
+	result, _ := intFromJSONValue(value)
+	return result
+}
+
+func intFromJSONValue(value any) (int, bool) {
+	switch number := value.(type) {
+	case float64:
+		return int(number), true
+	case int:
+		return number, true
+	case int64:
+		return int(number), true
+	default:
+		return 0, false
+	}
+}
+
+func boundedClaudeError(message string) string {
+	message = strings.TrimSpace(message)
+	if len(message) <= maxClaudeErrorBytes {
+		return message
+	}
+	cut := maxClaudeErrorBytes
+	for cut > 0 && !utf8.RuneStart(message[cut]) {
+		cut--
+	}
+	return message[:cut] + "..."
 }
 
 // looksLikeLoginFailure reports whether a Claude stream-json result event is
