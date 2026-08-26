@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -68,11 +69,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 				"Bash(sudo:*)",
 			},
 		},
-		"skipPermissionsOnAllowed": true,
 	}
 	if len(enabledMCPServers) > 0 {
 		// Project MCP servers otherwise wait for interactive approval, which is
-		// unavailable to the headless serve proxy.
+		// unavailable to the headless serve proxy. Under --strict-mcp-config
+		// this list is inert, but local mode still benefits from it.
 		settings["enabledMcpjsonServers"] = enabledMCPServers
 	}
 
@@ -81,7 +82,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(settingsPath, settingsData, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, settingsData, 0600); err != nil {
 		return err
 	}
 	slog.Info("wrote claude settings", "path", settingsPath)
@@ -125,6 +126,17 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			return err
 		}
 		slog.Info("wrote claude mcp config", "path", agentMCPPath)
+
+		// The serve proxy passes this file via --strict-mcp-config so only the
+		// runner-generated servers load: -p mode loads a cloned repository's
+		// .mcp.json without any approval, which would otherwise let a
+		// malicious repo register its own MCP server. The runner-bridge and
+		// chetter entries carry bearer tokens, hence the private mode.
+		strictMCPPath := filepath.Join(claudeDir, "chetter-mcp.json")
+		if err := mcpconfig.WritePrivateFile(strictMCPPath, agentMCPData); err != nil {
+			return fmt.Errorf("write claude strict mcp config: %w", err)
+		}
+		slog.Info("wrote claude strict mcp config", "path", strictMCPPath)
 	}
 
 	if isLocal {

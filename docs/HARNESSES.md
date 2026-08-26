@@ -285,11 +285,30 @@ Claude's interactive approval prompts are unreachable in `-p` mode, so every
 "ask" becomes a silent "deny". Its Bash matcher also splits compound commands
 on `;`/`&&` and rejects redirects and `$(...)` unless every segment matches an
 allow rule, which makes per-binary allowlists unreliable mid-task. Chetter
-therefore writes `.claude/settings.json` with a bare `"Bash"` allow plus a
-deny list that keeps container escapes and host-control commands blocked
-(`docker`, `systemctl`, `journalctl`, `sudo`, `ssh`, `scp`, `pkill`, `kill`,
-`shutdown`, `reboot`) and `AskUserQuestion` denied. Deny rules are evaluated
-before allow; the gVisor task container remains the actual security boundary.
+therefore runs Claude with `--permission-mode dontAsk` — the documented
+fail-closed mode for headless runs — and writes `.claude/settings.json` (mode
+`0600`) with a bare `"Bash"` allow plus a deny list that keeps container
+escapes and host-control commands blocked (`docker`, `systemctl`,
+`journalctl`, `sudo`, `ssh`, `scp`, `pkill`, `kill`, `shutdown`, `reboot`) and
+`AskUserQuestion` denied. Deny rules are evaluated before allow; the gVisor
+task container remains the actual security boundary. The agent also gets
+`--add-dir /tmp` for scratch space, matching OpenCode's `/tmp` external
+directory allow.
+
+### MCP loading (strict)
+
+In `-p` mode Claude Code loads a cloned repository's `.mcp.json` **without any
+approval**. To stop a malicious repository from registering its own MCP
+server, `GenerateConfig` additionally writes the runner-owned server map
+(runner-bridge, chetter relay, team endpoints) to
+`.claude/chetter-mcp.json` (mode `0600`), and the serve proxy passes it via
+`--mcp-config <file> --strict-mcp-config` whenever the file exists. With
+strict mode, project `.mcp.json`, `~/.claude.json`, and every other MCP source
+are ignored — only the runner-generated servers load. Invalid or skipped
+entries surface in the `system/init` event's `mcp_server_errors` array, which
+the proxy converts into a terminal task error. `.mcp.json` is still written
+for local/interactive debugging; `enabledMcpjsonServers` in settings remains
+for local mode and is inert under strict mode.
 
 ### Why chosen
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +175,118 @@ func TestSessionBoundsResultErrors(t *testing.T) {
 	})
 	if len(s.runErr) != maxClaudeErrorBytes+3 || !strings.HasSuffix(s.runErr, "...") {
 		t.Fatalf("bounded error length = %d, suffix=%q", len(s.runErr), s.runErr[len(s.runErr)-3:])
+	}
+}
+
+func TestSessionParsesResultErrorList(t *testing.T) {
+	s := &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "error_max_turns",
+		"is_error": true,
+		"errors":   []any{"Turn limit reached", "Ran out of turns"},
+	})
+	want := "error_max_turns: Turn limit reached; Ran out of turns"
+	if s.runErr != want {
+		t.Fatalf("runErr = %q, want %q", s.runErr, want)
+	}
+
+	s = &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "error_max_budget_usd",
+		"is_error": true,
+		"errors":   []any{"Budget limit reached"},
+	})
+	if !strings.Contains(s.runErr, "error_max_budget_usd") || !strings.Contains(s.runErr, "Budget limit reached") {
+		t.Fatalf("runErr = %q, want subtype and message", s.runErr)
+	}
+
+	s = &session{}
+	s.recordStreamEvent(map[string]any{
+		"type":     "result",
+		"subtype":  "success",
+		"is_error": true,
+		"errors":   []any{""}, // whitespace-only entries are dropped
+		"result":   "API Error: Request rejected (429)",
+	})
+	if s.runErr != "API Error: Request rejected (429)" {
+		t.Fatalf("runErr = %q, want result fallback after empty errors", s.runErr)
+	}
+}
+
+func TestMaxTurns(t *testing.T) {
+	if got := maxTurns(); got != defaultMaxTurns {
+		t.Fatalf("maxTurns() = %d, want %d", got, defaultMaxTurns)
+	}
+	t.Setenv("CHETTER_CLAUDE_MAX_TURNS", "1234")
+	if got := maxTurns(); got != 1234 {
+		t.Fatalf("maxTurns() = %d, want 1234", got)
+	}
+	for _, invalid := range []string{"", " ", "abc", "0", "-5"} {
+		t.Setenv("CHETTER_CLAUDE_MAX_TURNS", invalid)
+		if got := maxTurns(); got != defaultMaxTurns {
+			t.Fatalf("maxTurns() with %q = %d, want %d", invalid, got, defaultMaxTurns)
+		}
+	}
+}
+
+func TestPromptArgsHeadlessHardening(t *testing.T) {
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(t.TempDir(), `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s := newSession("proxy-session")
+	srv.sessions[s.id] = s
+
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--permission-mode", "dontAsk") {
+		t.Fatalf("args missing --permission-mode dontAsk: %q", args)
+	}
+	if !containsArgs(args, "--add-dir", "/tmp") {
+		t.Fatalf("args missing --add-dir /tmp: %q", args)
+	}
+	if !containsArgs(args, "--max-turns", strconv.Itoa(defaultMaxTurns)) {
+		t.Fatalf("args missing --max-turns %d: %q", defaultMaxTurns, args)
+	}
+	if containsArgs(args, "--strict-mcp-config") {
+		t.Fatalf("args must not include --strict-mcp-config without a config file: %q", args)
+	}
+
+	// With a runner-generated MCP config present, strict loading kicks in.
+	strictPath := filepath.Join(srv.workspaceDir(), ".claude", "chetter-mcp.json")
+	if err := os.MkdirAll(filepath.Dir(strictPath), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(strictPath, []byte(`{"mcpServers":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	argsSeen = make(chan []string, 1)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s2 := newSession("proxy-session-2")
+	srv.sessions[s2.id] = s2
+	rr = sendTestPrompt(srv, s2.id, `{"prompt":"test"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("strict status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args = <-argsSeen
+	if !containsArgs(args, "--mcp-config", strictPath) || !containsArgs(args, "--strict-mcp-config") {
+		t.Fatalf("args missing strict mcp config: %q", args)
 	}
 }
 
