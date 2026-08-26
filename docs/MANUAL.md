@@ -211,6 +211,10 @@ Every check is a normal runner task. Passing requires a successful terminal task
 | `CHETTER_GITHUB_CREDENTIAL_URL`, `CHETTER_GITHUB_CREDENTIAL_TOKEN` | Runner-managed execution-scoped credential bridge values. Tasks cannot override them; operators should not configure them. |
 | `SYNTHETIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENCODE_API_KEY`, `ANTHROPIC_API_KEY` | Provider keys forwarded when configured. |
 | `MEM9_API_KEY`, `MEM9_API_URL`, `MEM9_DEBUG`, `MEM9_HOME` | Optional Mem9 persistent memory integration. |
+| `CHETTER_CLAUDE_MAX_TURNS` | Claude Code harness turn cap (`--max-turns`); default `500`. Unset or invalid values fall back to the default. |
+| `CHETTER_CLAUDE_MAX_MCP_OUTPUT_TOKENS` | Sets `MAX_MCP_OUTPUT_TOKENS` for the Claude Code harness; default `50000` (the documented 25000 default truncates runner-bridge payloads like PR diffs). |
+| `CHETTER_CLAUDE_MAX_OUTPUT_TOKENS` | When set, passed through to `CLAUDE_CODE_MAX_OUTPUT_TOKENS`. |
+| `CHETTER_CLAUDE_MAX_BUDGET_USD` | Optional per-task spend ceiling for the Claude Code harness, passed as `--max-budget-usd`. Subagent spend counts toward it. |
 
 The complete runner environment and `runner.yaml` reference, including
 container resource limits (`CHETTER_CONTAINER_MEMORY`, `CHETTER_CONTAINER_CPU`,

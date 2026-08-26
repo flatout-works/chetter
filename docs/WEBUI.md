@@ -535,39 +535,59 @@ The UI supports two credential flows, both funneling into the same backend scope
 
 1. **Bearer API tokens** — stored in `localStorage` under `chetter-token` and injected
    by the Connect transport interceptor. This is the classic flow, also used by the CLI.
-2. **OIDC/SSO sessions** — an `HttpOnly` cookie (`chetter_session`) that JavaScript
-   cannot read. The SPA probes `GET /auth/session` to discover whether a session exists
-   and redirects to the IdP when it does not.
+2. **OIDC/SSO sessions** — an `HttpOnly` cookie (`__Host-chetter-session` on HTTPS,
+   legacy `chetter_session` on plain HTTP) that JavaScript cannot read. The SPA probes
+   `GET /auth/session` to discover whether a session exists and redirects to the IdP
+   when it does not.
 
-`initAuth` decides which flow applies on startup:
+Whether the bearer-token flows are honored depends on the server capability
+`CHETTER_ALLOW_TOKEN_LOGIN` (default `true`): when an OIDC-only deployment sets it to
+`false`, the login form is hidden and URL/`localStorage` tokens are ignored and cleared.
+`initAuth` therefore loads the public server capabilities **before** touching any
+browser-stored token:
 
 ```ts
 // web/src/lib/stores/auth.svelte.ts (abridged)
 export async function initAuth() {
   if (typeof localStorage === "undefined") return;
 
+  // Load the public auth capabilities before touching browser-stored tokens.
+  await ensureServerInfoLoaded();
+
   // Token from URL (#token=...) — used by the CLI token flow.
   const tokenFromURL = tokenFromLocation();
-  if (tokenFromURL) {
+  if (tokenFromURL && getAllowTokenLogin()) {
     login(tokenFromURL);
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     return;
   }
 
   // Classic bearer token flow.
-  const token = localStorage.getItem("chetter-token");
-  if (token) {
-    auth.set({ authenticated: true, token, error: null });
+  if (getAllowTokenLogin()) {
+    const token = localStorage.getItem("chetter-token");
+    if (token) {
+      auth.set({ authenticated: true, token, error: null });
+      return;
+    }
+  } else {
+    clearToken();
+  }
+
+  // OIDC/SSO flow: the session cookie is HttpOnly, so we probe the server.
+  if (!getOIDCEnabled()) {
+    auth.set({
+      authenticated: false,
+      token: null,
+      error: getAllowTokenLogin() ? null : "No browser login method is enabled. Contact your administrator.",
+    });
     return;
   }
 
-  // OIDC/SSO flow: HttpOnly cookie, probe the server.
-  await ensureServerInfoLoaded();
-  if (!getOIDCEnabled()) return;
   if (await checkSession()) {
     auth.set({ authenticated: true, token: null, error: null });
     return;
   }
+  // No valid session — send the user to the IdP.
   redirectToLogin();
 }
 ```
