@@ -65,7 +65,7 @@ func TestAuthInterceptorResolveWithSessionCookie(t *testing.T) {
 		ClientID:      "test-client",
 		ClientSecret:  "test-secret",
 		RedirectURL:   "http://localhost:8090/auth/callback",
-		SessionSecret: "test-session-secret",
+		SessionSecret: "test-session-secret-at-least-32-bytes",
 		SessionTTL:    time.Hour,
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func TestAuthInterceptorResolveWithSessionCookie(t *testing.T) {
 	}
 
 	// Session cookie grants the session scope.
-	session, err := oidc.NewSession(&auth.OIDCIdentity{Subject: "user-1", Email: "a@example.com"}, auth.Scope{TeamIDs: []string{"t1"}}, "")
+	session, err := oidc.NewSession(&auth.OIDCIdentity{Subject: "user-1", Email: "a@example.com"}, auth.Scope{TeamIDs: []string{"t1"}})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}

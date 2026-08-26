@@ -25,6 +25,8 @@ spec:
         # even where a PDB is not configured).
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
+      securityContext:
+        runAsNonRoot: false
       # Grace period covers CHETTER_DRAIN_TIMEOUT_SEC (60s) + the hard-kill
       # cleanup barrier (CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC, 30s) plus margin
       # for scheduling and report retries. The drain code is written to stay
@@ -35,6 +37,8 @@ spec:
       containers:
       - name: runner
         image: ghcr.io/flatout-works/chetter-runner:main
+        securityContext:
+          allowPrivilegeEscalation: false
         envFrom:
         - secretRef:
             name: chetter-secrets

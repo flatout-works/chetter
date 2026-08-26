@@ -256,3 +256,48 @@ Once a task is running inside a sandbox, operators need visibility into the sand
 - `sandbox_crashed` — the sandbox died while the task was running (runsc/sandbox runtime error, or an unexpected non-zero exit with a daemon-recorded error in serve mode). Also terminal per-attempt; the task is retried up to `max_attempts` like any other infrastructure failure.
 
 Both map to the task-level `harness_error` failure category, so the reaper and session-recovery paths treat them exactly like `isolation_unavailable` and other runner-side infrastructure failures: the failed attempt feeds `task_events`, the task is eligible for a fresh execution attempt, and the failure counts appear in `chetter_task_failures`. Unlike an OOM kill (which is reported as `resource_limit` and `OOMKilled`), these categories mean the sandbox runtime itself — not the agent or the memory limit — was the cause.
+
+## External Exposure And Hardening
+
+### Public Endpoints
+
+The server exposes two listeners:
+
+- **Port 8080** (`HTTP_ADDR`, MCP/control plane): `/healthz`, `/readyz`, `/metrics`, the ConnectRPC MCP service, the runner RPC service, and the optional GitHub webhook. `/metrics` is unauthenticated unless `CHETTER_METRICS_AUTH_TOKEN` is set; the GitHub webhook is secured by its HMAC secret; the MCP and runner RPC endpoints require bearer tokens.
+- **Port 8090** (`WEB_ADDR`, web UI + ConnectRPC API): the SvelteKit UI, `/api/server-info`, and `/auth/*` OIDC endpoints.
+
+Expose only what each deployment needs. When the web UI is fronted by TLS and OIDC, do not publish port 8090 directly — terminate TLS at a reverse proxy. `deploy/compose.yaml` binds the published ports to `127.0.0.1` by default; change the bind address deliberately when a remote proxy or direct access is intended.
+
+### Metrics Protection
+
+The Prometheus `/metrics` endpoint can leak topology and work-load details. Set `CHETTER_METRICS_AUTH_TOKEN` to a random value to require a bearer token:
+
+```bash
+export CHETTER_METRICS_AUTH_TOKEN="$(openssl rand -hex 32)"
+```
+
+When set, Prometheus must send `Authorization: Bearer <token>`; the endpoint otherwise returns `401`.
+
+### Browser Token Login
+
+`CHETTER_ALLOW_TOKEN_LOGIN` (default `true`) controls whether the web UI accepts API bearer tokens through the login form and `localStorage`. Deployments that use OIDC as the only browser login path should set it to `false`: the login form is hidden, browser-stored tokens are ignored and cleared, and only OIDC/SSO sessions are accepted. API and MCP bearer authentication is unaffected — the setting only governs the browser UI.
+
+### OIDC And Cookies
+
+- Session cookies are signed JWTs (`OIDC_SESSION_SECRET`, minimum 32 bytes). On HTTPS they use the `__Host-chetter-session` name which browsers enforce as `Secure`, `Path=/`, and `Domain`-less; plain HTTP deployments fall back to `chetter_session`. The upstream ID token is never stored in the cookie.
+- Cookie security is derived from the configured `OIDC_REDIRECT_URL` scheme, not from request forwarding headers, so a client cannot downgrade cookie security by spoofing `X-Forwarded-Proto` on a directly reachable server. Terminate TLS at a reverse proxy so the public origin registered with the IdP is HTTPS.
+- OIDC `/auth/login` and `/auth/callback` are per-IP rate limited; the rate limiter keys on the direct peer address and deliberately ignores `X-Forwarded-For` (Chetter has no trusted-proxy allowlist). **Behind a reverse proxy all clients share the proxy's address and therefore one 30 req/min budget** — configure rate limiting at the proxy too, and treat repeated lockouts as a signal to add a trusted-proxy mechanism upstream.
+
+### Content Security Policy
+
+The web UI responses carry a strict CSP: `script-src 'self'` plus the SHA-256 hashes of the SPA's inline bootstrap scripts (SvelteKit's hydration bootstrap and the theme script). The hashes are computed from the embedded `index.html` at server startup, so the policy stays valid across rebuilds without allowing `'unsafe-inline'` for scripts. Styles allow `'unsafe-inline'` (required by Flowbite/Tailwind). If a future frontend change introduces new inline scripts, the hash logic picks them up automatically; verify with a browser console check for CSP violations after UI changes.
+
+### Task Container Hardening
+
+Runner-spawned task containers (Docker `serve`, `RPC`, and `resume` modes) now run with `--cap-drop ALL` and `--security-opt no-new-privileges`. In Kubernetes mode the agent Pod sets `allowPrivilegeEscalation: false` and drops all capabilities; `runAsNonRoot` is deliberately **not** set because agent images run as root (the runner creates workspace files as root) — kubelet would refuse to start such pods. The gVisor RuntimeClass remains the sandbox boundary; running agent images as non-root requires coordinated image and workspace-ownership changes. The MCP deployment manifest runs as UID 65532 (matching the image) with privilege escalation disabled and all capabilities dropped. The runner daemon image intentionally runs as root because the Docker backend needs host Docker access; prefer the Kubernetes backend where workload isolation matters.
+
+### Supply-Chain Hardening
+
+The agent base image verifies the SHA-256 checksums of the `gh` CLI, Node.js, and OpenCode downloads (arch-aware, both amd64 and arm64), replaces the NodeSource `curl | bash` install with a direct `nodejs.org` download, and pins all three versions instead of piping unpinned installers. Base images are kept at their prior versions where a bump would change runtime behavior.
+
+Images are still tag-pinned rather than digest-pinned; pinning to digests requires coordinating across the image build pipeline in `ci/`.

@@ -72,6 +72,18 @@ func TestVerifySignature(t *testing.T) {
 	}
 }
 
+func TestWebhookRejectsNonPost(t *testing.T) {
+	h := &Handler{cfg: HandlerConfig{WebhookSecret: "secret"}, recent: NewRecentDeliveries(5*time.Minute, 4096)}
+	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+		req := httptest.NewRequest(method, "/webhook", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("method %s: status = %d, want 405", method, rec.Code)
+		}
+	}
+}
+
 func TestVerifySignature_Invalid(t *testing.T) {
 	tests := []struct {
 		name   string

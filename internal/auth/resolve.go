@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"strings"
@@ -12,7 +13,10 @@ import (
 // ResolveToken validates a raw bearer token against the admin token
 // and the api_tokens table. Returns the scope and true if valid.
 func ResolveToken(ctx context.Context, adminToken string, db *sql.DB, rawToken string) (Scope, bool) {
-	if adminToken != "" && rawToken == adminToken {
+	if rawToken == "" {
+		return Scope{}, false
+	}
+	if adminToken != "" && subtle.ConstantTimeCompare([]byte(rawToken), []byte(adminToken)) == 1 {
 		return Scope{Admin: true}, true
 	}
 	if db != nil {

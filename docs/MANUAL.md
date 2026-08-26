@@ -126,7 +126,7 @@ Team tokens can optionally expire. The `chetter_create_token` MCP tool accepts a
 When the OIDC environment variables below are set, the web UI supports login through an OIDC provider (Okta and any other OIDC-compliant IdP). The flow:
 
 - The unauthenticated UI redirects to `/auth/login`, which sends the browser to the IdP's authorization endpoint.
-- `/auth/callback` exchanges the code, verifies the ID token (signature, issuer, audience, nonce), maps the user's groups to a Chetter scope, and issues a short-lived signed session cookie (`chetter_session`, HttpOnly).
+- `/auth/callback` exchanges the code, verifies the ID token (signature, issuer, audience, nonce), maps the user's groups to a Chetter scope, and issues a short-lived signed session cookie (HttpOnly, `SameSite=Strict`). On HTTPS deployments the cookie uses the browser-enforced `__Host-chetter-session` name (Secure, Path=/, no Domain); plain HTTP deployments keep the legacy `chetter_session` name. The raw ID token is never stored in the session cookie.
 - The ConnectRPC web API and `/api/v1/repos` accept the session cookie in addition to bearer tokens. MCP/runner endpoints remain bearer-token-only.
 - Logout clears the cookie and redirects to the IdP's end-session endpoint when the provider advertises one, sending the browser back to the app origin derived from `OIDC_REDIRECT_URL` (not request headers).
 
@@ -159,6 +159,8 @@ Managed Git identities control commit attribution for agent work and are configu
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
 | `CHETTER_ALLOW_UNISOLATED` | No | `false` | Documented escape hatch for single-tenant/trusted deployments that intentionally run without gVisor. When unset (hardened default), every task requires enforced isolation (gVisor/runsc) and is refused by runners that cannot enforce it. When `true`, only resumable sessions and tasks explicitly configured with `isolation: required` require isolation. Set it on the server **and** on every runner in the trusted deployment. See issue #291. |
+| `CHETTER_METRICS_AUTH_TOKEN` | No | empty | When set, the Prometheus `/metrics` endpoint requires this bearer token. When empty (default), `/metrics` stays unauthenticated for backward compatibility. |
+| `CHETTER_ALLOW_TOKEN_LOGIN` | No | `true` | Controls whether the web UI accepts API bearer tokens via the login form and `localStorage`. When `false`, only OIDC/SSO sessions are accepted by the browser UI (the login form is hidden and browser-stored tokens are ignored/cleared). API and MCP bearer authentication is unaffected. Disable it in deployments that use OIDC as the only browser login path. |
 | `ARCANE_SERVER_URL` | No | empty | Optional Arcane scanner URL. |
 | `ARCANE_API_KEY` | No | empty | Optional Arcane API key. |
 | `GITHUB_APP_ID` | For GitHub app | `0` | GitHub App ID. |
@@ -173,7 +175,7 @@ Managed Git identities control commit attribution for agent work and are configu
 | `OIDC_REDIRECT_URL` | For OIDC SSO | empty | OIDC redirect URL, must match the IdP app registration (e.g. `https://chetter.example.com/auth/callback`). |
 | `OIDC_ADMIN_GROUP` | No | `chetter-admin` | IdP group that grants full admin scope. |
 | `OIDC_TEAM_GROUP_PREFIX` | No | `chetter-` | IdP group prefix for team mapping: `chetter-<team>` maps to team `<team>`. Empty disables team mapping. |
-| `OIDC_SESSION_SECRET` | No | derived from `MCP_AUTH_TOKEN` | HMAC key signing web session JWTs. Rotating it (or `MCP_AUTH_TOKEN` when unset) signs out all web sessions. |
+| `OIDC_SESSION_SECRET` | No | derived from `MCP_AUTH_TOKEN` | HMAC key signing web session JWTs (minimum 32 bytes). Rotating it (or `MCP_AUTH_TOKEN` when unset) signs out all web sessions. |
 | `OIDC_SESSION_TTL` | No | `8h` | Web session lifetime (Go duration, e.g. `1h`, `24h`). |
 
 ### Deployment self-tests

@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/repository"
@@ -32,17 +32,27 @@ type TeamResolver interface {
 //	GET /auth/callback — exchange the code, mint a session, set the cookie
 //	GET/POST /auth/logout — clear the session cookie, redirect to IdP logout
 //	GET /auth/session  — report session state to the SPA (200/401)
+//
+// Login and callback are per-IP rate limited to slow redirect-flooding and
+// callback spam; actual authentication stays delegated to the IdP.
 func RegisterOIDCRoutes(mux *http.ServeMux, oidc *auth.OIDCAuth, teams TeamResolver) {
 	if oidc == nil {
 		return
 	}
 	h := &oidcHandlers{oidc: oidc, teams: teams}
-	mux.HandleFunc("GET /auth/login", h.handleLogin)
-	mux.HandleFunc("GET /auth/callback", h.handleCallback)
+	mux.Handle("GET /auth/login", RateLimit(authEndpointRateLimit, authEndpointWindow, http.HandlerFunc(h.handleLogin)))
+	mux.Handle("GET /auth/callback", RateLimit(authEndpointRateLimit, authEndpointWindow, http.HandlerFunc(h.handleCallback)))
 	mux.HandleFunc("GET /auth/logout", h.handleLogout)
 	mux.HandleFunc("POST /auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /auth/session", h.handleSession)
 }
+
+// Per-IP budget for the unauthenticated OIDC endpoints. Generous enough for
+// shared office NATs doing normal logins, tight enough to stop floods.
+const (
+	authEndpointRateLimit = 30
+	authEndpointWindow    = time.Minute
+)
 
 type oidcHandlers struct {
 	oidc  *auth.OIDCAuth
@@ -53,6 +63,7 @@ type oidcHandlers struct {
 // state cookie (CSRF protection) plus a nonce cookie and redirects to the
 // IdP.
 func (h *oidcHandlers) handleLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	state, err := randomToken(32)
 	if err != nil {
 		slog.Error("oidc login: generate state", "error", err)
@@ -65,7 +76,7 @@ func (h *oidcHandlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	secure := isHTTPS(r)
+	secure := h.oidc.SecureCookies()
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.OAuthStateCookieName,
 		Value:    state,
@@ -91,6 +102,7 @@ func (h *oidcHandlers) handleLogin(w http.ResponseWriter, r *http.Request) {
 // state cookie, exchanges the code for a verified identity, maps the IdP
 // groups to a Chetter scope, and issues the session cookie.
 func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		slog.Warn("oidc callback: provider error", "error", errMsg, "description", r.URL.Query().Get("error_description"))
 		http.Error(w, "authentication failed", http.StatusBadRequest)
@@ -112,7 +124,7 @@ func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, rawIDToken, err := h.oidc.Exchange(r.Context(), code, nonce)
+	identity, err := h.oidc.Exchange(r.Context(), code, nonce)
 	if err != nil {
 		slog.Warn("oidc callback: exchange failed", "error", err)
 		http.Error(w, "authentication failed", http.StatusBadRequest)
@@ -125,7 +137,7 @@ func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
 		scope.TeamID = scope.TeamIDs[0]
 	}
 
-	session, err := h.oidc.NewSession(identity, scope, rawIDToken)
+	session, err := h.oidc.NewSession(identity, scope)
 	if err != nil {
 		slog.Error("oidc callback: mint session", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -133,14 +145,15 @@ func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.clearOAuthCookies(w, r)
+	secure := h.oidc.SecureCookies()
 	http.SetCookie(w, &http.Cookie{
-		Name:     auth.SessionCookieName,
+		Name:     sessionCookieName(secure),
 		Value:    session,
 		Path:     "/",
 		MaxAge:   int(h.oidc.SessionTTL().Seconds()),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteStrictMode,
+		Secure:   secure,
 	})
 	slog.Info("oidc: session established", "subject", identity.Subject, "email", identity.Email)
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -148,22 +161,23 @@ func (h *oidcHandlers) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout clears the session cookie and redirects to the IdP's
 // end-session endpoint (when advertised) so the SSO session is terminated
-// too. post_logout_redirect_uri sends the browser back to the app.
+// too. post_logout_redirect_uri is only sent when the externally visible
+// origin is known from the configured OIDC_REDIRECT_URL; request headers are
+// never trusted for it (they may be spoofed or rewritten by proxies).
 func (h *oidcHandlers) handleLogout(w http.ResponseWriter, r *http.Request) {
-	rawIDToken := ""
-	if claims, ok := h.oidc.SessionFromCookie(r.Header); ok {
-		rawIDToken = claims.IDToken
-	}
+	w.Header().Set("Cache-Control", "no-store")
 	h.clearSessionCookie(w, r)
 	endSession := h.oidc.EndSessionEndpoint()
 	if endSession != "" {
 		u, err := url.Parse(endSession)
 		if err == nil {
 			q := u.Query()
-			if rawIDToken != "" {
-				q.Set("id_token_hint", rawIDToken)
+			if clientID := h.oidc.ClientID(); clientID != "" {
+				q.Set("client_id", clientID)
 			}
-			q.Set("post_logout_redirect_uri", h.logoutRedirectURI(r))
+			if redirect := h.logoutRedirectURI(r); redirect != "" {
+				q.Set("post_logout_redirect_uri", redirect)
+			}
 			u.RawQuery = q.Encode()
 			http.Redirect(w, r, u.String(), http.StatusFound)
 			return
@@ -173,17 +187,18 @@ func (h *oidcHandlers) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // logoutRedirectURI returns the absolute URL the IdP should send the browser
-// back to after logout. It is derived from the configured OIDC_REDIRECT_URL
-// origin (guaranteed to be registered with the IdP) rather than from request
-// headers, which may be spoofed or rewritten by proxies. The request-based
-// fallback only applies when the configured URL cannot be parsed.
-func (h *oidcHandlers) logoutRedirectURI(r *http.Request) string {
-	origin := ""
-	if h.oidc != nil {
-		origin = h.oidc.RedirectOrigin()
+// back to after logout. It is derived solely from the configured
+// OIDC_REDIRECT_URL origin (guaranteed to be registered with the IdP). When
+// that URL is missing or unparseable it returns "" and the caller omits
+// post_logout_redirect_uri entirely instead of guessing from request
+// headers.
+func (h *oidcHandlers) logoutRedirectURI(_ *http.Request) string {
+	if h.oidc == nil {
+		return ""
 	}
+	origin := h.oidc.RedirectOrigin()
 	if origin == "" {
-		return appBaseURL(r) + "/"
+		return ""
 	}
 	return origin + "/"
 }
@@ -192,13 +207,14 @@ func (h *oidcHandlers) logoutRedirectURI(r *http.Request) string {
 // The SPA calls this to decide between showing the app and redirecting to
 // /auth/login.
 func (h *oidcHandlers) handleSession(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json")
 	claims, ok := h.oidc.SessionFromCookie(r.Header)
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"authenticated":false}`))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"authenticated": true,
 		"email":         claims.Email,
@@ -208,7 +224,7 @@ func (h *oidcHandlers) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *oidcHandlers) clearOAuthCookies(w http.ResponseWriter, r *http.Request) {
-	secure := isHTTPS(r)
+	secure := h.oidc.SecureCookies()
 	for _, name := range []string{auth.OAuthStateCookieName, auth.OAuthNonceCookieName} {
 		http.SetCookie(w, &http.Cookie{
 			Name:     name,
@@ -216,22 +232,38 @@ func (h *oidcHandlers) clearOAuthCookies(w http.ResponseWriter, r *http.Request)
 			Path:     "/auth",
 			MaxAge:   -1,
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			Secure:   secure,
 		})
 	}
 }
 
 func (h *oidcHandlers) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   isHTTPS(r),
-	})
+	secure := h.oidc.SecureCookies()
+	// Clear every name the session cookie may have carried (secure __Host-
+	// variant and legacy name) so pre-upgrade cookies are removed too.
+	for _, name := range []string{auth.SessionCookieSecureName, auth.SessionCookieName} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+			Secure:   secure,
+		})
+	}
+}
+
+// sessionCookieName picks the session cookie name for the request's TLS
+// state. The __Host- prefix is browser-enforced (Secure, Path=/, no Domain)
+// and only valid on secure contexts; plain HTTP deployments (local dev)
+// keep the legacy name.
+func sessionCookieName(secure bool) string {
+	if secure {
+		return auth.SessionCookieSecureName
+	}
+	return auth.SessionCookieName
 }
 
 // resolveTeamIDs maps group-derived team names to real team IDs via the
@@ -310,31 +342,4 @@ func randomToken(bytes int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
-}
-
-// isHTTPS reports whether the request arrived over TLS, honoring the
-// X-Forwarded-Proto header used by reverse proxies.
-func isHTTPS(r *http.Request) bool {
-	if r.TLS != nil {
-		return true
-	}
-	proto := r.Header.Get("X-Forwarded-Proto")
-	if proto != "" && !strings.EqualFold(proto, "http") {
-		return true
-	}
-	return r.URL.Scheme == "https"
-}
-
-// appBaseURL reconstructs the externally visible base URL of the web app so
-// post_logout_redirect_uri is absolute (Okta requirement).
-func appBaseURL(r *http.Request) string {
-	scheme := "http"
-	if isHTTPS(r) {
-		scheme = "https"
-	}
-	host := r.Host
-	if forwarded := r.Header.Get("X-Forwarded-Host"); forwarded != "" {
-		host = forwarded
-	}
-	return scheme + "://" + host
 }

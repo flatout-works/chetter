@@ -84,6 +84,23 @@ func TestBuildKubernetesPodIsolationVolumeAndResources(t *testing.T) {
 	if pod.Spec.ServiceAccountName != "chetter-agent" {
 		t.Fatalf("service account = %q", pod.Spec.ServiceAccountName)
 	}
+	sc := pod.Spec.Containers[0].SecurityContext
+	if sc == nil {
+		t.Fatal("agent container must set a security context")
+	}
+	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation {
+		t.Fatal("agent container must disable privilege escalation")
+	}
+	// RunAsNonRoot is deliberately not set: the agent base image runs as root
+	// (the runner creates workspace files as root), and kubelet refuses to
+	// start runAsNonRoot containers whose image runs as root. The gVisor
+	// RuntimeClass is the sandbox boundary.
+	if sc.RunAsNonRoot != nil {
+		t.Fatal("RunAsNonRoot must not be set: agent images run as root")
+	}
+	if sc.Capabilities == nil || !containsCapability(sc.Capabilities.Drop, "ALL") {
+		t.Fatalf("agent container must drop all capabilities: %+v", sc.Capabilities)
+	}
 	container := pod.Spec.Containers[0]
 	if container.Image != req.AgentImage || container.WorkingDir != workspace {
 		t.Fatalf("unexpected agent container: %+v", container)
@@ -319,4 +336,13 @@ func TestVerifyAndReconcileKubernetesOnlyDeletesOwnedRunnerResources(t *testing.
 	if _, err := r.kubeClient.CoreV1().Pods("chetter").Get(context.Background(), "other", metav1.GetOptions{}); err != nil {
 		t.Fatalf("another runner's pod was deleted: %v", err)
 	}
+}
+
+func containsCapability(caps []corev1.Capability, want string) bool {
+	for _, c := range caps {
+		if string(c) == want {
+			return true
+		}
+	}
+	return false
 }

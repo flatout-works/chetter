@@ -4,6 +4,8 @@ let serverVersion = $state<string | null>(null);
 let startedAt = $state<string | null>(null);
 let uptimeSeconds = $state<number | null>(null);
 let oidcEnabled = $state(false);
+// Preserve compatibility with older servers that do not return the field.
+let allowTokenLogin = $state(true);
 
 let interval: ReturnType<typeof setInterval> | null = null;
 let loading: Promise<void> | null = null;
@@ -12,7 +14,11 @@ export function fetchServerInfo(): Promise<void> {
   if (!loading) {
     loading = (async () => {
       try {
-        const res = await fetch("/api/server-info");
+        const res = await fetch("/api/server-info", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+		if (!res.ok) return;
         const info = await res.json();
         if (info.gitHash && info.gitHash !== "unknown") {
           gitHash = info.gitHash;
@@ -28,6 +34,9 @@ export function fetchServerInfo(): Promise<void> {
         }
         quotaExhausted = !!info.quotaExhausted;
         oidcEnabled = !!info.oidcEnabled;
+		if (typeof info.allowTokenLogin === "boolean") {
+			allowTokenLogin = info.allowTokenLogin;
+		}
       } catch {
         // server unreachable — leave previous state
       } finally {
@@ -71,4 +80,8 @@ export function getServerInfo() {
 
 export function getOIDCEnabled(): boolean {
   return oidcEnabled;
+}
+
+export function getAllowTokenLogin(): boolean {
+  return allowTokenLogin;
 }

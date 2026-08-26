@@ -41,6 +41,8 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		"run", "-d",
 		"--entrypoint", entrypoint,
 		"--name", containerName,
+		"--cap-drop", "ALL",
+		"--security-opt", "no-new-privileges",
 		"--label", "chetter.runner_id=" + r.runnerID,
 		"--label", "chetter.task_id=" + req.TaskID,
 		"--label", "chetter.execution_id=" + executionKey(req),

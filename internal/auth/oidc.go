@@ -19,10 +19,11 @@ import (
 
 // Cookie names used by the OIDC web flow.
 const (
-	SessionCookieName      = "chetter_session"
-	OAuthStateCookieName   = "chetter_oauth_state"
-	OAuthNonceCookieName   = "chetter_oauth_nonce"
-	OAuthStateCookieMaxAge = 10 * 60 // 10 minutes
+	SessionCookieName       = "chetter_session"
+	SessionCookieSecureName = "__Host-chetter-session"
+	OAuthStateCookieName    = "chetter_oauth_state"
+	OAuthNonceCookieName    = "chetter_oauth_nonce"
+	OAuthStateCookieMaxAge  = 10 * 60 // 10 minutes
 )
 
 // Default group mapping values. Groups are mapped to Chetter scopes:
@@ -62,7 +63,6 @@ type SessionClaims struct {
 	Email   string   `json:"email"`
 	Admin   bool     `json:"admin"`
 	TeamIDs []string `json:"teams,omitempty"`
-	IDToken string   `json:"id_token,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -105,6 +105,9 @@ func NewOIDCAuth(ctx context.Context, cfg OIDCConfig) (*OIDCAuth, error) {
 	if strings.TrimSpace(cfg.SessionSecret) == "" {
 		return nil, errors.New("oidc: session secret is required")
 	}
+	if len(cfg.SessionSecret) < 32 {
+		return nil, errors.New("oidc: session secret must be at least 32 bytes")
+	}
 	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("oidc: provider discovery: %w", err)
@@ -146,6 +149,26 @@ func (a *OIDCAuth) RedirectOrigin() string {
 	return u.Scheme + "://" + u.Host
 }
 
+// SecureCookies reports whether the registered callback URL uses HTTPS.
+// Cookie security must come from trusted configuration rather than request
+// forwarding headers, which are attacker-controlled without a proxy allowlist.
+func (a *OIDCAuth) SecureCookies() bool {
+	if a == nil {
+		return false
+	}
+	u, err := url.Parse(a.cfg.RedirectURL)
+	return err == nil && strings.EqualFold(u.Scheme, "https") && u.Host != ""
+}
+
+// ClientID returns the configured OIDC client identifier. The logout handler
+// uses it instead of storing the raw ID token in the browser session JWT.
+func (a *OIDCAuth) ClientID() string {
+	if a == nil {
+		return ""
+	}
+	return a.cfg.ClientID
+}
+
 // TeamGroupPrefix returns the configured team group prefix ("chetter-" by
 // default). Group-to-team mapping strips it to derive the team name.
 func (a *OIDCAuth) TeamGroupPrefix() string {
@@ -179,28 +202,27 @@ func (a *OIDCAuth) LoginURL(state, nonce string) string {
 }
 
 // Exchange swaps an authorization code for an identity. The ID token is
-// verified against the provider (signature, issuer, audience, and nonce).
-// The raw ID token is returned so callers can pass it to the IdP's
-// end-session endpoint on logout.
-func (a *OIDCAuth) Exchange(ctx context.Context, code, nonce string) (*OIDCIdentity, string, error) {
+// verified against the provider (signature, issuer, audience, and nonce) and
+// is not retained after its identity claims have been extracted.
+func (a *OIDCAuth) Exchange(ctx context.Context, code, nonce string) (*OIDCIdentity, error) {
 	rawIDToken, err := a.exchangeIDToken(ctx, code)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	idToken, err := a.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return nil, "", fmt.Errorf("oidc: verify id token: %w", err)
+		return nil, fmt.Errorf("oidc: verify id token: %w", err)
 	}
 	if nonce != "" {
 		if err := verifyNonce(idToken, nonce); err != nil {
-			return nil, "", err
+			return nil, err
 		}
 	}
 	identity, err := identityFromIDToken(idToken)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return identity, rawIDToken, nil
+	return identity, nil
 }
 
 func (a *OIDCAuth) exchangeIDToken(ctx context.Context, code string) (string, error) {
@@ -304,15 +326,14 @@ func (a *OIDCAuth) ScopeForGroups(groups []string) Scope {
 }
 
 // NewSession mints a short-lived session JWT for the given identity and scope.
-// The raw ID token is embedded so logout can pass id_token_hint to the IdP.
-func (a *OIDCAuth) NewSession(identity *OIDCIdentity, scope Scope, rawIDToken string) (string, error) {
+// The upstream ID token is deliberately not embedded in the browser cookie.
+func (a *OIDCAuth) NewSession(identity *OIDCIdentity, scope Scope) (string, error) {
 	now := time.Now().UTC()
 	claims := SessionClaims{
 		Subject: identity.Subject,
 		Email:   identity.Email,
 		Admin:   scope.Admin,
 		TeamIDs: scope.Teams(),
-		IDToken: rawIDToken,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   identity.Subject,
 			Issuer:    "chetter-web",
@@ -332,11 +353,8 @@ func (a *OIDCAuth) NewSession(identity *OIDCIdentity, scope Scope, rawIDToken st
 func (a *OIDCAuth) ParseSession(sessionToken string) (*SessionClaims, error) {
 	var claims SessionClaims
 	token, err := jwt.ParseWithClaims(sessionToken, &claims, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("oidc: unexpected session signing method %q", t.Method.Alg())
-		}
 		return a.signKey, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer("chetter-web"), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, fmt.Errorf("oidc: parse session: %w", err)
 	}
@@ -347,20 +365,23 @@ func (a *OIDCAuth) ParseSession(sessionToken string) (*SessionClaims, error) {
 }
 
 // SessionFromCookie extracts and validates the session cookie from an HTTP
-// header set. ok is false when the cookie is absent or invalid/expired.
+// header set. Both the hardened __Host- name and the legacy name are accepted
+// so existing sessions remain valid across the upgrade.
 func (a *OIDCAuth) SessionFromCookie(header http.Header) (*SessionClaims, bool) {
 	if a == nil {
 		return nil, false
 	}
-	session := cookieValue(header, SessionCookieName)
-	if session == "" {
-		return nil, false
+	for _, name := range []string{SessionCookieSecureName, SessionCookieName} {
+		session := cookieValue(header, name)
+		if session == "" {
+			continue
+		}
+		claims, err := a.ParseSession(session)
+		if err == nil {
+			return claims, true
+		}
 	}
-	claims, err := a.ParseSession(session)
-	if err != nil {
-		return nil, false
-	}
-	return claims, true
+	return nil, false
 }
 
 // ScopeFromCookie extracts and validates the session cookie from an HTTP
