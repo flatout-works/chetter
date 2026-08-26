@@ -759,6 +759,126 @@ func TestPiRPCMissingTerminalEOFFallback(t *testing.T) {
 	}
 }
 
+func TestPiRPCUsageParsing(t *testing.T) {
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+
+	event := map[string]any{
+		"type": "message_update",
+		"usage": map[string]any{
+			"input":                 1000.0,
+			"output":                500.0,
+			"cacheRead":             200.0,
+			"cacheWrite":            50.0,
+			"reasoning":             300.0,
+			"totalTokens":           1750.0,
+			"cost":                  map[string]any{"total": 1.23},
+			"assistantMessageEvent": nil, // sibling key, must be ignored by usage parsing
+		},
+		"assistantMessageEvent": map[string]any{"type": "text_delta", "delta": "hello"},
+	}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, event, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.usage.InputTokens != 1000 || state.usage.OutputTokens != 500 ||
+		state.usage.CacheReadTokens != 200 || state.usage.CacheWriteTokens != 50 ||
+		state.usage.ReasoningTokens != 300 || state.usage.CostCents != 123 {
+		t.Fatalf("usage = %+v, want full mapping", state.usage)
+	}
+
+	// A follow-up message_update with a *cumulative* snapshot must produce the
+	// delta, not a double count.
+	cumulative := map[string]any{
+		"type": "message_update",
+		"usage": map[string]any{
+			"input":      2000.0,
+			"output":     900.0,
+			"cacheRead":  300.0,
+			"cacheWrite": 80.0,
+			"reasoning":  600.0,
+			"cost":       map[string]any{"total": 2.50},
+		},
+		"assistantMessageEvent": map[string]any{"type": "done", "reason": "stop"},
+	}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, cumulative, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.usage.InputTokens != 2000 || state.usage.OutputTokens != 900 ||
+		state.usage.CacheReadTokens != 300 || state.usage.CacheWriteTokens != 80 ||
+		state.usage.ReasoningTokens != 600 || state.usage.CostCents != 250 {
+		t.Fatalf("usage delta = %+v, want accumulated totals", state.usage)
+	}
+}
+
+func TestPiRPCUsageMissingOrMalformed(t *testing.T) {
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+	// No usage key at all must not fail the event loop and must add zero.
+	event := map[string]any{"type": "message_update", "assistantMessageEvent": map[string]any{"type": "text_delta", "delta": "x"}}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, event, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.usage != (task.TokenUsage{}) {
+		t.Fatalf("usage = %+v, want zero", state.usage)
+	}
+	// Malformed types must also degrade to zero, not panic.
+	bad := map[string]any{"type": "message_update", "usage": map[string]any{"input": "oops", "cost": "oops"}}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, bad, state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPiRPCUsageBaselineResetsAtMessageEnd(t *testing.T) {
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+
+	msg := func(input float64) map[string]any {
+		return map[string]any{"type": "message_update", "usage": map[string]any{"input": input}}
+	}
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, msg(1000), state)
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{
+		"type":    "message_end",
+		"message": map[string]any{"role": "assistant", "stopReason": "stop"},
+	}, state)
+	// Second message restarts its cumulative usage from a small value; it must
+	// contribute its own totals rather than being absorbed by the baseline.
+	_ = r.handleRPCEvent(task.TaskRequest{}, io.Discard, msg(500), state)
+	if state.usage.InputTokens != 1500 {
+		t.Fatalf("usage after second message = %d, want 1500", state.usage.InputTokens)
+	}
+}
+
+func TestPiRPCKeepaliveProgressDuringSilence(t *testing.T) {
+	// Long tool calls without text deltas must still publish keepalive
+	// progress so the task does not look stuck (Task 1.2).
+	r, mb := newShutdownTestRunner()
+	state := &rpcAgentState{lastPublished: time.Now().Add(-10 * time.Second), activeTools: make(map[string]struct{})}
+
+	// Feed a silent event (no detail) far past the publish window. The
+	// keepalive branch must publish and refresh lastPublished.
+	before := state.lastPublished
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "message_update", "assistantMessageEvent": map[string]any{"type": "text_delta", "delta": ""}}, state); err != nil {
+		t.Fatal(err)
+	}
+	if !state.lastPublished.After(before) {
+		t.Fatal("keepalive did not refresh lastPublished during silence")
+	}
+	events := mb.recordedEvents()
+	if len(events) == 0 || !strings.Contains(events[len(events)-1], "running") {
+		t.Fatalf("keepalive events = %v, want a running keepalive", events)
+	}
+
+	// A recent publish must NOT emit a keepalive (rate limited to 3s).
+	count := len(mb.recordedEvents())
+	state.lastPublished = time.Now()
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, map[string]any{"type": "message_update", "assistantMessageEvent": map[string]any{"type": "text_delta", "delta": ""}}, state); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(mb.recordedEvents()); got != count {
+		t.Fatalf("keepalive bypassed the 3s rate limit: events %d -> %d", count, got)
+	}
+}
+
 func TestPiRPCCancellationStatus(t *testing.T) {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()

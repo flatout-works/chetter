@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -1373,6 +1374,70 @@ type rpcAgentState struct {
 	retrying        bool
 	activeTools     map[string]struct{}
 	activeToolCount int
+	// usage accumulates token accounting parsed from message_update events
+	// (see updateRPCUsage). message_update carries the cumulative usage for the
+	// current assistant message, so deltas against the last snapshot are added;
+	// usageBaseline tracks the per-message baseline so a follow-up message in
+	// the same session contributes its own totals.
+	usage         task.TokenUsage
+	usageBaseline task.TokenUsage
+}
+
+// updateRPCUsage folds a cumulative per-message usage snapshot into the
+// accumulated totals. Pi serializes message_update as
+// {type: "message_update", usage: {...}, assistantMessageEvent: {...}} where
+// usage is the cumulative Usage object for the current assistant message
+// (input/output/cacheRead/cacheWrite/reasoning + cost.total in dollars). Each
+// event's delta over the previous snapshot is added so interrupted streams do
+// not double-count; message boundaries reset the baseline (see
+// resetRPCUsageBaseline). Unknown or missing fields stay zero and never fail
+// the event loop.
+func (s *rpcAgentState) updateRPCUsage(u task.TokenUsage) {
+	s.usage.InputTokens += max(u.InputTokens-s.usageBaseline.InputTokens, 0)
+	s.usage.OutputTokens += max(u.OutputTokens-s.usageBaseline.OutputTokens, 0)
+	s.usage.CacheReadTokens += max(u.CacheReadTokens-s.usageBaseline.CacheReadTokens, 0)
+	s.usage.CacheWriteTokens += max(u.CacheWriteTokens-s.usageBaseline.CacheWriteTokens, 0)
+	s.usage.ReasoningTokens += max(u.ReasoningTokens-s.usageBaseline.ReasoningTokens, 0)
+	s.usage.CostCents += max(u.CostCents-s.usageBaseline.CostCents, 0)
+	s.usageBaseline = u
+}
+
+// resetRPCUsageBaseline starts a fresh per-message usage baseline. Called at
+// assistant message boundaries (message_end) so a follow-up message in the
+// same session contributes its own totals instead of being swallowed by the
+// previous message's cumulative baseline.
+func (s *rpcAgentState) resetRPCUsageBaseline() {
+	s.usageBaseline = task.TokenUsage{}
+}
+
+// rpcUsageFromEvent parses the top-level usage object of a message_update
+// event into task.TokenUsage. cost.total is dollars; CostCents rounds to
+// whole cents. Missing or malformed fields parse as zero.
+func rpcUsageFromEvent(ev map[string]any) task.TokenUsage {
+	raw, ok := ev["usage"].(map[string]any)
+	if !ok {
+		return task.TokenUsage{}
+	}
+	u := task.TokenUsage{
+		InputTokens:      int64(rpcUsageNumber(raw, "input")),
+		OutputTokens:     int64(rpcUsageNumber(raw, "output")),
+		CacheReadTokens:  int64(rpcUsageNumber(raw, "cacheRead")),
+		CacheWriteTokens: int64(rpcUsageNumber(raw, "cacheWrite")),
+		ReasoningTokens:  int64(rpcUsageNumber(raw, "reasoning")),
+	}
+	if cost, ok := raw["cost"].(map[string]any); ok {
+		if total, ok := cost["total"].(float64); ok && total > 0 {
+			u.CostCents = int64(math.Round(total * 100))
+		}
+	}
+	return u
+}
+
+func rpcUsageNumber(raw map[string]any, key string) float64 {
+	if v, ok := raw[key].(float64); ok && v > 0 {
+		return v
+	}
+	return 0
 }
 
 func (s *rpcAgentState) completeOnEOF() bool {
@@ -1634,17 +1699,17 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
 	if err := writeRPCCommand(stdin, promptCmd); err != nil {
-		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("write prompt: %v", err)), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("write prompt: %v", err)), nil, state.sessionID, "", state.usage)
 		return
 	}
 	if _, err := r.waitForRPCResponse(ctx, req, lines, stdin, "prompt", state); err != nil {
 		if ctx.Err() != nil {
 			sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
 			status, message := cancellationStatus(ctx, name)
-			r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+			r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, state.usage)
 			return
 		}
-		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s prompt: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s prompt: %v", name, err)), nil, state.sessionID, "", state.usage)
 		return
 	}
 
@@ -1654,18 +1719,18 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 			if ctx.Err() != nil {
 				sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
 				status, message := cancellationStatus(ctx, name)
-				r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+				r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, state.usage)
 				return
 			}
 			if errors.Is(err, io.EOF) && state.completeOnEOF() {
 				state.terminal = true
 				break
 			}
-			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s output: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s output: %v", name, err)), nil, state.sessionID, "", state.usage)
 			return
 		}
 		if err := r.handleRPCLine(req, stdin, line, state); err != nil {
-			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s event: %v", name, err)), nil, state.sessionID, "", task.TokenUsage{})
+			r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s event: %v", name, err)), nil, state.sessionID, "", state.usage)
 			return
 		}
 	}
@@ -1702,7 +1767,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	if ctx.Err() != nil {
 		sessionExport = r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
 		status, message := cancellationStatus(ctx, name)
-		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, state.usage)
 		return
 	}
 
@@ -1711,20 +1776,20 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	exited = true
 	if ctx.Err() != nil {
 		status, message := cancellationStatus(ctx, name)
-		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, state.usage)
 		return
 	}
 	if waitErr != nil {
 		if msg := r.rpcSandboxCrashMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)); msg != "" {
-			r.publishStatusWithMetadataAndErrorCategory(req, "error", msg, "sandbox_crashed", nil, state.sessionID, sessionExport, task.TokenUsage{})
+			r.publishStatusWithMetadataAndErrorCategory(req, "error", msg, "sandbox_crashed", nil, state.sessionID, sessionExport, state.usage)
 			return
 		}
-		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)), nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", dockerOOMFailureMessage(containerName, fmt.Sprintf("%s: %v", name, waitErr)), nil, state.sessionID, sessionExport, state.usage)
 		return
 	}
 
 	if state.errorMessage != "" {
-		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport, task.TokenUsage{})
+		r.publishStatusWithMetadata(req, "error", state.errorMessage, nil, state.sessionID, sessionExport, state.usage)
 		r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s failed", req.TaskID), "failed", state.errorMessage, time.Since(session.StartedAt).Milliseconds())
 		return
 	}
@@ -1732,7 +1797,7 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		resultText = "Pi completed without assistant text."
 	}
 	slog.Info("RPC agent completed", "taskID", req.TaskID)
-	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport, task.TokenUsage{})
+	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport, state.usage)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (rpc)", req.TaskID), "success", truncateSummary(resultText), time.Since(session.StartedAt).Milliseconds())
 }
 
@@ -1861,6 +1926,9 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 	typ, _ := ev["type"].(string)
 	switch typ {
 	case "message_update":
+		// Pi serializes the cumulative Usage object at the top level alongside
+		// the assistant message event; parse it into token accounting (Task 1.1).
+		state.updateRPCUsage(rpcUsageFromEvent(ev))
 		if ame, ok := ev["assistantMessageEvent"].(map[string]any); ok {
 			switch eventType, _ := ame["type"].(string); eventType {
 			case "text_delta":
@@ -1883,6 +1951,10 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 			stopReason, _ := message["stopReason"].(string)
 			if role == "assistant" {
 				state.finalAssistant = stopReason == "stop" || stopReason == "length"
+				// Assistant message boundary: a follow-up message in the same
+				// session restarts its own cumulative usage from zero, so reset
+				// the delta baseline here.
+				state.resetRPCUsageBaseline()
 			}
 		}
 	case "tool_execution_start":
@@ -1942,9 +2014,25 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		state.retrying = false
 		state.terminal = true
 	}
-	if time.Since(state.lastPublished) >= 3*time.Second && state.lastDetail != "" {
-		r.publishEvent(req, "pi: "+state.lastDetail)
-		state.lastPublished = time.Now()
+	// Publish progress at most every 3s. Real deltas (text, tool activity,
+	// retries) publish as-is; during long silent tool calls or reasoning the
+	// active tool name or a bounded keepalive keeps the task from looking
+	// stuck (Task 1.2).
+	if time.Since(state.lastPublished) >= 3*time.Second {
+		detail := state.lastDetail
+		if detail == "" && !state.terminal {
+			if state.activeToolCount > 0 {
+				detail = "running (tool in progress)"
+			} else if state.retrying {
+				detail = "retrying"
+			} else {
+				detail = "running"
+			}
+		}
+		if detail != "" {
+			r.publishEvent(req, "pi: "+detail)
+			state.lastPublished = time.Now()
+		}
 	}
 	return nil
 }
