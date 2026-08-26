@@ -6,13 +6,12 @@ import "sync"
 // ClaimTask long-polls so they re-check the queue immediately instead of
 // sleeping out the safety-net poll interval.
 //
-// Chetter runs the server as a single replica (see AGENTS.md), and every
-// path that makes work claimable (MCP submit, webhook trigger, schedule,
-// reaper requeue, session resume/rerun) executes inside this process, so the
-// notifier covers the common case completely: while the queue is idle the
-// database is only touched by one slow safety-net poll per runner instead of
-// continuous polling. Submissions from other replicas or direct database
-// writes bypass the notifier and are picked up by the safety-net poll.
+// This provides zero-latency wake-up for same-replica submissions. Cross-
+// replica notifications are handled by the claim_notify_counter DB row
+// (bumped by notifyTaskClaimable on every submission): one process-wide
+// poller (pollClaimNotifications) watches it about once per second and
+// triggers this broadcast on change. The safety-net poll
+// (claimPollInterval) catches work that bypassed both mechanisms.
 type claimNotifier struct {
 	mu sync.Mutex
 	ch chan struct{}

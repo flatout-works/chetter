@@ -140,6 +140,11 @@ func run() error {
 		return fmt.Errorf("start service: %w", err)
 	}
 
+	// One fleet-cursor poller per server replica: publishes task activity
+	// committed by other replicas into the local event bus so fleet streams
+	// stay current in multi-replica deployments. Stops with the service.
+	webapi.StartFleetCursorPoller(svc.ReaperStopCh(), svc, eventBus)
+
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: mcpServerName, Version: mcpServerVersion}, nil)
 	service.RegisterTools(mcpServer, svc)
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {

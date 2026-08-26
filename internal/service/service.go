@@ -140,18 +140,6 @@ type Service struct {
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
-
-	// taskAdmissionMu serializes pending-task admission checks and inserts so
-	// the global pending-task limit (CHETTER_MAX_PENDING_TASKS, issue #50) is
-	// enforced strictly. The server runs as a single replica (the in-process
-	// claim notifier already relies on this, see AGENTS.md), so serializing
-	// admission here yields strict enforcement; the count itself is performed
-	// inside the submission transaction so it always reflects committed state
-	// and stays correct across server restarts. Every path that can make a
-	// task pending (SubmitTask, RerunTask, RecoverTask, ResumeAgentSession)
-	// must take this lock before its submission transaction when the limit is
-	// enabled; when disabled, submissions keep their pre-existing concurrency.
-	taskAdmissionMu sync.Mutex
 }
 
 func (s *Service) QuotaExhausted() bool {
@@ -192,11 +180,24 @@ func (s *Service) SetRunnerRPC(r *RunnerRPCService) {
 // notifyTaskClaimable wakes in-flight ClaimTask long-polls after a task
 // becomes claimable in this process, so idle runners pick it up immediately
 // instead of on the next safety-net poll. No-op when the RPC service is not
-// wired (unit tests).
+// wired (unit tests). Also bumps the DB claim notification counter so idle
+// ClaimTask long-polls on other replicas re-check the queue without waiting
+// for the safety-net poll.
 func (s *Service) notifyTaskClaimable() {
 	if s.runnerRPC != nil {
 		s.runnerRPC.NotifyTaskClaimable()
 	}
+	// Fire-and-forget: the bump happens after the submission committed, so a
+	// failed or delayed bump only costs other replicas the safety-net poll
+	// latency; blocking the submit path on it would add a synchronous DB
+	// write to every submission. The shutdown context (when the service has
+	// started) cancels in-flight bumps during Stop so they do not outlive
+	// the database pool.
+	bumpCtx := context.Background()
+	if s.shutdownCtx != nil {
+		bumpCtx = s.shutdownCtx
+	}
+	go bumpClaimNotifyCounter(bumpCtx, s.rawDB, s.dialect)
 }
 
 func (s *Service) SetGitHubManager(manager *webhook.Manager) {
@@ -281,6 +282,13 @@ func (s *Service) Start(ctx context.Context) error {
 		defer s.backgroundWG.Done()
 		s.taskReaper()
 	}()
+	if s.runnerRPC != nil {
+		s.backgroundWG.Add(1)
+		go func() {
+			defer s.backgroundWG.Done()
+			s.runnerRPC.pollClaimNotifications(shutdownCtx)
+		}()
+	}
 	if s.definitions != nil {
 		s.backgroundWG.Add(1)
 		go func() {
@@ -1020,22 +1028,34 @@ func (e *PendingTaskCapacityError) Error() string {
 	return fmt.Sprintf("pending task admission limit reached (%d pending, limit %d): retry when capacity frees up", e.Current, e.Limit)
 }
 
-// admitPendingTask enforces the global pending-task admission limit inside the
-// submission transaction. A limit <= 0 disables admission control. When the
-// limit is enabled, callers must hold s.taskAdmissionMu so concurrent
-// submissions cannot overshoot the limit.
-func (s *Service) admitPendingTask(ctx context.Context, q data.Repository) error {
+// withPendingTaskAdmission runs fn inside the submission transaction,
+// enforcing the global pending-task admission gate (issue #50) when
+// CHETTER_MAX_PENDING_TASKS is enabled. When enabled, a cross-replica DB row
+// lock (admission_locks table, FOR UPDATE) serializes the check and insert.
+// The transaction uses READ COMMITTED so a waiter that began before the prior
+// holder committed still counts that holder's newly inserted task after it
+// acquires the lock. This is strict on TiDB, MySQL/Aurora, and PostgreSQL and
+// replaces the former in-process taskAdmissionMu mutex. When the limit is
+// disabled, fn runs under plain withTxRetry.
+func (s *Service) withPendingTaskAdmission(ctx context.Context, fn func(q data.Repository) error) error {
 	if s.cfg.MaxPendingTasks <= 0 {
-		return nil
+		return withTxRetry(ctx, s.rawDB, s.dialect, fn)
 	}
-	current, err := q.CountPendingTasks(ctx)
-	if err != nil {
-		return err
-	}
-	if current >= int64(s.cfg.MaxPendingTasks) {
-		return &PendingTaskCapacityError{Limit: s.cfg.MaxPendingTasks, Current: current}
-	}
-	return nil
+	return withTxRetryOptions(ctx, s.rawDB, s.dialect, &sql.TxOptions{Isolation: sql.LevelReadCommitted}, func(q data.Repository, tx *sql.Tx) error {
+		lockSQL := sqlQuery(s.dialect, `SELECT 1 FROM admission_locks WHERE name = 'pending_tasks' FOR UPDATE`)
+		var locked int
+		if err := tx.QueryRowContext(ctx, lockSQL).Scan(&locked); err != nil {
+			return fmt.Errorf("acquire admission lock: %w", err)
+		}
+		current, err := q.CountPendingTasks(ctx)
+		if err != nil {
+			return err
+		}
+		if current >= int64(s.cfg.MaxPendingTasks) {
+			return &PendingTaskCapacityError{Limit: s.cfg.MaxPendingTasks, Current: current}
+		}
+		return fn(q)
+	})
 }
 
 // auditPendingAdmissionRejected records an audit event for a submission that
@@ -1185,18 +1205,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	// tasks still require isolation there.
 	isolationRequired := resumeMode != "none" || in.Isolation == "required" || !s.cfg.AllowUnisolated
 	var task repository.Task
-	admissionEnabled := s.cfg.MaxPendingTasks > 0
-	if admissionEnabled {
-		s.taskAdmissionMu.Lock()
-		defer s.taskAdmissionMu.Unlock()
-	}
-	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		// Global pending-task admission gate (issue #50). Serialized by
-		// taskAdmissionMu when enabled so concurrent submissions cannot
-		// overshoot the limit.
-		if err := s.admitPendingTask(ctx, q); err != nil {
-			return err
-		}
+	err = s.withPendingTaskAdmission(ctx, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(in.Prompt+" "+in.Agent+" "+in.ModelID+" "+in.TriggerName+" "+in.GitURL+" "+githubRepo), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                   taskID,
@@ -1281,15 +1290,16 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 		s.auditPendingAdmissionRejected(ctx, submissionSource, in.TriggerName, err)
 		return store.TaskRecord{}, err
 	}
-	s.notifyTaskClaimable()
-	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "user_prompt_id", runID)
-
 	// Register transient redaction set for this session so runner output is
 	// scrubbed before persistence. The values are derived from designated
-	// sensitive environment variables and never persisted.
+	// sensitive environment variables and never persisted. This must happen
+	// before runners are notified the task is claimable: a fast runner could
+	// otherwise report its first event before the set exists.
 	if s.runnerRPC != nil && len(in.Env) > 0 {
 		s.runnerRPC.RegisterRedactSet(sessionID, redact.NewSet(in.Env))
 	}
+	s.notifyTaskClaimable()
+	slog.Info("task queued", "task_id", taskID, "agent_session_id", sessionID, "user_prompt_id", runID)
 
 	if in.TriggerName != "" {
 		trigger, err := s.repo.GetTriggerByName(ctx, in.TriggerName)
@@ -1388,17 +1398,7 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 		return TaskToolRecord{}, fmt.Errorf("generate recovery event id: %w", err)
 	}
 	var recoveryEvent TaskEventCallbackContext
-	admissionEnabled := s.cfg.MaxPendingTasks > 0
-	if admissionEnabled {
-		s.taskAdmissionMu.Lock()
-		defer s.taskAdmissionMu.Unlock()
-	}
-	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		// Global pending-task admission gate (issue #50); recovery requeues the
-		// task as pending, so it consumes pending capacity like a submission.
-		if err := s.admitPendingTask(ctx, q); err != nil {
-			return err
-		}
+	err = s.withPendingTaskAdmission(ctx, func(q data.Repository) error {
 		oldSession, err := q.GetAgentSessionByTaskID(ctx, taskID)
 		if err != nil {
 			return fmt.Errorf("get recovery source session: %w", err)
@@ -1602,16 +1602,7 @@ func (s *Service) RerunTask(ctx context.Context, taskID string) (TaskToolRecord,
 
 	teamID := orig.TeamID.String
 
-	admissionEnabled := s.cfg.MaxPendingTasks > 0
-	if admissionEnabled {
-		s.taskAdmissionMu.Lock()
-		defer s.taskAdmissionMu.Unlock()
-	}
-	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		// Global pending-task admission gate (issue #50); see SubmitTask.
-		if err := s.admitPendingTask(ctx, q); err != nil {
-			return err
-		}
+	err = s.withPendingTaskAdmission(ctx, func(q data.Repository) error {
 		taskSearchText := strings.Join(strings.Fields(orig.Prompt+" "+session.Agent.String+" "+session.ModelID.String+" "+orig.GitUrl.String), " ")
 		if err := q.InsertTask(ctx, repository.InsertTaskParams{
 			ID:                   newTaskID,
@@ -1771,17 +1762,7 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	}
 
 	var task repository.Task
-	admissionEnabled := s.cfg.MaxPendingTasks > 0
-	if admissionEnabled {
-		s.taskAdmissionMu.Lock()
-		defer s.taskAdmissionMu.Unlock()
-	}
-	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
-		// Global pending-task admission gate (issue #50); resume requeues the
-		// task as pending, so it consumes pending capacity like a submission.
-		if err := s.admitPendingTask(ctx, q); err != nil {
-			return err
-		}
+	err = s.withPendingTaskAdmission(ctx, func(q data.Repository) error {
 		sequence, err := q.GetNextUserPromptSequence(ctx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get next prompt sequence: %w", err)
@@ -2349,14 +2330,48 @@ func (s *Service) activateTrigger(ctx context.Context, trigger store.TriggerReco
 func (s *Service) runTrigger(ctx context.Context, triggerID string, triggeredAt time.Time) error {
 	trigger, err := s.repo.GetTriggerByID(ctx, triggerID)
 	if err != nil {
+		// The trigger was deleted after this replica's in-memory cron
+		// registry was loaded (e.g. on another replica); a missing row is a
+		// skip, not an error.
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.Debug("trigger no longer exists, skipping", "trigger_id", triggerID)
+			return nil
+		}
 		return fmt.Errorf("get trigger %s: %w", triggerID, err)
 	}
+	// Trigger enable/disable only updates the receiving replica's in-memory
+	// cron registry; re-checking the persisted flag here makes disable and
+	// delete eventually consistent across replicas (within one tick).
+	if !trigger.Enabled {
+		slog.Debug("trigger disabled, skipping", "trigger_id", triggerID)
+		return nil
+	}
+	// Acquire a cross-replica DB lock so only one replica fires this trigger
+	// per interval. The lock is a SELECT FOR UPDATE on trigger_locks,
+	// backed by a durable last_triggered_at interval marker.
+	finish, err := acquireTriggerLock(ctx, s.rawDB, s.dialect, triggerID, trigger.CronExpr, triggeredAt)
+	if err != nil {
+		return fmt.Errorf("acquire trigger lock: %w", err)
+	}
+	if finish == nil {
+		slog.Debug("trigger interval already claimed, skipping", "trigger_id", triggerID)
+		return nil
+	}
+	defer func() { _ = finish(false) }()
 	skills := parseJSON[[]string](trigger.Skills, "trigger:"+trigger.ID+" skills")
 	runtime := triggerRuntimeConfigFromJSON(trigger.TriggerConfig)
 	_, err = s.submitTriggerTask(ctx, trigger.ID, trigger.Name, trigger.TriggerType, trigger.TeamID.String, trigger.Prompt, trigger.GitUrl.String, trigger.GitRef.String,
 		trigger.AgentImage.String, trigger.Agent.String, trigger.ProviderID.String, trigger.ModelID.String, trigger.VariantID.String,
 		trigger.Harness.String, skills, int(trigger.TimeoutSec), runtime, triggeredAt)
-	return err
+	if err != nil {
+		return err
+	}
+	// finish is idempotent, so the deferred finish(false) after this explicit
+	// commit is a no-op.
+	if err := finish(true); err != nil {
+		return fmt.Errorf("commit trigger interval: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) submitTriggerTask(ctx context.Context, triggerID, triggerName, triggerType, teamID, prompt, gitURL, gitRef, agentImage, agent, providerID, modelID, variantID, harness string, skills []string, timeoutSec int, runtime triggerRuntimeConfig, triggeredAt time.Time) (store.TaskRecord, error) {

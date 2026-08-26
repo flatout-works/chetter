@@ -475,4 +475,25 @@ var schemaStatements = []string{
 		KEY idx_definition_proposals_status_created (status, created_at),
 		KEY idx_definition_proposals_task (task_id)
 	)`,
+	`CREATE TABLE IF NOT EXISTS claim_notify_counter (
+		id INT NOT NULL DEFAULT 1,
+		counter BIGINT NOT NULL DEFAULT 0,
+		PRIMARY KEY (id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS trigger_locks (
+		trigger_id VARCHAR(64) NOT NULL,
+		last_triggered_at DATETIME(6) NULL,
+		created_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (trigger_id)
+	)`,
+	`CREATE TABLE IF NOT EXISTS admission_locks (
+		name VARCHAR(64) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (name)
+	)`,
+	`CREATE TABLE IF NOT EXISTS runner_drain_requests (
+		runner_id VARCHAR(64) NOT NULL,
+		created_at DATETIME(6) NOT NULL,
+		PRIMARY KEY (runner_id)
+	)`,
 }

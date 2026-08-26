@@ -530,6 +530,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ApplyBootstrapSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureCoordinationRows(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureTaskGitHubMetadataColumns(ctx); err != nil {
 		return err
 	}
@@ -598,6 +601,29 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	}
 	if err := s.ensureAPITokenExpiryColumn(ctx); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ensureCoordinationRows inserts the seed rows required by the multi-replica
+// coordination tables (claim_notify_counter and admission_locks). The tables
+// themselves are created by ApplyBootstrapSchema; this function ensures the
+// single-row seed data exists on all dialects. Idempotent.
+func (s *Store) ensureCoordinationRows(ctx context.Context) error {
+	if s.IsPostgres() {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO claim_notify_counter (id, counter) VALUES (1, 0) ON CONFLICT (id) DO NOTHING`); err != nil {
+			return fmt.Errorf("ensure claim_notify_counter row: %w", err)
+		}
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO admission_locks (name, created_at) VALUES ('pending_tasks', NOW()) ON CONFLICT (name) DO NOTHING`); err != nil {
+			return fmt.Errorf("ensure admission_locks row: %w", err)
+		}
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT IGNORE INTO claim_notify_counter (id, counter) VALUES (1, 0)`); err != nil {
+		return fmt.Errorf("ensure claim_notify_counter row: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT IGNORE INTO admission_locks (name, created_at) VALUES ('pending_tasks', NOW(6))`); err != nil {
+		return fmt.Errorf("ensure admission_locks row: %w", err)
 	}
 	return nil
 }

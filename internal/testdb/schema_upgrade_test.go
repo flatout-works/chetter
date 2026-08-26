@@ -248,6 +248,65 @@ func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
 	rows.Close()
 }
 
+// TestMySQLApplyMultiReplicaCoordinationMigration drops the coordination
+// tables created by the bootstrap schema and proves migration 054 re-creates
+// them (including the claim_notify_counter and admission_locks seed rows) —
+// the path an existing goose-managed deployment takes on upgrade.
+func TestMySQLApplyMultiReplicaCoordinationMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	for _, table := range []string{"claim_notify_counter", "trigger_locks", "admission_locks", "runner_drain_requests"} {
+		if _, err := tdb.DB.ExecContext(ctx, "DROP TABLE IF EXISTS "+table); err != nil {
+			t.Fatalf("drop %s: %v", table, err)
+		}
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/054_add_multi_replica_coordination.sql"))
+	if err != nil {
+		t.Fatalf("read coordination migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"054_add_multi_replica_coordination.sql": &fstest.MapFile{Data: []byte(string(migration))},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply coordination migration: %v", err)
+	}
+
+	for _, table := range []string{"trigger_locks", "admission_locks", "runner_drain_requests"} {
+		rows, err := tdb.DB.QueryContext(ctx, "SELECT * FROM "+table+" WHERE 1=0")
+		if err != nil {
+			t.Fatalf("query migrated %s: %v", table, err)
+		}
+		rows.Close()
+	}
+	var counter int64
+	if err := tdb.DB.QueryRowContext(ctx, "SELECT counter FROM claim_notify_counter WHERE id = 1").Scan(&counter); err != nil {
+		t.Fatalf("query claim_notify_counter seed row: %v", err)
+	}
+	if counter != 0 {
+		t.Fatalf("claim_notify_counter seed counter = %d, want 0", counter)
+	}
+	var admissionName string
+	if err := tdb.DB.QueryRowContext(ctx, "SELECT name FROM admission_locks WHERE name = 'pending_tasks'").Scan(&admissionName); err != nil {
+		t.Fatalf("query admission_locks seed row: %v", err)
+	}
+	if admissionName != "pending_tasks" {
+		t.Fatalf("admission_locks seed name = %q", admissionName)
+	}
+}
+
 func TestPostgresApplySchemaRejectsUnversionedAndInitializesEmpty(t *testing.T) {
 	bootstrapDB, _, cleanup := PostgresSchemaParityDBs(t)
 	if bootstrapDB == nil {
