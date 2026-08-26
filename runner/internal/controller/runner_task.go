@@ -1696,6 +1696,21 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 	state.sessionID = rpcSessionID(readyResp)
 
+	// Fail fast when an explicitly requested provider/model is not available in
+	// the running Pi build, instead of letting the agent burn a turn on a model
+	// that errors at first contact. Fail-open: a failed probe or missing
+	// response only warns; only a successful probe proving the model absent is
+	// terminal (Task 1.4).
+	if err := r.verifyRPCModelAvailable(ctx, req, stdin, lines, state); err != nil {
+		if ctx.Err() != nil {
+			status, message := cancellationStatus(ctx, name)
+			r.publishStatusForRequest(req, status, message, nil)
+			return
+		}
+		r.publishStatusForRequest(req, "error", err.Error(), nil)
+		return
+	}
+
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
 	if err := writeRPCCommand(stdin, promptCmd); err != nil {
@@ -2105,6 +2120,60 @@ func rpcSessionID(resp map[string]any) string {
 	data, _ := resp["data"].(map[string]any)
 	sessionID, _ := data["sessionId"].(string)
 	return sessionID
+}
+
+// verifyRPCModelAvailable confirms an explicitly requested provider/model is
+// present in the running Pi build by issuing get_available_models and matching
+// provider+id. It fails fast instead of letting the agent burn a turn on a
+// model that will error at first contact. Fail-open: any probe failure (older
+// Pi, missing response, malformed payload) only warns and lets the task
+// proceed — only a *successful* probe that proves the model absent is
+// terminal. Tasks that omit explicit provider/model (relying on env or Pi
+// defaults) skip the check entirely.
+func (r *Runner) verifyRPCModelAvailable(ctx context.Context, req task.TaskRequest, stdin io.Writer, lines <-chan rpcLine, state *rpcAgentState) error {
+	provider := strings.TrimSpace(req.ProviderID)
+	model := strings.TrimSpace(req.ModelID)
+	if model == "" && provider == "" {
+		return nil
+	}
+	// A qualified model like "anthropic/claude-sonnet-4-5" carries its own
+	// provider; an explicit separate ProviderID takes precedence.
+	if provider == "" && strings.Contains(model, "/") {
+		provider, model = splitQualifiedModel(model)
+	}
+	if provider == "" || model == "" {
+		return nil
+	}
+
+	probeCmd := map[string]any{"id": "models", "type": "get_available_models"}
+	if err := writeRPCCommand(stdin, probeCmd); err != nil {
+		slog.Warn("model availability probe write failed (proceeding)", "taskID", req.TaskID, "err", err)
+		return nil
+	}
+	resp, err := r.waitForRPCResponse(ctx, req, lines, stdin, "models", state)
+	if err != nil {
+		slog.Warn("model availability probe failed (proceeding)", "taskID", req.TaskID, "err", err)
+		return nil
+	}
+	data, _ := resp["data"].(map[string]any)
+	models, _ := data["models"].([]any)
+	for _, raw := range models {
+		m, _ := raw.(map[string]any)
+		if mID, _ := m["id"].(string); mID == model {
+			if mProvider, _ := m["provider"].(string); mProvider == provider {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("%s/%s model not available in Pi build", provider, model)
+}
+
+func splitQualifiedModel(model string) (provider, unqualifiedModel string) {
+	parts := strings.SplitN(model, "/", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return "", model
+	}
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 }
 
 func rpcLastAssistantText(resp map[string]any) string {

@@ -8,6 +8,12 @@ import (
 )
 
 func buildRPCCommand(req task.TaskRequest) []string {
+	// --approve is pi's project-trust override (projectTrustOverride): it loads
+	// the project's .pi/ extensions and skills without a trust prompt. It is
+	// NOT a tool-approval bypass — pi has no built-in permission system, and in
+	// headless RPC mode interactive extension UI requests are auto-answered
+	// with cancelled:true by the runner. Safe for untrusted repositories
+	// because gVisor is the actual task boundary.
 	args := []string{"pi", "--mode", "rpc", "--no-session", "--offline", "--approve"}
 	provider, model := modelFields(req)
 	if provider != "" {

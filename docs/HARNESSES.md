@@ -378,7 +378,12 @@ and supply-chain rigor make it suitable for production.
 - **Thinking level control** (`off/minimal/low/medium/high/xhigh`) maps
   to Chetter's `variant_id`
 - **No built-in permission system** - relies on containerization, which
-  Chetter already provides. No `bypassPermissions` hack needed.
+  Chetter already provides. No `bypassPermissions` hack needed. The `--approve`
+  flag is a project-trust override (`projectTrustOverride`), not a tool
+  approval bypass: it loads the project's `.pi/` extensions and skills without
+  a trust prompt. In headless RPC mode there are no interactive approvals
+  anyway — extension UI requests (`select`/`confirm`/`input`/`editor`) are
+  auto-answered with `cancelled: true` by the runner.
 - **MCP via pi-mcp-adapter** - reads standard `.mcp.json` format (same
   as Claude Code), supports stdio transport for the chetter mcp-bridge
 - **Session export** via `get_messages` command - full conversation

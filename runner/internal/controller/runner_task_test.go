@@ -848,6 +848,52 @@ func TestPiRPCUsageBaselineResetsAtMessageEnd(t *testing.T) {
 	}
 }
 
+func TestPiRPCVerifyModelAvailable(t *testing.T) {
+	sendModels := func(models ...string) <-chan rpcLine {
+		lines := make(chan rpcLine, 1)
+		lines <- rpcLine{data: []byte(fmt.Sprintf(`{"id":"models","type":"response","success":true,"data":{"models":[%s]}}`, strings.Join(models, ",")))}
+		close(lines)
+		return lines
+	}
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), activeTools: make(map[string]struct{})}
+
+	// Model present -> no error, no prompt burn.
+	lines := sendModels(`{"id":"gpt-5.5","provider":"openai"}`, `{"id":"glm-5.2","provider":"zai"}`)
+	if err := r.verifyRPCModelAvailable(context.Background(), task.TaskRequest{ProviderID: "zai", ModelID: "glm-5.2"}, io.Discard, lines, state); err != nil {
+		t.Fatalf("present model rejected: %v", err)
+	}
+
+	// Model absent -> terminal error.
+	lines = sendModels(`{"id":"gpt-5.5","provider":"openai"}`)
+	err := r.verifyRPCModelAvailable(context.Background(), task.TaskRequest{ProviderID: "zai", ModelID: "glm-5.2"}, io.Discard, lines, state)
+	if err == nil || !strings.Contains(err.Error(), "not available") {
+		t.Fatalf("absent model err = %v, want not available", err)
+	}
+
+	// Qualified model in ModelID splits its own provider.
+	lines = sendModels(`{"id":"claude-sonnet-4-5","provider":"anthropic"}`)
+	if err := r.verifyRPCModelAvailable(context.Background(), task.TaskRequest{ModelID: "anthropic/claude-sonnet-4-5"}, io.Discard, lines, state); err != nil {
+		t.Fatalf("qualified present model rejected: %v", err)
+	}
+
+	// No explicit provider/model -> check skipped entirely (no probe issued).
+	// A closed lines channel with no response would surface any probe attempt
+	// as an error, but the check must return nil without reading.
+	empty := make(chan rpcLine)
+	close(empty)
+	if err := r.verifyRPCModelAvailable(context.Background(), task.TaskRequest{}, io.Discard, empty, state); err != nil {
+		t.Fatalf("empty request should skip the check: %v", err)
+	}
+
+	// Failed probe (no response) -> fail-open, task proceeds.
+	dead := make(chan rpcLine)
+	close(dead)
+	if err := r.verifyRPCModelAvailable(context.Background(), task.TaskRequest{ProviderID: "zai", ModelID: "glm-5.2"}, io.Discard, dead, state); err != nil {
+		t.Fatalf("probe failure should be fail-open: %v", err)
+	}
+}
+
 func TestPiRPCKeepaliveProgressDuringSilence(t *testing.T) {
 	// Long tool calls without text deltas must still publish keepalive
 	// progress so the task does not look stuck (Task 1.2).
