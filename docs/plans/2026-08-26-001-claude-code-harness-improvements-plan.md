@@ -3,7 +3,7 @@
 **Date:** 2026-08-26
 **Branch:** `feat/claude-code-harness-improvements`
 **Worktree:** `/home/gokr/git/chetter-claude-harness`
-**Status:** Proposed
+**Status:** Implemented — Phases 1–4 complete (commits `0c23621`, `41ff59b`); remaining follow-ups tracked under Open Questions
 
 ## Background
 
