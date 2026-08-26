@@ -1381,6 +1381,15 @@ type rpcAgentState struct {
 	// the same session contributes its own totals.
 	usage         task.TokenUsage
 	usageBaseline task.TokenUsage
+	// probes brokers async get_state responses to a waiting progress-watchdog
+	// probe. The RPC event loop is single-threaded (it owns lines), so the
+	// watchdog issues get_state on its own goroutine and the handler delivers
+	// the matching response here.
+	probes *rpcProbeHub
+	// watchdog is the active progress watchdog for this session, if any.
+	// read/written only on the event-loop goroutine plus the atomic fields the
+	// watchdog exposes itself.
+	watchdog *progressWatchdog
 }
 
 // updateRPCUsage folds a cumulative per-message usage snapshot into the
@@ -1442,6 +1451,49 @@ func rpcUsageNumber(raw map[string]any, key string) float64 {
 
 func (s *rpcAgentState) completeOnEOF() bool {
 	return s.finalAssistant && !s.retrying && s.activeToolCount == 0 && s.errorMessage == ""
+}
+
+// recordProgress reports genuine harness activity to the progress watchdog so
+// it can distinguish real generation from a stall. Called only on genuine
+// events (text deltas, tool activity, retries, terminal agent states), never
+// on the synthetic keepalive that publishes when nothing real arrived.
+func (s *rpcAgentState) recordProgress(summary string) {
+	if s.watchdog != nil {
+		s.watchdog.record(summary)
+	}
+}
+
+// rpcProbeHub delivers async RPC responses to a waiter (the progress watchdog
+// probing get_state). The RPC event loop is single-threaded: it owns the lines
+// channel and routes every non-matching line through handleRPCEvent. The
+// watchdog's probe issues get_state with a unique id and blocks on the channel
+// registered here; handleRPCEvent delivers the matching response.
+type rpcProbeHub struct {
+	mu     sync.Mutex
+	probes map[string]chan map[string]any
+}
+
+func newRPCProbeHub() *rpcProbeHub {
+	return &rpcProbeHub{probes: make(map[string]chan map[string]any)}
+}
+
+// take returns (and removes) the waiter channel for an id, if registered.
+func (h *rpcProbeHub) take(id string) (chan map[string]any, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ch, ok := h.probes[id]
+	if ok {
+		delete(h.probes, id)
+	}
+	return ch, ok
+}
+
+func (h *rpcProbeHub) register(id string) chan map[string]any {
+	ch := make(chan map[string]any, 1)
+	h.mu.Lock()
+	h.probes[id] = ch
+	h.mu.Unlock()
+	return ch
 }
 
 func (r *Runner) runRpcAgent(ctx context.Context, session *task.TaskSession, req task.TaskRequest, h harness.RPCHarness) {
@@ -1710,7 +1762,11 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 		r.publishStatusForRequest(req, "error", err.Error(), nil)
 		return
 	}
-
+	state.probes = newRPCProbeHub()
+	agentCtx, cancelAgent := context.WithCancel(ctx)
+	watchdog := r.startRPCWatchdog(agentCtx, req, stdin, state, cancelAgent)
+	state.watchdog = watchdog
+	defer watchdog.stop()
 	r.publishStatusForRequest(req, "running", "Sending prompt to agent...", nil)
 	promptCmd := map[string]any{"id": "prompt", "type": "prompt", "message": rpcPrompt(req)}
 	if err := writeRPCCommand(stdin, promptCmd); err != nil {
@@ -1729,10 +1785,15 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	}
 
 	for !state.terminal {
-		line, err := readRPCLine(ctx, lines)
+		line, err := readRPCLine(agentCtx, lines)
 		if err != nil {
-			if ctx.Err() != nil {
+			if agentCtx.Err() != nil {
 				sessionExport := r.cleanupRPCSession(req, session.WorkspaceDir, stdin, lines, state)
+				if watchdog.isStuck() {
+					r.publishStatusWithMetadata(req, "error", watchdog.stuckError().Error(), nil, state.sessionID, "", state.usage)
+					r.publishActivityEvent("agent", "Task Failed", fmt.Sprintf("Task %s failed (stuck)", req.TaskID), "failed", watchdog.stuckError().Error(), time.Since(session.StartedAt).Milliseconds())
+					return
+				}
 				status, message := cancellationStatus(ctx, name)
 				r.publishStatusWithMetadata(req, status, message, nil, state.sessionID, sessionExport, state.usage)
 				return
@@ -1814,6 +1875,68 @@ func (r *Runner) runRPCAgentCommand(ctx context.Context, session *task.TaskSessi
 	slog.Info("RPC agent completed", "taskID", req.TaskID)
 	r.publishStatusWithMetadata(req, "done", truncateSummary(resultText), nil, state.sessionID, sessionExport, state.usage)
 	r.publishActivityEvent("agent", "Task Completed", fmt.Sprintf("Task %s completed (rpc)", req.TaskID), "success", truncateSummary(resultText), time.Since(session.StartedAt).Milliseconds())
+}
+
+// rpcContinuationPrompt is the message pushed via Pi's native follow_up RPC
+// command when the progress watchdog detects a stalled agent. It matches the
+// serve-path harnesses' continuation prompt so Pi recovers "finished its turn
+// and went quiet" the same way OpenCode/Claude do.
+const rpcContinuationPrompt = "Continue working on the current task now. Resume from the existing state and complete the requested work without waiting for more input."
+
+// rpcStatusProbeTimeout bounds a single get_state probe issued by the watchdog.
+const rpcStatusProbeTimeout = 10 * time.Second
+
+// rpcBusyFromProbe classifies a get_state response as "busy" (in-flight
+// generation, compaction, or queued work) or "idle". The watchdog uses this to
+// distinguish quiet reasoning (busy — tolerate) from an agent that finished its
+// turn and went quiet (idle — nudge/fail).
+func rpcBusyFromProbe(resp map[string]any) string {
+	data, _ := resp["data"].(map[string]any)
+	if v, _ := data["isStreaming"].(bool); v {
+		return "busy"
+	}
+	if v, _ := data["isCompacting"].(bool); v {
+		return "busy"
+	}
+	if n, _ := data["pendingMessageCount"].(float64); n > 0 {
+		return "busy"
+	}
+	return "idle"
+}
+
+// startRPCWatchdog wires the progress watchdog into the single-threaded RPC
+// event loop (Task 2.3 + 2.4). The watchdog runs on its own goroutine; the
+// nudge uses Pi's native follow_up command (no session restart needed) and the
+// probe issues get_state, with responses delivered back through the probe hub
+// as the event loop routes them through handleRPCEvent.
+func (r *Runner) startRPCWatchdog(ctx context.Context, req task.TaskRequest, stdin io.Writer, state *rpcAgentState, cancelAgent context.CancelFunc) *progressWatchdog {
+	nudge := func(nudgeCtx context.Context) error {
+		return writeRPCCommand(stdin, map[string]any{"type": "follow_up", "message": rpcContinuationPrompt})
+	}
+	probe := func(probeCtx context.Context) (string, error) {
+		id := fmt.Sprintf("rpc-status-%d", time.Now().UnixNano())
+		ch := state.probes.register(id)
+		defer func() {
+			// Best-effort: if the response never arrives, drop the waiter.
+			state.probes.take(id)
+		}()
+		if err := writeRPCCommand(stdin, map[string]any{"id": id, "type": "get_state"}); err != nil {
+			return "", err
+		}
+		select {
+		case <-probeCtx.Done():
+			return "", probeCtx.Err()
+		case resp := <-ch:
+			return rpcBusyFromProbe(resp), nil
+		case <-time.After(rpcStatusProbeTimeout):
+			return "", errors.New("get_state probe timed out")
+		}
+	}
+	isIdle := func() bool { return false }
+	watchdog := startProgressWatchdog(ctx, cancelAgent, nudge, func(msg string) {
+		r.publishEvent(req, msg)
+	}, isIdle, probe)
+	return watchdog
 }
 
 func (r *Runner) agentEnv(req task.TaskRequest, wsDir, secret string, h harness.Harness) []string {
@@ -1939,6 +2062,17 @@ func (r *Runner) handleRPCLine(req task.TaskRequest, stdin io.Writer, line []byt
 
 func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[string]any, state *rpcAgentState) error {
 	typ, _ := ev["type"].(string)
+	// Route async probe responses (e.g. the progress watchdog's get_state) to
+	// their waiter before any task-event handling. These are plain RPC
+	// responses with a registered id; they are not task progress.
+	if typ == "response" {
+		if id, _ := ev["id"].(string); id != "" && state.probes != nil {
+			if ch, ok := state.probes.take(id); ok {
+				ch <- ev
+				return nil
+			}
+		}
+	}
 	switch typ {
 	case "message_update":
 		// Pi serializes the cumulative Usage object at the top level alongside
@@ -1950,6 +2084,7 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 				if delta, _ := ame["delta"].(string); delta != "" {
 					state.summary.WriteString(delta)
 					state.lastDetail = delta
+					state.recordProgress(delta)
 				}
 			case "error":
 				if reason, _ := ame["reason"].(string); reason != "" {
@@ -1983,6 +2118,7 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		}
 		if toolName, _ := ev["toolName"].(string); toolName != "" {
 			state.lastDetail = "tool: " + toolName
+			state.recordProgress("tool: " + toolName)
 		}
 	case "tool_execution_end":
 		if id, _ := ev["toolCallId"].(string); id != "" {
@@ -1996,6 +2132,7 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		if isError, _ := ev["isError"].(bool); isError {
 			if toolName, _ := ev["toolName"].(string); toolName != "" {
 				state.lastDetail = "tool error: " + toolName
+				state.recordProgress("tool error: " + toolName)
 			}
 		}
 	case "auto_retry_start":
@@ -2003,6 +2140,7 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		state.finalAssistant = false
 		if msg, _ := ev["errorMessage"].(string); msg != "" {
 			state.lastDetail = "retrying: " + msg
+			state.recordProgress("retrying: " + msg)
 		}
 	case "auto_retry_end":
 		state.retrying = false
@@ -2024,10 +2162,12 @@ func (r *Runner) handleRPCEvent(req task.TaskRequest, stdin io.Writer, ev map[st
 		state.retrying = willRetry
 		if !willRetry {
 			state.terminal = true
+			state.recordProgress("agent_end")
 		}
 	case "agent_settled":
 		state.retrying = false
 		state.terminal = true
+		state.recordProgress("agent_settled")
 	}
 	// Publish progress at most every 3s. Real deltas (text, tool activity,
 	// retries) publish as-is; during long silent tool calls or reasoning the

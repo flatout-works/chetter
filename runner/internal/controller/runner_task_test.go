@@ -848,6 +848,52 @@ func TestPiRPCUsageBaselineResetsAtMessageEnd(t *testing.T) {
 	}
 }
 
+func TestRPCProbeHubDeliversMatchingResponse(t *testing.T) {
+	h := newRPCProbeHub()
+	id := "rpc-status-123"
+	ch := h.register(id)
+	// A mismatched id must not consume a response for this probe.
+	if _, ok := h.take("rpc-status-other"); ok {
+		t.Fatal("unexpected waiter for a different id")
+	}
+	response := map[string]any{"type": "response", "id": id}
+	r := &Runner{}
+	state := &rpcAgentState{lastPublished: time.Now(), probes: h}
+	if err := r.handleRPCEvent(task.TaskRequest{}, io.Discard, response, state); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := h.take(id)
+	_ = ok
+	// handleRPCEvent already consumed the waiter; the delivered value is on ch.
+	select {
+	case delivered := <-ch:
+		if delivered["id"] != id {
+			t.Fatalf("delivered = %#v", delivered)
+		}
+	default:
+		t.Fatal("probe response was not delivered to the waiting channel")
+	}
+	_ = got
+}
+
+func TestRPCWatchdogProbeParsesBusyIdle(t *testing.T) {
+	for _, tc := range []struct {
+		line map[string]any
+		want string
+	}{
+		{line: map[string]any{"data": map[string]any{"isStreaming": true}}, want: "busy"},
+		{line: map[string]any{"data": map[string]any{"isCompacting": true}}, want: "busy"},
+		{line: map[string]any{"data": map[string]any{"pendingMessageCount": float64(1)}}, want: "busy"},
+		{line: map[string]any{"data": map[string]any{"pendingMessageCount": float64(0)}}, want: "idle"},
+		{line: map[string]any{"data": map[string]any{}}, want: "idle"},
+	} {
+		got := rpcBusyFromProbe(tc.line)
+		if got != tc.want {
+			t.Fatalf("probe %#v = %q, want %q", tc.line, got, tc.want)
+		}
+	}
+}
+
 func TestPiRPCVerifyModelAvailable(t *testing.T) {
 	sendModels := func(models ...string) <-chan rpcLine {
 		lines := make(chan rpcLine, 1)

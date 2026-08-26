@@ -412,7 +412,12 @@ and supply-chain rigor make it suitable for production.
 - **Node >= 22.19.0** required - base image needs Node 22 (Claude and
   OpenCode work with Node 18+, so upgrade is safe)
 - **No startup event in RPC mode** - readiness must be probed via
-  `get_state` command (adds one round-trip)
+  `get_state` command (adds one round-trip). The same `get_state` probe doubles
+  as the progress watchdog's session-status probe, distinguishing in-flight
+  generation (busy) from an agent that finished its turn and went quiet (idle).
+- **Progress watchdog uses native `follow_up`** - a stalled Pi task is resumed
+  with Pi's native post-turn `follow_up` command rather than a resume-based
+  continue, so no session restart or native-session mapping is needed.
 - **Extension UI requests** can block the agent - must auto-respond
   with `cancelled:true` in headless mode
 - **JSONL framing caveat** - must split on `\n` only, not use
@@ -512,8 +517,8 @@ MCP support inside Chetter's isolated task containers.
 | Permission system | Config-based | Settings-based (`dontAsk`) | None (container-reliant) | Runtime approval/sandbox policy | `workspace-write` plus no interactive approvals |
 | Agent definitions | Injected (`.config/opencode/agent/`) | Injected (`.claude/agents/`) | Injected (`.pi/agent/system-prompt.md` + `--system-prompt`) | N/A | N/A |
 | Skill definitions | Injected (`.config/opencode/skill/`) | Injected (`.claude/skills/`) | Injected (`.pi/skills/`) | N/A | N/A |
-| Session status probe | Yes | Yes (proxy `GET /status`) | N/A | N/A | N/A |
-| Watchdog continuation | Yes | Yes (proxy `POST /continue`, resume-based) | N/A | N/A | N/A |
+| Session status probe | Yes | Yes (proxy `GET /status`) | Yes (`get_state` via RPC watchdog) | N/A | N/A |
+| Watchdog continuation | Yes | Yes (proxy `POST /continue`, resume-based) | Yes (native `follow_up`) | N/A | N/A |
 | Cache token accounting | Yes | Yes | No | No | No |
 | Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh | Model/provider dependent | Model/provider dependent |
 | Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) |
