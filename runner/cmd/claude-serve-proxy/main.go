@@ -398,7 +398,11 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case action == "message" && r.Method == http.MethodPost:
-		srv.handleSendPrompt(w, r, s)
+		srv.handleSendPrompt(w, r, s, false)
+	case action == "continue" && r.Method == http.MethodPost:
+		srv.handleSendPrompt(w, r, s, true)
+	case action == "status" && r.Method == http.MethodGet:
+		srv.handleStatus(w, r, s)
 	case action == "abort" && r.Method == http.MethodPost:
 		srv.handleAbort(w, r, s)
 	case action == "export" && r.Method == http.MethodGet:
@@ -406,6 +410,20 @@ func (srv *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
+}
+
+// handleStatus reports whether the session's claude subprocess is running.
+// The progress watchdog uses it to tell an in-flight hung generation (busy)
+// from an agent that finished its turn and went quiet (idle).
+func (srv *server) handleStatus(w http.ResponseWriter, r *http.Request, s *session) {
+	w.Header().Set("Content-Type", "application/json")
+	status := "idle"
+	s.mu.Lock()
+	if s.cmd != nil {
+		status = "busy"
+	}
+	s.mu.Unlock()
+	json.NewEncoder(w).Encode(map[string]string{"status": status})
 }
 
 type messageRequest struct {
@@ -416,7 +434,7 @@ type messageRequest struct {
 	ResumeID string   `json:"resume_session_id"`
 }
 
-func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session) {
+func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *session, continueRun bool) {
 	var req messageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
@@ -460,6 +478,10 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		"--settings", filepath.Join(srv.workspaceDir(), ".claude", "settings.json"),
 		// Scratch-space parity with OpenCode's /tmp external directory allow.
 		"--add-dir", "/tmp",
+		// Stream subagent text/thinking and hook lifecycle events so live task
+		// progress shows subagent work instead of going quiet during dispatch.
+		"--forward-subagent-text",
+		"--include-hook-events",
 	}
 	if mcpConfig := srv.strictMCPConfigPath(); mcpConfig != "" {
 		// Restrict MCP loading to the runner-generated server list so a cloned
@@ -467,23 +489,42 @@ func (srv *server) handleSendPrompt(w http.ResponseWriter, r *http.Request, s *s
 		// would otherwise load without any approval.
 		args = append(args, "--mcp-config", mcpConfig, "--strict-mcp-config")
 	}
+	if budget := strings.TrimSpace(os.Getenv("CHETTER_CLAUDE_MAX_BUDGET_USD")); budget != "" {
+		// Optional per-task spend ceiling; subagent spend counts toward it.
+		args = append(args, "--max-budget-usd", budget)
+	}
 	if req.Agent != "" {
-		systemPrompt := resolveAgentFile(req.Agent)
-		if systemPrompt != "" {
-			args = append(args, "--system-prompt", systemPrompt)
+		if systemPromptPath := srv.resolveAgentFilePath(req.Agent); systemPromptPath != "" {
+			// Append rather than replace: --system-prompt discards Claude
+			// Code's entire built-in prompt (tool guidance, coding persona,
+			// safety instructions), which degrades headless behavior.
+			args = append(args, "--append-system-prompt-file", systemPromptPath)
 		}
 	}
 	resumeID := req.ResumeID
+	if continueRun && resumeID == "" {
+		// A continuation always resumes the session's native transcript; an
+		// explicit resume_session_id still wins (and is validated below).
+		resumeID = s.id
+	}
 	s.mu.Lock()
 	if resumeID == s.id && s.nativeID != "" {
 		resumeID = s.nativeID
 	}
+	hasNative := s.nativeID != ""
 	s.mu.Unlock()
+	if resumeID != "" && !hasNative && resumeID != req.ResumeID {
+		// Nothing to resume: the session has no native transcript mapping yet
+		// and the caller did not name one explicitly.
+		cancel()
+		http.Error(w, "session has no claude transcript to resume", http.StatusConflict)
+		return
+	}
 	if resumeID != "" {
 		args = append(args, "--resume", resumeID)
 	}
 
-	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID)
+	slog.Info("starting claude", "session", s.id, "model", model, "resume", req.ResumeID, "continue", continueRun)
 
 	command := srv.command
 	if command == nil {
@@ -1183,15 +1224,22 @@ func pipeStderr(reader io.Reader, sessionID string) {
 	}
 }
 
-func resolveAgentFile(agentName string) string {
+// resolveAgentFilePath returns the path of the agent persona file for
+// agentName inside the workspace, or "" when none exists. Claude's GenerateConfig
+// materializes task agent definitions at .claude/agents/<name>.md; the
+// .opencode fallback covers shared definitions written for the OpenCode layout.
+func (srv *server) resolveAgentFilePath(agentName string) string {
+	if agentName == "" || filepath.Base(agentName) != agentName {
+		return ""
+	}
+	workspace := srv.workspaceDir()
 	paths := []string{
-		"/workspace/.claude/agents/" + agentName + ".md",
-		"/workspace/.opencode/agent/" + agentName + ".md",
+		filepath.Join(workspace, ".claude", "agents", agentName+".md"),
+		filepath.Join(workspace, ".opencode", "agent", agentName+".md"),
 	}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err == nil {
-			return string(data)
+		if _, err := os.Stat(p); err == nil {
+			return p
 		}
 	}
 	return ""

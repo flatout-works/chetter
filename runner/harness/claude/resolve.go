@@ -33,6 +33,12 @@ func claudeEnv(wsDir, secret string, req task.TaskRequest) map[string]string {
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		"CLAUDE_CODE_ATTRIBUTION_HEADER":           "0",
 		"CLAUDE_SERVE_PROXY_TOKEN":                 secret,
+		// Runner-bridge payloads (PR diffs, task exports) routinely exceed the
+		// documented 25000-token default and would be truncated mid-tool-result.
+		"MAX_MCP_OUTPUT_TOKENS": firstEnvOrDefault("CHETTER_CLAUDE_MAX_MCP_OUTPUT_TOKENS", "50000"),
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_CLAUDE_MAX_OUTPUT_TOKENS")); value != "" {
+		env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = value
 	}
 
 	provider := strings.ToLower(strings.TrimSpace(req.ProviderID))
@@ -66,4 +72,11 @@ func claudeEnv(wsDir, secret string, req task.TaskRequest) map[string]string {
 	}
 
 	return env
+}
+
+func firstEnvOrDefault(override, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(override)); value != "" {
+		return value
+	}
+	return fallback
 }

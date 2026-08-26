@@ -1,9 +1,13 @@
 package claude
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -212,6 +216,58 @@ func TestGenerateConfigWritesStrictMCPConfig(t *testing.T) {
 	if len(strictConfig.MCPServers) != len(mcpConfig.MCPServers) {
 		t.Fatalf("strict MCP server count = %d, want %d", len(strictConfig.MCPServers), len(mcpConfig.MCPServers))
 	}
+}
+
+func TestGenerateConfigInjectsAgentAndSkills(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		Agent:           "issue-triage",
+		AgentDefinition: "---\nname: issue-triage\n---\nTriage issues carefully.\n",
+		SkillDefinitions: map[string][]byte{
+			"chetter": buildSkillTar(t),
+		},
+	}
+	if err := GenerateConfig(wsDir, "", "", "", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	agentPath := filepath.Join(wsDir, ".claude", "agents", "issue-triage.md")
+	data, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatalf("read agent definition: %v", err)
+	}
+	if !strings.Contains(string(data), "Triage issues carefully.") {
+		t.Fatalf("agent definition = %q", data)
+	}
+
+	skillPath := filepath.Join(wsDir, ".claude", "skills", "chetter", "SKILL.md")
+	skillData, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read skill definition: %v", err)
+	}
+	if !strings.Contains(string(skillData), "# chetter skill") {
+		t.Fatalf("skill definition = %q", skillData)
+	}
+}
+
+func buildSkillTar(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	if err := tw.WriteHeader(&tar.Header{Name: "SKILL.md", Mode: 0o644, Size: int64(len("# chetter skill\n"))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte("# chetter skill\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func contains(values []string, want string) bool {

@@ -468,6 +468,149 @@ func TestReadSessionExportSelectsNativeSession(t *testing.T) {
 	}
 }
 
+func TestPromptAppendsAgentSystemPromptInsteadOfReplacing(t *testing.T) {
+	workspace := t.TempDir()
+	agentDir := filepath.Join(workspace, ".claude", "agents")
+	if err := os.MkdirAll(agentDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentDir, "triage.md"), []byte("persona"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(workspace, `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"done"}'`)
+	}
+	s := newSession("proxy-session")
+	srv.sessions[s.id] = s
+
+	rr := sendTestPrompt(srv, s.id, `{"prompt":"test","agent":"triage"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--append-system-prompt-file", filepath.Join(agentDir, "triage.md")) {
+		t.Fatalf("args missing --append-system-prompt-file: %q", args)
+	}
+	for i := 0; i+len("--system-prompt") <= len(args); i++ {
+		if args[i] == "--system-prompt" {
+			t.Fatalf("args must not replace the system prompt: %q", args)
+		}
+	}
+}
+
+func TestSessionStatusReportsBusyWhileRunning(t *testing.T) {
+	srv, s := testProxyServer(t, "exec sleep 30")
+	promptDone := make(chan struct{})
+	go func() {
+		sendTestPrompt(srv, s.id, `{"prompt":"test"}`)
+		close(promptDone)
+	}()
+	waitForCommand(t, s)
+
+	rr := httptest.NewRecorder()
+	srv.handleStatus(rr, httptest.NewRequest(http.MethodGet, "/", nil), s)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"busy"`) {
+		t.Fatalf("status while running = %d %q", rr.Code, rr.Body.String())
+	}
+
+	abort := httptest.NewRecorder()
+	srv.handleAbort(abort, httptest.NewRequest(http.MethodPost, "/", nil), s)
+	if abort.Code != http.StatusOK {
+		t.Fatalf("abort status = %d", abort.Code)
+	}
+	select {
+	case <-promptDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt did not stop after abort")
+	}
+
+	rr = httptest.NewRecorder()
+	srv.handleStatus(rr, httptest.NewRequest(http.MethodGet, "/", nil), s)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"idle"`) {
+		t.Fatalf("status after completion = %d %q", rr.Code, rr.Body.String())
+	}
+}
+
+func TestContinueOnIdleSessionResumesNativeID(t *testing.T) {
+	workspace := t.TempDir()
+	const proxyID = "proxy-session"
+	native := filepath.Join(workspace, ".claude", "chetter-sessions", proxyID+".json")
+	if err := os.MkdirAll(filepath.Dir(native), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(native, []byte(`{"native_session_id":"native-42"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	argsSeen := make(chan []string, 1)
+	srv := newTestProxyServer(workspace, `printf '%s\n' '{"type":"result","subtype":"success","result":"resumed"}'`)
+	srv.command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		select {
+		case argsSeen <- append([]string(nil), args...):
+		default:
+		}
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s\n' '{"type":"result","subtype":"success","result":"resumed"}'`)
+	}
+
+	// Continue on an unknown session ID must 404 (no mapping, no live session).
+	rr := sendTestContinue(srv, "missing-session")
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("unknown session continue status = %d, want 404", rr.Code)
+	}
+
+	if _, err := srv.lookupSession(proxyID); err != nil {
+		t.Fatalf("lookup session: %v", err)
+	}
+	rr = sendTestContinue(srv, proxyID)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("continue status = %d; body=%s", rr.Code, rr.Body.String())
+	}
+	args := <-argsSeen
+	if !containsArgs(args, "--resume", "native-42") {
+		t.Fatalf("continue args missing --resume native-42: %q", args)
+	}
+}
+
+func TestContinueOnBusySessionConflicts(t *testing.T) {
+	srv, s := testProxyServer(t, "exec sleep 30")
+	promptDone := make(chan struct{})
+	go func() {
+		sendTestPrompt(srv, s.id, `{"prompt":"first"}`)
+		close(promptDone)
+	}()
+	waitForCommand(t, s)
+
+	rr := sendTestContinue(srv, s.id)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("busy continue status = %d, want 409; body=%s", rr.Code, rr.Body.String())
+	}
+
+	abort := httptest.NewRecorder()
+	srv.handleAbort(abort, httptest.NewRequest(http.MethodPost, "/", nil), s)
+	if abort.Code != http.StatusOK {
+		t.Fatalf("abort status = %d", abort.Code)
+	}
+	select {
+	case <-promptDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prompt did not stop after abort")
+	}
+}
+
+func sendTestContinue(srv *server, sessionID string) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/session/"+sessionID+"/continue", strings.NewReader(`{"prompt":"continue"}`))
+	srv.handleSession(rr, req)
+	return rr
+}
+
 func testProxyServer(t *testing.T, script string) (*server, *session) {
 	t.Helper()
 	srv := newTestProxyServer(t.TempDir(), script)

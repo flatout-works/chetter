@@ -320,17 +320,26 @@ SSE, session export, and resume support.
 
 - Official Anthropic CLI, well-maintained
 - Per-task Docker isolation with gVisor (via serve-proxy)
-- SSE streaming events for live progress
-- Session resume support (`--resume`)
+- SSE streaming events for live progress, including subagent text
+  (`--forward-subagent-text`) and hook lifecycle (`--include-hook-events`)
+- Session resume support (`--resume`) plus idle-session continuation
+  (`POST /session/{id}/continue`) used by the progress watchdog
+- Session status probe (`GET /session/{id}/status`) distinguishes hung
+  generations from agents that finished their turn
+- Agent and skill definition injection (`.claude/agents/`, `.claude/skills/`)
 - Session export from JSONL files
-- Clean stream-json output format
-- Permission system (allow/deny lists in settings.json)
-- MCP support built-in (`.mcp.json`)
+- Clean stream-json output format with cache token accounting
+- Permission system (allow/deny lists in settings.json, `dontAsk` mode)
+- MCP support built-in, restricted to the runner-generated server list via
+  `--strict-mcp-config`
+- Configurable turn cap (`CHETTER_CLAUDE_MAX_TURNS`, default 500) and optional
+  spend ceiling (`CHETTER_CLAUDE_MAX_BUDGET_USD`)
 
 ### Cons
 
-- Anthropic-only (no other providers)
-- No mid-task steering or follow-up
+- Anthropic-compatible endpoints only (the Anthropic message contract is the
+  sole wire protocol)
+- Mid-turn steering is not available (continuation happens between turns)
 - No mid-session model switching
 - Requires serve-proxy binary (extra maintenance)
 - Abort is SIGINT→SIGTERM escalation (no graceful HTTP abort in Claude CLI)
@@ -485,13 +494,18 @@ MCP support inside Chetter's isolated task containers.
 | Execution model | Serve (HTTP) | Serve (proxy) | RPC (subprocess) | Serve (HTTP/SSE) | Serve (App Server proxy) |
 | Streaming | SSE events | SSE events | JSONL events | SSE events | JSON-RPC bridged to SSE |
 | Abort | Kill process | SIGINT→SIGTERM | `abort` command | Turn interrupt endpoint | `turn/interrupt` |
-| Steering | No | No | `steer` / `follow_up` | Runtime API supports steer; Chetter does not expose it yet | Runtime API supports steer; Chetter does not expose it yet |
+| Steering | No | Continuation via resume (idle sessions) | `steer` / `follow_up` | Runtime API supports steer; Chetter does not expose it yet | Runtime API supports steer; Chetter does not expose it yet |
 | Model switching | Per-session config | Per-task flag | `set_model` mid-session | Per-thread/turn model | Per-thread/turn model |
-| MCP support | Built-in | Built-in | via pi-mcp-adapter | Built-in `.codewhale/mcp.json` | Built-in `.codex/config.toml` |
+| MCP support | Built-in | Built-in (strict runner-owned config) | via pi-mcp-adapter | Built-in `.codewhale/mcp.json` | Built-in `.codex/config.toml` |
 | Session export | SQLite DB | JSONL files | `get_messages` → markdown | Observed-turn markdown fallback | Observed-turn markdown export |
 | Per-task Docker isolation | Yes (gVisor) | Yes (gVisor) | No | Yes (gVisor) | Yes (gVisor) |
-| Provider breadth | Multiple | Anthropic only | 30+ | Broad multi-provider/open-model | Responses API-compatible providers |
-| Permission system | Config-based | Settings-based | None (container-reliant) | Runtime approval/sandbox policy | `workspace-write` plus no interactive approvals |
+| Provider breadth | Multiple | Anthropic-compatible endpoints | 30+ | Broad multi-provider/open-model | Responses API-compatible providers |
+| Permission system | Config-based | Settings-based (`dontAsk`) | None (container-reliant) | Runtime approval/sandbox policy | `workspace-write` plus no interactive approvals |
+| Agent definitions | Injected (`.config/opencode/agent/`) | Injected (`.claude/agents/`) | N/A | N/A | N/A |
+| Skill definitions | Injected (`.config/opencode/skill/`) | Injected (`.claude/skills/`) | N/A | N/A | N/A |
+| Session status probe | Yes | Yes (proxy `GET /status`) | N/A | N/A | N/A |
+| Watchdog continuation | Yes | Yes (proxy `POST /continue`, resume-based) | N/A | N/A | N/A |
+| Cache token accounting | Yes | Yes | No | No | No |
 | Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh | Model/provider dependent | Model/provider dependent |
 | Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) |
 | License | Apache 2.0 | Proprietary (CLI) | MIT | MIT | Apache 2.0 |

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/skilltar"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -143,7 +144,44 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 		copyClaudeState(wsDir)
 	}
 
+	writeAgentAndSkillDefinitions(claudeDir, req)
+
 	return nil
+}
+
+// writeAgentAndSkillDefinitions materializes the task's agent persona and
+// skill definitions where Claude Code discovers them: project subagents in
+// .claude/agents/<name>.md and skills in .claude/skills/<name>/. The agent
+// file doubles as the --append-system-prompt-file source for the serve proxy.
+func writeAgentAndSkillDefinitions(claudeDir string, req task.TaskRequest) {
+	if req.AgentDefinition != "" && req.Agent != "" {
+		agentDir := filepath.Join(claudeDir, "agents")
+		if err := os.MkdirAll(agentDir, 0750); err != nil {
+			slog.Warn("create claude agent dir", "err", err)
+		} else {
+			path := filepath.Join(agentDir, req.Agent+".md")
+			if err := os.WriteFile(path, []byte(req.AgentDefinition), 0644); err != nil {
+				slog.Warn("write claude agent definition", "agent", req.Agent, "err", err)
+			} else {
+				slog.Info("injected claude agent definition", "agent", req.Agent, "path", path)
+			}
+		}
+	}
+	if len(req.SkillDefinitions) > 0 {
+		skillsBase := filepath.Join(claudeDir, "skills")
+		for name, tarBytes := range req.SkillDefinitions {
+			skillDir := filepath.Join(skillsBase, name)
+			if err := os.MkdirAll(skillDir, 0750); err != nil {
+				slog.Warn("create claude skill dir", "skill", name, "err", err)
+				continue
+			}
+			if err := skilltar.Extract(tarBytes, skillDir); err != nil {
+				slog.Warn("extract claude skill", "skill", name, "err", err)
+			} else {
+				slog.Info("injected claude skill", "skill", name, "dir", skillDir, "bytes", len(tarBytes))
+			}
+		}
+	}
 }
 
 func copyClaudeState(wsDir string) {
