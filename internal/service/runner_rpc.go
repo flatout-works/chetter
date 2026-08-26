@@ -29,16 +29,14 @@ const (
 	defaultClaimWaitSec = 30
 	// Keep the event lease longer than the runner's bounded terminal cleanup
 	// (container stop plus session export).
-	defaultTaskLeaseSec       = 120
+	defaultTaskLeaseSec = 120
 	// claimPollInterval is the safety-net poll inside a ClaimTask long-poll:
 	// how long a waiter sleeps after an empty claim attempt before checking
-	// the queue again. It exists to catch work that bypassed the in-process
-	// claimNotifier (other server replicas, direct database writes). In the
-	// common single-replica case every submission wakes waiters immediately
-	// via NotifyTaskClaimable, so an idle queue costs one cheap
-	// SELECT...FOR UPDATE SKIP LOCKED per runner per interval instead of
-	// continuous polling.
+	// the queue again. One DB counter poller per server replica broadcasts
+	// cross-replica changes to all local waiters; this slower poll only catches
+	// work that bypassed both notification paths (direct database writes).
 	claimPollInterval         = 15 * time.Second
+	claimNotifyDBPollInterval = time.Second
 	runnerEventSubject        = "connect.runner"
 	heartbeatEventMinInterval = 60 * time.Second
 )
@@ -52,12 +50,15 @@ type RunnerRPCService struct {
 	dialect       store.Dialect
 	claimNotify   *claimNotifier
 	heartbeatSeen sync.Map
-	drainRequests sync.Map // map[string]bool — runner ID → drain requested
-	redactSets    sync.Map // map[string]*redact.Set — agent session ID → redaction set
+	redactSets    sync.Map // map[string]*redact.Set — agent session ID → redaction set (in-process cache; never persisted)
 	eventBus      TaskEventPublisher
 	callbacks     TaskEventCallbackDispatcher
 	ghActions     GitHubActionService
 	securityAudit RunnerSecurityAuditLogger
+	// claimPollReady, when non-nil, is closed once the claim-notification
+	// poller has captured its initial counter baseline. Test hook so tests
+	// can synchronize with the poller instead of sleeping.
+	claimPollReady chan struct{}
 }
 
 // TaskEventPublisher fans out task events to streaming subscribers.
@@ -109,6 +110,49 @@ func (s *RunnerRPCService) NotifyTaskClaimable() {
 	}
 }
 
+// pollClaimNotifications watches the shared DB counter and broadcasts changes
+// to every ClaimTask waiter in this server process. This keeps idle DB load at
+// one primary-key read per server replica per interval rather than one counter
+// read per runner.
+func (s *RunnerRPCService) pollClaimNotifications(ctx context.Context) {
+	if s == nil || s.rawDB == nil {
+		return
+	}
+	last, err := getClaimNotifyCounter(ctx, s.rawDB, s.dialect)
+	if err != nil {
+		slog.Warn("initialize claim notification poller", "err", err)
+	}
+	if s.claimPollReady != nil {
+		// Baseline captured: signal tests that subsequent counter changes
+		// will be observed as changes (not absorbed into the baseline).
+		close(s.claimPollReady)
+	}
+	ticker := time.NewTicker(claimNotifyDBPollInterval)
+	defer ticker.Stop()
+	var lastWarn time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current, err := getClaimNotifyCounter(ctx, s.rawDB, s.dialect)
+			if err != nil {
+				// Rate-limit warnings: a DB outage would otherwise log one
+				// warning per second.
+				if time.Since(lastWarn) > time.Minute {
+					lastWarn = time.Now()
+					slog.Warn("poll claim notification counter", "err", err)
+				}
+				continue
+			}
+			if current != last {
+				last = current
+				s.NotifyTaskClaimable()
+			}
+		}
+	}
+}
+
 func (s *RunnerRPCService) WithEventBus(bus TaskEventPublisher) *RunnerRPCService {
 	s.eventBus = bus
 	return s
@@ -128,10 +172,38 @@ func (s *RunnerRPCService) WithSecurityAuditLogger(logger RunnerSecurityAuditLog
 // session. The set is never persisted and is discarded after the session
 // completes. See internal/redact for details.
 func (s *RunnerRPCService) RegisterRedactSet(sessionID string, set *redact.Set) {
-	if set == nil || set.Empty() {
+	if set == nil {
 		return
 	}
 	s.redactSets.Store(sessionID, set)
+}
+
+// cachedRedactSet returns the in-process redaction set for the given agent
+// session, or nil when none is registered. Redaction sets are deliberately
+// cache-only: the plaintext secret values they are built from are sanitized
+// before persistence (see sanitizeTaskEnv), so they cannot be reconstructed
+// from the database on another replica or after a restart. Submitting
+// RegisterRedactSet before notifying runners keeps the common same-replica
+// path covered; a cache miss simply means no redaction is applied.
+func (s *RunnerRPCService) cachedRedactSet(sessionID string) *redact.Set {
+	if sessionID == "" {
+		return nil
+	}
+	if cached, ok := s.redactSets.Load(sessionID); ok {
+		if set, ok := cached.(*redact.Set); ok {
+			return set
+		}
+	}
+	return nil
+}
+
+// evictRedactSet removes a redaction set from the cache after the session
+// reaches a terminal state, preventing unbounded memory growth. Paused and
+// recoverable sessions keep their sets because they may be resumed.
+func (s *RunnerRPCService) evictRedactSet(sessionID string) {
+	if sessionID != "" {
+		s.redactSets.Delete(sessionID)
+	}
 }
 
 func (s *RunnerRPCService) RegisterRunner(ctx context.Context, req *connect.Request[runnerv1.RegisterRunnerRequest]) (*connect.Response[runnerv1.RegisterRunnerResponse], error) {
@@ -672,23 +744,23 @@ func (s *RunnerRPCService) upsertRunner(ctx context.Context, info *runnerv1.Runn
 	}
 	startedAt := parseOptionalTime(info.StartedAt)
 	if err := s.db.UpsertRunnerHeartbeat(ctx, repository.UpsertRunnerHeartbeatParams{
-		ID:             info.RunnerId,
-		Status:         status,
-		ImageRef:       nullString(info.ImageRef),
-		ImageDigest:    nullString(info.ImageDigest),
-		Version:        nullString(info.Version),
-		MaxConcurrent:  info.MaxConcurrent,
-		RunningTasks:   info.RunningTasks,
-		AvailableSlots: info.AvailableSlots,
+		ID:               info.RunnerId,
+		Status:           status,
+		ImageRef:         nullString(info.ImageRef),
+		ImageDigest:      nullString(info.ImageDigest),
+		Version:          nullString(info.Version),
+		MaxConcurrent:    info.MaxConcurrent,
+		RunningTasks:     info.RunningTasks,
+		AvailableSlots:   info.AvailableSlots,
 		IsolationEnabled: info.EnforcedIsolation,
-		TotalStarted:   info.TotalStarted,
-		TotalCompleted: info.TotalCompleted,
-		TotalErrors:    info.TotalErrors,
-		StartedAt:      startedAt,
-		FirstSeenAt:    now,
-		LastSeenAt:     now,
-		UpdatedAt:      now,
-		Metadata:       metadata,
+		TotalStarted:     info.TotalStarted,
+		TotalCompleted:   info.TotalCompleted,
+		TotalErrors:      info.TotalErrors,
+		StartedAt:        startedAt,
+		FirstSeenAt:      now,
+		LastSeenAt:       now,
+		UpdatedAt:        now,
+		Metadata:         metadata,
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
@@ -740,15 +812,36 @@ func mcpRelayRejectedRequests(metadata json.RawMessage) int64 {
 	return heartbeat.MCPRelayRejectedRequests
 }
 
-func (s *RunnerRPCService) RequestDrain(runnerID string) {
-	s.drainRequests.Store(runnerID, true)
+func (s *RunnerRPCService) RequestDrain(ctx context.Context, runnerID string) error {
+	return requestRunnerDrainDB(ctx, s.rawDB, s.dialect, runnerID)
 }
 
 func (s *RunnerRPCService) runnerCommands(ctx context.Context, info *runnerv1.RunnerInfo) ([]*runnerv1.RunnerCommand, error) {
 	commands := make([]*runnerv1.RunnerCommand, 0)
-	if info != nil {
-		if _, draining := s.drainRequests.LoadAndDelete(info.RunnerId); draining {
-			commands = append(commands, &runnerv1.RunnerCommand{Type: "drain"})
+	if info != nil && info.RunnerId != "" {
+		// Degrade rather than fail on drain-coordination errors: heartbeats
+		// renew task leases, and failing the heartbeat here would expire
+		// leases fleet-wide on a transient DB error. The drain request row
+		// is durable and re-delivered on the next heartbeat, so nothing is
+		// lost by skipping a failed check.
+		switch info.Status {
+		case "draining", "drained":
+			// The runner acknowledged a drain by reporting its status; the
+			// durable request has served its purpose.
+			if err := ackRunnerDrainDB(ctx, s.rawDB, s.dialect, info.RunnerId); err != nil {
+				slog.Warn("ack runner drain request failed; retrying next heartbeat", "runner_id", info.RunnerId, "err", err)
+			}
+		default:
+			draining, err := peekRunnerDrainDB(ctx, s.rawDB, s.dialect, info.RunnerId)
+			if err != nil {
+				slog.Warn("peek runner drain request failed; retrying next heartbeat", "runner_id", info.RunnerId, "err", err)
+			} else if draining {
+				// At-least-once delivery: the command is re-sent on every
+				// heartbeat until the runner reports a draining status, so a
+				// lost heartbeat response cannot lose the drain command.
+				// Drain is idempotent on the runner side.
+				commands = append(commands, &runnerv1.RunnerCommand{Type: "drain"})
+			}
 		}
 	}
 	if info == nil || len(info.CurrentExecutions) == 0 {
@@ -997,14 +1090,6 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("execution_id is required"))
 	}
 	now := time.Now().UTC()
-	payload := json.RawMessage(event.PayloadJson)
-	if len(payload) == 0 || !json.Valid(payload) {
-		data, err := json.Marshal(event)
-		if err != nil {
-			return connect.NewError(connect.CodeInternal, err)
-		}
-		payload = data
-	}
 	eventID, err := randomID("evt")
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
@@ -1013,12 +1098,26 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	// Apply transient redaction to runner output before persistence.
 	// The redaction set is derived from designated sensitive env vars
 	// and managed-integration credentials known at task setup time.
-	if rs, ok := s.redactSets.Load(event.AgentSessionId); ok {
-		set := rs.(*redact.Set)
+	// It lives only in this process (see cachedRedactSet): plaintext
+	// secret values are never persisted, so a cache miss — cross-replica
+	// reports or a server restart — means no redaction is applied.
+	if set := s.cachedRedactSet(event.AgentSessionId); set != nil {
 		event.Summary = set.Apply(event.Summary)
 		event.Error = set.Apply(event.Error)
 		event.SessionExport = set.Apply(event.SessionExport)
 		event.PayloadJson = set.Apply(event.PayloadJson)
+	}
+	// Snapshot the persisted payload only after redaction: this value flows
+	// into the task_events row, the event bus, and event callbacks, so it
+	// must reflect the scrubbed fields (including the whole PayloadJson
+	// string, which may embed secret values in arbitrary fields).
+	payload := json.RawMessage(event.PayloadJson)
+	if len(payload) == 0 || !json.Valid(payload) {
+		data, err := json.Marshal(event)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, err)
+		}
+		payload = data
 	}
 
 	status := event.Status
@@ -1069,6 +1168,10 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		ID:              event.TaskId,
 	}
 	skipEventRow := isHeartbeat && !s.shouldStoreHeartbeat(event.TaskId)
+	// sessionTerminal is set inside the transaction below when the session
+	// itself is marked terminal (not paused for resume), so the redaction
+	// set can be evicted after commit.
+	sessionTerminal := false
 	err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 		ownership, err := q.GetExecutionAttemptContext(ctx, event.ExecutionId)
 		if err != nil || ownership.TaskID != event.TaskId || ownership.AgentSessionID != event.AgentSessionId || ownership.UserPromptID != event.UserPromptId {
@@ -1235,6 +1338,9 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 				}); err != nil {
 					return err
 				}
+				// The session itself (not just the task) reached a terminal
+				// state; paused/recoverable sessions keep their sets.
+				sessionTerminal = true
 			}
 		}
 		if !skipEventRow {
@@ -1274,6 +1380,14 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 		} else {
 			slog.Warn("could not load task for event callbacks", "task_id", event.TaskId, "error", err)
 		}
+	}
+
+	// Evict the redaction set cache once the session itself reaches a
+	// terminal state, to prevent unbounded memory growth. Task-terminal
+	// events whose session paused for resume keep the set so a resumed
+	// prompt is still redacted.
+	if sessionTerminal {
+		s.evictRedactSet(event.AgentSessionId)
 	}
 
 	return nil

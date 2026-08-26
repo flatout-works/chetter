@@ -415,7 +415,17 @@ triggers, schedules, `RecoverTask`/`RerunTask`, session resume, and the reaper's
 requeue path. The snapshot-before-poll ordering guarantees no submission can be missed:
 a poller that snapshots before the notify is woken by the channel close, and a poller
 that snapshots after the notify runs its poll after the row committed. A 15s safety-net
-poll catches work that bypassed the notifier (other replicas, direct DB writes).
+poll catches work that bypassed the notifier (direct DB writes).
+
+For multi-replica deployments, each server replica also polls a lightweight
+`claim_notify_counter` table once per second; a counter change triggers the local
+`claimNotifier` broadcast so runners wake within ~1s of a task submitted on another
+replica. The coordination layer (`internal/service/coordination.go`) also provides
+`trigger_locks` for cron deduplication, `admission_locks` for strict pending-admission,
+and durable `runner_drain_requests` so drain commands survive across replicas. Task-event
+streams poll the DB every second alongside the local event bus, and a per-replica
+fleet-cursor poller (`internal/webapi/fleet_poller.go`) feeds fleet streams when task
+activity lands from other replicas (every ~3s).
 
 ---
 
@@ -605,7 +615,7 @@ hand.
 |---|---|
 | ConnectRPC everywhere (MCP + web + runner) | One transport, one proto contract, streaming, HTTP-observable |
 | Long-poll `ClaimTask` with lease + `FOR UPDATE SKIP LOCKED` | Atomic queueing with no broker; leases make crashes safe |
-| In-process `claimNotifier` + safety-net poll | Zero idle DB load, single-replica assumption documented |
+| In-process `claimNotifier` + DB counter poll + safety-net poll | Zero-idle DB load for single replica; ~1s wake-up across replicas |
 | sqlc dual-dialect + `data` facade | TiDB/MySQL/PostgreSQL support behind one interface |
 | Handlers as thin wrappers over one `Service` | Business logic in one place; MCP/web/runner share it |
 | Harness interface + pluggable backend | New agent CLIs and executors slot in without touching the controller |

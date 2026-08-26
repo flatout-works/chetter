@@ -69,6 +69,7 @@ func TestPendingTaskAdmissionRejectsAtLimit(t *testing.T) {
 func TestPendingTaskAdmissionConcurrentIsStrict(t *testing.T) {
 	svc, _, cleanup := pendingAdmissionService(t, 5)
 	defer cleanup()
+	otherReplica := New(svc.cfg, svc.store)
 	ctx := context.Background()
 
 	const workers = 20
@@ -78,7 +79,11 @@ func TestPendingTaskAdmissionConcurrentIsStrict(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: fmt.Sprintf("concurrent %d", i), AgentImage: "runner:latest"})
+			target := svc
+			if i%2 == 1 {
+				target = otherReplica
+			}
+			_, err := target.SubmitTask(ctx, SubmitTaskRequest{Prompt: fmt.Sprintf("concurrent %d", i), AgentImage: "runner:latest"})
 			errs <- err
 		}(i)
 	}

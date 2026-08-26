@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/redact"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/testdb"
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
@@ -185,6 +186,206 @@ func TestRPCClaimTaskWokenByNotify(t *testing.T) {
 		t.Fatalf("ClaimTask: %v", err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("ClaimTask long-poll was not woken by NotifyTaskClaimable within 5s (safety poll is 15s)")
+	}
+}
+
+func TestRPCClaimTaskWokenByCrossReplicaDBNotification(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	// Synchronize with the poller's baseline read so the simulated remote
+	// replica's increment is observed as a change, never absorbed into the
+	// baseline.
+	rpc.claimPollReady = make(chan struct{})
+	pollerCtx, stopPoller := context.WithCancel(context.Background())
+	defer stopPoller()
+	go rpc.pollClaimNotifications(pollerCtx)
+	select {
+	case <-rpc.claimPollReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("claim notification poller did not initialize")
+	}
+
+	claimed := make(chan *connect.Response[runnerv1.ClaimTaskResponse], 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, err := rpc.ClaimTask(context.Background(), connect.NewRequest(&runnerv1.ClaimTaskRequest{
+			RunnerId: "runner_remote", WaitSeconds: 20, LeaseSeconds: 60,
+		}))
+		if err != nil {
+			errCh <- err
+			return
+		}
+		claimed <- resp
+	}()
+	time.Sleep(300 * time.Millisecond)
+
+	insertPendingTask(t, q, "task_remote_wake", "remote work", "runner:latest")
+	bumpClaimNotifyCounter(context.Background(), tdb.DB, tdb.Dialect())
+
+	select {
+	case resp := <-claimed:
+		if resp.Msg.Task == nil || resp.Msg.Task.TaskId != "task_remote_wake" {
+			t.Fatalf("expected task_remote_wake, got %+v", resp.Msg.Task)
+		}
+	case err := <-errCh:
+		t.Fatalf("ClaimTask: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("cross-replica DB notification did not wake ClaimTask")
+	}
+}
+
+func TestRunnerDrainRequestCrossesReplicas(t *testing.T) {
+	rpcA, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	rpcB := NewRunnerRPCService(q, tdb.DB, tdb.Dialect())
+	ctx := context.Background()
+
+	if err := rpcA.RequestDrain(ctx, "runner_cross_replica"); err != nil {
+		t.Fatalf("RequestDrain: %v", err)
+	}
+	active := &runnerv1.RunnerInfo{RunnerId: "runner_cross_replica", Status: "active"}
+
+	// Delivery is at-least-once: the command is re-sent on every heartbeat
+	// until the runner acknowledges, so a lost heartbeat response cannot
+	// lose the drain command.
+	for i := 0; i < 2; i++ {
+		resp, err := rpcB.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: active}))
+		if err != nil {
+			t.Fatalf("heartbeat %d: %v", i+1, err)
+		}
+		if len(resp.Msg.Commands) != 1 || resp.Msg.Commands[0].Type != "drain" {
+			t.Fatalf("heartbeat %d commands = %+v, want one drain command", i+1, resp.Msg.Commands)
+		}
+	}
+
+	// The runner acknowledges by reporting a draining status; the request is
+	// removed and no longer delivered.
+	draining := &runnerv1.RunnerInfo{RunnerId: "runner_cross_replica", Status: "draining"}
+	resp, err := rpcB.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: draining}))
+	if err != nil {
+		t.Fatalf("draining Heartbeat: %v", err)
+	}
+	if len(resp.Msg.Commands) != 0 {
+		t.Fatalf("draining heartbeat commands = %+v, want none", resp.Msg.Commands)
+	}
+	resp, err = rpcB.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: active}))
+	if err != nil {
+		t.Fatalf("post-ack Heartbeat: %v", err)
+	}
+	if len(resp.Msg.Commands) != 0 {
+		t.Fatalf("drain request was not acked: %+v", resp.Msg.Commands)
+	}
+}
+
+// TestRunnerDrainRequestDropsStaleRows verifies an unacknowledged drain
+// request older than the TTL is dropped instead of resurrecting a drain long
+// after the operator requested it.
+func TestRunnerDrainRequestDropsStaleRows(t *testing.T) {
+	rpc, _, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := requestRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_stale_drain"); err != nil {
+		t.Fatalf("request drain: %v", err)
+	}
+	stale := time.Now().UTC().Add(-2 * drainRequestTTL)
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		`UPDATE runner_drain_requests SET created_at = ? WHERE runner_id = ?`,
+		`UPDATE runner_drain_requests SET created_at = $1 WHERE runner_id = $2`),
+		stale, "runner_stale_drain"); err != nil {
+		t.Fatalf("age drain request: %v", err)
+	}
+
+	info := &runnerv1.RunnerInfo{RunnerId: "runner_stale_drain", Status: "active"}
+	resp, err := rpc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: info}))
+	if err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+	if len(resp.Msg.Commands) != 0 {
+		t.Fatalf("stale drain request was delivered: %+v", resp.Msg.Commands)
+	}
+	// The row is gone, not just skipped.
+	requested, err := peekRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_stale_drain")
+	if err != nil {
+		t.Fatalf("peek after TTL drop: %v", err)
+	}
+	if requested {
+		t.Fatal("stale drain request row was not dropped")
+	}
+}
+
+// TestRecordTaskEventRedactsFromRegisteredSet verifies the same-replica
+// redaction path end to end: a set registered at submission time scrubs the
+// secret from every persisted field of a runner-reported event. The set is
+// deliberately cache-only (plaintext secret values are never persisted), so
+// there is intentionally no cross-replica fallback to test.
+func TestRecordTaskEventRedactsFromRegisteredSet(t *testing.T) {
+	rpc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_redact_local", "do work", "runner:latest")
+	now := time.Now().UTC()
+	markTaskRunning(t, q, "task_redact_local", now)
+	markPendingExecutionAttemptClaimed(t, q, "task_redact_local", "runner_redact", now, now.Add(time.Minute))
+	secret := "same-replica-secret-value"
+	rpc.RegisterRedactSet("sess_task_redact_local", redact.NewSet(map[string]string{"API_TOKEN": secret}))
+
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_redact",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         "task_redact_local",
+			ExecutionId:    "exec_task_redact_local",
+			AgentSessionId: "sess_task_redact_local",
+			UserPromptId:   "prompt_task_redact_local",
+			ClaimId:        "claim_task_redact_local",
+			Status:         "running",
+			Summary:        "using token=" + secret,
+			PayloadJson:    `{"detail":"token=` + secret + `"}`,
+		}},
+	})); err != nil {
+		t.Fatalf("ReportTaskEvents: %v", err)
+	}
+
+	events, err := rpc.db.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: "task_redact_local", Limit: 50, Offset: 0})
+	if err != nil {
+		t.Fatalf("ListTaskEvents: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events recorded")
+	}
+	for _, e := range events {
+		if strings.Contains(string(e.Payload), secret) {
+			t.Fatalf("secret leaked in persisted event payload: %q", string(e.Payload))
+		}
+		if !strings.Contains(string(e.Payload), "[REDACTED]") {
+			t.Fatalf("payload not redacted: %q", string(e.Payload))
+		}
+	}
+
+	// The fallback payload path (runner sends no valid PayloadJson) must
+	// marshal the already-redacted event, not the original.
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_redact",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:         "task_redact_local",
+			ExecutionId:    "exec_task_redact_local",
+			AgentSessionId: "sess_task_redact_local",
+			UserPromptId:   "prompt_task_redact_local",
+			ClaimId:        "claim_task_redact_local",
+			Status:         "running",
+			Summary:        "still using token=" + secret,
+		}},
+	})); err != nil {
+		t.Fatalf("ReportTaskEvents (fallback payload): %v", err)
+	}
+	events, err = rpc.db.ListTaskEvents(ctx, repository.ListTaskEventsParams{TaskID: "task_redact_local", Limit: 50, Offset: 0})
+	if err != nil {
+		t.Fatalf("ListTaskEvents (fallback payload): %v", err)
+	}
+	for _, e := range events {
+		if strings.Contains(string(e.Payload), secret) {
+			t.Fatalf("secret leaked via fallback payload marshal: %q", string(e.Payload))
+		}
 	}
 }
 

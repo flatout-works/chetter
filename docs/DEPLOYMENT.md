@@ -49,15 +49,63 @@ The `deploy/k8s/` kustomization ships a `PodDisruptionBudget` (`poddisruptionbud
 
 Set `CHETTER_MAX_PENDING_TASKS` (default `0` = disabled) to cap how many tasks may sit in the `pending` state waiting for a runner. When the cap is reached, every ingress path — MCP submit, web API, webhooks, triggers, rerun, recovery, and session resume — rejects new work with a retryable capacity error and records a `task_admission_rejected` audit event instead of storing the task. Completed, cancelled, and claimed tasks release pending capacity automatically, so a rejected submission can simply be retried.
 
-Concurrent submissions cannot overshoot the limit: the server serializes admission checks (only while the limit is enabled), so the cap is enforced strictly on admissions (the server is designed to run as a single replica). The reaper's lease-expiry recovery can transiently push `pending` above the cap — a claimed task releases a slot, the slot is reused, and the original task's lease then expires and requeues — but no further admissions occur until the count drops back below the limit. Queue depth is observable at any time via the `chetter_tasks{status="pending"}` Prometheus gauge, the fleet-health `PendingTasks` field, and the reaper's task metrics. See issue #50.
+Concurrent submissions cannot overshoot the limit: the server serializes admission checks using a database row lock (`admission_locks` table, `READ COMMITTED` transaction), so the cap is enforced strictly even across multiple server replicas. The reaper's lease-expiry recovery can transiently push `pending` above the cap — a claimed task releases a slot, the slot is reused, and the original task's lease then expires and requeues — but no further admissions occur until the count drops back below the limit. Queue depth is observable at any time via the `chetter_tasks{status="pending"}` Prometheus gauge, the fleet-health `PendingTasks` field, and the reaper's task metrics. See issue #50.
 
 ## Event Callback Recursion Guard
 
 `create_task` event callbacks are checked against a provenance-depth limit to stop misconfigured recursion loops (a `task.completed` → `create_task` callback whose spawned tasks also emit `task.completed` would otherwise create tasks forever). Each callback-spawned task records its parent task and its depth in the chain (`tasks.callback_parent_task_id`, `tasks.callback_depth`); when a callback would spawn a task deeper than `CHETTER_CALLBACK_MAX_DEPTH` (default `5`), the spawn is rejected — a `task.callback_rejected` event with error `event_callback_recursion_limit` is recorded on the parent task's event stream and an `event_callback_recursion_limit` audit event is emitted. Only the specific recursive chain is stopped; the callback itself remains enabled for unrelated tasks. Set `CHETTER_CALLBACK_MAX_DEPTH` to `0` to disable the guard. See issue #312.
 
-## Docker + gVisor
+## Multi-Replica Coordination
 
-Install `runsc` on the host and set `USE_GVISOR=true` to enable gVisor for agent containers.
+The server supports horizontal scaling across multiple replicas using database-only
+coordination (no Redis or external pub/sub). Five tiers ensure correctness:
+
+| Tier | Mechanism | Table | Latency |
+|---|---|---|---|
+| Claim wake-up | `claim_notify_counter` polled per replica every 1s | `claim_notify_counter` | ~1s |
+| Cron dedup | `SELECT ... FOR UPDATE` + interval marker | `trigger_locks` | immediate |
+| Pending admission | `READ COMMITTED` tx + row lock | `admission_locks` | immediate |
+| Drain requests | Durable row delivered on every heartbeat until the runner reports draining | `runner_drain_requests` | next heartbeat |
+| Event/fleet streams | Per-stream 1s task-event poll; per-replica 3s fleet-cursor poll into the local bus | `task_events` (indexed) | 1–3s |
+
+All coordination tables are created by `ApplySchema()` on startup and have matching
+Goose migrations (`054` for MySQL/TiDB, `030` for PostgreSQL). The `claimNotifier`
+in-process broadcast remains the low-latency fast path; the DB poller is the
+cross-replica fallback that triggers the same broadcast.
+
+### Known Multi-Replica Limitations
+
+- **Output redaction is per-replica.** Redaction sets are built from plaintext
+  secret env values at submission time and are deliberately never persisted
+  (`sanitizeTaskEnv` stores `[redacted]` placeholders). With a shared claim
+  queue, a runner on another replica may claim a task whose redaction set
+  lives only on the submitting replica; events reported there are stored
+  unredacted. Runners only ever receive sanitized env values (credentials are
+  injected by name and resolved runner-side), which bounds the practical
+  exposure, but secret-bearing tasks are best kept on single-replica
+  deployments until encrypted set sharing exists.
+- **Event cursors are timestamp-based.** Cross-replica event catch-up uses
+  `created_at` cursors, so server clocks must be roughly synchronized (NTP).
+  An event committed with a timestamp earlier than an already-observed cursor
+  (clock skew plus a slow-committing transaction) can be skipped on streams;
+  clients recover by re-reading from the DB.
+- **Trigger enable/disable is eventually consistent.** The persisted
+  `enabled` flag is re-checked on every trigger tick, so a trigger disabled
+  on one replica stops firing on other replicas within one tick — but the
+  in-flight tick may still fire once.
+- **Drain delivery is at-least-once.** The drain command is re-delivered on
+  every heartbeat until the runner reports a draining status, and a request
+  row is dropped after 30 minutes without an acknowledgement.
+
+### Scaling Notes
+
+- Each replica should have its own runner fleet; runners connect to a specific
+  replica via the runner RPC endpoint.
+- The 15s safety-net poll remains as a backstop even with the DB counter poller.
+- Fleet-wide streaming (task events, fleet updates) is eventually consistent:
+  events from other replicas arrive within 1–3s via DB polling.
+
+## Docker + gVisor
 
 ### Install gVisor On The Host
 

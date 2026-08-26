@@ -1377,7 +1377,9 @@ func (s *Service) drainRunnerTool(ctx context.Context, _ *mcp.CallToolRequest, i
 	if s.runnerRPC == nil {
 		return nil, DrainRunnerOutput{}, fmt.Errorf("runner RPC service not available")
 	}
-	s.runnerRPC.RequestDrain(in.RunnerID)
+	if err := s.runnerRPC.RequestDrain(ctx, in.RunnerID); err != nil {
+		return nil, DrainRunnerOutput{}, err
+	}
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "runner_drain_requested",
 		SourceType: "api",

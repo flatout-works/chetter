@@ -961,6 +961,26 @@ func (s *Service) GetRunnerHealth(ctx context.Context, includeTasks bool) (store
 	return health, nil
 }
 
+// FleetUpdateCursor returns the newest task-event timestamp, which the
+// fleet-stream poller compares against its previous reading to detect task
+// activity committed by other server replicas. It reads MAX(created_at) from
+// task_events (covered by idx_chetter_task_events_created, so it is a cheap
+// index lookup) and matches local-bus semantics: the local bus publishes a
+// fleet update per task event, and mutations that write no task event (e.g.
+// a pending submission before it is claimed) produce no fleet update on
+// either path. Returns the zero time when the table is empty.
+func (s *Service) FleetUpdateCursor(ctx context.Context) (time.Time, error) {
+	var maxCreated sql.NullTime
+	err := s.rawDB.QueryRowContext(ctx, `SELECT MAX(created_at) FROM task_events`).Scan(&maxCreated)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("fleet update cursor: %w", err)
+	}
+	if !maxCreated.Valid {
+		return time.Time{}, nil
+	}
+	return maxCreated.Time, nil
+}
+
 // --- Token Management ---
 
 // CreateToken creates a new API token for one or more teams and a user. Admin only.

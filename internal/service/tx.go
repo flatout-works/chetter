@@ -17,13 +17,21 @@ import (
 const txMaxAttempts = 3
 
 func withTxRetry(ctx context.Context, db *sql.DB, dialect store.Dialect, fn func(data.Repository) error) error {
+	return withTxRetryOptions(ctx, db, dialect, nil, func(q data.Repository, _ *sql.Tx) error {
+		return fn(q)
+	})
+}
+
+// withTxRetryOptions allows callers that need transaction-scoped raw SQL
+// (such as portable row locks) to share the standard retry behavior.
+func withTxRetryOptions(ctx context.Context, db *sql.DB, dialect store.Dialect, opts *sql.TxOptions, fn func(data.Repository, *sql.Tx) error) error {
 	var lastErr error
 	for attempt := 0; attempt < txMaxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
-		tx, err := db.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, opts)
 		if err != nil {
 			if store.IsTransientError(err) && attempt < txMaxAttempts-1 {
 				lastErr = err
@@ -40,7 +48,7 @@ func withTxRetry(ctx context.Context, db *sql.DB, dialect store.Dialect, fn func
 			return err
 		}
 
-		err = fn(data.NewTx(tx, dialect))
+		err = fn(data.NewTx(tx, dialect), tx)
 		if err != nil {
 			_ = tx.Rollback()
 			if isRetryableTxError(err) && attempt < txMaxAttempts-1 {
