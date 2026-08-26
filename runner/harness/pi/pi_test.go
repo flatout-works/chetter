@@ -1,6 +1,9 @@
 package pi
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -249,4 +252,96 @@ func assertJSONPath(t *testing.T, path string) map[string]any {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return parsed
+}
+
+// gzipTar builds a gzipped tar archive from a map of file path -> content.
+func gzipTar(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(content))}); err != nil {
+			t.Fatalf("tar header: %v", err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatalf("tar write: %v", err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("tar close: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestGenerateConfigInjectsSkillsAndPersona(t *testing.T) {
+	wsDir := t.TempDir()
+	req := task.TaskRequest{
+		Agent: "code-rev",
+		AgentDefinition: `# Code Rev
+You are a meticulous code reviewer. Focus on correctness and edge cases.`,
+		SkillDefinitions: map[string][]byte{
+			"review-checklist": gzipTar(t, map[string]string{
+				"SKILL.md": "# Review Checklist\nCheck edge cases.",
+			}),
+		},
+	}
+	if err := GenerateConfig(wsDir, "http://localhost:9999/mcp", "https://chetter.example.com/mcp", "token", req, false); err != nil {
+		t.Fatalf("GenerateConfig failed: %v", err)
+	}
+
+	// Skill extracted to .pi/skills/<name>/.
+	skillPath := filepath.Join(wsDir, ".pi", "skills", "review-checklist", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read skill: %v", err)
+	}
+	if !bytes.Contains(data, []byte("Review Checklist")) {
+		t.Fatalf("skill content = %q", data)
+	}
+
+	// Persona written to .pi/agent/system-prompt.md.
+	personaPath := filepath.Join(wsDir, ".pi", "agent", "system-prompt.md")
+	data, err = os.ReadFile(personaPath)
+	if err != nil {
+		t.Fatalf("read persona: %v", err)
+	}
+	if !bytes.Contains(data, []byte("meticulous code reviewer")) {
+		t.Fatalf("persona content = %q", data)
+	}
+	info, err := os.Stat(personaPath)
+	if err != nil {
+		t.Fatalf("stat persona: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("persona permissions = %v, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestBuildRPCCommandSystemPromptWhenAgentPresent(t *testing.T) {
+	req := task.TaskRequest{Agent: "code-rev", AgentDefinition: "# Code Rev"}
+	got := buildRPCCommand(req)
+	found := false
+	for i, a := range got {
+		if a == "--system-prompt" {
+			if i+1 >= len(got) || got[i+1] != filepath.Join(".pi", "agent", "system-prompt.md") {
+				t.Fatalf("--system-prompt arg = %v, want %v", got[i+1], filepath.Join(".pi", "agent", "system-prompt.md"))
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("buildRPCCommand() = %v, want --system-prompt for a task agent", got)
+	}
+}
+
+func TestBuildRPCCommandNoSystemPromptWithoutAgent(t *testing.T) {
+	for _, a := range buildRPCCommand(task.TaskRequest{}) {
+		if a == "--system-prompt" {
+			t.Fatal("--system-prompt should be omitted when no agent definition is present")
+		}
+	}
 }

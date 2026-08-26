@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/skilltar"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -85,7 +86,41 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	if isLocal {
 		copyPiState(wsDir)
 	}
+	writeAgentAndSkillDefinitions(wsDir, req)
 	return nil
+}
+
+// writeAgentAndSkillDefinitions materializes Git-backed agent and skill
+// definitions into the Pi workspace, mirroring the OpenCode and Claude
+// harnesses. Pi discovers project skills from `.pi/skills/`, and a task agent
+// persona is written to `.pi/agent/system-prompt.md` and referenced via
+// `--system-prompt` so it composes with Pi's coding-assistant default prompt.
+func writeAgentAndSkillDefinitions(wsDir string, req task.TaskRequest) {
+	if len(req.SkillDefinitions) > 0 {
+		skillsBase := filepath.Join(wsDir, ".pi", "skills")
+		for name, tarBytes := range req.SkillDefinitions {
+			skillDir := filepath.Join(skillsBase, name)
+			if err := os.MkdirAll(skillDir, 0750); err != nil {
+				slog.Warn("create pi skill dir", "skill", name, "err", err)
+				continue
+			}
+			if err := skilltar.Extract(tarBytes, skillDir); err != nil {
+				slog.Warn("extract pi skill", "skill", name, "err", err)
+			} else {
+				slog.Info("injected pi skill", "skill", name, "dir", skillDir, "bytes", len(tarBytes))
+			}
+		}
+	}
+	if req.AgentDefinition != "" && req.Agent != "" {
+		path := filepath.Join(wsDir, ".pi", "agent", "system-prompt.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
+			slog.Warn("create pi agent dir", "err", err)
+		} else if err := os.WriteFile(path, []byte(req.AgentDefinition), 0600); err != nil {
+			slog.Warn("write pi agent definition", "agent", req.Agent, "err", err)
+		} else {
+			slog.Info("injected pi agent definition", "agent", req.Agent, "path", path)
+		}
+	}
 }
 
 func writeProviderConfig(agentDir string, req task.TaskRequest) error {

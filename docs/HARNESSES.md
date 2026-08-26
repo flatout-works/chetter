@@ -391,7 +391,11 @@ and supply-chain rigor make it suitable for production.
 - **`--offline` mode** - clean container behavior, no version checks
   or telemetry
 - **Self-extensible** - extensions, skills (agentskills.io standard),
-  prompt templates. Skills can be fed via `--skill` flag.
+  prompt templates. Skills can be fed via `--skill` flag; Chetter also
+  injects Git-backed skill definitions into `.pi/skills/`.
+- **Agent personas** - a task agent definition is written to
+  `.pi/agent/system-prompt.md` and passed via `--system-prompt`, composing
+  with Pi's coding-assistant default prompt.
 - **MIT license** with supply-chain rigor (pinned deps, shrinkwrap,
   OIDC trusted publishing)
 - **Session tree model** - JSONL with branching/forking. Future: task
@@ -506,8 +510,8 @@ MCP support inside Chetter's isolated task containers.
 | Per-task Docker isolation | Yes (gVisor) | Yes (gVisor) | No | Yes (gVisor) | Yes (gVisor) |
 | Provider breadth | Multiple | Anthropic-compatible endpoints | 30+ | Broad multi-provider/open-model | Responses API-compatible providers |
 | Permission system | Config-based | Settings-based (`dontAsk`) | None (container-reliant) | Runtime approval/sandbox policy | `workspace-write` plus no interactive approvals |
-| Agent definitions | Injected (`.config/opencode/agent/`) | Injected (`.claude/agents/`) | N/A | N/A | N/A |
-| Skill definitions | Injected (`.config/opencode/skill/`) | Injected (`.claude/skills/`) | N/A | N/A | N/A |
+| Agent definitions | Injected (`.config/opencode/agent/`) | Injected (`.claude/agents/`) | Injected (`.pi/agent/system-prompt.md` + `--system-prompt`) | N/A | N/A |
+| Skill definitions | Injected (`.config/opencode/skill/`) | Injected (`.claude/skills/`) | Injected (`.pi/skills/`) | N/A | N/A |
 | Session status probe | Yes | Yes (proxy `GET /status`) | N/A | N/A | N/A |
 | Watchdog continuation | Yes | Yes (proxy `POST /continue`, resume-based) | N/A | N/A | N/A |
 | Cache token accounting | Yes | Yes | No | No | No |

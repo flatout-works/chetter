@@ -2,6 +2,7 @@ package pi
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/flatout-works/chetter/runner/internal/task"
@@ -24,6 +25,13 @@ func buildRPCCommand(req task.TaskRequest) []string {
 	}
 	if thinking := thinkingLevel(req.VariantID); thinking != "" {
 		args = append(args, "--thinking", thinking)
+	}
+	// When a task agent definition is present, writeAgentAndSkillDefinitions
+	// stores it at .pi/agent/system-prompt.md (relative to the workspace cwd);
+	// reference it via --system-prompt so the persona composes with Pi's
+	// coding-assistant default prompt (Task 2.2).
+	if req.AgentDefinition != "" && req.Agent != "" {
+		args = append(args, "--system-prompt", filepath.Join(".pi", "agent", "system-prompt.md"))
 	}
 	return args
 }
