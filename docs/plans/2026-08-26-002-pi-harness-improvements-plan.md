@@ -2,8 +2,8 @@
 
 **Date:** 2026-08-26
 **Branch:** `feat/pi-harness-improvements`
-**Worktree:** `/home/gokr/git/chetter`
-**Status:** Proposed
+**Worktree:** `/home/gokr/git/chetter-pi-harness`
+**Status:** In progress — Phase 1 complete (commits `4cc4dc3`, `a4f967a`); Phases 2–4 pending
 
 ## Background
 
