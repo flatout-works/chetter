@@ -37,6 +37,7 @@ type Config struct {
 	DefinitionsRepo        string
 	DefinitionsBranch      string
 	WebURL                 string
+	MetricsAuthToken       string
 	// OIDC web UI SSO (issue #94). See OIDC_* env vars; OIDCConfigured()
 	// reports whether the flow is enabled.
 	OIDCIssuerURL       string
@@ -75,6 +76,12 @@ type Config struct {
 	// every task requires enforced isolation and is refused by runners that
 	// cannot enforce it. See issue #291 and CHETTER_ALLOW_UNISOLATED.
 	AllowUnisolated bool
+
+	// AllowTokenLogin controls whether the web UI accepts bearer tokens via
+	// the login form and localStorage. When false, only OIDC/SSO sessions are
+	// accepted by the browser UI. API and MCP bearer authentication are not
+	// affected. The default remains true for backward compatibility.
+	AllowTokenLogin bool
 
 	// MaxPendingTasks is the global admission cap on tasks waiting to be
 	// claimed (status 'pending'). A value <= 0 disables the limit entirely.
@@ -121,6 +128,7 @@ func Load() Config {
 		DefinitionsRepo:        os.Getenv("DEFINITIONS_REPO"),
 		DefinitionsBranch:      env("DEFINITIONS_BRANCH", "main"),
 		WebURL:                 env("CHETTER_WEB_URL", ""),
+		MetricsAuthToken:       os.Getenv("CHETTER_METRICS_AUTH_TOKEN"),
 		OIDCIssuerURL:          os.Getenv("OIDC_ISSUER_URL"),
 		OIDCClientID:           os.Getenv("OIDC_CLIENT_ID"),
 		OIDCClientSecret:       os.Getenv("OIDC_CLIENT_SECRET"),
@@ -136,6 +144,7 @@ func Load() Config {
 		TaskLimits:             taskLimitsConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
 		AllowUnisolated:        envBool("CHETTER_ALLOW_UNISOLATED", false),
+		AllowTokenLogin:        envBool("CHETTER_ALLOW_TOKEN_LOGIN", true),
 		MaxPendingTasks:        envInt("CHETTER_MAX_PENDING_TASKS", 0),
 		CallbackMaxDepth:       envInt("CHETTER_CALLBACK_MAX_DEPTH", 5),
 	}

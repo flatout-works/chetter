@@ -13,11 +13,15 @@ spec:
       labels:
         app: chetter-runner
     spec:
+      securityContext:
+        runAsNonRoot: false
       terminationGracePeriodSeconds: 90
       serviceAccountName: chetter-runner
       containers:
       - name: runner
         image: ghcr.io/flatout-works/chetter-runner:main
+        securityContext:
+          allowPrivilegeEscalation: false
         envFrom:
         - secretRef:
             name: chetter-secrets

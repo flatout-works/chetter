@@ -1325,6 +1325,22 @@ func TestDockerRPCArgsConfiguresRunnerDNSForGVisor(t *testing.T) {
 	}
 }
 
+func TestDockerRPCArgsAppliesContainerSecurityFlags(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{})
+	for _, want := range [][]string{{"--cap-drop", "ALL"}, {"--security-opt", "no-new-privileges"}} {
+		if !hasAdjacentArgs(args, want[0], want[1]) {
+			t.Fatalf("expected %s %s in args: %v", want[0], want[1], args)
+		}
+	}
+	for _, a := range args {
+		if a == "--privileged" {
+			t.Fatalf("task container must not be privileged: %v", args)
+		}
+	}
+}
+
 func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	h := pi.New()
 	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}

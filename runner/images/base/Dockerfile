@@ -17,9 +17,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 
 ARG GH_VERSION=2.70.0
+ARG GH_SHA256_AMD64=664b70c80aaddf7b45c4df890324d3876762e630cffb429971791b8e2fb2e04b
+ARG GH_SHA256_ARM64=15518ce7455beb67e91928cc0b5d8431d491afeced45d173929d29f2647810ac
 RUN GH_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && GH_SHA256=$(eval echo "\$GH_SHA256_$(echo $GH_ARCH | tr '[:lower:]' '[:upper:]')") \
     && curl -fsSL -o /tmp/gh.tar.gz \
        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+    && echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c - \
     && tar -C /usr/local/bin --strip-components=2 -xzf /tmp/gh.tar.gz "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" \
     && rm /tmp/gh.tar.gz && chmod +x /usr/local/bin/gh
 
@@ -50,12 +54,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/code
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
-# Pi requires Node >= 22.19.0; Claude Code supports >= 18 and works with 22.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -67,16 +65,44 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     make \
     jq \
     ripgrep \
-    nodejs \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Pi requires Node >= 22.19.0; Claude Code supports >= 18 and works with 22.
+# Download Node.js directly from nodejs.org (with SHA256 verification) instead
+# of piping the NodeSource setup script through bash. Requires curl + xz-utils,
+# installed above.
+ARG NODE_VERSION=22.22.0
+ARG NODE_SHA256_X64=9aa8e9d2298ab68c600bd6fb86a6c13bce11a4eca1ba9b39d79fa021755d7c37
+ARG NODE_SHA256_ARM64=1bf1eb9ee63ffc4e5d324c0b9b62cf4a289f44332dfef9607cea1a0d9596ba6f
+RUN NODE_ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') \
+    && NODE_SHA256=$(eval echo "\$NODE_SHA256_$(echo $NODE_ARCH | tr '[:lower:]' '[:upper:]')") \
+    && curl -fsSL -o /tmp/node.tar.xz \
+       "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+    && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
+    && tar -C /usr/local --strip-components=1 -xJf /tmp/node.tar.xz \
+    && rm /tmp/node.tar.xz \
+    && node --version && npm --version
 
 COPY --from=binary-downloader /usr/local/bin/gh /usr/local/bin/gh-real
 COPY --chmod=0755 runner/scripts/gh /usr/local/bin/gh
 COPY --from=binary-downloader /usr/local/bin/docker /usr/local/bin/docker
 
-# OpenCode
-RUN curl -fsSL https://opencode.ai/install | bash \
-    && ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
+# OpenCode (pinned version with SHA256 verification, instead of piping the
+# unpinned installer through bash). Asset naming matches the official install
+# script: opencode-linux-<arch>.tar.gz with a single top-level binary.
+ARG OPENCODE_VERSION=1.0.180
+ARG OPENCODE_SHA256_X64=d0fb7e00ecdcb0679d796396809b8725aa6f58955c79faa5fc56d6a0723dbebd
+ARG OPENCODE_SHA256_ARM64=93497d5a20ab49560e0309b662f8d82b148476ab8a062d87dc3885d10f08078b
+RUN OC_ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') \
+    && OC_SHA256=$(eval echo "\$OPENCODE_SHA256_$(echo $OC_ARCH | tr '[:lower:]' '[:upper:]')") \
+    && curl -fsSL -o /tmp/opencode.tar.gz \
+       "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
+    && echo "${OC_SHA256}  /tmp/opencode.tar.gz" | sha256sum -c - \
+    && tar -C /tmp -xzf /tmp/opencode.tar.gz \
+    && mv /tmp/opencode /usr/local/bin/opencode \
+    && chmod +x /usr/local/bin/opencode \
+    && rm -f /tmp/opencode.tar.gz
 
 # Claude Code (via npm)
 RUN npm install -g @anthropic-ai/claude-code \

@@ -262,6 +262,17 @@ func (r *Runner) buildKubernetesPod(req task.TaskRequest, workspace, secretName 
 		return nil, err
 	}
 	falseValue := false
+	// The agent base image runs as root (no USER directive; the runner creates
+	// workspace files as root), so RunAsNonRoot cannot be set here — kubelet
+	// would refuse to start the container. The sandbox boundary is the gVisor
+	// RuntimeClass; these flags remove what the container can do inside it:
+	// no privilege escalation and no Linux capabilities.
+	securityContext := corev1.SecurityContext{
+		AllowPrivilegeEscalation: &falseValue,
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+	}
 	container := corev1.Container{
 		Name:            "agent",
 		Image:           req.AgentImage,
@@ -269,6 +280,7 @@ func (r *Runner) buildKubernetesPod(req task.TaskRequest, workspace, secretName 
 		Command:         command[:1],
 		Args:            command[1:],
 		WorkingDir:      workspace,
+		SecurityContext: &securityContext,
 		EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{
 			LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
 		}}},

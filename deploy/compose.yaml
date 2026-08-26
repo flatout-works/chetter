@@ -23,9 +23,14 @@ services:
       DEFINITIONS_BRANCH: ${DEFINITIONS_BRANCH:-main}
       DEFAULT_AGENT_IMAGE: ${DEFAULT_AGENT_IMAGE:-chetter-agent:golang}
       AGENT_IMAGE_PREFIX: ${AGENT_IMAGE_PREFIX:-ghcr.io/flatout-works}
+      CHETTER_METRICS_AUTH_TOKEN: ${CHETTER_METRICS_AUTH_TOKEN:-}
+      CHETTER_ALLOW_TOKEN_LOGIN: ${CHETTER_ALLOW_TOKEN_LOGIN:-true}
     ports:
-      - "18088:8080"
-      - "18090:8090"
+      # Loopback by default so nothing is exposed externally. Set
+      # CHETTER_BIND_ADDR (e.g. "0.0.0.0") only behind a reverse proxy or when
+      # direct external access — e.g. GitHub webhooks — is intended.
+      - "${CHETTER_BIND_ADDR:-127.0.0.1}:18088:8080"
+      - "${CHETTER_BIND_ADDR:-127.0.0.1}:18090:8090"
 
   chetter-agent-base:
     profiles: ["build"]

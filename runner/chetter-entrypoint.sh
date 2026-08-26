@@ -190,7 +190,9 @@ esac
 
 mkdir -p "$RUNNER_WORKSPACE_ROOT" "$RUNNER_CACHE_ROOT/go/pkg/mod" "$RUNNER_CACHE_ROOT/go/build" "$RUNNER_CACHE_ROOT/npm"
 
-cat > /tmp/runner.yaml <<EOF
+# Restrict the config file so the secrets written into it (runner auth token,
+# MCP auth token, GitHub PAT) are only readable by the runner process.
+(umask 077 && cat > /tmp/runner.yaml) <<EOF
 server:
   url: ${CHETTER_SERVER_URL}
   auth_token: "${CHETTER_RUNNER_AUTH_TOKEN:-${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:-}}}"

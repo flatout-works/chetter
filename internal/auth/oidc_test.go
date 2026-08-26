@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const testSessionSecret = "test-session-secret"
+const testSessionSecret = "test-session-secret-at-least-32-bytes"
 
 // newTestOIDC builds an OIDCAuth backed by a local fake provider. The runner
 // sandbox blocks outbound HTTP, so all tests must use the httptest provider
@@ -112,6 +112,11 @@ func TestNewOIDCAuthValidation(t *testing.T) {
 		t.Fatal("expected error for missing session secret")
 	}
 
+	cfg.SessionSecret = "too-short"
+	if _, err := NewOIDCAuth(context.Background(), cfg); err == nil {
+		t.Fatal("expected error for short session secret")
+	}
+
 	cfg.SessionSecret = testSessionSecret
 	cfg.IssuerURL = ""
 	if _, err := NewOIDCAuth(context.Background(), cfg); err == nil {
@@ -174,7 +179,7 @@ func TestExchangeVerifiesIDToken(t *testing.T) {
 		Groups:        []string{"chetter-admin", "chetter-platform"},
 		Nonce:         "nonce-456",
 	})
-	identity, rawIDToken, err := a.Exchange(context.Background(), code, "nonce-456")
+	identity, err := a.Exchange(context.Background(), code, "nonce-456")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -186,9 +191,6 @@ func TestExchangeVerifiesIDToken(t *testing.T) {
 	}
 	if !reflect.DeepEqual(identity.Groups, []string{"chetter-admin", "chetter-platform"}) {
 		t.Errorf("Groups = %v", identity.Groups)
-	}
-	if rawIDToken == "" {
-		t.Error("rawIDToken is empty")
 	}
 }
 
@@ -211,14 +213,14 @@ func TestExchangeRejectsWrongNonce(t *testing.T) {
 		Email:   "alice@example.com",
 		Nonce:   "nonce-456",
 	})
-	if _, _, err := a.Exchange(context.Background(), code, "wrong-nonce"); err == nil {
+	if _, err := a.Exchange(context.Background(), code, "wrong-nonce"); err == nil {
 		t.Fatal("expected nonce mismatch error")
 	}
 }
 
 func TestExchangeRejectsUnknownCode(t *testing.T) {
 	a := newTestOIDC(t, nil)
-	if _, _, err := a.Exchange(context.Background(), "bogus-code", ""); err == nil {
+	if _, err := a.Exchange(context.Background(), "bogus-code", ""); err == nil {
 		t.Fatal("expected exchange error for unknown code")
 	}
 }
@@ -226,7 +228,7 @@ func TestExchangeRejectsUnknownCode(t *testing.T) {
 func TestSessionRoundTrip(t *testing.T) {
 	a := newTestOIDC(t, nil)
 	scope := Scope{Admin: true, TeamID: "platform", TeamIDs: []string{"platform"}}
-	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1", Email: "a@example.com"}, scope, "raw-id-token")
+	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1", Email: "a@example.com"}, scope)
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -234,7 +236,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSession: %v", err)
 	}
-	if claims.Subject != "user-1" || claims.Email != "a@example.com" || claims.IDToken != "raw-id-token" {
+	if claims.Subject != "user-1" || claims.Email != "a@example.com" {
 		t.Errorf("claims = %+v", claims)
 	}
 	if !claims.Admin || !reflect.DeepEqual(claims.TeamIDs, []string{"platform"}) {
@@ -244,11 +246,55 @@ func TestSessionRoundTrip(t *testing.T) {
 	if !got.Admin || !reflect.DeepEqual(got.TeamIDs, []string{"platform"}) {
 		t.Errorf("Scope() = %+v", got)
 	}
+	var rawClaims jwt.MapClaims
+	if _, _, err := new(jwt.Parser).ParseUnverified(session, &rawClaims); err != nil {
+		t.Fatalf("ParseUnverified: %v", err)
+	}
+	if _, ok := rawClaims["id_token"]; ok {
+		t.Fatal("session contains upstream id_token")
+	}
+}
+
+func TestSessionRequiresHS256IssuerAndExpiry(t *testing.T) {
+	a := newTestOIDC(t, nil)
+	now := time.Now().UTC()
+	tests := []struct {
+		name   string
+		method jwt.SigningMethod
+		claims SessionClaims
+	}{
+		{
+			name:   "wrong algorithm",
+			method: jwt.SigningMethodHS384,
+			claims: SessionClaims{RegisteredClaims: jwt.RegisteredClaims{Issuer: "chetter-web", ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour))}},
+		},
+		{
+			name:   "wrong issuer",
+			method: jwt.SigningMethodHS256,
+			claims: SessionClaims{RegisteredClaims: jwt.RegisteredClaims{Issuer: "other", ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour))}},
+		},
+		{
+			name:   "missing expiry",
+			method: jwt.SigningMethodHS256,
+			claims: SessionClaims{RegisteredClaims: jwt.RegisteredClaims{Issuer: "chetter-web"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signed, err := jwt.NewWithClaims(tt.method, tt.claims).SignedString([]byte(testSessionSecret))
+			if err != nil {
+				t.Fatalf("sign token: %v", err)
+			}
+			if _, err := a.ParseSession(signed); err == nil {
+				t.Fatal("ParseSession accepted invalid token")
+			}
+		})
+	}
 }
 
 func TestSessionRejectsTamperedToken(t *testing.T) {
 	a := newTestOIDC(t, nil)
-	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{Admin: true}, "")
+	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{Admin: true})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -262,9 +308,9 @@ func TestSessionRejectsTamperedToken(t *testing.T) {
 func TestSessionRejectsWrongSecret(t *testing.T) {
 	a := newTestOIDC(t, nil)
 	other := newTestOIDC(t, func(cfg *OIDCConfig) {
-		cfg.SessionSecret = "different-secret"
+		cfg.SessionSecret = "different-session-secret-at-least-32-bytes"
 	})
-	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{}, "")
+	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -293,7 +339,7 @@ func TestSessionExpiry(t *testing.T) {
 
 func TestSessionCookie(t *testing.T) {
 	a := newTestOIDC(t, nil)
-	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{TeamID: "t1", TeamIDs: []string{"t1"}}, "")
+	session, err := a.NewSession(&OIDCIdentity{Subject: "user-1"}, Scope{TeamID: "t1", TeamIDs: []string{"t1"}})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -305,6 +351,10 @@ func TestSessionCookie(t *testing.T) {
 	}
 	if !scope.HasTeam("t1") {
 		t.Errorf("scope = %+v, want team t1", scope)
+	}
+	secureHeaders := map[string][]string{"Cookie": {SessionCookieSecureName + "=" + session}}
+	if secureScope, ok := a.ScopeFromCookie(secureHeaders); !ok || !secureScope.HasTeam("t1") {
+		t.Errorf("secure cookie scope = %+v, ok=%v", secureScope, ok)
 	}
 
 	// Missing cookie.
@@ -372,6 +422,21 @@ func TestRedirectOrigin(t *testing.T) {
 				t.Errorf("RedirectOrigin() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSecureCookiesUsesConfiguredRedirectURL(t *testing.T) {
+	a := newTestOIDC(t, nil)
+	if a.SecureCookies() {
+		t.Fatal("SecureCookies() = true for HTTP redirect URL")
+	}
+	a.cfg.RedirectURL = "https://chetter.example.com/auth/callback"
+	if !a.SecureCookies() {
+		t.Fatal("SecureCookies() = false for HTTPS redirect URL")
+	}
+	a.cfg.RedirectURL = "https://"
+	if a.SecureCookies() {
+		t.Fatal("SecureCookies() = true for redirect URL without host")
 	}
 }
 

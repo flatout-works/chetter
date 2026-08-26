@@ -1452,6 +1452,8 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, contain
 		"run", "-i",
 		"--entrypoint", command[0],
 		"--name", containerName,
+		"--cap-drop", "ALL",
+		"--security-opt", "no-new-privileges",
 		"--label", "chetter.runner_id=" + runnerID,
 		"--label", "chetter.task_id=" + req.TaskID,
 		"--label", "chetter.execution_id=" + executionKey(req),

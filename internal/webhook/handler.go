@@ -230,6 +230,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	maxBody := h.cfg.MaxBodyBytes
 	if maxBody == 0 {
 		maxBody = 5 * 1024 * 1024 // 5MB

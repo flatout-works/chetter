@@ -4,7 +4,7 @@ metadata:
   name: chetter-mcp
   namespace: chetter
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: chetter-mcp
@@ -13,9 +13,19 @@ spec:
       labels:
         app: chetter-mcp
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
       containers:
       - name: mcp
         image: ghcr.io/flatout-works/chetter-mcp:main
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: false
         ports:
         - containerPort: 8080
         - containerPort: 8090

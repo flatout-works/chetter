@@ -162,6 +162,8 @@ func TestEnvInt64(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
+		t.Setenv("CHETTER_ALLOW_TOKEN_LOGIN", "")
+		t.Setenv("CHETTER_METRICS_AUTH_TOKEN", "")
 		cfg := Load()
 		if cfg.HTTPAddr != ":8080" {
 			t.Errorf("expected :8080, got %q", cfg.HTTPAddr)
@@ -171,6 +173,12 @@ func TestLoad(t *testing.T) {
 		}
 		if !cfg.AutoRecovery {
 			t.Errorf("expected AutoRecovery default true, got false")
+		}
+		if !cfg.AllowTokenLogin {
+			t.Error("expected AllowTokenLogin default true")
+		}
+		if cfg.MetricsAuthToken != "" {
+			t.Errorf("expected empty MetricsAuthToken, got %q", cfg.MetricsAuthToken)
 		}
 	})
 	t.Run("env overrides", func(t *testing.T) {
@@ -195,6 +203,17 @@ func TestLoad(t *testing.T) {
 		cfg = Load()
 		if cfg.AutoRecovery {
 			t.Errorf("expected AutoRecovery false, got true")
+		}
+	})
+	t.Run("security flags", func(t *testing.T) {
+		t.Setenv("CHETTER_ALLOW_TOKEN_LOGIN", "false")
+		t.Setenv("CHETTER_METRICS_AUTH_TOKEN", "metrics-secret")
+		cfg := Load()
+		if cfg.AllowTokenLogin {
+			t.Error("expected AllowTokenLogin false")
+		}
+		if cfg.MetricsAuthToken != "metrics-secret" {
+			t.Errorf("MetricsAuthToken = %q", cfg.MetricsAuthToken)
 		}
 	})
 	t.Run("github fields", func(t *testing.T) {

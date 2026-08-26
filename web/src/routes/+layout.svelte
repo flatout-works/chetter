@@ -8,7 +8,7 @@
   import { initSettings } from "$lib/stores/settings.svelte";
   import { startLiveUpdates, stopLiveUpdates } from "$lib/stores/tasks.svelte";
   import { clearTaskDetail } from "$lib/stores/taskDetail.svelte";
-  import { startServerInfoPolling, stopServerInfoPolling, getServerInfo } from "$lib/stores/serverInfo.svelte";
+  import { startServerInfoPolling, stopServerInfoPolling, getAllowTokenLogin, getServerInfo } from "$lib/stores/serverInfo.svelte";
   import { formatAge } from "$lib/utils.svelte";
   import { setTeamOptions, teamFilter } from "$lib/stores/filter.svelte";
   import { createClient } from "@connectrpc/connect";
@@ -25,6 +25,7 @@
   let serverInfo = $derived(getServerInfo());
   const webGitHash = __WEB_GIT_HASH__;
   let oidcEnabled = $derived(getOIDCEnabled());
+  let allowTokenLogin = $derived(getAllowTokenLogin());
 
   let sidebarOpen = $state(false);
   let sidebarCollapsed = $state(false);
@@ -279,7 +280,7 @@
         {#if oidcEnabled}
           <p class="text-gray-500 dark:text-gray-400 text-sm mb-4">This Chetter instance is secured with your organization's single sign-on.</p>
           <Button onclick={() => (window.location.href = "/auth/login")} color="blue" class="w-full">Sign in with SSO</Button>
-        {:else}
+        {:else if allowTokenLogin}
           <form onsubmit={handleLogin}>
             <Label for="token" class="mb-2">API Token</Label>
             <Input
@@ -290,6 +291,8 @@
             />
             <Button type="submit" color="blue" class="w-full mt-4">Sign In</Button>
           </form>
+		{:else}
+			<Alert color="yellow">Browser token login is disabled. Ask an administrator to configure OIDC.</Alert>
         {/if}
       </Card>
     </div>

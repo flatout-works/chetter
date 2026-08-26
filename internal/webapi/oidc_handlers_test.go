@@ -16,7 +16,7 @@ import (
 	"github.com/flatout-works/chetter/internal/repository"
 )
 
-const testSessionSecret = "test-session-secret"
+const testSessionSecret = "test-session-secret-at-least-32-bytes"
 
 // newTestOIDC builds an OIDCAuth backed by the local fake provider and
 // returns both so tests can issue codes.
@@ -67,6 +67,9 @@ func TestOIDCLoginRedirect(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("status = %d, want 302", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
 	}
 	location := resp.Header.Get("Location")
 	if location == "" {
@@ -152,7 +155,7 @@ func TestOIDCCallbackFullFlow(t *testing.T) {
 	if sessionCookie == nil {
 		t.Fatal("callback did not set session cookie")
 	}
-	if !sessionCookie.HttpOnly || sessionCookie.SameSite != http.SameSiteLaxMode {
+	if !sessionCookie.HttpOnly || sessionCookie.SameSite != http.SameSiteStrictMode {
 		t.Errorf("session cookie attributes: %+v", sessionCookie)
 	}
 	if sessionCookie.MaxAge != int(time.Hour.Seconds()) {
@@ -223,6 +226,67 @@ func TestOIDCCallbackRejectsProviderError(t *testing.T) {
 	}
 }
 
+func TestOIDCCookieSecurityUsesConfiguredRedirect(t *testing.T) {
+	provider := oidctest.New(t, "test-client")
+	tests := []struct {
+		name      string
+		redirect  string
+		forwarded string
+		secure    bool
+	}{
+		{name: "HTTP ignores spoofed proxy header", redirect: "http://localhost:8090/auth/callback", forwarded: "https"},
+		{name: "HTTPS is secure without proxy header", redirect: "https://chetter.example.com/auth/callback", secure: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := auth.NewOIDCAuth(context.Background(), auth.OIDCConfig{
+				IssuerURL:     provider.Issuer,
+				ClientID:      "test-client",
+				ClientSecret:  "test-secret",
+				RedirectURL:   tt.redirect,
+				SessionSecret: testSessionSecret,
+				SessionTTL:    time.Hour,
+			})
+			if err != nil {
+				t.Fatalf("NewOIDCAuth: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "http://internal/auth/login", nil)
+			if tt.forwarded != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.forwarded)
+			}
+			rec := httptest.NewRecorder()
+			(&oidcHandlers{oidc: a}).handleLogin(rec, req)
+			for _, cookie := range rec.Result().Cookies() {
+				if cookie.Secure != tt.secure {
+					t.Errorf("cookie %s Secure = %v, want %v", cookie.Name, cookie.Secure, tt.secure)
+				}
+			}
+			if got := sessionCookieName(tt.secure); tt.secure && got != auth.SessionCookieSecureName {
+				t.Errorf("sessionCookieName(true) = %q", got)
+			}
+		})
+	}
+}
+
+func TestOIDCLoginRateLimit(t *testing.T) {
+	a, _ := newTestOIDC(t)
+	mux := http.NewServeMux()
+	RegisterOIDCRoutes(mux, a, nil)
+	for i := 0; i <= authEndpointRateLimit; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		req.RemoteAddr = "192.0.2.10:1234"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		want := http.StatusFound
+		if i == authEndpointRateLimit {
+			want = http.StatusTooManyRequests
+		}
+		if rec.Code != want {
+			t.Fatalf("request %d status = %d, want %d", i+1, rec.Code, want)
+		}
+	}
+}
+
 func TestOIDCSessionEndpoint(t *testing.T) {
 	a, _ := newTestOIDC(t)
 	server := newOIDCTestServer(t, a)
@@ -236,9 +300,12 @@ func TestOIDCSessionEndpoint(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
 
 	// Valid session cookie -> 200 with claims.
-	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1", Email: "bob@example.com"}, auth.Scope{TeamIDs: []string{"t1"}}, "")
+	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1", Email: "bob@example.com"}, auth.Scope{TeamIDs: []string{"t1"}})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -265,7 +332,7 @@ func TestOIDCLogout(t *testing.T) {
 	a, _ := newTestOIDC(t)
 	server := newOIDCTestServer(t, a)
 
-	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1"}, auth.Scope{}, "")
+	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1"}, auth.Scope{})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -287,6 +354,12 @@ func TestOIDCLogout(t *testing.T) {
 	location := resp.Header.Get("Location")
 	if got := oidctest.Query(location, "post_logout_redirect_uri"); got != "http://localhost:8090/" {
 		t.Errorf("post_logout_redirect_uri = %q, want %q", got, "http://localhost:8090/")
+	}
+	if got := oidctest.Query(location, "client_id"); got != "test-client" {
+		t.Errorf("client_id = %q, want test-client", got)
+	}
+	if got := oidctest.Query(location, "id_token_hint"); got != "" {
+		t.Errorf("id_token_hint = %q, want empty", got)
 	}
 
 	// The session cookie must be cleared.
@@ -322,7 +395,7 @@ func TestOIDCLogoutWithoutEndSessionEndpoint(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1"}, auth.Scope{}, "")
+	session, err := a.NewSession(&auth.OIDCIdentity{Subject: "user-1"}, auth.Scope{})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}

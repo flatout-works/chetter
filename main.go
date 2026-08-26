@@ -47,6 +47,9 @@ const (
 	mcpServerVersion  = "v0.1.0"
 	initTimeout       = 30 * time.Second
 	readHeaderTimeout = 10 * time.Second
+	readTimeout       = 30 * time.Second
+	idleTimeout       = 2 * time.Minute
+	maxHeaderBytes    = 1 << 20
 )
 
 func main() {
@@ -168,7 +171,11 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.Handle("/metrics", metrics.Handler(st.DB(), st.Dialect()))
+	metricsHandler := metrics.Handler(st.DB(), st.Dialect())
+	if cfg.MetricsAuthToken != "" {
+		metricsHandler = authMiddleware(cfg.MetricsAuthToken, nil, metricsHandler)
+	}
+	mux.Handle("/metrics", metricsHandler)
 
 	// readyz reports ready only when the schema is applied, the database is
 	// reachable, and (for TiDB/MySQL) the database session time zone is
@@ -213,6 +220,9 @@ func run() error {
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
 	}
 
 	// Trigger MCP/runner server shutdown when the signal context is
@@ -248,27 +258,30 @@ func run() error {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	webMux.HandleFunc("/readyz", readyzHandler)
-	webMux.HandleFunc("GET /api/server-info", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		lastReap := svc.LastReapAt()
-		lastReapField := "null"
-		if !lastReap.IsZero() {
-			lastReapField = fmt.Sprintf("%q", lastReap.Format(time.RFC3339Nano))
-		}
-		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"serverVersion":%q,"gitHash":%q,"uptimeSeconds":%d,"startedAt":%q,"quotaExhausted":%t,"lastReapAt":%s,"oidcEnabled":%t,"dbSessionTimeZone":%q,"dbGlobalTimeZone":%q,"dbTimeZoneUTC":%t}`,
-			serverVersion, _gitHash, int64(time.Since(startedAt).Seconds()), startedAt.UTC().Format(time.RFC3339),
-			svc.QuotaExhausted(), lastReapField, oidcAuth != nil,
-			dbTZSession, dbTZGlobal, dbTZUTC,
-		)))
-	})
+	webMux.HandleFunc("GET /api/server-info", webapi.NewServerInfoHandler(webapi.ServerInfoConfig{
+		AdminToken:      cfg.MCPAuthToken,
+		DB:              st.DB(),
+		OIDC:            oidcAuth,
+		Version:         func() string { return serverVersion },
+		GitHash:         func() string { return _gitHash },
+		UptimeSeconds:   func() int64 { return int64(time.Since(startedAt).Seconds()) },
+		StartedAt:       func() time.Time { return startedAt },
+		QuotaExhausted:  svc.QuotaExhausted,
+		LastReapAt:      svc.LastReapAt,
+		AllowTokenLogin: cfg.AllowTokenLogin,
+		DBSessionTZ:     dbTZSession,
+		DBGlobalTZ:      dbTZGlobal,
+		DBTimeZoneUTC:   dbTZUTC,
+	}))
 	webMux.Handle("/", webui.Handler())
 
 	webServer := &http.Server{
 		Addr:              cfg.WebAddr,
-		Handler:           webMux,
+		Handler:           webapi.SecurityHeaders(webui.CSPScriptHashes(), webMux),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
 	}
 	webListener, err := net.Listen("tcp", cfg.WebAddr)
 	if err != nil {
