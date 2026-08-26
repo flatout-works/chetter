@@ -166,3 +166,23 @@ func TestSendPromptHTTPCompletionSurvivesMissingTerminalEvent(t *testing.T) {
 		t.Fatalf("terminal event grace period = %v", elapsed)
 	}
 }
+
+func TestSendPromptDecodesProxyError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"API Error: Request rejected (429): subscription rate limits exceeded"}`)
+	}))
+	defer server.Close()
+
+	_, err := sendPrompt(context.Background(), server.URL, "proxy-id", "", task.TaskRequest{Prompt: "test"}, t.TempDir(), time.Second)
+	if err == nil {
+		t.Fatal("sendPrompt returned nil error")
+	}
+	if !strings.Contains(err.Error(), "API Error: Request rejected (429)") {
+		t.Fatalf("error = %q, want provider error", err)
+	}
+	if strings.Contains(err.Error(), `{"error"`) {
+		t.Fatalf("error = %q, contains undecoded proxy JSON", err)
+	}
+}

@@ -135,6 +135,19 @@ func (cc *ClaudeCode) AbortSession(ctx context.Context, baseURL, sessionID, secr
 	return abortSession(ctx, baseURL, sessionID, secret)
 }
 
+// ContinueSession implements harness.SessionContinuable. It posts the standard
+// continuation prompt to the session's /continue action. The proxy relaunches
+// claude with --resume when the session is idle and answers 409 while it is
+// still busy, which the progress watchdog tolerates.
+func (cc *ClaudeCode) ContinueSession(ctx context.Context, baseURL, sessionID, secret string, req task.TaskRequest, wsDir string) error {
+	return continueSession(ctx, baseURL, sessionID, secret)
+}
+
+// SessionStatus implements harness.SessionStatusProbe.
+func (cc *ClaudeCode) SessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	return getSessionStatus(ctx, baseURL, sessionID, secret)
+}
+
 func (cc *ClaudeCode) ReadSessionExport(wsDir, sessionID string) (string, error) {
 	return readSessionExport(wsDir, sessionID)
 }

@@ -58,8 +58,8 @@ func createSession(ctx context.Context, baseURL, secret string) (string, error) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("POST /session: status %d: %s", resp.StatusCode, string(b))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return "", claudeProxyResponseError("POST /session", resp.StatusCode, body)
 	}
 	var result struct {
 		SessionID string `json:"session_id"`
@@ -100,12 +100,12 @@ func sendPrompt(ctx context.Context, baseURL, sessionID, secret string, req task
 	if err != nil {
 		return "", fmt.Errorf("POST /message: %w", err)
 	}
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	resp.Body.Close()
 	slog.Info("claude message response", "status", resp.StatusCode, "len", len(respBody))
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("POST /message: status %d: %s", resp.StatusCode, string(respBody))
+		return "", claudeProxyResponseError("POST /message", resp.StatusCode, respBody)
 	}
 
 	var result struct {
@@ -127,10 +127,66 @@ func abortSession(ctx context.Context, baseURL, sessionID, secret string) error 
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
-		return fmt.Errorf("POST /session/%s/abort: status %d: %s", sessionID, resp.StatusCode, string(body))
+		return claudeProxyResponseError("POST /session/"+sessionID+"/abort", resp.StatusCode, body)
 	}
 	slog.Info("claude session aborted", "sessionID", sessionID)
 	return nil
+}
+
+// continueSession asks an idle session to resume work. The proxy maps this to
+// a fresh claude --resume run; a busy session answers 409 and the call is
+// treated as a no-op by the progress watchdog.
+func continueSession(ctx context.Context, baseURL, sessionID, secret string) error {
+	continueCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	body, _ := json.Marshal(map[string]string{
+		"prompt": "Continue working on the current task now. Resume from the existing state and complete the requested work without waiting for more input.",
+	})
+	resp, err := doPost(continueCtx, baseURL+"/session/"+sessionID+"/continue", secret, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("POST /session/%s/continue: %w", sessionID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		slog.Info("claude session busy, continuation skipped", "sessionID", sessionID)
+		return nil
+	}
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return claudeProxyResponseError("POST /session/"+sessionID+"/continue", resp.StatusCode, respBody)
+	}
+	slog.Info("claude session continuation started", "sessionID", sessionID)
+	return nil
+}
+
+// getSessionStatus reports the proxy-side session state ("busy" while the
+// claude subprocess runs, "idle" otherwise).
+func getSessionStatus(ctx context.Context, baseURL, sessionID, secret string) (string, error) {
+	statusCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(statusCtx, http.MethodGet, baseURL+"/session/"+sessionID+"/status", nil)
+	if err != nil {
+		return "", err
+	}
+	if secret != "" {
+		req.Header.Set("Authorization", basicAuthHeader(secret))
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET /session/%s/status: %w", sessionID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1000))
+		return "", claudeProxyResponseError("GET /session/"+sessionID+"/status", resp.StatusCode, body)
+	}
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("GET /session/%s/status decode: %w", sessionID, err)
+	}
+	return result.Status, nil
 }
 
 func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn func(status, message string), tokenFn func(usage task.TokenUsage), sessionID string, onComplete func(summary string)) {
@@ -280,7 +336,7 @@ func summarizeClaudeEvent(ev *transport.Event) string {
 	case "system_init":
 		return "system.init"
 	case "api_retry":
-		return "system.api_retry"
+		return summarizeClaudeAPIRetry(ev.Data)
 	case "done":
 		return ""
 	case "error":
@@ -288,6 +344,59 @@ func summarizeClaudeEvent(ev *transport.Event) string {
 	default:
 		return ""
 	}
+}
+
+func summarizeClaudeAPIRetry(data string) string {
+	var retry struct {
+		Attempt      int    `json:"attempt"`
+		MaxRetries   int    `json:"max_retries"`
+		RetryDelayMS int    `json:"retry_delay_ms"`
+		ErrorStatus  *int   `json:"error_status"`
+		Error        string `json:"error"`
+	}
+	if json.Unmarshal([]byte(data), &retry) != nil {
+		return "system.api_retry"
+	}
+
+	details := make([]string, 0, 4)
+	if retry.Error != "" {
+		details = append(details, retry.Error)
+	}
+	if retry.ErrorStatus != nil {
+		details = append(details, fmt.Sprintf("HTTP %d", *retry.ErrorStatus))
+	}
+	if retry.Attempt > 0 && retry.MaxRetries > 0 {
+		details = append(details, fmt.Sprintf("attempt %d/%d", retry.Attempt, retry.MaxRetries))
+	} else if retry.Attempt > 0 {
+		details = append(details, fmt.Sprintf("attempt %d", retry.Attempt))
+	}
+	if retry.RetryDelayMS > 0 {
+		details = append(details, "retry in "+(time.Duration(retry.RetryDelayMS)*time.Millisecond).String())
+	}
+	if len(details) == 0 {
+		return "system.api_retry"
+	}
+	return "system.api_retry: " + strings.Join(details, ", ")
+}
+
+func claudeProxyResponseError(operation string, status int, body []byte) error {
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &payload) == nil && strings.TrimSpace(payload.Error) != "" {
+		return fmt.Errorf("%s: status %d: %s", operation, status, boundedClaudeResponseText(payload.Error))
+	}
+	return fmt.Errorf("%s: status %d: %s", operation, status, boundedClaudeResponseText(string(body)))
+}
+
+func boundedClaudeResponseText(text string) string {
+	const maxRunes = 4096
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 func extractClaudeTokenUsage(data string) *task.TokenUsage {
@@ -300,8 +409,10 @@ func extractClaudeTokenUsage(data string) *task.TokenUsage {
 		return nil
 	}
 	tu := &task.TokenUsage{
-		InputTokens:  floatToInt64(usage["input_tokens"]),
-		OutputTokens: floatToInt64(usage["output_tokens"]),
+		InputTokens:      floatToInt64(usage["input_tokens"]),
+		OutputTokens:     floatToInt64(usage["output_tokens"]),
+		CacheReadTokens:  floatToInt64(usage["cache_read_input_tokens"]),
+		CacheWriteTokens: floatToInt64(usage["cache_creation_input_tokens"]),
 	}
 	if cost, ok := ev["total_cost_usd"].(float64); ok {
 		tu.CostCents = int64(cost * 100)

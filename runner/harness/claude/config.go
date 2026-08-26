@@ -2,11 +2,13 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/flatout-works/chetter/runner/harness/mcpconfig"
+	"github.com/flatout-works/chetter/runner/internal/skilltar"
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
@@ -68,11 +70,11 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 				"Bash(sudo:*)",
 			},
 		},
-		"skipPermissionsOnAllowed": true,
 	}
 	if len(enabledMCPServers) > 0 {
 		// Project MCP servers otherwise wait for interactive approval, which is
-		// unavailable to the headless serve proxy.
+		// unavailable to the headless serve proxy. Under --strict-mcp-config
+		// this list is inert, but local mode still benefits from it.
 		settings["enabledMcpjsonServers"] = enabledMCPServers
 	}
 
@@ -81,7 +83,7 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(settingsPath, settingsData, 0644); err != nil {
+	if err := os.WriteFile(settingsPath, settingsData, 0600); err != nil {
 		return err
 	}
 	slog.Info("wrote claude settings", "path", settingsPath)
@@ -125,13 +127,61 @@ func GenerateConfig(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken string, 
 			return err
 		}
 		slog.Info("wrote claude mcp config", "path", agentMCPPath)
+
+		// The serve proxy passes this file via --strict-mcp-config so only the
+		// runner-generated servers load: -p mode loads a cloned repository's
+		// .mcp.json without any approval, which would otherwise let a
+		// malicious repo register its own MCP server. The runner-bridge and
+		// chetter entries carry bearer tokens, hence the private mode.
+		strictMCPPath := filepath.Join(claudeDir, "chetter-mcp.json")
+		if err := mcpconfig.WritePrivateFile(strictMCPPath, agentMCPData); err != nil {
+			return fmt.Errorf("write claude strict mcp config: %w", err)
+		}
+		slog.Info("wrote claude strict mcp config", "path", strictMCPPath)
 	}
 
 	if isLocal {
 		copyClaudeState(wsDir)
 	}
 
+	writeAgentAndSkillDefinitions(claudeDir, req)
+
 	return nil
+}
+
+// writeAgentAndSkillDefinitions materializes the task's agent persona and
+// skill definitions where Claude Code discovers them: project subagents in
+// .claude/agents/<name>.md and skills in .claude/skills/<name>/. The agent
+// file doubles as the --append-system-prompt-file source for the serve proxy.
+func writeAgentAndSkillDefinitions(claudeDir string, req task.TaskRequest) {
+	if req.AgentDefinition != "" && req.Agent != "" {
+		agentDir := filepath.Join(claudeDir, "agents")
+		if err := os.MkdirAll(agentDir, 0750); err != nil {
+			slog.Warn("create claude agent dir", "err", err)
+		} else {
+			path := filepath.Join(agentDir, req.Agent+".md")
+			if err := os.WriteFile(path, []byte(req.AgentDefinition), 0644); err != nil {
+				slog.Warn("write claude agent definition", "agent", req.Agent, "err", err)
+			} else {
+				slog.Info("injected claude agent definition", "agent", req.Agent, "path", path)
+			}
+		}
+	}
+	if len(req.SkillDefinitions) > 0 {
+		skillsBase := filepath.Join(claudeDir, "skills")
+		for name, tarBytes := range req.SkillDefinitions {
+			skillDir := filepath.Join(skillsBase, name)
+			if err := os.MkdirAll(skillDir, 0750); err != nil {
+				slog.Warn("create claude skill dir", "skill", name, "err", err)
+				continue
+			}
+			if err := skilltar.Extract(tarBytes, skillDir); err != nil {
+				slog.Warn("extract claude skill", "skill", name, "err", err)
+			} else {
+				slog.Info("injected claude skill", "skill", name, "dir", skillDir, "bytes", len(tarBytes))
+			}
+		}
+	}
 }
 
 func copyClaudeState(wsDir string) {

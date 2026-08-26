@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 
-ARG DOCKER_VERSION=27.5.1
+ARG DOCKER_VERSION=29.7.2
 RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
     | tar -C /usr/local/bin --strip-components=1 -xzf - docker/docker \
     && chmod +x /usr/local/bin/docker

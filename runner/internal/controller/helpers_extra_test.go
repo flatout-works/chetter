@@ -53,6 +53,7 @@ func TestClassifyErrorCategory(t *testing.T) {
 		{"rate limit", "error", "rate limit exceeded", "model_error"},
 		{"provider error", "error", "provider api error", "model_error"},
 		{"api error", "error", "API error 500", "model_error"},
+		{"claude provider rate limit", "error", "prompt failed: POST /message: status 500: API Error: Request rejected (429): subscription rate limits exceeded", "model_error"},
 		{"oomkilled container", "error", "task container exceeded its memory limit (OOMKilled): prompt failed: EOF", "resource_limit"},
 		{"out of memory", "error", "container out of memory", "resource_limit"},
 		{"resource limit", "error", "cgroup memory limit reached", "resource_limit"},

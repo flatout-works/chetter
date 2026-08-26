@@ -16,14 +16,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
 
-ARG GH_VERSION=2.70.0
+ARG GH_VERSION=2.98.0
 RUN GH_ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
     && curl -fsSL -o /tmp/gh.tar.gz \
        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
     && tar -C /usr/local/bin --strip-components=2 -xzf /tmp/gh.tar.gz "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh" \
     && rm /tmp/gh.tar.gz && chmod +x /usr/local/bin/gh
 
-ARG DOCKER_VERSION=27.5.1
+ARG DOCKER_VERSION=29.7.2
 RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
     | tar -C /usr/local/bin --strip-components=1 -xzf - docker/docker \
     && chmod +x /usr/local/bin/docker
@@ -79,15 +79,17 @@ RUN curl -fsSL https://opencode.ai/install | bash \
     && ln -sf "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
 
 # Claude Code (via npm)
-RUN npm install -g @anthropic-ai/claude-code \
+ARG CLAUDE_CODE_VERSION=2.1.245
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
     && claude --version
 
 # CodeWhale (via npm)
-RUN npm install -g codewhale@0.8.67 \
+ARG CODEWHALE_VERSION=0.9.11
+RUN npm install -g codewhale@${CODEWHALE_VERSION} \
     && codewhale --version
 
 # Codex CLI. Pin its App Server protocol because the Chetter bridge relies on it.
-ARG CODEX_VERSION=0.144.1
+ARG CODEX_VERSION=0.149.1
 RUN npm install -g @openai/codex@${CODEX_VERSION} \
     && codex --version
 
@@ -96,13 +98,14 @@ COPY --from=proxy-builder /out/claude-serve-proxy /usr/local/bin/claude-serve-pr
 COPY --from=proxy-builder /out/codex-serve-proxy /usr/local/bin/codex-serve-proxy
 
 # Pi coding agent (via npm) + MCP adapter extension.
-RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent \
+ARG PI_AGENT_VERSION=0.84.3
+RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_AGENT_VERSION} \
     && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi
 
 RUN mkdir -p /opt/pi-extensions \
     && cd /opt/pi-extensions \
     && npm init -y \
-    && npm install --ignore-scripts pi-mcp-adapter@2.11.0
+    && npm install --ignore-scripts pi-mcp-adapter@2.27.0
 
 ENV PI_MCP_ADAPTER_PATH=/opt/pi-extensions/node_modules/pi-mcp-adapter
 
@@ -111,7 +114,7 @@ RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /opt/opencode/.config/opencode \
     && cd /opt/opencode/.config/opencode \
     && npm init -y \
-    && npm install @mem9/opencode@0.1.3 @opencode-ai/plugin@1.14.19 zod@4.1.8
+    && npm install @mem9/opencode@0.1.6 @opencode-ai/plugin@1.18.23 zod@4.4.3
 
 ENV HOME=/opt/opencode
 ENV XDG_CONFIG_HOME=/opt/opencode/.config
