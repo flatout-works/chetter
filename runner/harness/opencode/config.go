@@ -485,7 +485,7 @@ func copyOpenCodePluginState(wsDir string) {
 	pinPkg := map[string]any{
 		"dependencies": map[string]string{
 			"@opencode-ai/plugin": actualVersion,
-			"zod":                 "4.1.8",
+			"zod":                 "4.4.3",
 		},
 	}
 	pinData, _ := json.MarshalIndent(pinPkg, "", "  ")

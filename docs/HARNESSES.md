@@ -148,7 +148,7 @@ MCP endpoints support global and team scope. Team-scoped endpoints are only avai
 
 ### Pinned harness versions
 
-The agent base image pins `codewhale@0.8.67` and `pi-mcp-adapter@2.11.0` because the MCP endpoint implementation relies on those verified config contracts (`bearer_token_env_var` for CodeWhale, `bearerTokenEnv` for Pi).
+The agent base image pins `codewhale@0.9.11` and `pi-mcp-adapter@2.27.0` because the MCP endpoint implementation relies on those verified config contracts (`bearer_token_env_var` for CodeWhale, `bearerTokenEnv` for Pi).
 
 ## Execution Models
 
