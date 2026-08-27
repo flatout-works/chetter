@@ -524,7 +524,7 @@ MCP support inside Chetter's isolated task containers.
 | Skill definitions | Injected (`.config/opencode/skill/`) | Injected (`.claude/skills/`) | Injected (`.pi/skills/`) | N/A | N/A |
 | Session status probe | Yes | Yes (proxy `GET /status`) | Yes (`get_state` via RPC watchdog) | N/A | N/A |
 | Watchdog continuation | Yes | Yes (proxy `POST /continue`, resume-based) | Yes (native `follow_up`) | N/A | N/A |
-| Cache token accounting | Yes | Yes | No | No | No |
+| Cache token accounting | Yes | Yes | Yes | No | No |
 | Thinking levels | N/A | N/A | off/minimal/low/medium/high/xhigh | Model/provider dependent | Model/provider dependent |
 | Per-task selection | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) | Yes (harness field) |
 | License | Apache 2.0 | Proprietary (CLI) | MIT | MIT | Apache 2.0 |
