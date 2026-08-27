@@ -184,7 +184,7 @@ Detailed per-day history of everything that went into this release is below.
 ### Documentation
 
 - Docs restructured into a MANUAL-backed layout: `SCHEDULES.md` + `REVIEWS.md` merged into `TRIGGERS.md`; `PAUSED_SESSIONS.md` renamed to `SESSIONS.md`; deployment/gVisor content extracted to new `DEPLOYMENT.md`, agent-image content to new `IMAGES.md`, and definitions-repo YAML/Git identities/MCP endpoints moved into `CONFIGURATION.md`; completed design docs (`TASK_SESSION_MODEL_REFACTOR.md`, `REPOSITORY_QUALITY_REVIEW.md`) moved to `docs/research/`; `MANUAL.md` slimmed to the canonical operator guide.
-- Root `README.md` gains a "Next Steps" section and a full docs index; new `LASTWEEK.md` with a 7-day feature summary.
+- Root `README.md` gains a "Next Steps" section and a full docs index.
 - `AGENTS.md` documents the single-replica claim-notifier assumption and the TiDB multi-column `ALTER TABLE` limitation.
 
 ## 2026-08-01
