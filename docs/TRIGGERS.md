@@ -19,7 +19,7 @@ Trigger tools:
 - `chetter_list_triggers`
 - `chetter_delete_trigger`
 - `chetter_run_trigger`
-- `chetter_list_schedule_runs`
+- `chetter_list_trigger_runs`
 
 This document covers cron schedules and PR review triggers. Issue triggers use
 the same trigger tools with `trigger_type: issue` and the webhook environment
@@ -37,7 +37,7 @@ fire, Chetter:
 1. Creates a new task from the template (same prompt, git_url, git_ref, agent_image, etc.)
 2. Stamps it with the team's `team_id` (if the schedule was created with a scoped token)
 3. Queues it as a pending task for runners to claim
-4. Records the run in `chetter_schedule_runs`
+4. Records the run in `trigger_runs`
 
 ## Schedule Fields
 
@@ -140,7 +140,7 @@ Examples:
 
 ## Schedule Runs
 
-Each time a schedule fires, a row is created in `chetter_schedule_runs`:
+Each time a schedule fires, a row is created in the `trigger_runs` table:
 
 | Column | Description |
 |---|---|
@@ -398,6 +398,40 @@ If no PR review triggers are configured for a repo, the webhook ignores the even
 Set `GITHUB_WEBHOOK_DISABLED=true` — the handler returns 200 to all webhooks without processing. Business as usual for scheduled tasks and cron triggers; only webhook-triggered events stop.
 
 ---
+
+# Event Callbacks
+
+Event callbacks complement triggers: instead of **submitting tasks** from
+external events, they **react to task lifecycle events** that happen inside
+Chetter. A callback watches a task event type and fires one of three actions.
+Callbacks are stored in the database (not in the definitions repo) and can be
+global or team-scoped. Callback failures are logged; there is no delivery queue
+or dead-lettering for callback actions.
+
+## Event Types And Actions
+
+| Field | Values |
+|---|---|
+| `event_type` | Any task event type, e.g. `task.started`, `task.completed`, `task.failed`, or a wildcard prefix like `task.completed.*`. Matched exactly or by prefix when it ends in `.*` |
+| `action_type` | `create_task`, `webhook`, or `slack` |
+| `action_config` | JSON object — shape depends on the action |
+
+Actions:
+
+- **`create_task`** — spawns a new Chetter task. Config: `{"prompt": "...", "git_url": ..., "env": {...}}`. The prompt is rendered as a Go text/template with event fields (`.TaskID`, `.EventType`, `.Status`, `.Summary`, `.Error`, `.Payload`, …), and the spawned task's env gets `CHETTER_EVENT_ID`, `CHETTER_EVENT_TYPE`, and `CHETTER_EVENT_TASK_ID`. Spawns guarded by the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`, default 5): each spawned task records its parent and depth, and a chain exceeding the limit is rejected with an `event_callback_recursion_limit` error (the callback itself stays enabled).
+- **`webhook`** — POSTs (or a configured method) to a URL with rendered JSON body, custom headers, and template support. Non-2xx responses fail the dispatch attempt.
+- **`slack`** — posts to a Slack incoming webhook URL using the same webhook machinery.
+
+## Managing Callbacks
+
+| Tool | Purpose |
+|---|---|
+| `chetter_create_event_callback` | Create a callback (`name`, `event_type`, `action_type`, `action_config`). |
+| `chetter_update_event_callback` | Update fields of a callback by name. |
+| `chetter_list_event_callbacks` | List callbacks, optionally filtered by enabled state and event type. |
+| `chetter_delete_event_callback` | Delete a callback by name. |
+
+The web UI also has an event callbacks page for administration.
 
 # Trigger Definitions In Git
 

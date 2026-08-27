@@ -135,6 +135,7 @@ tooling, and sudo. See the script header for all options.
 ## Docs
 
 - [docs/README.md](docs/README.md) — full documentation index
+- [docs/WHY-CHETTER.md](docs/WHY-CHETTER.md) — why run agents as a service instead of only GitHub Actions
 - [docs/MANUAL.md](docs/MANUAL.md) — canonical operations guide (setup, config, MCP tools, env vars)
 - [docs/FEATURES.md](docs/FEATURES.md) — shipped feature reference
 - [docs/PLAN.md](docs/PLAN.md) — roadmap and milestones

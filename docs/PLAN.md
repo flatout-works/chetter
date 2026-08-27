@@ -215,9 +215,13 @@ Tasks show structured setup progress before agent execution, and a repo can ship
 
 ### P4: Event Callbacks And More Trigger Types
 
-Status: **Partially completed** — event callbacks (list/create/edit/delete, delivery queue with
-retry/backoff and dead-lettering) shipped. A unified inbound/outbound webhook platform is
-planned in `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
+Status: **Partially completed** — event callbacks (list/create/edit/delete tools, web UI page,
+task-event dispatch with exact/wildcard event-type matching, `create_task`/`webhook`/`slack`
+actions, template rendering, recursion guard) shipped. Callback action failures are
+logged only — no outbound delivery queue with retry/backoff or dead-lettering yet.
+The `webhook_deliveries` table covers **inbound** GitHub webhook processing (retry,
+idempotency, dead-letter status), not callback deliveries. A unified inbound/outbound
+webhook platform is planned in `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
 
 Why next:
 
@@ -225,11 +229,9 @@ The current trigger system handles cron, PR review, and issue/comment-style work
 
 Next deliverables:
 
-- Add event callbacks for task started, task completed, task failed, artifact created, session paused, session resumed, and runner stale.
-- Store callback definitions in the same definitions system as triggers.
+- Add callback event coverage for artifact created, session paused/resumed, and runner stale (task lifecycle events are dispatched today).
+- Add retry and dead-letter behavior for callback action failures.
 - Add trigger types for release events, Sentry alerts, Linear tickets, and multi-repo PR review triggers.
-- Add retry and dead-letter behavior for callback failures.
-- Add audit events for callback dispatch and outcome.
 
 Definition of done:
 

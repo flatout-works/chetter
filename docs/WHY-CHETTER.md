@@ -1,5 +1,9 @@
 # Why Chetter Instead Of Only GitHub Actions?
 
+Status: **Positioning** — when to operate agents as a service instead of one-off CI jobs.
+
+For the feature inventory, see [FEATURES.md](FEATURES.md); for operations, [MANUAL.md](MANUAL.md).
+
 GitHub Actions can run Claude Code, OpenCode, Codex, or another agent CLI in response to a pull request. For a single, short-lived, repository-local PR review workflow, that may be all that is needed.
 
 Chetter is useful when the goal is to operate agents as a shared, observable, secure service rather than as one-off CI jobs. It does not replace GitHub Actions for builds, tests, releases, or other deterministic CI work. It provides the control plane and runner fleet for long-running and interactive agent workloads, including PR review.

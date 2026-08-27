@@ -4,6 +4,12 @@ Status: **Index**
 
 Use this page to pick the right document. `MANUAL.md` is the canonical operator guide; `FEATURES.md` is the quick capability scan. Research and reference docs are marked explicitly.
 
+## Positioning
+
+| Document | Purpose |
+|---|---|
+| [WHY-CHETTER.md](WHY-CHETTER.md) | Why run agents as a shared service instead of one-off GitHub Actions jobs; 20 example automations. |
+
 ## Current Operation
 
 | Document | Purpose |

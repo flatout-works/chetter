@@ -460,13 +460,15 @@ when no capable runner exists. See issue #291.
 | `chetter_list_tasks` | List recent tasks with optional status filter. |
 | `chetter_cancel_task` | Cancel a pending or running task. |
 | `chetter_clear_queue` | Admin-only cancellation of all pending tasks. |
-| `chetter_task_events` | Full event history for a task. |
+| `task_events` | Full event history for a task. |
 | `chetter_task_progress` | Distilled task progress timeline. |
 | `chetter_task_latest_event` | Latest task event. |
 | `chetter_task_export` | Markdown transcript for a completed task. |
 | `chetter_rerun_task` | Re-run a terminal task with the same prompt, model, image, env, and timeout. |
 | `chetter_recover_task` | Recover a terminal task in a fresh session, optionally with a custom prompt, using the previous session export as context. |
-| `chetter_extend_task` | Extend the deadline of a pending or running task. |
+
+> Task deadline extension is available from the web UI (task detail page) and the
+> ConnectRPC API (`ExtendTask`), not as an MCP tool.
 
 ### Sessions
 
@@ -478,7 +480,7 @@ when no capable runner exists. See issue #291.
 
 See [SESSIONS.md](SESSIONS.md) for the session model and operations.
 
-### Triggers And Schedule Runs
+### Triggers
 
 | Tool | Purpose |
 |---|---|
@@ -487,7 +489,7 @@ See [SESSIONS.md](SESSIONS.md) for the session model and operations.
 | `chetter_list_triggers` | List triggers, optionally by type/enabled state. |
 | `chetter_delete_trigger` | Delete a trigger. |
 | `chetter_run_trigger` | Run a cron trigger immediately. |
-| `chetter_list_schedule_runs` | List schedule run history. |
+| `chetter_list_trigger_runs` | List trigger run history, optionally filtered by trigger name. |
 
 See [TRIGGERS.md](TRIGGERS.md) for cron schedules, PR review automation, and webhook configuration.
 
@@ -497,6 +499,42 @@ See [TRIGGERS.md](TRIGGERS.md) for cron schedules, PR review automation, and web
 |---|---|
 | `chetter_runner_health` | Fleet diagnostics and heartbeat ages. |
 | `chetter_drain_runner` | Ask a runner to stop claiming new work and exit after current work. |
+
+### Event Callbacks
+
+Event callbacks react to task lifecycle events (matched by `event_type`, with
+`.*` wildcard suffix support) with a `create_task`, `webhook`, or `slack` action.
+Callback action failures are logged; spawns through `create_task` are guarded by
+the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
+[TRIGGERS.md](TRIGGERS.md#event-callbacks).
+
+| Tool | Purpose |
+|---|---|
+| `chetter_create_event_callback` | Create an event callback. |
+| `chetter_update_event_callback` | Update an event callback by name. |
+| `chetter_list_event_callbacks` | List callbacks, optionally by enabled state and event type. |
+| `chetter_delete_event_callback` | Delete an event callback by name. |
+
+### Webhook Deliveries
+
+| Tool | Purpose |
+|---|---|
+| `chetter_list_webhook_deliveries` | Admin-only list of recent inbound webhook delivery records (received/completed/failed/dead_letter) with retry counts and error details. |
+
+### Definitions
+
+Definitions (agents, skills, triggers, task templates, MCP endpoints) sync from a Git repo — see [CONFIGURATION.md](CONFIGURATION.md). Read/proposal tools:
+
+| Tool | Purpose |
+|---|---|
+| `chetter_list_definitions` | List active materialized definitions, optionally filtered by type or source. |
+| `chetter_get_definition` | Get an active materialized definition by type and name. |
+| `chetter_list_definition_sources` | List configured Git-backed definition sources. |
+| `chetter_get_definition_source` | Get one definition source by ID or name. |
+| `chetter_sync_definition_source` | Manually re-sync one definition source (admin). |
+| `chetter_create_definition_proposal` | Open a GitHub PR proposing definition file changes. |
+| `chetter_list_definition_proposals` | List definition change proposals created by Chetter. |
+| `chetter_get_definition_proposal` | Get one proposal's status, including live PR status. |
 
 ### GitHub Artifact Observability
 
@@ -554,7 +592,7 @@ curl http://localhost:18088/healthz
 
 A `/readyz` endpoint on both the MCP server (port 8080) and web API (port 8090) performs a database ping (1s timeout) and returns 503 if the schema is not applied or the database is unreachable. Use it for Kubernetes readiness probes; use `/healthz` for liveness probes.
 
-A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejections (`chetter_mcp_relay_rejected_requests`), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, unauthenticated unless `CHETTER_METRICS_AUTH_TOKEN` is set) exposes standard Go runtime and process collectors plus `chetter_*` gauges for task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejections (`chetter_mcp_relay_rejected_requests`), and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 ### Logs
 

@@ -25,7 +25,7 @@ Supported task inputs include:
 Task monitoring includes:
 
 - Status via `chetter_task_status` and `chetter_list_tasks`.
-- Full event history via `chetter_task_events`.
+- Full event history via `task_events`.
 - Distilled progress via `chetter_task_progress`.
 - Latest activity via `chetter_task_latest_event`.
 - Markdown transcript via `chetter_task_export`.
@@ -51,7 +51,7 @@ Chetter uses a unified trigger system. Supported trigger types are `cron` (sched
 Cron triggers:
 
 - Use standard five-field cron expressions or descriptors like `@hourly`.
-- Track `next_run_at` and run history in `chetter_schedule_runs`.
+- Track `next_run_at` and run history in `trigger_runs`.
 - Can be run manually with `chetter_run_trigger`.
 - Are team-scoped when created with a team token.
 
@@ -69,7 +69,9 @@ Trigger tools:
 - `chetter_list_triggers`
 - `chetter_delete_trigger`
 - `chetter_run_trigger`
-- `chetter_list_schedule_runs`
+- `chetter_list_trigger_runs`
+
+Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
 ## GitHub Artifacts
 
@@ -225,7 +227,7 @@ Severity filters: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNKNOWN`.
 
 Chetter records server-side audit events for webhook receipts, trigger matches, task submissions, GitHub artifact creation, session resume, task cancellation, queue clear, trigger create/update, token create/delete, and model catalog sync. Aggregate token usage and cost totals are available grouped by team, trigger, and repository.
 
-A Prometheus `/metrics` endpoint on the MCP server (port 8080, no auth required) exposes standard Go runtime and process collectors alongside custom `chetter_*` gauges: task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejection reports, and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
+A Prometheus `/metrics` endpoint on the MCP server (port 8080, unauthenticated by default, optionally bearer-protected with `CHETTER_METRICS_AUTH_TOKEN`) exposes standard Go runtime and process collectors alongside custom `chetter_*` gauges: task counts by status, runner fleet health (active/stale, available/occupied slots), cumulative MCP relay rejection reports, and webhook delivery status. All custom gauges have bounded cardinality — no task, runner, token, or user IDs appear as labels.
 
 Tools:
 
