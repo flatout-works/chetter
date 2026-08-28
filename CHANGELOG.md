@@ -38,6 +38,13 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-27
+
+### Documentation
+
+- Docs overhauled for currency and consistency: root `CHETTER.md` moved to `docs/WHY-CHETTER.md` and indexed under Positioning; stale MCP tool names corrected (`task_events` — was `chetter_task_events`, `chetter_list_trigger_runs` — was `chetter_list_schedule_runs`, and the `trigger_runs` table — was `chetter_schedule_runs`); the non-existent `chetter_extend_task` MCP tool removed, noting that deadline extension is a web UI / ConnectRPC (`ExtendTask`) feature; previously-undocumented tools now covered (event callbacks, webhook deliveries, definitions read + proposal, self-test); a new Event Callbacks section added to `docs/TRIGGERS.md`; `/metrics` auth claims corrected (`CHETTER_METRICS_AUTH_TOKEN`); `docs/PLAN.md` P4 status corrected (event-callback action failures are logged only, with no outbound delivery queue; `webhook_deliveries` covers inbound webhooks); `docs/STATS.md` regenerated.
+- Stale one-off `LASTWEEK.md` removed (a manual snapshot superseded by `CHANGELOG.md`).
+
 ## 2026-08-26
 
 ### Added
