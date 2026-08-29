@@ -40,7 +40,7 @@
       <div class="stats">
         <div class="card stat"><span>Harnesses</span><b>OpenCode, Claude Code, Codex, Pi, CodeWhale</b><p class="stat-desc">Add the coding harness you like — the runner is modular by design.</p></div>
         <div class="card stat"><span>Providers</span><b>Any model via a data-driven catalog</b><p class="stat-desc">OpenAI-compatible, native, and AWS Bedrock providers — including Anthropic, DeepSeek, OpenAI, and LiteLLM routers — mapped per harness in the model catalog.</p></div>
-        <div class="card stat"><span>Runtime</span><b>Docker &amp; Kubernetes with gVisor</b><p class="stat-desc">Tailor developer containers for different agents and their needs. Secure sandboxing via gVisor, supported by both platforms.</p></div>
+        <div class="card stat"><span>Runtime</span><b>Docker &amp; Kubernetes with gVisor</b><p class="stat-desc">Tailor developer containers for different agents and their needs. Secure sandboxing via gVisor on both platforms, with the server and runners scaling horizontally — coordinated through the database, no Redis or external broker.</p></div>
         <div class="card stat"><span>Workflow</span><b>GitHub PRs, issues, reviews, commits</b><p class="stat-desc">Agents work just like you do: opening PRs, triaging issues, posting reviews, and committing with managed Git identities — all with auditable artifacts.</p></div>
       </div>
 
@@ -80,8 +80,8 @@
       <section class="section">
         <div class="card callout">
           <p class="eyebrow">Secure by default</p>
-          <h2 style="font-size: 28px;">Every agent container runs in an isolated network.</h2>
-          <p style="margin: 10px 0 0; color: var(--muted); line-height: 1.65; max-width: 760px;">Chetter creates a per-execution isolated Docker network for every task container — whether under <code>gVisor</code> (<code>runsc</code>) or standard Docker — so no agent can reach the runner's credentials, other tasks' workspaces, or internal infrastructure. Under gVisor, a userspace kernel adds filesystem isolation and syscall filtering; traffic routes through transparent HTTP and DNS proxies. The result is defense in depth: network isolation blocks lateral movement at the network layer, and gVisor hardens the container boundary. Both work on standard Docker and Kubernetes nodes; no custom AMI or kernel patches are required. Secrets that slip into agent output are scrubbed too: exact known secret values are replaced with <code>[REDACTED]</code> before any task event, summary, session export, or callback is stored or published.</p>
+          <h2 style="font-size: 28px;">The agent never touches your host kernel.</h2>
+          <p style="margin: 10px 0 0; color: var(--muted); line-height: 1.65; max-width: 760px;"><b>gVisor</b> (<code>runsc</code>) is the security boundary: a userspace kernel that intercepts every syscall the task container makes, so a malicious task never reaches the host kernel. Plain Docker execution is a convenience mode for trusted workloads — not a sandbox. Outbound traffic is routed through transparent HTTP and DNS proxies that enforce a domain allowlist — an operational egress control, not a network boundary. Task containers run with all capabilities dropped and no privilege escalation, the control plane serves a strict CSP with hashed scripts and HSTS alongside rate-limited OIDC login, and agent image downloads are pinned and checksum-verified. Secrets that slip into agent output are scrubbed too: exact known secret values are replaced with <code>[REDACTED]</code> before any task event, summary, session export, or callback is stored or published.</p>
         </div>
       </section>
 
