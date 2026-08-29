@@ -1240,6 +1240,38 @@ func TestTaskToProto_NoHarnessIsEmpty(t *testing.T) {
 	}
 }
 
+func TestTaskToProtoWithLimits_MemoryOverride(t *testing.T) {
+	envJSON, _ := json.Marshal(map[string]string{})
+	task := repository.Task{ID: "task-mem", Prompt: "test", GitUrl: sql.NullString{}, GitRef: sql.NullString{}}
+	session := repository.AgentSession{ID: "sess-mem", Env: envJSON, Skills: []byte(`[]`), AgentImage: sql.NullString{String: "img", Valid: true}}
+	attempt := repository.ExecutionAttempt{ID: "exec_test", TimeoutSec: 300}
+
+	proto := taskToProtoWithLimits(task, session, attempt, 1, "", "", 8192)
+	if proto.MaxMemoryMb != 8192 {
+		t.Fatalf("expected MaxMemoryMb 8192, got %d", proto.MaxMemoryMb)
+	}
+	fallback := taskToProto(task, session, attempt, 1, "", "")
+	if fallback.MaxMemoryMb != defaultMaxMemoryMB {
+		t.Fatalf("expected default MaxMemoryMb %d, got %d", defaultMaxMemoryMB, fallback.MaxMemoryMb)
+	}
+}
+
+func TestTaskMaxMemoryMBFromConfig(t *testing.T) {
+	s := NewRunnerRPCService(nil, nil).WithTaskMaxMemoryMB(8192)
+	if s.taskMaxMemoryMB != 8192 {
+		t.Fatalf("taskMaxMemoryMB = %d, want 8192", s.taskMaxMemoryMB)
+	}
+	s = NewRunnerRPCService(nil, nil)
+	if s.taskMaxMemoryMB != defaultMaxMemoryMB {
+		t.Fatalf("taskMaxMemoryMB = %d, want default %d", s.taskMaxMemoryMB, defaultMaxMemoryMB)
+	}
+	// Values <= 0 keep the default.
+	s = NewRunnerRPCService(nil, nil).WithTaskMaxMemoryMB(-1)
+	if s.taskMaxMemoryMB != defaultMaxMemoryMB {
+		t.Fatalf("taskMaxMemoryMB with negative = %d, want default %d", s.taskMaxMemoryMB, defaultMaxMemoryMB)
+	}
+}
+
 func TestResolveModelForTaskUsesHarnessMappings(t *testing.T) {
 	catalog := &modelcatalog.Catalog{
 		Version:         1,

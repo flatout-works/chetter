@@ -397,6 +397,29 @@ func TestLoadCallbackMaxDepth(t *testing.T) {
 	})
 }
 
+func TestLoadTaskMaxMemoryMB(t *testing.T) {
+	t.Run("defaults to 4096", func(t *testing.T) {
+		cfg := Load()
+		if cfg.TaskMaxMemoryMB != 4096 {
+			t.Errorf("expected TaskMaxMemoryMB 4096, got %d", cfg.TaskMaxMemoryMB)
+		}
+	})
+	t.Run("env override sets the limit", func(t *testing.T) {
+		t.Setenv("CHETTER_TASK_MAX_MEMORY_MB", "8192")
+		cfg := Load()
+		if cfg.TaskMaxMemoryMB != 8192 {
+			t.Errorf("expected TaskMaxMemoryMB 8192, got %d", cfg.TaskMaxMemoryMB)
+		}
+	})
+	t.Run("invalid value falls back to default", func(t *testing.T) {
+		t.Setenv("CHETTER_TASK_MAX_MEMORY_MB", "huge")
+		cfg := Load()
+		if cfg.TaskMaxMemoryMB != 4096 {
+			t.Errorf("expected TaskMaxMemoryMB 4096 for invalid value, got %d", cfg.TaskMaxMemoryMB)
+		}
+	})
+}
+
 func TestLoadRetention(t *testing.T) {
 	t.Run("defaults to zero (pruning disabled)", func(t *testing.T) {
 		cfg := Load()

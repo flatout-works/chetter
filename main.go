@@ -137,7 +137,7 @@ func run() error {
 	}
 	eventBus := webapi.NewEventBus()
 	repo := data.New(st.DB(), st.Dialect())
-	runnerSvc := service.NewRunnerRPCService(repo, st.DB(), st.Dialect()).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
+	runnerSvc := service.NewRunnerRPCService(repo, st.DB(), st.Dialect()).WithTaskMaxMemoryMB(cfg.TaskMaxMemoryMB).WithEventBus(eventBus).WithEventCallbacks(svc).WithGitHubActions(svc).WithSecurityAuditLogger(svc)
 	svc.SetRunnerRPC(runnerSvc)
 	if err := svc.Start(ctx); err != nil {
 		return fmt.Errorf("start service: %w", err)

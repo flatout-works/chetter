@@ -102,6 +102,15 @@ type Config struct {
 	// never disabled — only the specific recursive chain is stopped. A value
 	// <= 0 disables the guard. See issue #312 and CHETTER_CALLBACK_MAX_DEPTH.
 	CallbackMaxDepth int
+
+	// TaskMaxMemoryMB is the per-task container memory limit in MB that the
+	// server stamps into every TaskRequest (max_memory_mb). The runner turns
+	// it into docker --memory/--memory-swap and can only tighten it further
+	// via its own CHETTER_CONTAINER_MEMORY cap. Memory-heavy tasks such as
+	// govulncheck/osv-scanner runs can exceed the default 4096; raise it via
+	// CHETTER_TASK_MAX_MEMORY_MB. A value <= 0 falls back to the built-in
+	// default.
+	TaskMaxMemoryMB int
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -147,6 +156,7 @@ func Load() Config {
 		AllowTokenLogin:        envBool("CHETTER_ALLOW_TOKEN_LOGIN", true),
 		MaxPendingTasks:        envInt("CHETTER_MAX_PENDING_TASKS", 0),
 		CallbackMaxDepth:       envInt("CHETTER_CALLBACK_MAX_DEPTH", 5),
+		TaskMaxMemoryMB:        envInt("CHETTER_TASK_MAX_MEMORY_MB", 4096),
 	}
 }
 

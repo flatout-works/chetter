@@ -25,6 +25,9 @@ services:
       AGENT_IMAGE_PREFIX: ${AGENT_IMAGE_PREFIX:-ghcr.io/flatout-works}
       CHETTER_METRICS_AUTH_TOKEN: ${CHETTER_METRICS_AUTH_TOKEN:-}
       CHETTER_ALLOW_TOKEN_LOGIN: ${CHETTER_ALLOW_TOKEN_LOGIN:-true}
+      # Per-task container memory limit in MB. The default (4096) OOM-kills
+      # memory-heavy tasks such as nightly govulncheck/osv-scanner scans.
+      CHETTER_TASK_MAX_MEMORY_MB: ${CHETTER_TASK_MAX_MEMORY_MB:-8192}
     ports:
       # Loopback by default so nothing is exposed externally. Set
       # CHETTER_BIND_ADDR (e.g. "0.0.0.0") only behind a reverse proxy or when

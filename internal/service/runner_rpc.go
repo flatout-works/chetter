@@ -55,6 +55,9 @@ type RunnerRPCService struct {
 	callbacks     TaskEventCallbackDispatcher
 	ghActions     GitHubActionService
 	securityAudit RunnerSecurityAuditLogger
+	// taskMaxMemoryMB is the per-task container memory limit (MB) stamped
+	// into every TaskRequest; see WithTaskMaxMemoryMB.
+	taskMaxMemoryMB int
 	// claimPollReady, when non-nil, is closed once the claim-notification
 	// poller has captured its initial counter baseline. Test hook so tests
 	// can synchronize with the poller instead of sleeping.
@@ -96,7 +99,17 @@ func NewRunnerRPCService(db data.Repository, rawDB *sql.DB, dialects ...store.Di
 	if len(dialects) > 0 {
 		dialect = dialects[0]
 	}
-	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect, claimNotify: newClaimNotifier()}
+	return &RunnerRPCService{db: db, rawDB: rawDB, dialect: dialect, claimNotify: newClaimNotifier(), taskMaxMemoryMB: defaultMaxMemoryMB}
+}
+
+// WithTaskMaxMemoryMB sets the per-task container memory limit (MB) stamped
+// into every TaskRequest. Values <= 0 keep the built-in default. Operators
+// configure it via CHETTER_TASK_MAX_MEMORY_MB.
+func (s *RunnerRPCService) WithTaskMaxMemoryMB(mb int) *RunnerRPCService {
+	if s != nil && mb > 0 {
+		s.taskMaxMemoryMB = mb
+	}
+	return s
 }
 
 // NotifyTaskClaimable wakes in-flight ClaimTask long-polls so they re-check
@@ -283,7 +296,7 @@ func (s *RunnerRPCService) ClaimTask(ctx context.Context, req *connect.Request[r
 					}
 				}
 			}
-			protoTask := taskToProto(task, session, claim.Attempt, claim.AttemptNumber, resumeCheckpointPath, resumeWorkspacePath)
+			protoTask := taskToProtoWithLimits(task, session, claim.Attempt, claim.AttemptNumber, resumeCheckpointPath, resumeWorkspacePath, s.taskMaxMemoryMB)
 			protoTask.Prompt = run.Prompt
 			protoTask.AgentSessionId = run.AgentSessionID
 			protoTask.UserPromptId = run.ID
@@ -1555,6 +1568,10 @@ func sanitizeEventTypePart(part string) string {
 }
 
 func taskToProto(task repository.Task, session repository.AgentSession, attempt repository.ExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string) *runnerv1.Task {
+	return taskToProtoWithLimits(task, session, attempt, attemptNumber, resumeCheckpointPath, resumeWorkspacePath, defaultMaxMemoryMB)
+}
+
+func taskToProtoWithLimits(task repository.Task, session repository.AgentSession, attempt repository.ExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string, maxMemoryMB int) *runnerv1.Task {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
 	return &runnerv1.Task{
@@ -1571,7 +1588,7 @@ func taskToProto(task repository.Task, session repository.AgentSession, attempt 
 		VariantId:              session.VariantID.String,
 		Skills:                 skills,
 		TimeoutSeconds:         attempt.TimeoutSec,
-		MaxMemoryMb:            defaultMaxMemoryMB,
+		MaxMemoryMb:            int32(maxMemoryMB),
 		MaxCpu:                 defaultMaxCPU,
 		Env:                    env,
 		Attempt:                int32(attemptNumber),
