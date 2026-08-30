@@ -181,6 +181,8 @@ Or via environment variables (which override the YAML values when set):
 - `--cpus` and `--pids-limit` are supported by the Docker daemon and are compatible with the gVisor (`runsc`) runtime.
 - A `container_cpu` of `0` means "unset" (no `--cpus` flag); use a positive value to enforce a quota.
 
+Besides the runner-level caps, each claimed task carries a server-stamped memory limit (`max_memory_mb`, configured on the control plane via `CHETTER_TASK_MAX_MEMORY_MB`, default `4096`). It is applied the same way — `docker --memory`/`--memory-swap` in Docker mode, the agent container's memory limit on Kubernetes — but can only tighten the runner-level `container_memory` cap, never raise it. Raise it server-side for memory-heavy tasks (e.g. `govulncheck`/`osv-scanner` scans OOM at the default); see `docs/MANUAL.md`.
+
 ## Sending a Task
 
 Submit tasks through the Chetter MCP server using `chetter_submit_task`. Runners

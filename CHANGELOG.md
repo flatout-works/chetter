@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-29
+
+### Added
+
+- Configurable per-task memory limit: the hardcoded 4096MB limit stamped into every task request (`max_memory_mb`) OOM-killed memory-heavy tasks (nightly `govulncheck`/`osv-scanner` vulnerability scans) under any harness. It is now configurable via `CHETTER_TASK_MAX_MEMORY_MB` (default unchanged at `4096`; values `<= 0` fall back to the built-in default). The supplied Compose files set `8192`. The runner-side `CHETTER_CONTAINER_MEMORY` cap can still tighten it per deployment. `docs/MANUAL.md` documents the variable.
+
+### Documentation
+
+- Website refreshed to reflect the 2026-08-26/27 changes: database-only multi-replica scaling, the progress watchdog, web/runner security hardening (strict OIDC sessions, CSP + HSTS, rate limits, optional `/metrics` bearer auth, checksum-verified image downloads, secret redaction), cap-drop/no-new-privileges task containers, and harness improvements. The legacy homepage's per-execution isolated-Docker-network claim was removed — the legacy bridge/netns/iptables code is gone and gVisor (`runsc`) is the sandbox boundary.
+
 ## 2026-08-27
 
 ### Documentation
