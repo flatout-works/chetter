@@ -158,6 +158,8 @@ If the container exits immediately, check `docker logs chetter-runner`. Common c
 
 Optionally cap the memory, CPU, and PID count of every agent task container so a single misbehaving task cannot exhaust the host. Limits are applied consistently to the serve, resume, and RPC container paths and only emit a Docker flag when the value is set, so unset limits leave behavior unchanged.
 
+Every task request also carries a per-task memory limit (`max_memory_mb`) stamped in by the control plane (`CHETTER_TASK_MAX_MEMORY_MB` on the server, default `4096`). It applies when no runner memory cap is set; when both are set the smaller value wins, so `container_memory`/`CHETTER_CONTAINER_MEMORY` acts as a hard ceiling that can only tighten the per-task limit.
+
 Configure them in `runner.yaml`:
 
 ```yaml

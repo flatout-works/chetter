@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-29
+
+### Added
+
+- Configurable per-task container memory limit: `CHETTER_TASK_MAX_MEMORY_MB` (default `4096`, unchanged) is stamped into every task request (`max_memory_mb`) at claim time, and runners apply it as `docker --memory`/`--memory-swap` or the Kubernetes Pod memory limit. The runner's own `CHETTER_CONTAINER_MEMORY` cap can still tighten it per deployment. Memory-heavy tasks such as nightly `govulncheck`/`osv-scanner` vulnerability scans OOM-killed at the hardcoded default under any harness, so the compose files ship `8192`. Values `<= 0` (and unparseable ones) fall back to the built-in default. `docs/MANUAL.md` documents the variable.
+
+### Documentation
+
+- Website brought up to date with the 2026-08-26/27 changes it predated (multi-replica coordination, web/runner security hardening, Claude Code and Pi harness improvements, Kubernetes disruption protection): the queue row describes database-only multi-replica coordination with no Redis or broker, the sessions row covers the progress watchdog distinguishing busy agents from stalled ones and nudging idle sessions instead of killing live work, a new security row lists the strict HS256-only OIDC sessions with secure cookies, CSP with hashed scripts plus HSTS, per-IP login rate limits, optional bearer auth on `/metrics`, pinned and SHA-256-verified image downloads, and secret redaction, and the isolation row notes task containers run with all capabilities dropped and no privilege escalation. The homepage callout no longer claims per-execution isolated Docker networks — the legacy bridge/netns/iptables code is gone and gVisor (`runsc`) is the sandbox boundary, with the transparent HTTP + DNS proxy as an operational egress control (the 2026-08-15 isolation correction fixed this on the technical page but missed the homepage) — and the runtime stat mentions horizontal scaling. Stale table names from migration 052 were corrected.
+
 ## 2026-08-27
 
 ### Documentation
