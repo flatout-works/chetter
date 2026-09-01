@@ -654,7 +654,7 @@
           <h2>What the system actually does.</h2>
         </div>
         <div class="spec reveal">
-          <div class="row"><span class="k">queue</span><span class="v">Just SQL — <code>SKIP LOCKED</code> claims, 60s leases, a reaper for dead runners. No broker, and no Redis: multiple server replicas coordinate through the database alone.</span></div>
+          <div class="row"><span class="k">queue</span><span class="v">Just SQL — <code>SKIP LOCKED</code> claims under 2-minute leases that every 5-second heartbeat renews, and a 30-second reaper that recovers dead runners' tasks. No broker, and no Redis: multiple server replicas coordinate through the database alone.</span></div>
           <div class="row"><span class="k">automation</span><span class="v">Cron, generic webhooks, GitHub PR-review &amp; issue triggers — with one-click simulated test runs against a real PR or issue. Config can live in Git.</span></div>
           <div class="row"><span class="k">sessions</span><span class="v">Pause mid-task, resume on the same runner, recover with a custom prompt, re-run anything. A progress watchdog tells busy agents from stalled ones and nudges idle sessions with a follow-up instead of killing live work.</span></div>
           <div class="row"><span class="k">models</span><span class="v">Any provider — OpenAI-compatible, native, Bedrock, LiteLLM. Data-driven catalog.</span></div>
