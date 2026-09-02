@@ -38,6 +38,17 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-29
+
+### Added
+
+- Server-configurable per-task container memory limit: the new `CHETTER_TASK_MAX_MEMORY_MB` setting (default `4096`, unchanged; values `<= 0` fall back to the built-in default) is stamped into every task request (`max_memory_mb`) and applied by the runner as `docker --memory`/`--memory-swap`. The runner's own `CHETTER_CONTAINER_MEMORY` cap can only tighten it further, never raise it. Both compose files default to `8192` because the previously hardcoded 4096MB limit OOM-killed memory-heavy tasks such as nightly `govulncheck`/`osv-scanner` vulnerability scans. Documented in `docs/MANUAL.md`.
+
+### Documentation
+
+- Website updated to reflect the 2026-08-26/27 changes: the queue row now describes multiple server replicas coordinating through the database alone (no Redis, no broker); the sessions row covers the progress watchdog's busy/idle classification and idle-session continuation nudges; a new security row lists strict OIDC sessions (HS256-only, secure cookies), CSP with hashed scripts + HSTS, per-IP login rate limits, optional bearer auth on `/metrics`, pinned and checksum-verified image downloads, and secret redaction; and the isolation row now states that task containers run with all capabilities dropped and no privilege escalation. The homepage callout also dropped the stale per-execution isolated-Docker-network claim — the legacy bridge/netns/iptables code is gone and gVisor (`runsc`) is the sandbox boundary with the transparent HTTP + DNS proxy as an operational egress control (this was fixed on the technical page in the 2026-08-15 isolation correction but missed on the homepage), and the runtime stat mentions horizontal scaling.
+- Website technical architecture page: new Scaling card documenting the five database-only multi-replica coordination tiers and their documented limitations, a Watchdog card (status probes, busy/idle classification, continuation nudges with a fresh per-stall streak and a 10-prompt absolute cap), and a Task setup card (per-harness agent/skill definition injection, 0600 config files). Execution modes card covers Claude Code provider-error parsing, cache token accounting, session status probe + idle continuation, `dontAsk` + strict MCP loading, turn cap, and spend ceiling; the Pi usage/cost parsing with per-message deltas, keepalive progress, model verification, and thinking deltas. Execution backends card covers the PodDisruptionBudget, `terminationGracePeriodSeconds: 120`, `maxSurge 1`/`maxUnavailable 0` rolling strategy, topology spread, and the safe-to-evict annotation. Isolation, Web UI, Server, and Database cards updated for cap-drop/no-new-privileges, the non-root MCP container, OIDC/CSP/rate-limit/token-login hardening, `/metrics` bearer auth, and the coordination tables. Stale pre-migration-052 table names corrected (`chetter_webhook_deliveries` → `webhook_deliveries`, plus `task_events`/`audit_log`/`task_artifacts`/`agent_sessions`).
+
 ## 2026-08-27
 
 ### Documentation
