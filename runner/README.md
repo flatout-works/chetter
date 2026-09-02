@@ -175,6 +175,8 @@ Or via environment variables (which override the YAML values when set):
 | `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores, e.g. `1.5` |
 | `CHETTER_CONTAINER_PIDS` | (unset) | Maximum number of PIDs, e.g. `256` |
 
+Every task also carries a server-assigned memory limit (`max_memory_mb`, configured server-side via `CHETTER_TASK_MAX_MEMORY_MB`, default `4096`). These runner-level limits are hard caps: in Docker mode the effective limit is the smaller of the two, so set `CHETTER_CONTAINER_MEMORY` only to tighten a deployment below the server's value — never to raise it. In Kubernetes mode the pod limit comes from `max_memory_mb` alone. Raise `CHETTER_TASK_MAX_MEMORY_MB` on the server if memory-heavy tasks (e.g. nightly `govulncheck`/`osv-scanner` scans) are OOM-killed.
+
 **Requirements:**
 
 - `container_memory`, `container_cpu`, and `container_pids` must be greater than or equal to 0; negative values and unparseable environment overrides fail configuration validation at startup.

@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-08-29
+
+### Added
+
+- Configurable per-task container memory limit via `CHETTER_TASK_MAX_MEMORY_MB` (default `4096`, unchanged). The server stamps the limit into every task request (`max_memory_mb`) instead of using a hardcoded value; the runner applies it as `docker --memory`/`--memory-swap` (or a Kubernetes memory limit) and can only tighten it further via its own `CHETTER_CONTAINER_MEMORY` cap. Values `<= 0` fall back to the built-in default. Raise it for memory-heavy tasks — nightly `govulncheck`/`osv-scanner` vulnerability scans OOM at the default under any harness. The Compose files set `8192`. See `docs/MANUAL.md`.
+
 ## 2026-08-27
 
 ### Documentation
