@@ -2,14 +2,21 @@
 package webhook
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/flatout-works/chetter/internal/requestid"
 )
 
 type recordingTaskSubmitter struct {
@@ -790,4 +797,77 @@ func TestHandlerShutdownTimesOut(t *testing.T) {
 	if err == nil {
 		t.Fatal("Shutdown should have timed out, but returned nil")
 	}
+}
+
+// TestServeHTTPIncludesRequestIDInLogs verifies that webhook ingress and
+// async processing logs carry the HTTP request ID assigned by the requestid
+// middleware (issue #87).
+func TestServeHTTPIncludesRequestIDInLogs(t *testing.T) {
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	defer slog.SetDefault(prev)
+
+	h := &Handler{
+		cfg:    HandlerConfig{WebhookSecret: "secret"},
+		recent: NewRecentDeliveries(5*time.Minute, 4096),
+	}
+
+	t.Run("invalid signature log carries request id", func(t *testing.T) {
+		logBuf.Reset()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/webhook/github", strings.NewReader(`{"action":"opened"}`))
+		req = req.WithContext(requestid.WithContext(req.Context(), "req_test123"))
+		h.ServeHTTP(rec, req)
+
+		out := logBuf.String()
+		if !strings.Contains(out, "webhook: invalid signature") {
+			t.Fatalf("expected invalid signature log, got %q", out)
+		}
+		if !strings.Contains(out, "request_id=req_test123") {
+			t.Fatalf("expected request_id in ingress log, got %q", out)
+		}
+	})
+
+	t.Run("async processing failure log carries request id", func(t *testing.T) {
+		logBuf.Reset()
+		body := []byte(`{
+			"action":"opened",
+			"installation":{"id":222},
+			"repository":{"full_name":"base/repo"},
+			"issue":{"number":7,"title":"bug","body":"details","html_url":"https://github.com/base/repo/issues/7"}
+		}`)
+		sig := signatureFor(t, "secret", body)
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/webhook/github", bytes.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "issues")
+		req.Header.Set("X-GitHub-Delivery", "delivery-rid")
+		req.Header.Set("X-Hub-Signature-256", sig)
+		req = req.WithContext(requestid.WithContext(req.Context(), "req_async1"))
+		h.ServeHTTP(rec, req)
+
+		// ServeHTTP returns immediately; wait for the async goroutine.
+		h.wg.Wait()
+
+		out := logBuf.String()
+		// Processing fails with "github manager is not configured" because
+		// the handler has no github manager.
+		if !strings.Contains(out, "webhook: delivery processing failed") {
+			t.Fatalf("expected delivery processing failure log, got %q", out)
+		}
+		if !strings.Contains(out, "request_id=req_async1") {
+			t.Fatalf("expected request_id in async processing log, got %q", out)
+		}
+		if !strings.Contains(out, "deliveryID=delivery-rid") {
+			t.Fatalf("expected deliveryID in async processing log, got %q", out)
+		}
+	})
+}
+
+// signatureFor computes the X-Hub-Signature-256 header value for a payload.
+func signatureFor(t *testing.T, secret string, body []byte) string {
+	t.Helper()
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }

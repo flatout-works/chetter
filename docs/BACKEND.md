@@ -600,6 +600,16 @@ hand.
 
 - **Prometheus metrics** at `/metrics` (`internal/metrics`), including aggregate MCP
   relay rejection counters and DB health.
+- **Structured slog logging** (`internal/logging`) configured via `CHETTER_LOG_LEVEL`
+  (`debug`/`info`/`warn`/`error`) and `CHETTER_LOG_FORMAT` (`text`/`json`); invalid
+  values fail clearly at startup instead of silently mis-logging. See
+  [MANUAL.md](MANUAL.md) and issue #87.
+- **Request IDs** (`internal/requestid`): every HTTP request gets a bounded, sanitized
+  `X-Request-ID` — a valid inbound value is propagated, otherwise one is generated at
+  ingress. The ID is returned in the response, stored in the request context, and
+  logged on the ingress line; webhook ingress/async processing logs carry it too, and
+  task lifecycle logs carry `task_id`/`execution_id`/`runner_id` where present. See
+  issue #87.
 - **Audit log** (`audit_log` table) recording server-side events — webhook receipts,
   trigger matches, task submissions, session resume, cancellation, queue clear, token
   create/delete, model catalog sync — queryable via `chetter_list_audit_events`.

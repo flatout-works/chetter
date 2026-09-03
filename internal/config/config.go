@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -111,6 +112,25 @@ type Config struct {
 	// CHETTER_TASK_MAX_MEMORY_MB. A value <= 0 falls back to the built-in
 	// default.
 	TaskMaxMemoryMB int
+
+	// Logging configures the server's structured slog output (issue #87).
+	// See CHETTER_LOG_LEVEL and CHETTER_LOG_FORMAT. Invalid values fail
+	// clearly at startup via Validate instead of silently mis-logging.
+	Logging Logging
+}
+
+// Logging holds server log configuration (issue #87). LevelRaw and
+// FormatRaw keep the raw environment values so Validate and internal/logging
+// can report invalid input with the exact value the operator set.
+type Logging struct {
+	// Level is the parsed minimum slog level. Defaults to slog.LevelInfo.
+	Level slog.Level
+	// LevelRaw is the raw CHETTER_LOG_LEVEL value ("" = default).
+	LevelRaw string
+	// Format is "text" or "json" (lowercase). Defaults to "text".
+	Format string
+	// FormatRaw is the raw CHETTER_LOG_FORMAT value ("" = default).
+	FormatRaw string
 }
 
 // Load returns configuration using environment variables and safe defaults.
@@ -157,6 +177,7 @@ func Load() Config {
 		MaxPendingTasks:        envInt("CHETTER_MAX_PENDING_TASKS", 0),
 		CallbackMaxDepth:       envInt("CHETTER_CALLBACK_MAX_DEPTH", 5),
 		TaskMaxMemoryMB:        envInt("CHETTER_TASK_MAX_MEMORY_MB", 4096),
+		Logging:                loadLoggingConfig(),
 	}
 }
 
@@ -177,7 +198,37 @@ func (c Config) Validate() error {
 	if isPlaceholderAuthToken(c.RunnerRPCToken) {
 		return fmt.Errorf("CHETTER_RUNNER_RPC_TOKEN must not use a placeholder value")
 	}
+	if lvl := strings.TrimSpace(c.Logging.LevelRaw); lvl != "" {
+		var level slog.Level
+		if err := level.UnmarshalText([]byte(lvl)); err != nil {
+			return fmt.Errorf("CHETTER_LOG_LEVEL %q is invalid (want debug, info, warn, or error): %v", lvl, err)
+		}
+	}
+	switch c.Logging.Format {
+	case "", "text", "json":
+	default:
+		return fmt.Errorf("CHETTER_LOG_FORMAT %q is invalid (want text or json)", c.Logging.Format)
+	}
 	return nil
+}
+
+// loadLoggingConfig parses CHETTER_LOG_LEVEL and CHETTER_LOG_FORMAT.
+// Unparseable values keep safe defaults here and are rejected later by
+// Validate so startup fails clearly instead of silently mis-logging (issue
+// #87).
+func loadLoggingConfig() Logging {
+	rawLevel := os.Getenv("CHETTER_LOG_LEVEL")
+	level := slog.LevelInfo
+	if trimmed := strings.TrimSpace(rawLevel); trimmed != "" {
+		// Invalid levels leave level at the default; Validate reports them.
+		_ = level.UnmarshalText([]byte(trimmed))
+	}
+	rawFormat := os.Getenv("CHETTER_LOG_FORMAT")
+	format := "text"
+	if trimmed := strings.ToLower(strings.TrimSpace(rawFormat)); trimmed != "" {
+		format = trimmed
+	}
+	return Logging{Level: level, LevelRaw: rawLevel, Format: format, FormatRaw: rawFormat}
 }
 
 func isPlaceholderAuthToken(token string) bool {
