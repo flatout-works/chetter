@@ -721,6 +721,75 @@ func (c *Client) GetPullRequestDetails(ctx context.Context, repo string, prNumbe
 	}, nil
 }
 
+// MergePullRequest merges the pull request using the given method
+// (MERGE, SQUASH, or REBASE) and returns the merge commit SHA.
+func (c *Client) MergePullRequest(ctx context.Context, repo string, prNumber int, mergeMethod string) (string, error) {
+	url := c.manager.apiURL(fmt.Sprintf("/repos/%s/pulls/%d/merge", repo, prNumber))
+	req, err := c.newRequest(ctx, http.MethodPut, url, map[string]string{"merge_method": mergeMethod})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		Merged  bool   `json:"merged"`
+		SHA     string `json:"sha"`
+		Message string `json:"message"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return "", err
+	}
+	if !resp.Merged {
+		return "", fmt.Errorf("GitHub could not merge pull request #%d: %s", prNumber, resp.Message)
+	}
+	return resp.SHA, nil
+}
+
+// ClosePullRequest closes the pull request and returns its html URL.
+func (c *Client) ClosePullRequest(ctx context.Context, repo string, prNumber int) (string, error) {
+	return c.closeIssueOrPullRequest(ctx, fmt.Sprintf("/repos/%s/pulls/%d", repo, prNumber))
+}
+
+// CloseIssue closes the issue and returns its html URL.
+func (c *Client) CloseIssue(ctx context.Context, repo string, issueNumber int) (string, error) {
+	return c.closeIssueOrPullRequest(ctx, fmt.Sprintf("/repos/%s/issues/%d", repo, issueNumber))
+}
+
+func (c *Client) closeIssueOrPullRequest(ctx context.Context, path string) (string, error) {
+	url := c.manager.apiURL(path)
+	req, err := c.newRequest(ctx, http.MethodPatch, url, map[string]string{"state": "closed"})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		State   string `json:"state"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return "", err
+	}
+	return resp.HTMLURL, nil
+}
+
+// AddIssueLabels adds labels to an issue or PR and returns the resulting
+// label names.
+func (c *Client) AddIssueLabels(ctx context.Context, repo string, issueNumber int, labels []string) ([]string, error) {
+	url := c.manager.apiURL(fmt.Sprintf("/repos/%s/issues/%d/labels", repo, issueNumber))
+	req, err := c.newRequest(ctx, http.MethodPost, url, map[string][]string{"labels": labels})
+	if err != nil {
+		return nil, err
+	}
+	var resp []struct {
+		Name string `json:"name"`
+	}
+	if err := c.do(req, &resp); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(resp))
+	for _, label := range resp {
+		names = append(names, label.Name)
+	}
+	return names, nil
+}
+
 func (c *Client) ListCheckRunsForRef(ctx context.Context, repo, ref string) (CheckRunSummary, error) {
 	url := c.manager.apiURL(fmt.Sprintf("/repos/%s/commits/%s/check-runs", repo, url.PathEscape(ref)))
 	req, err := c.newRequest(ctx, http.MethodGet, url, nil)

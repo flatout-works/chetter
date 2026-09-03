@@ -291,6 +291,64 @@ message GetGitHubCredentialRequest {
   string claim_id = 5 [(buf.validate.field).string.min_len = 1];
 }
 
+message GitHubMergePRRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 pr_number = 3 [(buf.validate.field).int32.gt = 0];
+  // MERGE | SQUASH | REBASE; empty defaults to MERGE.
+  string merge_method = 4;
+  string execution_id = 5 [(buf.validate.field).string.min_len = 1];
+  string runner_id = 6 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 7 [(buf.validate.field).string.min_len = 1];
+}
+
+message GitHubMergePRResponse {
+  string url = 1;
+  string sha = 2;
+  string merge_method = 3;
+}
+
+message GitHubClosePRRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 pr_number = 3 [(buf.validate.field).int32.gt = 0];
+  string execution_id = 4 [(buf.validate.field).string.min_len = 1];
+  string runner_id = 5 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 6 [(buf.validate.field).string.min_len = 1];
+}
+
+message GitHubClosePRResponse {
+  string url = 1;
+}
+
+message GitHubCloseIssueRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 issue_number = 3 [(buf.validate.field).int32.gt = 0];
+  string execution_id = 4 [(buf.validate.field).string.min_len = 1];
+  string runner_id = 5 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 6 [(buf.validate.field).string.min_len = 1];
+}
+
+message GitHubCloseIssueResponse {
+  string url = 1;
+}
+
+message GitHubAddIssueLabelsRequest {
+  string task_id = 1 [(buf.validate.field).string.min_len = 1];
+  string repo = 2 [(buf.validate.field).string.min_len = 1];
+  int32 issue_number = 3 [(buf.validate.field).int32.gt = 0];
+  repeated string labels = 4 [(buf.validate.field).repeated.min_items = 1];
+  string execution_id = 5 [(buf.validate.field).string.min_len = 1];
+  string runner_id = 6 [(buf.validate.field).string.min_len = 1];
+  string claim_id = 7 [(buf.validate.field).string.min_len = 1];
+}
+
+message GitHubAddIssueLabelsResponse {
+  // Labels present on the issue after the update.
+  repeated string labels = 1;
+}
+
 message GetGitHubCredentialResponse {
   string username = 1 [(buf.validate.field).string.min_len = 1];
   string token = 2 [(buf.validate.field).string.min_len = 1];
@@ -311,5 +369,9 @@ service RunnerService {
   rpc GitHubIssueComment(GitHubIssueCommentRequest) returns (GitHubIssueCommentResponse) {}
   rpc GitHubCreatePR(GitHubCreatePRRequest) returns (GitHubCreatePRResponse) {}
   rpc GitHubPRReview(GitHubPRReviewRequest) returns (GitHubPRReviewResponse) {}
+  rpc GitHubMergePR(GitHubMergePRRequest) returns (GitHubMergePRResponse) {}
+  rpc GitHubClosePR(GitHubClosePRRequest) returns (GitHubClosePRResponse) {}
+  rpc GitHubCloseIssue(GitHubCloseIssueRequest) returns (GitHubCloseIssueResponse) {}
+  rpc GitHubAddIssueLabels(GitHubAddIssueLabelsRequest) returns (GitHubAddIssueLabelsResponse) {}
   rpc GetGitHubCredential(GetGitHubCredentialRequest) returns (GetGitHubCredentialResponse) {}
 }

@@ -75,14 +75,18 @@ Event callbacks react to task lifecycle events with `create_task`, `webhook`, or
 
 ## GitHub Artifacts
 
-Chetter exposes runner-bridge GitHub tools to task agents so they do not need direct `gh` write access for common artifact creation. These tools are not part of the control-plane MCP API.
+Chetter exposes runner-bridge GitHub tools to task agents so they do not need direct `gh` write access for common artifact creation and lifecycle changes. These tools are not part of the control-plane MCP API.
 
 - `chetter_create_issue`
 - `chetter_issue_comment`
 - `chetter_create_pr`
 - `chetter_pr_review`
+- `chetter_merge_pr`
+- `chetter_close_pr`
+- `chetter_issue_close`
+- `chetter_issue_add_labels`
 
-These tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `task_artifacts`. The per-execution runner MCP server requires a fresh 256-bit bearer capability, binds only to loopback or the runner's routable interface, and revokes the capability when execution ends. The capability is injected into the selected harness's private MCP configuration and redacted from runner status, errors, exports, and artifacts.
+The creation tools append a canonical Chetter signature footer, strip duplicate existing footers, write audit events, and record rows in `task_artifacts`. The mutation tools (`chetter_merge_pr`, `chetter_close_pr`, `chetter_issue_close`, `chetter_issue_add_labels`) write audit events for every state change; `chetter_merge_pr` additionally refuses to merge PRs that are already merged or closed. The per-execution runner MCP server requires a fresh 256-bit bearer capability, binds only to loopback or the runner's routable interface, and revokes the capability when execution ends. The capability is injected into the selected harness's private MCP configuration and redacted from runner status, errors, exports, and artifacts.
 
 The runner image wraps `gh` with an explicit read-only command allowlist. Arbitrary API access and all writes must use the audited Chetter tools.
 

@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+type AdmissionLock struct {
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type AgentSession struct {
 	ID                string           `json:"id"`
 	TeamID            sql.NullString   `json:"team_id"`
@@ -102,6 +107,11 @@ type AuditLog struct {
 	Payload          *json.RawMessage `json:"payload"`
 	TokenID          sql.NullString   `json:"token_id"`
 	TokenName        sql.NullString   `json:"token_name"`
+}
+
+type ClaimNotifyCounter struct {
+	ID      int32 `json:"id"`
+	Counter int64 `json:"counter"`
 }
 
 type Definition struct {
@@ -253,6 +263,11 @@ type Runner struct {
 	IsolationEnabled bool            `json:"isolation_enabled"`
 }
 
+type RunnerDrainRequest struct {
+	RunnerID  string    `json:"runner_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Task struct {
 	ID                   string         `json:"id"`
 	TeamID               sql.NullString `json:"team_id"`
@@ -347,6 +362,12 @@ type Trigger struct {
 	UpdatedAt     time.Time       `json:"updated_at"`
 	LastRunAt     sql.NullTime    `json:"last_run_at"`
 	NextRunAt     sql.NullTime    `json:"next_run_at"`
+}
+
+type TriggerLock struct {
+	TriggerID       string       `json:"trigger_id"`
+	LastTriggeredAt sql.NullTime `json:"last_triggered_at"`
+	CreatedAt       time.Time    `json:"created_at"`
 }
 
 type TriggerRun struct {

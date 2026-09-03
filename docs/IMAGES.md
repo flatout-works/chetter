@@ -155,4 +155,4 @@ Webhook-triggered tasks receive these event-specific variables in addition to th
 
 **Cron triggers** do not inject any trigger-specific environment variables — tasks receive only the standard task identity vars and runner-owned secrets. Pass `GITHUB_REPO` through the trigger prompt (for example `GITHUB_REPO=owner/repo` at the top of the prompt).
 
-`gh` read commands remain available for inspection. GitHub writes from task agents must use the runner-bridge tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`) so canonical footers, audit events, and task artifact records are created consistently.
+`gh` read commands remain available for inspection. GitHub writes from task agents must use the runner-bridge tools (`chetter_create_issue`, `chetter_issue_comment`, `chetter_create_pr`, `chetter_pr_review`, `chetter_merge_pr`, `chetter_close_pr`, `chetter_issue_close`, `chetter_issue_add_labels`) so canonical footers, audit events, and task artifact records are created consistently.

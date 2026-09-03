@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-03
+
+### Added
+
+- Runner-bridge GitHub lifecycle tools: four new MCP tools routed over ConnectRPC so task agents can close out work without raw `gh` write access (previously the `gh` policy wrapper blocked writes and no merge/close/label tooling existed — see the 2026-09-03 PR-audit and nightly stale-issue tasks). `chetter_merge_pr` verifies the PR is open and unmerged, merges with `MERGE`/`SQUASH`/`REBASE` (default `MERGE`), and returns the merge commit SHA; `chetter_close_pr` closes a PR without merging; `chetter_issue_close` closes an issue; `chetter_issue_add_labels` adds labels to an issue or PR. All four are fenced by the existing task/execution/runner/claim authorization (and the task's pinned GitHub installation), log distinct audit events (`github_pr_merged`, `github_pr_closed`, `github_issue_closed`, `github_issue_labels_added`) instead of creating task artifacts, and are allow-listed in the generated OpenCode config. The `gh` wrapper message and docs (`docs/MANUAL.md`, `docs/FEATURES.md`, `docs/IMAGES.md`, runner skill) now list the expanded tool set. Integration tests cover merge happy path, already-merged refusal before the merge call, invalid merge method, close PR/issue, and label updates.
+
 ## 2026-09-02
 
 ### Documentation

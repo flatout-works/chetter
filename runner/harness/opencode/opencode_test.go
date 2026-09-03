@@ -116,6 +116,10 @@ func TestGenerateConfigUsesFinalMCPOverride(t *testing.T) {
 	for _, tool := range []string{
 		"mcp__runner-bridge__chetter_create_pr",
 		"mcp__runner-bridge__chetter_pr_review",
+		"mcp__runner-bridge__chetter_merge_pr",
+		"mcp__runner-bridge__chetter_close_pr",
+		"mcp__runner-bridge__chetter_issue_close",
+		"mcp__runner-bridge__chetter_issue_add_labels",
 		"mcp__runner-bridge__chetter_runner_self_test_echo",
 		"mcp__chetter__chetter_list_tasks",
 	} {
