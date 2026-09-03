@@ -58,6 +58,18 @@ const (
 	// RunnerServiceGitHubPRReviewProcedure is the fully-qualified name of the RunnerService's
 	// GitHubPRReview RPC.
 	RunnerServiceGitHubPRReviewProcedure = "/runner.v1.RunnerService/GitHubPRReview"
+	// RunnerServiceGitHubMergePRProcedure is the fully-qualified name of the RunnerService's
+	// GitHubMergePR RPC.
+	RunnerServiceGitHubMergePRProcedure = "/runner.v1.RunnerService/GitHubMergePR"
+	// RunnerServiceGitHubClosePRProcedure is the fully-qualified name of the RunnerService's
+	// GitHubClosePR RPC.
+	RunnerServiceGitHubClosePRProcedure = "/runner.v1.RunnerService/GitHubClosePR"
+	// RunnerServiceGitHubCloseIssueProcedure is the fully-qualified name of the RunnerService's
+	// GitHubCloseIssue RPC.
+	RunnerServiceGitHubCloseIssueProcedure = "/runner.v1.RunnerService/GitHubCloseIssue"
+	// RunnerServiceGitHubAddIssueLabelsProcedure is the fully-qualified name of the RunnerService's
+	// GitHubAddIssueLabels RPC.
+	RunnerServiceGitHubAddIssueLabelsProcedure = "/runner.v1.RunnerService/GitHubAddIssueLabels"
 	// RunnerServiceGetGitHubCredentialProcedure is the fully-qualified name of the RunnerService's
 	// GetGitHubCredential RPC.
 	RunnerServiceGetGitHubCredentialProcedure = "/runner.v1.RunnerService/GetGitHubCredential"
@@ -77,6 +89,10 @@ type RunnerServiceClient interface {
 	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
+	GitHubMergePR(context.Context, *connect.Request[v1.GitHubMergePRRequest]) (*connect.Response[v1.GitHubMergePRResponse], error)
+	GitHubClosePR(context.Context, *connect.Request[v1.GitHubClosePRRequest]) (*connect.Response[v1.GitHubClosePRResponse], error)
+	GitHubCloseIssue(context.Context, *connect.Request[v1.GitHubCloseIssueRequest]) (*connect.Response[v1.GitHubCloseIssueResponse], error)
+	GitHubAddIssueLabels(context.Context, *connect.Request[v1.GitHubAddIssueLabelsRequest]) (*connect.Response[v1.GitHubAddIssueLabelsResponse], error)
 	GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error)
 }
 
@@ -145,6 +161,30 @@ func NewRunnerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
 			connect.WithClientOptions(opts...),
 		),
+		gitHubMergePR: connect.NewClient[v1.GitHubMergePRRequest, v1.GitHubMergePRResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubMergePRProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubMergePR")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubClosePR: connect.NewClient[v1.GitHubClosePRRequest, v1.GitHubClosePRResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubClosePRProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubClosePR")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubCloseIssue: connect.NewClient[v1.GitHubCloseIssueRequest, v1.GitHubCloseIssueResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubCloseIssueProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubCloseIssue")),
+			connect.WithClientOptions(opts...),
+		),
+		gitHubAddIssueLabels: connect.NewClient[v1.GitHubAddIssueLabelsRequest, v1.GitHubAddIssueLabelsResponse](
+			httpClient,
+			baseURL+RunnerServiceGitHubAddIssueLabelsProcedure,
+			connect.WithSchema(runnerServiceMethods.ByName("GitHubAddIssueLabels")),
+			connect.WithClientOptions(opts...),
+		),
 		getGitHubCredential: connect.NewClient[v1.GetGitHubCredentialRequest, v1.GetGitHubCredentialResponse](
 			httpClient,
 			baseURL+RunnerServiceGetGitHubCredentialProcedure,
@@ -156,16 +196,20 @@ func NewRunnerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 
 // runnerServiceClient implements RunnerServiceClient.
 type runnerServiceClient struct {
-	registerRunner      *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
-	heartbeat           *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
-	claimTask           *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
-	reportTaskEvents    *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
-	pruneWorkspaces     *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
-	gitHubCreateIssue   *connect.Client[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse]
-	gitHubIssueComment  *connect.Client[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse]
-	gitHubCreatePR      *connect.Client[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse]
-	gitHubPRReview      *connect.Client[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse]
-	getGitHubCredential *connect.Client[v1.GetGitHubCredentialRequest, v1.GetGitHubCredentialResponse]
+	registerRunner       *connect.Client[v1.RegisterRunnerRequest, v1.RegisterRunnerResponse]
+	heartbeat            *connect.Client[v1.HeartbeatRequest, v1.HeartbeatResponse]
+	claimTask            *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
+	reportTaskEvents     *connect.Client[v1.ReportTaskEventsRequest, v1.ReportTaskEventsResponse]
+	pruneWorkspaces      *connect.Client[v1.PruneWorkspacesRequest, v1.PruneWorkspacesResponse]
+	gitHubCreateIssue    *connect.Client[v1.GitHubCreateIssueRequest, v1.GitHubCreateIssueResponse]
+	gitHubIssueComment   *connect.Client[v1.GitHubIssueCommentRequest, v1.GitHubIssueCommentResponse]
+	gitHubCreatePR       *connect.Client[v1.GitHubCreatePRRequest, v1.GitHubCreatePRResponse]
+	gitHubPRReview       *connect.Client[v1.GitHubPRReviewRequest, v1.GitHubPRReviewResponse]
+	gitHubMergePR        *connect.Client[v1.GitHubMergePRRequest, v1.GitHubMergePRResponse]
+	gitHubClosePR        *connect.Client[v1.GitHubClosePRRequest, v1.GitHubClosePRResponse]
+	gitHubCloseIssue     *connect.Client[v1.GitHubCloseIssueRequest, v1.GitHubCloseIssueResponse]
+	gitHubAddIssueLabels *connect.Client[v1.GitHubAddIssueLabelsRequest, v1.GitHubAddIssueLabelsResponse]
+	getGitHubCredential  *connect.Client[v1.GetGitHubCredentialRequest, v1.GetGitHubCredentialResponse]
 }
 
 // RegisterRunner calls runner.v1.RunnerService.RegisterRunner.
@@ -213,6 +257,26 @@ func (c *runnerServiceClient) GitHubPRReview(ctx context.Context, req *connect.R
 	return c.gitHubPRReview.CallUnary(ctx, req)
 }
 
+// GitHubMergePR calls runner.v1.RunnerService.GitHubMergePR.
+func (c *runnerServiceClient) GitHubMergePR(ctx context.Context, req *connect.Request[v1.GitHubMergePRRequest]) (*connect.Response[v1.GitHubMergePRResponse], error) {
+	return c.gitHubMergePR.CallUnary(ctx, req)
+}
+
+// GitHubClosePR calls runner.v1.RunnerService.GitHubClosePR.
+func (c *runnerServiceClient) GitHubClosePR(ctx context.Context, req *connect.Request[v1.GitHubClosePRRequest]) (*connect.Response[v1.GitHubClosePRResponse], error) {
+	return c.gitHubClosePR.CallUnary(ctx, req)
+}
+
+// GitHubCloseIssue calls runner.v1.RunnerService.GitHubCloseIssue.
+func (c *runnerServiceClient) GitHubCloseIssue(ctx context.Context, req *connect.Request[v1.GitHubCloseIssueRequest]) (*connect.Response[v1.GitHubCloseIssueResponse], error) {
+	return c.gitHubCloseIssue.CallUnary(ctx, req)
+}
+
+// GitHubAddIssueLabels calls runner.v1.RunnerService.GitHubAddIssueLabels.
+func (c *runnerServiceClient) GitHubAddIssueLabels(ctx context.Context, req *connect.Request[v1.GitHubAddIssueLabelsRequest]) (*connect.Response[v1.GitHubAddIssueLabelsResponse], error) {
+	return c.gitHubAddIssueLabels.CallUnary(ctx, req)
+}
+
 // GetGitHubCredential calls runner.v1.RunnerService.GetGitHubCredential.
 func (c *runnerServiceClient) GetGitHubCredential(ctx context.Context, req *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error) {
 	return c.getGitHubCredential.CallUnary(ctx, req)
@@ -232,6 +296,10 @@ type RunnerServiceHandler interface {
 	GitHubIssueComment(context.Context, *connect.Request[v1.GitHubIssueCommentRequest]) (*connect.Response[v1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[v1.GitHubCreatePRRequest]) (*connect.Response[v1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error)
+	GitHubMergePR(context.Context, *connect.Request[v1.GitHubMergePRRequest]) (*connect.Response[v1.GitHubMergePRResponse], error)
+	GitHubClosePR(context.Context, *connect.Request[v1.GitHubClosePRRequest]) (*connect.Response[v1.GitHubClosePRResponse], error)
+	GitHubCloseIssue(context.Context, *connect.Request[v1.GitHubCloseIssueRequest]) (*connect.Response[v1.GitHubCloseIssueResponse], error)
+	GitHubAddIssueLabels(context.Context, *connect.Request[v1.GitHubAddIssueLabelsRequest]) (*connect.Response[v1.GitHubAddIssueLabelsResponse], error)
 	GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error)
 }
 
@@ -296,6 +364,30 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(runnerServiceMethods.ByName("GitHubPRReview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	runnerServiceGitHubMergePRHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubMergePRProcedure,
+		svc.GitHubMergePR,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubMergePR")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubClosePRHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubClosePRProcedure,
+		svc.GitHubClosePR,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubClosePR")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubCloseIssueHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubCloseIssueProcedure,
+		svc.GitHubCloseIssue,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubCloseIssue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	runnerServiceGitHubAddIssueLabelsHandler := connect.NewUnaryHandler(
+		RunnerServiceGitHubAddIssueLabelsProcedure,
+		svc.GitHubAddIssueLabels,
+		connect.WithSchema(runnerServiceMethods.ByName("GitHubAddIssueLabels")),
+		connect.WithHandlerOptions(opts...),
+	)
 	runnerServiceGetGitHubCredentialHandler := connect.NewUnaryHandler(
 		RunnerServiceGetGitHubCredentialProcedure,
 		svc.GetGitHubCredential,
@@ -322,6 +414,14 @@ func NewRunnerServiceHandler(svc RunnerServiceHandler, opts ...connect.HandlerOp
 			runnerServiceGitHubCreatePRHandler.ServeHTTP(w, r)
 		case RunnerServiceGitHubPRReviewProcedure:
 			runnerServiceGitHubPRReviewHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubMergePRProcedure:
+			runnerServiceGitHubMergePRHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubClosePRProcedure:
+			runnerServiceGitHubClosePRHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubCloseIssueProcedure:
+			runnerServiceGitHubCloseIssueHandler.ServeHTTP(w, r)
+		case RunnerServiceGitHubAddIssueLabelsProcedure:
+			runnerServiceGitHubAddIssueLabelsHandler.ServeHTTP(w, r)
 		case RunnerServiceGetGitHubCredentialProcedure:
 			runnerServiceGetGitHubCredentialHandler.ServeHTTP(w, r)
 		default:
@@ -367,6 +467,22 @@ func (UnimplementedRunnerServiceHandler) GitHubCreatePR(context.Context, *connec
 
 func (UnimplementedRunnerServiceHandler) GitHubPRReview(context.Context, *connect.Request[v1.GitHubPRReviewRequest]) (*connect.Response[v1.GitHubPRReviewResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubPRReview is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubMergePR(context.Context, *connect.Request[v1.GitHubMergePRRequest]) (*connect.Response[v1.GitHubMergePRResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubMergePR is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubClosePR(context.Context, *connect.Request[v1.GitHubClosePRRequest]) (*connect.Response[v1.GitHubClosePRResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubClosePR is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubCloseIssue(context.Context, *connect.Request[v1.GitHubCloseIssueRequest]) (*connect.Response[v1.GitHubCloseIssueResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubCloseIssue is not implemented"))
+}
+
+func (UnimplementedRunnerServiceHandler) GitHubAddIssueLabels(context.Context, *connect.Request[v1.GitHubAddIssueLabelsRequest]) (*connect.Response[v1.GitHubAddIssueLabelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("runner.v1.RunnerService.GitHubAddIssueLabels is not implemented"))
 }
 
 func (UnimplementedRunnerServiceHandler) GetGitHubCredential(context.Context, *connect.Request[v1.GetGitHubCredentialRequest]) (*connect.Response[v1.GetGitHubCredentialResponse], error) {

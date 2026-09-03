@@ -555,6 +555,10 @@ and Chetter signatures. They are not exposed by the control-plane MCP server.
 | `chetter_issue_comment` | Comment on a GitHub issue or PR with Chetter signature and artifact/audit records. |
 | `chetter_create_pr` | Create a GitHub pull request with Chetter signature and artifact/audit records. |
 | `chetter_pr_review` | Submit a review on a GitHub PR with Chetter signature and artifact/audit records. |
+| `chetter_merge_pr` | Merge an open PR (default `MERGE`; supports `SQUASH` and `REBASE`). The server refuses already-merged or closed PRs and records an audit event. |
+| `chetter_close_pr` | Close a PR without merging and record an audit event. |
+| `chetter_issue_close` | Close a GitHub issue and record an audit event. |
+| `chetter_issue_add_labels` | Add labels to an issue or PR and record an audit event. |
 
 Agents must use these tools rather than direct `gh` or `curl` commands for GitHub
 writes so that every artifact receives a task-linked audit record and a canonical

@@ -57,6 +57,14 @@ func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, execut
 			server.RegisterTool(def, r.githubCreatePRTool(taskID, executionID, claimID))
 		case "chetter_pr_review":
 			server.RegisterTool(def, r.githubPRReviewTool(taskID, executionID, claimID))
+		case "chetter_merge_pr":
+			server.RegisterTool(def, r.githubMergePRTool(taskID, executionID, claimID))
+		case "chetter_close_pr":
+			server.RegisterTool(def, r.githubClosePRTool(taskID, executionID, claimID))
+		case "chetter_issue_close":
+			server.RegisterTool(def, r.githubCloseIssueTool(taskID, executionID, claimID))
+		case "chetter_issue_add_labels":
+			server.RegisterTool(def, r.githubAddIssueLabelsTool(taskID, executionID, claimID))
 		}
 	}
 }
@@ -191,6 +199,124 @@ func (r *Runner) githubPRReviewTool(taskID, executionID, claimID string) runnerm
 			return nil, err
 		}
 		return fmt.Sprintf("created PR review: %s", resp.Msg.Url), nil
+	}
+}
+
+func (r *Runner) githubMergePRTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		repo, err := requiredString(args, "repo")
+		if err != nil {
+			return nil, err
+		}
+		prNumber, err := requiredInt(args, "pr_number")
+		if err != nil {
+			return nil, err
+		}
+		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
+		defer cancel()
+		resp, err := r.rpcClient.GitHubMergePR(callCtx, connect.NewRequest(&runnerv1.GitHubMergePRRequest{
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
+			Repo:        repo,
+			PrNumber:    int32(prNumber),
+			MergeMethod: optionalString(args, "merge_method"),
+		}))
+		if err != nil {
+			return nil, err
+		}
+		result := fmt.Sprintf("merged pull request #%d: %s", prNumber, resp.Msg.Url)
+		if resp.Msg.Sha != "" {
+			result += fmt.Sprintf(" (merge commit %s)", resp.Msg.Sha)
+		}
+		return result, nil
+	}
+}
+
+func (r *Runner) githubClosePRTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		repo, err := requiredString(args, "repo")
+		if err != nil {
+			return nil, err
+		}
+		prNumber, err := requiredInt(args, "pr_number")
+		if err != nil {
+			return nil, err
+		}
+		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
+		defer cancel()
+		resp, err := r.rpcClient.GitHubClosePR(callCtx, connect.NewRequest(&runnerv1.GitHubClosePRRequest{
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
+			Repo:        repo,
+			PrNumber:    int32(prNumber),
+		}))
+		if err != nil {
+			return nil, err
+		}
+		return fmt.Sprintf("closed pull request #%d: %s", prNumber, resp.Msg.Url), nil
+	}
+}
+
+func (r *Runner) githubCloseIssueTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		repo, err := requiredString(args, "repo")
+		if err != nil {
+			return nil, err
+		}
+		issueNumber, err := requiredInt(args, "issue_number")
+		if err != nil {
+			return nil, err
+		}
+		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
+		defer cancel()
+		resp, err := r.rpcClient.GitHubCloseIssue(callCtx, connect.NewRequest(&runnerv1.GitHubCloseIssueRequest{
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
+			Repo:        repo,
+			IssueNumber: int32(issueNumber),
+		}))
+		if err != nil {
+			return nil, err
+		}
+		return fmt.Sprintf("closed issue #%d: %s", issueNumber, resp.Msg.Url), nil
+	}
+}
+
+func (r *Runner) githubAddIssueLabelsTool(taskID, executionID, claimID string) runnermcp.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		repo, err := requiredString(args, "repo")
+		if err != nil {
+			return nil, err
+		}
+		issueNumber, err := requiredInt(args, "issue_number")
+		if err != nil {
+			return nil, err
+		}
+		labels := optionalStringSlice(args, "labels")
+		if len(labels) == 0 {
+			return nil, fmt.Errorf("labels is required")
+		}
+		callCtx, cancel := context.WithTimeout(ctx, githubToolTimeout)
+		defer cancel()
+		resp, err := r.rpcClient.GitHubAddIssueLabels(callCtx, connect.NewRequest(&runnerv1.GitHubAddIssueLabelsRequest{
+			TaskId:      taskID,
+			ExecutionId: executionID,
+			RunnerId:    r.runnerID,
+			ClaimId:     claimID,
+			Repo:        repo,
+			IssueNumber: int32(issueNumber),
+			Labels:      labels,
+		}))
+		if err != nil {
+			return nil, err
+		}
+		return fmt.Sprintf("labels on issue #%d: %s", issueNumber, strings.Join(resp.Msg.Labels, ", ")), nil
 	}
 }
 

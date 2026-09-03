@@ -55,8 +55,12 @@ Task agents receive these artifact tools only through the runner bridge, with ta
 - `chetter_issue_comment`
 - `chetter_create_pr`
 - `chetter_pr_review`
+- `chetter_merge_pr`
+- `chetter_close_pr`
+- `chetter_issue_close`
+- `chetter_issue_add_labels`
 
-Use these tools instead of `gh issue create`, `gh issue comment`, `gh pr create`, or `gh pr review`. They add the canonical Chetter signature and record artifact/audit metadata. Standard harness file tools handle workspace reads and edits; the runner bridge does not provide `workspace_*` tools.
+Use these tools instead of `gh issue create`, `gh issue comment`, `gh pr create`, `gh pr review`, `gh pr merge`, `gh pr close`, `gh issue close`, or `gh issue edit --add-label`. They add the canonical Chetter signature (creation tools) and record artifact/audit metadata. Standard harness file tools handle workspace reads and edits; the runner bridge does not provide `workspace_*` tools.
 
 ## Submit Tasks
 

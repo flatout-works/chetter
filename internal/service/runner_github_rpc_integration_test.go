@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -353,6 +354,262 @@ func TestGetGitHubCredentialRechecksFenceAfterExchange(t *testing.T) {
 	close(release)
 	if err := <-errCh; connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("code = %s, want failed_precondition: %v", connect.CodeOf(err), err)
+	}
+}
+
+func TestGitHubMergePRMergesOpenPullRequest(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	var mergeBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/111/access_tokens":
+			writeRunnerCredentialResponse(w, "installation-111", time.Now().Add(time.Hour))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/Acme/Repo/pulls/37":
+			_, _ = w.Write([]byte(`{"number":37,"state":"open","merged":false,"html_url":"https://github.com/Acme/Repo/pull/37","head":{"sha":"headsha"}}`))
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/Acme/Repo/pulls/37/merge":
+			if got := r.Header.Get("Authorization"); got != "Bearer installation-111" {
+				t.Errorf("merge authorization = %q", got)
+			}
+			mergeBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`{"merged":true,"sha":"deadbeef","message":"Pull Request successfully merged"}`))
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{repo: q, github: newRunnerGitHubTestManager(t, server.URL)})
+	insertGitHubRPCTask(t, q, tdb, "task_merge_success", "Acme/Repo", 111)
+	activateGitHubRPCTask(t, q, "task_merge_success", "runner_1", time.Now().Add(time.Minute))
+
+	resp, err := rpc.GitHubMergePR(context.Background(), connect.NewRequest(&runnerv1.GitHubMergePRRequest{
+		TaskId:      "task_merge_success",
+		ExecutionId: "exec_task_merge_success",
+		RunnerId:    "runner_1",
+		ClaimId:     "claim_task_merge_success",
+		Repo:        "acme/repo",
+		PrNumber:    37,
+		MergeMethod: "squash",
+	}))
+	if err != nil {
+		t.Fatalf("GitHubMergePR: %v", err)
+	}
+	if resp.Msg.Url != "https://github.com/Acme/Repo/pull/37" || resp.Msg.Sha != "deadbeef" || resp.Msg.MergeMethod != "SQUASH" {
+		t.Fatalf("GitHubMergePR response = %+v", resp.Msg)
+	}
+	if !strings.Contains(string(mergeBody), `"merge_method":"SQUASH"`) {
+		t.Fatalf("merge payload = %q", mergeBody)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("GitHub API calls = %d, want token, details, and merge", calls.Load())
+	}
+	var auditCount, artifactCount int
+	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = ? AND event_type = ? AND detail LIKE ?",
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = $1 AND event_type = $2 AND detail LIKE $3"),
+		"task_merge_success", "github_pr_merged", "%installation 111%").Scan(&auditCount); err != nil {
+		t.Fatalf("count audit event: %v", err)
+	}
+	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
+		"SELECT COUNT(*) FROM task_artifacts WHERE task_id = ?",
+		"SELECT COUNT(*) FROM task_artifacts WHERE task_id = $1"),
+		"task_merge_success").Scan(&artifactCount); err != nil {
+		t.Fatalf("count artifacts: %v", err)
+	}
+	if auditCount != 1 || artifactCount != 0 {
+		t.Fatalf("audit/artifact counts = %d/%d, want 1/0", auditCount, artifactCount)
+	}
+}
+
+func TestGitHubMergePRFailsBeforeMutatingWhenNotOpen(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	var mergeCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/111/access_tokens":
+			writeRunnerCredentialResponse(w, "installation-111", time.Now().Add(time.Hour))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/Acme/Repo/pulls/374":
+			_, _ = w.Write([]byte(`{"number":374,"state":"open","merged":true,"html_url":"https://github.com/Acme/Repo/pull/374"}`))
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/Acme/Repo/pulls/374/merge":
+			mergeCalled = true
+			http.Error(w, "must not be called", http.StatusBadRequest)
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{repo: q, github: newRunnerGitHubTestManager(t, server.URL)})
+	insertGitHubRPCTask(t, q, tdb, "task_merge_already", "Acme/Repo", 111)
+	activateGitHubRPCTask(t, q, "task_merge_already", "runner_1", time.Now().Add(time.Minute))
+
+	_, err := rpc.GitHubMergePR(context.Background(), connect.NewRequest(&runnerv1.GitHubMergePRRequest{
+		TaskId: "task_merge_already", ExecutionId: "exec_task_merge_already", RunnerId: "runner_1", ClaimId: "claim_task_merge_already", Repo: "Acme/Repo", PrNumber: 374,
+	}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("code = %s, want failed_precondition: %v", connect.CodeOf(err), err)
+	}
+	if mergeCalled {
+		t.Fatal("merge endpoint was called for an already-merged pull request")
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("GitHub API calls = %d, want token and details only", calls.Load())
+	}
+}
+
+func TestGitHubMergePRRejectsInvalidMergeMethodBeforeAPICall(t *testing.T) {
+	rpc, _, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{github: newRunnerGitHubTestManager(t, server.URL)})
+
+	_, err := rpc.GitHubMergePR(context.Background(), connect.NewRequest(&runnerv1.GitHubMergePRRequest{
+		TaskId: "task_bad_method", ExecutionId: "exec_task_bad_method", RunnerId: "runner_1", ClaimId: "claim_task_bad_method", Repo: "Acme/Repo", PrNumber: 1, MergeMethod: "FAST_FORWARD",
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("code = %s, want invalid_argument: %v", connect.CodeOf(err), err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("GitHub API was called for an invalid merge method")
+	}
+}
+
+func TestGitHubClosePRClosesPullRequest(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/111/access_tokens":
+			writeRunnerCredentialResponse(w, "installation-111", time.Now().Add(time.Hour))
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/Acme/Repo/pulls/363":
+			var body struct {
+				State string `json:"state"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.State != "closed" {
+				t.Errorf("close payload = %+v (err=%v)", body, err)
+			}
+			_, _ = w.Write([]byte(`{"state":"closed","html_url":"https://github.com/Acme/Repo/pull/363"}`))
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{repo: q, github: newRunnerGitHubTestManager(t, server.URL)})
+	insertGitHubRPCTask(t, q, tdb, "task_close_pr", "Acme/Repo", 111)
+	activateGitHubRPCTask(t, q, "task_close_pr", "runner_1", time.Now().Add(time.Minute))
+
+	resp, err := rpc.GitHubClosePR(context.Background(), connect.NewRequest(&runnerv1.GitHubClosePRRequest{
+		TaskId: "task_close_pr", ExecutionId: "exec_task_close_pr", RunnerId: "runner_1", ClaimId: "claim_task_close_pr", Repo: "acme/repo", PrNumber: 363,
+	}))
+	if err != nil {
+		t.Fatalf("GitHubClosePR: %v", err)
+	}
+	if resp.Msg.Url != "https://github.com/Acme/Repo/pull/363" {
+		t.Fatalf("GitHubClosePR response = %+v", resp.Msg)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("GitHub API calls = %d, want token and patch", calls.Load())
+	}
+	countAuditEvents(t, tdb, "task_close_pr", "github_pr_closed")
+}
+
+func TestGitHubCloseIssueClosesIssue(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/111/access_tokens":
+			writeRunnerCredentialResponse(w, "installation-111", time.Now().Add(time.Hour))
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/Acme/Repo/issues/99":
+			_, _ = w.Write([]byte(`{"state":"closed","html_url":"https://github.com/Acme/Repo/issues/99"}`))
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{repo: q, github: newRunnerGitHubTestManager(t, server.URL)})
+	insertGitHubRPCTask(t, q, tdb, "task_close_issue", "Acme/Repo", 111)
+	activateGitHubRPCTask(t, q, "task_close_issue", "runner_1", time.Now().Add(time.Minute))
+
+	resp, err := rpc.GitHubCloseIssue(context.Background(), connect.NewRequest(&runnerv1.GitHubCloseIssueRequest{
+		TaskId: "task_close_issue", ExecutionId: "exec_task_close_issue", RunnerId: "runner_1", ClaimId: "claim_task_close_issue", Repo: "acme/repo", IssueNumber: 99,
+	}))
+	if err != nil {
+		t.Fatalf("GitHubCloseIssue: %v", err)
+	}
+	if resp.Msg.Url != "https://github.com/Acme/Repo/issues/99" {
+		t.Fatalf("GitHubCloseIssue response = %+v", resp.Msg)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("GitHub API calls = %d, want token and patch", calls.Load())
+	}
+	countAuditEvents(t, tdb, "task_close_issue", "github_issue_closed")
+}
+
+func TestGitHubAddIssueLabelsAddsLabels(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	var calls atomic.Int64
+	var labelBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/111/access_tokens":
+			writeRunnerCredentialResponse(w, "installation-111", time.Now().Add(time.Hour))
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/Acme/Repo/issues/99/labels":
+			labelBody, _ = io.ReadAll(r.Body)
+			_, _ = w.Write([]byte(`[{"name":"stale-candidate"},{"name":"wontfix"}]`))
+		default:
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	rpc.WithGitHubActions(&Service{repo: q, github: newRunnerGitHubTestManager(t, server.URL)})
+	insertGitHubRPCTask(t, q, tdb, "task_add_labels", "Acme/Repo", 111)
+	activateGitHubRPCTask(t, q, "task_add_labels", "runner_1", time.Now().Add(time.Minute))
+
+	resp, err := rpc.GitHubAddIssueLabels(context.Background(), connect.NewRequest(&runnerv1.GitHubAddIssueLabelsRequest{
+		TaskId: "task_add_labels", ExecutionId: "exec_task_add_labels", RunnerId: "runner_1", ClaimId: "claim_task_add_labels",
+		Repo: "acme/repo", IssueNumber: 99, Labels: []string{" stale-candidate ", "wontfix"},
+	}))
+	if err != nil {
+		t.Fatalf("GitHubAddIssueLabels: %v", err)
+	}
+	if len(resp.Msg.Labels) != 2 || resp.Msg.Labels[0] != "stale-candidate" || resp.Msg.Labels[1] != "wontfix" {
+		t.Fatalf("GitHubAddIssueLabels response = %+v", resp.Msg)
+	}
+	if !strings.Contains(string(labelBody), `"labels":["stale-candidate","wontfix"]`) {
+		t.Fatalf("label payload = %q", labelBody)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("GitHub API calls = %d, want token and post", calls.Load())
+	}
+	countAuditEvents(t, tdb, "task_add_labels", "github_issue_labels_added")
+}
+
+func countAuditEvents(t *testing.T, tdb *testdb.TestDB, taskID, eventType string) {
+	t.Helper()
+	var auditCount int
+	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = ? AND event_type = ?",
+		"SELECT COUNT(*) FROM audit_log WHERE source_id = $1 AND event_type = $2"),
+		taskID, eventType).Scan(&auditCount); err != nil {
+		t.Fatalf("count audit events: %v", err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("audit events of type %s = %d, want 1", eventType, auditCount)
 	}
 }
 

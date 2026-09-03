@@ -30,6 +30,10 @@ type runnerRPCClient interface {
 	GitHubIssueComment(context.Context, *connect.Request[runnerv1.GitHubIssueCommentRequest]) (*connect.Response[runnerv1.GitHubIssueCommentResponse], error)
 	GitHubCreatePR(context.Context, *connect.Request[runnerv1.GitHubCreatePRRequest]) (*connect.Response[runnerv1.GitHubCreatePRResponse], error)
 	GitHubPRReview(context.Context, *connect.Request[runnerv1.GitHubPRReviewRequest]) (*connect.Response[runnerv1.GitHubPRReviewResponse], error)
+	GitHubMergePR(context.Context, *connect.Request[runnerv1.GitHubMergePRRequest]) (*connect.Response[runnerv1.GitHubMergePRResponse], error)
+	GitHubClosePR(context.Context, *connect.Request[runnerv1.GitHubClosePRRequest]) (*connect.Response[runnerv1.GitHubClosePRResponse], error)
+	GitHubCloseIssue(context.Context, *connect.Request[runnerv1.GitHubCloseIssueRequest]) (*connect.Response[runnerv1.GitHubCloseIssueResponse], error)
+	GitHubAddIssueLabels(context.Context, *connect.Request[runnerv1.GitHubAddIssueLabelsRequest]) (*connect.Response[runnerv1.GitHubAddIssueLabelsResponse], error)
 	GetGitHubCredential(context.Context, *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error)
 }
 

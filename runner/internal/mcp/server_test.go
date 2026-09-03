@@ -201,8 +201,8 @@ func TestServerMultipleTools(t *testing.T) {
 	result := mcpCall(t, srv, "tools/list", map[string]any{})
 	resultMap, _ := result["result"].(map[string]any)
 	tools, _ := resultMap["tools"].([]any)
-	if len(tools) != 4 {
-		t.Fatalf("expected 4 tools, got %d", len(tools))
+	if len(tools) != len(ToolDefinitions()) {
+		t.Fatalf("expected %d tools, got %d", len(ToolDefinitions()), len(tools))
 	}
 }
 

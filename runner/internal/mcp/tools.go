@@ -62,5 +62,55 @@ func ToolDefinitions() []ToolDef {
 				"required": []string{"repo", "pr_number", "body"},
 			},
 		},
+		{
+			Name:        "chetter_merge_pr",
+			Description: "Merge a GitHub pull request. The server verifies the PR is open and unmerged, merges it, and records an audit event.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"repo":         map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
+					"pr_number":    map[string]string{"type": "integer", "description": "Pull request number"},
+					"merge_method": map[string]string{"type": "string", "description": "MERGE (default), SQUASH, or REBASE"},
+				},
+				"required": []string{"repo", "pr_number"},
+			},
+		},
+		{
+			Name:        "chetter_close_pr",
+			Description: "Close a GitHub pull request without merging and record an audit event.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"repo":      map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
+					"pr_number": map[string]string{"type": "integer", "description": "Pull request number"},
+				},
+				"required": []string{"repo", "pr_number"},
+			},
+		},
+		{
+			Name:        "chetter_issue_close",
+			Description: "Close a GitHub issue and record an audit event.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"repo":         map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
+					"issue_number": map[string]string{"type": "integer", "description": "Issue number"},
+				},
+				"required": []string{"repo", "issue_number"},
+			},
+		},
+		{
+			Name:        "chetter_issue_add_labels",
+			Description: "Add labels to a GitHub issue or pull request and record an audit event.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"repo":         map[string]string{"type": "string", "description": "Repository, e.g. flatout-works/chetter"},
+					"issue_number": map[string]string{"type": "integer", "description": "Issue or PR number"},
+					"labels":       map[string]any{"type": "array", "items": map[string]string{"type": "string"}, "description": "Labels to add"},
+				},
+				"required": []string{"repo", "issue_number", "labels"},
+			},
+		},
 	}
 }

@@ -6,8 +6,10 @@ set -eu
 _blocked() {
   cat >&2 <<'EOF'
 Chetter permits only an explicit set of read-only gh commands. GitHub writes
-must use chetter_create_issue, chetter_issue_comment, chetter_create_pr, or
-chetter_pr_review so signatures, artifacts, and audit records are preserved.
+must use the chetter_create_issue, chetter_issue_comment, chetter_create_pr,
+chetter_pr_review, chetter_merge_pr, chetter_close_pr, chetter_issue_close, or
+chetter_issue_add_labels runner tools so signatures, artifacts, and audit
+records are preserved.
 EOF
   exit 64
 }

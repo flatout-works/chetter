@@ -124,6 +124,111 @@ func (s *RunnerRPCService) GitHubPRReview(ctx context.Context, req *connect.Requ
 	return connect.NewResponse(&runnerv1.GitHubPRReviewResponse{Url: created.URL}), nil
 }
 
+func (s *RunnerRPCService) GitHubMergePR(ctx context.Context, req *connect.Request[runnerv1.GitHubMergePRRequest]) (*connect.Response[runnerv1.GitHubMergePRResponse], error) {
+	if req.Msg.PrNumber <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("pr_number is required"))
+	}
+	mergeMethod := strings.ToUpper(strings.TrimSpace(req.Msg.MergeMethod))
+	if mergeMethod == "" {
+		mergeMethod = "MERGE"
+	}
+	switch mergeMethod {
+	case "MERGE", "SQUASH", "REBASE":
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("merge_method must be MERGE, SQUASH, or REBASE"))
+	}
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
+	if err != nil {
+		return nil, err
+	}
+	details, err := authz.client.GetPullRequestDetails(ctx, authz.repo, int(req.Msg.PrNumber))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("get GitHub pull request: %w", err))
+	}
+	if details.Merged {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("pull request #%d is already merged", req.Msg.PrNumber))
+	}
+	if details.State != "open" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("pull request #%d is %s, not open", req.Msg.PrNumber, details.State))
+	}
+	sha, err := authz.client.MergePullRequest(ctx, authz.repo, int(req.Msg.PrNumber), mergeMethod)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("merge GitHub pull request: %w", err))
+	}
+	if err := s.logGitHubRPCAction(ctx, "github_pr_merged", req.Msg.TaskId, "pr", authz.repo, authz.installationID, int(req.Msg.PrNumber), details.URL,
+		fmt.Sprintf("merged pull request %s#%d (method %s) via runner RPC using GitHub installation %d", authz.repo, req.Msg.PrNumber, mergeMethod, authz.installationID)); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.GitHubMergePRResponse{Url: details.URL, Sha: sha, MergeMethod: mergeMethod}), nil
+}
+
+func (s *RunnerRPCService) GitHubClosePR(ctx context.Context, req *connect.Request[runnerv1.GitHubClosePRRequest]) (*connect.Response[runnerv1.GitHubClosePRResponse], error) {
+	if req.Msg.PrNumber <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("pr_number is required"))
+	}
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
+	if err != nil {
+		return nil, err
+	}
+	url, err := authz.client.ClosePullRequest(ctx, authz.repo, int(req.Msg.PrNumber))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("close GitHub pull request: %w", err))
+	}
+	if err := s.logGitHubRPCAction(ctx, "github_pr_closed", req.Msg.TaskId, "pr", authz.repo, authz.installationID, int(req.Msg.PrNumber), url,
+		fmt.Sprintf("closed pull request %s#%d via runner RPC using GitHub installation %d", authz.repo, req.Msg.PrNumber, authz.installationID)); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.GitHubClosePRResponse{Url: url}), nil
+}
+
+func (s *RunnerRPCService) GitHubCloseIssue(ctx context.Context, req *connect.Request[runnerv1.GitHubCloseIssueRequest]) (*connect.Response[runnerv1.GitHubCloseIssueResponse], error) {
+	if req.Msg.IssueNumber <= 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("issue_number is required"))
+	}
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
+	if err != nil {
+		return nil, err
+	}
+	url, err := authz.client.CloseIssue(ctx, authz.repo, int(req.Msg.IssueNumber))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("close GitHub issue: %w", err))
+	}
+	if err := s.logGitHubRPCAction(ctx, "github_issue_closed", req.Msg.TaskId, "issue", authz.repo, authz.installationID, int(req.Msg.IssueNumber), url,
+		fmt.Sprintf("closed issue %s#%d via runner RPC using GitHub installation %d", authz.repo, req.Msg.IssueNumber, authz.installationID)); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.GitHubCloseIssueResponse{Url: url}), nil
+}
+
+func (s *RunnerRPCService) GitHubAddIssueLabels(ctx context.Context, req *connect.Request[runnerv1.GitHubAddIssueLabelsRequest]) (*connect.Response[runnerv1.GitHubAddIssueLabelsResponse], error) {
+	if req.Msg.IssueNumber <= 0 || len(compactLabelList(req.Msg.Labels)) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("issue_number and at least one label are required"))
+	}
+	authz, err := s.authorizeGitHubAction(ctx, req.Msg.TaskId, req.Msg.ExecutionId, req.Msg.RunnerId, req.Msg.Repo, req.Msg.ClaimId)
+	if err != nil {
+		return nil, err
+	}
+	labels, err := authz.client.AddIssueLabels(ctx, authz.repo, int(req.Msg.IssueNumber), compactLabelList(req.Msg.Labels))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("add GitHub issue labels: %w", err))
+	}
+	if err := s.logGitHubRPCAction(ctx, "github_issue_labels_added", req.Msg.TaskId, "issue", authz.repo, authz.installationID, int(req.Msg.IssueNumber), "",
+		fmt.Sprintf("added labels %v to issue %s#%d via runner RPC using GitHub installation %d", compactLabelList(req.Msg.Labels), authz.repo, req.Msg.IssueNumber, authz.installationID)); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&runnerv1.GitHubAddIssueLabelsResponse{Labels: labels}), nil
+}
+
+func compactLabelList(labels []string) []string {
+	out := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if trimmed := strings.TrimSpace(label); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
 func (s *RunnerRPCService) GetGitHubCredential(ctx context.Context, req *connect.Request[runnerv1.GetGitHubCredentialRequest]) (*connect.Response[runnerv1.GetGitHubCredentialResponse], error) {
 	if req == nil || req.Msg == nil || strings.TrimSpace(req.Msg.RunnerId) == "" || strings.TrimSpace(req.Msg.TaskId) == "" || strings.TrimSpace(req.Msg.ExecutionId) == "" || strings.TrimSpace(req.Msg.Repo) == "" || strings.TrimSpace(req.Msg.ClaimId) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id, task_id, execution_id, repo, and claim_id are required"))
@@ -304,6 +409,29 @@ func (s *RunnerRPCService) recordGitHubRPCArtifact(ctx context.Context, taskID, 
 		Payload:    payload,
 	}); err != nil {
 		return fmt.Errorf("log GitHub artifact audit event: %w", err)
+	}
+	return nil
+}
+
+// logGitHubRPCAction records an audit event for a GitHub mutation (merge,
+// close, labels) performed by a runner execution. Unlike recordGitHubRPCArtifact
+// it creates no task artifact, since no new GitHub object was created.
+func (s *RunnerRPCService) logGitHubRPCAction(ctx context.Context, eventType, taskID, targetType, repo string, installationID int64, number int, url, detail string) error {
+	payload, err := json.Marshal(map[string]any{"github_installation_id": installationID, "url": url})
+	if err != nil {
+		return fmt.Errorf("marshal GitHub action audit payload: %w", err)
+	}
+	if err := s.ghActions.LogAuditEvent(ctx, AuditEventParams{
+		EventType:  eventType,
+		SourceType: "task",
+		SourceID:   taskID,
+		TargetType: targetType,
+		TargetID:   fmt.Sprintf("%s#%d", repo, number),
+		Repo:       repo,
+		Detail:     detail,
+		Payload:    payload,
+	}); err != nil {
+		return fmt.Errorf("log GitHub action audit event: %w", err)
 	}
 	return nil
 }

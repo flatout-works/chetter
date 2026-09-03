@@ -286,6 +286,10 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		perms["mcp__runner-bridge__chetter_issue_comment"] = "allow"
 		perms["mcp__runner-bridge__chetter_create_pr"] = "allow"
 		perms["mcp__runner-bridge__chetter_pr_review"] = "allow"
+		perms["mcp__runner-bridge__chetter_merge_pr"] = "allow"
+		perms["mcp__runner-bridge__chetter_close_pr"] = "allow"
+		perms["mcp__runner-bridge__chetter_issue_close"] = "allow"
+		perms["mcp__runner-bridge__chetter_issue_add_labels"] = "allow"
 		if req.SelfTestNonce != "" {
 			perms["mcp__runner-bridge__chetter_runner_self_test_echo"] = "allow"
 		}
