@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-02
+
+### Documentation
+
+- Website spec sheet corrected (merged in #369, authored 2026-09-01): the queue row still said "60s leases", a figure from the June tuning pass. Since the false-completion lease fix on 2026-07-23, the task lease is 120 seconds, renewed to a fresh 120s window on every runner heartbeat (the heartbeat tick is 5s), with a 30-second reaper recovering dead runners' tasks. The row now states those figures. Only `website/current/index.html` changed — the archived technical deck in `website/old` is not deployed.
+
 ## 2026-08-29
 
 ### Added
