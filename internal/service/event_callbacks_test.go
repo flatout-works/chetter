@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flatout-works/chetter/internal/config"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/ssrf"
 )
 
 func TestValidateEventCallbackInput(t *testing.T) {
@@ -210,5 +212,90 @@ func TestCallbackTaskGitHubMetadata(t *testing.T) {
 				t.Fatalf("callbackTaskGitHubMetadata() = (%q, %d), want (%q, %d)", repo, installationID, tt.wantRepo, tt.wantInstallation)
 			}
 		})
+	}
+}
+
+func TestValidateEventCallbackDestination(t *testing.T) {
+	hardened := config.Config{}.WebhookDestinationPolicy()
+	permissive := config.Config{WebhookAllowHTTP: true, WebhookAllowPrivate: true}.WebhookDestinationPolicy()
+
+	tests := []struct {
+		name    string
+		input   EventCallbackInput
+		pol     ssrf.Policy
+		wantErr bool
+	}{
+		{
+			"public https webhook passes",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"url":"https://hooks.example.com/cb"}`)},
+			hardened,
+			false,
+		},
+		{
+			"public https slack passes",
+			EventCallbackInput{Name: "s", EventType: "task.completed", ActionType: "slack", ActionConfig: json.RawMessage(`{"url":"https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"}`)},
+			hardened,
+			false,
+		},
+		{
+			"http scheme rejected",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"url":"http://hooks.example.com/cb"}`)},
+			hardened,
+			true,
+		},
+		{
+			"http scheme passes with explicit override",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"url":"http://127.0.0.1:8080/cb"}`)},
+			permissive,
+			false,
+		},
+		{
+			"private IP rejected",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"url":"https://10.0.0.5/cb"}`)},
+			hardened,
+			true,
+		},
+		{
+			"cloud metadata hostname rejected",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"url":"https://metadata.google.internal/cb"}`)},
+			hardened,
+			true,
+		},
+		{
+			"empty url passes validation (delivery-time error)",
+			EventCallbackInput{Name: "h", EventType: "task.completed", ActionType: "webhook", ActionConfig: json.RawMessage(`{"method":"POST"}`)},
+			hardened,
+			false,
+		},
+		{
+			"create_task action ignores destination policy",
+			EventCallbackInput{Name: "t", EventType: "task.completed", ActionType: "create_task", ActionConfig: json.RawMessage(`{"prompt":"http://10.0.0.5 not a destination"}`)},
+			hardened,
+			false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateEventCallbackDestination(tc.input, tc.pol)
+			if tc.wantErr && err == nil {
+				t.Errorf("expected error, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateWebhookDestinationAllowlist(t *testing.T) {
+	pol := config.Config{WebhookAllowlistRaw: "10.0.0.0/8, .internal.example"}.WebhookDestinationPolicy()
+	if err := validateWebhookDestination("https://10.1.2.3/hook", pol); err != nil {
+		t.Errorf("allowlisted CIDR rejected: %v", err)
+	}
+	if err := validateWebhookDestination("https://hooks.internal.example/hook", pol); err != nil {
+		t.Errorf("allowlisted hostname rejected: %v", err)
+	}
+	if err := validateWebhookDestination("https://192.168.1.5/hook", pol); err == nil {
+		t.Errorf("non-allowlisted private IP should be rejected")
 	}
 }

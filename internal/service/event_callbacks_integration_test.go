@@ -4,10 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/ssrf"
 	"github.com/flatout-works/chetter/internal/testdb"
 )
 
@@ -169,4 +174,116 @@ func taskByTriggerName(ctx context.Context, tdb *testdb.TestDB, svc *Service, tr
 		return repository.Task{}, sql.ErrNoRows
 	}
 	return rows[0], nil
+}
+
+// TestCreateWebhookCallbackRejectsUnsafeDestination is the create/update-time
+// half of the SSRF-safe destination policy (issue #337): a webhook/slack
+// callback whose destination violates the policy is rejected with a clear
+// error at create time, public destinations keep working, and rejections are
+// recorded in the audit log.
+func TestCreateWebhookCallbackRejectsUnsafeDestination(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	unsafe := []struct {
+		name string
+		url  string
+	}{
+		{"metadata-http", "http://169.254.169.254/latest/meta-data/"},
+		{"metadata-https", "https://metadata.google.internal/computeMetadata/v1/"},
+		{"private-ip", "https://10.0.0.5/internal"},
+		{"loopback-http", "http://127.0.0.1:8080/hook"},
+	}
+	for _, tc := range unsafe {
+		if _, err := svc.CreateEventCallback(ctx, EventCallbackInput{
+			Name:         tc.name,
+			EventType:    "task.completed",
+			ActionType:   EventCallbackActionWebhook,
+			ActionConfig: json.RawMessage(`{"url":"` + tc.url + `"}`),
+			Enabled:      true,
+		}); err == nil {
+			t.Errorf("callback %q with url %q should be rejected by the destination policy", tc.name, tc.url)
+		}
+	}
+
+	// Public destinations are unaffected (validation does no DNS lookup).
+	if _, err := svc.CreateEventCallback(ctx, EventCallbackInput{
+		Name:         "public-hook",
+		EventType:    "task.completed",
+		ActionType:   EventCallbackActionWebhook,
+		ActionConfig: json.RawMessage(`{"url":"https://hooks.example.com/cb"}`),
+		Enabled:      true,
+	}); err != nil {
+		t.Fatalf("public destination rejected: %v", err)
+	}
+
+	var auditCount int
+	if err := tdb.DB.QueryRow("SELECT COUNT(*) FROM audit_log WHERE event_type = 'event_callback_destination_rejected'").Scan(&auditCount); err != nil {
+		t.Fatalf("count audit rows: %v", err)
+	}
+	if auditCount < len(unsafe) {
+		t.Errorf("expected at least %d destination-rejection audit events, got %d", len(unsafe), auditCount)
+	}
+}
+
+// TestWebhookCallbackDeliveryUsesSafeClient exercises the delivery path of the
+// SSRF-safe destination policy (issue #337): hardened defaults refuse a
+// callback pointed at a local/loopback destination (and audit the rejection),
+// while the explicit operator overrides (loopback development mode) let the
+// same callback deliver to the local httptest receiver.
+func TestWebhookCallbackDeliveryUsesSafeClient(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received <- r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	callback := repository.EventCallback{
+		ID:           "ecb_delivery",
+		Name:         "delivery-hook",
+		ActionType:   EventCallbackActionWebhook,
+		ActionConfig: json.RawMessage(`{"url":"` + server.URL + `/cb","method":"POST"}`),
+		Enabled:      true,
+	}
+	event := TaskEventCallbackContext{ID: "evt_1", TaskID: "task_1", EventType: "task.completed"}
+
+	t.Run("hardened default rejects loopback destination", func(t *testing.T) {
+		err := svc.runWebhookCallback(ctx, event, callback)
+		if err == nil {
+			t.Fatal("expected destination-policy error for hardened default")
+		}
+		var polErr *ssrf.Error
+		if !errors.As(err, &polErr) {
+			t.Fatalf("error %v is not an ssrf.Error", err)
+		}
+		var auditCount int
+		if err := tdb.DB.QueryRow("SELECT COUNT(*) FROM audit_log WHERE event_type = 'event_callback_destination_rejected'").Scan(&auditCount); err != nil {
+			t.Fatalf("count audit rows: %v", err)
+		}
+		if auditCount == 0 {
+			t.Error("expected a destination-rejection audit event at delivery")
+		}
+	})
+
+	t.Run("explicit operator override delivers to local receiver", func(t *testing.T) {
+		svc.cfg.WebhookAllowHTTP = true
+		svc.cfg.WebhookAllowPrivate = true
+		if err := svc.runWebhookCallback(ctx, event, callback); err != nil {
+			t.Fatalf("delivery with explicit overrides failed: %v", err)
+		}
+		select {
+		case path := <-received:
+			if path != "/cb" {
+				t.Errorf("received path %q, want /cb", path)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("receiver never got the callback delivery")
+		}
+	})
 }
