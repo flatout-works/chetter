@@ -263,8 +263,18 @@ func TestGenerateConfigForTaskAddsSelectedProvider(t *testing.T) {
 	}
 	providers := cfg["provider"].(map[string]any)
 	provider := providers["synthetic-openai"].(map[string]any)
-	if provider["name"] != "Synthetic OpenAI" || provider["baseURL"] != "https://api.example.test/openai" || provider["apiKey"] != "test-key" {
+	if provider["name"] != "Synthetic OpenAI" {
 		t.Fatalf("unexpected provider config: %+v", provider)
+	}
+	options, ok := provider["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected options map in provider config (opencode >= 1.0.180 schema): %+v", provider)
+	}
+	if options["baseURL"] != "https://api.example.test/openai" || options["apiKey"] != "test-key" {
+		t.Fatalf("unexpected provider options: %+v", options)
+	}
+	if _, hasTopLevel := provider["baseURL"]; hasTopLevel {
+		t.Fatalf("provider baseURL must be nested under options for opencode 1.0.180+: %+v", provider)
 	}
 	models := provider["models"].(map[string]any)
 	if _, ok := models["mapped-model"]; !ok {
