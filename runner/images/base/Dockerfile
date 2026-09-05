@@ -126,7 +126,8 @@ COPY --from=proxy-builder /out/codex-serve-proxy /usr/local/bin/codex-serve-prox
 # Pi coding agent (via npm) + MCP adapter extension.
 ARG PI_AGENT_VERSION=0.84.3
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_AGENT_VERSION} \
-    && ln -sf "$(npm root -g)/node_modules/.bin/pi" /usr/local/bin/pi
+    && ln -sf "$(npm root -g)/@earendil-works/pi-coding-agent/dist/bundle/cli.js" /usr/local/bin/pi \
+    && pi --version
 
 RUN mkdir -p /opt/pi-extensions \
     && cd /opt/pi-extensions \
@@ -140,7 +141,12 @@ RUN --mount=type=cache,target=/root/.npm \
     mkdir -p /opt/opencode/.config/opencode \
     && cd /opt/opencode/.config/opencode \
     && npm init -y \
-    && npm install @mem9/opencode@0.1.6 @opencode-ai/plugin@1.18.23 zod@4.4.3
+    # @mem9/opencode is pinned to 0.1.3: 0.1.6 changed its export shape and
+    # crashes opencode 1.0.180's plugin loader (TypeError: fn3 is not a
+    # function at src/plugin/index.ts), which turns every task's /config
+    # readiness probe into a 500. Re-bump only after mem9 ships a release
+    # verified against the pinned opencode version.
+    && npm install @mem9/opencode@0.1.3 @opencode-ai/plugin@1.18.23 zod@4.4.3
 
 ENV HOME=/opt/opencode
 ENV XDG_CONFIG_HOME=/opt/opencode/.config
