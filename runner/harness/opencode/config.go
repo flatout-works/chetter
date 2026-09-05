@@ -133,12 +133,21 @@ func ensureRunnerProvider(cfg map[string]any, req task.TaskRequest) {
 		}
 		providers[providerID] = entry
 	}
+	// opencode 1.0.180 strictly validates provider entries: baseURL/apiKey
+	// must live under "options"; top-level keys fail config load with
+	// ConfigInvalidError (unrecognized_keys), which surfaces as a harness
+	// readiness 500 and kills every opencode task.
+	options, _ := entry["options"].(map[string]any)
+	if options == nil {
+		options = make(map[string]any)
+		entry["options"] = options
+	}
 	if req.ProviderBaseURL != "" {
-		entry["baseURL"] = req.ProviderBaseURL
+		options["baseURL"] = req.ProviderBaseURL
 	}
 	if req.ProviderAPIKeyEnv != "" {
 		if apiKey := os.Getenv(req.ProviderAPIKeyEnv); apiKey != "" {
-			entry["apiKey"] = apiKey
+			options["apiKey"] = apiKey
 		}
 	}
 	models, _ := entry["models"].(map[string]any)
@@ -276,10 +285,9 @@ func GenerateConfigForTask(wsDir, runnerMCPURL, chetterMCPURL, chetterMCPToken s
 		// Runner tasks cannot route interactive requests to a human.
 		"question": "deny",
 	}
-	perms["external_directory"] = map[string]string{
-		"/tmp/*":  "allow",
-		"/tmp/**": "allow",
-	}
+	// opencode 1.0.180 expects external_directory to be a single
+	// "ask"|"allow"|"deny" string; a path map is rejected at config load.
+	perms["external_directory"] = "allow"
 
 	if includeRunnerMCP {
 		perms["mcp__runner-bridge__chetter_create_issue"] = "allow"
