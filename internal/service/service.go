@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -140,6 +141,13 @@ type Service struct {
 	definitions    *definitions.Manager
 	quotaExhausted atomic.Bool
 	lastReapAt     atomic.Int64
+
+	// webhookClient is the SSRF-safe HTTP client used for outbound event
+	// callback (webhook/slack) delivery, built lazily from the current
+	// configuration on first use (issue #337). Delivery never uses
+	// http.DefaultClient.
+	webhookClientOnce sync.Once
+	webhookClient     *http.Client
 }
 
 func (s *Service) QuotaExhausted() bool {

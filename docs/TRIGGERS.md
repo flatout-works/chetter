@@ -422,6 +422,35 @@ Actions:
 - **`webhook`** — POSTs (or a configured method) to a URL with rendered JSON body, custom headers, and template support. Non-2xx responses fail the dispatch attempt.
 - **`slack`** — posts to a Slack incoming webhook URL using the same webhook machinery.
 
+### SSRF-safe destination policy
+
+Webhook and Slack callback destinations are validated against an SSRF-safe
+destination policy before any request is made (issue #337). The hardened
+defaults reject, at callback create/update time **and** again at delivery:
+
+- any scheme other than `https://`;
+- URLs containing userinfo (`user:pass@`) or a fragment;
+- destinations in loopback, link-local (including cloud metadata endpoints
+  such as `169.254.169.254`), private (RFC 1918/4193), shared, multicast,
+  and reserved ranges;
+- well-known local/metadata hostnames (`localhost`, `*.localhost`, `*.local`,
+  `metadata.google.internal`).
+
+Hostnames are enforced on every address actually dialed — the client resolves
+the host once, checks every resolved address, and dials a validated address
+directly, so DNS rebinding cannot reach a blocked destination. Delivery never
+uses `http.DefaultClient`: the dedicated client does not honor proxy
+environment variables, never follows redirects, and applies bounded timeouts.
+Rejections are recorded in the audit log (`event_callback_destination_rejected`).
+
+Operator escape hatches (all default to the hardened value):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `CHETTER_WEBHOOK_ALLOW_HTTP` | `false` | Permit `http://` destinations (explicit, non-default). |
+| `CHETTER_WEBHOOK_ALLOW_PRIVATE` | `false` | Permit blocked address ranges (trusted single-tenant / loopback development mode). |
+| `CHETTER_WEBHOOK_ALLOWLIST` | empty | Comma-separated CIDRs/IPs/hostnames exempted from the blocked ranges. |
+
 ## Managing Callbacks
 
 | Tool | Purpose |

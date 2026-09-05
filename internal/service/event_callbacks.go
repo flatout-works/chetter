@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/ssrf"
 )
 
 const (
@@ -95,6 +97,13 @@ func (s *Service) CreateEventCallback(ctx context.Context, in EventCallbackInput
 	if err := validateEventCallbackInput(in); err != nil {
 		return EventCallbackRecord{}, err
 	}
+	// SSRF-safe destination policy (issue #337): webhook/slack destinations
+	// are checked up front so a disallowed URL is rejected with a clear error
+	// at create time instead of failing (or worse, firing) at delivery time.
+	if err := validateEventCallbackDestination(in, s.cfg.WebhookDestinationPolicy()); err != nil {
+		s.auditWebhookDestinationRejection(ctx, in.Name, in.ActionType, err)
+		return EventCallbackRecord{}, err
+	}
 	teamID, err := s.resolveOwnerTeamID(ctx, in.TeamID, in.TeamName)
 	if err != nil {
 		return EventCallbackRecord{}, err
@@ -163,6 +172,16 @@ func (s *Service) UpdateEventCallback(ctx context.Context, name string, in Event
 	}
 	if err := validateEventCallbackInput(updated); err != nil {
 		return EventCallbackRecord{}, err
+	}
+	// SSRF-safe destination policy (issue #337): re-validate only when this
+	// update actually changes the action config or type. Toggling enabled is
+	// always allowed so an operator can disable (or later fix) a callback
+	// whose stored destination predates the policy.
+	if in.ActionType != "" || len(in.ActionConfig) > 0 {
+		if err := validateEventCallbackDestination(updated, s.cfg.WebhookDestinationPolicy()); err != nil {
+			s.auditWebhookDestinationRejection(ctx, name, updated.ActionType, err)
+			return EventCallbackRecord{}, err
+		}
 	}
 	rows, err := s.repo.UpdateEventCallback(ctx, repository.UpdateEventCallbackParams{
 		EventType:    updated.EventType,
@@ -410,6 +429,14 @@ func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbac
 	if cfg.URL == "" {
 		return fmt.Errorf("webhook action_config.url is required")
 	}
+	// Defense in depth (issue #337): re-check the destination before any
+	// request even when the callback predates the policy, and audit any
+	// rejection. The client additionally enforces the policy on every address
+	// actually dialed, so a DNS rebinding cannot reach a blocked destination.
+	if err := validateWebhookDestination(cfg.URL, s.cfg.WebhookDestinationPolicy()); err != nil {
+		s.auditWebhookDestinationRejection(ctx, callback.Name, callback.ActionType, err)
+		return err
+	}
 	body, err := renderWebhookBody(callback.ActionType, cfg, event)
 	if err != nil {
 		return err
@@ -428,8 +455,12 @@ func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbac
 	for k, v := range cfg.Headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.webhookHTTPClient().Do(req)
 	if err != nil {
+		var polErr *ssrf.Error
+		if errors.As(err, &polErr) {
+			s.auditWebhookDestinationRejection(ctx, callback.Name, callback.ActionType, polErr)
+		}
 		return err
 	}
 	defer resp.Body.Close()
@@ -503,6 +534,56 @@ func validateEventCallbackInput(in EventCallbackInput) error {
 		return fmt.Errorf("action_config must be valid JSON")
 	}
 	return nil
+}
+
+// validateEventCallbackDestination applies the SSRF-safe destination policy to
+// webhook/slack callback action configs (issue #337). It is a pure function so
+// it is unit-testable without a database; the Create/Update paths audit a
+// rejection before returning the error. create_task callbacks are unaffected.
+func validateEventCallbackDestination(in EventCallbackInput, pol ssrf.Policy) error {
+	if in.ActionType != EventCallbackActionWebhook && in.ActionType != EventCallbackActionSlack {
+		return nil
+	}
+	var cfg callbackWebhookConfig
+	if err := json.Unmarshal(in.ActionConfig, &cfg); err != nil {
+		return fmt.Errorf("parse action_config: %w", err)
+	}
+	return validateWebhookDestination(cfg.URL, pol)
+}
+
+// validateWebhookDestination checks a single webhook/slack destination URL
+// against the destination policy. An empty URL is left to the delivery-time
+// error (existing semantics) rather than treated as a policy violation.
+func validateWebhookDestination(rawURL string, pol ssrf.Policy) error {
+	if rawURL == "" {
+		return nil
+	}
+	return ssrf.ValidateDestination(rawURL, pol)
+}
+
+// auditWebhookDestinationRejection records a rejected webhook destination in
+// the audit log. Detail carries only the policy error (scheme/host/IP), never
+// credentials, headers, or query strings.
+func (s *Service) auditWebhookDestinationRejection(ctx context.Context, callbackName, actionType string, err error) {
+	detail := fmt.Sprintf("event callback %q (%s) destination rejected: %v", callbackName, actionType, err)
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "event_callback_destination_rejected",
+		SourceType: "event_callback",
+		SourceID:   callbackName,
+		Detail:     detail,
+	})
+	slog.Warn("event callback destination rejected by SSRF-safe destination policy", "callback", callbackName, "action_type", actionType, "error", err)
+}
+
+// webhookHTTPClient returns the SSRF-safe client used for all outbound
+// webhook/slack callback delivery (issue #337). It is built lazily on first
+// use so configuration set after Service construction is honored, and it is
+// never http.DefaultClient.
+func (s *Service) webhookHTTPClient() *http.Client {
+	s.webhookClientOnce.Do(func() {
+		s.webhookClient = ssrf.NewClient(s.cfg.WebhookDestinationPolicy())
+	})
+	return s.webhookClient
 }
 
 func eventCallbackRecord(row repository.EventCallback) EventCallbackRecord {

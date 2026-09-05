@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
+	"github.com/flatout-works/chetter/internal/ssrf"
 	"github.com/flatout-works/chetter/internal/validation"
 )
 
@@ -117,6 +118,16 @@ type Config struct {
 	// See CHETTER_LOG_LEVEL and CHETTER_LOG_FORMAT. Invalid values fail
 	// clearly at startup via Validate instead of silently mis-logging.
 	Logging Logging
+
+	// WebhookAllowHTTP, WebhookAllowPrivate, and WebhookAllowlistRaw configure
+	// the SSRF-safe destination policy for outbound webhook delivery
+	// (event-callback webhook/slack actions today, the unified webhook
+	// platform later). All three default to the hardened value; each override
+	// must be set explicitly by an operator. See issue #337,
+	// WebhookDestinationPolicy, and CHETTER_WEBHOOK_* env vars.
+	WebhookAllowHTTP    bool
+	WebhookAllowPrivate bool
+	WebhookAllowlistRaw string
 }
 
 // Logging holds server log configuration (issue #87). LevelRaw and
@@ -178,6 +189,9 @@ func Load() Config {
 		CallbackMaxDepth:       envInt("CHETTER_CALLBACK_MAX_DEPTH", 5),
 		TaskMaxMemoryMB:        envInt("CHETTER_TASK_MAX_MEMORY_MB", 4096),
 		Logging:                loadLoggingConfig(),
+		WebhookAllowHTTP:       envBool("CHETTER_WEBHOOK_ALLOW_HTTP", false),
+		WebhookAllowPrivate:    envBool("CHETTER_WEBHOOK_ALLOW_PRIVATE", false),
+		WebhookAllowlistRaw:    os.Getenv("CHETTER_WEBHOOK_ALLOWLIST"),
 	}
 }
 
@@ -209,7 +223,33 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("CHETTER_LOG_FORMAT %q is invalid (want text or json)", c.Logging.Format)
 	}
+	if err := c.WebhookDestinationPolicy().Validate(); err != nil {
+		return fmt.Errorf("CHETTER_WEBHOOK_ALLOWLIST is invalid: %v", err)
+	}
 	return nil
+}
+
+// WebhookDestinationPolicy converts the CHETTER_WEBHOOK_* settings into the
+// SSRF-safe destination policy used by outbound webhook delivery (issue #337).
+// The allowlist is a comma-separated list of CIDRs, literal IPs, or hostnames
+// (a leading dot matches subdomains). A malformed entry fails Validate at
+// startup and fails closed at delivery.
+func (c Config) WebhookDestinationPolicy() ssrf.Policy {
+	return ssrf.Policy{
+		AllowHTTP:    c.WebhookAllowHTTP,
+		AllowPrivate: c.WebhookAllowPrivate,
+		Allowlist:    splitCSV(c.WebhookAllowlistRaw),
+	}
+}
+
+func splitCSV(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 // loadLoggingConfig parses CHETTER_LOG_LEVEL and CHETTER_LOG_FORMAT.

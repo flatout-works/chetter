@@ -563,3 +563,71 @@ func TestLoadLogging(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadWebhookDestinationPolicy(t *testing.T) {
+	t.Run("defaults to hardened policy", func(t *testing.T) {
+		cfg := Load()
+		pol := cfg.WebhookDestinationPolicy()
+		if pol.AllowHTTP || pol.AllowPrivate || len(pol.Allowlist) != 0 {
+			t.Errorf("expected hardened default policy, got %+v", pol)
+		}
+	})
+	t.Run("env overrides parse", func(t *testing.T) {
+		t.Setenv("CHETTER_WEBHOOK_ALLOW_HTTP", "true")
+		t.Setenv("CHETTER_WEBHOOK_ALLOW_PRIVATE", "true")
+		t.Setenv("CHETTER_WEBHOOK_ALLOWLIST", "10.0.0.0/8, 192.168.1.5, .internal.example, ,hooks.corp")
+		cfg := Load()
+		pol := cfg.WebhookDestinationPolicy()
+		if !pol.AllowHTTP {
+			t.Error("expected AllowHTTP true")
+		}
+		if !pol.AllowPrivate {
+			t.Error("expected AllowPrivate true")
+		}
+		want := []string{"10.0.0.0/8", "192.168.1.5", ".internal.example", "hooks.corp"}
+		if len(pol.Allowlist) != len(want) {
+			t.Fatalf("allowlist = %v, want %v", pol.Allowlist, want)
+		}
+		for i := range want {
+			if pol.Allowlist[i] != want[i] {
+				t.Errorf("allowlist[%d] = %q, want %q", i, pol.Allowlist[i], want[i])
+			}
+		}
+	})
+	t.Run("empty allowlist env yields empty allowlist", func(t *testing.T) {
+		t.Setenv("CHETTER_WEBHOOK_ALLOWLIST", "  ,, ")
+		cfg := Load()
+		if len(cfg.WebhookDestinationPolicy().Allowlist) != 0 {
+			t.Errorf("expected empty allowlist, got %v", cfg.WebhookDestinationPolicy().Allowlist)
+		}
+	})
+}
+
+func TestValidateWebhookDestinationPolicy(t *testing.T) {
+	base := Config{DatabaseDSN: "dsn", MCPAuthToken: "t", RunnerRPCToken: "r"}
+	t.Run("valid allowlist passes", func(t *testing.T) {
+		cfg := base
+		cfg.WebhookAllowlistRaw = "10.0.0.0/8, hooks.internal, 192.0.2.5"
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+	t.Run("malformed allowlist entry fails validation", func(t *testing.T) {
+		cfg := base
+		cfg.WebhookAllowlistRaw = "10.0.0.0/99"
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected validation error for malformed CIDR")
+		}
+		if !strings.Contains(err.Error(), "CHETTER_WEBHOOK_ALLOWLIST") {
+			t.Errorf("error %q should mention CHETTER_WEBHOOK_ALLOWLIST", err.Error())
+		}
+	})
+	t.Run("whitespace entry fails validation", func(t *testing.T) {
+		cfg := base
+		cfg.WebhookAllowlistRaw = "hooks .internal"
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected validation error for whitespace entry")
+		}
+	})
+}
