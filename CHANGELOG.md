@@ -38,6 +38,21 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-05
+
+### Added
+
+- SSRF-safe destination policy for outbound webhook delivery (issue #337, merged in #382): event-callback webhook and Slack actions were delivered to any URL in `action_config` via `http.DefaultClient` with no destination validation, so a team token or compromised config path could point the control plane at internal hosts or cloud metadata endpoints. A new `internal/ssrf` package provides the destination policy and a dedicated delivery client: HTTPS-only by default, with operator overrides `CHETTER_WEBHOOK_ALLOW_HTTP`, `CHETTER_WEBHOOK_ALLOW_PRIVATE`, and a `CHETTER_WEBHOOK_ALLOWLIST` of CIDRs/IPs/hostnames; rejection of loopback, link-local (including the 169.254.169.254 metadata address), private, shared, multicast, documentation, and reserved ranges, plus userinfo, fragments, and well-known local/metadata hostnames; each dialed address is resolved once, checked, and dialed directly (no DNS-rebinding window), with no proxy environment variables, no redirects, and bounded timeouts. Callback destinations are validated at create/update time with rejections audit-logged as `event_callback_destination_rejected`, and delivery never uses `http.DefaultClient`. Unit tests cover private/link-local/metadata destinations, DNS-rebinding-style resolution, the scheme override, and allowlist overrides; integration tests cover create-time rejection with audit and delivery to a local receiver under explicit overrides. Documented in `docs/MANUAL.md` and `docs/TRIGGERS.md`.
+
+### Fixed
+
+- Opencode 1.0.180 config compatibility (merged in #386): opencode 1.0.180 (pinned in the agent base image) strictly validates its config, but `GenerateConfigForTask` still emitted two shapes from the older, laxer opencode — provider-level `baseURL`/`apiKey` (now nested under `provider.<id>.options`) and `permission.external_directory` as a path map (now the string `"allow"`). With either key present, opencode failed config load with `ConfigInvalidError`, its `/config` endpoint returned 500, the runner's readiness probe never succeeded, and every opencode task died after 2 minutes with `container harness serve not ready ... last status: 500`. Reproduced against `ghcr.io/flatout-works/chetter-agent:golang` (old shape → HTTP 500 with the exact zod issues; fixed shape → HTTP 200); the provider test now asserts the nested schema.
+- Agent image harness breakages (merged in #387): the `pi` symlink in the base Dockerfile pointed at a doubled `node_modules/node_modules/.bin/pi` path that does not exist, so `/usr/local/bin/pi` was dangling and every pi task crashed at container start with exit 127 (`error finding executable "pi" in PATH`); the symlink now targets the package's real bin entry (`dist/bundle/cli.js`) and the build verifies it with `pi --version` like the other harnesses. Separately, `@mem9/opencode` is pinned back from 0.1.6 to 0.1.3: 0.1.6 changed its export shape and crashes opencode 1.0.180's plugin loader (`TypeError: fn3 is not a function` at `src/plugin/index.ts`), turning the `/config` readiness probe into a 500 and killing every opencode task even with a valid config. Unresolvable plugins fail open, but a resolvable plugin with a bad export shape crashes the server, hence the pin.
+
+### Documentation
+
+- Website updated for the SSRF-safe webhook destination policy: the homepage spec sheet's security row now mentions SSRF-safe validation of outbound webhook and Slack callback destinations, and the technical deck's resilience card documents the destination policy in full (no `http.DefaultClient`, create/update-time plus per-dial validation, blocked ranges and hostnames, no DNS-rebinding window, no proxies or redirects, the `event_callback_destination_rejected` audit event, and the three operator overrides).
+
 ## 2026-09-03
 
 ### Added
