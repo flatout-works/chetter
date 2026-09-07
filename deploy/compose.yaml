@@ -57,7 +57,11 @@ services:
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-1/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
-      RUNNER_MAX_CONCURRENT: "3"
+      # One task at a time per runner: this box shares 15 GB with the TiDB
+      # cluster, and gVisor sentry processes live outside the container
+      # cgroup, so each task costs its cap plus sentry overhead. Override
+      # via the Arcane project env if throughput matters more than headroom.
+      RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
@@ -88,7 +92,7 @@ services:
       CHETTER_RUNNER_AUTH_TOKEN: ${CHETTER_RUNNER_RPC_TOKEN:-${CHETTER_MCP_AUTH_TOKEN:?CHETTER_MCP_AUTH_TOKEN is required}}
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
-      RUNNER_MAX_CONCURRENT: "3"
+      RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
