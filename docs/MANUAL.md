@@ -285,8 +285,13 @@ OpenCode task claimed by that runner; other harnesses do not use this integratio
 The runner owns the `MEM9_*` environment variables, so task-supplied environment
 values cannot replace runner credentials or opt an individual task in or out.
 
-The standard agent base image preinstalls the Mem9 OpenCode npm package, and the
-default runner network policy allows `api.mem9.ai`. These provide offline-ready
+The standard agent base image preinstalls the Mem9 OpenCode npm package pinned
+to `@mem9/opencode@0.1.3`, because 0.1.6 changed its export shape and crashes
+the plugin loader of the pinned OpenCode version, which fails every OpenCode
+task's harness readiness probe. Avoid overriding `MEM9_PLUGIN_SPEC` with a newer
+Mem9 release unless it is verified against the OpenCode version in the image.
+The base image also allows `api.mem9.ai` in the default runner network policy.
+These provide offline-ready
 support but do not activate Mem9 or make an API request without plugin activation.
 A repository can still explicitly declare plugins in its own OpenCode config;
 that is repository-controlled behavior rather than Chetter's Mem9 integration.
