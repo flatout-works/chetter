@@ -72,6 +72,11 @@ type TaskEventPublisher interface {
 
 type TaskEventCallbackDispatcher interface {
 	DispatchTaskEventCallbacks(ctx context.Context, event TaskEventCallbackContext)
+	// EnqueueTaskEventCallbackDeliveries persists one outbound delivery row per
+	// enabled webhook/slack callback matching event, inside the caller's
+	// transaction (the same one inserting the task_events row — durable outbox,
+	// issue #357). create_task callbacks stay synchronous and are not enqueued.
+	EnqueueTaskEventCallbackDeliveries(ctx context.Context, q data.Repository, event TaskEventCallbackContext) error
 }
 
 // RunnerSecurityAuditLogger persists system-scoped security events reported
@@ -943,6 +948,7 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		return claimedExecution{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
 	var claimed claimedExecution
+	var claimedEvent TaskEventCallbackContext
 	var eventID string
 	var eventPayload json.RawMessage
 	var eventCreatedAt time.Time
@@ -1063,6 +1069,25 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		}); err != nil {
 			return err
 		}
+		claimedEvent = TaskEventCallbackContext{
+			ID:        eventID,
+			TaskID:    task.ID,
+			TeamID:    task.TeamID.String,
+			Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, task.ID),
+			Status:    "running",
+			EventType: "task.claimed",
+			Summary:   fmt.Sprintf("Task claimed by runner for attempt %d", attemptNumber),
+			Payload:   eventPayload,
+			CreatedAt: now,
+		}
+		// Durable outbox (issue #357): webhook/slack callback deliveries are
+		// enqueued in the same transaction as the task.claimed event row so a
+		// persisted event can never lose its delivery record.
+		if s.callbacks != nil {
+			if err := s.callbacks.EnqueueTaskEventCallbackDeliveries(ctx, q, claimedEvent); err != nil {
+				return err
+			}
+		}
 		claimed = claimedExecution{Task: task, Session: session, Prompt: prompt, Attempt: attempt, AttemptNumber: attemptNumber}
 		return nil
 	})
@@ -1071,21 +1096,10 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 			s.eventBus.PublishTaskEvent(claimed.Task.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
 		}
 		if s.callbacks != nil {
-			dispatch := TaskEventCallbackContext{
-				ID:        eventID,
-				TaskID:    claimed.Task.ID,
-				TeamID:    claimed.Task.TeamID.String,
-				Subject:   fmt.Sprintf("%s.%s.%s", runnerEventSubject, runnerID, claimed.Task.ID),
-				Status:    "running",
-				EventType: "task.claimed",
-				Summary:   fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber),
-				Payload:   eventPayload,
-				CreatedAt: eventCreatedAt,
-			}
 			go func() {
 				callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
 				defer cancel()
-				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, dispatch)
+				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, claimedEvent)
 			}()
 		}
 	}
@@ -1357,7 +1371,36 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 			}
 		}
 		if !skipEventRow {
-			return q.InsertTaskEvent(ctx, eventInsert)
+			if err := q.InsertTaskEvent(ctx, eventInsert); err != nil {
+				return err
+			}
+			// Durable outbox (issue #357): webhook/slack callback deliveries are
+			// enqueued in the same transaction as this event row so a persisted
+			// event can never lose its delivery record. Heartbeat rows that are
+			// not stored (skipEventRow) are skipped here exactly as they are
+			// skipped for post-commit dispatch below.
+			if s.callbacks != nil {
+				task, err := q.GetTaskByID(ctx, event.TaskId)
+				if err != nil {
+					return fmt.Errorf("load task for callback delivery enqueue: %w", err)
+				}
+				dispatchEvent := TaskEventCallbackContext{
+					ID:            eventID,
+					TaskID:        event.TaskId,
+					TeamID:        task.TeamID.String,
+					Subject:       eventInsert.Subject,
+					Status:        status,
+					EventType:     eventType,
+					Summary:       event.Summary,
+					Error:         event.Error,
+					ErrorCategory: errorCategory,
+					Payload:       payload,
+					CreatedAt:     now,
+				}
+				if err := s.callbacks.EnqueueTaskEventCallbackDeliveries(ctx, q, dispatchEvent); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})

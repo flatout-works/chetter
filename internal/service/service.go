@@ -148,6 +148,11 @@ type Service struct {
 	// http.DefaultClient.
 	webhookClientOnce sync.Once
 	webhookClient     *http.Client
+
+	// deliveryBackoff, when set, replaces the default exponential retry
+	// schedule of the callback delivery worker. Tests inject a fast schedule
+	// to drive retries deterministically; nil means the default.
+	deliveryBackoff func(attempts int32) time.Duration
 }
 
 func (s *Service) QuotaExhausted() bool {
@@ -289,6 +294,11 @@ func (s *Service) Start(ctx context.Context) error {
 	go func() {
 		defer s.backgroundWG.Done()
 		s.taskReaper()
+	}()
+	s.backgroundWG.Add(1)
+	go func() {
+		defer s.backgroundWG.Done()
+		s.callbackDeliveryLoop()
 	}()
 	if s.runnerRPC != nil {
 		s.backgroundWG.Add(1)
@@ -685,6 +695,11 @@ func (s *Service) reapExpiredLeases() {
 			}); err != nil {
 				return err
 			}
+			// Durable outbox (issue #357): enqueue webhook/slack callback
+			// deliveries in the same transaction as the task.reclaimed row.
+			if err := s.EnqueueTaskEventCallbackDeliveries(ctx, q, event); err != nil {
+				return err
+			}
 			reclaimEvents = append(reclaimEvents, event)
 
 			restartEventID, err := randomID("evt")
@@ -725,6 +740,11 @@ func (s *Service) reapExpiredLeases() {
 				Payload:        restartPayload,
 				CreatedAt:      restartEvent.CreatedAt,
 			}); err != nil {
+				return err
+			}
+			// Durable outbox (issue #357): enqueue webhook/slack callback
+			// deliveries in the same transaction as the session-restart row.
+			if err := s.EnqueueTaskEventCallbackDeliveries(ctx, q, restartEvent); err != nil {
 				return err
 			}
 			reclaimEvents = append(reclaimEvents, restartEvent)
@@ -1529,6 +1549,11 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 			CreatedAt:      recoveryEvent.CreatedAt,
 		}); err != nil {
 			return fmt.Errorf("insert recovery event: %w", err)
+		}
+		// Durable outbox (issue #357): enqueue webhook/slack callback
+		// deliveries in the same transaction as the recovery event row.
+		if err := s.EnqueueTaskEventCallbackDeliveries(ctx, q, recoveryEvent); err != nil {
+			return fmt.Errorf("enqueue recovery event callback deliveries: %w", err)
 		}
 		return nil
 	})

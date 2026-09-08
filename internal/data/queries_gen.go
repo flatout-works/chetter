@@ -49,6 +49,7 @@ type Repository interface {
 	ExpirePausedSessions(ctx context.Context, arg repository.ExpirePausedSessionsParams) (int64, error)
 	ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg repository.ExtendActiveExecutionAttemptTimeoutParams) (int64, error)
 	FailAllExpiredExecutionAttempts(ctx context.Context, arg repository.FailAllExpiredExecutionAttemptsParams) (int64, error)
+	FailCallbackDelivery(ctx context.Context, arg repository.FailCallbackDeliveryParams) (int64, error)
 	FailExpiredExecutionAttempts(ctx context.Context, arg repository.FailExpiredExecutionAttemptsParams) (int64, error)
 	FailExpiredLeases(ctx context.Context, arg repository.FailExpiredLeasesParams) (int64, error)
 	FailPendingExecutionAttemptsForMissingRunner(ctx context.Context, arg repository.FailPendingExecutionAttemptsForMissingRunnerParams) (int64, error)
@@ -93,6 +94,7 @@ type Repository interface {
 	InsertAgentSession(ctx context.Context, arg repository.InsertAgentSessionParams) error
 	InsertAgentSessionCheckpoint(ctx context.Context, arg repository.InsertAgentSessionCheckpointParams) error
 	InsertAuditLog(ctx context.Context, arg repository.InsertAuditLogParams) error
+	InsertCallbackDelivery(ctx context.Context, arg repository.InsertCallbackDeliveryParams) error
 	InsertDefinitionChangeProposal(ctx context.Context, arg repository.InsertDefinitionChangeProposalParams) error
 	InsertDefinitionSyncRun(ctx context.Context, arg repository.InsertDefinitionSyncRunParams) error
 	InsertEventCallback(ctx context.Context, arg repository.InsertEventCallbackParams) error
@@ -144,6 +146,8 @@ type Repository interface {
 	ListUsersByTeam(ctx context.Context, teamID string) ([]repository.ListUsersByTeamRow, error)
 	MarkAgentSessionResuming(ctx context.Context, arg repository.MarkAgentSessionResumingParams) (int64, error)
 	MarkAgentSessionTerminalByTask(ctx context.Context, arg repository.MarkAgentSessionTerminalByTaskParams) (int64, error)
+	MarkCallbackDeliveryInFlight(ctx context.Context, arg repository.MarkCallbackDeliveryInFlightParams) (int64, error)
+	MarkCallbackDeliverySucceeded(ctx context.Context, arg repository.MarkCallbackDeliverySucceededParams) (int64, error)
 	MarkDefinitionSourceSynced(ctx context.Context, arg repository.MarkDefinitionSourceSyncedParams) error
 	MarkExecutionAttemptClaimed(ctx context.Context, arg repository.MarkExecutionAttemptClaimedParams) (int64, error)
 	MarkExecutionAttemptLost(ctx context.Context, arg repository.MarkExecutionAttemptLostParams) (int64, error)
@@ -317,6 +321,11 @@ func (q *Queries) ExtendActiveExecutionAttemptTimeout(ctx context.Context, arg r
 
 func (q *Queries) FailAllExpiredExecutionAttempts(ctx context.Context, arg repository.FailAllExpiredExecutionAttemptsParams) (int64, error) {
 	value, err := q.postgres.FailAllExpiredExecutionAttempts(ctx, convert[repositorypostgres.FailAllExpiredExecutionAttemptsParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) FailCallbackDelivery(ctx context.Context, arg repository.FailCallbackDeliveryParams) (int64, error) {
+	value, err := q.postgres.FailCallbackDelivery(ctx, convert[repositorypostgres.FailCallbackDeliveryParams](arg))
 	return convert[int64](value), err
 }
 
@@ -535,6 +544,10 @@ func (q *Queries) InsertAgentSessionCheckpoint(ctx context.Context, arg reposito
 
 func (q *Queries) InsertAuditLog(ctx context.Context, arg repository.InsertAuditLogParams) error {
 	return q.postgres.InsertAuditLog(ctx, convert[repositorypostgres.InsertAuditLogParams](arg))
+}
+
+func (q *Queries) InsertCallbackDelivery(ctx context.Context, arg repository.InsertCallbackDeliveryParams) error {
+	return q.postgres.InsertCallbackDelivery(ctx, convert[repositorypostgres.InsertCallbackDeliveryParams](arg))
 }
 
 func (q *Queries) InsertDefinitionChangeProposal(ctx context.Context, arg repository.InsertDefinitionChangeProposalParams) error {
@@ -778,6 +791,16 @@ func (q *Queries) MarkAgentSessionResuming(ctx context.Context, arg repository.M
 
 func (q *Queries) MarkAgentSessionTerminalByTask(ctx context.Context, arg repository.MarkAgentSessionTerminalByTaskParams) (int64, error) {
 	value, err := q.postgres.MarkAgentSessionTerminalByTask(ctx, convert[repositorypostgres.MarkAgentSessionTerminalByTaskParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) MarkCallbackDeliveryInFlight(ctx context.Context, arg repository.MarkCallbackDeliveryInFlightParams) (int64, error) {
+	value, err := q.postgres.MarkCallbackDeliveryInFlight(ctx, convert[repositorypostgres.MarkCallbackDeliveryInFlightParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) MarkCallbackDeliverySucceeded(ctx context.Context, arg repository.MarkCallbackDeliverySucceededParams) (int64, error) {
+	value, err := q.postgres.MarkCallbackDeliverySucceeded(ctx, convert[repositorypostgres.MarkCallbackDeliverySucceededParams](arg))
 	return convert[int64](value), err
 }
 
