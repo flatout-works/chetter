@@ -31,14 +31,15 @@ type Manager struct {
 }
 
 const (
-	DefinitionTypeAgent        = "agent"
-	DefinitionTypeSkill        = "skill"
-	DefinitionTypeTrigger      = "trigger"
-	DefinitionTypeTaskTemplate = "task_template"
-	DefinitionTypeMCPEndpoint  = "mcp_endpoint"
-	DefinitionScopeGlobal      = "global"
-	DefinitionScopeTeam        = "team"
-	DefinitionScopeRepo        = "repo"
+	DefinitionTypeAgent          = "agent"
+	DefinitionTypeSkill          = "skill"
+	DefinitionTypeTrigger        = "trigger"
+	DefinitionTypeTaskTemplate   = "task_template"
+	DefinitionTypeMCPEndpoint    = "mcp_endpoint"
+	DefinitionTypeInboundWebhook = "inbound_webhook"
+	DefinitionScopeGlobal        = "global"
+	DefinitionScopeTeam          = "team"
+	DefinitionScopeRepo          = "repo"
 )
 
 type Definition struct {
@@ -247,6 +248,22 @@ func (m *Manager) scanDefinitionsRoot(root definitionRoot, seen map[string]struc
 				return nil, fmt.Errorf("MCP endpoints are global or team scoped; repo-scoped endpoint %s is not supported", filepath.ToSlash(rel))
 			}
 		}
+		// Inbound webhooks (issue #120) are global or team scoped only;
+		// repository-scoped inbound endpoints are deferred by the platform
+		// design (epic #253) and rejected explicitly instead of being ignored.
+		for _, pattern := range []string{filepath.Join("webhooks", "inbound", "*.yaml"), filepath.Join("webhooks", "inbound", "*.yml")} {
+			matches, err := filepath.Glob(filepath.Join(m.cacheDir, root.path, pattern))
+			if err != nil {
+				return nil, fmt.Errorf("scan scoped inbound webhooks: %w", err)
+			}
+			if len(matches) > 0 {
+				rel, relErr := filepath.Rel(m.cacheDir, matches[0])
+				if relErr != nil {
+					rel = matches[0]
+				}
+				return nil, fmt.Errorf("inbound webhooks are global or team scoped; repo-scoped inbound webhook %s is not supported", filepath.ToSlash(rel))
+			}
+		}
 	}
 	type definitionPattern struct {
 		definitionType string
@@ -264,6 +281,11 @@ func (m *Manager) scanDefinitionsRoot(root definitionRoot, seen map[string]struc
 		patterns = append(patterns,
 			definitionPattern{DefinitionTypeMCPEndpoint, filepath.Join("mcp-endpoints", "*.yaml"), stemName},
 			definitionPattern{DefinitionTypeMCPEndpoint, filepath.Join("mcp-endpoints", "*.yml"), stemName},
+			// Generic inbound webhook endpoints (issue #120) are global or team
+			// scoped only; repository-scoped inbound webhooks are deferred by
+			// the platform design (epic #253) and rejected below.
+			definitionPattern{DefinitionTypeInboundWebhook, filepath.Join("webhooks", "inbound", "*.yaml"), stemName},
+			definitionPattern{DefinitionTypeInboundWebhook, filepath.Join("webhooks", "inbound", "*.yml"), stemName},
 		)
 	}
 	for _, p := range patterns {
@@ -390,6 +412,17 @@ func ValidateDefinitionContent(definitionType, path, content string) error {
 		}
 		if endpoint.Name != stemName(path) {
 			return fmt.Errorf("validate mcp endpoint definition %s: endpoint name %q must match file name %q", path, endpoint.Name, stemName(path))
+		}
+	case DefinitionTypeInboundWebhook:
+		endpoint, err := ParseInboundWebhookYAML(content)
+		if err != nil {
+			return fmt.Errorf("validate inbound webhook definition %s: %w", path, err)
+		}
+		if endpoint.Name != stemName(path) {
+			return fmt.Errorf("validate inbound webhook definition %s: endpoint name %q must match file name %q", path, endpoint.Name, stemName(path))
+		}
+		if err := ValidateInboundWebhookScope(endpoint, path); err != nil {
+			return fmt.Errorf("validate inbound webhook definition %s: %w", path, err)
 		}
 	}
 	return nil

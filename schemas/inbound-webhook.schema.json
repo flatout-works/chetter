@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flatout-works/chetter/main/schemas/inbound-webhook.schema.json",
+  "title": "Chetter inbound webhook endpoint definition",
+  "description": "Git-managed inbound endpoint that lets external systems submit authenticated events which Chetter durably turns into one configured action (create_task). Secrets are referenced by environment variable name only and are never stored or returned.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "auth", "action"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Endpoint name; must equal the definition file name stem."
+    },
+    "enabled": { "type": "boolean", "default": true },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "secret_env"],
+      "properties": {
+        "type": { "type": "string", "enum": ["hmac_sha256", "bearer"] },
+        "secret_env": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Server environment variable holding the shared secret. The value is resolved at request time and never stored, listed, logged, or returned."
+        },
+        "signature_header": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Request header carrying the HMAC-SHA256 signature (hmac_sha256 only). Defaults to X-Chetter-Signature."
+        },
+        "signature_prefix": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Optional prefix prepended to the hex digest before comparison, e.g. sha256= (hmac_sha256 only)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "bearer" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "signature_header": { "not": {} },
+              "signature_prefix": { "not": {} }
+            }
+          }
+        }
+      ]
+    },
+    "delivery_id_header": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional request header carrying a client replay key; redelivering the same key for this endpoint is idempotent."
+    },
+    "event_type_header": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional request header naming the event type, matched against accepted_events."
+    },
+    "accepted_events": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true,
+      "description": "Optional allowlist of event types this endpoint acts on; empty accepts every event. Requires event_type_header."
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt"],
+      "properties": {
+        "type": { "type": "string", "enum": ["create_task"], "default": "create_task" },
+        "prompt": { "type": "string", "minLength": 1, "description": "Task prompt; a strict Go template over normalized metadata ({{ .EventType }}, {{ .DeliveryID }}, {{ .EndpointName }}, {{ .SourceIP }}) and the decoded JSON payload ({{ .Payload.<field> }})." },
+        "agent": { "type": "string", "maxLength": 128 },
+        "timeout_sec": { "type": "integer", "minimum": 0 },
+        "team_name": { "type": "string", "maxLength": 128, "description": "Fixed action team. Required for global endpoints; forbidden for team-scoped endpoints (the team is inherited from the groups/<team>/ directory). Payload data can never select the team." }
+      }
+    }
+  }
+}

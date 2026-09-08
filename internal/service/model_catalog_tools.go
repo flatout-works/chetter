@@ -74,7 +74,7 @@ type SyncDefinitionSourceOutput struct {
 }
 
 type ListDefinitionsInput struct {
-	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template, mcp_endpoint"`
+	DefinitionType string `json:"definition_type,omitempty" jsonschema:"Optional definition type filter: agent, skill, trigger, task_template, mcp_endpoint, inbound_webhook"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Optional definition source ID filter"`
 }
 
@@ -83,7 +83,7 @@ type ListDefinitionsOutput struct {
 }
 
 type GetDefinitionInput struct {
-	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template, mcp_endpoint"`
+	DefinitionType string `json:"definition_type" jsonschema:"Definition type: agent, skill, trigger, task_template, mcp_endpoint, inbound_webhook"`
 	Name           string `json:"name" jsonschema:"Definition name"`
 	SourceID       string `json:"source_id,omitempty" jsonschema:"Definition source ID; defaults to the configured default source"`
 	Scope          string `json:"scope,omitempty" jsonschema:"Optional scope filter: global, team, repo. If omitted, returns the highest-priority match."`
@@ -553,6 +553,15 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 	}); err != nil {
 		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
 		return ModelCatalogRecord{}, fmt.Errorf("store definitions model catalog: %w", err)
+	}
+	// Materialize inbound webhook endpoints (issue #120): runtime identity,
+	// opaque public URL, and fixed team binding for each Git-managed inbound
+	// endpoint definition. This runs after the definitions transaction commits
+	// so definitions rows are visible and errors are recorded as failed sync
+	// runs (the next interval reconciles idempotently).
+	if err := s.materializeInboundWebhookEndpoints(ctx, defs, definitionTeamIDs, now); err != nil {
+		s.recordDefinitionSyncRun(ctx, defaultDefinitionSourceID, definitionSyncStatusError, sourceCommit, len(defs), err, startedAt, time.Now().UTC())
+		return ModelCatalogRecord{}, fmt.Errorf("materialize inbound webhook endpoints: %w", err)
 	}
 	// Reconcile in-memory cron registrations against the desired set before
 	// refreshing entries: this drops schedules for removed, renamed, disabled,

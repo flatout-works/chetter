@@ -64,6 +64,10 @@
     "chetter-identities": {
       "description": "List Chetter managed Git identities.",
       "template": "Run chetter_list_git_identities. Summarize each identity reference, its Git author name and email, team scope, credential provider, and which identity is the default. Use chetter_set_git_identity_default when the user asks to change the default. Never request or expose credentials; identities only contain attribution metadata."
+    },
+    "chetter-inbound-webhooks": {
+      "description": "List inbound webhook endpoints and their recent deliveries.",
+      "template": "Run chetter_list_inbound_endpoints with limit=50, then chetter_list_inbound_deliveries with limit=50. Summarize each endpoint's name, public URL path, enabled state, auth type, secret_env (name only — never the value), and secret availability; then summarize delivery statuses (pending, processing, succeeded, retry_wait, failed_permanent, dead_letter), retry attempts, and linked task IDs. Never reveal payloads or secret values."
     }
   },
   "mcp": {

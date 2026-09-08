@@ -317,6 +317,47 @@ erDiagram
         datetime created_at
         datetime updated_at
     }
+    webhook_endpoints {
+        string id PK
+        string public_id
+        string name
+        string scope
+        string team_id
+        string source_path
+        bool enabled
+        string auth_type
+        string secret_env
+        string signature_header
+        string signature_prefix
+        string delivery_id_header
+        string event_type_header
+        json accepted_events
+        string action_type
+        text action_prompt
+        string action_agent
+        int action_timeout_sec
+        datetime created_at
+        datetime updated_at
+    }
+    inbound_deliveries {
+        string id PK
+        string endpoint_id
+        string team_id
+        string delivery_id
+        string event_type
+        string source_ip
+        text payload
+        string status
+        int attempts
+        int max_attempts
+        text error
+        string task_id
+        datetime lease_expires_at
+        datetime next_attempt_at
+        datetime processed_at
+        datetime created_at
+        datetime updated_at
+    }
     trigger_runs }o--|| triggers : "trigger_id"
     trigger_runs }o--|| tasks : "task_id"
 ```
@@ -328,6 +369,19 @@ GitHub deliveries for retry/dead-letter handling. **Callback deliveries** are
 the durable outbound queue for webhook/slack callback actions (issue #357):
 each row is written in the same transaction as its task event and delivered by
 a leased worker with retry/backoff and dead-lettering.
+
+**Webhook endpoints** materialize Git-managed generic inbound webhook
+definitions (issue #120) into stable runtime identities: `public_id` is the
+opaque slug of the receiver URL `POST /hooks/inbound/<public_id>`, and
+`source_path` uniquely maps a definition file to its endpoint row so the
+public id survives content and name changes at the same path. Secrets are
+never stored — `secret_env` names the server environment variable holding the
+HMAC/bearer value. **Inbound deliveries** are the durable inbox: requests are
+inserted before the receiver answers 202, then a leased worker performs the
+endpoint action exactly once (statuses: pending, processing, succeeded,
+retry_wait, failed_permanent, dead_letter). The unique
+(endpoint_id, delivery_id) key rejects client replays and `task_id` persists
+the delivery/task correlation so retries cannot duplicate tasks.
 
 ## Teams and auth
 
