@@ -38,6 +38,18 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-08
+
+### Changed
+
+- Compose deployments now default each runner to one concurrent task (`RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"`, previously hardcoded to `3`), overridable via the `RUNNER_MAX_CONCURRENT` variable in the Arcane project env. The previous default starved small shared hosts: gVisor sentry processes run outside the container cgroup, so each task costs its memory cap plus sentry overhead, and the production runner host (15 GB, shared with the TiDB cluster) accumulated 29 stuck executions in ~24 hours before swapping into load-100 starvation. Deployments needing more throughput can raise the variable explicitly.
+
+## 2026-09-07
+
+### Documentation
+
+- `docs/MANUAL.md` now records why the agent base image pins Mem9 to `@mem9/opencode@0.1.3`: the 0.1.6 release changed its export shape and crashes the pinned OpenCode version's plugin loader, failing every OpenCode task's harness readiness probe. The manual warns against overriding `MEM9_PLUGIN_SPEC` with a newer Mem9 release unless verified against the image's OpenCode version.
+
 ## 2026-09-03
 
 ### Added
