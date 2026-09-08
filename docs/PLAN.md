@@ -217,10 +217,13 @@ Tasks show structured setup progress before agent execution, and a repo can ship
 
 Status: **Partially completed** — event callbacks (list/create/edit/delete tools, web UI page,
 task-event dispatch with exact/wildcard event-type matching, `create_task`/`webhook`/`slack`
-actions, template rendering, recursion guard) shipped. Callback action failures are
-logged only — no outbound delivery queue with retry/backoff or dead-lettering yet.
-The `webhook_deliveries` table covers **inbound** GitHub webhook processing (retry,
-idempotency, dead-letter status), not callback deliveries. A unified inbound/outbound
+actions, template rendering, recursion guard) shipped. Webhook/slack callback actions now
+flow through a durable outbound delivery queue (`callback_deliveries`, issue #357): rows are
+enqueued transactionally with their task event, a leased multi-replica worker retries with
+exponential backoff, deliveries dead-letter after `max_attempts`, and retries/dead-letters
+are surfaced by audit events and `chetter_list_callback_deliveries`. The `webhook_deliveries`
+table still covers only **inbound** GitHub webhook processing (retry,
+idempotency, dead-letter status). A unified inbound/outbound
 webhook platform is planned in `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
 
 Why next:
@@ -230,7 +233,6 @@ The current trigger system handles cron, PR review, and issue/comment-style work
 Next deliverables:
 
 - Add callback event coverage for artifact created, session paused/resumed, and runner stale (task lifecycle events are dispatched today).
-- Add retry and dead-letter behavior for callback action failures.
 - Add trigger types for release events, Sentry alerts, Linear tickets, and multi-repo PR review triggers.
 
 Definition of done:

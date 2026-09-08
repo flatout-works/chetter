@@ -721,6 +721,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_webhook_deliveries", Description: "List recent webhook delivery records with status (received, completed, failed, dead_letter), retry attempts, and error details. Admin only."}, svc.listWebhookDeliveriesTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_callback_deliveries", Description: "List outbound event-callback delivery records (pending, in_flight, completed, failed, dead_letter) with retry attempts, next attempt time, and error details. Admin only."}, svc.listCallbackDeliveriesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_usage_summary", Description: "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data."}, svc.usageSummaryTool)
 }
 
@@ -1862,4 +1863,26 @@ func (s *Service) listWebhookDeliveriesTool(ctx context.Context, _ *mcp.CallTool
 		return nil, WebhookDeliveryOutput{}, err
 	}
 	return nil, WebhookDeliveryOutput{Deliveries: deliveries}, nil
+}
+
+// CallbackDeliveryFilterInput is the input for the
+// chetter_list_callback_deliveries MCP tool (issue #357).
+type CallbackDeliveryFilterInput struct {
+	Status string `json:"status,omitempty" jsonschema:"Only deliveries with this status (pending, in_flight, completed, failed, dead_letter); empty returns all"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum deliveries to return (default 50)"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Number of deliveries to skip (default 0)"`
+}
+
+// CallbackDeliveryOutput is the output for the
+// chetter_list_callback_deliveries MCP tool.
+type CallbackDeliveryOutput struct {
+	Deliveries []CallbackDeliveryRecord `json:"deliveries"`
+}
+
+func (s *Service) listCallbackDeliveriesTool(ctx context.Context, _ *mcp.CallToolRequest, in CallbackDeliveryFilterInput) (*mcp.CallToolResult, CallbackDeliveryOutput, error) {
+	deliveries, err := s.ListCallbackDeliveries(ctx, in.Status, in.Limit, in.Offset)
+	if err != nil {
+		return nil, CallbackDeliveryOutput{}, err
+	}
+	return nil, CallbackDeliveryOutput{Deliveries: deliveries}, nil
 }

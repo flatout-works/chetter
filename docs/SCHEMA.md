@@ -296,6 +296,27 @@ erDiagram
         datetime next_attempt_at
         datetime processed_at
     }
+    callback_deliveries {
+        string id PK
+        string callback_id
+        string event_id
+        string task_id
+        string team_id
+        string event_type
+        text endpoint_url
+        string method
+        text headers
+        text payload
+        string status
+        int attempts
+        int max_attempts
+        text error
+        datetime lease_expires_at
+        datetime next_attempt_at
+        datetime processed_at
+        datetime created_at
+        datetime updated_at
+    }
     trigger_runs }o--|| triggers : "trigger_id"
     trigger_runs }o--|| tasks : "task_id"
 ```
@@ -303,7 +324,10 @@ erDiagram
 **Triggers** fire tasks on cron, PR review, or issue events; each firing is
 a **trigger run**. **Event callbacks** react to task lifecycle events with
 create_task/webhook/slack actions. **Webhook deliveries** persist inbound
-GitHub deliveries for retry/dead-letter handling.
+GitHub deliveries for retry/dead-letter handling. **Callback deliveries** are
+the durable outbound queue for webhook/slack callback actions (issue #357):
+each row is written in the same transaction as its task event and delivered by
+a leased worker with retry/backoff and dead-lettering.
 
 ## Teams and auth
 

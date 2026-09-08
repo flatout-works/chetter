@@ -109,6 +109,28 @@ type AuditLog struct {
 	TokenName        sql.NullString   `json:"token_name"`
 }
 
+type CallbackDelivery struct {
+	ID             string         `json:"id"`
+	CallbackID     string         `json:"callback_id"`
+	EventID        string         `json:"event_id"`
+	TaskID         sql.NullString `json:"task_id"`
+	TeamID         sql.NullString `json:"team_id"`
+	EventType      string         `json:"event_type"`
+	EndpointUrl    string         `json:"endpoint_url"`
+	Method         string         `json:"method"`
+	Headers        sql.NullString `json:"headers"`
+	Payload        string         `json:"payload"`
+	Status         string         `json:"status"`
+	Attempts       int32          `json:"attempts"`
+	MaxAttempts    int32          `json:"max_attempts"`
+	Error          sql.NullString `json:"error"`
+	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
+	NextAttemptAt  sql.NullTime   `json:"next_attempt_at"`
+	ProcessedAt    sql.NullTime   `json:"processed_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 type ClaimNotifyCounter struct {
 	ID      int32 `json:"id"`
 	Counter int64 `json:"counter"`

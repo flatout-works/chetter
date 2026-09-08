@@ -405,8 +405,11 @@ Event callbacks complement triggers: instead of **submitting tasks** from
 external events, they **react to task lifecycle events** that happen inside
 Chetter. A callback watches a task event type and fires one of three actions.
 Callbacks are stored in the database (not in the definitions repo) and can be
-global or team-scoped. Callback failures are logged; there is no delivery queue
-or dead-lettering for callback actions.
+global or team-scoped. `webhook`/`slack` actions are delivered through a
+durable outbound queue: each matching event writes a `callback_deliveries` row
+in the same transaction as its task event, and a background worker delivers it
+with exponential backoff, retrying up to `max_attempts` (3) before
+dead-lettering (issue #357).
 
 ## Event Types And Actions
 
@@ -419,7 +422,7 @@ or dead-lettering for callback actions.
 Actions:
 
 - **`create_task`** — spawns a new Chetter task. Config: `{"prompt": "...", "git_url": ..., "env": {...}}`. The prompt is rendered as a Go text/template with event fields (`.TaskID`, `.EventType`, `.Status`, `.Summary`, `.Error`, `.Payload`, …), and the spawned task's env gets `CHETTER_EVENT_ID`, `CHETTER_EVENT_TYPE`, and `CHETTER_EVENT_TASK_ID`. Spawns guarded by the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`, default 5): each spawned task records its parent and depth, and a chain exceeding the limit is rejected with an `event_callback_recursion_limit` error (the callback itself stays enabled).
-- **`webhook`** — POSTs (or a configured method) to a URL with rendered JSON body, custom headers, and template support. Non-2xx responses fail the dispatch attempt.
+- **`webhook`** — POSTs (or a configured method) to a URL with rendered JSON body, custom headers, and template support. Non-2xx responses fail the delivery attempt and schedule a retry with backoff; the delivery dead-letters after `max_attempts` (3) failed attempts. Delivery status (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`), attempts, and errors are inspectable via `chetter_list_callback_deliveries`, and retries/dead-letters are recorded in the audit log (`callback_delivery_failed`, `callback_delivery_dead_letter`, `callback_delivery_completed`).
 - **`slack`** — posts to a Slack incoming webhook URL using the same webhook machinery.
 
 ### SSRF-safe destination policy
@@ -459,6 +462,7 @@ Operator escape hatches (all default to the hardened value):
 | `chetter_update_event_callback` | Update fields of a callback by name. |
 | `chetter_list_event_callbacks` | List callbacks, optionally filtered by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete a callback by name. |
+| `chetter_list_callback_deliveries` | List outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) with retry attempts, next attempt time, and error details. |
 
 The web UI also has an event callbacks page for administration.
 

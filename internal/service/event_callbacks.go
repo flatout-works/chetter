@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -281,6 +280,15 @@ func (s *Service) DispatchTaskEventCallbacks(ctx context.Context, event TaskEven
 		return
 	}
 	for _, callback := range callbacks {
+		// webhook/slack actions are delivered through the durable outbound
+		// queue (issue #357): their delivery rows were already enqueued in the
+		// same transaction as this event's task_events row by
+		// EnqueueTaskEventCallbacks. Dispatching them again here would double
+		// every delivery, so this post-commit hook only runs the synchronous
+		// create_task action.
+		if callback.ActionType == EventCallbackActionWebhook || callback.ActionType == EventCallbackActionSlack {
+			continue
+		}
 		if err := s.runEventCallbackAction(ctx, event, callback); err != nil {
 			slog.Warn("event callback failed", "callback", callback.Name, "event_type", event.EventType, "task_id", event.TaskID, "error", err)
 		}
@@ -445,15 +453,9 @@ func (s *Service) runWebhookCallback(ctx context.Context, event TaskEventCallbac
 	if method == "" {
 		method = http.MethodPost
 	}
-	req, err := http.NewRequestWithContext(ctx, method, cfg.URL, bytes.NewReader(body))
+	req, err := buildCallbackHTTPRequest(ctx, method, cfg.URL, cfg.Headers, body)
 	if err != nil {
 		return err
-	}
-	if req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	for k, v := range cfg.Headers {
-		req.Header.Set(k, v)
 	}
 	resp, err := s.webhookHTTPClient().Do(req)
 	if err != nil {
