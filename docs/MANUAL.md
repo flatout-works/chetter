@@ -694,6 +694,8 @@ Each runner can handle multiple tasks simultaneously via `RUNNER_MAX_CONCURRENT`
 
 **Recommended:** `RUNNER_MAX_CONCURRENT=2` or `3` per runner pod. For production, 4 pods with `MAX_CONCURRENT=2` = 8 concurrent tasks, with only 2 tasks lost per pod failure.
 
+On memory-constrained hosts running Docker with gVisor, prefer one task per runner: gVisor sentry processes live outside the container cgroup, so each task costs its memory cap plus sentry overhead. The production Arcane deployment (`deploy/compose.yaml`) defaults `RUNNER_MAX_CONCURRENT` to `1` per runner for this reason; override it via the Arcane project env if throughput matters more than headroom.
+
 ## Related Docs
 
 - [FEATURES.md](FEATURES.md) — current capability reference.
