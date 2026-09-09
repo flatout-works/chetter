@@ -34,7 +34,9 @@
       "additionalProperties": false,
       "properties": {
         "workspace_root": { "type": "string" },
-        "max_concurrent": { "type": "integer", "minimum": 1 }
+        "max_concurrent": { "type": "integer", "minimum": 1 },
+        "min_free_host_memory_mb": { "type": "integer", "minimum": 0 },
+        "max_host_load": { "type": "number", "minimum": 0 }
       }
     },
     "proxy": {

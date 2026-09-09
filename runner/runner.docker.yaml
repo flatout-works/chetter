@@ -6,6 +6,11 @@ server:
 runner:
   workspace_root: /var/lib/runner
   max_concurrent: 10
+  # Self-preservation (issue #397): pause claiming while free host memory is
+  # below 1024 MiB; set CHETTER_MIN_FREE_HOST_MEMORY_MB=0 to disable. Load gating
+  # is opt-in (0 = disabled) because it depends on host core count.
+  min_free_host_memory_mb: 1024
+  max_host_load: 0
 
 proxy:
   listen_addr: :18080

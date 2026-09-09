@@ -20,11 +20,14 @@ type resourceSnapshot struct {
 	MemoryPercent        *float64
 	MemoryAvailableBytes *int64
 	DiskPercent          *float64
+	// Load1 is the host's 1-minute load average from /proc/loadavg, used by
+	// the host-pressure claim gate (issue #397). Nil when unavailable.
+	Load1 *float64
 }
 
-// collectResourceSnapshot reads /proc/stat, /proc/meminfo, and performs a
-// statfs on the root filesystem to compute resource utilization. Any metric
-// that cannot be collected is left nil.
+// collectResourceSnapshot reads /proc/stat, /proc/meminfo, /proc/loadavg, and
+// performs a statfs on the root filesystem to compute resource utilization.
+// Any metric that cannot be collected is left nil.
 func collectResourceSnapshot() resourceSnapshot {
 	var s resourceSnapshot
 
@@ -39,6 +42,9 @@ func collectResourceSnapshot() resourceSnapshot {
 	}
 	if disk, err := diskPercentFromStatfs(); err == nil {
 		s.DiskPercent = &disk
+	}
+	if load, err := loadAvg1FromProc(); err == nil {
+		s.Load1 = &load
 	}
 	return s
 }
@@ -142,6 +148,31 @@ func memInfoFromProc() (float64, int64, error) {
 		pct = 100
 	}
 	return pct, memAvailable, nil
+}
+
+// loadAvg1FromProc returns the 1-minute load average from /proc/loadavg. The
+// value is host-wide (the runner container shares the host kernel's load
+// accounting), which is exactly what the host-pressure claim gate needs:
+// gVisor sentry processes run outside the container cgroup, so per-container
+// CPU accounting cannot see the full cost of a task on the host. See issue
+// #397.
+func loadAvg1FromProc() (float64, error) {
+	data, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("empty /proc/loadavg")
+	}
+	load, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse load average %q: %w", fields[0], err)
+	}
+	if load < 0 {
+		return 0, fmt.Errorf("negative load average %f", load)
+	}
+	return load, nil
 }
 
 // diskPercentFromStatfs uses statfs(2) on the root filesystem ("/") to

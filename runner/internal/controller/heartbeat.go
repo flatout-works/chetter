@@ -90,11 +90,7 @@ func (r *Runner) heartbeatLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			status := "active"
-			if r.draining.Load() {
-				status = "draining"
-			}
-			r.publishRunnerHeartbeat(status)
+			r.publishRunnerHeartbeat(r.heartbeatStatus())
 		case <-ctx.Done():
 			return
 		}

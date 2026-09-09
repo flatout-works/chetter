@@ -23,6 +23,15 @@ const (
 	EventPublishMinInterval = 15 * time.Second
 	MCPProtocolVersion      = "2024-11-05"
 	MCPServerVersion        = "0.1.0"
+
+	// DefaultMinFreeHostMemoryMB is the conservative default floor for the
+	// runner's host-pressure claim gate (issue #397): while free host memory
+	// (MemAvailable) stays above this many MiB the runner claims normally;
+	// below it the runner pauses claiming to avoid admitting work into a host
+	// that is about to thrash. It applies when the operator has not configured
+	// CHETTER_MIN_FREE_HOST_MEMORY_MB / runner.min_free_host_memory_mb
+	// explicitly; set the env var to 0 to disable the gate entirely.
+	DefaultMinFreeHostMemoryMB = 1024
 )
 
 type Config struct {
@@ -46,6 +55,22 @@ type ServerConfig struct {
 type RunnerConfig struct {
 	WorkspaceRoot string `yaml:"workspace_root"`
 	MaxConcurrent int    `yaml:"max_concurrent"`
+	// MinFreeHostMemoryMB gates task claiming on free host memory (issue
+	// #397): while MemAvailable stays above this many MiB the runner claims
+	// normally; below it the runner pauses claiming and reports
+	// "admission_paused:memory_pressure" in its heartbeat status. 0 disables
+	// the memory gate (CHETTER_MIN_FREE_HOST_MEMORY_MB=0). When unset, the
+	// conservative DefaultMinFreeHostMemoryMB applies.
+	MinFreeHostMemoryMB int `yaml:"min_free_host_memory_mb"`
+	// MaxHostLoad optionally gates task claiming on the host's 1-minute load
+	// average (issue #397): when the load exceeds this value the runner pauses
+	// claiming and reports "admission_paused:host_load" in its heartbeat
+	// status. 0 (the default) disables the load gate; it is opt-in because a
+	// meaningful threshold depends on the host's core count.
+	MaxHostLoad float64 `yaml:"max_host_load"`
+
+	minFreeHostMemoryMBEnvInvalid bool
+	maxHostLoadEnvInvalid         bool
 }
 
 type ProxyConfig struct {
@@ -129,6 +154,18 @@ func validate(cfg *Config) error {
 	if cfg.Runner.MaxConcurrent < 0 {
 		return fmt.Errorf("runner.max_concurrent must be greater than or equal to 0")
 	}
+	if cfg.Runner.MinFreeHostMemoryMB < 0 {
+		return fmt.Errorf("runner.min_free_host_memory_mb must be greater than or equal to 0")
+	}
+	if cfg.Runner.MaxHostLoad < 0 {
+		return fmt.Errorf("runner.max_host_load must be greater than or equal to 0")
+	}
+	if cfg.Runner.minFreeHostMemoryMBEnvInvalid {
+		return fmt.Errorf("CHETTER_MIN_FREE_HOST_MEMORY_MB must be a non-negative integer number of MiB (0 disables the gate)")
+	}
+	if cfg.Runner.maxHostLoadEnvInvalid {
+		return fmt.Errorf("CHETTER_MAX_HOST_LOAD must be a non-negative number (0 disables the gate)")
+	}
 	if cfg.Execution.containerMemoryEnvInvalid {
 		return fmt.Errorf("CHETTER_CONTAINER_MEMORY must be a valid memory limit (e.g. 512m, 1g)")
 	}
@@ -208,6 +245,29 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Runner.MaxConcurrent == 0 {
 		cfg.Runner.MaxConcurrent = DefaultMaxConcurrent
+	}
+	// Host-pressure claim gate (issue #397). Env vars override YAML. A
+	// non-empty CHETTER_MIN_FREE_HOST_MEMORY_MB wins even when it is "0"
+	// (explicit disable); when neither env nor YAML configure a value, fall
+	// back to the conservative DefaultMinFreeHostMemoryMB so every deployment
+	// is protected from claiming into a thrashing host. MaxHostLoad has no
+	// default (0 = disabled): a load threshold is only meaningful relative to
+	// the host's core count, so it is opt-in per deployment.
+	if value := strings.TrimSpace(os.Getenv("CHETTER_MIN_FREE_HOST_MEMORY_MB")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed >= 0 {
+			cfg.Runner.MinFreeHostMemoryMB = parsed
+		} else {
+			cfg.Runner.minFreeHostMemoryMBEnvInvalid = true
+		}
+	} else if cfg.Runner.MinFreeHostMemoryMB == 0 {
+		cfg.Runner.MinFreeHostMemoryMB = DefaultMinFreeHostMemoryMB
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_MAX_HOST_LOAD")); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil && parsed >= 0 {
+			cfg.Runner.MaxHostLoad = parsed
+		} else {
+			cfg.Runner.maxHostLoadEnvInvalid = true
+		}
 	}
 	if cfg.Proxy.ListenAddr == "" {
 		cfg.Proxy.ListenAddr = DefaultProxyAddr

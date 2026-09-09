@@ -230,6 +230,8 @@ See [docs/HARNESSES.md](../docs/HARNESSES.md) for the full capability matrix and
 | `USE_GVISOR` | `false` | Pass `--runtime=runsc` to Docker for gVisor sandboxing |
 | `CHETTER_ALLOW_UNISOLATED` | `false` | Escape hatch for trusted single-tenant deployments without gVisor: accept isolation-requiring tasks even when the runner cannot enforce a sandbox. Must match the server setting. See issue #291. |
 | `MAX_CONCURRENT` | `10` | Max parallel tasks |
+| `CHETTER_MIN_FREE_HOST_MEMORY_MB` | `1024` | Self-preservation: pause claiming while free host memory stays below this many MiB; `0` disables the gate. See the Host-pressure self-preservation section of `docs/MANUAL.md` (issue #397). |
+| `CHETTER_MAX_HOST_LOAD` | `0` | Optional self-preservation: pause claiming while the host's 1-minute load average exceeds this value; opt-in because a useful threshold depends on host core count. See issue #397. |
 | `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit passed to `docker --memory`/`--memory-swap` (see [Container resource limits](#container-resource-limits)) |
 | `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores passed to `docker --cpus` (decimal allowed) |
 | `CHETTER_CONTAINER_PIDS` | (unset) | PID cap passed to `docker --pids-limit` |

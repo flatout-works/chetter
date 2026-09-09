@@ -88,6 +88,26 @@ func (r *Runner) claimLoop(ctx context.Context) {
 		if r.draining.Load() {
 			return
 		}
+		// Host-pressure gate (issue #397): before each ClaimTask call the
+		// runner checks actual host pressure (free memory, and load when
+		// CHETTER_MAX_HOST_LOAD is configured) using the same sampling as
+		// fleet-health telemetry. A host that is low on free memory or
+		// overloaded gets a temporary backoff instead of claiming into a
+		// thrash — gVisor sentry overhead lives outside the container cgroup,
+		// so only the runner can observe the real cost. In-flight tasks are
+		// untouched (the gate never drops leases or cancels); the reason is
+		// surfaced in the heartbeat so deliberate load shedding is
+		// distinguishable from a wedged runner.
+		if reason := admissionPauseReason(r.sampleHost(), r.cfg.Runner.MinFreeHostMemoryMB, r.cfg.Runner.MaxHostLoad); reason != "" {
+			r.noteAdmissionTransition(reason)
+			select {
+			case <-time.After(claimAdmissionBackoff):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+		r.noteAdmissionTransition("")
 		// Reserve a concurrency slot before claiming so we never hold a
 		// claimed task while waiting for a free slot. The semaphore carries
 		// one extra slot (MaxConcurrent+1) reserved for this poller, so the
