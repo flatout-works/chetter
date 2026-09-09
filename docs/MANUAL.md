@@ -515,9 +515,12 @@ See [TRIGGERS.md](TRIGGERS.md) for cron schedules, PR review automation, and web
 
 Event callbacks react to task lifecycle events (matched by `event_type`, with
 `.*` wildcard suffix support) with a `create_task`, `webhook`, or `slack` action.
-Callback action failures are logged; spawns through `create_task` are guarded by
-the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
-[TRIGGERS.md](TRIGGERS.md#event-callbacks).
+`webhook`/`slack` actions are delivered through a durable outbound queue: each
+matching event writes a `callback_deliveries` row in the same transaction as its
+task event, and a background worker retries failed deliveries with exponential
+backoff up to `max_attempts` (3) before dead-lettering. Spawns through
+`create_task` run synchronously and are guarded by the recursion limit
+(`CHETTER_CALLBACK_MAX_DEPTH`). See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
 | Tool | Purpose |
 |---|---|
@@ -525,6 +528,7 @@ the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
 | `chetter_update_event_callback` | Update an event callback by name. |
 | `chetter_list_event_callbacks` | List callbacks, optionally by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete an event callback by name. |
+| `chetter_list_callback_deliveries` | Admin-only list of outbound event-callback delivery records (pending/in_flight/completed/failed/dead_letter) with retry attempts, next attempt time, and error details. |
 
 ### Webhook Deliveries
 
