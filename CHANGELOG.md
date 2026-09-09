@@ -40,6 +40,10 @@ Detailed per-day history of everything that went into this release is below.
 
 ## 2026-09-08
 
+### Added
+
+- Durable outbound delivery queue for webhook and slack event callbacks (issue #357, merged in #394): every `webhook`/`slack` callback delivery is now written to a new `callback_deliveries` table (migrations 055 MySQL/TiDB, 031 PostgreSQL) in the same transaction as its `task_events` row at all event insert/dispatch sites (claim, `recordTaskEvent`, lease reaper reclaim, task recovery), so a persisted event can never lack its delivery record; post-commit dispatch only runs the synchronous `create_task` action. A leased multi-replica delivery worker claims due rows with `FOR UPDATE SKIP LOCKED` under a 60s lease (expired `in_flight` leases are reclaimed after a crash) and delivers them with the SSRF-safe client from #337, retrying failures with exponential backoff (1s/5s/15s/30s) up to `max_attempts` (3) before dead-lettering. Retry/dead-letter/completion transitions emit `callback_delivery_failed`, `callback_delivery_dead_letter`, and `callback_delivery_completed` audit events, and a new admin-only `chetter_list_callback_deliveries` MCP tool exposes delivery records with status, attempts, next attempt time, and errors. Documented in `docs/TRIGGERS.md`, `docs/SCHEMA.md`, `docs/MANUAL.md`, and `docs/FEATURES.md`.
+
 ### Changed
 
 - Compose deployments now default each runner to one concurrent task (`RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"`, previously hardcoded to `3`), overridable via the `RUNNER_MAX_CONCURRENT` variable in the Arcane project env. The previous default starved small shared hosts: gVisor sentry processes run outside the container cgroup, so each task costs its memory cap plus sentry overhead, and the production runner host (15 GB, shared with the TiDB cluster) accumulated 29 stuck executions in ~24 hours before swapping into load-100 starvation. Deployments needing more throughput can raise the variable explicitly.

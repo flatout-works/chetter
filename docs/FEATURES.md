@@ -71,7 +71,7 @@ Trigger tools:
 - `chetter_run_trigger`
 - `chetter_list_trigger_runs`
 
-Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
+Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. Webhook and slack actions are delivered from a durable outbound queue (`callback_deliveries`) with retry/backoff and dead-lettering; `chetter_list_callback_deliveries` lists delivery records. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
 ## GitHub Artifacts
 
