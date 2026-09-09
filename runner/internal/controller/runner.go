@@ -70,9 +70,18 @@ type Runner struct {
 	// forcedExit is set when waitDrain force-cancelled in-flight tasks after
 	// the drain deadline expired (see issue #97). main.go reads it via
 	// ForcedExit to exit with a non-zero status after a forced termination.
-	forcedExit        atomic.Bool
-	kubeClient        kubernetes.Interface
-	kubeConfig        *rest.Config
+	forcedExit atomic.Bool
+	// lastAdmissionPause records the most recent host-pressure admission state
+	// observed by the claim loop ("" = healthy, otherwise the admission-paused
+	// status). Used to log pause/resume transitions exactly once. See issue
+	// #397.
+	lastAdmissionPause atomic.Value
+	// hostSampler returns the host resource snapshot the claim gate and
+	// heartbeat status evaluate. nil samples /proc directly; tests inject a
+	// stub to simulate a low-memory or overloaded host. See issue #397.
+	hostSampler func() resourceSnapshot
+	kubeClient  kubernetes.Interface
+	kubeConfig  *rest.Config
 	// drainHardKillTimeout overrides CHETTER_DRAIN_HARD_KILL_TIMEOUT_SEC in
 	// tests. Zero means "use the environment/default" (see drainHardKillTimeout).
 	drainHardKillTimeout time.Duration
@@ -112,10 +121,10 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		return nil, err
 	}
 	r := &Runner{
-		cfg:            cfg,
-		defaultHarness: cfg.Execution.Harness,
-		harnessFactory: selectHarnessByName,
-		wsManager:      workspace.NewManager(cfg.Runner.WorkspaceRoot),
+		cfg:             cfg,
+		defaultHarness:  cfg.Execution.Harness,
+		harnessFactory:  selectHarnessByName,
+		wsManager:       workspace.NewManager(cfg.Runner.WorkspaceRoot),
 		tasks:           make(map[string]*task.TaskSession),
 		tasksChanged:    make(chan struct{}),
 		runnerID:        runnerID,
@@ -123,8 +132,8 @@ func NewRunner(cfg *config.Config) (*Runner, error) {
 		terminalTasks:   make(map[string]struct{}),
 		cancelledTasks:  make(map[string]struct{}),
 		reportDelivered: make(map[string]bool),
-		sem:            make(chan struct{}, cfg.Runner.MaxConcurrent+1),
-		sandbox:        newSandboxMetrics(),
+		sem:             make(chan struct{}, cfg.Runner.MaxConcurrent+1),
+		sandbox:         newSandboxMetrics(),
 	}
 	if cfg.Execution.Backend == "kubernetes" {
 		if err := r.initializeKubernetesClient(); err != nil {

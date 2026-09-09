@@ -298,6 +298,15 @@ Runner-spawned task containers (Docker `serve`, `RPC`, and `resume` modes) now r
 
 Every task also carries a container memory limit. The server stamps it into each task (`max_memory_mb`) from `CHETTER_TASK_MAX_MEMORY_MB` (default `4096`); the runner applies it and can only tighten it further with its own `CHETTER_CONTAINER_MEMORY` cap. The default OOM-kills memory-heavy tasks such as nightly `govulncheck`/`osv-scanner` vulnerability scans, so raise it on hosts with headroom (the Compose files set `8192`). See [MANUAL.md](MANUAL.md) and [runner/README.md](../runner/README.md).
 
+### Runner self-preservation on memory-constrained hosts
+
+Runners gate task claiming on live host pressure so they never admit work into a thrashing host (issue #397). Two settings mirror the `CHETTER_CONTAINER_*` conventions and are read directly from the runner environment (or `runner/*` keys in the runner config):
+
+- `CHETTER_MIN_FREE_HOST_MEMORY_MB` (default `1024`) — pause claiming while free host memory stays below this floor; `0` disables the memory gate.
+- `CHETTER_MAX_HOST_LOAD` (default `0` = disabled) — optionally pause claiming while the host's 1-minute load average exceeds this value (set it roughly to the host's core count on shared/oversubscribed hosts).
+
+While paused the runner reports `admission_paused:memory_pressure` or `admission_paused:host_load` in its heartbeat/fleet status and re-checks every few seconds; in-flight tasks are never cancelled. This protects multi-task runners that raise `RUNNER_MAX_CONCURRENT` above 1 on shared gVisor hosts, where each task's sentry overhead lives outside the container cgroup and is invisible to `CHETTER_CONTAINER_MEMORY`. For memory-constrained gVisor hosts keep the `RUNNER_MAX_CONCURRENT=1` default recommendation from `deploy/compose.yaml`; raise concurrency only with headroom, and rely on the gate as a safety net rather than a substitute for sizing.
+
 ### Supply-Chain Hardening
 
 The agent base image verifies the SHA-256 checksums of the `gh` CLI, Node.js, and OpenCode downloads (arch-aware, both amd64 and arm64), replaces the NodeSource `curl | bash` install with a direct `nodejs.org` download, and pins all three versions instead of piping unpinned installers. Base images are kept at their prior versions where a bump would change runtime behavior.

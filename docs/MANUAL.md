@@ -329,7 +329,8 @@ server:
 runner:
   workspace_root: /var/lib/runner
   max_concurrent: 10
-
+  min_free_host_memory_mb: 1024
+  max_host_load: 0
 proxy:
   listen_addr: :18080
   allowed_domains:
@@ -371,6 +372,8 @@ chetter_mcp:
 | `server.auth_token` | First of `CHETTER_RUNNER_AUTH_TOKEN`, `CHETTER_RUNNER_RPC_TOKEN`, `MCP_AUTH_TOKEN`, `CHETTER_MCP_AUTH_TOKEN` | Runner-to-server ConnectRPC bearer token. |
 | `runner.workspace_root` | `/var/lib/runner` | Host/container directory for task workspaces. |
 | `runner.max_concurrent` | `10` | Maximum concurrent tasks per runner process. |
+| `runner.min_free_host_memory_mb` | `1024` | Self-preservation floor for task claiming (issue #397): while free host memory (`MemAvailable`) stays above this many MiB the runner claims normally; below it the runner pauses claiming and reports `admission_paused:memory_pressure` in its heartbeat/fleet status. This is a dynamic ceiling on top of `runner.max_concurrent` — it never replaces it, and in-flight tasks are never cancelled. Set `CHETTER_MIN_FREE_HOST_MEMORY_MB=0` to disable. |
+| `runner.max_host_load` | `0` (disabled) | Optional load gate for task claiming (issue #397): when the host's 1-minute load average exceeds this value the runner pauses claiming and reports `admission_paused:host_load`. A meaningful threshold depends on the host's core count, so it is opt-in (`0` = disabled); set `CHETTER_MAX_HOST_LOAD` (e.g. the number of host cores) to enable. |
 | `proxy.listen_addr` | `:18080` | HTTP/HTTPS proxy listen address used for network filtering. |
 | `proxy.allowed_domains` | empty | Optional outbound HTTP/HTTPS allowlist. Empty means allowlist is disabled. |
 | `proxy.blocked_domains` | empty | Optional outbound HTTP/HTTPS blocklist. |
@@ -695,6 +698,17 @@ Each runner can handle multiple tasks simultaneously via `RUNNER_MAX_CONCURRENT`
 **Recommended:** `RUNNER_MAX_CONCURRENT=2` or `3` per runner pod. For production, 4 pods with `MAX_CONCURRENT=2` = 8 concurrent tasks, with only 2 tasks lost per pod failure.
 
 On memory-constrained hosts running Docker with gVisor, prefer one task per runner: gVisor sentry processes live outside the container cgroup, so each task costs its memory cap plus sentry overhead. The production Arcane deployment (`deploy/compose.yaml`) defaults `RUNNER_MAX_CONCURRENT` to `1` per runner for this reason; override it via the Arcane project env if throughput matters more than headroom.
+
+### Host-pressure self-preservation (issue #397)
+
+`RUNNER_MAX_CONCURRENT` is a static ceiling: it limits how many tasks a runner *may* run, but a runner at that ceiling under sustained host pressure would still claim the next task the moment a slot frees up — deepening a memory-exhausted host into thrashing instead of shedding load. Because gVisor sentry processes run outside the container cgroup, neither `execution.container_memory` nor the container runtime's memory limit can see their real host cost; only the runner can observe its own host.
+
+Before each `ClaimTask` call the runner therefore evaluates a **host-pressure gate** using the same memory/load sampling that feeds fleet-health telemetry:
+
+- While free host memory (`MemAvailable`) stays above `runner.min_free_host_memory_mb` (`CHETTER_MIN_FREE_HOST_MEMORY_MB`, default `1024` MiB, `0` disables) the runner claims normally.
+- When free memory drops below the floor — or, when enabled, the 1-minute host load average exceeds `runner.max_host_load` (`CHETTER_MAX_HOST_LOAD`, default `0` = disabled because a useful threshold depends on the host's core count) — the runner **backs off claiming**: it stops calling `ClaimTask` and re-checks every few seconds, letting in-flight tasks finish first. It never drops leases or cancels running tasks.
+
+The gate is a dynamic ceiling *on top of* `RUNNER_MAX_CONCURRENT`, never a replacement: a healthy host still runs at its configured concurrency, and an over-provisioned host does not need its concurrency lowered fleet-wide. While paused, the runner's heartbeat status reads `admission_paused:memory_pressure` or `admission_paused:host_load` (visible in the Runner Fleet page and the fleet API), so operators can distinguish a runner deliberately shedding load from a wedged runner that silently stopped claiming. Sizing guidance: keep the `RUNNER_MAX_CONCURRENT=1` default recommendation for memory-constrained gVisor hosts, and set the load gate (roughly the host's core count) on shared or oversubscribed hosts where other tenants' load can crowd out task work.
 
 ## Related Docs
 

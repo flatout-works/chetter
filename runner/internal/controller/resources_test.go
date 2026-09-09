@@ -33,6 +33,19 @@ func TestCollectResourceSnapshot(t *testing.T) {
 			t.Errorf("DiskPercent out of range: %f", disk)
 		}
 	}
+	if s.Load1 != nil && *s.Load1 < 0 {
+		t.Errorf("Load1 negative: %f", *s.Load1)
+	}
+}
+
+func TestLoadAvg1FromProc(t *testing.T) {
+	load, err := loadAvg1FromProc()
+	if err != nil {
+		t.Skipf("no /proc/loadavg available: %v", err)
+	}
+	if load < 0 {
+		t.Errorf("loadAvg1FromProc negative: %f", load)
+	}
 }
 
 func TestCPUPercentFromProc(t *testing.T) {

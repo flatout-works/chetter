@@ -323,6 +323,106 @@ func TestParseMemoryBytes(t *testing.T) {
 	}
 }
 
+func TestHostPressureGateDefaultsAndEnv(t *testing.T) {
+	write := func(t *testing.T, yaml string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "runner.yaml")
+		if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	t.Run("conservative defaults apply when unset", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "")
+		cfg, err := Load(write(t, "{}"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Runner.MinFreeHostMemoryMB != DefaultMinFreeHostMemoryMB {
+			t.Errorf("MinFreeHostMemoryMB = %d, want default %d", cfg.Runner.MinFreeHostMemoryMB, DefaultMinFreeHostMemoryMB)
+		}
+		if cfg.Runner.MaxHostLoad != 0 {
+			t.Errorf("MaxHostLoad = %v, want 0 (disabled default)", cfg.Runner.MaxHostLoad)
+		}
+	})
+
+	t.Run("env overrides YAML", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "2048")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "12.5")
+		cfg, err := Load(write(t, "runner:\n  min_free_host_memory_mb: 512\n  max_host_load: 4\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Runner.MinFreeHostMemoryMB != 2048 {
+			t.Errorf("MinFreeHostMemoryMB = %d, want 2048 (env should override YAML)", cfg.Runner.MinFreeHostMemoryMB)
+		}
+		if cfg.Runner.MaxHostLoad != 12.5 {
+			t.Errorf("MaxHostLoad = %v, want 12.5 (env should override YAML)", cfg.Runner.MaxHostLoad)
+		}
+	})
+
+	t.Run("YAML values honored without env", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "")
+		cfg, err := Load(write(t, "runner:\n  min_free_host_memory_mb: 256\n  max_host_load: 8\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Runner.MinFreeHostMemoryMB != 256 {
+			t.Errorf("MinFreeHostMemoryMB = %d, want 256", cfg.Runner.MinFreeHostMemoryMB)
+		}
+		if cfg.Runner.MaxHostLoad != 8 {
+			t.Errorf("MaxHostLoad = %v, want 8", cfg.Runner.MaxHostLoad)
+		}
+	})
+
+	t.Run("env zero disables the memory gate", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "0")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "0")
+		cfg, err := Load(write(t, "{}"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.Runner.MinFreeHostMemoryMB != 0 {
+			t.Errorf("MinFreeHostMemoryMB = %d, want 0 (explicit disable)", cfg.Runner.MinFreeHostMemoryMB)
+		}
+		if cfg.Runner.MaxHostLoad != 0 {
+			t.Errorf("MaxHostLoad = %v, want 0", cfg.Runner.MaxHostLoad)
+		}
+	})
+
+	t.Run("invalid env values fail validation", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "abc")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "")
+		if _, err := Load(write(t, "{}")); err == nil {
+			t.Fatal("expected error for invalid CHETTER_MIN_FREE_HOST_MEMORY_MB")
+		}
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "abc")
+		if _, err := Load(write(t, "{}")); err == nil {
+			t.Fatal("expected error for invalid CHETTER_MAX_HOST_LOAD")
+		}
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "-1")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "")
+		if _, err := Load(write(t, "{}")); err == nil {
+			t.Fatal("expected error for negative CHETTER_MIN_FREE_HOST_MEMORY_MB")
+		}
+	})
+
+	t.Run("negative YAML values fail validation", func(t *testing.T) {
+		t.Setenv("CHETTER_MIN_FREE_HOST_MEMORY_MB", "")
+		t.Setenv("CHETTER_MAX_HOST_LOAD", "")
+		if _, err := Load(write(t, "runner:\n  min_free_host_memory_mb: -1\n")); err == nil {
+			t.Fatal("expected error for negative runner.min_free_host_memory_mb")
+		}
+		if _, err := Load(write(t, "runner:\n  max_host_load: -1\n")); err == nil {
+			t.Fatal("expected error for negative runner.max_host_load")
+		}
+	})
+}
+
 func TestAllowUnisolatedEnvAndYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.yaml")
