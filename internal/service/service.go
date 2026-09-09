@@ -58,13 +58,19 @@ type SubmitTaskRequest struct {
 	// by the callback dispatch path only; all other ingress leaves them empty.
 	CallbackParentTaskID string
 	CallbackDepth        int
-	SelfTestRunID        string
-	SelfTestProfile      string
-	SelfTestCheck        string
-	SelfTestNonce        string
-	SessionMode          string
-	PauseReason          string
-	TTLHours             int
+	// ExplicitTaskID, when non-empty, pins the new task's id instead of
+	// generating a random one. Internal use only: the inbound webhook worker
+	// derives a deterministic task id from the delivery row so a retried
+	// delivery can never create a duplicate task (issue #120). A duplicate
+	// primary key surfaces as a duplicate-key error from InsertTask.
+	ExplicitTaskID  string
+	SelfTestRunID   string
+	SelfTestProfile string
+	SelfTestCheck   string
+	SelfTestNonce   string
+	SessionMode     string
+	PauseReason     string
+	TTLHours        int
 	// Isolation overrides the deployment default for this task. "required"
 	// forces enforced isolation (gVisor); any other value keeps the default
 	// policy. See issue #291.
@@ -299,6 +305,11 @@ func (s *Service) Start(ctx context.Context) error {
 	go func() {
 		defer s.backgroundWG.Done()
 		s.callbackDeliveryLoop()
+	}()
+	s.backgroundWG.Add(1)
+	go func() {
+		defer s.backgroundWG.Done()
+		s.inboundDeliveryLoop()
 	}()
 	if s.runnerRPC != nil {
 		s.backgroundWG.Add(1)
@@ -1162,9 +1173,12 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			return store.TaskRecord{}, err
 		}
 	}
-	taskID, err := randomID("task")
-	if err != nil {
-		return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
+	taskID := in.ExplicitTaskID
+	if taskID == "" {
+		taskID, err = randomID("task")
+		if err != nil {
+			return store.TaskRecord{}, fmt.Errorf("generate task id: %w", err)
+		}
 	}
 	in.Prompt = expandChetterPromptVars(in.Prompt, map[string]string{
 		"CHETTER_AGENT_NAME":          in.Agent,

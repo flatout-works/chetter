@@ -231,6 +231,15 @@ func run() error {
 		mux.Handle("/webhook/github", whHandler)
 		slog.Info("github webhook handler registered", "path", "/webhook/github")
 	}
+	// Generic inbound webhook receiver (issue #120): external systems POST
+	// authenticated JSON events to POST /hooks/inbound/<public_id>; the
+	// receiver durably enqueues the request and answers 202, and the leased
+	// inbound delivery worker performs the endpoint action (create_task).
+	inboundHandler := service.NewInboundWebhookReceiver(st.DB(), st.Dialect(), svc)
+	if inboundHandler != nil {
+		mux.Handle("/hooks/inbound/", inboundHandler)
+		slog.Info("inbound webhook receiver registered", "path", "/hooks/inbound/{public_id}")
+	}
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

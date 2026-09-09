@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../../schemas/inbound-webhook.schema.json
+# Example inbound webhook endpoint (issue #120, epic #253 Phase 2).
+#
+# External CI / monitoring / incident systems POST authenticated JSON events
+# to POST /hooks/inbound/<public_id> (the public id is generated at first
+# definition sync and stays stable while this file keeps its path; run
+# chetter_list_inbound_endpoints to see it).
+#
+# Secrets are never stored: auth.secret_env names a server environment
+# variable holding the shared secret, resolved at request time. Global
+# endpoints must declare the fixed action team; payload data can never select
+# the target team.
+name: ci-build-events
+enabled: true
+
+auth:
+  type: hmac_sha256
+  secret_env: CHETTER_WEBHOOK_CI_SECRET
+  signature_header: X-CI-Signature
+  signature_prefix: sha256=
+
+delivery_id_header: X-Delivery-ID
+event_type_header: X-Event-Type
+accepted_events:
+  - build.completed
+  - build.failed
+
+action:
+  type: create_task
+  # Strict Go template over normalized metadata ({{ .EventType }},
+  # {{ .DeliveryID }}, {{ .EndpointName }}, {{ .SourceIP }}) and the decoded
+  # JSON payload ({{ .Payload.<field> }}). Raw request headers are never
+  # expanded.
+  prompt: |
+    Investigate CI event {{ .EventType }} for {{ .Payload.repository }}.
+    Build: {{ .Payload.build_url }}
+  agent: issue-triage
+  timeout_sec: 900
+  # Fixed action team for a global-scope endpoint. A team-scoped definition
+  # under groups/<team>/webhooks/inbound/ inherits its team from the directory
+  # and must not declare team_name.
+  team_name: platform
