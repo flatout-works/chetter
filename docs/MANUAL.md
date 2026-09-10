@@ -518,8 +518,10 @@ See [TRIGGERS.md](TRIGGERS.md) for cron schedules, PR review automation, and web
 
 Event callbacks react to task lifecycle events (matched by `event_type`, with
 `.*` wildcard suffix support) with a `create_task`, `webhook`, or `slack` action.
-Callback action failures are logged; spawns through `create_task` are guarded by
-the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
+`webhook` and `slack` actions are delivered through a durable retry queue —
+failures retry with backoff and dead-letter after `max_attempts` (3) attempts;
+spawns through `create_task` are guarded by the recursion limit
+(`CHETTER_CALLBACK_MAX_DEPTH`). See
 [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
 | Tool | Purpose |
@@ -528,12 +530,24 @@ the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
 | `chetter_update_event_callback` | Update an event callback by name. |
 | `chetter_list_event_callbacks` | List callbacks, optionally by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete an event callback by name. |
+| `chetter_list_callback_deliveries` | Admin-only list of outbound callback delivery records (pending/in_flight/completed/failed/dead_letter) with retry attempts, next attempt time, and error details. |
 
 ### Webhook Deliveries
 
 | Tool | Purpose |
 |---|---|
 | `chetter_list_webhook_deliveries` | Admin-only list of recent inbound webhook delivery records (received/completed/failed/dead_letter) with retry counts and error details. |
+
+### Inbound Webhook Endpoints
+
+Generic inbound webhook endpoints (issue #120) let external systems POST
+authenticated JSON events that become tasks — see [WEBHOOKS.md](WEBHOOKS.md).
+Team tokens see only their own endpoints and deliveries.
+
+| Tool | Purpose |
+|---|---|
+| `chetter_list_inbound_endpoints` | List materialized inbound webhook endpoints with their opaque public URL, auth type, secret reference availability, action, and team scope. Secret values are never returned. |
+| `chetter_list_inbound_deliveries` | List inbound webhook delivery records (pending/processing/succeeded/retry_wait/failed_permanent/dead_letter) with retry attempts, linked task, and error text. Payloads are never returned. |
 
 ### Definitions
 
