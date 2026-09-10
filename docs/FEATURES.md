@@ -73,6 +73,8 @@ Trigger tools:
 
 Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
+Inbound webhooks let external systems POST authenticated JSON events to `/hooks/inbound/<public_id>` endpoints, where they durably become exactly one configured action (`create_task` in the first version). Endpoints are Git-managed like other definitions, with HMAC-SHA256 or bearer auth and team-scoped listing tools. See [WEBHOOKS.md](WEBHOOKS.md).
+
 ## GitHub Artifacts
 
 Chetter exposes runner-bridge GitHub tools to task agents so they do not need direct `gh` write access for common artifact creation and lifecycle changes. These tools are not part of the control-plane MCP API.
