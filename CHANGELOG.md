@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-09
+
+### Added
+
+- Host-pressure admission gate on runners (issue #397, merged in #399): before each `ClaimTask` the runner now evaluates a host-pressure gate using the same memory/load sampling as fleet-health telemetry, so it backs off claiming instead of admitting work into a thrashing host. Free host memory (`MemAvailable`) below `CHETTER_MIN_FREE_HOST_MEMORY_MB` (default `1024` MiB; `0` disables) pauses claiming with heartbeat status `admission_paused:memory_pressure`; an opt-in `CHETTER_MAX_HOST_LOAD` (default `0` = disabled) pauses claiming when the host's 1-minute load average exceeds the threshold and reports `admission_paused:host_load`. The pause reason surfaces in the heartbeat/fleet status so deliberate load shedding is distinguishable from a wedged runner, and claim-loop pause/resume transitions are logged once per state change rather than on every backoff interval. The gate is a dynamic ceiling on top of `RUNNER_MAX_CONCURRENT`, never a replacement: healthy hosts keep full configured concurrency, in-flight tasks are never cancelled or lease-dropped, and setting the memory gate to `0` preserves prior behavior. Configured via env vars or the new `runner.min_free_host_memory_mb` / `runner.max_host_load` YAML keys (validated as non-negative, with clear startup errors for invalid values), added to the example `runner.yaml`/`runner.docker.yaml`, and added to the runner JSON schema. Documented in `docs/MANUAL.md`, `docs/DEPLOYMENT.md` (new "Runner self-preservation on memory-constrained hosts" section), and `runner/README.md`. This protects multi-task runners on shared gVisor hosts, where each task's sentry overhead lives outside the container cgroup and is invisible to `CHETTER_CONTAINER_MEMORY`.
+
+### Changed
+
+- Runners now pause task claiming by default when free host memory drops below 1024 MiB (`CHETTER_MIN_FREE_HOST_MEMORY_MB`, issue #397, merged in #399). Previously runners claimed tasks unconditionally as long as concurrency allowed, which let a memory-exhausted host swap into load-100 starvation under sustained task load. Deployments that want the old behavior can set `CHETTER_MIN_FREE_HOST_MEMORY_MB=0`; the load-average gate remains off by default.
+
 ## 2026-09-08
 
 ### Added
