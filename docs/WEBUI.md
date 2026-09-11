@@ -488,9 +488,12 @@ web/src/routes/
 ├── sessions/+page.svelte
 ├── sessions/[id]/+page.svelte
 ├── runners/+page.svelte
+├── triggers/+page.svelte
 ├── triggers/[name]/+page.svelte
 ├── event-callbacks/+page.svelte
+├── agents/+page.svelte
 ├── agents/[name]/+page.svelte
+├── admin/+page.svelte
 ├── admin/{artifacts,audit}/+page.svelte
 ├── settings/+page.svelte
 └── diagnostics/+page.svelte
