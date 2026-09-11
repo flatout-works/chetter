@@ -1210,9 +1210,6 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	}
 	endpointNames := normalizeMcpEndpointNames(in.McpEndpoints)
 	if len(endpointNames) > 0 {
-		if in.SessionMode == "resumable" {
-			return store.TaskRecord{}, fmt.Errorf("mcp_endpoints cannot be attached to resumable tasks")
-		}
 		if _, err := loadMcpEndpoints(ctx, s.rawDB, s.dialect, endpointNames, teamID); err != nil {
 			return store.TaskRecord{}, err
 		}
@@ -1776,6 +1773,18 @@ func (s *Service) ResumeAgentSession(ctx context.Context, sessionID, prompt stri
 	} else {
 		if !session.HarnessSessionID.Valid || session.HarnessSessionID.String == "" {
 			return ResumeAgentSessionOutput{}, fmt.Errorf("agent session has no harness session ID")
+		}
+	}
+
+	// Endpoints selected at submission are stored by name in the session
+	// snapshot and resolved to current connection details at claim time. If a
+	// definition was deleted or moved out of scope while the session was paused,
+	// fail the resume with the missing name instead of silently launching the
+	// agent headless. See issue #389.
+	sessionEndpointNames := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+sessionID+" mcp_endpoints")
+	if len(sessionEndpointNames) > 0 {
+		if _, err := loadMcpEndpoints(ctx, s.rawDB, s.dialect, sessionEndpointNames, session.TeamID.String); err != nil {
+			return ResumeAgentSessionOutput{}, fmt.Errorf("resolve session MCP endpoints: %w", err)
 		}
 	}
 
