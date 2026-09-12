@@ -535,9 +535,18 @@ the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`). See
 |---|---|
 | `chetter_list_webhook_deliveries` | Admin-only list of recent inbound webhook delivery records (received/completed/failed/dead_letter) with retry counts and error details. |
 
+### Inbound Webhook Endpoints
+
+Generic inbound webhook endpoints are Git-managed (`global/webhooks/inbound/*.yaml`, `groups/<team>/webhooks/inbound/*.yaml`) and external systems POST events to `POST /hooks/inbound/<public_id>` — see [WEBHOOKS.md](WEBHOOKS.md).
+
+| Tool | Purpose |
+|---|---|
+| `chetter_list_inbound_endpoints` | List materialized inbound webhook endpoints with their public URL, auth type, secret reference availability, action, and team scope. Secret values are never returned. Team tokens see only their own endpoints. |
+| `chetter_list_inbound_deliveries` | List inbound webhook delivery records (`pending`, `processing`, `succeeded`, `retry_wait`, `failed_permanent`, `dead_letter`) with retry attempts, linked task, and error text. Payloads are never returned. Team tokens see only their own deliveries. |
+
 ### Definitions
 
-Definitions (agents, skills, triggers, task templates, MCP endpoints) sync from a Git repo — see [CONFIGURATION.md](CONFIGURATION.md). Read/proposal tools:
+Definitions (agents, skills, triggers, task templates, MCP endpoints, inbound webhooks) sync from a Git repo — see [CONFIGURATION.md](CONFIGURATION.md). Read/proposal tools:
 
 | Tool | Purpose |
 |---|---|

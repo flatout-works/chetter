@@ -221,14 +221,20 @@ actions, template rendering, recursion guard) shipped. Webhook/slack callback ac
 flow through a durable outbound delivery queue (`callback_deliveries`, issue #357): rows are
 enqueued transactionally with their task event, a leased multi-replica worker retries with
 exponential backoff, deliveries dead-letter after `max_attempts`, and retries/dead-letters
-are surfaced by audit events and `chetter_list_callback_deliveries`. The `webhook_deliveries`
+are surfaced by audit events and `chetter_list_callback_deliveries`. Generic inbound
+webhook endpoints (issue #120, epic #253 Phase 2) also shipped: Git-managed
+`global/webhooks/inbound/*.yaml` and `groups/<team>/webhooks/inbound/*.yaml` definitions
+materialize into `webhook_endpoints` rows, external systems POST authenticated events to
+`POST /hooks/inbound/<public_id>`, and a durable `inbound_deliveries` inbox creates exactly
+one task per delivery (see [WEBHOOKS.md](WEBHOOKS.md)). The `webhook_deliveries`
 table still covers only **inbound** GitHub webhook processing (retry,
-idempotency, dead-letter status). A unified inbound/outbound
-webhook platform is planned in `docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
+idempotency, dead-letter status). The remaining phases of a unified inbound/outbound
+webhook platform (typed outbound subscriptions, proposal API and UI) are planned in
+`docs/plans/2026-07-28-001-feat-webhook-platform-plan.md`.
 
 Why next:
 
-The current trigger system handles cron, PR review, and issue/comment-style workflows. OpenHands' event callback pattern suggests a more general automation layer for task lifecycle events.
+The current trigger system handles cron, PR review, issue/comment-style workflows, and generic inbound webhooks. OpenHands' event callback pattern suggests a more general automation layer for task lifecycle events.
 
 Next deliverables:
 
