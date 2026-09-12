@@ -71,7 +71,9 @@ Trigger tools:
 - `chetter_run_trigger`
 - `chetter_list_trigger_runs`
 
-Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
+Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. `webhook` and `slack` deliveries run through a durable queue with exponential backoff, retrying up to `max_attempts` (3) before dead-lettering. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
+
+External systems can also push events into Chetter through generic inbound webhook endpoints: `inbound_webhook` definitions in Git materialize authenticated `POST /hooks/inbound/<public_id>` endpoints, and each delivery spawns a task. See [WEBHOOKS.md](WEBHOOKS.md).
 
 Generic inbound webhook endpoints let external systems submit authenticated JSON events to `POST /hooks/inbound/<public_id>`; each delivery is durably enqueued and creates exactly one configured task. Endpoints and deliveries are inspectable with `chetter_list_inbound_endpoints` and `chetter_list_inbound_deliveries`. See [WEBHOOKS.md](WEBHOOKS.md).
 
@@ -104,6 +106,7 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 - The reaper reclaims expired leases and marks stale tasks terminal when retries are exhausted.
 - `chetter_runner_health` reports fleet-wide status and optional per-task heartbeat age.
 - `chetter_drain_runner` asks a runner to stop claiming new work, finish in-flight tasks, and exit for rollout.
+- Before each claim, runners evaluate a host-pressure gate and pause claiming (reporting `admission_paused:memory_pressure` or `admission_paused:host_load` in heartbeats) when free host memory drops below `CHETTER_MIN_FREE_HOST_MEMORY_MB` or — opt-in — the 1-minute load average exceeds `CHETTER_MAX_HOST_LOAD`.
 
 Runner RPC uses a dedicated token (`CHETTER_RUNNER_RPC_TOKEN` on the server side). Compose currently passes it to runner containers through `CHETTER_RUNNER_AUTH_TOKEN` for compatibility with runner config fallback order.
 
