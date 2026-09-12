@@ -287,7 +287,9 @@ Attach endpoints to a task at submit time:
 }
 ```
 
-MCP endpoints cannot be attached to resumable tasks. The runner validates that each selected `token_env` variable is set in the runner environment before starting the agent; a missing variable fails the task with a clear error message. Task-provided environment variables with the same name as a selected token env are rejected — the runner-owned value always wins.
+MCP endpoints can also be attached to resumable tasks. The selected names are stored in the session configuration snapshot and re-resolved to current connection details on every resume, so a resumed agent keeps the same MCP tools as the original run. If a selected endpoint was deleted or moved out of scope while the session was paused, the resume fails with an error naming the missing endpoint rather than launching the agent headless.
+
+The runner validates that each selected `token_env` variable is set in the runner environment before starting the agent; a missing variable fails the task with a clear error message. Task-provided environment variables with the same name as a selected token env are rejected — the runner-owned value always wins.
 
 ### Agent-declared endpoints
 

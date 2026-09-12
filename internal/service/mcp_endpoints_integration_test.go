@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 )
 
@@ -70,13 +74,127 @@ func TestSubmitTaskMcpEndpointScopeAndPolicy(t *testing.T) {
 		t.Fatalf("expected global task endpoint rejection, got %v", err)
 	}
 
-	if _, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{
+	resumableTask, err := svc.SubmitTask(ctxWithTeam(ctx, teamA), SubmitTaskRequest{
 		Prompt:       "resumable task using endpoint",
 		AgentImage:   "runner:latest",
 		SessionMode:  "resumable",
 		McpEndpoints: []string{"team-only"},
-	}); err == nil || !strings.Contains(err.Error(), "mcp_endpoints cannot be attached to resumable tasks") {
-		t.Fatalf("expected resumable endpoint rejection, got %v", err)
+	})
+	if err != nil {
+		t.Fatalf("resumable task with endpoint: %v", err)
+	}
+	if len(resumableTask.McpEndpoints) != 1 || resumableTask.McpEndpoints[0] != "team-only" {
+		t.Fatalf("resumable task endpoints = %#v, want [team-only]", resumableTask.McpEndpoints)
+	}
+}
+
+// driveResumableTaskToPaused submits a resumable task carrying the given MCP
+// endpoints, claims it through the runner RPC, reports a terminal success, and
+// returns the first claim's task payload plus the resulting paused session.
+func driveResumableTaskToPaused(t *testing.T, svc *Service, rpc *RunnerRPCService, q data.Repository, ctx context.Context, endpoints []string) (*runnerv1.Task, repository.AgentSession) {
+	t.Helper()
+	rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{
+		Prompt:       "resumable task with endpoints",
+		AgentImage:   "runner:latest",
+		SessionMode:  "resumable",
+		McpEndpoints: endpoints,
+	})
+	if err != nil {
+		t.Fatalf("submit resumable task: %v", err)
+	}
+	registerIsolationCapableRunner(t, q, "runner_1")
+	claimResp, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_1", WaitSeconds: 1,
+	}))
+	if err != nil {
+		t.Fatalf("claim resumable task: %v", err)
+	}
+	if claimResp.Msg.Task == nil || claimResp.Msg.Task.TaskId != rec.ID {
+		t.Fatalf("claim returned wrong task: %+v", claimResp.Msg.Task)
+	}
+	if _, err := rpc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_1",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId:            rec.ID,
+			ExecutionId:       claimResp.Msg.Task.ExecutionId,
+			ClaimId:           claimResp.Msg.Task.ClaimId,
+			AgentSessionId:    claimResp.Msg.Task.AgentSessionId,
+			UserPromptId:      claimResp.Msg.Task.UserPromptId,
+			Status:            "done",
+			Summary:           "paused for review",
+			EndedAt:           time.Now().UTC().Format(time.RFC3339Nano),
+			OpencodeSessionId: "oc_sid_endpoints",
+			WorkspacePath:     "/var/lib/runner/" + rec.ID + "/workspace",
+		}},
+	})); err != nil {
+		t.Fatalf("report terminal event: %v", err)
+	}
+	run, err := q.GetUserPromptByTaskID(ctx, rec.ID)
+	if err != nil {
+		t.Fatalf("get user prompt: %v", err)
+	}
+	session, err := q.GetAgentSessionByID(ctx, run.AgentSessionID)
+	if err != nil {
+		t.Fatalf("get paused session: %v", err)
+	}
+	if session.Status != "paused" {
+		t.Fatalf("session status = %s, want paused", session.Status)
+	}
+	return claimResp.Msg.Task, session
+}
+
+func TestResumableTaskWithMcpEndpoints(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := data.New(tdb.DB, tdb.Dialect())
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	seedMcpEndpoint(t, tdb.DB, tdb.Dialect(), "context", "global", "")
+
+	firstTask, session := driveResumableTaskToPaused(t, svc, rpc, q, ctx, []string{"context"})
+	if len(firstTask.McpEndpoints) != 1 || !strings.HasSuffix(firstTask.McpEndpoints[0].Url, "/global/context") {
+		t.Fatalf("first claim endpoints = %#v, want resolved global/context", firstTask.McpEndpoints)
+	}
+
+	resumeOut, err := svc.ResumeAgentSession(ctx, session.ID, "address feedback", 600)
+	if err != nil {
+		t.Fatalf("resume session: %v", err)
+	}
+	resumeClaim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_1", WaitSeconds: 0,
+	}))
+	if err != nil {
+		t.Fatalf("claim resumed task: %v", err)
+	}
+	if resumeClaim.Msg.Task == nil || resumeClaim.Msg.Task.TaskId != resumeOut.Task.ID {
+		t.Fatalf("claim returned wrong resume task: %+v", resumeClaim.Msg.Task)
+	}
+	if len(resumeClaim.Msg.Task.McpEndpoints) != 1 || !strings.HasSuffix(resumeClaim.Msg.Task.McpEndpoints[0].Url, "/global/context") {
+		t.Fatalf("resumed claim endpoints = %#v, want resolved global/context", resumeClaim.Msg.Task.McpEndpoints)
+	}
+}
+
+func TestResumeAgentSessionFailsWhenMcpEndpointRemoved(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := data.New(tdb.DB, tdb.Dialect())
+	rpc := NewRunnerRPCService(data.New(tdb.DB, tdb.Dialect()), tdb.DB, tdb.Dialect())
+
+	seedMcpEndpoint(t, tdb.DB, tdb.Dialect(), "context", "global", "")
+
+	_, session := driveResumableTaskToPaused(t, svc, rpc, q, ctx, []string{"context"})
+
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		`UPDATE definitions SET active = false WHERE definition_type = 'mcp_endpoint' AND name = 'context'`,
+		`UPDATE definitions SET active = false WHERE definition_type = 'mcp_endpoint' AND name = 'context'`)); err != nil {
+		t.Fatalf("deactivate endpoint: %v", err)
+	}
+
+	_, err := svc.ResumeAgentSession(ctx, session.ID, "address feedback", 600)
+	if err == nil || !strings.Contains(err.Error(), "context") {
+		t.Fatalf("expected resume to fail naming the removed endpoint, got %v", err)
 	}
 }
 
