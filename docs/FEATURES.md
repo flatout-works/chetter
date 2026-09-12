@@ -73,6 +73,8 @@ Trigger tools:
 
 Event callbacks react to task lifecycle events with `create_task`, `webhook`, or `slack` actions, managed via `chetter_create_event_callback` and friends. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
+Generic inbound webhook endpoints let external systems submit authenticated JSON events to `POST /hooks/inbound/<public_id>`; each delivery is durably enqueued and creates exactly one configured task. Endpoints and deliveries are inspectable with `chetter_list_inbound_endpoints` and `chetter_list_inbound_deliveries`. See [WEBHOOKS.md](WEBHOOKS.md).
+
 ## GitHub Artifacts
 
 Chetter exposes runner-bridge GitHub tools to task agents so they do not need direct `gh` write access for common artifact creation and lifecycle changes. These tools are not part of the control-plane MCP API.
@@ -194,7 +196,7 @@ Chetter can sync definitions from a Git repository configured by `DEFINITIONS_RE
 Implemented:
 
 - Git-backed model catalog loading.
-- Git-backed agents, skills, triggers, task templates, and MCP endpoints.
+- Git-backed agents, skills, triggers, task templates, MCP endpoints, and inbound webhook endpoints.
 - Five-minute auto-sync.
 - Manual sync via `chetter_sync_definitions`.
 - Read access via `chetter_get_model_catalog`.
