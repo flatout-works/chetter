@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-12
+
+### Changed
+
+- MCP endpoints can now be attached to resumable tasks (issue #389, merged in #407). Previously `chetter_submit_task` rejected any resumable task that selected `mcp_endpoints`, forcing those sessions to run without mounted MCP tools. Endpoint names selected at submission are already persisted in the agent session snapshot and resolved to current connection details at claim time, so a resumed harness session now gets the same MCP tools as the original run. Resume validates the session's stored endpoint names before requeueing: if a definition was deleted or moved out of scope while the session was paused, the resume fails with an error naming the missing endpoint instead of silently launching the agent headless. Documented in `docs/CONFIGURATION.md`, with integration tests covering end-to-end resume with endpoints and resume failure on a removed endpoint.
+
 ## 2026-09-09
 
 ### Added
