@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-11
+
+### Fixed
+
+- MCP endpoints are now allowed on resumable tasks (issue #389, merged in #407): the submission-time rejection that made resumable sessions and `mcp_endpoints` mutually exclusive is lifted. Endpoint names selected at submission are already persisted in the agent session snapshot and resolved to current connection details at claim time, so a resumed harness session gets the same MCP tools as the original run. Resume now validates the session's stored endpoint names before requeueing the task: if a definition was deleted or moved out of scope while the session was paused, the resume fails with an error naming the missing endpoint instead of silently launching the agent headless. Documented in `docs/CONFIGURATION.md`.
+
 ## 2026-09-09
 
 ### Added
