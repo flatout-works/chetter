@@ -612,7 +612,9 @@ hand.
   issue #87.
 - **Audit log** (`audit_log` table) recording server-side events — webhook receipts,
   trigger matches, task submissions, session resume, cancellation, queue clear, token
-  create/delete, model catalog sync, and GitHub PR/issue lifecycle changes made by
+  create/delete, model catalog sync, callback delivery lifecycle transitions
+  (`callback_delivery_completed`, `callback_delivery_failed`,
+  `callback_delivery_dead_letter`), and GitHub PR/issue lifecycle changes made by
   runner tasks (`github_pr_merged`, `github_pr_closed`, `github_issue_closed`,
   `github_issue_labels_added`) — queryable via `chetter_list_audit_events`.
 - **Task artifacts** (`task_artifacts`) track GitHub issues/PRs/comments created by
