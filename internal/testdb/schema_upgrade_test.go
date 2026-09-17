@@ -248,6 +248,50 @@ func TestMySQLApplyIsolationColumnsMigration(t *testing.T) {
 	rows.Close()
 }
 
+// TestMySQLApplyCreateTaskCallbackDeliveryMigration drops the columns added by
+// migration 057 and proves the migration re-adds them (the path an existing
+// goose-managed deployment takes on upgrade to the durable create_task outbox,
+// issue #405).
+func TestMySQLApplyCreateTaskCallbackDeliveryMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE callback_deliveries DROP COLUMN child_task_id"); err != nil {
+		t.Fatalf("drop child_task_id: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE callback_deliveries DROP COLUMN action_type"); err != nil {
+		t.Fatalf("drop action_type: %v", err)
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/057_add_create_task_callback_delivery.sql"))
+	if err != nil {
+		t.Fatalf("read create_task callback delivery migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"057_add_create_task_callback_delivery.sql": &fstest.MapFile{Data: []byte(string(migration))},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply create_task callback delivery migration: %v", err)
+	}
+
+	rows, err := tdb.DB.QueryContext(ctx, "SELECT action_type, child_task_id FROM callback_deliveries WHERE 1=0")
+	if err != nil {
+		t.Fatalf("query migrated callback delivery columns: %v", err)
+	}
+	rows.Close()
+}
+
 // TestMySQLApplyMultiReplicaCoordinationMigration drops the coordination
 // tables created by the bootstrap schema and proves migration 054 re-creates
 // them (including the claim_notify_counter and admission_locks seed rows) —

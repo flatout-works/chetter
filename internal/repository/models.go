@@ -129,6 +129,8 @@ type CallbackDelivery struct {
 	ProcessedAt    sql.NullTime   `json:"processed_at"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
+	ActionType     string         `json:"action_type"`
+	ChildTaskID    sql.NullString `json:"child_task_id"`
 }
 
 type ClaimNotifyCounter struct {
@@ -252,6 +254,26 @@ type GitIdentity struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	IsDefault      bool      `json:"is_default"`
+}
+
+type InboundDelivery struct {
+	ID             string         `json:"id"`
+	EndpointID     string         `json:"endpoint_id"`
+	TeamID         sql.NullString `json:"team_id"`
+	DeliveryID     sql.NullString `json:"delivery_id"`
+	EventType      sql.NullString `json:"event_type"`
+	SourceIp       sql.NullString `json:"source_ip"`
+	Payload        string         `json:"payload"`
+	Status         string         `json:"status"`
+	Attempts       int32          `json:"attempts"`
+	MaxAttempts    int32          `json:"max_attempts"`
+	Error          sql.NullString `json:"error"`
+	TaskID         sql.NullString `json:"task_id"`
+	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
+	NextAttemptAt  sql.NullTime   `json:"next_attempt_at"`
+	ProcessedAt    sql.NullTime   `json:"processed_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type ModelCatalog struct {
@@ -449,4 +471,27 @@ type WebhookDelivery struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 	NextAttemptAt sql.NullTime   `json:"next_attempt_at"`
 	ProcessedAt   sql.NullTime   `json:"processed_at"`
+}
+
+type WebhookEndpoint struct {
+	ID               string           `json:"id"`
+	PublicID         string           `json:"public_id"`
+	Name             string           `json:"name"`
+	Scope            string           `json:"scope"`
+	TeamID           sql.NullString   `json:"team_id"`
+	SourcePath       string           `json:"source_path"`
+	Enabled          bool             `json:"enabled"`
+	AuthType         string           `json:"auth_type"`
+	SecretEnv        string           `json:"secret_env"`
+	SignatureHeader  sql.NullString   `json:"signature_header"`
+	SignaturePrefix  sql.NullString   `json:"signature_prefix"`
+	DeliveryIDHeader sql.NullString   `json:"delivery_id_header"`
+	EventTypeHeader  sql.NullString   `json:"event_type_header"`
+	AcceptedEvents   *json.RawMessage `json:"accepted_events"`
+	ActionType       string           `json:"action_type"`
+	ActionPrompt     string           `json:"action_prompt"`
+	ActionAgent      sql.NullString   `json:"action_agent"`
+	ActionTimeoutSec sql.NullInt32    `json:"action_timeout_sec"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
 }

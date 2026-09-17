@@ -387,11 +387,14 @@ var schemaStatements = []string{
 		KEY idx_webhook_deliveries_status_next (status, next_attempt_at),
 		KEY idx_webhook_deliveries_created (created_at)
 	)`,
-	// callback_deliveries is the durable outbound queue for webhook/slack event
-	// callback actions (issue #357). Rows are written in the same transaction
-	// as their task_events row (outbox pattern) and claimed by a leased
-	// multi-replica worker. Statuses: pending, in_flight, completed, failed,
-	// dead_letter. Unique (callback_id, event_id) makes replays idempotent.
+	// callback_deliveries is the durable outbox for all event-callback actions:
+	// webhook/slack HTTP deliveries (issue #357) and create_task spawns
+	// (issue #405). Rows are written in the same transaction as their
+	// task_events row and claimed by a leased multi-replica worker. Statuses:
+	// pending, in_flight, completed, failed, dead_letter. action_type selects
+	// the execution path; child_task_id records the spawned task for
+	// create_task deliveries; unique (callback_id, event_id) makes replays
+	// idempotent.
 	`CREATE TABLE IF NOT EXISTS callback_deliveries (
 		id VARCHAR(64) NOT NULL,
 		callback_id VARCHAR(64) NOT NULL,
@@ -399,6 +402,7 @@ var schemaStatements = []string{
 		task_id VARCHAR(64) NULL,
 		team_id VARCHAR(64) NULL,
 		event_type VARCHAR(64) NOT NULL,
+		action_type VARCHAR(32) NOT NULL DEFAULT 'webhook',
 		endpoint_url TEXT NOT NULL,
 		method VARCHAR(16) NOT NULL DEFAULT 'POST',
 		headers TEXT NULL,
@@ -407,6 +411,7 @@ var schemaStatements = []string{
 		attempts INT NOT NULL DEFAULT 0,
 		max_attempts INT NOT NULL DEFAULT 3,
 		error TEXT NULL,
+		child_task_id VARCHAR(64) NULL,
 		lease_expires_at DATETIME(6) NULL,
 		next_attempt_at DATETIME(6) NULL,
 		processed_at DATETIME(6) NULL,

@@ -3,7 +3,9 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -91,12 +93,14 @@ type CallbackDeliveryRecord struct {
 	TaskID        string     `json:"task_id,omitempty"`
 	TeamID        string     `json:"team_id,omitempty"`
 	EventType     string     `json:"event_type"`
+	ActionType    string     `json:"action_type"`
 	EndpointURL   string     `json:"endpoint_url"`
 	Method        string     `json:"method"`
 	Status        string     `json:"status"`
 	Attempts      int        `json:"attempts"`
 	MaxAttempts   int        `json:"max_attempts"`
 	Error         string     `json:"error,omitempty"`
+	ChildTaskID   string     `json:"child_task_id,omitempty"`
 	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
 	ProcessedAt   *time.Time `json:"processed_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
@@ -117,16 +121,18 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 	var query string
 	if s.dialect == store.DialectPostgres {
 		query = `SELECT id, callback_id, event_id, COALESCE(task_id, ''), COALESCE(team_id, ''),
-		                event_type, endpoint_url, method, status, attempts, max_attempts,
-		                COALESCE(error, ''), next_attempt_at, processed_at, created_at, updated_at
+		                event_type, action_type, endpoint_url, method, status, attempts, max_attempts,
+		                COALESCE(error, ''), COALESCE(child_task_id, ''),
+		                next_attempt_at, processed_at, created_at, updated_at
 		         FROM callback_deliveries
 		         WHERE ($1 = '' OR status = $1)
 		         ORDER BY created_at DESC
 		         LIMIT $2 OFFSET $3`
 	} else {
 		query = `SELECT id, callback_id, event_id, COALESCE(task_id, ''), COALESCE(team_id, ''),
-		                event_type, endpoint_url, method, status, attempts, max_attempts,
-		                COALESCE(error, ''), next_attempt_at, processed_at, created_at, updated_at
+		                event_type, action_type, endpoint_url, method, status, attempts, max_attempts,
+		                COALESCE(error, ''), COALESCE(child_task_id, ''),
+		                next_attempt_at, processed_at, created_at, updated_at
 		         FROM callback_deliveries
 		         WHERE (? = '' OR status = ?)
 		         ORDER BY created_at DESC
@@ -142,8 +148,8 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 		var r CallbackDeliveryRecord
 		var nextAttemptAt, processedAt sql.NullTime
 		if err := rows.Scan(&r.ID, &r.CallbackID, &r.EventID, &r.TaskID, &r.TeamID, &r.EventType,
-			&r.EndpointURL, &r.Method, &r.Status, &r.Attempts, &r.MaxAttempts, &r.Error,
-			&nextAttemptAt, &processedAt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			&r.ActionType, &r.EndpointURL, &r.Method, &r.Status, &r.Attempts, &r.MaxAttempts, &r.Error,
+			&r.ChildTaskID, &nextAttemptAt, &processedAt, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan callback delivery: %w", err)
 		}
 		if nextAttemptAt.Valid {
@@ -158,11 +164,13 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 }
 
 // EnqueueTaskEventCallbackDeliveries persists one outbound delivery row per
-// enabled webhook/slack callback matching the event. It must run inside the
-// same transaction that inserts the task_events row (issue #357 AC1) so a
-// persisted event can never lack its delivery record; the unique
-// (callback_id, event_id) key makes replays idempotent. create_task callbacks
-// are not queued — they stay synchronous (DispatchTaskEventCallbacks).
+// enabled callback matching the event. It must run inside the same
+// transaction that inserts the task_events row (issue #357 AC1, extended by
+// issue #405) so a persisted event can never lack its delivery record; the
+// unique (callback_id, event_id) key makes replays idempotent. All three
+// action types are durable: webhook/slack rows hold the rendered HTTP request
+// and create_task rows hold a JSON snapshot of the callback config and event,
+// executed later by the leased delivery worker.
 func (s *Service) EnqueueTaskEventCallbackDeliveries(ctx context.Context, q data.Repository, event TaskEventCallbackContext) error {
 	callbacks, err := q.ListEnabledEventCallbacksForEvent(ctx, repository.ListEnabledEventCallbacksForEventParams{
 		TeamID:    nullString(event.TeamID),
@@ -178,9 +186,71 @@ func (s *Service) EnqueueTaskEventCallbackDeliveries(ctx context.Context, q data
 			if err := s.enqueueCallbackDelivery(ctx, q, event, callback, now); err != nil {
 				return err
 			}
+		case EventCallbackActionCreateTask:
+			if err := s.enqueueCreateTaskCallbackDelivery(ctx, q, event, callback, now); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// callbackCreateTaskDelivery is the durable snapshot stored in a create_task
+// delivery row's payload column (issue #405). It carries everything needed to
+// spawn the child at execution time without depending on the live callback or
+// the task_events row still existing: the callback name (for env/provenance),
+// the action config (prompt template and task parameters), and the event that
+// triggered it (template data).
+type callbackCreateTaskDelivery struct {
+	Name   string                   `json:"name"`
+	Config callbackCreateTaskConfig `json:"config"`
+	Event  TaskEventCallbackContext `json:"event"`
+}
+
+// enqueueCreateTaskCallbackDelivery writes a durable create_task delivery row
+// in the caller's transaction. A config that can never spawn a task is
+// recorded directly as dead_letter (mirroring webhook/slack) rather than
+// being logged and dropped; valid configs are stored as pending rows and
+// executed by the leased worker.
+func (s *Service) enqueueCreateTaskCallbackDelivery(ctx context.Context, q data.Repository, event TaskEventCallbackContext, callback repository.EventCallback, now time.Time) error {
+	var cfg callbackCreateTaskConfig
+	if err := json.Unmarshal(callback.ActionConfig, &cfg); err != nil {
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, EventCallbackActionCreateTask, fmt.Sprintf("parse action_config: %v", err))
+	}
+	if cfg.Prompt == "" {
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, EventCallbackActionCreateTask, "create_task action_config.prompt is required")
+	}
+	snapshot, err := json.Marshal(callbackCreateTaskDelivery{Name: callback.Name, Config: cfg, Event: event})
+	if err != nil {
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, EventCallbackActionCreateTask, fmt.Sprintf("encode delivery snapshot: %v", err))
+	}
+	id, err := randomID("cbd")
+	if err != nil {
+		return fmt.Errorf("generate callback delivery id: %w", err)
+	}
+	return q.InsertCallbackDelivery(ctx, repository.InsertCallbackDeliveryParams{
+		ID:             id,
+		CallbackID:     callback.ID,
+		EventID:        event.ID,
+		TaskID:         nullString(event.TaskID),
+		TeamID:         nullString(event.TeamID),
+		EventType:      event.EventType,
+		ActionType:     EventCallbackActionCreateTask,
+		EndpointUrl:    "",
+		Method:         "",
+		Headers:        sql.NullString{},
+		Payload:        string(snapshot),
+		Status:         callbackDeliveryStatusPending,
+		Attempts:       0,
+		MaxAttempts:    defaultCallbackDeliveryMaxAttempts,
+		Error:          sql.NullString{},
+		ChildTaskID:    sql.NullString{},
+		LeaseExpiresAt: sql.NullTime{},
+		NextAttemptAt:  sql.NullTime{Time: now, Valid: true},
+		ProcessedAt:    sql.NullTime{},
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
 }
 
 // enqueueCallbackDelivery renders the delivery snapshot for one callback and
@@ -193,10 +263,10 @@ func (s *Service) EnqueueTaskEventCallbackDeliveries(ctx context.Context, q data
 func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository, event TaskEventCallbackContext, callback repository.EventCallback, now time.Time) error {
 	var cfg callbackWebhookConfig
 	if err := json.Unmarshal(callback.ActionConfig, &cfg); err != nil {
-		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, fmt.Sprintf("parse action_config: %v", err))
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, callback.ActionType, fmt.Sprintf("parse action_config: %v", err))
 	}
 	if strings.TrimSpace(cfg.URL) == "" {
-		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, "webhook action_config.url is required")
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, callback.ActionType, "webhook action_config.url is required")
 	}
 	// Defense in depth (issue #337): never enqueue a delivery for a
 	// destination the SSRF-safe policy currently rejects. The client also
@@ -209,7 +279,7 @@ func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository
 	}
 	body, err := renderWebhookBody(callback.ActionType, cfg, event)
 	if err != nil {
-		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, fmt.Sprintf("render payload: %v", err))
+		return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, callback.ActionType, fmt.Sprintf("render payload: %v", err))
 	}
 	method := cfg.Method
 	if method == "" {
@@ -219,7 +289,7 @@ func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository
 	if len(cfg.Headers) > 0 {
 		raw, err := json.Marshal(cfg.Headers)
 		if err != nil {
-			return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, fmt.Sprintf("encode headers: %v", err))
+			return s.enqueueBrokenCallbackDelivery(ctx, q, event, callback, now, callback.ActionType, fmt.Sprintf("encode headers: %v", err))
 		}
 		headersJSON = sql.NullString{String: string(raw), Valid: true}
 	}
@@ -234,6 +304,7 @@ func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository
 		TaskID:         nullString(event.TaskID),
 		TeamID:         nullString(event.TeamID),
 		EventType:      event.EventType,
+		ActionType:     callback.ActionType,
 		EndpointUrl:    cfg.URL,
 		Method:         method,
 		Headers:        headersJSON,
@@ -242,6 +313,7 @@ func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository
 		Attempts:       0,
 		MaxAttempts:    defaultCallbackDeliveryMaxAttempts,
 		Error:          sql.NullString{},
+		ChildTaskID:    sql.NullString{},
 		LeaseExpiresAt: sql.NullTime{},
 		NextAttemptAt:  sql.NullTime{Time: now, Valid: true},
 		ProcessedAt:    sql.NullTime{},
@@ -256,12 +328,15 @@ func (s *Service) enqueueCallbackDelivery(ctx context.Context, q data.Repository
 // being logged and dropped. The caller's task-event transaction is not
 // aborted: a broken callback must not prevent the event itself from being
 // persisted.
-func (s *Service) enqueueBrokenCallbackDelivery(ctx context.Context, q data.Repository, event TaskEventCallbackContext, callback repository.EventCallback, now time.Time, errMsg string) error {
+func (s *Service) enqueueBrokenCallbackDelivery(ctx context.Context, q data.Repository, event TaskEventCallbackContext, callback repository.EventCallback, now time.Time, actionType, errMsg string) error {
 	id, err := randomID("cbd")
 	if err != nil {
 		return fmt.Errorf("generate callback delivery id: %w", err)
 	}
-	slog.Warn("event callback delivery enqueued as dead_letter (config error)", "callback", callback.Name, "event_id", event.ID, "error", errMsg)
+	if actionType == "" {
+		actionType = callback.ActionType
+	}
+	slog.Warn("event callback delivery enqueued as dead_letter (config error)", "callback", callback.Name, "action_type", actionType, "event_id", event.ID, "error", errMsg)
 	return q.InsertCallbackDelivery(ctx, repository.InsertCallbackDeliveryParams{
 		ID:             id,
 		CallbackID:     callback.ID,
@@ -269,6 +344,7 @@ func (s *Service) enqueueBrokenCallbackDelivery(ctx context.Context, q data.Repo
 		TaskID:         nullString(event.TaskID),
 		TeamID:         nullString(event.TeamID),
 		EventType:      event.EventType,
+		ActionType:     actionType,
 		EndpointUrl:    "",
 		Method:         http.MethodPost,
 		Headers:        sql.NullString{},
@@ -277,6 +353,7 @@ func (s *Service) enqueueBrokenCallbackDelivery(ctx context.Context, q data.Repo
 		Attempts:       1,
 		MaxAttempts:    defaultCallbackDeliveryMaxAttempts,
 		Error:          sql.NullString{String: errMsg, Valid: true},
+		ChildTaskID:    sql.NullString{},
 		LeaseExpiresAt: sql.NullTime{},
 		NextAttemptAt:  sql.NullTime{},
 		ProcessedAt:    sql.NullTime{},
@@ -358,7 +435,8 @@ func (s *Service) claimDueCallbackDeliveries(ctx context.Context, now time.Time)
 		if s.dialect == store.DialectPostgres {
 			query = `SELECT id, callback_id, event_id, task_id, team_id, event_type, endpoint_url,
 			                method, headers, payload, status, attempts, max_attempts, error,
-			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at
+			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at,
+			                action_type, child_task_id
 			         FROM callback_deliveries
 			         WHERE (status = 'pending' AND next_attempt_at <= $1)
 			            OR (status = 'failed' AND next_attempt_at <= $1)
@@ -366,7 +444,8 @@ func (s *Service) claimDueCallbackDeliveries(ctx context.Context, now time.Time)
 		} else {
 			query = `SELECT id, callback_id, event_id, task_id, team_id, event_type, endpoint_url,
 			                method, headers, payload, status, attempts, max_attempts, error,
-			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at
+			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at,
+			                action_type, child_task_id
 			         FROM callback_deliveries
 			         WHERE (status = 'pending' AND next_attempt_at <= ?)
 			            OR (status = 'failed' AND next_attempt_at <= ?)
@@ -383,7 +462,7 @@ func (s *Service) claimDueCallbackDeliveries(ctx context.Context, now time.Time)
 				&item.EventType, &item.EndpointUrl, &item.Method, &item.Headers, &item.Payload,
 				&item.Status, &item.Attempts, &item.MaxAttempts, &item.Error,
 				&item.LeaseExpiresAt, &item.NextAttemptAt, &item.ProcessedAt,
-				&item.CreatedAt, &item.UpdatedAt); err != nil {
+				&item.CreatedAt, &item.UpdatedAt, &item.ActionType, &item.ChildTaskID); err != nil {
 				rows.Close()
 				return fmt.Errorf("scan due callback delivery: %w", err)
 			}
@@ -413,36 +492,58 @@ func (s *Service) claimDueCallbackDeliveries(ctx context.Context, now time.Time)
 	return claimed, nil
 }
 
-// deliverCallbackDelivery performs one HTTP delivery and persists the outcome:
-// completed on 2xx, failed with exponential backoff on transient errors, and
-// dead_letter once max_attempts is exhausted or the SSRF-safe policy rejects
-// the destination (retrying a policy-rejected destination can never succeed).
-// Every terminal transition is audited (issue #357 AC4).
+// deliverCallbackDelivery dispatches one claimed delivery to its action-type
+// executor and persists the outcome: completed on success, failed with
+// exponential backoff on transient errors, and dead_letter once max_attempts
+// is exhausted or the failure is terminal. Every transition is audited
+// (issue #357 AC4 for webhook/slack, issue #405 for create_task).
 func (s *Service) deliverCallbackDelivery(ctx context.Context, delivery repository.CallbackDelivery) error {
 	now := time.Now().UTC()
+	if delivery.ActionType == EventCallbackActionCreateTask {
+		return s.deliverCreateTaskCallback(ctx, delivery, now)
+	}
 	err := s.sendCallbackDelivery(ctx, delivery)
 	if err == nil {
-		_, markErr := s.repo.MarkCallbackDeliverySucceeded(ctx, repository.MarkCallbackDeliverySucceededParams{
-			ProcessedAt: sql.NullTime{Time: now, Valid: true},
-			UpdatedAt:   now,
-			ID:          delivery.ID,
-		})
-		if markErr != nil {
-			return fmt.Errorf("mark callback delivery completed: %w", markErr)
-		}
-		s.auditCallbackDelivery(ctx, delivery, "callback_delivery_completed", "delivery completed")
-		return nil
+		return s.completeCallbackDelivery(ctx, delivery, "", now)
 	}
-
 	var polErr *ssrf.Error
-	status := callbackDeliveryStatusDeadLetter
-	var nextAttemptAt sql.NullTime
 	if errors.As(err, &polErr) {
 		s.auditCallbackDelivery(ctx, delivery, "event_callback_destination_rejected", fmt.Sprintf("destination rejected by SSRF-safe policy: %v", polErr))
 		slog.Warn("callback delivery destination rejected by SSRF-safe policy; dead-lettering", "delivery_id", delivery.ID, "callback_id", delivery.CallbackID, "error", polErr)
-	} else {
-		backoff := s.callbackDeliveryBackoff()
-		nextStatus, nextAt, retry := nextCallbackDeliveryAttempt(now, delivery.Attempts+1, delivery.MaxAttempts, backoff)
+		return s.failCallbackDelivery(ctx, delivery, now, true, err)
+	}
+	return s.failCallbackDelivery(ctx, delivery, now, false, err)
+}
+
+// completeCallbackDelivery marks a delivery completed and records the spawned
+// child task (create_task) for replay-safe recovery. childTaskID is empty for
+// webhook/slack deliveries.
+func (s *Service) completeCallbackDelivery(ctx context.Context, delivery repository.CallbackDelivery, childTaskID string, now time.Time) error {
+	if _, err := s.repo.MarkCallbackDeliverySucceeded(ctx, repository.MarkCallbackDeliverySucceededParams{
+		ChildTaskID: nullString(childTaskID),
+		ProcessedAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:   now,
+		ID:          delivery.ID,
+	}); err != nil {
+		return fmt.Errorf("mark callback delivery completed: %w", err)
+	}
+	detail := "delivery completed"
+	if childTaskID != "" {
+		detail = fmt.Sprintf("delivery completed child_task_id=%s", childTaskID)
+	}
+	s.auditCallbackDelivery(ctx, delivery, "callback_delivery_completed", detail)
+	return nil
+}
+
+// failCallbackDelivery records a failed attempt: terminal failures (and the
+// max_attempts exhaustion) dead-letter immediately, transients are retried
+// after the exponential backoff for the upcoming attempt. It returns the
+// original cause so the worker cycle can log it.
+func (s *Service) failCallbackDelivery(ctx context.Context, delivery repository.CallbackDelivery, now time.Time, terminal bool, cause error) error {
+	status := callbackDeliveryStatusDeadLetter
+	var nextAttemptAt sql.NullTime
+	if !terminal {
+		nextStatus, nextAt, retry := nextCallbackDeliveryAttempt(now, delivery.Attempts+1, delivery.MaxAttempts, s.callbackDeliveryBackoff())
 		status = nextStatus
 		if retry {
 			nextAttemptAt = sql.NullTime{Time: nextAt, Valid: true}
@@ -450,7 +551,7 @@ func (s *Service) deliverCallbackDelivery(ctx context.Context, delivery reposito
 	}
 	if _, markErr := s.repo.FailCallbackDelivery(ctx, repository.FailCallbackDeliveryParams{
 		Status:        status,
-		Error:         sql.NullString{String: truncateTo500(err.Error()), Valid: true},
+		Error:         sql.NullString{String: truncateTo500(cause.Error()), Valid: true},
 		NextAttemptAt: nextAttemptAt,
 		UpdatedAt:     now,
 		ID:            delivery.ID,
@@ -461,8 +562,64 @@ func (s *Service) deliverCallbackDelivery(ctx context.Context, delivery reposito
 	if status == callbackDeliveryStatusDeadLetter {
 		auditEvent = "callback_delivery_dead_letter"
 	}
-	s.auditCallbackDelivery(ctx, delivery, auditEvent, fmt.Sprintf("delivery attempt failed after %d/%d attempts: %v", delivery.Attempts+1, delivery.MaxAttempts, err))
-	return err
+	s.auditCallbackDelivery(ctx, delivery, auditEvent, fmt.Sprintf("delivery attempt failed after %d/%d attempts: %v", delivery.Attempts+1, delivery.MaxAttempts, cause))
+	return cause
+}
+
+// callbackDeliveryTerminalError marks a create_task delivery failure that can
+// never succeed on retry (bad snapshot/config/template). The worker
+// dead-letters these immediately instead of exhausting max_attempts
+// (issue #405 AC5/AC6).
+type callbackDeliveryTerminalError struct{ err error }
+
+func (e *callbackDeliveryTerminalError) Error() string { return e.err.Error() }
+func (e *callbackDeliveryTerminalError) Unwrap() error { return e.err }
+
+func terminalCallbackDeliveryError(format string, args ...any) error {
+	return &callbackDeliveryTerminalError{err: fmt.Errorf(format, args...)}
+}
+
+// deliverCreateTaskCallback executes a durable create_task delivery: it
+// re-checks the recursion-depth guard (issue #312) at execution time, spawns
+// the child task with a deterministic id derived from the delivery row (so a
+// crash between spawn and completion cannot duplicate it), and persists the
+// outcome. Dead letters are visible via chetter_list_callback_deliveries and
+// audited.
+func (s *Service) deliverCreateTaskCallback(ctx context.Context, delivery repository.CallbackDelivery, now time.Time) error {
+	var snapshot callbackCreateTaskDelivery
+	if err := json.Unmarshal([]byte(delivery.Payload), &snapshot); err != nil {
+		return s.failCallbackDelivery(ctx, delivery, now, true, terminalCallbackDeliveryError("parse create_task delivery snapshot: %v", err))
+	}
+	childTaskID := callbackDeliveryTaskID(delivery.ID)
+	if err := s.spawnCreateTaskFromEvent(ctx, snapshot.Event, snapshot.Name, snapshot.Config, childTaskID); err != nil {
+		if isDuplicateKeyError(err) {
+			// A previous attempt spawned the child and crashed before marking
+			// this delivery completed. The deterministic id makes the replay
+			// idempotent: adopt the existing task instead of duplicating it.
+			if _, getErr := s.repo.GetTaskByID(ctx, childTaskID); getErr == nil {
+				slog.Info("create_task callback delivery: task already created by previous attempt", "delivery_id", delivery.ID, "child_task_id", childTaskID)
+				return s.completeCallbackDelivery(ctx, delivery, childTaskID, now)
+			}
+		}
+		terminal := errors.Is(err, errEventCallbackRecursionLimit) || isCallbackDeliveryPermanentError(err)
+		return s.failCallbackDelivery(ctx, delivery, now, terminal, err)
+	}
+	return s.completeCallbackDelivery(ctx, delivery, childTaskID, now)
+}
+
+// callbackDeliveryTaskID derives the deterministic child task id for one
+// create_task delivery row. A retry that re-runs the spawn after a crash
+// reuses the same id, so the tasks primary key makes it idempotent (issue
+// #405 AC3), mirroring the inbound webhook worker.
+func callbackDeliveryTaskID(deliveryRowID string) string {
+	sum := sha256.Sum256([]byte("callback_delivery:" + deliveryRowID))
+	return "task_" + hex.EncodeToString(sum[:])[:32]
+}
+
+// isCallbackDeliveryPermanentError classifies a create_task spawn failure as
+// terminal (config/template/validation) versus transient (database/network).
+func isCallbackDeliveryPermanentError(err error) bool {
+	return isInboundPermanentTaskError(err)
 }
 
 // sendCallbackDelivery performs the SSRF-safe HTTP request for one claimed

@@ -303,6 +303,7 @@ erDiagram
         string task_id
         string team_id
         string event_type
+        string action_type
         text endpoint_url
         string method
         text headers
@@ -311,6 +312,7 @@ erDiagram
         int attempts
         int max_attempts
         text error
+        string child_task_id
         datetime lease_expires_at
         datetime next_attempt_at
         datetime processed_at
@@ -366,9 +368,12 @@ erDiagram
 a **trigger run**. **Event callbacks** react to task lifecycle events with
 create_task/webhook/slack actions. **Webhook deliveries** persist inbound
 GitHub deliveries for retry/dead-letter handling. **Callback deliveries** are
-the durable outbound queue for webhook/slack callback actions (issue #357):
-each row is written in the same transaction as its task event and delivered by
-a leased worker with retry/backoff and dead-lettering.
+the durable outbox for all three callback action types: each row is written in
+the same transaction as its task event and executed by a leased worker with
+retry/backoff and dead-lettering. `action_type` selects the execution path
+(webhook/slack HTTP delivery, issue #357; create_task spawn, issue #405) and
+`child_task_id` records the spawned task so a retried create_task delivery
+cannot duplicate it.
 
 **Webhook endpoints** materialize Git-managed generic inbound webhook
 definitions (issue #120) into stable runtime identities: `public_id` is the

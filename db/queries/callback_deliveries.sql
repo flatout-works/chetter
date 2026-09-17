@@ -1,14 +1,15 @@
--- callback_deliveries is the durable outbound queue for webhook/slack event
--- callback actions (issue #357). Rows are inserted transactionally with their
--- task_events row and claimed by a leased multi-replica delivery worker.
--- Statuses: pending, in_flight, completed, failed, dead_letter.
+-- callback_deliveries is the durable outbox for event-callback actions.
+-- webhook/slack HTTP deliveries (issue #357) and create_task spawns
+-- (issue #405) both insert transactionally with their task_events row and are
+-- claimed by a leased multi-replica worker. action_type selects the
+-- execution path. Statuses: pending, in_flight, completed, failed, dead_letter.
 
 -- name: InsertCallbackDelivery :exec
 INSERT INTO callback_deliveries
-    (id, callback_id, event_id, task_id, team_id, event_type, endpoint_url, method, headers,
-     payload, status, attempts, max_attempts, error, lease_expires_at, next_attempt_at,
-     processed_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, callback_id, event_id, task_id, team_id, event_type, action_type, endpoint_url, method,
+     headers, payload, status, attempts, max_attempts, error, child_task_id, lease_expires_at,
+     next_attempt_at, processed_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE id = id;
 
 -- name: MarkCallbackDeliveryInFlight :execrows
@@ -28,6 +29,7 @@ SET status = 'completed',
     error = NULL,
     lease_expires_at = NULL,
     next_attempt_at = NULL,
+    child_task_id = sqlc.arg(child_task_id),
     processed_at = sqlc.arg(processed_at),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)

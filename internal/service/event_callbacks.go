@@ -33,6 +33,12 @@ const (
 	eventCallbackRejectedEvent = "task.callback_rejected"
 )
 
+// errEventCallbackRecursionLimit is the sentinel returned when a create_task
+// callback would exceed the configured depth limit. The durable delivery
+// worker (issue #405) matches it to dead-letter the spawn terminally instead
+// of retrying a rejection that can never succeed.
+var errEventCallbackRecursionLimit = errors.New(eventCallbackRecursionError)
+
 type EventCallbackInput struct {
 	TeamID       string
 	TeamName     string
@@ -270,47 +276,23 @@ func (s *Service) DeleteEventCallback(ctx context.Context, name, teamIDInput, te
 	return rows > 0, nil
 }
 
-func (s *Service) DispatchTaskEventCallbacks(ctx context.Context, event TaskEventCallbackContext) {
-	callbacks, err := s.repo.ListEnabledEventCallbacksForEvent(ctx, repository.ListEnabledEventCallbacksForEventParams{
-		TeamID:    nullString(event.TeamID),
-		EventType: event.EventType,
-	})
-	if err != nil {
-		slog.Warn("list event callbacks failed", "event_type", event.EventType, "task_id", event.TaskID, "error", err)
-		return
-	}
-	for _, callback := range callbacks {
-		// webhook/slack actions are delivered through the durable outbound
-		// queue (issue #357): their delivery rows were already enqueued in the
-		// same transaction as this event's task_events row by
-		// EnqueueTaskEventCallbacks. Dispatching them again here would double
-		// every delivery, so this post-commit hook only runs the synchronous
-		// create_task action.
-		if callback.ActionType == EventCallbackActionWebhook || callback.ActionType == EventCallbackActionSlack {
-			continue
-		}
-		if err := s.runEventCallbackAction(ctx, event, callback); err != nil {
-			slog.Warn("event callback failed", "callback", callback.Name, "event_type", event.EventType, "task_id", event.TaskID, "error", err)
-		}
-	}
-}
-
-func (s *Service) runEventCallbackAction(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback) error {
-	switch callback.ActionType {
-	case EventCallbackActionCreateTask:
-		return s.runCreateTaskCallback(ctx, event, callback)
-	case EventCallbackActionWebhook, EventCallbackActionSlack:
-		return s.runWebhookCallback(ctx, event, callback)
-	default:
-		return fmt.Errorf("unsupported action_type %q", callback.ActionType)
-	}
-}
-
+// runCreateTaskCallback parses a callback's action_config and spawns the child
+// task synchronously. Production event dispatch goes through the durable
+// outbox (deliverCreateTaskCallback), which reuses spawnCreateTaskFromEvent;
+// this entry point remains for direct callers and tests.
 func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback) error {
 	var cfg callbackCreateTaskConfig
 	if err := json.Unmarshal(callback.ActionConfig, &cfg); err != nil {
 		return fmt.Errorf("parse action_config: %w", err)
 	}
+	return s.spawnCreateTaskFromEvent(ctx, event, callback.Name, cfg, "")
+}
+
+// spawnCreateTaskFromEvent renders the create_task prompt and submits the
+// child task with issue #312 provenance. explicitTaskID, when set, pins the
+// new task's id so a durable outbox replay after a crash is idempotent
+// (issue #405 AC3).
+func (s *Service) spawnCreateTaskFromEvent(ctx context.Context, event TaskEventCallbackContext, callbackName string, cfg callbackCreateTaskConfig, explicitTaskID string) error {
 	if cfg.Prompt == "" {
 		return fmt.Errorf("create_task action_config.prompt is required")
 	}
@@ -325,7 +307,7 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	env["CHETTER_EVENT_ID"] = event.ID
 	env["CHETTER_EVENT_TYPE"] = event.EventType
 	env["CHETTER_EVENT_TASK_ID"] = event.TaskID
-	env["CHETTER_EVENT_CALLBACK"] = callback.Name
+	env["CHETTER_EVENT_CALLBACK"] = callbackName
 	sourceTask, err := s.repo.GetTaskByID(ctx, event.TaskID)
 	if err != nil {
 		return fmt.Errorf("load callback source task: %w", err)
@@ -337,7 +319,7 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 	// callback itself stays enabled for unrelated tasks.
 	childDepth := sourceTask.CallbackDepth + 1
 	if s.cfg.CallbackMaxDepth > 0 && childDepth > int32(s.cfg.CallbackMaxDepth) {
-		return s.rejectCallbackTaskSpawn(ctx, event, callback, sourceTask, childDepth)
+		return s.rejectCallbackTaskSpawn(ctx, event, callbackName, sourceTask, childDepth)
 	}
 	env["CHETTER_EVENT_CALLBACK_DEPTH"] = strconv.Itoa(int(childDepth))
 	env["CHETTER_EVENT_PARENT_TASK_ID"] = event.TaskID
@@ -358,11 +340,12 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 		Skills:               cfg.Skills,
 		Env:                  env,
 		TimeoutSec:           cfg.TimeoutSec,
-		TriggerName:          callback.Name,
+		TriggerName:          callbackName,
 		TriggerType:          "event_callback",
 		SubmissionSource:     "event_callback",
 		CallbackParentTaskID: event.TaskID,
 		CallbackDepth:        int(childDepth),
+		ExplicitTaskID:       explicitTaskID,
 	})
 	return err
 }
@@ -371,12 +354,12 @@ func (s *Service) runCreateTaskCallback(ctx context.Context, event TaskEventCall
 // the source (parent) task's event stream and in the audit log, then returns
 // an error so the chain stops here. The callback itself is left enabled;
 // only this recursive chain is refused (issue #312).
-func (s *Service) rejectCallbackTaskSpawn(ctx context.Context, event TaskEventCallbackContext, callback repository.EventCallback, sourceTask repository.Task, childDepth int32) error {
+func (s *Service) rejectCallbackTaskSpawn(ctx context.Context, event TaskEventCallbackContext, callbackName string, sourceTask repository.Task, childDepth int32) error {
 	now := time.Now().UTC()
 	payload := mustMarshalJSON(map[string]any{
 		"task_id":           event.TaskID,
 		"parent_task_id":    event.TaskID,
-		"callback":          callback.Name,
+		"callback":          callbackName,
 		"callback_depth":    childDepth,
 		"max_depth":         s.cfg.CallbackMaxDepth,
 		"event_type":        event.EventType,
@@ -400,18 +383,18 @@ func (s *Service) rejectCallbackTaskSpawn(ctx context.Context, event TaskEventCa
 	}); err != nil {
 		return fmt.Errorf("record callback recursion rejection: %w", err)
 	}
-	detail := fmt.Sprintf("event callback %q (event %s) rejected: callback depth %d exceeds limit %d", callback.Name, event.EventType, childDepth, s.cfg.CallbackMaxDepth)
+	detail := fmt.Sprintf("event callback %q (event %s) rejected: callback depth %d exceeds limit %d", callbackName, event.EventType, childDepth, s.cfg.CallbackMaxDepth)
 	s.auditAsync(ctx, AuditEventParams{
 		EventType:  "event_callback_recursion_limit",
 		SourceType: "event_callback",
-		SourceID:   callback.Name,
+		SourceID:   callbackName,
 		TargetType: "task",
 		TargetID:   event.TaskID,
 		Detail:     detail,
 		Payload:    payload,
 	})
-	slog.Warn("event callback recursion limit hit; spawn rejected", "callback", callback.Name, "event_type", event.EventType, "task_id", event.TaskID, "depth", childDepth, "max_depth", s.cfg.CallbackMaxDepth)
-	return fmt.Errorf("%s: callback %q would create task at depth %d (limit %d)", eventCallbackRecursionError, callback.Name, childDepth, s.cfg.CallbackMaxDepth)
+	slog.Warn("event callback recursion limit hit; spawn rejected", "callback", callbackName, "event_type", event.EventType, "task_id", event.TaskID, "depth", childDepth, "max_depth", s.cfg.CallbackMaxDepth)
+	return fmt.Errorf("%w: callback %q would create task at depth %d (limit %d)", errEventCallbackRecursionLimit, callbackName, childDepth, s.cfg.CallbackMaxDepth)
 }
 
 func callbackTaskGitHubMetadata(source repository.Task, gitURL string) (string, int64) {
