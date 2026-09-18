@@ -49,10 +49,10 @@ func (q *Queries) FailCallbackDelivery(ctx context.Context, arg FailCallbackDeli
 const insertCallbackDelivery = `-- name: InsertCallbackDelivery :exec
 
 INSERT INTO callback_deliveries
-    (id, callback_id, event_id, task_id, team_id, event_type, endpoint_url, method, headers,
-     payload, status, attempts, max_attempts, error, lease_expires_at, next_attempt_at,
-     processed_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, callback_id, event_id, task_id, team_id, event_type, action_type, endpoint_url, method,
+     headers, payload, status, attempts, max_attempts, error, child_task_id, lease_expires_at,
+     next_attempt_at, processed_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE id = id
 `
 
@@ -63,6 +63,7 @@ type InsertCallbackDeliveryParams struct {
 	TaskID         sql.NullString `json:"task_id"`
 	TeamID         sql.NullString `json:"team_id"`
 	EventType      string         `json:"event_type"`
+	ActionType     string         `json:"action_type"`
 	EndpointUrl    string         `json:"endpoint_url"`
 	Method         string         `json:"method"`
 	Headers        sql.NullString `json:"headers"`
@@ -71,6 +72,7 @@ type InsertCallbackDeliveryParams struct {
 	Attempts       int32          `json:"attempts"`
 	MaxAttempts    int32          `json:"max_attempts"`
 	Error          sql.NullString `json:"error"`
+	ChildTaskID    sql.NullString `json:"child_task_id"`
 	LeaseExpiresAt sql.NullTime   `json:"lease_expires_at"`
 	NextAttemptAt  sql.NullTime   `json:"next_attempt_at"`
 	ProcessedAt    sql.NullTime   `json:"processed_at"`
@@ -78,10 +80,11 @@ type InsertCallbackDeliveryParams struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
-// callback_deliveries is the durable outbound queue for webhook/slack event
-// callback actions (issue #357). Rows are inserted transactionally with their
-// task_events row and claimed by a leased multi-replica delivery worker.
-// Statuses: pending, in_flight, completed, failed, dead_letter.
+// callback_deliveries is the durable outbox for event-callback actions.
+// webhook/slack HTTP deliveries (issue #357) and create_task spawns
+// (issue #405) both insert transactionally with their task_events row and are
+// claimed by a leased multi-replica worker. action_type selects the
+// execution path. Statuses: pending, in_flight, completed, failed, dead_letter.
 func (q *Queries) InsertCallbackDelivery(ctx context.Context, arg InsertCallbackDeliveryParams) error {
 	_, err := q.db.ExecContext(ctx, insertCallbackDelivery,
 		arg.ID,
@@ -90,6 +93,7 @@ func (q *Queries) InsertCallbackDelivery(ctx context.Context, arg InsertCallback
 		arg.TaskID,
 		arg.TeamID,
 		arg.EventType,
+		arg.ActionType,
 		arg.EndpointUrl,
 		arg.Method,
 		arg.Headers,
@@ -98,6 +102,7 @@ func (q *Queries) InsertCallbackDelivery(ctx context.Context, arg InsertCallback
 		arg.Attempts,
 		arg.MaxAttempts,
 		arg.Error,
+		arg.ChildTaskID,
 		arg.LeaseExpiresAt,
 		arg.NextAttemptAt,
 		arg.ProcessedAt,
@@ -145,6 +150,7 @@ SET status = 'completed',
     error = NULL,
     lease_expires_at = NULL,
     next_attempt_at = NULL,
+    child_task_id = ?,
     processed_at = ?,
     updated_at = ?
 WHERE id = ?
@@ -152,13 +158,19 @@ WHERE id = ?
 `
 
 type MarkCallbackDeliverySucceededParams struct {
-	ProcessedAt sql.NullTime `json:"processed_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	ID          string       `json:"id"`
+	ChildTaskID sql.NullString `json:"child_task_id"`
+	ProcessedAt sql.NullTime   `json:"processed_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	ID          string         `json:"id"`
 }
 
 func (q *Queries) MarkCallbackDeliverySucceeded(ctx context.Context, arg MarkCallbackDeliverySucceededParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markCallbackDeliverySucceeded, arg.ProcessedAt, arg.UpdatedAt, arg.ID)
+	result, err := q.db.ExecContext(ctx, markCallbackDeliverySucceeded,
+		arg.ChildTaskID,
+		arg.ProcessedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}

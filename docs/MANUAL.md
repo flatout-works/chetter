@@ -518,10 +518,12 @@ See [TRIGGERS.md](TRIGGERS.md) for cron schedules, PR review automation, and web
 
 Event callbacks react to task lifecycle events (matched by `event_type`, with
 `.*` wildcard suffix support) with a `create_task`, `webhook`, or `slack` action.
-`webhook` and `slack` deliveries run through a durable queue with exponential
-backoff, retrying up to `max_attempts` (3) before dead-lettering; spawns through
-`create_task` are guarded by the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`).
-See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
+All three action types run through the durable `callback_deliveries` outbox:
+the delivery row is written in the same transaction as its task event and
+executed by a leased worker with exponential backoff, retrying up to
+`max_attempts` (3) before dead-lettering. `create_task` spawns are guarded by
+the recursion limit (`CHETTER_CALLBACK_MAX_DEPTH`), re-checked at execution
+time. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 
 | Tool | Purpose |
 |---|---|

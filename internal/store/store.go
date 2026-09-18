@@ -536,6 +536,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskGitHubMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureCallbackDeliveryColumns(ctx); err != nil {
+		return err
+	}
 	if s.IsPostgres() {
 		return nil
 	}
@@ -800,6 +803,33 @@ func (s *Store) ensureTaskGitHubMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("add tasks.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+// ensureCallbackDeliveryColumns backfills the action_type and child_task_id
+// columns added by migration 057 (#405) for existing MySQL/TiDB deployments
+// whose callback_deliveries table predates the create_task outbox. PostgreSQL
+// deployments get the columns from migration 033 and the bootstrap DDL.
+func (s *Store) ensureCallbackDeliveryColumns(ctx context.Context) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"action_type", "ALTER TABLE callback_deliveries ADD COLUMN action_type VARCHAR(32) NOT NULL DEFAULT 'webhook'"},
+		{"child_task_id", "ALTER TABLE callback_deliveries ADD COLUMN child_task_id VARCHAR(64) NULL"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, "callback_deliveries", column.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, column.ddl); err != nil {
+			return fmt.Errorf("add callback_deliveries.%s: %w", column.name, err)
 		}
 	}
 	return nil

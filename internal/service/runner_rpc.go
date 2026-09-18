@@ -71,11 +71,12 @@ type TaskEventPublisher interface {
 }
 
 type TaskEventCallbackDispatcher interface {
-	DispatchTaskEventCallbacks(ctx context.Context, event TaskEventCallbackContext)
 	// EnqueueTaskEventCallbackDeliveries persists one outbound delivery row per
-	// enabled webhook/slack callback matching event, inside the caller's
-	// transaction (the same one inserting the task_events row — durable outbox,
-	// issue #357). create_task callbacks stay synchronous and are not enqueued.
+	// enabled callback matching event, inside the caller's transaction (the
+	// same one inserting the task_events row — durable outbox). It covers all
+	// three action types: webhook/slack HTTP deliveries (issue #357) and
+	// create_task spawns (issue #405); the leased delivery worker executes
+	// them after commit.
 	EnqueueTaskEventCallbackDeliveries(ctx context.Context, q data.Repository, event TaskEventCallbackContext) error
 }
 
@@ -1091,17 +1092,8 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 		claimed = claimedExecution{Task: task, Session: session, Prompt: prompt, Attempt: attempt, AttemptNumber: attemptNumber}
 		return nil
 	})
-	if err == nil {
-		if s.eventBus != nil {
-			s.eventBus.PublishTaskEvent(claimed.Task.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
-		}
-		if s.callbacks != nil {
-			go func() {
-				callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-				defer cancel()
-				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, claimedEvent)
-			}()
-		}
+	if err == nil && s.eventBus != nil {
+		s.eventBus.PublishTaskEvent(claimed.Task.ID, eventID, "running", "task.claimed", fmt.Sprintf("Task claimed by runner for attempt %d", claimed.AttemptNumber), string(eventPayload), eventCreatedAt.Format(time.RFC3339))
 	}
 	return claimed, err
 }
@@ -1412,30 +1404,6 @@ func (s *RunnerRPCService) recordTaskEvent(ctx context.Context, runnerID string,
 	}
 	if s.eventBus != nil && !skipEventRow {
 		s.eventBus.PublishTaskEvent(event.TaskId, eventID, status, eventType, event.Summary, string(payload), now.Format(time.RFC3339))
-	}
-	if s.callbacks != nil && !skipEventRow {
-		if task, err := s.db.GetTaskByID(ctx, event.TaskId); err == nil {
-			dispatch := TaskEventCallbackContext{
-				ID:            eventID,
-				TaskID:        event.TaskId,
-				TeamID:        task.TeamID.String,
-				Subject:       eventInsert.Subject,
-				Status:        status,
-				EventType:     eventType,
-				Summary:       event.Summary,
-				Error:         event.Error,
-				ErrorCategory: errorCategory,
-				Payload:       payload,
-				CreatedAt:     now,
-			}
-			go func() {
-				callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-				defer cancel()
-				s.callbacks.DispatchTaskEventCallbacks(callbackCtx, dispatch)
-			}()
-		} else {
-			slog.Warn("could not load task for event callbacks", "task_id", event.TaskId, "error", err)
-		}
 	}
 
 	// Evict the redaction set cache once the session itself reaches a

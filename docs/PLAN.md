@@ -217,11 +217,12 @@ Tasks show structured setup progress before agent execution, and a repo can ship
 
 Status: **Partially completed** — event callbacks (list/create/edit/delete tools, web UI page,
 task-event dispatch with exact/wildcard event-type matching, `create_task`/`webhook`/`slack`
-actions, template rendering, recursion guard) shipped. Webhook/slack callback actions now
-flow through a durable outbound delivery queue (`callback_deliveries`, issue #357): rows are
-enqueued transactionally with their task event, a leased multi-replica worker retries with
-exponential backoff, deliveries dead-letter after `max_attempts`, and retries/dead-letters
-are surfaced by audit events and `chetter_list_callback_deliveries`. Generic inbound
+actions, template rendering, recursion guard) shipped. All callback action types now
+flow through a durable outbox (`callback_deliveries`): webhook/slack HTTP deliveries
+(issue #357) and `create_task` spawns (issue #405) both enqueue rows transactionally with
+their task event, a leased multi-replica worker retries with exponential backoff,
+deliveries dead-letter after `max_attempts`, and retries/dead-letters are surfaced by
+audit events and `chetter_list_callback_deliveries`. Generic inbound
 webhook endpoints (issue #120, epic #253 Phase 2) also shipped: Git-managed
 `global/webhooks/inbound/*.yaml` and `groups/<team>/webhooks/inbound/*.yaml` definitions
 materialize into `webhook_endpoints` rows, external systems POST authenticated events to

@@ -7,12 +7,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
+	"github.com/flatout-works/chetter/internal/testdb"
 )
 
 // testCallbackDeliveryRow builds an in-memory delivery row for the low-level
@@ -396,5 +399,253 @@ func TestCallbackDeliveryListStatusFilter(t *testing.T) {
 	}
 	if len(completed) != 1 {
 		t.Fatalf("completed deliveries after cycle = %d, want 1", len(completed))
+	}
+}
+
+// createTaskCallbackForTest registers an enabled create_task callback with the
+// given prompt and returns its name.
+func createTaskCallbackForTest(t *testing.T, ctx context.Context, svc *Service, name, prompt string) {
+	t.Helper()
+	if _, err := svc.CreateEventCallback(ctx, EventCallbackInput{
+		Name:         name,
+		EventType:    "task.completed",
+		ActionType:   EventCallbackActionCreateTask,
+		ActionConfig: json.RawMessage(`{"prompt":` + strconv.Quote(prompt) + `}`),
+		Enabled:      true,
+	}); err != nil {
+		t.Fatalf("create create_task callback: %v", err)
+	}
+}
+
+// onlyCallbackDelivery returns the single callback delivery row in the test DB.
+func onlyCallbackDelivery(t *testing.T, ctx context.Context, svc *Service) CallbackDeliveryRecord {
+	t.Helper()
+	rows, err := svc.ListCallbackDeliveries(ctx, "", 50, 0)
+	if err != nil {
+		t.Fatalf("list callback deliveries: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("callback deliveries = %d, want 1 (%+v)", len(rows), rows)
+	}
+	return rows[0]
+}
+
+func countTasksForTest(t *testing.T, tdb *testdb.TestDB) int {
+	t.Helper()
+	var total int
+	if err := tdb.DB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&total); err != nil {
+		t.Fatalf("count tasks: %v", err)
+	}
+	return total
+}
+
+// TestCreateTaskCallbackDeliveryRecoveredAfterCrash is issue #405 AC-a: the
+// create_task outbox row commits transactionally with its event and survives a
+// replica crash before any worker ran. A later recovery cycle spawns the child
+// exactly once, and a subsequent cycle (the delivery is now completed) does
+// not spawn another.
+func TestCreateTaskCallbackDeliveryRecoveredAfterCrash(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	// Callback context variables are server-owned rather than user input.
+	svc.cfg.EnvValidation.BlockedPrefixes = nil
+
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "source task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit source task: %v", err)
+	}
+	createTaskCallbackForTest(t, ctx, svc, "spawn-child", "child of {{.TaskID}}")
+
+	event := TaskEventCallbackContext{
+		ID: "evt_crash", TaskID: source.ID, Subject: "connect.runner.r1." + source.ID,
+		Status: "completed", EventType: "task.completed", Summary: "done",
+		Payload: json.RawMessage(`{"status":"completed"}`), CreatedAt: time.Now().UTC(),
+	}
+	enqueueCallbackDeliveryForTest(t, ctx, svc, event)
+
+	// Simulated crash: the outbox row is durable but no worker has executed it.
+	if err := svc.processDueCallbackDeliveries(ctx); err != nil {
+		t.Fatalf("recovery delivery cycle: %v", err)
+	}
+	if got := countTasksForTest(t, tdb); got != 2 {
+		t.Fatalf("task count after recovery = %d, want 2 (source + one child)", got)
+	}
+
+	// A second cycle must not spawn a duplicate.
+	if err := svc.processDueCallbackDeliveries(ctx); err != nil {
+		t.Fatalf("second delivery cycle: %v", err)
+	}
+	if got := countTasksForTest(t, tdb); got != 2 {
+		t.Fatalf("task count after second cycle = %d, want 2", got)
+	}
+
+	delivery := onlyCallbackDelivery(t, ctx, svc)
+	if delivery.Status != callbackDeliveryStatusCompleted {
+		t.Fatalf("delivery status = %q, want completed", delivery.Status)
+	}
+	if delivery.ActionType != EventCallbackActionCreateTask {
+		t.Fatalf("delivery action_type = %q, want create_task", delivery.ActionType)
+	}
+	if delivery.ChildTaskID != callbackDeliveryTaskID(delivery.ID) {
+		t.Fatalf("delivery child_task_id = %q, want deterministic %q", delivery.ChildTaskID, callbackDeliveryTaskID(delivery.ID))
+	}
+	if delivery.ChildTaskID == "" {
+		t.Fatal("completed create_task delivery should record its child task id")
+	}
+}
+
+// TestCreateTaskCallbackDeliveryReplayIsIdempotent is issue #405 AC-b: when a
+// delivery is replayed after the child already spawned (crash between spawn and
+// completion), the deterministic task id turns the duplicate-key error into a
+// success and no second child appears.
+func TestCreateTaskCallbackDeliveryReplayIsIdempotent(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc.cfg.EnvValidation.BlockedPrefixes = nil
+
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "source task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit source task: %v", err)
+	}
+	createTaskCallbackForTest(t, ctx, svc, "spawn-child", "child of {{.TaskID}}")
+
+	event := TaskEventCallbackContext{
+		ID: "evt_replay", TaskID: source.ID, Subject: "connect.runner.r1." + source.ID,
+		Status: "completed", EventType: "task.completed", Summary: "done",
+		Payload: json.RawMessage(`{"status":"completed"}`), CreatedAt: time.Now().UTC(),
+	}
+	enqueueCallbackDeliveryForTest(t, ctx, svc, event)
+
+	delivery := onlyCallbackDelivery(t, ctx, svc)
+	childTaskID := callbackDeliveryTaskID(delivery.ID)
+	if err := svc.spawnCreateTaskFromEvent(ctx, event, "spawn-child", callbackCreateTaskConfig{Prompt: "child of {{.TaskID}}"}, childTaskID); err != nil {
+		t.Fatalf("simulate pre-crash spawn: %v", err)
+	}
+	if got := countTasksForTest(t, tdb); got != 2 {
+		t.Fatalf("task count after simulated spawn = %d, want 2", got)
+	}
+
+	// Replay: the worker must adopt the existing child instead of duplicating.
+	if err := svc.processDueCallbackDeliveries(ctx); err != nil {
+		t.Fatalf("replay delivery cycle: %v", err)
+	}
+	if got := countTasksForTest(t, tdb); got != 2 {
+		t.Fatalf("task count after replay = %d, want 2 (no duplicate child)", got)
+	}
+	delivery = onlyCallbackDelivery(t, ctx, svc)
+	if delivery.Status != callbackDeliveryStatusCompleted || delivery.ChildTaskID != childTaskID {
+		t.Fatalf("replayed delivery = (status %q, child %q), want completed/%q", delivery.Status, delivery.ChildTaskID, childTaskID)
+	}
+}
+
+// TestCreateTaskCallbackDeliveryPermanentFailureDeadLetters is issue #405
+// AC-c: a create_task spawn that can never succeed (its source task no longer
+// exists) dead-letters on the first attempt instead of retrying forever, and
+// the dead letter is audited.
+func TestCreateTaskCallbackDeliveryPermanentFailureDeadLetters(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	createTaskCallbackForTest(t, ctx, svc, "spawn-child", "child of {{.TaskID}}")
+	event := TaskEventCallbackContext{
+		ID: "evt_missing", TaskID: "task_missing", Subject: "connect.runner.r1.task_missing",
+		Status: "completed", EventType: "task.completed", Summary: "done",
+		Payload: json.RawMessage(`{"status":"completed"}`), CreatedAt: time.Now().UTC(),
+	}
+	enqueueCallbackDeliveryForTest(t, ctx, svc, event)
+
+	if err := svc.processDueCallbackDeliveries(ctx); err != nil {
+		t.Fatalf("delivery cycle: %v", err)
+	}
+	delivery := onlyCallbackDelivery(t, ctx, svc)
+	if delivery.Status != callbackDeliveryStatusDeadLetter {
+		t.Fatalf("delivery status = %q, want dead_letter", delivery.Status)
+	}
+	if delivery.Attempts != 1 {
+		t.Fatalf("dead-letter attempts = %d, want 1 (terminal, not retried)", delivery.Attempts)
+	}
+	if delivery.Error == "" {
+		t.Error("dead-letter delivery should carry an error")
+	}
+	if got := countTasksForTest(t, tdb); got != 0 {
+		t.Fatalf("task count = %d, want 0", got)
+	}
+
+	var deadLetterAudits int
+	if err := tdb.DB.QueryRow("SELECT COUNT(*) FROM audit_log WHERE event_type = 'callback_delivery_dead_letter'").Scan(&deadLetterAudits); err != nil {
+		t.Fatalf("count dead-letter audits: %v", err)
+	}
+	if deadLetterAudits != 1 {
+		t.Fatalf("dead-letter audits = %d, want 1", deadLetterAudits)
+	}
+}
+
+// TestCreateTaskCallbackDeliveryDepthLimitDeadLettersTerminally is issue #405
+// AC-d: the issue #312 recursion-depth guard is re-checked at execution time;
+// a rejected spawn dead-letters the delivery immediately, records the rejection
+// on the parent task's event stream, and does not retry.
+func TestCreateTaskCallbackDeliveryDepthLimitDeadLettersTerminally(t *testing.T) {
+	svc, tdb, cleanup := newServiceForTest(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc.cfg.EnvValidation.BlockedPrefixes = nil
+	svc.cfg.CallbackMaxDepth = 1
+
+	source, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "source task", AgentImage: "runner:latest"})
+	if err != nil {
+		t.Fatalf("submit source task: %v", err)
+	}
+	if _, err := tdb.DB.Exec(testQuery(tdb.Dialect(),
+		"UPDATE tasks SET callback_depth = 1 WHERE id = ?",
+		"UPDATE tasks SET callback_depth = 1 WHERE id = $1"), source.ID); err != nil {
+		t.Fatalf("set source callback depth: %v", err)
+	}
+	createTaskCallbackForTest(t, ctx, svc, "spawn-child", "child of {{.TaskID}}")
+
+	event := TaskEventCallbackContext{
+		ID: "evt_depth", TaskID: source.ID, Subject: "connect.runner.r1." + source.ID,
+		Status: "completed", EventType: "task.completed", Summary: "done",
+		Payload: json.RawMessage(`{"status":"completed"}`), CreatedAt: time.Now().UTC(),
+	}
+	enqueueCallbackDeliveryForTest(t, ctx, svc, event)
+
+	if err := svc.processDueCallbackDeliveries(ctx); err != nil {
+		t.Fatalf("delivery cycle: %v", err)
+	}
+	if got := countTasksForTest(t, tdb); got != 1 {
+		t.Fatalf("task count = %d, want 1 (spawn rejected)", got)
+	}
+	delivery := onlyCallbackDelivery(t, ctx, svc)
+	if delivery.Status != callbackDeliveryStatusDeadLetter {
+		t.Fatalf("delivery status = %q, want dead_letter", delivery.Status)
+	}
+	if delivery.Attempts != 1 {
+		t.Fatalf("depth-rejected delivery attempts = %d, want 1 (terminal, not retried)", delivery.Attempts)
+	}
+	if !strings.Contains(delivery.Error, eventCallbackRecursionError) {
+		t.Fatalf("delivery error = %q, want it to mention %q", delivery.Error, eventCallbackRecursionError)
+	}
+
+	// The rejection is recorded on the parent task's event stream (issue #312
+	// contract reused by the durable worker) and audited.
+	var rejections int
+	if err := tdb.DB.QueryRow(testQuery(tdb.Dialect(),
+		"SELECT COUNT(*) FROM task_events WHERE task_id = ? AND event_type = ?",
+		"SELECT COUNT(*) FROM task_events WHERE task_id = $1 AND event_type = $2"),
+		source.ID, eventCallbackRejectedEvent).Scan(&rejections); err != nil {
+		t.Fatalf("count rejection events: %v", err)
+	}
+	if rejections != 1 {
+		t.Fatalf("rejection events = %d, want 1", rejections)
+	}
+	var recursionAudits int
+	if err := tdb.DB.QueryRow("SELECT COUNT(*) FROM audit_log WHERE event_type = 'event_callback_recursion_limit'").Scan(&recursionAudits); err != nil {
+		t.Fatalf("count recursion audits: %v", err)
+	}
+	if recursionAudits != 1 {
+		t.Fatalf("recursion-limit audits = %d, want 1", recursionAudits)
 	}
 }

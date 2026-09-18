@@ -801,9 +801,6 @@ func (s *Service) reapExpiredLeases() {
 			if s.runnerRPC.eventBus != nil {
 				s.runnerRPC.eventBus.PublishTaskEvent(event.TaskID, event.ID, event.Status, event.EventType, event.Summary, string(event.Payload), event.CreatedAt.Format(time.RFC3339))
 			}
-			if s.runnerRPC.callbacks != nil {
-				s.runnerRPC.callbacks.DispatchTaskEventCallbacks(ctx, event)
-			}
 		}
 	}
 	if reclaimed > 0 || failed > 0 {
@@ -1575,13 +1572,6 @@ func (s *Service) RecoverTask(ctx context.Context, taskID, customPrompt string) 
 	s.notifyTaskClaimable()
 	if s.runnerRPC != nil && s.runnerRPC.eventBus != nil {
 		s.runnerRPC.eventBus.PublishTaskEvent(recoveryEvent.TaskID, recoveryEvent.ID, recoveryEvent.Status, recoveryEvent.EventType, recoveryEvent.Summary, string(recoveryEvent.Payload), recoveryEvent.CreatedAt.Format(time.RFC3339))
-	}
-	if s.runnerRPC != nil && s.runnerRPC.callbacks != nil {
-		go func(event TaskEventCallbackContext) {
-			callbackCtx, cancel := context.WithTimeout(context.Background(), eventHandlerTimeout)
-			defer cancel()
-			s.runnerRPC.callbacks.DispatchTaskEventCallbacks(callbackCtx, event)
-		}(recoveryEvent)
 	}
 
 	s.auditAsync(ctx, AuditEventParams{
