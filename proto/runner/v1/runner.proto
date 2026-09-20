@@ -203,6 +203,14 @@ message PruneWorkspacesRequest {
   reserved "task_ids";
   string runner_id = 1 [(buf.validate.field).string.min_len = 1];
   repeated WorkspaceCandidate candidates = 2;
+  // container_scope widens the ownership check so a runner may ask about
+  // containers it did not itself create. Leaked containers outlive the
+  // runner instance that created them (crash, forced kill, failed teardown),
+  // so the reaper must be able to get a verdict for any task container on
+  // the shared Docker daemon. The server still protects every live attempt,
+  // retained session, and ready checkpoint, so a running sibling's container
+  // is never reported safe. Used only by the container reaper.
+  bool container_scope = 3;
 }
 
 message PruneWorkspacesResponse {
@@ -212,7 +220,13 @@ message PruneWorkspacesResponse {
 message WorkspaceCandidate {
   string task_id = 1 [(buf.validate.field).string.min_len = 1];
   string execution_id = 2 [(buf.validate.field).string.min_len = 1];
-  string workspace_path = 3 [(buf.validate.field).string.min_len = 1];
+  // workspace_path is the runner-side workspace directory, used to match a
+  // candidate to a retained session or ready checkpoint. It may be empty when
+  // container_scope is set: containers created before the
+  // chetter.workspace_path label existed have no recorded path, so the server
+  // falls back to task-wide protection instead of rejecting the request. The
+  // non-container-scope path still requires it.
+  string workspace_path = 3;
 }
 
 message WorkspaceKey {

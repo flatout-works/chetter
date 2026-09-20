@@ -59,6 +59,14 @@ func (r *Runner) startConnectRPC(ctx context.Context) error {
 	cancel()
 	go r.pruneWorkspacesPeriodically(ctx)
 
+	// Reconcile leaked task containers now that the control plane can confirm
+	// which are safe to remove, then keep sweeping periodically as the safety
+	// net behind inline teardown. See issue #418.
+	containerCtx, cancelContainers := context.WithTimeout(ctx, taskContainerReapTimeout)
+	r.sweepOrphanedTaskContainers(containerCtx)
+	cancelContainers()
+	go r.reapTaskContainersPeriodically(ctx)
+
 	slog.Info("claiming tasks via ConnectRPC", "url", r.cfg.Server.URL)
 	// A single claim loop polls for tasks; concurrency is bounded by the
 	// semaphore in runTask (one extra slot is reserved for this poller).
