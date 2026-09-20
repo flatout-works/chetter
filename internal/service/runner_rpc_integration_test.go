@@ -1521,3 +1521,156 @@ func TestResolveModelForTaskDisabledHarnessCircularGuard(t *testing.T) {
 		t.Fatal("circular disabled fallback should return a non-empty provider ID")
 	}
 }
+
+// TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession
+// covers the upgrade path: containers created before the
+// chetter.workspace_path label existed submit candidates with an empty path,
+// so the server must fall back to task-wide protection for retained sessions
+// and ready checkpoints instead of rejecting the request or reporting a
+// resumable session's container as safe. See issue #418.
+func TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_retained", "x", "runner:latest")
+
+	claimed, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_owner"}))
+	if err != nil {
+		t.Fatalf("claim attempt: %v", err)
+	}
+	task := claimed.Msg.Task
+
+	// Retain the session for resume on a pinned runner, with the workspace
+	// path the container would carry if it had the label.
+	now := time.Now().UTC()
+	path := "/var/lib/runner/task_retained/" + task.ExecutionId + "/workspace"
+	if _, err := q.PauseAgentSessionByTaskID(ctx, repository.PauseAgentSessionByTaskIDParams{
+		Status: "paused", PinnedRunnerID: nullString("runner_owner"), WorkspacePath: nullString(path),
+		PausedAt: sql.NullTime{Time: now, Valid: true}, UpdatedAt: now, TaskID: task.TaskId,
+	}); err != nil {
+		t.Fatalf("pause session: %v", err)
+	}
+
+	// Empty path: the task-wide fallback must protect the retained session.
+	resp, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:       "runner_reaper",
+		ContainerScope: true,
+		Candidates: []*runnerv1.WorkspaceCandidate{
+			{TaskId: task.TaskId, ExecutionId: task.ExecutionId, WorkspacePath: ""},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("prune workspaces: %v", err)
+	}
+	if len(resp.Msg.SafeToDelete) != 0 {
+		t.Fatalf("safe = %+v, want the retained session's container protected", resp.Msg.SafeToDelete)
+	}
+
+	// The non-container-scope path still requires the workspace path.
+	if _, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:   "runner_owner",
+		Candidates: []*runnerv1.WorkspaceCandidate{{TaskId: task.TaskId, ExecutionId: task.ExecutionId}},
+	})); err == nil {
+		t.Fatal("expected an error for an empty workspace_path outside container scope")
+	}
+}
+
+// TestRPCPruneWorkspacesContainerScopeIgnoresRunnerOwnership is the regression
+// test for the container reaper. Leaked task containers outlive the runner
+// instance that created them, and two runners can share one Docker daemon, so
+// the reaper asks with container_scope=true: the runner-ownership predicates
+// are dropped, while the liveness predicates (running attempt, retained
+// session, ready checkpoint) still protect work that is alive. See issue #418.
+func TestRPCPruneWorkspacesContainerScopeIgnoresRunnerOwnership(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_reap", "x", "runner:latest")
+
+	// Claimed by runner_owner and left running: alive.
+	claimed, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_owner"}))
+	if err != nil {
+		t.Fatalf("claim live attempt: %v", err)
+	}
+	live := claimed.Msg.Task
+
+	// Claimed and then failed: terminal, so its container is a leak.
+	insertPendingTask(t, q, "task_dead", "y", "runner:latest")
+	deadClaim, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_owner"}))
+	if err != nil {
+		t.Fatalf("claim dead attempt: %v", err)
+	}
+	dead := deadClaim.Msg.Task
+	if _, err := svc.ReportTaskEvents(ctx, connect.NewRequest(&runnerv1.ReportTaskEventsRequest{
+		RunnerId: "runner_owner",
+		Events: []*runnerv1.TaskEvent{{
+			TaskId: dead.TaskId, AgentSessionId: dead.AgentSessionId, UserPromptId: dead.UserPromptId,
+			ExecutionId: dead.ExecutionId, ClaimId: dead.ClaimId, Status: "error",
+		}},
+	})); err != nil {
+		t.Fatalf("fail dead attempt: %v", err)
+	}
+
+	livePath := "/var/lib/runner/task_reap/" + live.ExecutionId + "/workspace"
+	deadPath := "/var/lib/runner/task_dead/" + dead.ExecutionId + "/workspace"
+
+	// The reaper is a different runner than the one that owns the containers.
+	resp, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:       "runner_reaper",
+		ContainerScope: true,
+		Candidates: []*runnerv1.WorkspaceCandidate{
+			{TaskId: live.TaskId, ExecutionId: live.ExecutionId, WorkspacePath: livePath},
+			{TaskId: dead.TaskId, ExecutionId: dead.ExecutionId, WorkspacePath: deadPath},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("prune workspaces: %v", err)
+	}
+	if len(resp.Msg.SafeToDelete) != 1 || resp.Msg.SafeToDelete[0].ExecutionId != dead.ExecutionId {
+		t.Fatalf("safe = %+v, want only the dead attempt %s", resp.Msg.SafeToDelete, dead.ExecutionId)
+	}
+}
+
+// TestRPCPruneWorkspacesWithoutContainerScopeRequiresOwnership documents the
+// default (workspace-prune) semantics: a runner only gets a verdict for
+// attempts it owns. The live attempt is reported safe here purely because the
+// caller does not own it — which is exactly why the container reaper must not
+// rely on this mode.
+func TestRPCPruneWorkspacesWithoutContainerScopeRequiresOwnership(t *testing.T) {
+	svc, q, _, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+	insertPendingTask(t, q, "task_owned", "x", "runner:latest")
+
+	claimed, err := svc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: "runner_owner"}))
+	if err != nil {
+		t.Fatalf("claim attempt: %v", err)
+	}
+	task := claimed.Msg.Task
+	path := "/var/lib/runner/task_owned/" + task.ExecutionId + "/workspace"
+
+	// The owner sees its own live attempt protected.
+	ownerResp, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:   "runner_owner",
+		Candidates: []*runnerv1.WorkspaceCandidate{{TaskId: task.TaskId, ExecutionId: task.ExecutionId, WorkspacePath: path}},
+	}))
+	if err != nil {
+		t.Fatalf("owner prune: %v", err)
+	}
+	if len(ownerResp.Msg.SafeToDelete) != 0 {
+		t.Fatalf("owner saw its own live attempt as safe: %+v", ownerResp.Msg.SafeToDelete)
+	}
+
+	// A foreign runner gets the same attempt back as safe without
+	// container_scope, because the ownership predicate filters it out.
+	foreignResp, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:   "runner_reaper",
+		Candidates: []*runnerv1.WorkspaceCandidate{{TaskId: task.TaskId, ExecutionId: task.ExecutionId, WorkspacePath: path}},
+	}))
+	if err != nil {
+		t.Fatalf("foreign prune: %v", err)
+	}
+	if len(foreignResp.Msg.SafeToDelete) != 1 {
+		t.Fatalf("foreign runner safe = %+v, want the unowned attempt reported safe", foreignResp.Msg.SafeToDelete)
+	}
+}
