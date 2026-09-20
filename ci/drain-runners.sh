@@ -48,6 +48,7 @@ try:
   data = json.load(sys.stdin)
   text = data['result']['content'][0]['text']
   health = json.loads(text)
+  health = health.get("health", health)
   for r in health.get('runners',[]):
     if r.get('running_tasks',0) > 0 and r.get('is_stale',True) == False:
       print(r.get('id',''))
@@ -81,6 +82,7 @@ try:
   data = json.load(sys.stdin)
   text = data['result']['content'][0]['text']
   health = json.loads(text)
+  health = health.get("health", health)
   count = sum(r.get('running_tasks',0) for r in health.get('runners',[]) if not r.get('is_stale',True))
 except:
   pass
