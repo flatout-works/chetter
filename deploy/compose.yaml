@@ -62,6 +62,15 @@ services:
       # cgroup, so each task costs its cap plus sentry overhead. Override
       # via the Arcane project env if throughput matters more than headroom.
       RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
+      # Runner-level hard caps. These can only tighten the server's per-task
+      # limit, never raise it, so they bound the worst case on a host that
+      # cannot hold one full-size task per concurrent slot. Without them two
+      # runners on the same box could each start an 8 GB sandbox (16 GB total
+      # on a 16 GB host), which is the overcommit that feeds the swap-thrash
+      # spiral. See issue #418.
+      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-4g}"
+      CHETTER_CONTAINER_CPU: "${CHETTER_CONTAINER_CPU:-2}"
+      CHETTER_CONTAINER_PIDS: "${CHETTER_CONTAINER_PIDS:-1024}"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
@@ -93,6 +102,9 @@ services:
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
+      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-4g}"
+      CHETTER_CONTAINER_CPU: "${CHETTER_CONTAINER_CPU:-2}"
+      CHETTER_CONTAINER_PIDS: "${CHETTER_CONTAINER_PIDS:-1024}"
       USE_GVISOR: "true"
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SYNTHETIC_API_KEY: ${SYNTHETIC_API_KEY:-}
