@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-18
+
+### Fixed
+
+- `create_task` event callbacks are now durable via the `callback_deliveries` outbox (issue #405, merged in #414): they were the last at-most-once callback path. Delivery rows were not enqueued for them, and the spawn ran post-commit with only a logged warning on failure, so a replica crash or `SubmitTask` failure between the `task_events` commit and the spawn silently lost the spawned work with no retry or recovery. All three action types now run through the same outbox: a matching event writes a `create_task` delivery row — carrying a JSON snapshot of the callback config and triggering event — in the same transaction as the task event, and the existing leased, multi-replica delivery worker executes it. Execution re-checks the #312 recursion-depth guard at delivery time, spawns with a deterministic task id derived from the delivery row (so replay after a crash is idempotent, adopting an existing child on duplicate key), retries transient failures with the existing backoff up to `max_attempts` (3) before dead-lettering, and dead-letters terminal failures (invalid config/template, missing source task, depth limit) with audit events. The redundant post-commit dispatch hook was removed; all callback actions are now worker-driven. `callback_deliveries` gains `action_type` and `child_task_id` columns (Goose migrations 057 MySQL/TiDB and 033 PostgreSQL, plus bootstrap schema and ensure-column backfill), and `chetter_list_callback_deliveries` exposes them. Documented in `docs/TRIGGERS.md`, `docs/SCHEMA.md`, `docs/MANUAL.md`, and `docs/PLAN.md`.
+
 ## 2026-09-11
 
 ### Fixed
