@@ -531,7 +531,7 @@ time. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 | `chetter_update_event_callback` | Update an event callback by name. |
 | `chetter_list_event_callbacks` | List callbacks, optionally by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete an event callback by name. |
-| `chetter_list_callback_deliveries` | Admin-only list of outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) with retry attempts, next attempt time, and error details. |
+| `chetter_list_callback_deliveries` | Admin-only list of outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) for all three action types, with retry attempts, next attempt time, error details, and the spawned child task id for `create_task` deliveries. |
 
 ### Webhook Deliveries
 

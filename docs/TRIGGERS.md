@@ -462,7 +462,7 @@ Operator escape hatches (all default to the hardened value):
 | `chetter_update_event_callback` | Update fields of a callback by name. |
 | `chetter_list_event_callbacks` | List callbacks, optionally filtered by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete a callback by name. |
-| `chetter_list_callback_deliveries` | List outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) with retry attempts, next attempt time, and error details. |
+| `chetter_list_callback_deliveries` | List outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) for all three action types, with retry attempts, next attempt time, error details, and the spawned child task id for `create_task` deliveries. |
 
 The web UI also has an event callbacks page for administration.
 

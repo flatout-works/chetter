@@ -1,7 +1,8 @@
 # Chetter Database Schema
 
-Current schema of the `chetter` database, as of migration 053 (2026-08-14,
-which added event-callback provenance columns to `tasks`; migration 052
+Current schema of the `chetter` database, as of migration 057 (2026-09-17,
+which added `action_type` and `child_task_id` to `callback_deliveries` so
+`create_task` callback spawns go through the same outbox; migration 052
 dropped the historical `chetter_` table prefix).
 The schema is dialect-agnostic (TiDB / MySQL / PostgreSQL) and uses **no
 foreign-key constraints** — relationships below are logical, enforced by the
