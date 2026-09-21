@@ -162,6 +162,7 @@ Managed Git identities control commit attribution for agent work and are configu
 | `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `task_events`. A positive value enables reaper pruning; `0` disables it. |
 | `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `audit_log`. A positive value enables reaper pruning; `0` disables it. |
 | `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `task_artifacts` and `agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
+| `DELIVERY_RETENTION_DAYS` | No | `0` | Retention for the delivery tables (`callback_deliveries`, `inbound_deliveries`, `webhook_deliveries`). Only terminal rows (`completed`, `succeeded`, `failed_permanent`, `dead_letter`) older than the TTL are pruned; pending, in-flight, processing, received, failed, and retry_wait rows are never deleted. A positive value enables reaper pruning; `0` disables it. See issue #253. |
 | `DEFINITIONS_REPO` | No | empty | Git repo for synced model catalog and definitions. |
 | `DEFINITIONS_BRANCH` | No | `main` | Definitions repo branch. |
 | `CHETTER_ALLOW_UNISOLATED` | No | `false` | Documented escape hatch for single-tenant/trusted deployments that intentionally run without gVisor. When unset (hardened default), every task requires enforced isolation (gVisor/runsc) and is refused by runners that cannot enforce it. When `true`, only resumable sessions and tasks explicitly configured with `isolation: required` require isolation. Set it on the server **and** on every runner in the trusted deployment. See issue #291. |
@@ -236,16 +237,20 @@ deletes rows whose `created_at` is older than the configured number of days:
 | `EVENTS_RETENTION_DAYS` | `task_events` | `30` |
 | `AUDIT_RETENTION_DAYS` | `audit_log` | `90` |
 | `ARTIFACT_RETENTION_DAYS` | `task_artifacts`, `agent_sessions` | `180` |
+| `DELIVERY_RETENTION_DAYS` | `callback_deliveries`, `inbound_deliveries`, `webhook_deliveries` (terminal rows only) | `90` |
 
 Retention is disabled by default. An unset variable and an explicit value of
 `0` both preserve rows indefinitely, so existing deployments are not affected
 until an operator opts in. Each setting is independent; configure only the
-tables that should be pruned. For example:
+tables that should be pruned. Delivery retention only deletes terminal rows, so
+a delivery that is still pending, in flight, or waiting to retry is never
+discarded regardless of age. For example:
 
 ```dotenv
 EVENTS_RETENTION_DAYS=30
 AUDIT_RETENTION_DAYS=90
 ARTIFACT_RETENTION_DAYS=180
+DELIVERY_RETENTION_DAYS=90
 ```
 
 The cleanup is application-level and works with TiDB, MySQL, and PostgreSQL.

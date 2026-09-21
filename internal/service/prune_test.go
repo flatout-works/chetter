@@ -20,26 +20,49 @@ func TestPruneJobsDisabledByDefault(t *testing.T) {
 
 // TestPruneJobsFromConfig verifies that enabled TTLs produce the expected tables
 // and durations. The artifact TTL governs both task artifacts and agent sessions
-// per issue #112 criterion 3.
+// per issue #112 criterion 3. See issue #253 for the delivery jobs.
 func TestPruneJobsFromConfig(t *testing.T) {
 	s := &Service{cfg: config.Config{
 		EventsRetentionDays:   30,
 		AuditRetentionDays:    90,
 		ArtifactRetentionDays: 180,
+		DeliveryRetentionDays: 60,
 	}}
 	jobs := s.pruneJobs()
-	if len(jobs) != 4 {
-		t.Fatalf("expected 4 prune jobs, got %d", len(jobs))
+	if len(jobs) != 7 {
+		t.Fatalf("expected 7 prune jobs, got %d", len(jobs))
 	}
 	want := []pruneJob{
-		{"task_events", 30 * 24 * time.Hour},
-		{"audit_log", 90 * 24 * time.Hour},
-		{"task_artifacts", 180 * 24 * time.Hour},
-		{"agent_sessions", 180 * 24 * time.Hour},
+		{table: "task_events", ttl: 30 * 24 * time.Hour},
+		{table: "audit_log", ttl: 90 * 24 * time.Hour},
+		{table: "task_artifacts", ttl: 180 * 24 * time.Hour},
+		{table: "agent_sessions", ttl: 180 * 24 * time.Hour},
+		{table: "callback_deliveries", ttl: 60 * 24 * time.Hour, terminalOnly: true},
+		{table: "inbound_deliveries", ttl: 60 * 24 * time.Hour, terminalOnly: true},
+		{table: "webhook_deliveries", ttl: 60 * 24 * time.Hour, terminalOnly: true},
 	}
 	for i, w := range want {
-		if jobs[i].table != w.table || jobs[i].ttl != w.ttl {
-			t.Errorf("job %d: want table=%q ttl=%v, got table=%q ttl=%v", i, w.table, w.ttl, jobs[i].table, jobs[i].ttl)
+		if jobs[i] != w {
+			t.Errorf("job %d: want %+v, got %+v", i, w, jobs[i])
+		}
+	}
+}
+
+// TestPruneJobsDeliveryOnly verifies that enabling only the delivery TTL
+// produces exactly the three delivery tables, each terminal-only. See issue
+// #253.
+func TestPruneJobsDeliveryOnly(t *testing.T) {
+	s := &Service{cfg: config.Config{DeliveryRetentionDays: 14}}
+	jobs := s.pruneJobs()
+	if len(jobs) != 3 {
+		t.Fatalf("expected 3 prune jobs, got %d", len(jobs))
+	}
+	for i, job := range jobs {
+		if !job.terminalOnly {
+			t.Errorf("job %d (%s): expected terminalOnly=true", i, job.table)
+		}
+		if job.ttl != 14*24*time.Hour {
+			t.Errorf("job %d (%s): expected ttl 14d, got %v", i, job.table, job.ttl)
 		}
 	}
 }

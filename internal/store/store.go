@@ -1444,6 +1444,22 @@ var retentionTables = map[string]bool{
 	"agent_sessions": true,
 }
 
+// deliveryRetentionTables is the allowlist of delivery tables eligible for
+// retention pruning, mapping each table to the terminal statuses that may be
+// deleted. Non-terminal rows (pending, in_flight, processing, received, failed,
+// retry_wait) are deliberately never pruned, so retention can never discard a
+// delivery that is still in flight or still scheduled for a retry. The table
+// name is interpolated into SQL, so callers must not pass an arbitrary value.
+// See issue #253 (webhook platform Phase 4: delivery retention).
+var deliveryRetentionTables = map[string][]string{
+	// callback_deliveries: durable outbound outbox (issues #357 and #405).
+	"callback_deliveries": {"completed", "dead_letter"},
+	// inbound_deliveries: durable inbound inbox (issue #120).
+	"inbound_deliveries": {"succeeded", "failed_permanent", "dead_letter"},
+	// webhook_deliveries: legacy GitHub inbox (issue #102).
+	"webhook_deliveries": {"completed", "dead_letter"},
+}
+
 // PruneOldRows deletes rows older than ttl from table in batches of
 // pruneBatchSize, looping until fewer than a full batch is removed. A ttl <= 0
 // disables pruning for that table and returns 0 without touching the database
@@ -1465,18 +1481,68 @@ func (s *Store) PruneOldRows(ctx context.Context, table string, ttl time.Duratio
 	} else {
 		deleteSQL = fmt.Sprintf("DELETE FROM %s WHERE created_at < ? LIMIT ?", table)
 	}
+	return s.execPruneBatches(ctx, table, deleteSQL, cutoff, pruneBatchSize)
+}
+
+// PruneTerminalDeliveries deletes terminal delivery rows older than ttl from
+// table in batches, using the status allowlist in deliveryRetentionTables.
+// Rows still eligible for processing or retry are never deleted, regardless of
+// age. A ttl <= 0 disables pruning and returns 0 without touching the database.
+// Returns the total number of rows deleted. See issue #253.
+func (s *Store) PruneTerminalDeliveries(ctx context.Context, table string, ttl time.Duration) (int, error) {
+	if ttl <= 0 {
+		return 0, nil
+	}
+	statuses, ok := deliveryRetentionTables[table]
+	if !ok {
+		return 0, fmt.Errorf("prune: unknown delivery retention table %q", table)
+	}
+	cutoff := time.Now().UTC().Add(-ttl)
+	// The status values come from the internal allowlist, never from callers,
+	// but still pass them as bound parameters rather than interpolating them.
+	placeholders := make([]string, len(statuses))
+	var deleteSQL string
+	var args []any
+	if s.IsPostgres() {
+		args = append(args, cutoff)
+		for i, status := range statuses {
+			placeholders[i] = fmt.Sprintf("$%d", i+2)
+			args = append(args, status)
+		}
+		args = append(args, pruneBatchSize)
+		deleteSQL = fmt.Sprintf(
+			"DELETE FROM %s WHERE id IN (SELECT id FROM %s WHERE created_at < $1 AND status IN (%s) LIMIT $%d)",
+			table, table, strings.Join(placeholders, ", "), len(statuses)+2)
+	} else {
+		args = append(args, cutoff)
+		for i, status := range statuses {
+			placeholders[i] = "?"
+			args = append(args, status)
+		}
+		args = append(args, pruneBatchSize)
+		deleteSQL = fmt.Sprintf(
+			"DELETE FROM %s WHERE created_at < ? AND status IN (%s) LIMIT ?",
+			table, strings.Join(placeholders, ", "))
+	}
+	return s.execPruneBatches(ctx, table, deleteSQL, args...)
+}
+
+// execPruneBatches runs a bounded-batch DELETE until fewer than pruneBatchSize
+// rows are affected in one pass. errorLabel is used only to identify the table
+// in returned errors.
+func (s *Store) execPruneBatches(ctx context.Context, errorLabel, deleteSQL string, args ...any) (int, error) {
 	var total int
 	for {
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		result, err := s.db.ExecContext(ctx, deleteSQL, cutoff, pruneBatchSize)
+		result, err := s.db.ExecContext(ctx, deleteSQL, args...)
 		if err != nil {
-			return total, fmt.Errorf("prune %s: %w", table, err)
+			return total, fmt.Errorf("prune %s: %w", errorLabel, err)
 		}
 		n, err := result.RowsAffected()
 		if err != nil {
-			return total, fmt.Errorf("prune %s rows affected: %w", table, err)
+			return total, fmt.Errorf("prune %s rows affected: %w", errorLabel, err)
 		}
 		total += int(n)
 		if n < pruneBatchSize {

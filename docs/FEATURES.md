@@ -120,8 +120,11 @@ deployments bounded:
 - `EVENTS_RETENTION_DAYS` controls `task_events`.
 - `AUDIT_RETENTION_DAYS` controls `audit_log`.
 - `ARTIFACT_RETENTION_DAYS` controls `task_artifacts` and `agent_sessions`.
+- `DELIVERY_RETENTION_DAYS` controls the delivery tables (`callback_deliveries`,
+  `inbound_deliveries`, `webhook_deliveries`). Only terminal rows are pruned, so
+  pending, in-flight, and retryable deliveries are never lost to retention.
 - Rows are selected by `created_at` and deleted in batches of up to 1,000.
-- `0` or an unset variable disables pruning for that table; all three settings default to `0`.
+- `0` or an unset variable disables pruning for that table; all settings default to `0`.
 - The implementation is application-level and supports TiDB, MySQL, and PostgreSQL.
 
 See [MANUAL.md](MANUAL.md#data-retention-and-storage-pruning) for configuration

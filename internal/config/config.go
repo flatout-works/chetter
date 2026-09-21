@@ -56,6 +56,12 @@ type Config struct {
 	EventsRetentionDays   int
 	AuditRetentionDays    int
 	ArtifactRetentionDays int
+	// DeliveryRetentionDays covers the durable delivery tables
+	// (callback_deliveries, inbound_deliveries, webhook_deliveries). Only
+	// terminal rows older than the TTL are pruned, so in-flight or retryable
+	// deliveries are never discarded. See issue #253 and
+	// DELIVERY_RETENTION_DAYS.
+	DeliveryRetentionDays int
 	// EnvValidation configures task environment variable validation at submission
 	// time. See env var CHETTER_ENV_* and internal/validation.
 	EnvValidation validation.Config
@@ -180,6 +186,7 @@ func Load() Config {
 		EventsRetentionDays:    envInt("EVENTS_RETENTION_DAYS", 0),
 		AuditRetentionDays:     envInt("AUDIT_RETENTION_DAYS", 0),
 		ArtifactRetentionDays:  envInt("ARTIFACT_RETENTION_DAYS", 0),
+		DeliveryRetentionDays:  envInt("DELIVERY_RETENTION_DAYS", 0),
 		EnvValidation:          envValidationConfig(),
 		TaskLimits:             taskLimitsConfig(),
 		SessionArtifactTTL:     envDuration("SESSION_ARTIFACT_TTL", 24*time.Hour),
