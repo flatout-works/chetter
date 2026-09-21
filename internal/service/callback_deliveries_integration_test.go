@@ -58,6 +58,18 @@ func enqueueCallbackDeliveryForTest(t *testing.T, ctx context.Context, svc *Serv
 	}
 }
 
+// enqueueCallbackDeliveriesOnlyForTest replays the outbox enqueue for an event
+// whose task_events row has already been committed, without re-inserting that
+// row. Used by the replay/idempotency assertions.
+func enqueueCallbackDeliveriesOnlyForTest(t *testing.T, ctx context.Context, svc *Service, event TaskEventCallbackContext) {
+	t.Helper()
+	if err := withTxRetry(ctx, svc.rawDB, svc.dialect, func(q data.Repository) error {
+		return svc.EnqueueTaskEventCallbackDeliveries(ctx, q, event)
+	}); err != nil {
+		t.Fatalf("enqueue callback delivery (replay): %v", err)
+	}
+}
+
 func TestCallbackDeliverySendUsesStoredPayload(t *testing.T) {
 	svc, _, cleanup := newServiceForTest(t)
 	defer cleanup()
@@ -288,7 +300,11 @@ func TestCallbackDeliveryEnqueueTransactionalWithTaskEvent(t *testing.T) {
 	}
 
 	// Replay path: the same event enqueued again is a no-op (unique key).
-	enqueueCallbackDeliveryForTest(t, ctx, svc, event)
+	// Only the delivery enqueue is replayed here: the task_events row is
+	// already committed and InsertTaskEvent is a plain INSERT, so re-inserting
+	// it would be a genuine duplicate-key error rather than the idempotency
+	// under test (callback_deliveries' (callback_id, event_id) key).
+	enqueueCallbackDeliveriesOnlyForTest(t, ctx, svc, event)
 	rows, err = svc.ListCallbackDeliveries(ctx, "", 50, 0)
 	if err != nil {
 		t.Fatalf("list deliveries after replay: %v", err)

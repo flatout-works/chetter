@@ -127,21 +127,15 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 	if s.rawDB == nil {
 		return nil, fmt.Errorf("database not available")
 	}
-	var query string
-	if s.dialect == store.DialectPostgres {
-		query = `SELECT ` + callbackDeliverySelectColumns + `
-		         FROM callback_deliveries
-		         WHERE ($1 = '' OR status = $1)
-		         ORDER BY created_at DESC
-		         LIMIT $2 OFFSET $3`
-	} else {
-		query = `SELECT ` + callbackDeliverySelectColumns + `
-		         FROM callback_deliveries
-		         WHERE (? = '' OR status = ?)
-		         ORDER BY created_at DESC
-		         LIMIT ? OFFSET ?`
-	}
-	rows, err := s.rawDB.QueryContext(ctx, query, statusFilter, limit, offset)
+	// statusFilter is bound twice: the MySQL/TiDB form has one argument per
+	// positional placeholder, so the previous 3-argument call against the
+	// 4-placeholder query failed with "sql: expected 4 arguments, got 3".
+	query := sqlQuery(s.dialect, `SELECT `+callbackDeliverySelectColumns+`
+	         FROM callback_deliveries
+	         WHERE (? = '' OR status = ?)
+	         ORDER BY created_at DESC
+	         LIMIT ? OFFSET ?`)
+	rows, err := s.rawDB.QueryContext(ctx, query, statusFilter, statusFilter, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list callback deliveries: %w", err)
 	}
@@ -517,26 +511,18 @@ func (s *Service) claimDueCallbackDeliveries(ctx context.Context, now time.Time)
 	var claimed []repository.CallbackDelivery
 	err := withTxRetryOptions(ctx, s.rawDB, s.dialect, nil, func(q data.Repository, tx *sql.Tx) error {
 		limitClause := fmt.Sprintf(" ORDER BY next_attempt_at ASC LIMIT %d FOR UPDATE SKIP LOCKED", callbackDeliveryClaimLimit)
-		var query string
-		if s.dialect == store.DialectPostgres {
-			query = `SELECT id, callback_id, event_id, task_id, team_id, event_type, endpoint_url,
-			                method, headers, payload, status, attempts, max_attempts, error,
-			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at,
-			                action_type, child_task_id
-			         FROM callback_deliveries
-			         WHERE (status = 'pending' AND next_attempt_at <= $1)
-			            OR (status = 'failed' AND next_attempt_at <= $1)
-			            OR (status = 'in_flight' AND lease_expires_at < $1)` + limitClause
-		} else {
-			query = `SELECT id, callback_id, event_id, task_id, team_id, event_type, endpoint_url,
-			                method, headers, payload, status, attempts, max_attempts, error,
-			                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at,
-			                action_type, child_task_id
-			         FROM callback_deliveries
-			         WHERE (status = 'pending' AND next_attempt_at <= ?)
-			            OR (status = 'failed' AND next_attempt_at <= ?)
-			            OR (status = 'in_flight' AND lease_expires_at < ?)` + limitClause
-		}
+		// The timestamp is bound once per placeholder: sqlQuery expands the three
+		// positional placeholders for PostgreSQL, so both dialects receive three
+		// arguments. The previous PostgreSQL form repeated $1 while still binding
+		// now, now, now and failed with "expected 1 arguments, got 3".
+		query := sqlQuery(s.dialect, `SELECT id, callback_id, event_id, task_id, team_id, event_type, endpoint_url,
+		                method, headers, payload, status, attempts, max_attempts, error,
+		                lease_expires_at, next_attempt_at, processed_at, created_at, updated_at,
+		                action_type, child_task_id
+		         FROM callback_deliveries
+		         WHERE (status = 'pending' AND next_attempt_at <= ?)
+		            OR (status = 'failed' AND next_attempt_at <= ?)
+		            OR (status = 'in_flight' AND lease_expires_at < ?)`+limitClause)
 		rows, err := tx.QueryContext(ctx, query, now, now, now)
 		if err != nil {
 			return fmt.Errorf("select due callback deliveries: %w", err)
