@@ -29,6 +29,8 @@ jobs:
         run: make check
       - name: Test PostgreSQL support
         run: make test-postgres
+      - name: Check drain script parse blocks
+        run: bash ci/drain-runners-test.sh
 
   detect-changes:
     runs-on: ubuntu-latest
