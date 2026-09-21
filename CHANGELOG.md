@@ -38,6 +38,12 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-21
+
+### Added
+
+- Operator-initiated redelivery for durable webhook deliveries (issue #421): `chetter_retry_callback_delivery` resets a `failed`/`dead_letter` outbound event-callback delivery to a due `pending` row so the existing leased worker redelivers it, and `chetter_retry_inbound_delivery` does the same for `failed_permanent`/`dead_letter` inbound endpoint deliveries. Both clear `attempts`/`error` and set `next_attempt_at` to now; eligible rows are guarded by status so a `completed`/`succeeded` row or a row with a live `in_flight`/`processing` lease is rejected with no state change. Idempotency is preserved (deterministic child-task ids and the `(callback_id, event_id)` / `(endpoint_id, delivery_id)` uniqueness keys), so a retry can never duplicate a task or notification. The callback tool is admin-only; the inbound tool is team-scoped like `chetter_list_inbound_deliveries`, and both write `*_delivery_retried` audit events without payload or secret material. Adds dual-dialect queries `GetCallbackDeliveryRetryState`/`ResetCallbackDeliveryForRetry` and `GetInboundDeliveryRetryState`/`ResetInboundDeliveryForRetry` with regenerated sqlc packages and facade. Documented in `docs/TRIGGERS.md`, `docs/WEBHOOKS.md`, and `docs/MANUAL.md`.
+
 ## 2026-09-11
 
 ### Fixed

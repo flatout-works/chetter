@@ -463,8 +463,28 @@ Operator escape hatches (all default to the hardened value):
 | `chetter_list_event_callbacks` | List callbacks, optionally filtered by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete a callback by name. |
 | `chetter_list_callback_deliveries` | List outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) with retry attempts, next attempt time, and error details. |
+| `chetter_retry_callback_delivery` | Admin-only reset a `failed`/`dead_letter` delivery to pending so the worker redelivers it. The reset clears attempts/error and preserves the deterministic child-task id, so a retry can never duplicate a task or notification. |
 
 The web UI also has an event callbacks page for administration.
+
+## Retrying Dead-Lettered Deliveries
+
+A transient destination outage that outlasts the retry window permanently
+dead-letters every delivery in that window. Rather than replaying the original
+event or editing the database by hand, an operator can reset an individual
+delivery with `chetter_retry_callback_delivery` (admin only, issue #421).
+
+- Only `failed` and `dead_letter` rows are eligible. A `completed` row, or an
+  `in_flight` row with a live lease, is rejected with a clear error and no state
+  change, so a retry cannot race the delivery worker.
+- The reset clears `attempts`, `error`, and `processed_at`, and sets
+  `next_attempt_at` to now so the existing leased worker picks the row up on its
+  next cycle.
+- Idempotency is preserved: `create_task` deliveries keep their deterministic
+  child-task id and `webhook`/`slack` deliveries keep the same
+  `(callback_id, event_id)` row.
+- The action writes a `callback_delivery_retried` audit event. No payload or
+  secret material is returned or logged.
 
 # Trigger Definitions In Git
 

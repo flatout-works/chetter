@@ -46,6 +46,24 @@ func (q *Queries) FailCallbackDelivery(ctx context.Context, arg FailCallbackDeli
 	return result.RowsAffected()
 }
 
+const getCallbackDeliveryRetryState = `-- name: GetCallbackDeliveryRetryState :one
+SELECT id, status FROM callback_deliveries WHERE id = $1
+`
+
+type GetCallbackDeliveryRetryStateRow struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// Read-only status lookup used to explain why a retry was rejected. The
+// authoritative eligibility check is the guarded UPDATE below.
+func (q *Queries) GetCallbackDeliveryRetryState(ctx context.Context, id string) (GetCallbackDeliveryRetryStateRow, error) {
+	row := q.db.QueryRowContext(ctx, getCallbackDeliveryRetryState, id)
+	var i GetCallbackDeliveryRetryStateRow
+	err := row.Scan(&i.ID, &i.Status)
+	return i, err
+}
+
 const insertCallbackDelivery = `-- name: InsertCallbackDelivery :exec
 
 INSERT INTO callback_deliveries
@@ -171,6 +189,37 @@ func (q *Queries) MarkCallbackDeliverySucceeded(ctx context.Context, arg MarkCal
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const resetCallbackDeliveryForRetry = `-- name: ResetCallbackDeliveryForRetry :execrows
+UPDATE callback_deliveries
+SET status = 'pending',
+    attempts = 0,
+    error = NULL,
+    lease_expires_at = NULL,
+    next_attempt_at = $1,
+    processed_at = NULL,
+    updated_at = $2
+WHERE id = $3
+  AND status IN ('failed', 'dead_letter')
+`
+
+type ResetCallbackDeliveryForRetryParams struct {
+	NextAttemptAt sql.NullTime `json:"next_attempt_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
+	ID            string       `json:"id"`
+}
+
+// Operator-initiated redelivery (issue #421): only terminal failed/dead_letter
+// rows are eligible. The status predicate keeps a concurrently claimed row
+// (in_flight with a live lease) and a completed row untouched, so the leased
+// worker can safely pick the reset row up on its next cycle.
+func (q *Queries) ResetCallbackDeliveryForRetry(ctx context.Context, arg ResetCallbackDeliveryForRetryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, resetCallbackDeliveryForRetry, arg.NextAttemptAt, arg.UpdatedAt, arg.ID)
 	if err != nil {
 		return 0, err
 	}

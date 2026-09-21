@@ -722,8 +722,10 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_webhook_deliveries", Description: "List recent webhook delivery records with status (received, completed, failed, dead_letter), retry attempts, and error details. Admin only."}, svc.listWebhookDeliveriesTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_callback_deliveries", Description: "List outbound event-callback delivery records (pending, in_flight, completed, failed, dead_letter) with retry attempts, next attempt time, and error details. Admin only."}, svc.listCallbackDeliveriesTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_retry_callback_delivery", Description: "Reset a failed or dead_letter outbound event-callback delivery to pending so the delivery worker redelivers it. Admin only; only failed/dead_letter rows are eligible and no payload or secret material is returned."}, svc.retryCallbackDeliveryTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_inbound_endpoints", Description: "List materialized inbound webhook endpoints with their opaque public URL, auth type, secret reference availability, action, and team scope. Secret values are never returned. Team tokens see only their own endpoints."}, svc.listInboundEndpointsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_inbound_deliveries", Description: "List inbound webhook delivery records (pending, processing, succeeded, retry_wait, failed_permanent, dead_letter) with retry attempts, linked task, and error text. Payloads are never returned. Team tokens see only their own deliveries."}, svc.listInboundDeliveriesTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_retry_inbound_delivery", Description: "Reset a failed_permanent or dead_letter inbound webhook delivery to pending so the delivery worker reprocesses it. Team tokens may retry only their own deliveries; payloads are never returned."}, svc.retryInboundDeliveryTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_usage_summary", Description: "Aggregate token usage and cost totals grouped by team, trigger, and repository with optional time-window and filters. Admins see all teams; team tokens see only their own data."}, svc.usageSummaryTool)
 }
 
@@ -1887,4 +1889,24 @@ func (s *Service) listCallbackDeliveriesTool(ctx context.Context, _ *mcp.CallToo
 		return nil, CallbackDeliveryOutput{}, err
 	}
 	return nil, CallbackDeliveryOutput{Deliveries: deliveries}, nil
+}
+
+// RetryCallbackDeliveryInput is the input for the
+// chetter_retry_callback_delivery MCP tool (issue #421).
+type RetryCallbackDeliveryInput struct {
+	DeliveryID string `json:"delivery_id" jsonschema:"Callback delivery id to retry; must currently be failed or dead_letter"`
+}
+
+// RetryCallbackDeliveryOutput is the output for the
+// chetter_retry_callback_delivery MCP tool.
+type RetryCallbackDeliveryOutput struct {
+	Delivery CallbackDeliveryRecord `json:"delivery"`
+}
+
+func (s *Service) retryCallbackDeliveryTool(ctx context.Context, _ *mcp.CallToolRequest, in RetryCallbackDeliveryInput) (*mcp.CallToolResult, RetryCallbackDeliveryOutput, error) {
+	record, err := s.RetryCallbackDelivery(ctx, in.DeliveryID)
+	if err != nil {
+		return nil, RetryCallbackDeliveryOutput{}, err
+	}
+	return nil, RetryCallbackDeliveryOutput{Delivery: record}, nil
 }

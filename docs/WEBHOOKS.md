@@ -113,6 +113,13 @@ variables.
   `secret_configured` boolean — never the value), action, and team scope.
 - `chetter_list_inbound_deliveries` — status, attempts, next attempt,
   linked task id, and error text (never payloads).
+- `chetter_retry_inbound_delivery` — reset a `failed_permanent`/`dead_letter`
+  delivery to pending so the worker reprocesses it (issue #421). The reset
+  clears attempts/error, honors team scope (a foreign delivery reports "not
+  found"), and preserves the deterministic task id, so a redelivery can never
+  create a duplicate task. `succeeded` rows and `processing` rows with a live
+  lease are rejected with no state change, and the action writes an
+  `inbound_delivery_retried` audit event.
 - Team-scoped tokens see only their own endpoints and deliveries.
 - Audit events cover authentication failures, receipt, replay, processing,
   retries, completion, permanent failure, and dead-letter transitions without

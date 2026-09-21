@@ -46,3 +46,24 @@ SET status = sqlc.arg(status),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
   AND status = 'in_flight';
+
+-- name: GetCallbackDeliveryRetryState :one
+-- Read-only status lookup used to explain why a retry was rejected. The
+-- authoritative eligibility check is the guarded UPDATE below.
+SELECT id, status FROM callback_deliveries WHERE id = sqlc.arg(id);
+
+-- name: ResetCallbackDeliveryForRetry :execrows
+-- Operator-initiated redelivery (issue #421): only terminal failed/dead_letter
+-- rows are eligible. The status predicate keeps a concurrently claimed row
+-- (in_flight with a live lease) and a completed row untouched, so the leased
+-- worker can safely pick the reset row up on its next cycle.
+UPDATE callback_deliveries
+SET status = 'pending',
+    attempts = 0,
+    error = NULL,
+    lease_expires_at = NULL,
+    next_attempt_at = sqlc.arg(next_attempt_at),
+    processed_at = NULL,
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+  AND status IN ('failed', 'dead_letter');
