@@ -48,6 +48,7 @@ try:
   data = json.load(sys.stdin)
   text = data['result']['content'][0]['text']
   health = json.loads(text)
+  health = health.get('health', health)
   for r in health.get('runners',[]):
     if r.get('running_tasks',0) > 0 and r.get('is_stale',True) == False:
       print(r.get('id',''))
@@ -76,11 +77,12 @@ while [ $(date +%s) -lt ${DEADLINE} ]; do
   RESP=$(mcp_call "$(mcp_tool chetter_runner_health '{"include_tasks":false}')" 2>/dev/null || echo '{}')
   RUNNING=$(echo "${RESP}" | python3 -c "
 import sys, json
-count = 0
+count = -1  # fail closed: an API/parse failure must never read as all-drained
 try:
   data = json.load(sys.stdin)
   text = data['result']['content'][0]['text']
   health = json.loads(text)
+  health = health.get('health', health)
   count = sum(r.get('running_tasks',0) for r in health.get('runners',[]) if not r.get('is_stale',True))
 except:
   pass
