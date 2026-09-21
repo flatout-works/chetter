@@ -60,6 +60,7 @@ type Repository interface {
 	GetActiveModelCatalog(ctx context.Context) (repository.ModelCatalog, error)
 	GetAgentSessionByID(ctx context.Context, id string) (repository.AgentSession, error)
 	GetAgentSessionByTaskID(ctx context.Context, taskID string) (repository.AgentSession, error)
+	GetCallbackDeliveryRetryState(ctx context.Context, id string) (repository.GetCallbackDeliveryRetryStateRow, error)
 	GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error)
 	GetDefinitionBySourceTypeName(ctx context.Context, arg repository.GetDefinitionBySourceTypeNameParams) (repository.Definition, error)
 	GetDefinitionChangeProposal(ctx context.Context, id string) (repository.DefinitionChangeProposal, error)
@@ -72,6 +73,7 @@ type Repository interface {
 	GetExecutionAttemptContext(ctx context.Context, id string) (repository.GetExecutionAttemptContextRow, error)
 	GetExecutionAttemptUsageByTask(ctx context.Context, taskID string) (repository.GetExecutionAttemptUsageByTaskRow, error)
 	GetGitHubExecutionContext(ctx context.Context, id string) (repository.GetGitHubExecutionContextRow, error)
+	GetInboundDeliveryRetryState(ctx context.Context, id string) (repository.GetInboundDeliveryRetryStateRow, error)
 	GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.AgentSessionCheckpoint, error)
 	GetLatestAgentSessionCheckpointByTaskID(ctx context.Context, taskID string) (repository.AgentSessionCheckpoint, error)
 	GetLatestTaskEvent(ctx context.Context, taskID string) (repository.TaskEvent, error)
@@ -162,6 +164,8 @@ type Repository interface {
 	RenewExecutionAttemptLease(ctx context.Context, arg repository.RenewExecutionAttemptLeaseParams) (int64, error)
 	RequeueTaskAfterExecutionAttemptLost(ctx context.Context, arg repository.RequeueTaskAfterExecutionAttemptLostParams) (int64, error)
 	RequeueTaskForPrompt(ctx context.Context, arg repository.RequeueTaskForPromptParams) (int64, error)
+	ResetCallbackDeliveryForRetry(ctx context.Context, arg repository.ResetCallbackDeliveryForRetryParams) (int64, error)
+	ResetInboundDeliveryForRetry(ctx context.Context, arg repository.ResetInboundDeliveryForRetryParams) (int64, error)
 	RevertOrphanedRunningUserPrompts(ctx context.Context) (int64, error)
 	SearchAgentSessions(ctx context.Context, arg repository.SearchAgentSessionsParams) ([]repository.AgentSession, error)
 	SearchAgentSessionsByTeams(ctx context.Context, arg repository.SearchAgentSessionsByTeamsParams) ([]repository.AgentSession, error)
@@ -379,6 +383,11 @@ func (q *Queries) GetAgentSessionByTaskID(ctx context.Context, taskID string) (r
 	return convert[repository.AgentSession](value), err
 }
 
+func (q *Queries) GetCallbackDeliveryRetryState(ctx context.Context, id string) (repository.GetCallbackDeliveryRetryStateRow, error) {
+	value, err := q.postgres.GetCallbackDeliveryRetryState(ctx, convert[string](id))
+	return convert[repository.GetCallbackDeliveryRetryStateRow](value), err
+}
+
 func (q *Queries) GetClaimableExecutionAttemptForUpdate(ctx context.Context, arg repository.GetClaimableExecutionAttemptForUpdateParams) (repository.GetClaimableExecutionAttemptForUpdateRow, error) {
 	value, err := q.postgres.GetClaimableExecutionAttemptForUpdate(ctx, convert[repositorypostgres.GetClaimableExecutionAttemptForUpdateParams](arg))
 	return convert[repository.GetClaimableExecutionAttemptForUpdateRow](value), err
@@ -437,6 +446,11 @@ func (q *Queries) GetExecutionAttemptUsageByTask(ctx context.Context, taskID str
 func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (repository.GetGitHubExecutionContextRow, error) {
 	value, err := q.postgres.GetGitHubExecutionContext(ctx, convert[string](id))
 	return convert[repository.GetGitHubExecutionContextRow](value), err
+}
+
+func (q *Queries) GetInboundDeliveryRetryState(ctx context.Context, id string) (repository.GetInboundDeliveryRetryStateRow, error) {
+	value, err := q.postgres.GetInboundDeliveryRetryState(ctx, convert[string](id))
+	return convert[repository.GetInboundDeliveryRetryStateRow](value), err
 }
 
 func (q *Queries) GetLatestAgentSessionCheckpoint(ctx context.Context, agentSessionID string) (repository.AgentSessionCheckpoint, error) {
@@ -870,6 +884,16 @@ func (q *Queries) RequeueTaskAfterExecutionAttemptLost(ctx context.Context, arg 
 
 func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg repository.RequeueTaskForPromptParams) (int64, error) {
 	value, err := q.postgres.RequeueTaskForPrompt(ctx, convert[repositorypostgres.RequeueTaskForPromptParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) ResetCallbackDeliveryForRetry(ctx context.Context, arg repository.ResetCallbackDeliveryForRetryParams) (int64, error) {
+	value, err := q.postgres.ResetCallbackDeliveryForRetry(ctx, convert[repositorypostgres.ResetCallbackDeliveryForRetryParams](arg))
+	return convert[int64](value), err
+}
+
+func (q *Queries) ResetInboundDeliveryForRetry(ctx context.Context, arg repository.ResetInboundDeliveryForRetryParams) (int64, error) {
+	value, err := q.postgres.ResetInboundDeliveryForRetry(ctx, convert[repositorypostgres.ResetInboundDeliveryForRetryParams](arg))
 	return convert[int64](value), err
 }
 

@@ -6,12 +6,15 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/inbound"
+	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 )
 
@@ -331,10 +334,7 @@ func (s *Service) ListInboundDeliveries(ctx context.Context, endpointID, status 
 	if s.dialect == store.DialectPostgres {
 		orderLimit = " ORDER BY created_at DESC LIMIT $3 OFFSET $4"
 	}
-	query := `SELECT id, endpoint_id, COALESCE(team_id, ''), COALESCE(delivery_id, ''), COALESCE(event_type, ''),
-	                 COALESCE(source_ip, ''), status, attempts, max_attempts, COALESCE(error, ''),
-	                 COALESCE(task_id, ''), next_attempt_at, processed_at, created_at, updated_at
-	          FROM inbound_deliveries ` + where + orderLimit
+	query := `SELECT ` + inboundDeliverySelectColumns + ` FROM inbound_deliveries ` + where + orderLimit
 	rows, err := s.rawDB.QueryContext(ctx, query, endpointID, status, limit, offset)
 	if s.dialect != store.DialectPostgres {
 		// MySQL repeats each filter placeholder for the AND clauses; the
@@ -347,18 +347,9 @@ func (s *Service) ListInboundDeliveries(ctx context.Context, endpointID, status 
 	defer rows.Close()
 	var records []inboundDeliveryRecord
 	for rows.Next() {
-		var record inboundDeliveryRecord
-		var nextAttemptAt, processedAt sql.NullTime
-		if err := rows.Scan(&record.ID, &record.EndpointID, &record.TeamID, &record.DeliveryID, &record.EventType,
-			&record.SourceIP, &record.Status, &record.Attempts, &record.MaxAttempts, &record.Error,
-			&record.TaskID, &nextAttemptAt, &processedAt, &record.CreatedAt, &record.UpdatedAt); err != nil {
+		record, err := scanInboundDeliveryRecord(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan inbound delivery: %w", err)
-		}
-		if nextAttemptAt.Valid {
-			record.NextAttemptAt = &nextAttemptAt.Time
-		}
-		if processedAt.Valid {
-			record.ProcessedAt = &processedAt.Time
 		}
 		if !inboundVisibleToScope(ctx, record.TeamID) {
 			continue
@@ -366,6 +357,107 @@ func (s *Service) ListInboundDeliveries(ctx context.Context, endpointID, status 
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+// inboundDeliverySelectColumns is the shared column list for reading an
+// inbound delivery into an inboundDeliveryRecord. The raw payload is never
+// selected so it cannot leak through a read path; team_id is COALESCEd for
+// scoping.
+const inboundDeliverySelectColumns = `id, endpoint_id, COALESCE(team_id, ''), COALESCE(delivery_id, ''), COALESCE(event_type, ''),
+	                 COALESCE(source_ip, ''), status, attempts, max_attempts, COALESCE(error, ''),
+	                 COALESCE(task_id, ''), next_attempt_at, processed_at, created_at, updated_at`
+
+// scanInboundDeliveryRecord scans one inbound delivery row in the shape of
+// inboundDeliverySelectColumns. It works for both *sql.Row and *sql.Rows.
+func scanInboundDeliveryRecord(row rowScanner) (inboundDeliveryRecord, error) {
+	var record inboundDeliveryRecord
+	var nextAttemptAt, processedAt sql.NullTime
+	if err := row.Scan(&record.ID, &record.EndpointID, &record.TeamID, &record.DeliveryID, &record.EventType,
+		&record.SourceIP, &record.Status, &record.Attempts, &record.MaxAttempts, &record.Error,
+		&record.TaskID, &nextAttemptAt, &processedAt, &record.CreatedAt, &record.UpdatedAt); err != nil {
+		return inboundDeliveryRecord{}, err
+	}
+	if nextAttemptAt.Valid {
+		record.NextAttemptAt = &nextAttemptAt.Time
+	}
+	if processedAt.Valid {
+		record.ProcessedAt = &processedAt.Time
+	}
+	return record, nil
+}
+
+// getInboundDeliveryRecord loads one inbound delivery by id. It returns
+// sql.ErrNoRows when the id does not exist so callers can distinguish a
+// missing row from an ineligible one.
+func (s *Service) getInboundDeliveryRecord(ctx context.Context, id string) (inboundDeliveryRecord, error) {
+	if s.rawDB == nil {
+		return inboundDeliveryRecord{}, fmt.Errorf("database not available")
+	}
+	placeholder := "?"
+	if s.dialect == store.DialectPostgres {
+		placeholder = "$1"
+	}
+	query := `SELECT ` + inboundDeliverySelectColumns + ` FROM inbound_deliveries WHERE id = ` + placeholder
+	record, err := scanInboundDeliveryRecord(s.rawDB.QueryRowContext(ctx, query, id))
+	if err != nil {
+		return inboundDeliveryRecord{}, fmt.Errorf("get inbound delivery: %w", err)
+	}
+	return record, nil
+}
+
+// RetryInboundDelivery is the operator-initiated redelivery path for inbound
+// webhook endpoint deliveries (issue #421). It is team-scoped like
+// ListInboundDeliveries: admins may target any delivery, token-scoped callers
+// may only target deliveries in their own teams (a foreign delivery reports
+// "not found" so existence is not leaked). Eligible rows are terminal
+// failed_permanent/dead_letter deliveries; the guarded reset ignores a
+// concurrently claimed processing row (live lease) and a succeeded row. Task
+// creation derives a deterministic id from the delivery row, so redelivery can
+// never create a duplicate task.
+func (s *Service) RetryInboundDelivery(ctx context.Context, deliveryID string) (inboundDeliveryRecord, error) {
+	if s.rawDB == nil {
+		return inboundDeliveryRecord{}, fmt.Errorf("database not available")
+	}
+	deliveryID = strings.TrimSpace(deliveryID)
+	if deliveryID == "" {
+		return inboundDeliveryRecord{}, fmt.Errorf("delivery_id is required")
+	}
+	state, err := s.repo.GetInboundDeliveryRetryState(ctx, deliveryID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return inboundDeliveryRecord{}, fmt.Errorf("inbound delivery %q not found", deliveryID)
+		}
+		return inboundDeliveryRecord{}, fmt.Errorf("get inbound delivery: %w", err)
+	}
+	if !inboundVisibleToScope(ctx, state.TeamID.String) {
+		return inboundDeliveryRecord{}, fmt.Errorf("inbound delivery %q not found", deliveryID)
+	}
+	switch state.Status {
+	case inboundDeliveryStatusFailedPermanent, inboundDeliveryStatusDeadLetter:
+	default:
+		return inboundDeliveryRecord{}, fmt.Errorf("inbound delivery %q cannot be retried from status %q (only failed_permanent or dead_letter deliveries can be retried)", deliveryID, state.Status)
+	}
+	now := time.Now().UTC()
+	affected, err := s.repo.ResetInboundDeliveryForRetry(ctx, repository.ResetInboundDeliveryForRetryParams{
+		NextAttemptAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:     now,
+		ID:            deliveryID,
+	})
+	if err != nil {
+		return inboundDeliveryRecord{}, fmt.Errorf("reset inbound delivery: %w", err)
+	}
+	if affected == 0 {
+		return inboundDeliveryRecord{}, fmt.Errorf("inbound delivery %q is no longer retryable", deliveryID)
+	}
+	record, err := s.getInboundDeliveryRecord(ctx, deliveryID)
+	if err != nil {
+		return inboundDeliveryRecord{}, err
+	}
+	s.auditInboundDelivery(ctx, inboundDeliveryRow{
+		ID: record.ID, EndpointID: record.EndpointID, TeamID: record.TeamID,
+		DeliveryID: record.DeliveryID, EventType: record.EventType, TaskID: record.TaskID,
+	}, "retried", fmt.Sprintf("delivery reset to pending by operator (previous status %s)", state.Status))
+	return record, nil
 }
 
 // inboundDeliveryTaskID derives the deterministic task id for one delivery

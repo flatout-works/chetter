@@ -107,6 +107,15 @@ type CallbackDeliveryRecord struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+// callbackDeliverySelectColumns is the shared column list for reading a
+// callback delivery into a CallbackDeliveryRecord. COALESCE keeps nullable
+// columns scannable as plain strings; payload/headers are deliberately never
+// selected so secret or raw event content cannot leak through a read path.
+const callbackDeliverySelectColumns = `id, callback_id, event_id, COALESCE(task_id, ''), COALESCE(team_id, ''),
+	                event_type, action_type, endpoint_url, method, status, attempts, max_attempts,
+	                COALESCE(error, ''), COALESCE(child_task_id, ''),
+	                next_attempt_at, processed_at, created_at, updated_at`
+
 // ListCallbackDeliveries returns recent outbound callback deliveries for the
 // chetter_list_callback_deliveries MCP tool (issue #357 AC4). It uses raw SQL
 // like ListWebhookDeliveries; the enqueue/claim/mark hot paths use the sqlc
@@ -120,19 +129,13 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 	}
 	var query string
 	if s.dialect == store.DialectPostgres {
-		query = `SELECT id, callback_id, event_id, COALESCE(task_id, ''), COALESCE(team_id, ''),
-		                event_type, action_type, endpoint_url, method, status, attempts, max_attempts,
-		                COALESCE(error, ''), COALESCE(child_task_id, ''),
-		                next_attempt_at, processed_at, created_at, updated_at
+		query = `SELECT ` + callbackDeliverySelectColumns + `
 		         FROM callback_deliveries
 		         WHERE ($1 = '' OR status = $1)
 		         ORDER BY created_at DESC
 		         LIMIT $2 OFFSET $3`
 	} else {
-		query = `SELECT id, callback_id, event_id, COALESCE(task_id, ''), COALESCE(team_id, ''),
-		                event_type, action_type, endpoint_url, method, status, attempts, max_attempts,
-		                COALESCE(error, ''), COALESCE(child_task_id, ''),
-		                next_attempt_at, processed_at, created_at, updated_at
+		query = `SELECT ` + callbackDeliverySelectColumns + `
 		         FROM callback_deliveries
 		         WHERE (? = '' OR status = ?)
 		         ORDER BY created_at DESC
@@ -145,22 +148,105 @@ func (s *Service) ListCallbackDeliveries(ctx context.Context, statusFilter strin
 	defer rows.Close()
 	var records []CallbackDeliveryRecord
 	for rows.Next() {
-		var r CallbackDeliveryRecord
-		var nextAttemptAt, processedAt sql.NullTime
-		if err := rows.Scan(&r.ID, &r.CallbackID, &r.EventID, &r.TaskID, &r.TeamID, &r.EventType,
-			&r.ActionType, &r.EndpointURL, &r.Method, &r.Status, &r.Attempts, &r.MaxAttempts, &r.Error,
-			&r.ChildTaskID, &nextAttemptAt, &processedAt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		record, err := scanCallbackDeliveryRecord(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan callback delivery: %w", err)
 		}
-		if nextAttemptAt.Valid {
-			r.NextAttemptAt = &nextAttemptAt.Time
-		}
-		if processedAt.Valid {
-			r.ProcessedAt = &processedAt.Time
-		}
-		records = append(records, r)
+		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+// scanCallbackDeliveryRecord scans one callback delivery row in the shape of
+// callbackDeliverySelectColumns. It works for both *sql.Row and *sql.Rows.
+func scanCallbackDeliveryRecord(row rowScanner) (CallbackDeliveryRecord, error) {
+	var r CallbackDeliveryRecord
+	var nextAttemptAt, processedAt sql.NullTime
+	if err := row.Scan(&r.ID, &r.CallbackID, &r.EventID, &r.TaskID, &r.TeamID, &r.EventType,
+		&r.ActionType, &r.EndpointURL, &r.Method, &r.Status, &r.Attempts, &r.MaxAttempts, &r.Error,
+		&r.ChildTaskID, &nextAttemptAt, &processedAt, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		return CallbackDeliveryRecord{}, err
+	}
+	if nextAttemptAt.Valid {
+		r.NextAttemptAt = &nextAttemptAt.Time
+	}
+	if processedAt.Valid {
+		r.ProcessedAt = &processedAt.Time
+	}
+	return r, nil
+}
+
+// getCallbackDelivery loads one callback delivery by id for the operator retry
+// tool. It returns sql.ErrNoRows when the id does not exist so callers can
+// distinguish a missing row from an ineligible one.
+func (s *Service) getCallbackDelivery(ctx context.Context, id string) (CallbackDeliveryRecord, error) {
+	if s.rawDB == nil {
+		return CallbackDeliveryRecord{}, fmt.Errorf("database not available")
+	}
+	placeholder := "?"
+	if s.dialect == store.DialectPostgres {
+		placeholder = "$1"
+	}
+	query := `SELECT ` + callbackDeliverySelectColumns + ` FROM callback_deliveries WHERE id = ` + placeholder
+	record, err := scanCallbackDeliveryRecord(s.rawDB.QueryRowContext(ctx, query, id))
+	if err != nil {
+		return CallbackDeliveryRecord{}, fmt.Errorf("get callback delivery: %w", err)
+	}
+	return record, nil
+}
+
+// RetryCallbackDelivery is the operator-initiated redelivery path for outbound
+// event-callback actions (issue #421). Admin only. It resets an eligible
+// failed/dead_letter delivery to a due pending state (attempts and
+// next-attempt cleared) so the existing leased worker picks it up on its next
+// cycle. The reset is guarded by the current status, so a concurrently claimed
+// in_flight row or an already-completed row is never touched. Idempotency is
+// preserved: create_task deliveries keep their deterministic child-task id and
+// webhook/slack deliveries keep the same (callback_id, event_id) row, so a
+// retry cannot duplicate a logically completed delivery.
+func (s *Service) RetryCallbackDelivery(ctx context.Context, deliveryID string) (CallbackDeliveryRecord, error) {
+	if !isAdmin(ctx) {
+		return CallbackDeliveryRecord{}, fmt.Errorf("admin access required")
+	}
+	if s.rawDB == nil {
+		return CallbackDeliveryRecord{}, fmt.Errorf("database not available")
+	}
+	deliveryID = strings.TrimSpace(deliveryID)
+	if deliveryID == "" {
+		return CallbackDeliveryRecord{}, fmt.Errorf("delivery_id is required")
+	}
+	previous, err := s.getCallbackDelivery(ctx, deliveryID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return CallbackDeliveryRecord{}, fmt.Errorf("callback delivery %q not found", deliveryID)
+		}
+		return CallbackDeliveryRecord{}, err
+	}
+	now := time.Now().UTC()
+	affected, err := s.repo.ResetCallbackDeliveryForRetry(ctx, repository.ResetCallbackDeliveryForRetryParams{
+		NextAttemptAt: sql.NullTime{Time: now, Valid: true},
+		UpdatedAt:     now,
+		ID:            deliveryID,
+	})
+	if err != nil {
+		return CallbackDeliveryRecord{}, fmt.Errorf("reset callback delivery: %w", err)
+	}
+	if affected == 0 {
+		return CallbackDeliveryRecord{}, fmt.Errorf("callback delivery %q cannot be retried from status %q (only failed or dead_letter deliveries can be retried)", deliveryID, previous.Status)
+	}
+	s.auditAsync(ctx, AuditEventParams{
+		EventType:  "callback_delivery_retried",
+		SourceType: "callback_delivery",
+		SourceID:   deliveryID,
+		TargetType: "task",
+		TargetID:   previous.TaskID,
+		Detail:     fmt.Sprintf("callback %s event %s delivery reset to pending by operator (previous status %s)", previous.CallbackID, previous.EventID, previous.Status),
+	})
+	record, err := s.getCallbackDelivery(ctx, deliveryID)
+	if err != nil {
+		return CallbackDeliveryRecord{}, err
+	}
+	return record, nil
 }
 
 // EnqueueTaskEventCallbackDeliveries persists one outbound delivery row per

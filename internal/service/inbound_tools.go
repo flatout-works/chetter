@@ -49,3 +49,23 @@ func (s *Service) listInboundDeliveriesTool(ctx context.Context, _ *mcp.CallTool
 	}
 	return nil, ListInboundDeliveriesOutput{Deliveries: deliveries}, nil
 }
+
+// RetryInboundDeliveryInput is the input for the
+// chetter_retry_inbound_delivery MCP tool (issue #421).
+type RetryInboundDeliveryInput struct {
+	DeliveryID string `json:"delivery_id" jsonschema:"Inbound delivery id to retry; must currently be failed_permanent or dead_letter"`
+}
+
+// RetryInboundDeliveryOutput is the output for the
+// chetter_retry_inbound_delivery MCP tool.
+type RetryInboundDeliveryOutput struct {
+	Delivery inboundDeliveryRecord `json:"delivery"`
+}
+
+func (s *Service) retryInboundDeliveryTool(ctx context.Context, _ *mcp.CallToolRequest, in RetryInboundDeliveryInput) (*mcp.CallToolResult, RetryInboundDeliveryOutput, error) {
+	record, err := s.RetryInboundDelivery(ctx, in.DeliveryID)
+	if err != nil {
+		return nil, RetryInboundDeliveryOutput{}, err
+	}
+	return nil, RetryInboundDeliveryOutput{Delivery: record}, nil
+}

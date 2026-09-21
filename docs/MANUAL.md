@@ -532,6 +532,7 @@ time. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 | `chetter_list_event_callbacks` | List callbacks, optionally by enabled state and event type. |
 | `chetter_delete_event_callback` | Delete an event callback by name. |
 | `chetter_list_callback_deliveries` | Admin-only list of outbound callback delivery records (`pending`, `in_flight`, `completed`, `failed`, `dead_letter`) with retry attempts, next attempt time, and error details. |
+| `chetter_retry_callback_delivery` | Admin-only reset of a `failed`/`dead_letter` outbound callback delivery to pending (attempts/error cleared) so the leased worker redelivers it. |
 
 ### Webhook Deliveries
 
@@ -540,6 +541,7 @@ time. See [TRIGGERS.md](TRIGGERS.md#event-callbacks).
 | `chetter_list_webhook_deliveries` | Admin-only list of recent inbound GitHub webhook delivery records (received/completed/failed/dead_letter) with retry counts and error details. |
 | `chetter_list_inbound_endpoints` | List materialized inbound webhook endpoints with public URL, auth type, secret availability, action, and team scope. Secret values are never returned; team tokens see only their own endpoints. |
 | `chetter_list_inbound_deliveries` | List inbound webhook delivery records (`pending`, `processing`, `succeeded`, `retry_wait`, `failed_permanent`, `dead_letter`) with retry attempts, linked task, and error text. Payloads are never returned; team tokens see only their own deliveries. |
+| `chetter_retry_inbound_delivery` | Reset a `failed_permanent`/`dead_letter` inbound delivery to pending (attempts/error cleared) so the leased worker reprocesses it. Team tokens may retry only their own deliveries. |
 
 Generic inbound webhook endpoints (external systems POSTing authenticated events
 to `POST /hooks/inbound/<public_id>`) are described in
@@ -553,6 +555,7 @@ Generic inbound webhook endpoints are Git-managed (`global/webhooks/inbound/*.ya
 |---|---|
 | `chetter_list_inbound_endpoints` | List materialized inbound webhook endpoints with their public URL, auth type, secret reference availability, action, and team scope. Secret values are never returned. Team tokens see only their own endpoints. |
 | `chetter_list_inbound_deliveries` | List inbound webhook delivery records (`pending`, `processing`, `succeeded`, `retry_wait`, `failed_permanent`, `dead_letter`) with retry attempts, linked task, and error text. Payloads are never returned. Team tokens see only their own deliveries. |
+| `chetter_retry_inbound_delivery` | Reset a `failed_permanent`/`dead_letter` inbound delivery to pending (attempts/error cleared) so the leased worker reprocesses it. Team tokens may retry only their own deliveries. |
 
 ### Definitions
 
