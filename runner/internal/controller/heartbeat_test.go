@@ -17,6 +17,28 @@ import (
 	"github.com/flatout-works/chetter/runner/internal/task"
 )
 
+// TestFindLiveExecutionForTaskLocked verifies the duplicate-execution guard
+// backing runTask: a task with a live execution must be detected so a second
+// claim of the same task is refused instead of running two sandboxes side by
+// side (2026-09-20 wowbagger double-execution incident).
+func TestFindLiveExecutionForTaskLocked(t *testing.T) {
+	r := &Runner{tasks: map[string]*task.TaskSession{
+		"exec_1": {TaskID: "task_1", ExecutionID: "exec_1"},
+		"exec_2": {TaskID: "task_2", ExecutionID: "exec_2"},
+	}}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if got := r.findLiveExecutionForTaskLocked("task_1"); got != "exec_1" {
+		t.Fatalf("findLiveExecutionForTaskLocked(task_1) = %q, want exec_1", got)
+	}
+	if got := r.findLiveExecutionForTaskLocked("task_2"); got != "exec_2" {
+		t.Fatalf("findLiveExecutionForTaskLocked(task_2) = %q, want exec_2", got)
+	}
+	if got := r.findLiveExecutionForTaskLocked("task_3"); got != "" {
+		t.Fatalf("findLiveExecutionForTaskLocked(task_3) = %q, want empty", got)
+	}
+}
+
 func TestCancelTaskRequiresExactExecutionHierarchy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Runner{

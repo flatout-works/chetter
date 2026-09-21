@@ -1045,7 +1045,15 @@ func TestRPCHeartbeatRejectsWrongExecutionClaim(t *testing.T) {
 	}
 }
 
-func TestRPCHeartbeatDoesNotRenewExpiredExecution(t *testing.T) {
+// TestRPCHeartbeatRenewsExpiredExecutionStillOwnedByRunner verifies the lease
+// fence after the 2026-09-20 double-execution fix: a transient heartbeat gap
+// must not permanently orphan a live execution. A runner that still reports
+// an execution with matching hierarchy and claim renews its lease even after
+// it has expired, and no cancel command is issued. Previously the renewal
+// required lease_expires_at > CURRENT_TIMESTAMP, so one missed heartbeat made
+// the execution unrenewable forever; the reaper then requeued the task while
+// the runner kept running it, and the same task ended up executing twice.
+func TestRPCHeartbeatRenewsExpiredExecutionStillOwnedByRunner(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -1053,25 +1061,21 @@ func TestRPCHeartbeatDoesNotRenewExpiredExecution(t *testing.T) {
 	insertPendingTask(t, q, "task_heartbeat_expired", "x", "runner:latest")
 	markTaskRunning(t, q, "task_heartbeat_expired", now)
 	markPendingExecutionAttemptClaimed(t, q, "task_heartbeat_expired", "runner_1", now, now.Add(-time.Minute))
-	before, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_expired")
-	if err != nil {
-		t.Fatalf("get attempt: %v", err)
-	}
 	resp, err := svc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: &runnerv1.RunnerInfo{
 		RunnerId: "runner_1", Status: "active", CurrentExecutions: []*runnerv1.RunningExecution{runningExecution("task_heartbeat_expired")},
 	}}))
 	if err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
-	if len(resp.Msg.Commands) != 1 || !strings.Contains(resp.Msg.Commands[0].Reason, "no longer running") {
-		t.Fatalf("expired heartbeat commands = %+v", resp.Msg.Commands)
+	if len(resp.Msg.Commands) != 0 {
+		t.Fatalf("expected no cancel commands for an execution still owned and reported by the runner, got %+v", resp.Msg.Commands)
 	}
 	after, err := q.GetExecutionAttemptByID(ctx, "exec_task_heartbeat_expired")
 	if err != nil {
 		t.Fatalf("get attempt after heartbeat: %v", err)
 	}
-	if !after.LeaseExpiresAt.Time.Equal(before.LeaseExpiresAt.Time) {
-		t.Fatal("expired heartbeat renewed the lease")
+	if after.LeaseExpiresAt.Time.Before(time.Now().UTC()) {
+		t.Fatalf("expired execution was not renewed: lease %v", after.LeaseExpiresAt.Time)
 	}
 }
 

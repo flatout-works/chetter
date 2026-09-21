@@ -769,7 +769,7 @@ const renewExecutionAttemptLease = `-- name: RenewExecutionAttemptLease :execrow
 UPDATE execution_attempts
 SET lease_expires_at = $1, last_event_at = $2, updated_at = $3
 WHERE id = $4 AND runner_id = $5 AND claim_id = $6
-  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP
+  AND status = 'running'
 `
 
 type RenewExecutionAttemptLeaseParams struct {
