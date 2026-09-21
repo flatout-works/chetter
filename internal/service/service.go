@@ -409,37 +409,48 @@ func (s *Service) reaperCtx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, eventHandlerTimeout)
 }
 
-// pruneJob pairs a retention-managed table with its configured TTL.
+// pruneJob pairs a retention-managed table with its configured TTL. When
+// terminalOnly is set the job only deletes terminal delivery rows (see
+// Store.PruneTerminalDeliveries) so in-flight or retryable deliveries are never
+// discarded.
 type pruneJob struct {
-	table string
-	ttl   time.Duration
+	table        string
+	ttl          time.Duration
+	terminalOnly bool
 }
 
 // pruneJobs builds the list of enabled prune jobs from configuration. Tables
 // whose TTL is 0 are omitted, so pruning is opt-in and existing deployments are
 // unaffected until an operator sets a retention window. The artifact TTL also
-// governs agent sessions per issue #112 criterion 3. See issue #112.
+// governs agent sessions per issue #112 criterion 3. See issue #112 and issue
+// #253 (delivery retention).
 func (s *Service) pruneJobs() []pruneJob {
 	var jobs []pruneJob
 	if d := s.cfg.EventsRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"task_events", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{table: "task_events", ttl: time.Duration(d) * 24 * time.Hour})
 	}
 	if d := s.cfg.AuditRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"audit_log", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{table: "audit_log", ttl: time.Duration(d) * 24 * time.Hour})
 	}
 	if d := s.cfg.ArtifactRetentionDays; d > 0 {
-		jobs = append(jobs, pruneJob{"task_artifacts", time.Duration(d) * 24 * time.Hour})
-		jobs = append(jobs, pruneJob{"agent_sessions", time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{table: "task_artifacts", ttl: time.Duration(d) * 24 * time.Hour})
+		jobs = append(jobs, pruneJob{table: "agent_sessions", ttl: time.Duration(d) * 24 * time.Hour})
+	}
+	if d := s.cfg.DeliveryRetentionDays; d > 0 {
+		ttl := time.Duration(d) * 24 * time.Hour
+		for _, table := range []string{"callback_deliveries", "inbound_deliveries", "webhook_deliveries"} {
+			jobs = append(jobs, pruneJob{table: table, ttl: ttl, terminalOnly: true})
+		}
 	}
 	return jobs
 }
 
 // pruneRetainedRows is the reaper step that deletes rows older than their
-// configured retention TTLs from the event, audit-log, artifact, and
-// agent-session tables. Each table is pruned independently; a failure on one
+// configured retention TTLs from the event, audit-log, artifact, agent-session,
+// and delivery tables. Each table is pruned independently; a failure on one
 // table is logged and does not abort the others. Rows pruned per table are
 // logged each cycle. With all TTLs at their zero default this is a no-op. See
-// issue #112.
+// issues #112 and #253.
 func (s *Service) pruneRetainedRows() {
 	ctx, cancel := s.reaperCtx()
 	defer cancel()
@@ -448,7 +459,13 @@ func (s *Service) pruneRetainedRows() {
 		return
 	}
 	for _, job := range jobs {
-		n, err := s.store.PruneOldRows(ctx, job.table, job.ttl)
+		var n int
+		var err error
+		if job.terminalOnly {
+			n, err = s.store.PruneTerminalDeliveries(ctx, job.table, job.ttl)
+		} else {
+			n, err = s.store.PruneOldRows(ctx, job.table, job.ttl)
+		}
 		if err != nil {
 			slog.Error("retention prune failed", "table", job.table, "error", err)
 			if isQuotaExhaustedError(err) {

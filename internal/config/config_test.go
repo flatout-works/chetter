@@ -434,11 +434,15 @@ func TestLoadRetention(t *testing.T) {
 		if cfg.ArtifactRetentionDays != 0 {
 			t.Errorf("expected ArtifactRetentionDays 0, got %d", cfg.ArtifactRetentionDays)
 		}
+		if cfg.DeliveryRetentionDays != 0 {
+			t.Errorf("expected DeliveryRetentionDays 0, got %d", cfg.DeliveryRetentionDays)
+		}
 	})
 	t.Run("env overrides enable pruning", func(t *testing.T) {
 		t.Setenv("EVENTS_RETENTION_DAYS", "30")
 		t.Setenv("AUDIT_RETENTION_DAYS", "90")
 		t.Setenv("ARTIFACT_RETENTION_DAYS", "180")
+		t.Setenv("DELIVERY_RETENTION_DAYS", "60")
 		cfg := Load()
 		if cfg.EventsRetentionDays != 30 {
 			t.Errorf("expected EventsRetentionDays 30, got %d", cfg.EventsRetentionDays)
@@ -448,6 +452,9 @@ func TestLoadRetention(t *testing.T) {
 		}
 		if cfg.ArtifactRetentionDays != 180 {
 			t.Errorf("expected ArtifactRetentionDays 180, got %d", cfg.ArtifactRetentionDays)
+		}
+		if cfg.DeliveryRetentionDays != 60 {
+			t.Errorf("expected DeliveryRetentionDays 60, got %d", cfg.DeliveryRetentionDays)
 		}
 	})
 	t.Run("invalid value falls back to zero", func(t *testing.T) {
