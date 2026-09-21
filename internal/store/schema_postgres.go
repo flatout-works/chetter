@@ -36,7 +36,12 @@ func postgresSchema() []string {
 			field = strings.ReplaceAll(field, "DATETIME(6)", "TIMESTAMPTZ")
 			field = strings.ReplaceAll(field, "MEDIUMTEXT", "TEXT")
 			field = strings.ReplaceAll(field, " JSON", " JSONB")
+			// Every TINYINT(1) boolean default must be translated, not just the
+			// FALSE ones: a bare TINYINT(1) -> BOOLEAN rewrite of
+			// "DEFAULT 1" leaves "BOOLEAN NOT NULL DEFAULT 1", which PostgreSQL
+			// rejects (SQLSTATE 42804) and which failed the whole bootstrap.
 			field = strings.ReplaceAll(field, "TINYINT(1) NOT NULL DEFAULT 0", "BOOLEAN NOT NULL DEFAULT FALSE")
+			field = strings.ReplaceAll(field, "TINYINT(1) NOT NULL DEFAULT 1", "BOOLEAN NOT NULL DEFAULT TRUE")
 			field = strings.ReplaceAll(field, "TINYINT(1)", "BOOLEAN")
 			fields = append(fields, field)
 			if (table == "tasks" || table == "triggers") && field == "id VARCHAR(64) NOT NULL" {
