@@ -77,7 +77,7 @@ while [ $(date +%s) -lt ${DEADLINE} ]; do
   RESP=$(mcp_call "$(mcp_tool chetter_runner_health '{"include_tasks":false}')" 2>/dev/null || echo '{}')
   RUNNING=$(echo "${RESP}" | python3 -c "
 import sys, json
-count = -1  # fail closed: an API/parse failure must never read as "all drained"
+count = -1  # fail closed: an API/parse failure must never read as all-drained
 try:
   data = json.load(sys.stdin)
   text = data['result']['content'][0]['text']
