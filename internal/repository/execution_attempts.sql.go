@@ -784,7 +784,7 @@ const renewExecutionAttemptLease = `-- name: RenewExecutionAttemptLease :execrow
 UPDATE execution_attempts
 SET lease_expires_at = ?, last_event_at = ?, updated_at = ?
 WHERE id = ? AND runner_id = ? AND claim_id = ?
-  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP
+  AND status = 'running'
 `
 
 type RenewExecutionAttemptLeaseParams struct {
@@ -796,6 +796,18 @@ type RenewExecutionAttemptLeaseParams struct {
 	ClaimID        string         `json:"claim_id"`
 }
 
+// The renewal gate is status + runner_id + claim_id: an execution that is
+// still 'running' and owned by the reporting runner may always renew, even
+// after a transient expiry. Requiring lease_expires_at > CURRENT_TIMESTAMP
+// here made a single missed heartbeat (server overload, network blip)
+// PERMANENTLY unrenewable: every later renewal returned 0 rows, the reaper
+// requeued the task while the runner kept executing it, and the runner then
+// claimed the new attempt alongside the old one — two live executions of
+// the same task (2026-09-20 wowbagger pile-up: one runner, two sandboxes of
+// the same task, 7.7 GB RSS). The reaper fences via FOR UPDATE on the
+// expired-lease rows: if a renewal commits first the row's lease moves into
+// the future and the locking read drops it; if the reaper commits first the
+// row becomes 'lost' and this update's status filter rejects the renewal.
 func (q *Queries) RenewExecutionAttemptLease(ctx context.Context, arg RenewExecutionAttemptLeaseParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, renewExecutionAttemptLease,
 		arg.LeaseExpiresAt,

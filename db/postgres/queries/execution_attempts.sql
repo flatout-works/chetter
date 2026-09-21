@@ -109,7 +109,7 @@ WHERE prompt.task_id = $1;
 UPDATE execution_attempts
 SET lease_expires_at = sqlc.narg(lease_expires_at), last_event_at = sqlc.narg(last_event_at), updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND runner_id = sqlc.narg(runner_id) AND claim_id = sqlc.arg(claim_id)
-  AND status = 'running' AND lease_expires_at > CURRENT_TIMESTAMP;
+  AND status = 'running';
 
 -- name: ExtendActiveExecutionAttemptTimeout :execrows
 UPDATE execution_attempts attempt

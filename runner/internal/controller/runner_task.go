@@ -46,6 +46,18 @@ func executionKey(req task.TaskRequest) string {
 	return req.ExecutionID
 }
 
+// findLiveExecutionForTaskLocked returns the execution ID of an in-flight
+// execution of the given task on this runner, or "" when none is tracked.
+// Caller must hold r.mu.
+func (r *Runner) findLiveExecutionForTaskLocked(taskID string) string {
+	for _, session := range r.tasks {
+		if session.TaskID == taskID {
+			return session.ExecutionID
+		}
+	}
+	return ""
+}
+
 // validateTaskResourceLimits rejects invalid per-task resource limit overrides
 // with a clear error, mirroring the startup validation of runner-level
 // container limits. Returns "" when the limits are acceptable.
@@ -113,6 +125,21 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		StartedAt:   time.Now(),
 	}
 	r.mu.Lock()
+	// Refuse to run a second execution of a task that already has a live
+	// execution on this runner. The control plane can hand out the same task
+	// twice (e.g. after a lease fence failed and the reaper requeued a task
+	// whose old execution is still alive here — see the 2026-09-20 wowbagger
+	// double-execution incident, one runner running two sandboxes of the
+	// same task, 7.7 GB RSS). The new attempt fails fast instead of
+	// silently doubling resource usage; once the old execution ends, a
+	// retry succeeds.
+	if existingExecution := r.findLiveExecutionForTaskLocked(req.TaskID); existingExecution != "" {
+		r.mu.Unlock()
+		msg := fmt.Sprintf("refusing execution: task %s already has a live execution %s on this runner", req.TaskID, existingExecution)
+		slog.Warn("duplicate task execution refused", "task_id", req.TaskID, "existing_execution", existingExecution, "new_execution", req.ExecutionID)
+		r.publishStatusForRequest(req, "error", msg, nil)
+		return
+	}
 	key := executionKey(req)
 	r.tasks[key] = session
 	r.totalStarted++
