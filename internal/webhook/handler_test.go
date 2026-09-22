@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -551,49 +552,127 @@ func (r *recordingSessionResumer) ResumeSessionForPR(_ context.Context, repo str
 	return nil
 }
 
-func TestHandlePullRequestReviewResumesSession(t *testing.T) {
-	resumer := &recordingSessionResumer{}
-	h := &Handler{resumer: resumer, github: newTestManager(t, "")}
-	body := []byte(`{
-		"action":"submitted",
-		"repository":{"full_name":"flatout-works/chetter"},
-		"pull_request":{"number":42},
-		"review":{}
-		,"installation":{"id":321}
-	}`)
+// newWebhookGitHubServer builds a test GitHub API server for webhook handler
+// tests. It serves the App login and installation token exchange, and answers
+// collaborator permission lookups from permissions (login -> permission).
+// Unknown logins 404 (treated as no access); a permission value of "error"
+// returns a 500 so tests can exercise the fail-closed access-check path.
+func newWebhookGitHubServer(t *testing.T, permissions map[string]string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/app":
+			_, _ = w.Write([]byte(`{"slug":"chetterbot"}`))
+		case strings.HasSuffix(r.URL.Path, "/access_tokens"):
+			writeTokenResponse(w, "token-installation")
+		case strings.Contains(r.URL.Path, "/collaborators/") && strings.HasSuffix(r.URL.Path, "/permission"):
+			user := r.URL.Path[strings.Index(r.URL.Path, "/collaborators/")+len("/collaborators/") : len(r.URL.Path)-len("/permission")]
+			permission, ok := permissions[user]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if permission == "error" {
+				http.Error(w, "permission lookup failed", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"permission":%q,"user":{"login":%q}}`, permission, user)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
 
-	if err := h.handlePullRequestReview(body, "delivery-1"); err != nil {
-		t.Fatal(err)
+// TestHandlePullRequestReviewGatesResumeOnWriteAccess verifies that a paused
+// privileged session is only resumed for authors with repository write access,
+// and that the resume fails closed on a denied or errored access check.
+func TestHandlePullRequestReviewGatesResumeOnWriteAccess(t *testing.T) {
+	tests := []struct {
+		name       string
+		base       string
+		author     string
+		permission string
+		wantCalls  int
+	}{
+		{"reviewer with write access resumes", "pull_request_review", "alice", "write", 1},
+		{"reviewer with maintain access resumes", "pull_request_review", "bob", "maintain", 1},
+		{"reviewer without write access denied", "pull_request_review", "mallory", "read", 0},
+		{"unknown reviewer denied", "pull_request_review", "ghost", "", 0},
+		{"review access check error fails closed", "pull_request_review", "eve", "error", 0},
+		{"review commenter with write access resumes", "pull_request_review_comment", "alice", "write", 1},
+		{"review commenter without write access denied", "pull_request_review_comment", "mallory", "read", 0},
+		{"review comment access check error fails closed", "pull_request_review_comment", "eve", "error", 0},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			permissions := map[string]string{}
+			if tc.permission != "" {
+				permissions[tc.author] = tc.permission
+			}
+			server := newWebhookGitHubServer(t, permissions)
+			resumer := &recordingSessionResumer{}
+			h := &Handler{resumer: resumer, github: newTestManager(t, server.URL)}
 
-	if resumer.calls != 1 {
-		t.Fatalf("resume calls = %d, want 1", resumer.calls)
-	}
-	if resumer.repo != "flatout-works/chetter" || resumer.prNumber != 42 {
-		t.Fatalf("resume target = %s#%d", resumer.repo, resumer.prNumber)
+			var err error
+			if tc.base == EventTypePullRequestReview {
+				body := []byte(fmt.Sprintf(`{"action":"submitted","repository":{"full_name":"flatout-works/chetter"},"pull_request":{"number":42},"review":{"user":{"login":%q}},"installation":{"id":321}}`, tc.author))
+				err = h.handlePullRequestReview(body, "delivery-review")
+			} else {
+				body := []byte(fmt.Sprintf(`{"action":"created","repository":{"full_name":"flatout-works/chetter"},"pull_request":{"number":7},"comment":{"user":{"login":%q}},"installation":{"id":321}}`, tc.author))
+				err = h.handlePullRequestReviewComment(body, "delivery-review-comment")
+			}
+			if err != nil {
+				t.Fatalf("handle error: %v", err)
+			}
+			if resumer.calls != tc.wantCalls {
+				t.Fatalf("resume calls = %d, want %d", resumer.calls, tc.wantCalls)
+			}
+			if tc.wantCalls == 1 && (resumer.repo != "flatout-works/chetter" || resumer.prNumber == 0) {
+				t.Fatalf("resume target = %s#%d, want a flatout-works/chetter PR", resumer.repo, resumer.prNumber)
+			}
+		})
 	}
 }
 
-func TestHandlePullRequestReviewCommentResumesSession(t *testing.T) {
-	resumer := &recordingSessionResumer{}
-	h := &Handler{resumer: resumer, github: newTestManager(t, "")}
-	body := []byte(`{
-		"action":"created",
-		"repository":{"full_name":"flatout-works/chetter"},
-		"pull_request":{"number":7},
-		"comment":{}
-		,"installation":{"id":321}
-	}`)
-
-	if err := h.handlePullRequestReviewComment(body, "delivery-2"); err != nil {
-		t.Fatal(err)
+// TestHandleIssueCommentPullRequestGatesResumeOnWriteAccess verifies that a
+// user who can merely comment on a PR cannot resume a paused privileged
+// session, while a trusted collaborator still can.
+func TestHandleIssueCommentPullRequestGatesResumeOnWriteAccess(t *testing.T) {
+	tests := []struct {
+		name       string
+		author     string
+		permission string
+		wantCalls  int
+	}{
+		{"commenter with write access resumes", "alice", "write", 1},
+		{"commenter without write access denied", "mallory", "read", 0},
+		{"unknown commenter denied", "ghost", "", 0},
+		{"comment access check error fails closed", "eve", "error", 0},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			permissions := map[string]string{}
+			if tc.permission != "" {
+				permissions[tc.author] = tc.permission
+			}
+			server := newWebhookGitHubServer(t, permissions)
+			resumer := &recordingSessionResumer{}
+			h := &Handler{resumer: resumer, github: newTestManager(t, server.URL)}
 
-	if resumer.calls != 1 {
-		t.Fatalf("resume calls = %d, want 1", resumer.calls)
-	}
-	if resumer.repo != "flatout-works/chetter" || resumer.prNumber != 7 {
-		t.Fatalf("resume target = %s#%d", resumer.repo, resumer.prNumber)
+			body := []byte(fmt.Sprintf(`{"action":"created","repository":{"full_name":"flatout-works/chetter"},"issue":{"number":12,"pull_request":{"url":"https://api.github.com/repos/flatout-works/chetter/pulls/12"}},"comment":{"body":"Looks good to me","user":{"login":%q}},"installation":{"id":321}}`, tc.author))
+			if err := h.handleIssueComment(body, "delivery-comment"); err != nil {
+				t.Fatalf("handle error: %v", err)
+			}
+			if resumer.calls != tc.wantCalls {
+				t.Fatalf("resume calls = %d, want %d", resumer.calls, tc.wantCalls)
+			}
+			if tc.wantCalls == 1 && (resumer.repo != "flatout-works/chetter" || resumer.prNumber != 12) {
+				t.Fatalf("resume target = %s#%d, want flatout-works/chetter#12", resumer.repo, resumer.prNumber)
+			}
+		})
 	}
 }
 

@@ -406,13 +406,14 @@ func (h *Handler) handlePullRequestReview(body []byte, deliveryID string) error 
 		slog.Warn("webhook: parse pull_request_review", "err", err)
 		return fmt.Errorf("parse pull_request_review: %w", err)
 	}
-	if _, err := h.clientForEvent(ev.Installation, EventTypePullRequestReview); err != nil {
+	gh, err := h.clientForEvent(ev.Installation, EventTypePullRequestReview)
+	if err != nil {
 		return err
 	}
 	if ev.Action != "submitted" {
 		return nil
 	}
-	return h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Review.User.Login, deliveryID, EventTypePullRequestReview, ev.Action, ev.Installation.ID)
+	return h.resumeSessionForPRFeedback(gh, ev.Repository.FullName, ev.PullRequest.Number, ev.Review.User.Login, deliveryID, EventTypePullRequestReview, ev.Action, ev.Installation.ID)
 }
 
 func (h *Handler) handlePullRequestReviewComment(body []byte, deliveryID string) error {
@@ -421,16 +422,17 @@ func (h *Handler) handlePullRequestReviewComment(body []byte, deliveryID string)
 		slog.Warn("webhook: parse pull_request_review_comment", "err", err)
 		return fmt.Errorf("parse pull_request_review_comment: %w", err)
 	}
-	if _, err := h.clientForEvent(ev.Installation, EventTypePullRequestReviewComment); err != nil {
+	gh, err := h.clientForEvent(ev.Installation, EventTypePullRequestReviewComment)
+	if err != nil {
 		return err
 	}
 	if ev.Action != "created" {
 		return nil
 	}
-	return h.resumeSessionForPRFeedback(ev.Repository.FullName, ev.PullRequest.Number, ev.Comment.User.Login, deliveryID, EventTypePullRequestReviewComment, ev.Action, ev.Installation.ID)
+	return h.resumeSessionForPRFeedback(gh, ev.Repository.FullName, ev.PullRequest.Number, ev.Comment.User.Login, deliveryID, EventTypePullRequestReviewComment, ev.Action, ev.Installation.ID)
 }
 
-func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, deliveryID, eventType, action string, installationID int64) error {
+func (h *Handler) resumeSessionForPRFeedback(gh *Client, repo string, prNumber int, author, deliveryID, eventType, action string, installationID int64) error {
 	if h.resumer == nil || repo == "" || prNumber <= 0 {
 		return nil
 	}
@@ -440,6 +442,16 @@ func (h *Handler) resumeSessionForPRFeedback(repo string, prNumber int, author, 
 			slog.Info("webhook: skipping Chetter app review feedback", "repo", repo, "pr", prNumber, "event", eventType)
 			return nil
 		}
+	}
+	// Gate the resume on repository write access. A paused session retains
+	// repository capabilities, so any user who can merely comment on or review
+	// a PR must not be able to resume it and steer the agent with attacker-
+	// controlled feedback. Fail closed: on a denied or errored access check the
+	// session is not resumed (checkAuthorWriteAccess logs and audits denials).
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if !h.checkAuthorWriteAccess(ctx, gh, repo, author, deliveryID) {
+		return nil
 	}
 	h.logAudit(AuditEventParams{
 		EventType:        "webhook_received",
@@ -620,6 +632,15 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 			slog.Debug("webhook: ignoring Chetter PR comment", "repo", repo, "pr", ev.Issue.Number)
 			return nil
 		}
+		// Gate both the resume and the /chetter-review trigger on repo write
+		// access. A paused session retains repository capabilities, so a user who
+		// can merely comment on a PR must not be able to resume it. Fail closed
+		// on a denied or errored access check.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if !h.checkAuthorWriteAccess(ctx, gh, repo, ev.Comment.User.Login, deliveryID) {
+			return nil
+		}
 		if h.resumer != nil {
 			if err := h.resumer.ResumeSessionForPR(asyncCtx(30*time.Second), repo, ev.Issue.Number); err != nil {
 				slog.Warn("webhook: resume session for pr", "err", err, "repo", repo, "pr", ev.Issue.Number)
@@ -629,18 +650,6 @@ func (h *Handler) handleIssueComment(body []byte, deliveryID string) error {
 
 		// PR comment — handle /chetter-review trigger.
 		if strings.TrimSpace(ev.Comment.Body) != ReviewTriggerCommand {
-			return nil
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		hasAccess, err := gh.CheckUserHasWriteAccess(ctx, repo, ev.Comment.User.Login)
-		if err != nil {
-			slog.Warn("webhook: check write access", "user", ev.Comment.User.Login, "err", err)
-			return err
-		}
-		if !hasAccess {
-			slog.Info("webhook: ignoring /chetter-review from non-writer",
-				"user", ev.Comment.User.Login, "repo", repo)
 			return nil
 		}
 		prCtx, prCancel := context.WithTimeout(context.Background(), 30*time.Second)
