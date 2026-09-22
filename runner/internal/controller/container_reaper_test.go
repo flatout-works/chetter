@@ -33,8 +33,6 @@ type reapTestContainer struct {
 type fakeDockerCLI struct {
 	mu         sync.Mutex
 	containers []reapTestContainer
-	removed    []string
-	rmCalls    int
 	// rmFailures makes the first N rm invocations fail, to exercise retries.
 	rmFailures int
 }
