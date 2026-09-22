@@ -379,10 +379,20 @@ err = withTxRetry(ctx, s.rawDB, s.dialect, func(q data.Repository) error {
 })
 ```
 
-Every subsequent mutation — heartbeat renewal, event reporting, GitHub RPC — is
-**fenced** to the active `(task_id, execution_id, runner_id, claim_id)` tuple with an
-unexpired lease, so a stale runner that lost its lease cannot write into a task that has
-been handed to someone else.
+Every subsequent mutation — event reporting, GitHub RPC — is **fenced** to the active
+`(task_id, execution_id, runner_id, claim_id)` tuple with an unexpired lease, so a stale
+runner that lost its lease cannot write into a task that has been handed to someone else.
+
+Lease renewal is deliberately more permissive. The heartbeat handler verifies that each
+reported execution matches a `running` attempt owned by the reporting runner (same
+runner, claim, task, session, and prompt IDs) and renews it regardless of whether the
+lease has transiently expired. Requiring an unexpired lease here made a single missed
+heartbeat permanently unrenewable — the runner kept executing while the reaper requeued
+the task, and then claimed the new attempt alongside the old one, running two live
+executions of the same task (fixed 2026-09-21). Renewal and the reaper fence each other
+instead: the reaper's `FOR UPDATE` read of expired rows either loses to a committed
+renewal (the lease moves into the future, so the locking read drops the row) or commits
+first and marks the attempt `lost` (the renewal's status filter rejects it).
 
 The long-poll loop waits on a **notification channel** rather than busy-polling the
 database:
@@ -433,8 +443,9 @@ activity lands from other replicas (every ~3s).
 
 The runner sends a `Heartbeat` every 5 seconds, carrying its full `RunnerInfo` (running
 tasks, resource usage, isolation capability, MCP relay rejection counters). The server
-renews the lease on each heartbeat and returns any pending `RunnerCommand`s (cancel,
-drain) in the response:
+renews the lease on each heartbeat — as long as the attempt is still `running` and owned
+by this runner, even if the lease transiently expired — and returns any pending
+`RunnerCommand`s (cancel, drain) in the response:
 
 ```go
 // internal/service/runner_rpc.go
@@ -522,7 +533,10 @@ dominating the fleet's query rate.
 
 Once a task is claimed, `runTask` clones the repository (Git credentials stay in the
 runner, never in the agent container), generates a harness config, and launches the
-agent. The **execution backend** is pluggable:
+agent. `runTask` refuses a second execution of a task that already has a live execution
+on the same runner — the new attempt fails fast instead of silently doubling resource
+usage — so even a control-plane bug that hands out the same task twice cannot run two
+sandboxes of it at once. The **execution backend** is pluggable:
 
 | Backend | Runtime | Isolation | Use case |
 |---|---|---|---|

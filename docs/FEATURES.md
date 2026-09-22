@@ -102,7 +102,8 @@ Runners register through ConnectRPC, poll for tasks, and heartbeat while work is
 
 - Task claiming uses `SELECT ... FOR UPDATE SKIP LOCKED`.
 - Claims have renewable leases and fresh execution claim IDs.
-- Runner events, lease renewal, and runner-initiated GitHub operations are fenced to the active task, execution, runner, claim ID, and unexpired lease.
+- Runner events and runner-initiated GitHub operations are fenced to the active task, execution, runner, claim ID, and unexpired lease.
+- Lease renewal on heartbeat is fenced to the active task, execution, runner, and claim ID, but not to an unexpired lease: a still-owned `running` attempt always renews, so a single missed heartbeat cannot permanently strand a live execution.
 - The reaper reclaims expired leases and marks stale tasks terminal when retries are exhausted.
 - `chetter_runner_health` reports fleet-wide status and optional per-task heartbeat age.
 - `chetter_drain_runner` asks a runner to stop claiming new work, finish in-flight tasks, and exit for rollout.
