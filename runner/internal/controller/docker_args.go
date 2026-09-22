@@ -48,6 +48,10 @@ func (r *Runner) dockerServeArgs(req task.TaskRequest, workspaceDir, containerNa
 		"--label", "chetter.execution_id=" + executionKey(req),
 		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
 		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
+		// The workspace path lets the control plane match a container to a
+		// retained session or ready checkpoint when deciding whether an
+		// orphaned-looking container is still needed. See issue #418.
+		"--label", "chetter.workspace_path=" + workspaceDir,
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")

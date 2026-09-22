@@ -40,6 +40,21 @@ const (
 	servePollInterval      = 500 * time.Millisecond
 	serveHTTPTimeout       = 2 * time.Second
 	workspacePruneInterval = 10 * time.Minute
+
+	// taskContainerReapInterval is how often the periodic container reaper
+	// looks for chetter-task-* containers that no longer belong to any live
+	// task. It is the safety net that bounds sandbox leaks even when the
+	// inline teardown path fails (host pressure, runner crash, docker daemon
+	// slowness). See issue #418.
+	taskContainerReapInterval = 5 * time.Minute
+	// taskContainerMinAge is the grace period before the reaper considers a
+	// container abandoned. It must comfortably exceed the longest inline
+	// teardown (dockerAbortTimeout + containerCleanupTimeout + session export)
+	// so the reaper never races a task that is still cleaning up after itself.
+	taskContainerMinAge = 10 * time.Minute
+	// taskContainerReapTimeout bounds one reaper pass so a wedged docker
+	// daemon cannot stall the reaper goroutine forever.
+	taskContainerReapTimeout = 2 * time.Minute
 )
 
 type Runner struct {
@@ -182,33 +197,12 @@ func truncateSummary(s string) string {
 
 func (r *Runner) Start(ctx context.Context) error {
 	mode := r.executionMode()
+	// The container sweep and reaper run in startConnectRPC once the RPC
+	// client exists, because only the control plane can confirm which
+	// chetter-task-* containers on the shared Docker daemon are still needed.
+	// See issue #418.
 	if mode == "docker" {
-		// Clean up orphaned task containers from previous runner instances.
-		// When a runner is restarted, the defer in runDockerAgent that runs
-		// "docker rm -f" never executes, leaving containers behind.
-		slog.Info("cleaning up orphaned task containers")
-		out, err := exec.Command("docker", "ps", "-a", "--filter", "name=chetter-task-", "--filter", "label=chetter.runner_id="+r.runnerID, "--format", "{{.Names}}").Output()
-		if err != nil {
-			slog.Warn("failed to list docker containers", "err", err)
-		} else {
-			for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				if name == "" {
-					continue
-				}
-				// Skip containers that have checkpoints (paused for resume).
-				chkOut, _ := exec.Command("docker", "checkpoint", "ls", name).CombinedOutput()
-				if strings.Contains(string(chkOut), "chetter-checkpoint") {
-					slog.Info("skipping orphaned container with checkpoints", "name", name)
-					continue
-				}
-				if err := exec.Command("docker", "rm", "-f", name).Run(); err != nil {
-					slog.Warn("failed to remove orphaned container", "name", name, "err", err)
-				} else {
-					slog.Info("removed orphaned task container", "name", name)
-				}
-			}
-		}
-
+		slog.Info("orphaned task containers will be reconciled after RPC registration")
 	}
 	if mode != "local" {
 		allowed := append([]string(nil), r.cfg.Proxy.AllowedDomains...)
@@ -560,6 +554,249 @@ func (r *Runner) pruneOrphanedWorkspaces(ctx context.Context) error {
 
 	slog.Info("workspace prune complete", "deleted", deleted, "skipped", skipped, "total", len(candidates))
 	return nil
+}
+
+// containerReapCandidate is a chetter-task-* container the reaper is
+// considering for removal, resolved from its Docker labels.
+type containerReapCandidate struct {
+	Name          string
+	RunnerID      string
+	TaskID        string
+	ExecutionID   string
+	WorkspacePath string
+}
+
+// sweepOrphanedTaskContainers removes chetter-task-* containers that the
+// control plane confirms no longer back live work. r.runCtx must be set (the
+// sweep needs the RPC client). now bounds the age filter so the reaper never
+// races a task that is still tearing itself down.
+//
+// Ownership is deliberately not used to pre-filter candidates. A container
+// leaked by a crashed runner instance keeps that instance's runner ID, and two
+// runners can share one Docker daemon (wowbagger runs two), so the runner
+// cannot distinguish "my orphan" from "my sibling's live sandbox" locally.
+// The control plane answers with container_scope, which protects every live
+// attempt, retained session, and ready checkpoint regardless of owner. See
+// issue #418.
+func (r *Runner) sweepOrphanedTaskContainers(ctx context.Context) {
+	if r.executionMode() != "docker" || r.rpcClient == nil || r.runCtx == nil {
+		return
+	}
+	sweepCtx, cancel := context.WithTimeout(ctx, taskContainerReapTimeout)
+	defer cancel()
+
+	candidates, err := r.listTaskContainers(sweepCtx)
+	if err != nil {
+		slog.Warn("container reaper could not list task containers", "err", err)
+		return
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	ages := containerAges(sweepCtx, candidates)
+	removable := make([]containerReapCandidate, 0, len(candidates))
+	verdicts := make([]*runnerv1.WorkspaceCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		// Never touch a container this runner is actively managing.
+		if r.isActiveExecution(candidate.ExecutionID) {
+			continue
+		}
+		// Give inline teardown its full grace period before stepping in. An
+		// unknown age counts as "too young": leaking for one more pass is
+		// cheaper than racing a teardown or a sibling's fresh sandbox.
+		age, known := ages[candidate.Name]
+		if !known || age < taskContainerMinAge {
+			continue
+		}
+		removable = append(removable, candidate)
+		verdicts = append(verdicts, &runnerv1.WorkspaceCandidate{
+			TaskId:        candidate.TaskID,
+			ExecutionId:   candidate.ExecutionID,
+			WorkspacePath: candidate.WorkspacePath,
+		})
+	}
+	if len(verdicts) == 0 {
+		return
+	}
+
+	// Drop containers the control plane says may still be needed. A ready
+	// checkpoint or a paused/resumable session must outlive its container's
+	// owning runner, so absence from the DB is not enough to reap. The
+	// verdict comes from the shared control plane (not local state) because
+	// two runners can share one Docker daemon.
+	safe, err := r.containerReapVerdict(sweepCtx, verdicts)
+	if err != nil {
+		// Fail closed: without a control-plane verdict, leaking a container is
+		// strictly better than killing a live sibling's sandbox.
+		slog.Warn("container reaper skipped pass: control plane verdict unavailable", "candidates", len(verdicts), "err", err)
+		return
+	}
+
+	removed, skipped := 0, 0
+	for _, candidate := range removable {
+		if _, ok := safe[candidate.TaskID+"\x00"+candidate.ExecutionID]; !ok {
+			skipped++
+			continue
+		}
+		// Verify no process checkpoint owns the container. A container with a
+		// real checkpoint must never be force-removed here even if the control
+		// plane lost track of it (docker refuses checkpoints for containers
+		// that lack one, so a positive answer is authoritative).
+		if containerHasCheckpoint(sweepCtx, candidate.Name) {
+			slog.Info("container reaper skipping container with checkpoint", "container", candidate.Name)
+			skipped++
+			continue
+		}
+		slog.Info("container reaper removing abandoned task container", "container", candidate.Name, "task_id", candidate.TaskID, "execution_id", candidate.ExecutionID, "owner_runner", candidate.RunnerID)
+		removeTaskContainer(candidate.Name)
+		removed++
+	}
+	if removed > 0 || skipped > 0 {
+		slog.Info("container reaper pass complete", "removed", removed, "protected", skipped, "candidates", len(verdicts))
+	}
+}
+
+// containerReapVerdict asks the control plane which of the candidate
+// containers are safe to remove, keyed by task and execution ID. Candidates
+// created before the workspace-path label existed are checked task-wide, which
+// is the conservative direction.
+func (r *Runner) containerReapVerdict(ctx context.Context, verdicts []*runnerv1.WorkspaceCandidate) (map[string]struct{}, error) {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, rpcTimeout)
+	defer cancel()
+	resp, err := r.rpcClient.PruneWorkspaces(ctxWithTimeout, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
+		RunnerId:       r.runnerID,
+		Candidates:     verdicts,
+		ContainerScope: true,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	safe := make(map[string]struct{}, len(resp.Msg.SafeToDelete))
+	for _, key := range resp.Msg.SafeToDelete {
+		if key != nil {
+			safe[key.TaskId+"\x00"+key.ExecutionId] = struct{}{}
+		}
+	}
+	return safe, nil
+}
+
+// isActiveExecution reports whether this runner currently owns a live task
+// session for the execution, in which case the container must not be touched.
+func (r *Runner) isActiveExecution(executionID string) bool {
+	if executionID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, active := r.tasks[executionID]
+	return active
+}
+
+// listTaskContainers returns every chetter-task-* container with its identity
+// labels, including created-but-never-started and exited containers (a runner
+// killed mid-teardown leaves exactly those behind).
+func (r *Runner) listTaskContainers(ctx context.Context) ([]containerReapCandidate, error) {
+	format := "{{.Names}}\t{{.Label \"chetter.runner_id\"}}\t{{.Label \"chetter.task_id\"}}\t{{.Label \"chetter.execution_id\"}}\t{{.Label \"chetter.workspace_path\"}}"
+	out, err := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", "name=chetter-task-", "--format", format).Output()
+	if err != nil {
+		return nil, fmt.Errorf("docker ps: %w", err)
+	}
+	var candidates []containerReapCandidate
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		// Accept fewer than five fields: a missing trailing label (for example
+		// chetter.workspace_path on containers created before it existed) can
+		// come through with the field absent entirely rather than empty, and
+		// skipping such a container would silently defeat the safety net.
+		fields := strings.Split(line, "\t")
+		for len(fields) < 5 {
+			fields = append(fields, "")
+		}
+		candidate := containerReapCandidate{
+			Name:          strings.TrimPrefix(strings.TrimSpace(fields[0]), "/"),
+			RunnerID:      strings.TrimSpace(fields[1]),
+			TaskID:        strings.TrimSpace(fields[2]),
+			ExecutionID:   strings.TrimSpace(fields[3]),
+			WorkspacePath: strings.TrimSpace(fields[4]),
+		}
+		if candidate.Name == "" || candidate.TaskID == "" || candidate.ExecutionID == "" {
+			continue
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
+}
+
+// containerAges resolves container creation times in a single docker inspect
+// call. Containers whose age cannot be determined are omitted, which the
+// caller treats as "too young to reap".
+func containerAges(ctx context.Context, candidates []containerReapCandidate) map[string]time.Duration {
+	ages := make(map[string]time.Duration, len(candidates))
+	names := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		names = append(names, candidate.Name)
+	}
+	args := append([]string{"inspect", "-f", "{{.Name}}\t{{.Created}}"}, names...)
+	out, err := exec.CommandContext(ctx, "docker", args...).Output()
+	if err != nil {
+		return ages
+	}
+	now := time.Now()
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.SplitN(line, "\t", 2)
+		if len(fields) != 2 {
+			continue
+		}
+		name := strings.TrimPrefix(strings.TrimSpace(fields[0]), "/")
+		created, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(fields[1]))
+		if err != nil || name == "" {
+			continue
+		}
+		ages[name] = now.Sub(created)
+	}
+	return ages
+}
+
+// containerHasCheckpoint reports whether a process checkpoint owns the
+// container. docker checkpoint ls prints a header line plus one line per
+// checkpoint, so any non-header output means a checkpoint exists. Errors (for
+// example a runtime without checkpoint support) report false so ordinary
+// teardown is not blocked.
+func containerHasCheckpoint(ctx context.Context, name string) bool {
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctxWithTimeout, "docker", "checkpoint", "ls", name).Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(strings.ToUpper(trimmed), "CHECKPOINT") {
+			return true
+		}
+	}
+	return false
+}
+
+// reapTaskContainersPeriodically is the container-leak safety net: it bounds
+// how long any chetter-task-* sandbox can survive its task, even when inline
+// teardown failed (host memory pressure, runner crash, slow docker daemon).
+// Without it a failed removal leaks an 8 GB gVisor sandbox permanently and the
+// host spirals into swap thrash. See issue #418.
+func (r *Runner) reapTaskContainersPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(taskContainerReapInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			r.sweepOrphanedTaskContainers(ctx)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (r *Runner) pruneWorkspacesPeriodically(ctx context.Context) {

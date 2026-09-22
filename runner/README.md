@@ -177,6 +177,10 @@ Or via environment variables (which override the YAML values when set):
 
 Every task also carries a server-assigned memory limit (`max_memory_mb`, configured server-side via `CHETTER_TASK_MAX_MEMORY_MB`, default `4096`). These runner-level limits are hard caps: in Docker mode the effective limit is the smaller of the two, so set `CHETTER_CONTAINER_MEMORY` only to tighten a deployment below the server's value — never to raise it. In Kubernetes mode the pod limit comes from `max_memory_mb` alone. Raise `CHETTER_TASK_MAX_MEMORY_MB` on the server if memory-heavy tasks (e.g. nightly `govulncheck`/`osv-scanner` scans) are OOM-killed.
 
+**Set them on hosts that run more than one runner.** `max_memory_mb` is per task, not per host: with two runners on one Docker daemon and no runner-level cap, two 8 GB tasks can run concurrently on a 16 GB host. gVisor's sentry also lives outside the container cgroup, so the `--memory` cap does not bound total host usage. `deploy/compose.yaml` therefore sets `CHETTER_CONTAINER_MEMORY=4g`, `CHETTER_CONTAINER_CPU=2`, and `CHETTER_CONTAINER_PIDS=1024` (all env-overridable) so a task that exceeds the host's real headroom is OOM-killed inside its sandbox rather than driving the host into swap thrash. See issue #418.
+
+**Leaked containers are reaped automatically.** A task container is force-removed when its task ends, and retried on failure or timeout. If teardown still fails (host pressure, runner crash, slow daemon), a periodic reaper (every 5 minutes, minimum container age 10 minutes) asks the control plane whether each `chetter-task-*` container still backs live work — a running attempt, a retained session, or a ready checkpoint — and removes the ones that do not. The reaper fails closed: without a control-plane verdict it removes nothing, so a live sibling runner's sandbox on the same daemon is never touched. See issue #418.
+
 **Requirements:**
 
 - `container_memory`, `container_cpu`, and `container_pids` must be greater than or equal to 0; negative values and unparseable environment overrides fail configuration validation at startup.

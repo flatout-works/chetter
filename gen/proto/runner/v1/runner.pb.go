@@ -1649,11 +1649,19 @@ func (*ReportTaskEventsResponse) Descriptor() ([]byte, []int) {
 }
 
 type PruneWorkspacesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunnerId      string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
-	Candidates    []*WorkspaceCandidate  `protobuf:"bytes,2,rep,name=candidates,proto3" json:"candidates,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	RunnerId   string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	Candidates []*WorkspaceCandidate  `protobuf:"bytes,2,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// container_scope widens the ownership check so a runner may ask about
+	// containers it did not itself create. Leaked containers outlive the
+	// runner instance that created them (crash, forced kill, failed teardown),
+	// so the reaper must be able to get a verdict for any task container on
+	// the shared Docker daemon. The server still protects every live attempt,
+	// retained session, and ready checkpoint, so a running sibling's container
+	// is never reported safe. Used only by the container reaper.
+	ContainerScope bool `protobuf:"varint,3,opt,name=container_scope,json=containerScope,proto3" json:"container_scope,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PruneWorkspacesRequest) Reset() {
@@ -1698,6 +1706,13 @@ func (x *PruneWorkspacesRequest) GetCandidates() []*WorkspaceCandidate {
 		return x.Candidates
 	}
 	return nil
+}
+
+func (x *PruneWorkspacesRequest) GetContainerScope() bool {
+	if x != nil {
+		return x.ContainerScope
+	}
+	return false
 }
 
 type PruneWorkspacesResponse struct {
@@ -1745,10 +1760,16 @@ func (x *PruneWorkspacesResponse) GetSafeToDelete() []*WorkspaceKey {
 }
 
 type WorkspaceCandidate struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	ExecutionId   string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	WorkspacePath string                 `protobuf:"bytes,3,opt,name=workspace_path,json=workspacePath,proto3" json:"workspace_path,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	TaskId      string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ExecutionId string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	// workspace_path is the runner-side workspace directory, used to match a
+	// candidate to a retained session or ready checkpoint. It may be empty when
+	// container_scope is set: containers created before the
+	// chetter.workspace_path label existed have no recorded path, so the server
+	// falls back to task-wide protection instead of rejecting the request. The
+	// non-container-scope path still requires it.
+	WorkspacePath string `protobuf:"bytes,3,opt,name=workspace_path,json=workspacePath,proto3" json:"workspace_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3317,18 +3338,19 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x17ReportTaskEventsRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x126\n" +
 	"\x06events\x18\x02 \x03(\v2\x14.runner.v1.TaskEventB\b\xbaH\x05\x92\x01\x02\b\x01R\x06events\"\x1a\n" +
-	"\x18ReportTaskEventsResponse\"\x87\x01\n" +
+	"\x18ReportTaskEventsResponse\"\xb0\x01\n" +
 	"\x16PruneWorkspacesRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12=\n" +
 	"\n" +
 	"candidates\x18\x02 \x03(\v2\x1d.runner.v1.WorkspaceCandidateR\n" +
-	"candidatesR\btask_ids\"X\n" +
+	"candidates\x12'\n" +
+	"\x0fcontainer_scope\x18\x03 \x01(\bR\x0econtainerScopeR\btask_ids\"X\n" +
 	"\x17PruneWorkspacesResponse\x12=\n" +
-	"\x0esafe_to_delete\x18\x01 \x03(\v2\x17.runner.v1.WorkspaceKeyR\fsafeToDelete\"\x92\x01\n" +
+	"\x0esafe_to_delete\x18\x01 \x03(\v2\x17.runner.v1.WorkspaceKeyR\fsafeToDelete\"\x89\x01\n" +
 	"\x12WorkspaceCandidate\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
-	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12.\n" +
-	"\x0eworkspace_path\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\rworkspacePath\"\\\n" +
+	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\x12%\n" +
+	"\x0eworkspace_path\x18\x03 \x01(\tR\rworkspacePath\"\\\n" +
 	"\fWorkspaceKey\x12 \n" +
 	"\atask_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06taskId\x12*\n" +
 	"\fexecution_id\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\vexecutionId\"\x9a\x02\n" +

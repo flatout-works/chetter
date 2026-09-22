@@ -29,10 +29,18 @@ import (
 
 const (
 	containerWorkspaceDir         = "/workspace"
-	containerCleanupTimeout       = 30 * time.Second
+	containerCleanupTimeout       = 120 * time.Second
 	sessionExportTimeout          = 30 * time.Second
 	finalizationHeartbeatInterval = 15 * time.Second
 )
+
+// containerCleanupAttempts bounds how many times a container removal is
+// retried within one cleanup call. Under host memory pressure a runsc sandbox
+// can take longer to tear down than a single docker rm -f, and a context kill
+// mid-removal leaves the container behind (the leak that fed the host
+// overload spiral). Each attempt gets containerCleanupTimeout, so the worst
+// case is attempts * timeout. See issue #418.
+const containerCleanupAttempts = 2
 
 // dockerAbortTimeout bounds the graceful harness abort issued during Docker
 // agent cleanup. It is applied to a context derived from context.Background
@@ -1225,20 +1233,60 @@ func (r *Runner) readSessionExport(req task.TaskRequest, wsDir, sid string, h ha
 	return ""
 }
 
+// stopTaskContainer stops a task container, retrying on failure or timeout so
+// a transiently slow daemon never leaves the sandbox running.
 func stopTaskContainer(containerName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "docker", "stop", containerName).CombinedOutput(); err != nil {
-		slog.Warn("failed to stop task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	for attempt := 1; attempt <= containerCleanupAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
+		out, err := exec.CommandContext(ctx, "docker", "stop", containerName).CombinedOutput()
+		if err == nil {
+			cancel()
+			return
+		}
+		ctxErr := ctx.Err()
+		cancel()
+		if ctxErr != nil {
+			slog.Warn("timed out stopping task container", "container", containerName, "attempt", attempt, "err", err, "output", strings.TrimSpace(string(out)))
+		} else if isContainerGoneError(string(out)) {
+			return
+		}
 	}
 }
 
+// removeTaskContainer force-removes a task container, retrying on failure or
+// timeout. A single docker rm -f that is killed by its context leaves the
+// sandbox behind — under host memory pressure this was the main source of
+// leaked gVisor sandboxes, so removal must not give up after one attempt. See
+// issue #418.
 func removeTaskContainer(containerName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerName).CombinedOutput(); err != nil && ctx.Err() != nil {
-		slog.Warn("timed out removing task container", "container", containerName, "err", err, "output", strings.TrimSpace(string(out)))
+	for attempt := 1; attempt <= containerCleanupAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), containerCleanupTimeout)
+		out, err := exec.CommandContext(ctx, "docker", "rm", "-f", containerName).CombinedOutput()
+		if err == nil {
+			cancel()
+			if attempt > 1 {
+				slog.Info("removed task container after retry", "container", containerName, "attempt", attempt)
+			}
+			return
+		}
+		ctxErr := ctx.Err()
+		cancel()
+		if isContainerGoneError(string(out)) {
+			return
+		}
+		if ctxErr != nil {
+			slog.Warn("timed out removing task container", "container", containerName, "attempt", attempt, "err", err, "output", strings.TrimSpace(string(out)))
+		} else {
+			slog.Warn("failed to remove task container", "container", containerName, "attempt", attempt, "err", err, "output", strings.TrimSpace(string(out)))
+		}
 	}
+	slog.Error("gave up removing task container; it may still be running", "container", containerName, "attempts", containerCleanupAttempts)
+}
+
+// isContainerGoneError reports whether docker rejected the command because the
+// container no longer exists, which makes further retries pointless.
+func isContainerGoneError(output string) bool {
+	return strings.Contains(output, "No such container") || strings.Contains(output, "no such container")
 }
 
 func shouldPreserveWorkspaceOnPromptError(errorCategory string) bool {
@@ -1603,6 +1651,10 @@ func dockerRPCArgs(req task.TaskRequest, runnerID, wsDir, workspaceRoot, contain
 		"--label", "chetter.execution_id=" + executionKey(req),
 		"--label", "chetter.agent_session_id=" + req.AgentSessionID,
 		"--label", "chetter.user_prompt_id=" + req.UserPromptID,
+		// The runner-side workspace path, matching agent_sessions.workspace_path,
+		// lets the control plane match the container to a retained session or
+		// ready checkpoint. See issue #418.
+		"--label", "chetter.workspace_path=" + wsDir,
 	}
 	if gvisor {
 		dockerArgs = append(dockerArgs, "--runtime", "runsc")

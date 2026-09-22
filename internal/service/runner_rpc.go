@@ -709,32 +709,58 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	if len(req.Msg.Candidates) == 0 {
 		return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{}), nil
 	}
-	query := sqlQuery(s.dialect, `SELECT CASE WHEN
+	// container_scope relaxes the runner-ownership predicates (the runner_id
+	// equalities below) so the container reaper can get a verdict for
+	// containers left behind by a dead runner instance. The liveness
+	// predicates — running attempt, retained session, ready checkpoint — are
+	// never relaxed, so containers for work that is still alive are always
+	// protected. See issue #418.
+	scopeRunner := true
+	if req.Msg.ContainerScope {
+		scopeRunner = false
+	}
+	// Retained-session and checkpoint protection matches on workspace_path,
+	// which container-scope candidates may not carry (containers created
+	// before the chetter.workspace_path label existed). When the path is
+	// unknown, fall back to task-wide matching so a retained session or ready
+	// checkpoint for the task still protects the container; only the attempt
+	// liveness check stays execution-scoped, because it keys on the immutable
+	// attempt ID. See issue #418.
+	candidateQuery := sqlQuery(s.dialect, `SELECT CASE WHEN
 		EXISTS (
 			SELECT 1 FROM execution_attempts attempt
 			JOIN user_prompts prompt ON prompt.id = attempt.user_prompt_id
-			WHERE attempt.id = ? AND prompt.task_id = ? AND attempt.runner_id = ? AND attempt.status = 'running'
+			WHERE attempt.id = ? AND prompt.task_id = ? AND attempt.status = 'running'
+			  AND (? OR attempt.runner_id = ?)
 		) OR EXISTS (
 			SELECT 1 FROM agent_sessions session
-			WHERE session.task_id = ? AND session.workspace_path = ?
+			WHERE session.task_id = ? AND (session.workspace_path = ? OR ?)
 			  AND session.status IN ('running', 'resuming', 'paused', 'recoverable', 'paused_waiting_review')
-			  AND (session.pinned_runner_id IS NULL OR session.pinned_runner_id = '' OR session.pinned_runner_id = ?)
+			  AND (? OR session.pinned_runner_id IS NULL OR session.pinned_runner_id = '' OR session.pinned_runner_id = ?)
 		) OR EXISTS (
 			SELECT 1 FROM agent_session_checkpoints checkpoint
 			JOIN agent_sessions session ON session.id = checkpoint.agent_session_id
-			WHERE session.task_id = ? AND checkpoint.workspace_path = ? AND checkpoint.runner_id = ?
+			WHERE session.task_id = ? AND (checkpoint.workspace_path = ? OR ?)
 			  AND checkpoint.status = 'ready'
+			  AND (? OR checkpoint.runner_id = ?)
 		) THEN 1 ELSE 0 END`)
 	safe := make([]*runnerv1.WorkspaceKey, 0, len(req.Msg.Candidates))
 	for _, candidate := range req.Msg.Candidates {
-		if candidate == nil || candidate.TaskId == "" || candidate.ExecutionId == "" || candidate.WorkspacePath == "" {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workspace candidate task_id, execution_id, and workspace_path are required"))
+		if candidate == nil || candidate.TaskId == "" || candidate.ExecutionId == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workspace candidate task_id and execution_id are required"))
+		}
+		// An empty path is only allowed in container scope; it means the
+		// container predates the chetter.workspace_path label, so the retained
+		// session/checkpoint predicates must match task-wide instead of by path.
+		pathUnknown := candidate.WorkspacePath == ""
+		if pathUnknown && !req.Msg.ContainerScope {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workspace candidate workspace_path is required"))
 		}
 		var protected int
-		if err := s.rawDB.QueryRowContext(ctx, query,
-			candidate.ExecutionId, candidate.TaskId, req.Msg.RunnerId,
-			candidate.TaskId, candidate.WorkspacePath, req.Msg.RunnerId,
-			candidate.TaskId, candidate.WorkspacePath, req.Msg.RunnerId,
+		if err := s.rawDB.QueryRowContext(ctx, candidateQuery,
+			candidate.ExecutionId, candidate.TaskId, !scopeRunner, req.Msg.RunnerId,
+			candidate.TaskId, candidate.WorkspacePath, pathUnknown, !scopeRunner, req.Msg.RunnerId,
+			candidate.TaskId, candidate.WorkspacePath, pathUnknown, !scopeRunner, req.Msg.RunnerId,
 		).Scan(&protected); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
