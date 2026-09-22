@@ -1,3 +1,5 @@
+import { getToken } from "$lib/api/client";
+
 let quotaExhausted = $state(false);
 let gitHash = $state<string | null>(null);
 let serverVersion = $state<string | null>(null);
@@ -14,9 +16,15 @@ export function fetchServerInfo(): Promise<void> {
   if (!loading) {
     loading = (async () => {
       try {
+        const token = getToken();
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
         const res = await fetch("/api/server-info", {
           credentials: "same-origin",
           cache: "no-store",
+          headers,
         });
 		if (!res.ok) return;
         const info = await res.json();
