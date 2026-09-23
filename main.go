@@ -284,19 +284,20 @@ func run() error {
 	})
 	webMux.HandleFunc("/readyz", readyzHandler)
 	webMux.HandleFunc("GET /api/server-info", webapi.NewServerInfoHandler(webapi.ServerInfoConfig{
-		AdminToken:      cfg.MCPAuthToken,
-		DB:              st.DB(),
-		OIDC:            oidcAuth,
-		Version:         func() string { return serverVersion },
-		GitHash:         func() string { return _gitHash },
-		UptimeSeconds:   func() int64 { return int64(time.Since(startedAt).Seconds()) },
-		StartedAt:       func() time.Time { return startedAt },
-		QuotaExhausted:  svc.QuotaExhausted,
-		LastReapAt:      svc.LastReapAt,
-		AllowTokenLogin: cfg.AllowTokenLogin,
-		DBSessionTZ:     dbTZSession,
-		DBGlobalTZ:      dbTZGlobal,
-		DBTimeZoneUTC:   dbTZUTC,
+		AdminToken:            cfg.MCPAuthToken,
+		DB:                    st.DB(),
+		OIDC:                  oidcAuth,
+		Version:               func() string { return serverVersion },
+		GitHash:               func() string { return _gitHash },
+		UptimeSeconds:         func() int64 { return int64(time.Since(startedAt).Seconds()) },
+		StartedAt:             func() time.Time { return startedAt },
+		QuotaExhausted:        svc.QuotaExhausted,
+		LastReapAt:            svc.LastReapAt,
+		AllowTokenLogin:       cfg.AllowTokenLogin,
+		DBSessionTZ:           dbTZSession,
+		DBGlobalTZ:            dbTZGlobal,
+		DBTimeZoneUTC:         dbTZUTC,
+		DefaultTaskTimeoutSec: cfg.DefaultTaskTimeoutSec,
 	}))
 	webMux.Handle("/", webui.Handler())
 

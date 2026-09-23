@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearToken, setToken } from "$lib/api/client";
-import { fetchServerInfo } from "$lib/stores/serverInfo.svelte";
+import { fetchServerInfo, getServerInfo } from "$lib/stores/serverInfo.svelte";
 
 describe("fetchServerInfo", () => {
   const originalFetch = globalThis.fetch;
@@ -35,5 +35,16 @@ describe("fetchServerInfo", () => {
       cache: "no-store",
       headers: { Authorization: "Bearer test-token" },
     });
+  });
+
+  it("exposes the server default task timeout when reported", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ defaultTaskTimeoutSec: 600 }),
+    });
+
+    await fetchServerInfo();
+
+    expect(getServerInfo().defaultTaskTimeoutSec).toBe(600);
   });
 });
