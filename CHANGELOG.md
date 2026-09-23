@@ -38,6 +38,13 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-22
+
+### Fixed
+
+- The web UI's server-info fetch now sends the browser's bearer token (`web/src/lib/stores/serverInfo.svelte.ts`). `/api/server-info` returns only the unauthenticated payload (`oidcEnabled`, `allowTokenLogin`) to callers without a valid admin/team bearer token or OIDC session cookie, and the SPA fetched it without an `Authorization` header — so on deployments using browser token login, the footer's server version, git hash, and uptime never appeared. OIDC cookie sessions were unaffected (`credentials: "same-origin"` already carried the cookie). Covered by `web/src/lib/serverInfo.test.ts`.
+- Two unused `fakeDockerCLI` fields (`removed`, `rmCalls`) flagged by staticcheck (U1000) failed `make check` and, with `arcane-build-deploy` gated on that job, blocked deployments; the fields are removed (the reaper tests assert removals through the fake's `$FAKE_DOCKER_STATE/removed` file), unblocking `make check`.
+
 ## 2026-09-21
 
 ### Added
