@@ -94,6 +94,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	if err == nil && info.IsDir() {
 		cmd := exec.CommandContext(ctx, "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "pull", "--ff-only", "origin", m.branch)
 		cmd.Dir = m.cacheDir
+		configureProcess(cmd)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("git pull: %w\n%s", err, string(out))
@@ -105,6 +106,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "clone", "--depth", "1", "--branch", m.branch, url, m.cacheDir)
+	configureProcess(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git clone: %w\n%s", err, string(out))
@@ -116,6 +118,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 func (m *Manager) HeadCommit(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = m.cacheDir
+	configureProcess(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse HEAD: %w\n%s", err, string(out))
