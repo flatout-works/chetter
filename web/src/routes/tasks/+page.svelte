@@ -8,6 +8,18 @@
   import type { CatalogHarnessDefault, CatalogProvider } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
   import { refreshTasks, tasks, statusFilter } from "$lib/stores/tasks.svelte";
+  import { getServerInfo } from "$lib/stores/serverInfo.svelte";
+  import {
+    buildTaskSubmitPayload,
+    resolveTimeoutSec,
+    validateTimeoutSec,
+    formatTimeoutSec,
+    TIMEOUT_PRESETS,
+    DEFAULT_TASK_TIMEOUT_PRESET,
+    CUSTOM_TASK_TIMEOUT_PRESET,
+    MIN_TASK_TIMEOUT_SEC,
+    MAX_TASK_TIMEOUT_SEC,
+  } from "$lib/taskSubmit";
   import { formatDuration, formatTime, formatAge } from "$lib/utils.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
@@ -50,6 +62,21 @@
   let sessionMode = $state("");
   let pauseReason = $state("");
   let ttlHours = $state(72);
+  let timeoutPreset = $state(DEFAULT_TASK_TIMEOUT_PRESET);
+  let customTimeoutSec = $state(0);
+
+  let serverInfo = $derived(getServerInfo());
+  let defaultTimeoutLabel = $derived(
+    serverInfo.defaultTaskTimeoutSec > 0
+      ? `Default (${formatTimeoutSec(serverInfo.defaultTaskTimeoutSec)})`
+      : "Default",
+  );
+  let effectiveTimeoutSec = $derived(resolveTimeoutSec(timeoutPreset, customTimeoutSec));
+  let effectiveTimeoutLabel = $derived.by(() => {
+    if (timeoutPreset === DEFAULT_TASK_TIMEOUT_PRESET) return defaultTimeoutLabel;
+    if (!Number.isFinite(effectiveTimeoutSec)) return "Enter a whole number of seconds.";
+    return formatTimeoutSec(effectiveTimeoutSec) || `${effectiveTimeoutSec}s`;
+  });
 
   let providers = $state.raw<CatalogProvider[]>([]);
   let harnessDefaults = $state.raw<CatalogHarnessDefault[]>([]);
@@ -280,23 +307,27 @@
     e.preventDefault();
     formError = null;
     if (!prompt.trim()) { formError = "Prompt is required."; return; }
+    const timeoutSec = timeoutPreset === DEFAULT_TASK_TIMEOUT_PRESET
+      ? 0
+      : resolveTimeoutSec(timeoutPreset, customTimeoutSec);
+    if (timeoutPreset !== DEFAULT_TASK_TIMEOUT_PRESET) {
+      const timeoutError = validateTimeoutSec(timeoutSec);
+      if (timeoutError) { formError = timeoutError; return; }
+    }
     submitting = true;
     try {
       const client = createClient(TaskService, getTransport());
-      await client.submitTask({
-        prompt: prompt.trim(), gitUrl: gitUrl.trim(), gitRef: gitRef.trim(),
-        agentImage: agentImage.trim(), agent: agent.trim(),
-        providerId: providerId.trim(), modelId: modelId.trim(),
-        variantId: variantId.trim(),
-        harness: harness.trim(),
-        sessionMode: sessionMode || "",
-        pauseReason: sessionMode === "resumable" ? pauseReason.trim() || "" : "",
-        ttlHours: sessionMode === "resumable" ? ttlHours : 0,
-      });
+      await client.submitTask(buildTaskSubmitPayload({
+        prompt, gitUrl, gitRef, agentImage, agent,
+        providerId, modelId, variantId, harness,
+        sessionMode, pauseReason, ttlHours,
+        timeoutSec,
+      }));
       prompt = ""; gitUrl = ""; gitRef = ""; repoChoice = ""; agentImage = ""; agent = "";
       harness = "opencode"; applyHarnessDefaults(harness);
       variantId = "";
       sessionMode = ""; pauseReason = ""; ttlHours = 72;
+      timeoutPreset = DEFAULT_TASK_TIMEOUT_PRESET; customTimeoutSec = 0;
       templateSourceId = "";
       showSubmitForm = false;
       await refreshTasks(selectedStatus, 100);
@@ -436,6 +467,33 @@
               <Input id="task-ttl" type="number" bind:value={ttlHours} min={1} max={720} />
             </div>
           {/if}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label for="task-timeout" class="mb-1">Timeout</Label>
+            <Select id="task-timeout" bind:value={timeoutPreset}>
+              <option value={DEFAULT_TASK_TIMEOUT_PRESET}>{defaultTimeoutLabel}</option>
+              {#each TIMEOUT_PRESETS as preset (preset.value)}
+                <option value={preset.value}>{preset.label}</option>
+              {/each}
+            </Select>
+          </div>
+          {#if timeoutPreset === CUSTOM_TASK_TIMEOUT_PRESET}
+            <div>
+              <Label for="task-timeout-custom" class="mb-1">Custom timeout (seconds)</Label>
+              <Input
+                id="task-timeout-custom"
+                type="number"
+                bind:value={customTimeoutSec}
+                min={MIN_TASK_TIMEOUT_SEC}
+                max={MAX_TASK_TIMEOUT_SEC}
+              />
+            </div>
+          {/if}
+          <div>
+            <Label class="mb-1">Effective timeout</Label>
+            <p class="text-sm font-medium text-gray-900 dark:text-white py-2.5">{effectiveTimeoutLabel}</p>
+          </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

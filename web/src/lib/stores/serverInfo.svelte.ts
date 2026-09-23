@@ -8,6 +8,9 @@ let uptimeSeconds = $state<number | null>(null);
 let oidcEnabled = $state(false);
 // Preserve compatibility with older servers that do not return the field.
 let allowTokenLogin = $state(true);
+// Server-side fallback timeout (seconds) applied when a task omits
+// timeout_sec. Zero means the field was not reported by the server.
+let defaultTaskTimeoutSec = $state(0);
 
 let interval: ReturnType<typeof setInterval> | null = null;
 let loading: Promise<void> | null = null;
@@ -44,6 +47,9 @@ export function fetchServerInfo(): Promise<void> {
         oidcEnabled = !!info.oidcEnabled;
 		if (typeof info.allowTokenLogin === "boolean") {
 			allowTokenLogin = info.allowTokenLogin;
+		}
+		if (typeof info.defaultTaskTimeoutSec === "number") {
+			defaultTaskTimeoutSec = info.defaultTaskTimeoutSec;
 		}
       } catch {
         // server unreachable — leave previous state
@@ -83,6 +89,7 @@ export function getServerInfo() {
     get startedAt() { return startedAt; },
     get uptimeSeconds() { return uptimeSeconds; },
     get quotaExhausted() { return quotaExhausted; },
+    get defaultTaskTimeoutSec() { return defaultTaskTimeoutSec; },
   };
 }
 

@@ -24,7 +24,7 @@ func TestServerInfoRedactsDetailsWithoutAuthentication(t *testing.T) {
 	if body["allowTokenLogin"] != false || body["oidcEnabled"] != false {
 		t.Errorf("public auth capabilities = %v", body)
 	}
-	for _, key := range []string{"serverVersion", "gitHash", "uptimeSeconds", "startedAt", "quotaExhausted", "lastReapAt", "dbSessionTimeZone"} {
+	for _, key := range []string{"serverVersion", "gitHash", "uptimeSeconds", "startedAt", "quotaExhausted", "lastReapAt", "dbSessionTimeZone", "defaultTaskTimeoutSec"} {
 		if _, ok := body[key]; ok {
 			t.Errorf("unauthenticated response exposed %q: %v", key, body[key])
 		}
@@ -51,6 +51,9 @@ func TestServerInfoReturnsDetailsWithAdminToken(t *testing.T) {
 	if body["dbSessionTimeZone"] != "+00:00" || body["dbTimeZoneUTC"] != true {
 		t.Errorf("database posture = %v", body)
 	}
+	if body["defaultTaskTimeoutSec"] != float64(600) {
+		t.Errorf("defaultTaskTimeoutSec = %v, want 600", body["defaultTaskTimeoutSec"])
+	}
 }
 
 func TestServerInfoRejectsOtherMethods(t *testing.T) {
@@ -66,16 +69,17 @@ func testServerInfoConfig() ServerInfoConfig {
 	started := time.Date(2026, time.August, 26, 10, 0, 0, 0, time.UTC)
 	reaped := started.Add(time.Minute)
 	return ServerInfoConfig{
-		AdminToken:      "admin-token",
-		Version:         func() string { return "v1.2.3" },
-		GitHash:         func() string { return "abc123" },
-		UptimeSeconds:   func() int64 { return 42 },
-		StartedAt:       func() time.Time { return started },
-		QuotaExhausted:  func() bool { return true },
-		LastReapAt:      func() time.Time { return reaped },
-		AllowTokenLogin: false,
-		DBSessionTZ:     "+00:00",
-		DBGlobalTZ:      "UTC",
-		DBTimeZoneUTC:   true,
+		AdminToken:            "admin-token",
+		Version:               func() string { return "v1.2.3" },
+		GitHash:               func() string { return "abc123" },
+		UptimeSeconds:         func() int64 { return 42 },
+		StartedAt:             func() time.Time { return started },
+		QuotaExhausted:        func() bool { return true },
+		LastReapAt:            func() time.Time { return reaped },
+		AllowTokenLogin:       false,
+		DBSessionTZ:           "+00:00",
+		DBGlobalTZ:            "UTC",
+		DBTimeZoneUTC:         true,
+		DefaultTaskTimeoutSec: 600,
 	}
 }

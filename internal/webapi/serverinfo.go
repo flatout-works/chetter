@@ -26,6 +26,10 @@ type ServerInfoConfig struct {
 	DBSessionTZ     string
 	DBGlobalTZ      string
 	DBTimeZoneUTC   bool
+	// DefaultTaskTimeoutSec is the server-side fallback applied when a
+	// submitted task omits timeout_sec. The submit form shows it so users
+	// know what "Default" means instead of guessing.
+	DefaultTaskTimeoutSec int
 }
 
 // NewServerInfoHandler builds GET /api/server-info. The endpoint must stay
@@ -47,7 +51,7 @@ func NewServerInfoHandler(cfg ServerInfoConfig) http.HandlerFunc {
 		}
 		payload := public
 		if serverInfoAuthed(r, cfg) {
-			full := make(map[string]any, len(public)+9)
+			full := make(map[string]any, len(public)+10)
 			for k, v := range public {
 				full[k] = v
 			}
@@ -65,6 +69,7 @@ func NewServerInfoHandler(cfg ServerInfoConfig) http.HandlerFunc {
 			full["dbSessionTimeZone"] = cfg.DBSessionTZ
 			full["dbGlobalTimeZone"] = cfg.DBGlobalTZ
 			full["dbTimeZoneUTC"] = cfg.DBTimeZoneUTC
+			full["defaultTaskTimeoutSec"] = cfg.DefaultTaskTimeoutSec
 			payload = full
 		}
 		w.Header().Set("Content-Type", "application/json")
