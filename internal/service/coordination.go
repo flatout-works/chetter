@@ -168,12 +168,15 @@ func isLockWaitTimeout(err error) bool {
 // Tier 3: Runner drain requests (cross-replica drain queue)
 // ---------------------------------------------------------------------------
 
-// drainRequestTTL bounds how long an unacknowledged drain request is
-// re-delivered. Beyond it the request is dropped: a runner that never
-// acknowledged is likely gone, and an operator should re-request rather
-// than have a stale drain resurrect later. It comfortably exceeds the
-// runner's drain deadline plus hard-kill timeout.
-const drainRequestTTL = 30 * time.Minute
+// drainRequestDeadRunnerGrace bounds how long a drain request may outlive its
+// runner's last heartbeat before the reaper garbage-collects it. A pending
+// request is delivered on every heartbeat for as long as the runner is alive,
+// so a runner that is offline when the drain is requested still observes it on
+// return no matter how long it was gone. Only once the runner has been silent
+// for this window (or has no runners row at all) does the reaper delete the
+// row. This bounds runner_drain_requests growth without degrading the
+// at-least-once delivery into a fixed age-only TTL. See issue #368.
+const drainRequestDeadRunnerGrace = 24 * time.Hour
 
 // requestRunnerDrainDB inserts a drain request for the given runner. Any
 // replica's heartbeat handler will deliver it.
@@ -192,26 +195,60 @@ func requestRunnerDrainDB(ctx context.Context, db *sql.DB, dialect store.Dialect
 // peekRunnerDrainDB reports whether a pending drain request exists for the
 // given runner. The row is intentionally left in place so the drain command
 // is delivered at-least-once: if a heartbeat response carrying the command is
-// lost, the next heartbeat re-delivers it. The runner acknowledges by
-// reporting a draining status, at which point ackRunnerDrainDB removes the
-// row. Requests older than drainRequestTTL are dropped.
+// lost, the next heartbeat re-delivers it, and a runner that returns after
+// being offline for any length of time still sees the pending drain. The
+// runner acknowledges by reporting a draining status, at which point
+// ackRunnerDrainDB removes the row. Requests for runners that are demonstrably
+// dead are removed by reapStaleRunnerDrains instead of by request age alone.
+// See issue #368.
 func peekRunnerDrainDB(ctx context.Context, db *sql.DB, dialect store.Dialect, runnerID string) (bool, error) {
-	query := sqlQuery(dialect, `SELECT created_at FROM runner_drain_requests WHERE runner_id = ?`)
-	var createdAt time.Time
-	err := db.QueryRowContext(ctx, query, runnerID).Scan(&createdAt)
+	query := sqlQuery(dialect, `SELECT 1 FROM runner_drain_requests WHERE runner_id = ?`)
+	var present int
+	err := db.QueryRowContext(ctx, query, runnerID).Scan(&present)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("peek runner drain request: %w", err)
 	}
-	if time.Since(createdAt) > drainRequestTTL {
-		if _, err := db.ExecContext(ctx, sqlQuery(dialect, `DELETE FROM runner_drain_requests WHERE runner_id = ?`), runnerID); err != nil {
-			return false, fmt.Errorf("drop stale runner drain request: %w", err)
-		}
-		return false, nil
-	}
 	return true, nil
+}
+
+// reapStaleRunnerDrains garbage-collects drain requests for runners that are
+// demonstrably dead: either no runners row exists for the runner_id, or the
+// runner's last heartbeat is older than grace. A live-but-offline runner
+// keeps its pending drain so it honors the drain when it returns (issue
+// #368). Returns the number of rows removed.
+func reapStaleRunnerDrains(ctx context.Context, db *sql.DB, dialect store.Dialect, grace time.Duration) (int64, error) {
+	if db == nil {
+		return 0, nil
+	}
+	cutoff := time.Now().UTC().Add(-grace)
+	// Two simple statements instead of one OR-joined query: both avoid
+	// referencing the delete target in a subquery, which keeps the syntax
+	// portable across TiDB, MySQL, and PostgreSQL.
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		// Unknown runners: the runner never registered or its row is gone.
+		{query: `DELETE FROM runner_drain_requests WHERE runner_id NOT IN (SELECT id FROM runners)`},
+		// Dead runners: no heartbeat within the grace window.
+		{query: `DELETE FROM runner_drain_requests WHERE runner_id IN (SELECT id FROM runners WHERE last_seen_at < ?)`, args: []any{cutoff}},
+	}
+	var total int64
+	for _, stmt := range statements {
+		res, err := db.ExecContext(ctx, sqlQuery(dialect, stmt.query), stmt.args...)
+		if err != nil {
+			return total, fmt.Errorf("reap stale runner drain requests: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return total, fmt.Errorf("reap stale runner drain requests rows: %w", err)
+		}
+		total += n
+	}
+	return total, nil
 }
 
 // ackRunnerDrainDB removes the drain request after the runner acknowledged it
