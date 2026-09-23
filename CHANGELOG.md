@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-22
+
+### Fixed
+
+- The web UI footer showed no server version, git hash, or uptime for token-authenticated users (merged in #433): since the 2026-08-26 security hardening, `/api/server-info` returns build identity and operational metadata (`serverVersion`, `gitHash`, `uptimeSeconds`, `startedAt`, `quotaExhausted`, reaper and database posture) only to authenticated callers, but the SPA fetched it without any credentials, so those fields went missing for users logged in with a bearer token (OIDC cookie sessions kept working because the same-origin request carries the session cookie). `fetchServerInfo` now attaches the stored bearer token as an `Authorization: Bearer` header when one is present, before the login decision the endpoint's public fields (`oidcEnabled`, `allowTokenLogin`) serve. A new `web/src/lib/serverInfo.test.ts` asserts the header is sent.
+
+### Documentation
+
+- Website and technical deck updated (merged in #430, the nightly site task) to reflect the 2026-09-21 behavior changes: the main site's queue row states that a transient missed heartbeat cannot strand a live execution and that a runner never executes the same task twice at once, and its automation row says deliveries are durable — retried with backoff, re-drivable by hand after dead-lettering, and pruned by a retention TTL that never discards retryable work. The archived deck's MCP card names `chetter_retry_callback_delivery` (admin-only) and `chetter_retry_inbound_delivery` (team-scoped), its Resilience card adds `DELIVERY_RETENTION_DAYS` to the retention settings and documents the guarded reset, its Inbound-webhooks card covers `chetter_retry_inbound_delivery`, and its "Renew cheaply" step describes the lease-fence behavior (renewal gated on attempt status and runner ownership rather than lease expiry, reaper/renewal fencing, and the runner refusing a second execution of a task it already runs).
+
 ## 2026-09-21
 
 ### Added
