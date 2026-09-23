@@ -249,6 +249,7 @@ func New(cfg config.Config, st *store.Store) *Service {
 		svc.reapIsolationUnavailableTasks,
 		svc.reapExpiredSessions,
 		svc.reapExpiredSessionArtifacts,
+		svc.reapStaleRunnerDrains,
 		svc.pruneRetainedRows,
 		svc.checkDBQuota,
 		func() {
@@ -476,6 +477,26 @@ func (s *Service) pruneRetainedRows() {
 		if n > 0 {
 			slog.Info("pruned retained rows", "table", job.table, "count", n)
 		}
+	}
+}
+
+// reapStaleRunnerDrains is the reaper step that removes drain requests whose
+// runner is demonstrably dead (no runners row, or no heartbeat within
+// drainRequestDeadRunnerGrace). Live-but-offline runners keep their pending
+// drains so they honor them on return. See issue #368.
+func (s *Service) reapStaleRunnerDrains() {
+	ctx, cancel := s.reaperCtx()
+	defer cancel()
+	n, err := reapStaleRunnerDrains(ctx, s.rawDB, s.dialect, drainRequestDeadRunnerGrace)
+	if err != nil {
+		slog.Error("reap stale runner drain requests failed", "error", err)
+		if isQuotaExhaustedError(err) {
+			s.quotaExhausted.Store(true)
+		}
+		return
+	}
+	if n > 0 {
+		slog.Info("reaped stale runner drain requests", "count", n)
 	}
 }
 

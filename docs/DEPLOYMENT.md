@@ -94,8 +94,12 @@ cross-replica fallback that triggers the same broadcast.
   on one replica stops firing on other replicas within one tick — but the
   in-flight tick may still fire once.
 - **Drain delivery is at-least-once.** The drain command is re-delivered on
-  every heartbeat until the runner reports a draining status, and a request
-  row is dropped after 30 minutes without an acknowledgement.
+  every heartbeat until the runner reports a draining status, and the claim
+  path refuses new work while a drain is pending. A request row is no longer
+  dropped on a fixed request-age TTL: a runner that was offline when the drain
+  was requested still observes it on return. The reaper garbage-collects rows
+  only once the runner is demonstrably dead — it has no `runners` row, or has
+  not heartbeated for `drainRequestDeadRunnerGrace` (24h). See issue #368.
 
 ### Scaling Notes
 

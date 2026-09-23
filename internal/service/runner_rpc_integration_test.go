@@ -277,40 +277,125 @@ func TestRunnerDrainRequestCrossesReplicas(t *testing.T) {
 	}
 }
 
-// TestRunnerDrainRequestDropsStaleRows verifies an unacknowledged drain
-// request older than the TTL is dropped instead of resurrecting a drain long
-// after the operator requested it.
-func TestRunnerDrainRequestDropsStaleRows(t *testing.T) {
-	rpc, _, tdb, cleanup := newRPCTestService(t)
+// TestRunnerDrainRequestSurvivesPastTTL verifies a drain request is not
+// dropped purely because it is older than the old 30-minute TTL. A runner that
+// was offline when the drain was requested still observes it on its returning
+// heartbeat and must honor it before taking work (issue #368).
+func TestRunnerDrainRequestSurvivesPastTTL(t *testing.T) {
+	rpc, q, tdb, cleanup := newRPCTestService(t)
 	defer cleanup()
 	ctx := context.Background()
 
-	if err := requestRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_stale_drain"); err != nil {
+	if err := requestRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_returning"); err != nil {
 		t.Fatalf("request drain: %v", err)
 	}
-	stale := time.Now().UTC().Add(-2 * drainRequestTTL)
+	// Age the request well beyond the old fixed TTL.
+	stale := time.Now().UTC().Add(-2 * time.Hour)
 	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
 		`UPDATE runner_drain_requests SET created_at = ? WHERE runner_id = ?`,
 		`UPDATE runner_drain_requests SET created_at = $1 WHERE runner_id = $2`),
-		stale, "runner_stale_drain"); err != nil {
+		stale, "runner_returning"); err != nil {
 		t.Fatalf("age drain request: %v", err)
 	}
 
-	info := &runnerv1.RunnerInfo{RunnerId: "runner_stale_drain", Status: "active"}
+	// The runner returns and heartbeats; it must still receive the drain.
+	info := &runnerv1.RunnerInfo{RunnerId: "runner_returning", Status: "active"}
 	resp, err := rpc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: info}))
 	if err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
-	if len(resp.Msg.Commands) != 0 {
-		t.Fatalf("stale drain request was delivered: %+v", resp.Msg.Commands)
+	if len(resp.Msg.Commands) != 1 || resp.Msg.Commands[0].Type != "drain" {
+		t.Fatalf("returning runner commands = %+v, want one drain command", resp.Msg.Commands)
 	}
-	// The row is gone, not just skipped.
-	requested, err := peekRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_stale_drain")
+
+	// While the drain is pending, the claim path must refuse work rather than
+	// hand the returning runner a task it will not finish.
+	insertPendingTask(t, q, "task_returning_drain", "do work", "runner:latest")
+	claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_returning", WaitSeconds: 0, LeaseSeconds: 60,
+	}))
 	if err != nil {
-		t.Fatalf("peek after TTL drop: %v", err)
+		t.Fatalf("ClaimTask: %v", err)
 	}
-	if requested {
-		t.Fatal("stale drain request row was not dropped")
+	if claim.Msg.Task != nil {
+		t.Fatalf("claim pending drain returned a task: %+v", claim.Msg.Task)
+	}
+
+	// Once the runner acknowledges by reporting draining, the row is removed
+	// and later claims are allowed again.
+	draining := &runnerv1.RunnerInfo{RunnerId: "runner_returning", Status: "draining"}
+	if _, err := rpc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{Runner: draining})); err != nil {
+		t.Fatalf("draining Heartbeat: %v", err)
+	}
+	pending, err := peekRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_returning")
+	if err != nil {
+		t.Fatalf("peek after ack: %v", err)
+	}
+	if pending {
+		t.Fatal("drain request row was not removed after the draining ack")
+	}
+	claim, err = rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{
+		RunnerId: "runner_returning", WaitSeconds: 0, LeaseSeconds: 60,
+	}))
+	if err != nil {
+		t.Fatalf("ClaimTask after ack: %v", err)
+	}
+	if claim.Msg.Task == nil || claim.Msg.Task.TaskId != "task_returning_drain" {
+		t.Fatalf("claim after ack = %+v, want task_returning_drain", claim.Msg.Task)
+	}
+}
+
+// TestReapStaleRunnerDrains verifies the liveness-keyed GC: drain requests for
+// live runners survive, while requests for runners with no runners row or an
+// expired heartbeat are removed (issue #368).
+func TestReapStaleRunnerDrains(t *testing.T) {
+	rpc, _, tdb, cleanup := newRPCTestService(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	for _, id := range []string{"runner_live", "runner_dead"} {
+		if _, err := rpc.Heartbeat(ctx, connect.NewRequest(&runnerv1.HeartbeatRequest{
+			Runner: &runnerv1.RunnerInfo{RunnerId: id, Status: "active"},
+		})); err != nil {
+			t.Fatalf("heartbeat %s: %v", id, err)
+		}
+	}
+	for _, id := range []string{"runner_live", "runner_dead", "runner_unknown"} {
+		if err := requestRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), id); err != nil {
+			t.Fatalf("request drain %s: %v", id, err)
+		}
+	}
+	// runner_dead has not heartbeated within the grace window.
+	stale := time.Now().UTC().Add(-2 * drainRequestDeadRunnerGrace)
+	if _, err := tdb.DB.ExecContext(ctx, testQuery(tdb.Dialect(),
+		`UPDATE runners SET last_seen_at = ? WHERE id = ?`,
+		`UPDATE runners SET last_seen_at = $1 WHERE id = $2`),
+		stale, "runner_dead"); err != nil {
+		t.Fatalf("age runner_dead: %v", err)
+	}
+
+	n, err := reapStaleRunnerDrains(ctx, tdb.DB, tdb.Dialect(), drainRequestDeadRunnerGrace)
+	if err != nil {
+		t.Fatalf("reap stale runner drains: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("reaped %d rows, want 2 (dead + unknown)", n)
+	}
+	for _, id := range []string{"runner_dead", "runner_unknown"} {
+		pending, err := peekRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), id)
+		if err != nil {
+			t.Fatalf("peek %s: %v", id, err)
+		}
+		if pending {
+			t.Fatalf("drain request for %s survived GC", id)
+		}
+	}
+	pending, err := peekRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), "runner_live")
+	if err != nil {
+		t.Fatalf("peek runner_live: %v", err)
+	}
+	if !pending {
+		t.Fatal("live runner's drain request was GC'd")
 	}
 }
 
