@@ -38,10 +38,26 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-23
+
+### Added
+
+- Task timeout selector in the web submit form (issue #435): a task's deadline is now chosen before creation instead of submitting first and immediately extending it. The form offers presets from 15 minutes to 24 hours plus a custom seconds input, with client-side validation mirroring the server limits (positive whole number of seconds, 24-hour cap) so users get an immediate message instead of a round trip; the "Default" option sends `timeoutSec` 0 so the server default keeps applying. `/api/server-info` now exposes `defaultTaskTimeoutSec` (in the authenticated payload) so the form labels the default option with the real server value rather than a guess. The timeout/payload logic lives in a new `web/src/lib/taskSubmit.ts`, kept free of Svelte runes so it is directly unit-testable.
+
+### Fixed
+
+- Orphaned git processes on definitions sync cancellation (issue #427): `Manager.Sync` ran `git pull`/`git clone` with `exec.CommandContext`, whose default cancellation kills only the direct child — the child git processes a pull spawns (fetch, merge) survived as orphans, and because the MCP container runs `/chetter` as PID 1 with no init, they were never reaped and accumulated as zombies. Git is now started in its own process group and the whole group is killed on cancellation (unix, with a portable Windows fallback), mirroring the runner's `process_unix.go`; as defense in depth, the `chetter-mcp` compose service sets `init: true` so tini reaps any adopted orphans. A regression test cancels a sync whose fake git spawns a background child and asserts the child does not survive.
+- Runner drain requests are persisted until the runner is demonstrably dead (issue #368): `runner_drain_requests` rows were dropped purely on request age (30 minutes), so a runner offline longer than that at drain time silently resumed claiming on return. A pending drain now survives until the runner acks it (reports a draining status) or the reaper confirms death: a new `reapStaleRunnerDrains` reaper step removes rows with no `runners` row or whose runner has not heartbeated within `drainRequestDeadRunnerGrace` (24h), and `claimOnce` is gated on a pending drain so a returning runner cannot take work in the window before its first heartbeat delivers the drain command. Supersedes the age-only 30-minute drop documented in the 2026-08-26 coordination entry.
+
+### Documentation
+
+- Website and technical deck updated to reflect the authenticated `/api/server-info` (PR #433): the endpoint stays reachable without credentials so the SPA can read `oidcEnabled` and `allowTokenLogin` before any login decision, but server version, git hash, and uptime (plus `startedAt`, `quotaExhausted`, `lastReapAt`, and the database timezone posture) are returned only to callers with a valid admin/team bearer token or OIDC session cookie, mirroring the ConnectRPC auth interceptor. The main site's security row lists the gated endpoint alongside `/metrics` bearer auth, the Server and Releases cards state the authenticated split, the Web UI card notes the SPA sends its bearer token with that request so the footer also populates under browser token login, and the archived deck's three `/api/server-info` mentions now describe the split.
+
 ## 2026-09-22
 
 ### Fixed
 
+- Any user who could comment on or review a PR could resume a paused privileged agent session via `ResumeSessionForPR` (issue #344, merged in #436), steering an agent that retains repository write capabilities. Every resume path is now gated on `CheckUserHasWriteAccess` and fails closed on a denied or errored check: pull request review and review-comment feedback (`resumeSessionForPRFeedback` now receives the installation client) and issue comments on a PR, before both the session resume and the `/chetter-review` trigger. Denied attempts reuse the existing `webhook_author_gate_denied` audit event, and regression tests cover trusted, untrusted, unknown, and errored authors across all three resume paths.
 - The web UI footer showed no server version, git hash, or uptime for token-authenticated users (merged in #433): since the 2026-08-26 security hardening, `/api/server-info` returns build identity and operational metadata (`serverVersion`, `gitHash`, `uptimeSeconds`, `startedAt`, `quotaExhausted`, reaper and database posture) only to authenticated callers, but the SPA fetched it without any credentials, so those fields went missing for users logged in with a bearer token (OIDC cookie sessions kept working because the same-origin request carries the session cookie). `fetchServerInfo` now attaches the stored bearer token as an `Authorization: Bearer` header when one is present, before the login decision the endpoint's public fields (`oidcEnabled`, `allowTokenLogin`) serve. A new `web/src/lib/serverInfo.test.ts` asserts the header is sent.
 
 ### Documentation
