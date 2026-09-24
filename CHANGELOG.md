@@ -38,6 +38,22 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-23
+
+### Added
+
+- Task timeout selection at submit time (merged in #441): the web UI's task submit form gained a timeout selector so a task's deadline is set before it is created instead of submitting and immediately extending it — presets from 15 minutes to 24 hours plus a custom seconds input, with the default option sending `timeout_sec: 0` so the server default keeps applying. `GET /api/server-info` now exposes `defaultTaskTimeoutSec` to authenticated callers so the form labels the default option with the real server value rather than a guess. See issue #435.
+
+### Fixed
+
+- Drain requests for offline runners were silently dropped (merged in #442): `runner_drain_requests` rows were deleted purely on request age (30 minutes), so a runner that was offline when an operator drained it resumed claiming work on return. A pending drain now survives until the runner acknowledges it or the reaper proves the runner dead — `reapStaleRunnerDrains` garbage-collects rows for runners with no `runners` row or no heartbeat within `drainRequestDeadRunnerGrace` (24h) — and `claimOnce` refuses new work while a drain is pending, closing the window between a returning runner's registration and its first heartbeat delivering the drain command. See issue #368.
+- Orphaned git zombies after definition-sync cancellation (merged in #440): `Manager.Sync` ran `git pull`/`git clone` with `exec.CommandContext`, whose default cancellation kills only the direct child; git's own children (fetch, merge) survived, and since the MCP container runs `/chetter` as PID 1 with no init, they were never reaped and accumulated as zombies. Git now starts in its own process group and the whole group is killed on cancellation (Unix, with a portable Windows fallback), and the `chetter-mcp` compose service sets `init: true` so tini reaps any adopted orphans as defense in depth. See issue #427.
+
+### Documentation
+
+- Website and technical deck updated (merged in #439, the nightly site task) to reflect the authenticated `/api/server-info` split from PR #433: the endpoint stays reachable without credentials for the pre-login `oidcEnabled`/`allowTokenLogin` decision, while version, git hash, uptime, and operational metadata require an admin/team bearer token or OIDC session; the deck's Web UI card notes the SPA now sends its bearer token so the footer populates under token login.
+- `AGENTS.md` and `docs/DEPLOYMENT.md` updated in #442 for the drain-request liveness semantics above.
+
 ## 2026-09-22
 
 ### Fixed
