@@ -149,9 +149,27 @@ tooling, and sudo. See the script header for all options.
 
 ## Build From Source
 
+Requires **Go 1.26+**, **Node.js 24 + npm** (the server embeds the web UI),
+and **GNU Make**.
+
 ```bash
 make check && make build
 ```
+
+`make build` compiles the SvelteKit web UI, embeds it into the server via
+`go:embed`, and produces two binaries in `bin/`:
+
+- `bin/chetter` — the MCP server / control plane
+- `bin/chetterctl` — the token management CLI
+
+After changing `proto/` or any `db/queries/*.sql`, regenerate the protobuf
+and sqlc code (this also refreshes the dialect facade):
+
+```bash
+make generate
+```
+
+See [AGENTS.md](AGENTS.md) for the full developer command reference.
 
 ## License
 
