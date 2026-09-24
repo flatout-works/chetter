@@ -105,6 +105,7 @@ type TaskRecord struct {
 	Prompt                string            `json:"prompt"`
 	GitURL                string            `json:"git_url,omitempty"`
 	GitRef                string            `json:"git_ref,omitempty"`
+	Repos                 []RepoRef         `json:"repos,omitempty"`
 	GitHubRepo            string            `json:"github_repo,omitempty"`
 	GitHubInstallationID  int64             `json:"github_installation_id,omitempty"`
 	AgentImage            string            `json:"agent_image,omitempty"`
@@ -536,6 +537,9 @@ func (s *Store) ApplySchema(ctx context.Context) error {
 	if err := s.ensureTaskGitHubMetadataColumns(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureRepoSetColumns(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureCallbackDeliveryColumns(ctx); err != nil {
 		return err
 	}
@@ -803,6 +807,37 @@ func (s *Store) ensureTaskGitHubMetadataColumns(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			return fmt.Errorf("add tasks.%s: %w", column.name, err)
+		}
+	}
+	return nil
+}
+
+// ensureRepoSetColumns backfills the repos column added by migration 058
+// (#434) for existing MySQL/TiDB deployments. PostgreSQL deployments get the
+// column from migration 034 and the bootstrap DDL.
+func (s *Store) ensureRepoSetColumns(ctx context.Context) error {
+	columns := []struct {
+		table    string
+		mysqlDDL string
+		pgDDL    string
+	}{
+		{"tasks", "ALTER TABLE tasks ADD COLUMN repos JSON NULL", "ALTER TABLE tasks ADD COLUMN repos JSONB NULL"},
+		{"agent_sessions", "ALTER TABLE agent_sessions ADD COLUMN repos JSON NULL", "ALTER TABLE agent_sessions ADD COLUMN repos JSONB NULL"},
+	}
+	for _, column := range columns {
+		exists, err := s.columnExists(ctx, column.table, "repos")
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		ddl := column.mysqlDDL
+		if s.IsPostgres() {
+			ddl = column.pgDDL
+		}
+		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
+			return fmt.Errorf("add %s.repos: %w", column.table, err)
 		}
 	}
 	return nil

@@ -68,6 +68,7 @@ Useful `chetter_submit_task` fields include:
 
 - `prompt`: clear, scoped instructions
 - `git_url`, `git_ref`: committed Git state to clone
+- `repos`: optional multiple repositories (`[{url, ref, primary}]`); the primary is cloned at the workspace root and the rest under `repos/<name>`. Overrides `git_url`/`git_ref` when set.
 - `agent_image`: optional agent image override, never the runner daemon image
 - `harness`: `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`
 - `agent`, `provider_id`, `model_id`, `variant_id`

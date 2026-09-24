@@ -745,7 +745,7 @@ ${task?.prompt ?? ""}`;
       </Card>
     {/if}
 
-    {#if task.gitUrl || task.gitRef || task.skills.length > 0 || visibleEnv.length > 0 || taskSession?.pauseReason || taskSession?.expiresAt}
+    {#if task.gitUrl || task.gitRef || task.repos.length > 0 || task.skills.length > 0 || visibleEnv.length > 0 || taskSession?.pauseReason || taskSession?.expiresAt}
       <Card size="xl" class="mb-6 w-full !p-5" shadow="sm">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Task Configuration</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
@@ -759,6 +759,19 @@ ${task?.prompt ?? ""}`;
             <div>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Git Ref</p>
               <p class="font-mono text-gray-900 dark:text-white">{task.gitRef}</p>
+            </div>
+          {/if}
+          {#if task.repos.length > 1}
+            <div class="md:col-span-2">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Repositories</p>
+              <ul class="space-y-1">
+                {#each task.repos as repo, index (index)}
+                  <li class="font-mono text-xs text-gray-900 dark:text-white break-all">
+                    <span class="text-gray-500 dark:text-gray-400">{repo.primary ? "primary (workspace root)" : "repos/"}</span>
+                    {repo.url}{repo.ref ? ` @ ${repo.ref}` : ""}
+                  </li>
+                {/each}
+              </ul>
             </div>
           {/if}
           {#if task.skills.length > 0}

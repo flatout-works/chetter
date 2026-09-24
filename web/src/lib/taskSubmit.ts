@@ -71,6 +71,11 @@ export function formatTimeoutSec(sec: number): string {
   return `${sec}s`;
 }
 
+export interface ExtraRepoState {
+  url: string;
+  ref: string;
+}
+
 export interface TaskSubmitFormState {
   prompt: string;
   gitUrl: string;
@@ -85,12 +90,21 @@ export interface TaskSubmitFormState {
   pauseReason: string;
   ttlHours: number;
   timeoutSec: number;
+  /** Additional repositories beyond the primary gitUrl/gitRef. */
+  extraRepos?: ExtraRepoState[];
+}
+
+export interface RepoRefPayload {
+  url: string;
+  ref: string;
+  primary: boolean;
 }
 
 export interface TaskSubmitPayload {
   prompt: string;
   gitUrl: string;
   gitRef: string;
+  repos: RepoRefPayload[];
   agentImage: string;
   agent: string;
   providerId: string;
@@ -104,6 +118,25 @@ export interface TaskSubmitPayload {
 }
 
 /**
+ * Builds the ordered repo set for a submission. The primary repository (the
+ * git_url/git_ref fields) is first and flagged primary; additional repos from
+ * `extraRepos` follow. Empty URLs are dropped.
+ */
+export function buildRepoRefs(form: TaskSubmitFormState): RepoRefPayload[] {
+  const repos: RepoRefPayload[] = [];
+  const primaryUrl = form.gitUrl.trim();
+  if (primaryUrl) {
+    repos.push({ url: primaryUrl, ref: form.gitRef.trim(), primary: true });
+  }
+  for (const extra of form.extraRepos ?? []) {
+    const url = extra.url.trim();
+    if (!url) continue;
+    repos.push({ url, ref: extra.ref.trim(), primary: false });
+  }
+  return repos;
+}
+
+/**
  * Builds the SubmitTask payload from the form state. This is the single
  * source of truth for what the UI submits, including the pre-creation
  * timeout (0 lets the server default apply).
@@ -113,6 +146,7 @@ export function buildTaskSubmitPayload(form: TaskSubmitFormState): TaskSubmitPay
     prompt: form.prompt.trim(),
     gitUrl: form.gitUrl.trim(),
     gitRef: form.gitRef.trim(),
+    repos: buildRepoRefs(form),
     agentImage: form.agentImage.trim(),
     agent: form.agent.trim(),
     providerId: form.providerId.trim(),

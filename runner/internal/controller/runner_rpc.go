@@ -176,6 +176,7 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		Prompt:                 t.Prompt,
 		GitURL:                 t.GitUrl,
 		GitRef:                 t.GitRef,
+		Repos:                  protoRepoRefsToTask(t.Repos),
 		GitHubRepo:             t.GithubRepo,
 		Agent:                  t.Agent,
 		ProviderID:             t.ProviderId,
@@ -219,6 +220,20 @@ func protoTaskToRequest(t *runnerv1.Task) task.TaskRequest {
 		})
 	}
 	return req
+}
+
+func protoRepoRefsToTask(refs []*runnerv1.RepoRef) []task.RepoRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]task.RepoRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref == nil {
+			continue
+		}
+		out = append(out, task.RepoRef{URL: ref.Url, Ref: ref.Ref, Primary: ref.Primary})
+	}
+	return out
 }
 
 func (r *Runner) reportTaskResponse(resp task.TaskResponse) {

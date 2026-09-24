@@ -53,6 +53,7 @@
   let gitUrl = $state("");
   let gitRef = $state("");
   let repoChoice = $state("");
+  let extraRepos = $state<{ url: string; ref: string }[]>([]);
   let agentImage = $state("");
   let agent = $state("");
   let providerId = $state("");
@@ -134,6 +135,14 @@
 
   function onGitUrlInput() {
     syncRepoChoice();
+  }
+
+  function addExtraRepo() {
+    extraRepos = [...extraRepos, { url: "", ref: "" }];
+  }
+
+  function removeExtraRepo(index: number) {
+    extraRepos = extraRepos.filter((_, i) => i !== index);
   }
 
   let page = $state(Number(param("page", "0")));
@@ -265,6 +274,9 @@
       prompt = source.prompt;
       gitUrl = source.gitUrl;
       gitRef = source.gitRef;
+      extraRepos = (source.repos ?? [])
+        .filter((repo) => !repo.primary && repo.url !== source.gitUrl)
+        .map((repo) => ({ url: repo.url, ref: repo.ref }));
       syncRepoChoice();
       agentImage = source.agentImage;
       agent = source.agent;
@@ -321,9 +333,9 @@
         prompt, gitUrl, gitRef, agentImage, agent,
         providerId, modelId, variantId, harness,
         sessionMode, pauseReason, ttlHours,
-        timeoutSec,
+        timeoutSec, extraRepos,
       }));
-      prompt = ""; gitUrl = ""; gitRef = ""; repoChoice = ""; agentImage = ""; agent = "";
+      prompt = ""; gitUrl = ""; gitRef = ""; repoChoice = ""; extraRepos = []; agentImage = ""; agent = "";
       harness = "opencode"; applyHarnessDefaults(harness);
       variantId = "";
       sessionMode = ""; pauseReason = ""; ttlHours = 72;
@@ -514,6 +526,30 @@
           <Input bind:value={agentImage} placeholder="Agent image override (optional)" />
           <Input bind:value={agent} placeholder="Agent (optional)" />
           <Input bind:value={variantId} placeholder="Variant (optional, e.g. high)" />
+        </div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <Label class="mb-0">Additional repositories</Label>
+            <Button type="button" size="xs" color="light" onclick={addExtraRepo}>Add repository</Button>
+          </div>
+          {#if extraRepos.length > 0}
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Cloned into <code>repos/&lt;name&gt;</code>; the primary repository stays at the workspace root.
+            </p>
+          {/if}
+          {#each extraRepos as repo, index (index)}
+            <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+              <div>
+                <Label for={`task-extra-url-${index}`} class="mb-1">Git URL</Label>
+                <Input id={`task-extra-url-${index}`} bind:value={repo.url} placeholder="https://github.com/org/extra" />
+              </div>
+              <div>
+                <Label for={`task-extra-ref-${index}`} class="mb-1">Git ref</Label>
+                <Input id={`task-extra-ref-${index}`} bind:value={repo.ref} placeholder="Optional" />
+              </div>
+              <Button type="button" color="light" onclick={() => removeExtraRepo(index)}>Remove</Button>
+            </div>
+          {/each}
         </div>
       {#if formError}
         <Alert color="red">{formError}</Alert>
