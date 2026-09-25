@@ -244,7 +244,11 @@ func (s *Service) selfTestSpecs(ctx context.Context, profile string) ([]selfTest
 func selfTestHarnessSpecs() []selfTestSpec {
 	return []selfTestSpec{
 		{name: "harness:opencode", harness: "opencode", providerID: "deepseek", modelID: "deepseek-v4-flash"},
-		{name: "harness:claude-code", harness: "claude-code", providerID: "synthetic", modelID: "hf:zai-org/GLM-5.2"},
+		// Synthetic's syn:large:text is a stable alias that always resolves to
+		// whichever model Synthetic currently serves as its large text model,
+		// so this pin cannot rot the way the old hf:zai-org/GLM-5.2 pin did
+		// when Synthetic stopped serving that model.
+		{name: "harness:claude-code", harness: "claude-code", providerID: "synthetic", modelID: "syn:large:text"},
 		{name: "harness:pi", harness: "pi", providerID: "deepseek", modelID: "deepseek-v4-flash"},
 		{name: "harness:codewhale", harness: "codewhale", providerID: "deepseek", modelID: "deepseek-v4-flash"},
 		// DeepSeek's Responses API (api.deepseek.com/responses) is built for
