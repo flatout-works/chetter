@@ -14,6 +14,16 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// RepoRefInput is one repository in a multi-repo submission. Exactly one
+// entry should be primary; when none is flagged the first entry is primary.
+// The primary repository is cloned at the workspace root; additional
+// repositories are cloned into deterministic subdirectories.
+type RepoRefInput struct {
+	URL     string `json:"url" jsonschema:"Repository clone URL"`
+	Ref     string `json:"ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	Primary bool   `json:"primary,omitempty" jsonschema:"True for the primary repository cloned at the workspace root"`
+}
+
 // SubmitTaskInput is the input for chetter_submit_task.
 type SubmitTaskInput struct {
 	TeamID       string            `json:"team_id,omitempty" jsonschema:"Owning team ID; required when a non-admin token belongs to multiple teams"`
@@ -21,6 +31,7 @@ type SubmitTaskInput struct {
 	Prompt       string            `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
 	GitURL       string            `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
 	GitRef       string            `json:"git_ref,omitempty" jsonschema:"Branch tag or commit to check out"`
+	Repos        []RepoRefInput    `json:"repos,omitempty" jsonschema:"Optional multiple repositories to clone (primary plus extras); takes precedence over git_url/git_ref"`
 	AgentImage   string            `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
 	Agent        string            `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
 	ProviderID   string            `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`
@@ -79,6 +90,7 @@ type TaskToolRecord struct {
 	Prompt                string            `json:"prompt"`
 	GitURL                string            `json:"git_url,omitempty"`
 	GitRef                string            `json:"git_ref,omitempty"`
+	Repos                 []store.RepoRef   `json:"repos,omitempty"`
 	GitHubRepo            string            `json:"github_repo,omitempty"`
 	GitHubInstallationID  int64             `json:"github_installation_id,omitempty"`
 	AgentImage            string            `json:"agent_image,omitempty"`
@@ -567,6 +579,7 @@ type AgentSessionRecord struct {
 	HarnessSessionID  string            `json:"harness_session_id,omitempty"`
 	GitURL            string            `json:"git_url,omitempty"`
 	GitRef            string            `json:"git_ref,omitempty"`
+	Repos             []store.RepoRef   `json:"repos,omitempty"`
 	AgentImage        string            `json:"agent_image,omitempty"`
 	Agent             string            `json:"agent,omitempty"`
 	ProviderID        string            `json:"provider_id,omitempty"`
@@ -736,6 +749,7 @@ func (s *Service) submitTaskTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		Prompt:           in.Prompt,
 		GitURL:           in.GitURL,
 		GitRef:           in.GitRef,
+		Repos:            submitRepoRefs(in.Repos),
 		AgentImage:       in.AgentImage,
 		Agent:            in.Agent,
 		ProviderID:       in.ProviderID,
@@ -850,6 +864,7 @@ func agentSessionRecord(session repository.AgentSession) AgentSessionRecord {
 		HarnessSessionID:  session.HarnessSessionID.String,
 		GitURL:            session.GitUrl.String,
 		GitRef:            session.GitRef.String,
+		Repos:             sessionRepoRefs(session),
 		AgentImage:        session.AgentImage.String,
 		Agent:             session.Agent.String,
 		ProviderID:        session.ProviderID.String,
@@ -924,6 +939,7 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 		Prompt:               task.Prompt,
 		GitURL:               task.GitURL,
 		GitRef:               task.GitRef,
+		Repos:                task.Repos,
 		GitHubRepo:           task.GitHubRepo,
 		GitHubInstallationID: task.GitHubInstallationID,
 		AgentImage:           task.AgentImage,
@@ -950,6 +966,37 @@ func taskToolRecord(task store.TaskRecord) TaskToolRecord {
 	}
 }
 
+// taskRepoRefs returns the task's repository set, preferring the task row and
+// falling back to the session snapshot and finally to the legacy single
+// git_url/git_ref columns.
+func taskRepoRefs(task repository.Task, session repository.AgentSession) []store.RepoRef {
+	refs := store.UnmarshalRepoRefs(jsonBytes(task.Repos))
+	if len(refs) == 0 {
+		refs = store.UnmarshalRepoRefs(jsonBytes(session.Repos))
+	}
+	if len(refs) == 0 && task.GitUrl.String != "" {
+		refs = store.NormalizeRepoRefs([]store.RepoRef{{URL: task.GitUrl.String, Ref: task.GitRef.String, Primary: true}})
+	}
+	return refs
+}
+
+// sessionRepoRefs returns the session's repository set, falling back to the
+// legacy single git_url/git_ref columns.
+func sessionRepoRefs(session repository.AgentSession) []store.RepoRef {
+	refs := store.UnmarshalRepoRefs(jsonBytes(session.Repos))
+	if len(refs) == 0 && session.GitUrl.String != "" {
+		refs = store.NormalizeRepoRefs([]store.RepoRef{{URL: session.GitUrl.String, Ref: session.GitRef.String, Primary: true}})
+	}
+	return refs
+}
+
+func jsonBytes(raw *json.RawMessage) []byte {
+	if raw == nil {
+		return nil
+	}
+	return *raw
+}
+
 func repoTaskToToolRecord(task repository.Task, session repository.AgentSession) TaskToolRecord {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	mcpEndpoints := parseJSON[[]string](optionalJSON(session.McpEndpoints), "session:"+session.ID+" mcp_endpoints")
@@ -961,6 +1008,7 @@ func repoTaskToToolRecord(task repository.Task, session repository.AgentSession)
 		Prompt:               task.Prompt,
 		GitURL:               task.GitUrl.String,
 		GitRef:               task.GitRef.String,
+		Repos:                taskRepoRefs(task, session),
 		GitHubRepo:           task.GithubRepo.String,
 		GitHubInstallationID: task.GithubInstallationID.Int64,
 		AgentImage:           session.AgentImage.String,

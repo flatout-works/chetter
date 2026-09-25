@@ -50,6 +50,10 @@ message Task {
   repeated string mcp_endpoints = 28;
   string execution_id = 29;
   string harness = 32;
+  // repos is the full repository set for the task, with the primary repo
+  // first. git_url/git_ref remain populated with the primary repo for
+  // backwards compatibility with single-repo consumers.
+  repeated RepoRef repos = 33;
 }
 
 message AgentSession {
@@ -79,6 +83,7 @@ message AgentSession {
   string summary = 24;
   optional string started_at = 25;
   optional string ended_at = 26;
+  repeated RepoRef repos = 27;
 }
 
 message UserPrompt {
@@ -350,6 +355,10 @@ message SubmitTaskRequest {
   string pause_reason = 14;
   int32 ttl_hours = 15;
   repeated string mcp_endpoints = 16;
+  // repos optionally submits more than one repository for the task. When set,
+  // it takes precedence over git_url/git_ref; when empty, git_url/git_ref
+  // describes the single (primary) repository exactly as before.
+  repeated RepoRef repos = 17;
 }
 
 message SubmitTaskResponse {
@@ -1127,4 +1136,15 @@ message AgentDefinition {
 
 message ListAgentDefinitionsResponse {
   repeated AgentDefinition agents = 1;
+}
+
+// RepoRef identifies one repository a task works across. A submission may
+// reference more than one repository; exactly one is primary. The primary
+// repository keeps the historical single-repo contract: it is cloned into the
+// workspace root, drives GitHub-triggered provenance and artifact
+// correlation, and is the default target of the runner GitHub MCP tools.
+message RepoRef {
+  string url = 1;
+  string ref = 2;
+  bool primary = 3;
 }

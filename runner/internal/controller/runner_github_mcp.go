@@ -46,6 +46,19 @@ func (r *Runner) getGitHubCredential(ctx context.Context, req task.TaskRequest) 
 	})
 }
 
+// getGitHubCredentialForRepo requests a credential scoped to a specific
+// repository. Multi-repo tasks use it to credential each clone independently;
+// the control plane resolves the installation for that repository and refuses
+// repositories outside the task's repo set.
+func (r *Runner) getGitHubCredentialForRepo(ctx context.Context, req task.TaskRequest, repo string) (string, error) {
+	if r.rpcClient == nil {
+		return "", fmt.Errorf("runner RPC client is unavailable")
+	}
+	return requestGitHubCredential(ctx, r.rpcClient, r.runnerID, &runnerv1.GetGitHubCredentialRequest{
+		TaskId: req.TaskID, ExecutionId: req.ExecutionID, ClaimId: req.ClaimID, Repo: repo,
+	})
+}
+
 func (r *Runner) registerGitHubMCPTools(server *runnermcp.Server, taskID, executionID, claimID string) {
 	for _, def := range runnermcp.ToolDefinitions() {
 		switch def.Name {

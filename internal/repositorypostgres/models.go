@@ -53,6 +53,7 @@ type AgentSession struct {
 	StartedAt         sql.NullTime     `json:"started_at"`
 	EndedAt           sql.NullTime     `json:"ended_at"`
 	IsolationRequired bool             `json:"isolation_required"`
+	Repos             *json.RawMessage `json:"repos"`
 }
 
 type AgentSessionCheckpoint struct {
@@ -313,33 +314,34 @@ type RunnerDrainRequest struct {
 }
 
 type Task struct {
-	ID                   string         `json:"id"`
-	TeamID               sql.NullString `json:"team_id"`
-	Status               string         `json:"status"`
-	Prompt               string         `json:"prompt"`
-	GitUrl               sql.NullString `json:"git_url"`
-	GitRef               sql.NullString `json:"git_ref"`
-	TriggerName          sql.NullString `json:"trigger_name"`
-	TriggerType          sql.NullString `json:"trigger_type"`
-	SubmissionSource     string         `json:"submission_source"`
-	MaxAttempts          int32          `json:"max_attempts"`
-	Summary              sql.NullString `json:"summary"`
-	Error                sql.NullString `json:"error"`
-	ErrorCategory        sql.NullString `json:"error_category"`
-	CreatedAt            time.Time      `json:"created_at"`
-	UpdatedAt            time.Time      `json:"updated_at"`
-	EndedAt              sql.NullTime   `json:"ended_at"`
-	SearchText           sql.NullString `json:"search_text"`
-	FailureCategory      sql.NullString `json:"failure_category"`
-	FailureMessage       sql.NullString `json:"failure_message"`
-	GithubRepo           sql.NullString `json:"github_repo"`
-	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
-	SelfTestRunID        sql.NullString `json:"self_test_run_id"`
-	SelfTestProfile      sql.NullString `json:"self_test_profile"`
-	SelfTestCheck        sql.NullString `json:"self_test_check"`
-	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
-	CallbackParentTaskID sql.NullString `json:"callback_parent_task_id"`
-	CallbackDepth        int32          `json:"callback_depth"`
+	ID                   string           `json:"id"`
+	TeamID               sql.NullString   `json:"team_id"`
+	Status               string           `json:"status"`
+	Prompt               string           `json:"prompt"`
+	GitUrl               sql.NullString   `json:"git_url"`
+	GitRef               sql.NullString   `json:"git_ref"`
+	TriggerName          sql.NullString   `json:"trigger_name"`
+	TriggerType          sql.NullString   `json:"trigger_type"`
+	SubmissionSource     string           `json:"submission_source"`
+	MaxAttempts          int32            `json:"max_attempts"`
+	Summary              sql.NullString   `json:"summary"`
+	Error                sql.NullString   `json:"error"`
+	ErrorCategory        sql.NullString   `json:"error_category"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedAt            time.Time        `json:"updated_at"`
+	EndedAt              sql.NullTime     `json:"ended_at"`
+	SearchText           sql.NullString   `json:"search_text"`
+	FailureCategory      sql.NullString   `json:"failure_category"`
+	FailureMessage       sql.NullString   `json:"failure_message"`
+	GithubRepo           sql.NullString   `json:"github_repo"`
+	GithubInstallationID sql.NullInt64    `json:"github_installation_id"`
+	SelfTestRunID        sql.NullString   `json:"self_test_run_id"`
+	SelfTestProfile      sql.NullString   `json:"self_test_profile"`
+	SelfTestCheck        sql.NullString   `json:"self_test_check"`
+	SelfTestNonce        sql.NullString   `json:"self_test_nonce"`
+	CallbackParentTaskID sql.NullString   `json:"callback_parent_task_id"`
+	CallbackDepth        int32            `json:"callback_depth"`
+	Repos                *json.RawMessage `json:"repos"`
 }
 
 type TaskArtifact struct {

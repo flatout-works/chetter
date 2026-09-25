@@ -38,12 +38,40 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-24
+
+### Documentation
+
+- Website and technical deck updated (merged in #445, the nightly site task) to reflect the 2026-09-23 behavior changes: the main site's queue row states that each task's deadline is chosen at submission — presets from 15 minutes to 24 hours or a custom value, with the server default as the fallback — and can be extended while the task runs. The archived deck's "Set and extend deadlines" step (renamed from "Extend deadlines") describes the submit-time timeout selector (presets plus a free-form seconds value, with the Default option submitting `timeout_sec` 0 so the server-side default keeps applying, labeled from `/api/server-info`'s `defaultTaskTimeoutSec`), notes that client-side validation mirrors the server's 1-second/24-hour caps, and still documents post-hoc `ExtendTask`. Its Web UI card covers the same selector, and its Scaling card documents the durable drain-request semantics: commands are persisted in `runner_drain_requests` and delivered at-least-once on every heartbeat until the runner reports draining, the claim path refuses new work while a drain is pending so a runner offline at request time observes the drain on return, and rows are no longer dropped on a fixed request-age TTL — the reaper garbage-collects a request only once its runner is demonstrably dead (no `runners` row, or no heartbeat within `drainRequestDeadRunnerGrace`, 24 hours), with `drain_runner` failing closed on database errors.
+- `README.md` Build From Source section expanded (merged in #447): documents the required toolchain (Go 1.26+, Node.js 24 + npm, GNU Make), what `make build` produces — `bin/chetter` (MCP server / control plane) and `bin/chetterctl` (token management CLI), with the SvelteKit web UI embedded via `go:embed` — and points at `make generate` for protobuf/sqlc regeneration and `AGENTS.md` for the full developer command reference.
+
+## 2026-09-23
+
+### Added
+
+- Task timeout selection at submit time (merged in #441): the web UI's task submit form gained a timeout selector so a task's deadline is set before it is created instead of submitting and immediately extending it — presets from 15 minutes to 24 hours plus a custom seconds input, with the default option sending `timeout_sec: 0` so the server default keeps applying. `GET /api/server-info` now exposes `defaultTaskTimeoutSec` to authenticated callers so the form labels the default option with the real server value rather than a guess. See issue #435.
+
+### Fixed
+
+- Drain requests for offline runners were silently dropped (merged in #442): `runner_drain_requests` rows were deleted purely on request age (30 minutes), so a runner that was offline when an operator drained it resumed claiming work on return. A pending drain now survives until the runner acknowledges it or the reaper proves the runner dead — `reapStaleRunnerDrains` garbage-collects rows for runners with no `runners` row or no heartbeat within `drainRequestDeadRunnerGrace` (24h) — and `claimOnce` refuses new work while a drain is pending, closing the window between a returning runner's registration and its first heartbeat delivering the drain command. See issue #368.
+- Orphaned git zombies after definition-sync cancellation (merged in #440): `Manager.Sync` ran `git pull`/`git clone` with `exec.CommandContext`, whose default cancellation kills only the direct child; git's own children (fetch, merge) survived, and since the MCP container runs `/chetter` as PID 1 with no init, they were never reaped and accumulated as zombies. Git now starts in its own process group and the whole group is killed on cancellation (Unix, with a portable Windows fallback), and the `chetter-mcp` compose service sets `init: true` so tini reaps any adopted orphans as defense in depth. See issue #427.
+- Any PR commenter could resume a paused session (merged in #436): a paused session retains repository capabilities, so any user who could comment on or review a Chetter-authored PR could resume it via `ResumeSessionForPR` and steer the agent with attacker-controlled feedback (issue #344). Every webhook resume path — `pull_request_review` and `pull_request_review_comment` feedback, and `issue_comment` on a PR before both the resume and the `/chetter-review` trigger — now requires the feedback author to have repository write access, failing closed on a denied or errored access check. Denials reuse the existing `webhook_author_gate_denied` audit event. Documented in `docs/SESSIONS.md`.
+
+### Documentation
+
+- Website and technical deck updated (merged in #439, the nightly site task) to reflect the authenticated `/api/server-info` split from PR #433: the endpoint stays reachable without credentials for the pre-login `oidcEnabled`/`allowTokenLogin` decision, while version, git hash, uptime, and operational metadata require an admin/team bearer token or OIDC session; the deck's Web UI card notes the SPA now sends its bearer token so the footer populates under token login.
+- `AGENTS.md` and `docs/DEPLOYMENT.md` updated in #442 for the drain-request liveness semantics above.
+
 ## 2026-09-22
 
 ### Fixed
 
-- The web UI's server-info fetch now sends the browser's bearer token (`web/src/lib/stores/serverInfo.svelte.ts`). `/api/server-info` returns only the unauthenticated payload (`oidcEnabled`, `allowTokenLogin`) to callers without a valid admin/team bearer token or OIDC session cookie, and the SPA fetched it without an `Authorization` header — so on deployments using browser token login, the footer's server version, git hash, and uptime never appeared. OIDC cookie sessions were unaffected (`credentials: "same-origin"` already carried the cookie). Covered by `web/src/lib/serverInfo.test.ts`.
+- The web UI footer showed no server version, git hash, or uptime for token-authenticated users (merged in #433): since the 2026-08-26 security hardening, `/api/server-info` returns build identity and operational metadata (`serverVersion`, `gitHash`, `uptimeSeconds`, `startedAt`, `quotaExhausted`, reaper and database posture) only to authenticated callers, but the SPA fetched it without any credentials, so those fields went missing for users logged in with a bearer token (OIDC cookie sessions kept working because the same-origin request carries the session cookie). `fetchServerInfo` now attaches the stored bearer token as an `Authorization: Bearer` header when one is present, before the login decision the endpoint's public fields (`oidcEnabled`, `allowTokenLogin`) serve. A new `web/src/lib/serverInfo.test.ts` asserts the header is sent.
 - Two unused `fakeDockerCLI` fields (`removed`, `rmCalls`) flagged by staticcheck (U1000) failed `make check` and, with `arcane-build-deploy` gated on that job, blocked deployments; the fields are removed (the reaper tests assert removals through the fake's `$FAKE_DOCKER_STATE/removed` file), unblocking `make check`.
+
+### Documentation
+
+- Website and technical deck updated (merged in #430, the nightly site task) to reflect the 2026-09-21 behavior changes: the main site's queue row states that a transient missed heartbeat cannot strand a live execution and that a runner never executes the same task twice at once, and its automation row says deliveries are durable — retried with backoff, re-drivable by hand after dead-lettering, and pruned by a retention TTL that never discards retryable work. The archived deck's MCP card names `chetter_retry_callback_delivery` (admin-only) and `chetter_retry_inbound_delivery` (team-scoped), its Resilience card adds `DELIVERY_RETENTION_DAYS` to the retention settings and documents the guarded reset, its Inbound-webhooks card covers `chetter_retry_inbound_delivery`, and its "Renew cheaply" step describes the lease-fence behavior (renewal gated on attempt status and runner ownership rather than lease expiry, reaper/renewal fencing, and the runner refusing a second execution of a task it already runs).
 
 ## 2026-09-21
 

@@ -292,6 +292,55 @@ func TestMySQLApplyCreateTaskCallbackDeliveryMigration(t *testing.T) {
 	rows.Close()
 }
 
+// TestMySQLApplyTaskRepoSetMigration drops the repos columns added by
+// migration 058 and proves the migration re-adds them — the path an existing
+// goose-managed deployment takes on upgrade to multi-repo task support
+// (issue #434).
+func TestMySQLApplyTaskRepoSetMigration(t *testing.T) {
+	if store.ParseDialect(os.Getenv("CHETTER_TEST_DB_DIALECT")) == store.DialectPostgres {
+		t.Skip("MySQL/TiDB migration test")
+	}
+	tdb, cleanup := NewForTesting(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE tasks DROP COLUMN repos"); err != nil {
+		t.Fatalf("drop tasks.repos: %v", err)
+	}
+	if _, err := tdb.DB.ExecContext(ctx, "ALTER TABLE agent_sessions DROP COLUMN repos"); err != nil {
+		t.Fatalf("drop agent_sessions.repos: %v", err)
+	}
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate migration test source")
+	}
+	migration, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), "../../db/migrations/058_add_task_repo_sets.sql"))
+	if err != nil {
+		t.Fatalf("read task repo set migration: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectMySQL, tdb.DB, fstest.MapFS{
+		"058_add_task_repo_sets.sql": &fstest.MapFile{Data: []byte(string(migration))},
+	})
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("apply task repo set migration: %v", err)
+	}
+
+	for _, query := range []string{
+		"SELECT repos FROM tasks WHERE 1=0",
+		"SELECT repos FROM agent_sessions WHERE 1=0",
+	} {
+		rows, err := tdb.DB.QueryContext(ctx, query)
+		if err != nil {
+			t.Fatalf("query migrated repos column (%s): %v", query, err)
+		}
+		rows.Close()
+	}
+}
+
 // TestMySQLApplyMultiReplicaCoordinationMigration drops the coordination
 // tables created by the bootstrap schema and proves migration 054 re-creates
 // them (including the claim_notify_counter and admission_locks seed rows) —

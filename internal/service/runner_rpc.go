@@ -974,6 +974,19 @@ func (s *RunnerRPCService) claimOnce(ctx context.Context, runnerID string, lease
 	if runnerID == "" {
 		return claimedExecution{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("runner_id is required"))
 	}
+	// A pending drain gates new claims (issue #368): a runner that returns
+	// after being offline longer than the old fixed TTL must observe and honor
+	// its drain before taking work. The heartbeat path delivers the drain
+	// command; until the runner reports "draining" (which acks the row) this
+	// gate refuses work, so no task can be claimed in the window between
+	// registration and the first heartbeat delivery. Fail open on a transient
+	// DB error: the durable row is re-delivered on the next heartbeat, and
+	// stalling the fleet on a DB hiccup would be worse than a brief race.
+	if draining, drainErr := peekRunnerDrainDB(ctx, s.rawDB, s.dialect, runnerID); drainErr != nil {
+		slog.Warn("peek runner drain request during claim failed; allowing claim", "runner_id", runnerID, "err", drainErr)
+	} else if draining {
+		return claimedExecution{}, errNoClaimableTask
+	}
 	var claimed claimedExecution
 	var claimedEvent TaskEventCallbackContext
 	var eventID string
@@ -1611,6 +1624,11 @@ func taskToProto(task repository.Task, session repository.AgentSession, attempt 
 func taskToProtoWithLimits(task repository.Task, session repository.AgentSession, attempt repository.ExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string, maxMemoryMB int) *runnerv1.Task {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
+	repoRefs := taskRepoRefs(task, session)
+	protoRepos := make([]*runnerv1.RepoRef, 0, len(repoRefs))
+	for _, ref := range repoRefs {
+		protoRepos = append(protoRepos, &runnerv1.RepoRef{Url: ref.URL, Ref: ref.Ref, Primary: ref.Primary})
+	}
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		ExecutionId:            attempt.ID,
@@ -1637,6 +1655,7 @@ func taskToProtoWithLimits(task repository.Task, session repository.AgentSession
 		GitAuthorName:          session.CommitAuthorName.String,
 		GitAuthorEmail:         session.CommitAuthorEmail.String,
 		GithubRepo:             task.GithubRepo.String,
+		Repos:                  protoRepos,
 		SelfTestNonce:          task.SelfTestNonce.String,
 		SelfTestCheck:          task.SelfTestCheck.String,
 		IsolationRequired:      session.IsolationRequired,

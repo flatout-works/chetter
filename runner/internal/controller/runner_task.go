@@ -203,7 +203,7 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 		if r.executionMode() == "kubernetes" {
 			session.WorkspaceDir = req.ResumeWorkspacePath
-			if err := agentenv.PrepareGitWorkspace(ctx, session.WorkspaceDir, req); err != nil {
+			if err := r.prepareGitWorkspaces(ctx, session.WorkspaceDir, req); err != nil {
 				r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
 				return
 			}
@@ -232,8 +232,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		}
 	}()
 
-	if req.GitURL != "" {
-		slog.Info("cloning", "taskID", req.TaskID)
+	repos := taskRepositories(req)
+	if len(repos) > 0 {
+		slog.Info("cloning", "taskID", req.TaskID, "repos", len(repos))
 		credentialDir := agentenv.GitCloneCredentialDir(wsDir)
 		if err := os.RemoveAll(wsDir); err != nil {
 			slog.Warn("removing stale workspace", "taskID", req.TaskID, "err", err)
@@ -246,32 +247,31 @@ func (r *Runner) runTask(req task.TaskRequest) {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("prepare Git credentials: %v", err), nil)
 			return
 		}
-		cloneToken := r.cfg.Git.PAT
-		if cloneToken == "" {
-			cloneToken = os.Getenv("GITHUB_TOKEN")
+		fallbackToken := r.cfg.Git.PAT
+		if fallbackToken == "" {
+			fallbackToken = os.Getenv("GITHUB_TOKEN")
 		}
-		if selected, err := selectCloneCredential(ctx, req, cloneToken, r.getGitHubCredential); err == nil {
-			cloneToken = selected
-		} else {
-			slog.Warn("GitHub credential broker unavailable for clone; using compatibility fallback", "taskID", req.TaskID, "err", err)
-		}
-		cloneCmd := exec.CommandContext(ctx, "git", gitCloneArgs(req)...)
-		cloneCmd.Dir = wsDir
-		cloneCmd.Env = append(agentenv.TaskProcessEnv(), agentenv.GitCredentialEnv(credentialDir)...)
-		if cloneToken != "" {
-			cloneCmd.Env = append(cloneCmd.Env, "GITHUB_TOKEN="+cloneToken)
-		}
+		cloneEnv := append(agentenv.TaskProcessEnv(), agentenv.GitCredentialEnv(credentialDir)...)
 		if r.cfg.Git.SSHKeyPath != "" {
-			cloneCmd.Env = append(cloneCmd.Env, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
+			cloneEnv = append(cloneEnv, "GIT_SSH_COMMAND=ssh -i "+r.cfg.Git.SSHKeyPath+" -o StrictHostKeyChecking=no")
 		}
-		if out, err := cloneCmd.CombinedOutput(); err != nil {
-			slog.Error("clone error", "taskID", req.TaskID, "err", err, "output", string(out))
-			r.publishStatusForRequest(req, "error", fmt.Sprintf("git clone: %v\n%s", err, string(out)), nil)
-			r.publishActivityEvent("repo", "Git Clone Failed", "Failed to clone task repository", "failed", fmt.Sprintf("%v\n%s", err, string(out)), time.Since(session.StartedAt).Milliseconds())
-			return
+		primary, secondaries := splitTaskRepositories(repos)
+		subdirs := githubrepo.SecondarySubdirs(repoURLs(secondaries))
+		targets := []cloneTarget{{repo: primary, dir: "."}}
+		for i, repo := range secondaries {
+			targets = append(targets, cloneTarget{repo: repo, dir: subdirs[i]})
+		}
+		for _, target := range targets {
+			if err := r.cloneRepository(ctx, req, cloneEnv, fallbackToken, wsDir, target); err != nil {
+				message := err.Error()
+				slog.Error("clone failed", "taskID", req.TaskID, "repo", target.repo.URL, "dir", target.dir, "err", err)
+				r.publishStatusForRequest(req, "error", message, nil)
+				r.publishActivityEvent("repo", "Git Clone Failed", "Failed to clone task repository", "failed", message, time.Since(session.StartedAt).Milliseconds())
+				return
+			}
 		}
 	}
-	if err := agentenv.PrepareGitWorkspace(ctx, wsDir, req); err != nil {
+	if err := r.prepareGitWorkspaces(ctx, wsDir, req); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
 		return
 	}
@@ -401,6 +401,150 @@ func gitCloneArgs(req task.TaskRequest) []string {
 		args = append(args, "-b", req.GitRef)
 	}
 	return append(args, req.GitURL, ".")
+}
+
+// cloneTarget pairs a repository with the workspace-relative directory it is
+// cloned into. The primary repository uses "." (the workspace root) so the
+// historical layout is preserved; secondaries use deterministic subdirs.
+type cloneTarget struct {
+	repo task.RepoRef
+	dir  string
+}
+
+// taskRepositories returns the ordered repository set for a task, falling back
+// to the legacy single git_url/git_ref fields.
+func taskRepositories(req task.TaskRequest) []task.RepoRef {
+	if len(req.Repos) > 0 {
+		return req.Repos
+	}
+	if strings.TrimSpace(req.GitURL) == "" {
+		return nil
+	}
+	return []task.RepoRef{{URL: req.GitURL, Ref: req.GitRef, Primary: true}}
+}
+
+// splitTaskRepositories returns the primary repository and the remaining
+// repositories in list order. The first entry flagged primary wins; otherwise
+// the first entry is primary.
+func splitTaskRepositories(repos []task.RepoRef) (task.RepoRef, []task.RepoRef) {
+	primaryIndex := 0
+	for i, repo := range repos {
+		if repo.Primary {
+			primaryIndex = i
+			break
+		}
+	}
+	primary := repos[primaryIndex]
+	primary.Primary = true
+	secondaries := make([]task.RepoRef, 0, len(repos)-1)
+	for i, repo := range repos {
+		if i == primaryIndex {
+			continue
+		}
+		secondaries = append(secondaries, repo)
+	}
+	return primary, secondaries
+}
+
+func repoURLs(repos []task.RepoRef) []string {
+	out := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		out = append(out, repo.URL)
+	}
+	return out
+}
+
+// cloneRepository clones one repository into target.dir inside wsDir. It
+// selects a repository-specific credential so a secondary repo from another
+// installation never receives the primary repo's token. A failure aborts the
+// whole task (all-or-nothing) with the repository identified in the message.
+func (r *Runner) cloneRepository(ctx context.Context, req task.TaskRequest, baseEnv []string, fallbackToken, wsDir string, target cloneTarget) error {
+	cloneToken := fallbackToken
+	selected, err := selectCloneCredentialForRepo(ctx, req, target.repo.URL, cloneToken, func(ctx context.Context, repo string) (string, error) {
+		return r.getGitHubCredentialForRepo(ctx, req, repo)
+	})
+	if err == nil {
+		cloneToken = selected
+	} else {
+		slog.Warn("GitHub credential broker unavailable for clone; using compatibility fallback", "taskID", req.TaskID, "repo", target.repo.URL, "err", err)
+	}
+	cmdEnv := baseEnv
+	if cloneToken != "" {
+		cmdEnv = append(append([]string{}, baseEnv...), "GITHUB_TOKEN="+cloneToken)
+	}
+	cloneCmd := exec.CommandContext(ctx, "git", gitCloneArgsForRepo(target.repo, target.dir)...)
+	cloneCmd.Dir = wsDir
+	cloneCmd.Env = cmdEnv
+	if out, err := cloneCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git clone %s into %s: %v\n%s", target.repo.URL, target.dir, err, string(out))
+	}
+	return nil
+}
+
+// cloneUsesGitHubBrokerForRepo reports whether a clone URL may be credentialed
+// by the GitHub App broker: it must be an HTTPS GitHub URL and must belong to
+// the task's repository set (or match the task's primary repo identity).
+func cloneUsesGitHubBrokerForRepo(req task.TaskRequest, cloneURL string) bool {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(cloneURL)), "https://") {
+		return false
+	}
+	cloneRepo, err := githubrepo.Parse(cloneURL)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(req.GitHubRepo) != "" && githubrepo.Same(req.GitHubRepo, cloneRepo.FullName()) {
+		return true
+	}
+	for _, ref := range req.Repos {
+		if githubrepo.Same(ref.URL, cloneRepo.FullName()) {
+			return true
+		}
+	}
+	return false
+}
+
+func selectCloneCredentialForRepo(ctx context.Context, req task.TaskRequest, cloneURL, fallback string, get func(context.Context, string) (string, error)) (string, error) {
+	if !cloneUsesGitHubBrokerForRepo(req, cloneURL) {
+		return fallback, nil
+	}
+	cloneRepo, err := githubrepo.Parse(cloneURL)
+	if err != nil {
+		return fallback, nil
+	}
+	token, err := get(ctx, cloneRepo.FullName())
+	if err != nil {
+		return fallback, err
+	}
+	return token, nil
+}
+
+func gitCloneArgsForRepo(ref task.RepoRef, dir string) []string {
+	args := []string{"clone"}
+	if ref.Ref != "" {
+		args = append(args, "-b", ref.Ref)
+	}
+	return append(args, ref.URL, dir)
+}
+
+// prepareGitWorkspaces configures the Git credential helper and author
+// identity for the primary checkout and every secondary repository checkout
+// that exists, so commits in any repo use the resolved identity.
+func (r *Runner) prepareGitWorkspaces(ctx context.Context, wsDir string, req task.TaskRequest) error {
+	if err := agentenv.PrepareGitWorkspace(ctx, wsDir, req); err != nil {
+		return err
+	}
+	_, secondaries := splitTaskRepositories(taskRepositories(req))
+	subdirs := githubrepo.SecondarySubdirs(repoURLs(secondaries))
+	for _, sub := range subdirs {
+		dir := filepath.Join(wsDir, sub)
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+			continue
+		}
+		if err := agentenv.PrepareGitWorkspace(ctx, dir, req); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runner) withGitHubCredentialBridge(req task.TaskRequest, server *mcp.Server) task.TaskRequest {
@@ -987,7 +1131,7 @@ func (r *Runner) runDockerAgentResume(ctx context.Context, session *task.TaskSes
 		return
 	}
 	session.WorkspaceDir = workspaceDir
-	if err := agentenv.PrepareGitWorkspace(ctx, workspaceDir, req); err != nil {
+	if err := r.prepareGitWorkspaces(ctx, workspaceDir, req); err != nil {
 		r.publishStatusForRequest(req, "error", fmt.Sprintf("configure Git identity: %v", err), nil)
 		return
 	}

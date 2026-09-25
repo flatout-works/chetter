@@ -21,6 +21,7 @@ import (
 
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
+	"github.com/flatout-works/chetter/internal/githubrepo"
 	"github.com/flatout-works/chetter/runner/harness"
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/codex"
@@ -1776,6 +1777,154 @@ func TestCloneCredentialSelectionAndURLSafety(t *testing.T) {
 	token, err = selectCloneCredential(context.Background(), fork, "static-token", get)
 	if err != nil || token != "static-token" || calls != 1 {
 		t.Fatalf("fork credential = %q, calls=%d, err=%v", token, calls, err)
+	}
+}
+
+func TestTaskRepositoriesLayoutAndSplit(t *testing.T) {
+	req := task.TaskRequest{
+		Repos: []task.RepoRef{
+			{URL: "https://github.com/acme/app.git", Ref: "main", Primary: true},
+			{URL: "https://github.com/acme/shared-lib.git"},
+			{URL: "https://gitlab.com/other/app.git"},
+		},
+	}
+	primary, secondaries := splitTaskRepositories(taskRepositories(req))
+	if primary.URL != "https://github.com/acme/app.git" || !primary.Primary {
+		t.Fatalf("primary = %+v", primary)
+	}
+	if len(secondaries) != 2 {
+		t.Fatalf("secondaries = %+v", secondaries)
+	}
+	subdirs := githubrepo.SecondarySubdirs(repoURLs(secondaries))
+	if len(subdirs) != 2 || subdirs[0] != "repos/shared-lib" || subdirs[1] != "repos/app" {
+		t.Fatalf("subdirs = %v, want [repos/shared-lib repos/app]", subdirs)
+	}
+	// The layout must be deterministic across retries/replicas.
+	again := githubrepo.SecondarySubdirs(repoURLs(secondaries))
+	if !reflect.DeepEqual(subdirs, again) {
+		t.Fatalf("layout not deterministic: %v vs %v", subdirs, again)
+	}
+}
+
+func TestTaskRepositoriesCollisionLayout(t *testing.T) {
+	req := task.TaskRequest{
+		Repos: []task.RepoRef{
+			{URL: "https://github.com/acme/service.git", Primary: true},
+			{URL: "https://github.com/acme/service.git"},
+			{URL: "https://gitlab.com/other/service.git"},
+		},
+	}
+	_, secondaries := splitTaskRepositories(taskRepositories(req))
+	subdirs := githubrepo.SecondarySubdirs(repoURLs(secondaries))
+	if len(subdirs) != 2 || subdirs[0] != "repos/service" || subdirs[1] != "repos/service-2" {
+		t.Fatalf("collision subdirs = %v, want [repos/service repos/service-2]", subdirs)
+	}
+}
+
+func TestTaskRepositoriesFallsBackToLegacy(t *testing.T) {
+	req := task.TaskRequest{GitURL: "https://github.com/acme/one.git", GitRef: "dev"}
+	repos := taskRepositories(req)
+	if len(repos) != 1 || repos[0].URL != req.GitURL || repos[0].Ref != "dev" || !repos[0].Primary {
+		t.Fatalf("legacy repos = %+v", repos)
+	}
+}
+
+func TestCloneCredentialSelectionPerRepo(t *testing.T) {
+	req := task.TaskRequest{
+		GitURL:     "https://github.com/acme/primary.git",
+		GitHubRepo: "acme/primary",
+		Repos: []task.RepoRef{
+			{URL: "https://github.com/acme/primary.git", Primary: true},
+			{URL: "https://github.com/other/extra.git"},
+			{URL: "https://gitlab.com/group/third.git"},
+		},
+	}
+	var requested []string
+	get := func(_ context.Context, repo string) (string, error) {
+		requested = append(requested, repo)
+		return "token-for-" + repo, nil
+	}
+	primaryToken, err := selectCloneCredentialForRepo(context.Background(), req, req.GitURL, "static", get)
+	if err != nil || primaryToken != "token-for-acme/primary" {
+		t.Fatalf("primary token = %q err=%v", primaryToken, err)
+	}
+	extraToken, err := selectCloneCredentialForRepo(context.Background(), req, "https://github.com/other/extra.git", "static", get)
+	if err != nil || extraToken != "token-for-other/extra" {
+		t.Fatalf("secondary token = %q err=%v", extraToken, err)
+	}
+	// A non-GitHub repo must not be brokered and must not receive the primary token.
+	gitlabToken, err := selectCloneCredentialForRepo(context.Background(), req, "https://gitlab.com/group/third.git", "static", get)
+	if err != nil || gitlabToken != "static" {
+		t.Fatalf("gitlab token = %q err=%v", gitlabToken, err)
+	}
+	// A GitHub repo outside the task set must not receive the primary token either.
+	outsiderToken, err := selectCloneCredentialForRepo(context.Background(), req, "https://github.com/evil/repo.git", "static", get)
+	if err != nil || outsiderToken != "static" {
+		t.Fatalf("outsider token = %q err=%v", outsiderToken, err)
+	}
+	if !reflect.DeepEqual(requested, []string{"acme/primary", "other/extra"}) {
+		t.Fatalf("broker requests = %v", requested)
+	}
+}
+
+func TestCloneRepositoryIntoSecureSubdirsAndFailure(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.MkdirAll(source, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	runGit(source, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("hi\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	runGit(source, "add", ".")
+	runGit(source, "commit", "-m", "init")
+
+	wsDir := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(wsDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{}
+	req := task.TaskRequest{TaskID: "task-multi", ExecutionID: "exec-1"}
+	targets := []cloneTarget{
+		{repo: task.RepoRef{URL: source, Ref: "main", Primary: true}, dir: "."},
+		{repo: task.RepoRef{URL: source}, dir: "repos/second"},
+	}
+	for _, target := range targets {
+		if err := r.cloneRepository(context.Background(), req, os.Environ(), "", wsDir, target); err != nil {
+			t.Fatalf("clone %s: %v", target.dir, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, "README.md")); err != nil {
+		t.Fatalf("primary checkout missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, "repos", "second", "README.md")); err != nil {
+		t.Fatalf("secondary checkout missing: %v", err)
+	}
+
+	// A failing secondary clone must fail all-or-nothing and name the repo.
+	bad := cloneTarget{repo: task.RepoRef{URL: filepath.Join(root, "does-not-exist")}, dir: "repos/missing"}
+	err := r.cloneRepository(context.Background(), req, os.Environ(), "", wsDir, bad)
+	if err == nil {
+		t.Fatal("expected clone failure")
+	}
+	if !strings.Contains(err.Error(), "repos/missing") || !strings.Contains(err.Error(), "does-not-exist") {
+		t.Fatalf("failure must identify the repo and directory: %v", err)
 	}
 }
 

@@ -349,7 +349,15 @@ duration; the server atomically claims the next pending attempt (marking it with
 critical part is the atomicity — two runners polling at the same time must never receive
 the same task.
 
-`claimOnce` does that with `SELECT ... FOR UPDATE SKIP LOCKED`, which locks a candidate
+One gate runs before any of that: `claimOnce` first checks for a pending drain request
+for the runner and refuses to hand out work while one is pending (issue #368). The
+heartbeat path delivers the drain command, and this gate closes the window in which a
+runner that was offline when the drain was requested could claim work between
+re-registering and receiving that command. The check fails open on a transient DB error
+— the durable row is re-delivered on the next heartbeat, and stalling the fleet on a DB
+hiccup would be worse than a brief race.
+
+`claimOnce` then does that with `SELECT ... FOR UPDATE SKIP LOCKED`, which locks a candidate
 row and *skips* rows already locked by another in-flight claim:
 
 ```go

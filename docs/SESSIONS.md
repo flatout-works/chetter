@@ -55,6 +55,13 @@ context.
 Resume is same-runner only. A pinned runner that is unavailable prevents manual
 resume and causes webhook-driven resume to be skipped.
 
+Webhook-driven resume — `pull_request_review` or `pull_request_review_comment`
+feedback, or a comment on a Chetter-authored PR — is additionally gated on the
+feedback author having repository write access, since a paused session retains
+repository capabilities. The check fails closed: a denied or errored access
+check leaves the session paused and records a `webhook_author_gate_denied` audit
+event (issue #344).
+
 ## Workspace And Fencing
 
 Attempt workspaces are keyed by immutable ExecutionAttempt ID. Retained session

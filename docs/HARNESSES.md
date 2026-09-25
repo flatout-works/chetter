@@ -181,6 +181,59 @@ credential while forwarding task and execution fencing headers. The locally
 minted capability is never serialized to the control plane and is redacted
 from runner-published summaries, errors, exports, and artifact strings.
 
+## Multi-repository tasks
+
+A task may reference more than one repository. The submission accepts an
+ordered repo set (each entry has a `url`, an optional `ref`, and a `primary`
+flag); a single `git_url`/`git_ref` submission is treated as a one-entry set
+and behaves exactly as before.
+
+### Workspace layout
+
+| Repo | Path in the workspace |
+|------|-----------------------|
+| primary (`primary: true`, or the first entry) | workspace root (`.`) |
+| each additional repo | `repos/<slug>` |
+
+The `<slug>` is derived from the repository URL (the final path segment, e.g.
+`https://github.com/org/service.git` -> `service`) and sanitized to a safe path
+segment. Collisions are resolved deterministically in list order by appending
+`-2`, `-3`, ... so the same ordered repo set always produces the same layout
+across retries, resumes, and replicas. The primary checkout keeps today's
+layout at the workspace root so existing harness configs, `setup` paths, and
+prompts that use relative paths keep working.
+
+Example: task repos `acme/app` (primary) and `acme/shared-lib` produce:
+
+```text
+/workspace            # acme/app
+/workspace/repos/shared-lib
+```
+
+### Clone semantics
+
+* The runner clones **all** repositories before the agent starts. If any clone
+  fails the task fails with the repository URL and target directory in the
+  status/event text; the agent never runs against a partial workspace.
+* Each clone is credentialed independently. An HTTPS GitHub clone in the
+  task's repo set is credentialed through the GitHub App broker for **that**
+  repository, so one App with multiple installations selects the right
+  installation per repo. Non-GitHub or SSH clones use the configured PAT/SSH
+  key and never silently receive the primary repository's token.
+* The resolved Git author identity is configured in the primary checkout and in
+  every secondary checkout that exists.
+* Resumed (checkpointed/harness) sessions reuse the preserved workspace, so the
+  same repositories remain at the same paths; the repo set is stored on the
+  agent session snapshot and sent again on resume.
+
+### GitHub MCP tools
+
+The runner's GitHub MCP tools default to the primary repository's identity for
+task-scoped provenance and artifact correlation. Tools may target a secondary
+repository by passing it explicitly, in which case the control plane resolves
+that repository's installation and authorizes it only if it is part of the
+task's repo set.
+
 ## Selection
 
 Harness can be set at two levels:
