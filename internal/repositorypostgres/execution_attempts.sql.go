@@ -8,6 +8,7 @@ package repositorypostgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/lib/pq"
@@ -405,6 +406,7 @@ SELECT attempt.id AS execution_attempt_id,
        attempt.lease_expires_at,
        task.status AS task_status,
        task.github_repo,
+       task.repos,
        task.github_installation_id,
        attempt.claim_id
 FROM execution_attempts attempt
@@ -414,17 +416,18 @@ WHERE attempt.id = $1
 `
 
 type GetGitHubExecutionContextRow struct {
-	ExecutionAttemptID   string         `json:"execution_attempt_id"`
-	UserPromptID         string         `json:"user_prompt_id"`
-	AgentSessionID       string         `json:"agent_session_id"`
-	TaskID               string         `json:"task_id"`
-	RunnerID             sql.NullString `json:"runner_id"`
-	ExecutionStatus      string         `json:"execution_status"`
-	LeaseExpiresAt       sql.NullTime   `json:"lease_expires_at"`
-	TaskStatus           string         `json:"task_status"`
-	GithubRepo           sql.NullString `json:"github_repo"`
-	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
-	ClaimID              string         `json:"claim_id"`
+	ExecutionAttemptID   string           `json:"execution_attempt_id"`
+	UserPromptID         string           `json:"user_prompt_id"`
+	AgentSessionID       string           `json:"agent_session_id"`
+	TaskID               string           `json:"task_id"`
+	RunnerID             sql.NullString   `json:"runner_id"`
+	ExecutionStatus      string           `json:"execution_status"`
+	LeaseExpiresAt       sql.NullTime     `json:"lease_expires_at"`
+	TaskStatus           string           `json:"task_status"`
+	GithubRepo           sql.NullString   `json:"github_repo"`
+	Repos                *json.RawMessage `json:"repos"`
+	GithubInstallationID sql.NullInt64    `json:"github_installation_id"`
+	ClaimID              string           `json:"claim_id"`
 }
 
 func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (GetGitHubExecutionContextRow, error) {
@@ -440,6 +443,7 @@ func (q *Queries) GetGitHubExecutionContext(ctx context.Context, id string) (Get
 		&i.LeaseExpiresAt,
 		&i.TaskStatus,
 		&i.GithubRepo,
+		&i.Repos,
 		&i.GithubInstallationID,
 		&i.ClaimID,
 	)

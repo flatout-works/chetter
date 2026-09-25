@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -181,7 +182,7 @@ func (q *Queries) GetLatestTaskEvent(ctx context.Context, taskID string) (TaskEv
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE id = ?
 `
 
@@ -216,36 +217,38 @@ func (q *Queries) GetTaskByID(ctx context.Context, id string) (Task, error) {
 		&i.SelfTestNonce,
 		&i.CallbackParentTaskID,
 		&i.CallbackDepth,
+		&i.Repos,
 	)
 	return i, err
 }
 
 const insertTask = `-- name: InsertTask :exec
 INSERT INTO tasks
-    (id, team_id, status, prompt, git_url, git_ref, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, search_text, created_at, updated_at)
-VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, team_id, status, prompt, git_url, git_ref, repos, github_repo, github_installation_id, trigger_name, trigger_type, submission_source, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, search_text, created_at, updated_at)
+VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTaskParams struct {
-	ID                   string         `json:"id"`
-	TeamID               sql.NullString `json:"team_id"`
-	Prompt               string         `json:"prompt"`
-	GitUrl               sql.NullString `json:"git_url"`
-	GitRef               sql.NullString `json:"git_ref"`
-	GithubRepo           sql.NullString `json:"github_repo"`
-	GithubInstallationID sql.NullInt64  `json:"github_installation_id"`
-	TriggerName          sql.NullString `json:"trigger_name"`
-	TriggerType          sql.NullString `json:"trigger_type"`
-	SubmissionSource     string         `json:"submission_source"`
-	SelfTestRunID        sql.NullString `json:"self_test_run_id"`
-	SelfTestProfile      sql.NullString `json:"self_test_profile"`
-	SelfTestCheck        sql.NullString `json:"self_test_check"`
-	SelfTestNonce        sql.NullString `json:"self_test_nonce"`
-	CallbackParentTaskID sql.NullString `json:"callback_parent_task_id"`
-	CallbackDepth        int32          `json:"callback_depth"`
-	SearchText           sql.NullString `json:"search_text"`
-	CreatedAt            time.Time      `json:"created_at"`
-	UpdatedAt            time.Time      `json:"updated_at"`
+	ID                   string           `json:"id"`
+	TeamID               sql.NullString   `json:"team_id"`
+	Prompt               string           `json:"prompt"`
+	GitUrl               sql.NullString   `json:"git_url"`
+	GitRef               sql.NullString   `json:"git_ref"`
+	Repos                *json.RawMessage `json:"repos"`
+	GithubRepo           sql.NullString   `json:"github_repo"`
+	GithubInstallationID sql.NullInt64    `json:"github_installation_id"`
+	TriggerName          sql.NullString   `json:"trigger_name"`
+	TriggerType          sql.NullString   `json:"trigger_type"`
+	SubmissionSource     string           `json:"submission_source"`
+	SelfTestRunID        sql.NullString   `json:"self_test_run_id"`
+	SelfTestProfile      sql.NullString   `json:"self_test_profile"`
+	SelfTestCheck        sql.NullString   `json:"self_test_check"`
+	SelfTestNonce        sql.NullString   `json:"self_test_nonce"`
+	CallbackParentTaskID sql.NullString   `json:"callback_parent_task_id"`
+	CallbackDepth        int32            `json:"callback_depth"`
+	SearchText           sql.NullString   `json:"search_text"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedAt            time.Time        `json:"updated_at"`
 }
 
 func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
@@ -255,6 +258,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 		arg.Prompt,
 		arg.GitUrl,
 		arg.GitRef,
+		arg.Repos,
 		arg.GithubRepo,
 		arg.GithubInstallationID,
 		arg.TriggerName,
@@ -274,7 +278,7 @@ func (q *Queries) InsertTask(ctx context.Context, arg InsertTaskParams) error {
 }
 
 const listTasksBySelfTestRun = `-- name: ListTasksBySelfTestRun :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE self_test_run_id = ?
 ORDER BY created_at ASC, id ASC
 `
@@ -316,6 +320,7 @@ func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}
@@ -331,7 +336,7 @@ func (q *Queries) ListTasksBySelfTestRun(ctx context.Context, selfTestRunID sql.
 }
 
 const listTasksByStatus = `-- name: ListTasksByStatus :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE (? = '' OR tasks.status = ?)
   AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
   AND (COALESCE(?, '') = '' OR EXISTS (
@@ -396,6 +401,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}
@@ -411,7 +417,7 @@ func (q *Queries) ListTasksByStatus(ctx context.Context, arg ListTasksByStatusPa
 }
 
 const listTasksByStatusAndTeam = `-- name: ListTasksByStatusAndTeam :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE tasks.team_id = ?
   AND (? = '' OR tasks.status = ?)
   AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
@@ -479,6 +485,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}
@@ -494,7 +501,7 @@ func (q *Queries) ListTasksByStatusAndTeam(ctx context.Context, arg ListTasksByS
 }
 
 const listTasksByStatusAndTeams = `-- name: ListTasksByStatusAndTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE tasks.team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR tasks.status = ?)
   AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
@@ -570,6 +577,7 @@ func (q *Queries) ListTasksByStatusAndTeams(ctx context.Context, arg ListTasksBy
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}
@@ -654,7 +662,7 @@ func (q *Queries) RequeueTaskForPrompt(ctx context.Context, arg RequeueTaskForPr
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE (? = '' OR tasks.team_id = ?)
   AND (? = '' OR tasks.status = ?)
   AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
@@ -726,6 +734,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Tas
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}
@@ -741,7 +750,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Tas
 }
 
 const searchTasksByTeams = `-- name: SearchTasksByTeams :many
-SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth FROM tasks
+SELECT id, status, prompt, git_url, git_ref, summary, error, created_at, updated_at, ended_at, team_id, trigger_name, trigger_type, max_attempts, search_text, error_category, submission_source, failure_category, failure_message, github_repo, github_installation_id, self_test_run_id, self_test_profile, self_test_check, self_test_nonce, callback_parent_task_id, callback_depth, repos FROM tasks
 WHERE tasks.team_id IN (/*SLICE:team_ids*/?)
   AND (? = '' OR tasks.status = ?)
   AND (COALESCE(?, '') = '' OR tasks.trigger_name = ?)
@@ -820,6 +829,7 @@ func (q *Queries) SearchTasksByTeams(ctx context.Context, arg SearchTasksByTeams
 			&i.SelfTestNonce,
 			&i.CallbackParentTaskID,
 			&i.CallbackDepth,
+			&i.Repos,
 		); err != nil {
 			return nil, err
 		}

@@ -144,6 +144,11 @@ message Task {
   // tasks at claim time with error_category isolation_unavailable. See issue
   // #291.
   bool isolation_required = 40;
+  // repos is the full repository set for the task, primary first. When empty,
+  // git_url/git_ref describe the single repository (legacy runners). The
+  // runner clones the primary into the workspace root and each additional
+  // repository into a deterministic subdirectory.
+  repeated RepoRef repos = 41;
 }
 
 message MCPEndpoint {
@@ -388,4 +393,12 @@ service RunnerService {
   rpc GitHubCloseIssue(GitHubCloseIssueRequest) returns (GitHubCloseIssueResponse) {}
   rpc GitHubAddIssueLabels(GitHubAddIssueLabelsRequest) returns (GitHubAddIssueLabelsResponse) {}
   rpc GetGitHubCredential(GetGitHubCredentialRequest) returns (GetGitHubCredentialResponse) {}
+}
+
+// RepoRef identifies one repository a task works across, primary first. When
+// empty on a Task, git_url/git_ref describe the single (legacy) repository.
+message RepoRef {
+  string url = 1;
+  string ref = 2;
+  bool primary = 3;
 }

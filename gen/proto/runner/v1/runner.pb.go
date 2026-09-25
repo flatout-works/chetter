@@ -830,8 +830,13 @@ type Task struct {
 	// tasks at claim time with error_category isolation_unavailable. See issue
 	// #291.
 	IsolationRequired bool `protobuf:"varint,40,opt,name=isolation_required,json=isolationRequired,proto3" json:"isolation_required,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// repos is the full repository set for the task, primary first. When empty,
+	// git_url/git_ref describe the single repository (legacy runners). The
+	// runner clones the primary into the workspace root and each additional
+	// repository into a deterministic subdirectory.
+	Repos         []*RepoRef `protobuf:"bytes,41,rep,name=repos,proto3" json:"repos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Task) Reset() {
@@ -1142,6 +1147,13 @@ func (x *Task) GetIsolationRequired() bool {
 		return x.IsolationRequired
 	}
 	return false
+}
+
+func (x *Task) GetRepos() []*RepoRef {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
 }
 
 type MCPEndpoint struct {
@@ -3159,6 +3171,68 @@ func (x *GetGitHubCredentialResponse) GetExpiresAt() string {
 	return ""
 }
 
+// RepoRef identifies one repository a task works across, primary first. When
+// empty on a Task, git_url/git_ref describe the single (legacy) repository.
+type RepoRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Ref           string                 `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	Primary       bool                   `protobuf:"varint,3,opt,name=primary,proto3" json:"primary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepoRef) Reset() {
+	*x = RepoRef{}
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepoRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepoRef) ProtoMessage() {}
+
+func (x *RepoRef) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_runner_v1_runner_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepoRef.ProtoReflect.Descriptor instead.
+func (*RepoRef) Descriptor() ([]byte, []int) {
+	return file_proto_runner_v1_runner_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *RepoRef) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *RepoRef) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *RepoRef) GetPrimary() bool {
+	if x != nil {
+		return x.Primary
+	}
+	return false
+}
+
 var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
@@ -3230,7 +3304,7 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x10ClaimTaskRequest\x12$\n" +
 	"\trunner_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\brunnerId\x12*\n" +
 	"\fwait_seconds\x18\x02 \x01(\x05B\a\xbaH\x04\x1a\x02\x18\x1eR\vwaitSeconds\x12-\n" +
-	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\x95\x0e\n" +
+	"\rlease_seconds\x18\x03 \x01(\x05B\b\xbaH\x05\x1a\x03\x18\x90\x1cR\fleaseSeconds\"\xbf\x0e\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vagent_image\x18\x02 \x01(\tR\n" +
@@ -3277,7 +3351,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\bclaim_id\x18% \x01(\tB\a\xbaH\x04r\x02\x10\x01R\aclaimId\x12&\n" +
 	"\x0fself_test_nonce\x18& \x01(\tR\rselfTestNonce\x12&\n" +
 	"\x0fself_test_check\x18' \x01(\tR\rselfTestCheck\x12-\n" +
-	"\x12isolation_required\x18( \x01(\bR\x11isolationRequired\x1a6\n" +
+	"\x12isolation_required\x18( \x01(\bR\x11isolationRequired\x12(\n" +
+	"\x05repos\x18) \x03(\v2\x12.runner.v1.RepoRefR\x05repos\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
@@ -3452,7 +3527,11 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\busername\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\busername\x12\x1d\n" +
 	"\x05token\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x05token\x12&\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\texpiresAt2\x8e\n" +
+	"expires_at\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\texpiresAt\"G\n" +
+	"\aRepoRef\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x10\n" +
+	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x18\n" +
+	"\aprimary\x18\x03 \x01(\bR\aprimary2\x8e\n" +
 	"\n" +
 	"\rRunnerService\x12W\n" +
 	"\x0eRegisterRunner\x12 .runner.v1.RegisterRunnerRequest\x1a!.runner.v1.RegisterRunnerResponse\"\x00\x12H\n" +
@@ -3484,7 +3563,7 @@ func file_proto_runner_v1_runner_proto_rawDescGZIP() []byte {
 	return file_proto_runner_v1_runner_proto_rawDescData
 }
 
-var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_proto_runner_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*RunnerInfo)(nil),                   // 0: runner.v1.RunnerInfo
 	(*ResourceInfo)(nil),                 // 1: runner.v1.ResourceInfo
@@ -3524,10 +3603,11 @@ var file_proto_runner_v1_runner_proto_goTypes = []any{
 	(*GitHubAddIssueLabelsRequest)(nil),  // 35: runner.v1.GitHubAddIssueLabelsRequest
 	(*GitHubAddIssueLabelsResponse)(nil), // 36: runner.v1.GitHubAddIssueLabelsResponse
 	(*GetGitHubCredentialResponse)(nil),  // 37: runner.v1.GetGitHubCredentialResponse
-	nil,                                  // 38: runner.v1.Task.EnvEntry
-	nil,                                  // 39: runner.v1.Task.SkillDefinitionsEntry
-	nil,                                  // 40: runner.v1.Task.ExtraFilesEntry
-	nil,                                  // 41: runner.v1.MCPEndpoint.HeadersEntry
+	(*RepoRef)(nil),                      // 38: runner.v1.RepoRef
+	nil,                                  // 39: runner.v1.Task.EnvEntry
+	nil,                                  // 40: runner.v1.Task.SkillDefinitionsEntry
+	nil,                                  // 41: runner.v1.Task.ExtraFilesEntry
+	nil,                                  // 42: runner.v1.MCPEndpoint.HeadersEntry
 }
 var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	2,  // 0: runner.v1.RunnerInfo.current_executions:type_name -> runner.v1.RunningExecution
@@ -3535,49 +3615,50 @@ var file_proto_runner_v1_runner_proto_depIdxs = []int32{
 	0,  // 2: runner.v1.RegisterRunnerRequest.runner:type_name -> runner.v1.RunnerInfo
 	0,  // 3: runner.v1.HeartbeatRequest.runner:type_name -> runner.v1.RunnerInfo
 	6,  // 4: runner.v1.HeartbeatResponse.commands:type_name -> runner.v1.RunnerCommand
-	38, // 5: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
-	39, // 6: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
-	40, // 7: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
+	39, // 5: runner.v1.Task.env:type_name -> runner.v1.Task.EnvEntry
+	40, // 6: runner.v1.Task.skill_definitions:type_name -> runner.v1.Task.SkillDefinitionsEntry
+	41, // 7: runner.v1.Task.extra_files:type_name -> runner.v1.Task.ExtraFilesEntry
 	10, // 8: runner.v1.Task.mcp_endpoints:type_name -> runner.v1.MCPEndpoint
-	41, // 9: runner.v1.MCPEndpoint.headers:type_name -> runner.v1.MCPEndpoint.HeadersEntry
-	9,  // 10: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
-	12, // 11: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
-	13, // 12: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
-	18, // 13: runner.v1.PruneWorkspacesRequest.candidates:type_name -> runner.v1.WorkspaceCandidate
-	19, // 14: runner.v1.PruneWorkspacesResponse.safe_to_delete:type_name -> runner.v1.WorkspaceKey
-	3,  // 15: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
-	5,  // 16: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
-	8,  // 17: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
-	14, // 18: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
-	16, // 19: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
-	20, // 20: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
-	22, // 21: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
-	24, // 22: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
-	26, // 23: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
-	29, // 24: runner.v1.RunnerService.GitHubMergePR:input_type -> runner.v1.GitHubMergePRRequest
-	31, // 25: runner.v1.RunnerService.GitHubClosePR:input_type -> runner.v1.GitHubClosePRRequest
-	33, // 26: runner.v1.RunnerService.GitHubCloseIssue:input_type -> runner.v1.GitHubCloseIssueRequest
-	35, // 27: runner.v1.RunnerService.GitHubAddIssueLabels:input_type -> runner.v1.GitHubAddIssueLabelsRequest
-	28, // 28: runner.v1.RunnerService.GetGitHubCredential:input_type -> runner.v1.GetGitHubCredentialRequest
-	4,  // 29: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
-	7,  // 30: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
-	11, // 31: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
-	15, // 32: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
-	17, // 33: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
-	21, // 34: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
-	23, // 35: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
-	25, // 36: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
-	27, // 37: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
-	30, // 38: runner.v1.RunnerService.GitHubMergePR:output_type -> runner.v1.GitHubMergePRResponse
-	32, // 39: runner.v1.RunnerService.GitHubClosePR:output_type -> runner.v1.GitHubClosePRResponse
-	34, // 40: runner.v1.RunnerService.GitHubCloseIssue:output_type -> runner.v1.GitHubCloseIssueResponse
-	36, // 41: runner.v1.RunnerService.GitHubAddIssueLabels:output_type -> runner.v1.GitHubAddIssueLabelsResponse
-	37, // 42: runner.v1.RunnerService.GetGitHubCredential:output_type -> runner.v1.GetGitHubCredentialResponse
-	29, // [29:43] is the sub-list for method output_type
-	15, // [15:29] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	38, // 9: runner.v1.Task.repos:type_name -> runner.v1.RepoRef
+	42, // 10: runner.v1.MCPEndpoint.headers:type_name -> runner.v1.MCPEndpoint.HeadersEntry
+	9,  // 11: runner.v1.ClaimTaskResponse.task:type_name -> runner.v1.Task
+	12, // 12: runner.v1.TaskEvent.token_usage:type_name -> runner.v1.TokenUsage
+	13, // 13: runner.v1.ReportTaskEventsRequest.events:type_name -> runner.v1.TaskEvent
+	18, // 14: runner.v1.PruneWorkspacesRequest.candidates:type_name -> runner.v1.WorkspaceCandidate
+	19, // 15: runner.v1.PruneWorkspacesResponse.safe_to_delete:type_name -> runner.v1.WorkspaceKey
+	3,  // 16: runner.v1.RunnerService.RegisterRunner:input_type -> runner.v1.RegisterRunnerRequest
+	5,  // 17: runner.v1.RunnerService.Heartbeat:input_type -> runner.v1.HeartbeatRequest
+	8,  // 18: runner.v1.RunnerService.ClaimTask:input_type -> runner.v1.ClaimTaskRequest
+	14, // 19: runner.v1.RunnerService.ReportTaskEvents:input_type -> runner.v1.ReportTaskEventsRequest
+	16, // 20: runner.v1.RunnerService.PruneWorkspaces:input_type -> runner.v1.PruneWorkspacesRequest
+	20, // 21: runner.v1.RunnerService.GitHubCreateIssue:input_type -> runner.v1.GitHubCreateIssueRequest
+	22, // 22: runner.v1.RunnerService.GitHubIssueComment:input_type -> runner.v1.GitHubIssueCommentRequest
+	24, // 23: runner.v1.RunnerService.GitHubCreatePR:input_type -> runner.v1.GitHubCreatePRRequest
+	26, // 24: runner.v1.RunnerService.GitHubPRReview:input_type -> runner.v1.GitHubPRReviewRequest
+	29, // 25: runner.v1.RunnerService.GitHubMergePR:input_type -> runner.v1.GitHubMergePRRequest
+	31, // 26: runner.v1.RunnerService.GitHubClosePR:input_type -> runner.v1.GitHubClosePRRequest
+	33, // 27: runner.v1.RunnerService.GitHubCloseIssue:input_type -> runner.v1.GitHubCloseIssueRequest
+	35, // 28: runner.v1.RunnerService.GitHubAddIssueLabels:input_type -> runner.v1.GitHubAddIssueLabelsRequest
+	28, // 29: runner.v1.RunnerService.GetGitHubCredential:input_type -> runner.v1.GetGitHubCredentialRequest
+	4,  // 30: runner.v1.RunnerService.RegisterRunner:output_type -> runner.v1.RegisterRunnerResponse
+	7,  // 31: runner.v1.RunnerService.Heartbeat:output_type -> runner.v1.HeartbeatResponse
+	11, // 32: runner.v1.RunnerService.ClaimTask:output_type -> runner.v1.ClaimTaskResponse
+	15, // 33: runner.v1.RunnerService.ReportTaskEvents:output_type -> runner.v1.ReportTaskEventsResponse
+	17, // 34: runner.v1.RunnerService.PruneWorkspaces:output_type -> runner.v1.PruneWorkspacesResponse
+	21, // 35: runner.v1.RunnerService.GitHubCreateIssue:output_type -> runner.v1.GitHubCreateIssueResponse
+	23, // 36: runner.v1.RunnerService.GitHubIssueComment:output_type -> runner.v1.GitHubIssueCommentResponse
+	25, // 37: runner.v1.RunnerService.GitHubCreatePR:output_type -> runner.v1.GitHubCreatePRResponse
+	27, // 38: runner.v1.RunnerService.GitHubPRReview:output_type -> runner.v1.GitHubPRReviewResponse
+	30, // 39: runner.v1.RunnerService.GitHubMergePR:output_type -> runner.v1.GitHubMergePRResponse
+	32, // 40: runner.v1.RunnerService.GitHubClosePR:output_type -> runner.v1.GitHubClosePRResponse
+	34, // 41: runner.v1.RunnerService.GitHubCloseIssue:output_type -> runner.v1.GitHubCloseIssueResponse
+	36, // 42: runner.v1.RunnerService.GitHubAddIssueLabels:output_type -> runner.v1.GitHubAddIssueLabelsResponse
+	37, // 43: runner.v1.RunnerService.GetGitHubCredential:output_type -> runner.v1.GetGitHubCredentialResponse
+	30, // [30:44] is the sub-list for method output_type
+	16, // [16:30] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_proto_runner_v1_runner_proto_init() }
@@ -3591,7 +3672,7 @@ func file_proto_runner_v1_runner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_runner_v1_runner_proto_rawDesc), len(file_proto_runner_v1_runner_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

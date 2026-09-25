@@ -1624,6 +1624,11 @@ func taskToProto(task repository.Task, session repository.AgentSession, attempt 
 func taskToProtoWithLimits(task repository.Task, session repository.AgentSession, attempt repository.ExecutionAttempt, attemptNumber int64, resumeCheckpointPath, resumeWorkspacePath string, maxMemoryMB int) *runnerv1.Task {
 	skills := parseJSON[[]string](session.Skills, "session:"+session.ID+" skills")
 	env := parseJSON[map[string]string](session.Env, "session:"+session.ID+" env")
+	repoRefs := taskRepoRefs(task, session)
+	protoRepos := make([]*runnerv1.RepoRef, 0, len(repoRefs))
+	for _, ref := range repoRefs {
+		protoRepos = append(protoRepos, &runnerv1.RepoRef{Url: ref.URL, Ref: ref.Ref, Primary: ref.Primary})
+	}
 	return &runnerv1.Task{
 		TaskId:                 task.ID,
 		ExecutionId:            attempt.ID,
@@ -1650,6 +1655,7 @@ func taskToProtoWithLimits(task repository.Task, session repository.AgentSession
 		GitAuthorName:          session.CommitAuthorName.String,
 		GitAuthorEmail:         session.CommitAuthorEmail.String,
 		GithubRepo:             task.GithubRepo.String,
+		Repos:                  protoRepos,
 		SelfTestNonce:          task.SelfTestNonce.String,
 		SelfTestCheck:          task.SelfTestCheck.String,
 		IsolationRequired:      session.IsolationRequired,

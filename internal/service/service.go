@@ -37,6 +37,11 @@ type SubmitTaskRequest struct {
 	Prompt               string
 	GitURL               string
 	GitRef               string
+	// Repos optionally submits more than one repository for the task. When
+	// set it takes precedence over GitURL/GitRef, which are then derived from
+	// the primary entry. Exactly one entry is primary (first flagged, else the
+	// first entry). See issue #434.
+	Repos                []store.RepoRef
 	GitHubRepo           string
 	GitHubInstallationID int64
 	AgentImage           string
@@ -1154,6 +1159,15 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if in.Prompt == "" {
 		return store.TaskRecord{}, fmt.Errorf("prompt is required")
 	}
+	// Multi-repo submissions (issue #434) are normalized so the primary repo
+	// is first; the legacy git_url/git_ref are derived from it so all existing
+	// single-repo logic (GitHub metadata, git identity, search text) keeps
+	// working unchanged.
+	in.Repos = normalizeSubmitRepoRefs(in.Repos, in.GitURL, in.GitRef)
+	if primary, ok := store.PrimaryRepoRef(in.Repos); ok {
+		in.GitURL = primary.URL
+		in.GitRef = primary.Ref
+	}
 	if err := validation.ValidateTaskInput(validation.TaskInput{
 		Harness:     in.Harness,
 		SessionMode: in.SessionMode,
@@ -1243,6 +1257,13 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 	if err != nil {
 		return store.TaskRecord{}, fmt.Errorf("marshal skills: %w", err)
 	}
+	reposJSON := store.MarshalRepoRefs(in.Repos)
+	// nil repo set must store SQL NULL, never an empty JSON value (MySQL/TiDB
+	// reject an empty string for a JSON column).
+	var reposParam *json.RawMessage
+	if len(reposJSON) > 0 {
+		reposParam = nullableJSON(reposJSON)
+	}
 	endpointNames := normalizeMcpEndpointNames(in.McpEndpoints)
 	if len(endpointNames) > 0 {
 		if _, err := loadMcpEndpoints(ctx, s.rawDB, s.dialect, endpointNames, teamID); err != nil {
@@ -1287,6 +1308,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			Prompt:               in.Prompt,
 			GitUrl:               nullString(in.GitURL),
 			GitRef:               nullString(in.GitRef),
+			Repos:                reposParam,
 			GithubRepo:           nullString(githubRepo),
 			GithubInstallationID: nullInt64(githubInstallationID),
 			TriggerName:          nullString(in.TriggerName),
@@ -1317,6 +1339,7 @@ func (s *Service) SubmitTask(ctx context.Context, in SubmitTaskRequest) (store.T
 			ExpiresAt:         expiresAt,
 			GitUrl:            nullString(in.GitURL),
 			GitRef:            nullString(in.GitRef),
+			Repos:             reposParam,
 			AgentImage:        nullString(in.AgentImage),
 			Agent:             nullString(in.Agent),
 			ProviderID:        nullString(in.ProviderID),
@@ -1983,6 +2006,7 @@ func repoTaskToStoreRecord(task repository.Task, session repository.AgentSession
 		Prompt:               task.Prompt,
 		GitURL:               task.GitUrl.String,
 		GitRef:               task.GitRef.String,
+		Repos:                taskRepoRefs(task, session),
 		GitHubRepo:           task.GithubRepo.String,
 		GitHubInstallationID: task.GithubInstallationID.Int64,
 		AgentImage:           session.AgentImage.String,
@@ -2037,6 +2061,45 @@ func taskGitHubMetadata(in SubmitTaskRequest) (string, int64, error) {
 
 func nullInt64(value int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: value, Valid: value != 0}
+}
+
+// submitRepoRefs converts MCP tool repo inputs into the stored repo set form.
+func submitRepoRefs(refs []RepoRefInput) []store.RepoRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]store.RepoRef, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, store.RepoRef{URL: ref.URL, Ref: ref.Ref, Primary: ref.Primary})
+	}
+	return out
+}
+
+// normalizeSubmitRepoRefs merges an explicit multi-repo submission with the
+// legacy single git_url/git_ref fields. An explicit repos list wins; a legacy
+// git_url that is not already represented is prepended as the primary repo so
+// existing single-repo callers keep their exact behavior.
+func normalizeSubmitRepoRefs(repos []store.RepoRef, gitURL, gitRef string) []store.RepoRef {
+	gitURL = strings.TrimSpace(gitURL)
+	if len(repos) == 0 {
+		if gitURL == "" {
+			return nil
+		}
+		return store.NormalizeRepoRefs([]store.RepoRef{{URL: gitURL, Ref: gitRef, Primary: true}})
+	}
+	if gitURL != "" {
+		found := false
+		for _, ref := range repos {
+			if strings.EqualFold(strings.TrimSpace(ref.URL), gitURL) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			repos = append([]store.RepoRef{{URL: gitURL, Ref: gitRef, Primary: true}}, repos...)
+		}
+	}
+	return store.NormalizeRepoRefs(repos)
 }
 
 func expandChetterPromptVars(prompt string, values map[string]string) string {

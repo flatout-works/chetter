@@ -81,6 +81,7 @@ SELECT attempt.id AS execution_attempt_id,
        attempt.lease_expires_at,
        task.status AS task_status,
        task.github_repo,
+       task.repos,
        task.github_installation_id,
        attempt.claim_id
 FROM execution_attempts attempt

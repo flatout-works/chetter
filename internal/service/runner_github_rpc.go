@@ -282,6 +282,28 @@ func (s *RunnerRPCService) validateRunnerExecutionClaim(ctx context.Context, tas
 	return nil
 }
 
+// repoInTaskRepoSet reports whether requested is one of the repositories in
+// the task's stored repo set. It is used to authorize GitHub actions against
+// secondary repositories of a multi-repo task (issue #434).
+func repoInTaskRepoSet(raw *json.RawMessage, requested githubrepo.Repository) bool {
+	if raw == nil {
+		return false
+	}
+	var refs []struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(*raw, &refs); err != nil {
+		return false
+	}
+	for _, ref := range refs {
+		other, err := githubrepo.Parse(ref.URL)
+		if err == nil && other.Normalized() == requested.Normalized() {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) authorizeGitHubAction(ctx context.Context, taskID, executionAttemptID, runnerID, requestedRepo, claimID string) (githubActionAuthorization, error) {
 	if strings.TrimSpace(taskID) == "" || strings.TrimSpace(executionAttemptID) == "" || strings.TrimSpace(runnerID) == "" || strings.TrimSpace(requestedRepo) == "" || strings.TrimSpace(claimID) == "" {
 		return githubActionAuthorization{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("task_id, execution_id, runner_id, repo, and claim_id are required"))
@@ -329,19 +351,35 @@ func (s *Service) authorizeGitHubAction(ctx context.Context, taskID, executionAt
 	if err != nil {
 		return githubActionAuthorization{}, connect.NewError(connect.CodeInternal, fmt.Errorf("task %q has invalid GitHub repository identity: %w", taskID, err))
 	}
-	if requested.Normalized() != taskRepo.Normalized() {
-		return githubActionAuthorization{}, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("requested repository %q does not match task repository %q", requested.FullName(), taskRepo.FullName()))
+	signature := s.githubToolSignatureForContext(ctx, taskID, execution.AgentSessionID, execution.UserPromptID, executionAttemptID)
+	if requested.Normalized() == taskRepo.Normalized() {
+		client, installationID, err := s.githubClientForExecution(ctx, execution, taskRepo.FullName())
+		if err != nil {
+			return githubActionAuthorization{}, err
+		}
+		return githubActionAuthorization{
+			client:         client,
+			repo:           taskRepo.FullName(),
+			installationID: installationID,
+			signature:      signature,
+		}, nil
 	}
-
-	client, installationID, err := s.githubClientForExecution(ctx, execution, taskRepo.FullName())
+	// Secondary repository in the task's repo set (issue #434). Resolve the
+	// installation for that specific repository rather than reusing the
+	// primary repository's pinned installation, so one App with multiple
+	// installations selects the right token per repository.
+	if !repoInTaskRepoSet(execution.Repos, requested) {
+		return githubActionAuthorization{}, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("requested repository %q is not part of task %q", requested.FullName(), taskID))
+	}
+	client, err := s.githubManager().ClientForRepo(ctx, requested.FullName())
 	if err != nil {
-		return githubActionAuthorization{}, err
+		return githubActionAuthorization{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf("resolve GitHub repository installation for %q: %w", requested.FullName(), err))
 	}
 	return githubActionAuthorization{
 		client:         client,
-		repo:           taskRepo.FullName(),
-		installationID: installationID,
-		signature:      s.githubToolSignatureForContext(ctx, taskID, execution.AgentSessionID, execution.UserPromptID, executionAttemptID),
+		repo:           requested.FullName(),
+		installationID: client.InstallationID,
+		signature:      signature,
 	}, nil
 }
 

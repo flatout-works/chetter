@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRepoRefs,
   buildTaskSubmitPayload,
   resolveTimeoutSec,
   validateTimeoutSec,
@@ -102,5 +103,39 @@ describe("buildTaskSubmitPayload", () => {
     expect(payload.sessionMode).toBe("resumable");
     expect(payload.ttlHours).toBe(48);
     expect(payload.pauseReason).toBe("awaiting review");
+  });
+});
+
+describe("buildRepoRefs", () => {
+  it("returns an empty set without repositories", () => {
+    expect(buildRepoRefs(baseForm())).toEqual([]);
+  });
+
+  it("marks the primary repo and appends extras in order", () => {
+    const repos = buildRepoRefs(
+      baseForm({
+        gitUrl: "https://github.com/acme/app.git",
+        gitRef: "main",
+        extraRepos: [
+          { url: "https://github.com/acme/lib.git", ref: "v1" },
+          { url: "  ", ref: "ignored" },
+          { url: "https://gitlab.com/other/tools.git", ref: "" },
+        ],
+      }),
+    );
+    expect(repos).toEqual([
+      { url: "https://github.com/acme/app.git", ref: "main", primary: true },
+      { url: "https://github.com/acme/lib.git", ref: "v1", primary: false },
+      { url: "https://gitlab.com/other/tools.git", ref: "", primary: false },
+    ]);
+  });
+
+  it("omits the primary entry when no primary URL is set", () => {
+    const repos = buildRepoRefs(
+      baseForm({ extraRepos: [{ url: "https://github.com/acme/lib.git", ref: "" }] }),
+    );
+    expect(repos).toEqual([
+      { url: "https://github.com/acme/lib.git", ref: "", primary: false },
+    ]);
   });
 });

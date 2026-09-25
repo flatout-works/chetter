@@ -20,6 +20,11 @@ type TaskRequest struct {
 	Command                []string          `json:"command,omitempty"`
 	GitURL                 string            `json:"git_url,omitempty"`
 	GitRef                 string            `json:"git_ref,omitempty"`
+	// Repos is the full repository set for the task, primary first. When
+	// empty, GitURL/GitRef describe the single (primary) repository. The
+	// primary is cloned into the workspace root; each additional repository is
+	// cloned into a deterministic subdirectory. See issue #434.
+	Repos                  []RepoRef         `json:"repos,omitempty"`
 	GitHubRepo             string            `json:"github_repo,omitempty"`
 	Agent                  string            `json:"agent,omitempty"`
 	ProviderID             string            `json:"provider_id,omitempty"`
@@ -57,6 +62,14 @@ type TaskRequest struct {
 	GitAuthorEmail         string            `json:"git_author_email,omitempty"`
 	GitHubCredentialURL    string            `json:"-"`
 	GitHubCredentialToken  string            `json:"-"`
+}
+
+// RepoRef is one repository in a task's repository set. Primary marks the
+// repository cloned at the workspace root.
+type RepoRef struct {
+	URL     string `json:"url"`
+	Ref     string `json:"ref,omitempty"`
+	Primary bool   `json:"primary,omitempty"`
 }
 
 // MCPEndpoint describes a remote MCP server the agent should connect to.

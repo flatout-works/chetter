@@ -28,6 +28,7 @@ func protoTask(t service.TaskToolRecord) *apiv1.Task {
 		Prompt:           t.Prompt,
 		GitUrl:           t.GitURL,
 		GitRef:           t.GitRef,
+		Repos:            protoRepoRefs(t.Repos),
 		AgentImage:       t.AgentImage,
 		Agent:            t.Agent,
 		ProviderId:       t.ProviderID,
@@ -72,6 +73,33 @@ func optTimeStr(t *time.Time) *string {
 	return &s
 }
 
+// protoRepoRefs converts a stored repo set into the wire form.
+func protoRepoRefs(refs []store.RepoRef) []*apiv1.RepoRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]*apiv1.RepoRef, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, &apiv1.RepoRef{Url: ref.URL, Ref: ref.Ref, Primary: ref.Primary})
+	}
+	return out
+}
+
+// storeRepoRefs converts a wire repo set into the stored form.
+func storeRepoRefs(refs []*apiv1.RepoRef) []store.RepoRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]store.RepoRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref == nil {
+			continue
+		}
+		out = append(out, store.RepoRef{URL: ref.Url, Ref: ref.Ref, Primary: ref.Primary})
+	}
+	return out
+}
+
 func optStr(s string) *string {
 	if s == "" {
 		return nil
@@ -108,6 +136,7 @@ func protoSession(s service.AgentSessionRecord) *apiv1.AgentSession {
 		HarnessSessionId: s.HarnessSessionID,
 		GitUrl:           s.GitURL,
 		GitRef:           s.GitRef,
+		Repos:            protoRepoRefs(s.Repos),
 		AgentImage:       s.AgentImage,
 		Agent:            s.Agent,
 		ProviderId:       s.ProviderID,
@@ -309,6 +338,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 		Prompt:           req.Msg.Prompt,
 		GitURL:           req.Msg.GitUrl,
 		GitRef:           req.Msg.GitRef,
+		Repos:            storeRepoRefs(req.Msg.Repos),
 		AgentImage:       req.Msg.AgentImage,
 		Agent:            req.Msg.Agent,
 		ProviderID:       req.Msg.ProviderId,
@@ -335,7 +365,7 @@ func (h *taskHandler) SubmitTask(ctx context.Context, req *connect.Request[apiv1
 	}
 	return connect.NewResponse(&apiv1.SubmitTaskResponse{Task: protoTask(service.TaskToolRecord{
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
-		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
+		GitURL: task.GitURL, GitRef: task.GitRef, Repos: task.Repos, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
 		VariantID: task.VariantID, Harness: harness, Skills: task.Skills, McpEndpoints: task.McpEndpoints, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
@@ -625,7 +655,7 @@ func (h *triggerHandler) RunTrigger(ctx context.Context, req *connect.Request[ap
 	}
 	return connect.NewResponse(&apiv1.RunTriggerResponse{Task: protoTask(service.TaskToolRecord{
 		ID: task.ID, TeamID: task.TeamID, Status: task.Status, Prompt: task.Prompt,
-		GitURL: task.GitURL, GitRef: task.GitRef, AgentImage: task.AgentImage,
+		GitURL: task.GitURL, GitRef: task.GitRef, Repos: task.Repos, AgentImage: task.AgentImage,
 		Agent: task.Agent, ProviderID: task.ProviderID, ModelID: task.ModelID,
 		VariantID: task.VariantID, Skills: task.Skills, McpEndpoints: task.McpEndpoints, Env: task.Env,
 		TimeoutSec: task.TimeoutSec, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt,
