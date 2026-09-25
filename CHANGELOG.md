@@ -38,6 +38,13 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-24
+
+### Documentation
+
+- Website and technical deck updated (merged in #445, the nightly site task) to reflect the 2026-09-23 behavior changes: the main site's queue row states that each task's deadline is chosen at submission — presets from 15 minutes to 24 hours or a custom value, with the server default as the fallback — and can be extended while the task runs. The archived deck's "Set and extend deadlines" step (renamed from "Extend deadlines") describes the submit-time timeout selector (presets plus a free-form seconds value, with the Default option submitting `timeout_sec` 0 so the server-side default keeps applying, labeled from `/api/server-info`'s `defaultTaskTimeoutSec`), notes that client-side validation mirrors the server's 1-second/24-hour caps, and still documents post-hoc `ExtendTask`. Its Web UI card covers the same selector, and its Scaling card documents the durable drain-request semantics: commands are persisted in `runner_drain_requests` and delivered at-least-once on every heartbeat until the runner reports draining, the claim path refuses new work while a drain is pending so a runner offline at request time observes the drain on return, and rows are no longer dropped on a fixed request-age TTL — the reaper garbage-collects a request only once its runner is demonstrably dead (no `runners` row, or no heartbeat within `drainRequestDeadRunnerGrace`, 24 hours), with `drain_runner` failing closed on database errors.
+- `README.md` Build From Source section expanded (merged in #447): documents the required toolchain (Go 1.26+, Node.js 24 + npm, GNU Make), what `make build` produces — `bin/chetter` (MCP server / control plane) and `bin/chetterctl` (token management CLI), with the SvelteKit web UI embedded via `go:embed` — and points at `make generate` for protobuf/sqlc regeneration and `AGENTS.md` for the full developer command reference.
+
 ## 2026-09-23
 
 ### Added
