@@ -3,8 +3,28 @@ package validation
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// envNamePattern matches a portable environment variable name: a non-empty
+// POSIX identifier. Names that contain "=", NUL, whitespace, or control
+// characters never match.
+var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// IsValidEnvName reports whether name is a well-formed environment variable
+// name (matching [A-Za-z_][A-Za-z0-9_]*).
+//
+// This matters for security: the runner hands task env to Docker as
+// `-e "<key>=<value>"`, and Docker splits that argument at the first "=". A
+// name like "PATH=/evil" therefore reaches the container as the managed name
+// PATH and bypasses the blocked-name list and IsManagedEnv. Rejecting any
+// name that is not a plain identifier closes that gap and also turns empty or
+// malformed names into a clear submission-time validation error instead of an
+// opaque container/pod failure.
+func IsValidEnvName(name string) bool {
+	return envNamePattern.MatchString(name)
+}
 
 // Config holds limits and blocked patterns for task environment variable
 // validation. All fields are populated from server configuration at startup.
@@ -79,6 +99,19 @@ func ValidateTaskEnv(env map[string]string, cfg Config) error {
 	}
 
 	for key, value := range env {
+		// Validate the raw name shape before any blocklist comparison. Docker
+		// splits -e "<key>=<value>" at the first "=", so a name such as
+		// "PATH=/evil" would otherwise be interpreted as PATH and bypass the
+		// exact-name blocklist. Skipping the remaining checks for an invalid
+		// name avoids redundant/confusing errors for the same key.
+		if !IsValidEnvName(key) {
+			errs = append(errs, ValidationError{
+				Field:   "env[" + key + "]",
+				Message: fmt.Sprintf("invalid environment variable name %q", key),
+			})
+			continue
+		}
+
 		upper := strings.ToUpper(strings.TrimSpace(key))
 
 		// Name length limit.
