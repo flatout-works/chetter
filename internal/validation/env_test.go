@@ -63,6 +63,66 @@ func TestValidateTaskEnv_BlockedNames(t *testing.T) {
 	}
 }
 
+func TestValidateTaskEnv_InvalidNames(t *testing.T) {
+	// Docker splits -e "key=value" at the first "=", so a name containing
+	// "=" (or other non-identifier characters) must be rejected before the
+	// blocklist comparisons; otherwise "PATH=/evil" would bypass the
+	// PATH/HOME/LD_PRELOAD blocklist and the runner's IsManagedEnv guard.
+	tests := []string{
+		"PATH=/evil",
+		"HOME=",
+		"LD_PRELOAD=x",
+		"",
+		"A B",
+		"A=B",
+		"A\tB",
+		"A\nB",
+		"1FOO",
+		"FOO-BAR",
+		" FOO",
+		"FOO ",
+		"FOO.BAR",
+		"FOO\x00BAR",
+		"PATH=/tmp/evil",
+	}
+	for _, name := range tests {
+		env := map[string]string{name: "x"}
+		err := ValidateTaskEnv(env, Defaults())
+		if err == nil {
+			t.Errorf("env name %q should be rejected", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "invalid environment variable name") {
+			t.Errorf("env name %q: unexpected error: %v", name, err)
+		}
+	}
+}
+
+func TestValidateTaskEnv_ValidNamesStillAccepted(t *testing.T) {
+	tests := []string{"_FOO1", "A_B_C", "FOO", "_1", "a1_b2", "MIXED_case_9"}
+	for _, name := range tests {
+		env := map[string]string{name: "x"}
+		if err := ValidateTaskEnv(env, Defaults()); err != nil {
+			t.Errorf("env name %q should be accepted: %v", name, err)
+		}
+	}
+}
+
+func TestIsValidEnvName(t *testing.T) {
+	valid := []string{"FOO", "_FOO", "FOO_1", "_1", "aA9_"}
+	for _, name := range valid {
+		if !IsValidEnvName(name) {
+			t.Errorf("IsValidEnvName(%q) = false, want true", name)
+		}
+	}
+	invalid := []string{"", "1FOO", "PATH=/evil", "A B", "A=B", "A\tB", "A\x00B", "FOO-BAR"}
+	for _, name := range invalid {
+		if IsValidEnvName(name) {
+			t.Errorf("IsValidEnvName(%q) = true, want false", name)
+		}
+	}
+}
+
 func TestValidateTaskEnv_MaxCount(t *testing.T) {
 	cfg := Defaults()
 	cfg.MaxCount = 5
