@@ -67,6 +67,7 @@ Detailed per-day history of everything that went into this release is below.
 ### Fixed
 
 - The web UI footer showed no server version, git hash, or uptime for token-authenticated users (merged in #433): since the 2026-08-26 security hardening, `/api/server-info` returns build identity and operational metadata (`serverVersion`, `gitHash`, `uptimeSeconds`, `startedAt`, `quotaExhausted`, reaper and database posture) only to authenticated callers, but the SPA fetched it without any credentials, so those fields went missing for users logged in with a bearer token (OIDC cookie sessions kept working because the same-origin request carries the session cookie). `fetchServerInfo` now attaches the stored bearer token as an `Authorization: Bearer` header when one is present, before the login decision the endpoint's public fields (`oidcEnabled`, `allowTokenLogin`) serve. A new `web/src/lib/serverInfo.test.ts` asserts the header is sent.
+- Two unused `fakeDockerCLI` fields (`removed`, `rmCalls`) flagged by staticcheck (U1000) failed `make check` and, with `arcane-build-deploy` gated on that job, blocked deployments; the fields are removed (the reaper tests assert removals through the fake's `$FAKE_DOCKER_STATE/removed` file), unblocking `make check`.
 
 ### Documentation
 
