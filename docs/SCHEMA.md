@@ -1,8 +1,9 @@
 # Chetter Database Schema
 
-Current schema of the `chetter` database, as of migration 053 (2026-08-14,
-which added event-callback provenance columns to `tasks`; migration 052
-dropped the historical `chetter_` table prefix).
+Current schema of the `chetter` database, as of migration 058 (2026-09-24,
+which added the `repos` repository-set column to `tasks` and `agent_sessions`;
+migration 053 added event-callback provenance columns to `tasks` and migration
+052 dropped the historical `chetter_` table prefix).
 The schema is dialect-agnostic (TiDB / MySQL / PostgreSQL) and uses **no
 foreign-key constraints** — relationships below are logical, enforced by the
 application. All timestamps are UTC (`datetime(6)`). IDs are prefixed random
@@ -19,6 +20,7 @@ erDiagram
         text prompt
         text git_url
         string git_ref
+        json repos
         string github_repo
         bigint github_installation_id
         string trigger_name FK
@@ -57,6 +59,7 @@ erDiagram
         string harness_session_id
         text git_url
         string git_ref
+        json repos
         string agent_image
         string agent
         string provider_id

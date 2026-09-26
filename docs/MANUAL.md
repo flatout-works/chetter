@@ -426,6 +426,26 @@ Example input:
 }
 ```
 
+To work across more than one repository, pass an ordered `repos` set. It takes
+precedence over `git_url`/`git_ref`; the primary repository (the entry flagged
+`primary`, or the first entry) is cloned at the workspace root and each
+additional repository under `repos/<slug>`:
+
+```json
+{
+  "prompt": "Update the shared library and its consumer.",
+  "repos": [
+    { "url": "https://github.com/my-org/my-repo", "ref": "main", "primary": true },
+    { "url": "https://github.com/my-org/shared-lib", "ref": "main" }
+  ],
+  "agent_image": "chetter-agent:golang",
+  "harness": "opencode"
+}
+```
+
+See [HARNESSES.md](HARNESSES.md#multi-repository-tasks) for the workspace layout
+and per-repository credential semantics.
+
 An admin can attach MCP endpoints to a task:
 
 ```json
