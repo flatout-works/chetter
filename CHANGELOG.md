@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-25
+
+### Added
+
+- Multi-repository tasks (issue #434, merged in #446): a task can now reference an ordered set of repositories instead of one. `chetter_submit_task` (and the ConnectRPC `SubmitTaskRequest`) accepts a repo set where each entry carries a `url`, an optional `ref`, and a `primary` flag; a single `git_url`/`git_ref` submission is treated as a one-entry set and behaves exactly as before. The primary repository keeps the historical contract and is cloned at the workspace root, and each additional repository is cloned into a deterministic `repos/<slug>` subdirectory — the slug is the URL's final path segment, sanitized, with collisions resolved in list order by appending `-2`, `-3`, … so the same ordered repo set always produces the same layout across retries, resumes, and replicas (existing harness configs, `setup` paths, and relative-path prompts keep working). The runner clones every repository before the agent starts and fails the task with the failing repository's URL and target directory in the status/event text if any clone fails, so the agent never runs against a partial workspace. Each clone is credentialed independently: an HTTPS GitHub clone is credentialed through the GitHub App broker for that repository, so one App with multiple installations selects the right installation per repository, while non-GitHub or SSH clones use the configured PAT/SSH key and never receive the primary repository's token. The resolved Git author identity is configured in the primary checkout and every secondary checkout. The repo set is persisted as a JSON `repos` column on tasks and agent sessions (dual-dialect migrations 058 / 034, `internal/store/schema.go` bootstrap, ensure helper), exposed in MCP task/session records and the web UI (the submit form can add extra repositories; the task detail page lists them), and sent again on resume so preserved sessions keep the same layout. Runner GitHub RPC actions may target a secondary repository in the task's set, with the control plane resolving that repository's installation and authorizing it only when it is part of the set. Documented in `docs/HARNESSES.md`.
+
+### Fixed
+
+- Claude Code harness self-test pinned to a stable model alias (merged in #449): the `harness:claude-code` check was pinned to `hf:zai-org/GLM-5.2`, which Synthetic no longer serves, so the `harnesses` and `full` self-test profiles could no longer pass. It is now pinned to `syn:large:text`, a stable alias that always resolves to Synthetic's current large text model and matches the active model catalog's Claude Code default, so the check cannot rot the way the old model pin did.
+
 ## 2026-09-24
 
 ### Documentation
