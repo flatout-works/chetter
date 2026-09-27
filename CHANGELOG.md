@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-25
+
+### Added
+
+- Multi-repository tasks (issue #434, merged in #446): a task can now reference more than one repository. Submission accepts an ordered repo set (each entry a `url`, optional `ref`, and `primary` flag; a single `git_url`/`git_ref` submission is treated as a one-entry set and behaves as before). The primary repository keeps the historical layout at the workspace root and each additional repository is cloned into a deterministic `repos/<slug>` subdirectory (slug derived from the URL's final path segment, collisions resolved in list order by appending `-2`, `-3`, ... so the same set always produces the same layout across retries, resumes, and replicas). The runner clones every repository before the agent starts — all-or-nothing, with the failing repository URL and target directory named in the status/event text so the agent never runs against a partial workspace — selects the GitHub App credential per repository so one App with multiple installations gets the right token per repo, and configures the resolved Git identity in the primary and every secondary checkout. The repo set is persisted as a JSON `repos` column on `tasks` and `agent_sessions` (Goose migrations 058 for MySQL/TiDB and 034 for PostgreSQL, plus bootstrap DDL), exposed through MCP task/session records and the web UI (the submit form can add extra repositories and task detail lists them), and used to authorize GitHub RPC actions against secondary repositories. Documented in `docs/HARNESSES.md`.
+
+### Fixed
+
+- The `harness:claude-code` self-test check was pinned to `hf:zai-org/GLM-5.2`, which Synthetic no longer serves, so the `harnesses` and `full` self-test profiles could no longer pass (merged in #449). It is now pinned to `syn:large:text`, a stable alias that resolves to Synthetic's current large text model and matches the active model catalog's claude-code default (`synthetic/syn:large:text`), so the pin cannot rot the way the old one did.
+
 ## 2026-09-24
 
 ### Documentation
