@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-25
+
+### Added
+
+- Multi-repository tasks (merged in #446, issue #434): a task can now reference more than one repository. Submission takes an ordered repo set (each entry has a `url`, an optional `ref`, and a `primary` flag); a single `git_url`/`git_ref` submission is treated as a one-entry set and behaves exactly as before. The primary repo keeps the historical workspace-root layout while each additional repo is cloned into a deterministic `repos/<slug>` subdirectory — the slug is the repository URL's final path segment, sanitized to a safe segment, with collisions resolved in list order by appending `-2`, `-3`, … — so the same ordered set always produces the same layout across retries, resumes, and replicas. The runner clones all repositories before the agent starts (all-or-nothing: a failed clone fails the task naming the repository and target directory, so the agent never runs against a partial workspace) and credentials each clone independently through the GitHub App broker for that repository (one App with multiple installations selects the right installation per repo; non-GitHub or SSH clones never inherit the primary repository's token). The resolved Git identity is configured in the primary and every secondary checkout. The runner's GitHub MCP tools default to the primary repository for task-scoped provenance and authorize an explicitly targeted secondary repository only when it is part of the task's repo set. The repo set is persisted as a JSON `repos` column on `tasks` and `agent_sessions` (Goose migrations 058 MySQL/TiDB and 034 PostgreSQL, plus bootstrap DDL) and carried on the agent session snapshot so resumed sessions keep the same checkout paths, and it is exposed in MCP task/session records and the web UI (the submission form can add extra repositories; the task detail page lists them). Documented in `docs/HARNESSES.md`.
+
+### Fixed
+
+- Claude Code self-test checks could no longer pass (merged in #449): the `harnesses` and `full` self-test profiles pinned the `harness:claude-code` check to `hf:zai-org/GLM-5.2`, a model Synthetic stopped serving. The check is pinned to `syn:large:text` instead — a stable alias that always resolves to Synthetic's current large text model and matches the active model catalog's claude-code default — so the self-test pin cannot rot the way the previous one did.
+
 ## 2026-09-24
 
 ### Documentation
