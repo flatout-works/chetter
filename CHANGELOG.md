@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-25
+
+### Added
+
+- Multiple repositories per task (merged in #446): task submission now accepts an ordered repo set — each entry carries a `url`, an optional `ref`, and a `primary` flag — instead of a single `git_url`/`git_ref` (a single-repo submission is treated as a one-entry set and behaves exactly as before). The primary repo keeps the historical contract at the workspace root, so existing harness configs, `setup` paths, and relative-path prompts keep working; each additional repo is cloned into a deterministic `repos/<slug>` subdirectory (`<slug>` derived from the URL's final path segment, sanitized, with collisions resolved in list order by appending `-2`, `-3`, …) so the same ordered set always produces the same layout across retries, resumes, and replicas. The runner clones every repository before the agent starts (all-or-nothing, naming the failing repo in the status/event text) and selects the GitHub App credential per repository, so one App with multiple installations gets the right token per repo and non-GitHub or out-of-set repos never receive the primary repo's token; the resolved Git identity is configured in every checkout and resumed sessions keep the preserved layout. The server persists the set as a JSON `repos` column on `tasks` and `agent_sessions` (migrations 058 / 034), adds `RepoRef` to the submit/task/session protos, exposes repos in MCP task and session records and the web UI (the submit form can add extra repositories and the task detail page lists them), and authorizes GitHub RPC actions against any repo in the task's set. See issue #434.
+
+### Fixed
+
+- The `harness:claude-code` self-test check could no longer pass (merged in #449): it was pinned to `hf:zai-org/GLM-5.2`, which Synthetic no longer serves, so the `harnesses` and `full` self-test profiles always failed. It is pinned to Synthetic's stable `syn:large:text` alias, which always resolves to the current large text model and matches the active model catalog's claude-code default, so the pin cannot rot the same way again.
+
 ## 2026-09-24
 
 ### Documentation
