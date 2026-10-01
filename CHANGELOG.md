@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-09-25
+
+### Added
+
+- Multi-repository tasks (issue #434, merged in #446): a task can now reference more than one repository. Submission accepts an ordered repo set — a URL, an optional ref, and a primary flag per entry — where the primary repository keeps the historical single-repo contract at the workspace root and each additional repository is cloned into a deterministic `repos/<slug>` subdirectory. The runner clones every repository before the agent starts (all-or-nothing, with the failing repo named in the status/event text), selects the GitHub App credential per repository so one App with multiple installations uses the correct token per repo (a repository outside the task's set, or one not on GitHub, never receives the primary repository's token), configures the resolved Git identity in the primary and every secondary checkout, and preserves the layout across session resume. The server persists the repo set as a JSON `repos` column on `tasks` and `agent_sessions` (Goose migrations 058 for MySQL/TiDB and 034 for PostgreSQL, plus bootstrap DDL), exposes it in MCP task/session records and the web UI, and authorizes runner GitHub RPC actions against secondary repositories in the task's set. The web UI submit form can add extra repositories and the task detail page lists them; `docs/HARNESSES.md` documents the workspace layout and credential semantics.
+
+### Fixed
+
+- The `harness:claude-code` self-test check was pinned to `hf:zai-org/GLM-5.2`, which Synthetic no longer serves, so the `harnesses` and `full` self-test profiles could no longer pass. It is repinned to `syn:large:text`, a stable alias that always resolves to Synthetic's current large-text model (matching the model catalog's claude-code default) so the pin cannot rot the way the old one did (merged in #449).
+
 ## 2026-09-24
 
 ### Documentation
