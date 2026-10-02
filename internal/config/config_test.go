@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/flatout-works/chetter/internal/validation"
 )
 
 func TestValidate(t *testing.T) {
@@ -59,6 +61,47 @@ func TestValidate(t *testing.T) {
 		}
 		if err.Error() != "MCP_AUTH_TOKEN must not use a placeholder value" {
 			t.Errorf("expected placeholder MCP_AUTH_TOKEN error, got %q", err.Error())
+		}
+	})
+}
+
+func TestValidate_EnvBlocklistEntries(t *testing.T) {
+	base := func() Config {
+		return Config{
+			DatabaseDSN:    "root@tcp(localhost:4000)/db",
+			MCPAuthToken:   "secure-token",
+			RunnerRPCToken: "runner-secret",
+			EnvValidation:  validation.Defaults(),
+		}
+	}
+
+	t.Run("valid blocklist entries pass", func(t *testing.T) {
+		if err := base().Validate(); err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("invalid blocked name fails closed", func(t *testing.T) {
+		cfg := base()
+		cfg.EnvValidation.BlockedNames = []string{"PATH=EVIL"}
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected error for malformed blocked name")
+		}
+		if !strings.Contains(err.Error(), "CHETTER_ENV_BLOCKED_NAMES") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid blocked prefix fails closed", func(t *testing.T) {
+		cfg := base()
+		cfg.EnvValidation.BlockedPrefixes = []string{"BAD=PREFIX"}
+		err := cfg.Validate()
+		if err == nil {
+			t.Fatal("expected error for malformed blocked prefix")
+		}
+		if !strings.Contains(err.Error(), "CHETTER_ENV_BLOCKED_PREFIXES") {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }

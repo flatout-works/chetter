@@ -233,6 +233,19 @@ func (c Config) Validate() error {
 	if err := c.WebhookDestinationPolicy().Validate(); err != nil {
 		return fmt.Errorf("CHETTER_WEBHOOK_ALLOWLIST is invalid: %v", err)
 	}
+	// Blocked env names/prefixes must themselves be valid env var names,
+	// otherwise a mistyped entry (for example one containing "=") can never
+	// match and the intended protection silently does nothing. See issue #448.
+	for _, name := range c.EnvValidation.BlockedNames {
+		if !validation.IsValidEnvName(name) {
+			return fmt.Errorf("CHETTER_ENV_BLOCKED_NAMES entry %q is not a valid environment variable name", name)
+		}
+	}
+	for _, prefix := range c.EnvValidation.BlockedPrefixes {
+		if !validation.IsValidEnvName(prefix) {
+			return fmt.Errorf("CHETTER_ENV_BLOCKED_PREFIXES entry %q is not a valid environment variable name prefix", prefix)
+		}
+	}
 	return nil
 }
 
