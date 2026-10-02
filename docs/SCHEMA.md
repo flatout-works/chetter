@@ -1,8 +1,9 @@
 # Chetter Database Schema
 
-Current schema of the `chetter` database, as of migration 053 (2026-08-14,
-which added event-callback provenance columns to `tasks`; migration 052
-dropped the historical `chetter_` table prefix).
+Current schema of the `chetter` database, as of migration 058 (2026-09-24,
+which added the `repos` repository-set columns to `tasks` and
+`agent_sessions`; migration 052 dropped the historical `chetter_` table
+prefix).
 The schema is dialect-agnostic (TiDB / MySQL / PostgreSQL) and uses **no
 foreign-key constraints** — relationships below are logical, enforced by the
 application. All timestamps are UTC (`datetime(6)`). IDs are prefixed random
@@ -19,6 +20,7 @@ erDiagram
         text prompt
         text git_url
         string git_ref
+        json repos
         string github_repo
         bigint github_installation_id
         string trigger_name FK
@@ -57,6 +59,7 @@ erDiagram
         string harness_session_id
         text git_url
         string git_ref
+        json repos
         string agent_image
         string agent
         string provider_id
@@ -182,7 +185,12 @@ erDiagram
     task_artifacts }o--|| tasks : "task_id"
 ```
 
-A **task** is a unit of work (prompt + repo context). Each task gets one or
+A **task** is a unit of work (prompt + repo context). Its `repos` column
+holds the ordered repository set (`{url, ref, primary}` entries, primary
+first), including a one-entry set for new single-repo `git_url`/`git_ref`
+submissions. Historical rows predating multi-repository support can have a
+null `repos` column. `agent_sessions.repos` snapshots the set
+for the runner and on resume. Each task gets one or
 more **agent sessions** (resumable conversations); each session receives one
 or more **user prompts**; each prompt is executed by one or more **execution
 attempts** (lease-based claims on a runner). **Task events** are the append-
@@ -387,6 +395,38 @@ endpoint action exactly once (statuses: pending, processing, succeeded,
 retry_wait, failed_permanent, dead_letter). The unique
 (endpoint_id, delivery_id) key rejects client replays and `task_id` persists
 the delivery/task correlation so retries cannot duplicate tasks.
+
+## Multi-replica coordination
+
+```mermaid
+erDiagram
+    claim_notify_counter {
+        int id PK
+        bigint counter
+    }
+    trigger_locks {
+        string trigger_id PK
+        datetime last_triggered_at
+        datetime created_at
+    }
+    admission_locks {
+        string name PK
+        datetime created_at
+    }
+    runner_drain_requests {
+        string runner_id PK
+        datetime created_at
+    }
+```
+
+These tables let multiple server replicas coordinate without shared
+in-process state: `claim_notify_counter` is a single-row counter bumped after
+a task becomes claimable so an idle long-poll on any replica re-checks the
+queue; `trigger_locks` holds one row per trigger locked via `SELECT FOR
+UPDATE` so only one replica fires a cron trigger per tick; `admission_locks`
+is a single row serializing the pending-task admission check; and
+`runner_drain_requests` is the per-runner drain queue so any replica can
+drain any runner.
 
 ## Teams and auth
 
