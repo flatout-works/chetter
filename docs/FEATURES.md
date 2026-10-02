@@ -12,7 +12,7 @@ Supported task inputs include:
 
 - `prompt`: natural-language task instructions.
 - `git_url` and `git_ref`: optional repository and ref to clone.
-- `repos`: optional ordered repository set (`url`, optional `ref`, `primary`) for multi-repository tasks; takes precedence over `git_url`/`git_ref`. The primary repository is cloned at the workspace root and each additional repository under `repos/<slug>`. See [HARNESSES.md](HARNESSES.md#multi-repository-tasks).
+- `repos`: optional ordered repository set (`url`, optional `ref`, `primary`) for multi-repository tasks. If `git_url` names a repository absent from the set, it is prepended as primary; otherwise the first explicitly primary entry (or the first entry) is primary. The primary repository is cloned at the workspace root and each additional repository under `repos/<slug>`. See [HARNESSES.md](HARNESSES.md#multi-repository-tasks).
 - `agent_image`: runner image override, falling back to `DEFAULT_AGENT_IMAGE`.
 - `agent`: agent definition name.
 - `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`.

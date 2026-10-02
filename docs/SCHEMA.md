@@ -187,8 +187,9 @@ erDiagram
 
 A **task** is a unit of work (prompt + repo context). Its `repos` column
 holds the ordered repository set (`{url, ref, primary}` entries, primary
-first) for multi-repository submissions; it is null for the historical
-single-repo `git_url`/`git_ref` form, and `agent_sessions.repos` snapshots it
+first), including a one-entry set for new single-repo `git_url`/`git_ref`
+submissions. Historical rows predating multi-repository support can have a
+null `repos` column. `agent_sessions.repos` snapshots the set
 for the runner and on resume. Each task gets one or
 more **agent sessions** (resumable conversations); each session receives one
 or more **user prompts**; each prompt is executed by one or more **execution
