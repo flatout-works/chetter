@@ -206,6 +206,7 @@ type SubmitTaskInput struct {
 	TeamID     string `json:"team_id,omitempty" jsonschema:"Owning team ID..."`
 	Prompt     string `json:"prompt" jsonschema:"Task prompt to run in the Chetter runner"`
 	GitURL     string `json:"git_url,omitempty" jsonschema:"Repository URL to clone before running the task"`
+	Repos      []RepoRefInput `json:"repos,omitempty" jsonschema:"Optional multiple repositories to clone (primary plus extras); takes precedence over git_url/git_ref"`
 	AgentImage string `json:"agent_image,omitempty" jsonschema:"Runner harness image override"`
 	Agent      string `json:"agent,omitempty" jsonschema:"OpenCode agent to use for the task"`
 	ProviderID string `json:"provider_id,omitempty" jsonschema:"OpenCode provider id for model selection"`

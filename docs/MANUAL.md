@@ -426,6 +426,23 @@ Example input:
 }
 ```
 
+A task can target more than one repository by passing `repos`, an ordered repo
+set where each entry has a `url`, an optional `ref`, and a `primary` flag. The
+primary repository is cloned at the workspace root and each additional
+repository under `repos/<slug>`. `repos` takes precedence over
+`git_url`/`git_ref`, which remain the single-repository shorthand:
+
+```json
+{
+  "prompt": "Update the shared library and its consumers together.",
+  "repos": [
+    {"url": "https://github.com/my-org/my-repo", "ref": "main", "primary": true},
+    {"url": "https://github.com/my-org/shared-lib", "ref": "main"}
+  ],
+  "harness": "opencode"
+}
+```
+
 An admin can attach MCP endpoints to a task:
 
 ```json
