@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { RunnerInfoSchema } from "$gen/proto/api/v1/api_pb";
-import { formatHarness, renderMarkdown, resumeTaskRoute, runnerHasTelemetry } from "./utils.svelte";
+import { formatHarness, isCancellableStatus, renderMarkdown, resumeTaskRoute, runnerHasTelemetry } from "./utils.svelte";
 
 describe("formatHarness", () => {
   it.each([
@@ -95,4 +95,17 @@ describe("resumeTaskRoute", () => {
     expect(resumeTaskRoute(null)).toBeNull();
     expect(resumeTaskRoute("")).toBeNull();
   });
+});
+
+describe("isCancellableStatus", () => {
+  it.each(["pending", "claimed", "running"])("treats %s as cancellable", (status) => {
+    expect(isCancellableStatus(status)).toBe(true);
+  });
+
+  it.each(["done", "error", "cancelled", "failed", "", undefined, null])(
+    "treats %s as not cancellable",
+    (status) => {
+      expect(isCancellableStatus(status)).toBe(false);
+    }
+  );
 });

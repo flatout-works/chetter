@@ -92,6 +92,17 @@ export function resumeTaskRoute(taskId: string | undefined | null): string | nul
   return `/tasks/${taskId}`;
 }
 
+// Statuses in which a task attempt can still be cancelled. Mirrors the
+// server-side guard in Service.CancelTask, which only cancels user prompts and
+// tasks that are still pending, claimed, or running.
+const CANCELLABLE_STATUSES = new Set(["pending", "claimed", "running"]);
+
+/** True when a task or session-prompt status still allows cancellation. */
+export function isCancellableStatus(status: string | undefined | null): boolean {
+  if (!status) return false;
+  return CANCELLABLE_STATUSES.has(status);
+}
+
 export function formatHarness(harness: string): string {
   switch (harness) {
     case "opencode":
