@@ -38,6 +38,13 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-02
+
+### Documentation
+
+- Documentation updated for multi-repository tasks: `docs/FEATURES.md`, `docs/MANUAL.md`, and `docs/BACKEND.md` document the `repos` task input (an ordered `{url, ref, primary}` set — the primary repository is cloned at the workspace root and each additional repository under `repos/<slug>`), and `docs/SCHEMA.md` is refreshed to migration 058, adding the JSON `repos` column on `tasks` and `agent_sessions` plus a new Multi-replica coordination section covering `claim_notify_counter`, `trigger_locks`, `admission_locks`, and `runner_drain_requests`. A follow-up correction fixed the documented repo-set merge rule: `git_url` is prepended as primary when it names a repository absent from `repos`, otherwise the first explicitly primary entry (or the first entry) is primary; new single-repo submissions store a one-entry `repos` set, while rows predating multi-repository support can have a null column.
+- Website and technical architecture page updated to reflect multi-repository task support (issue #434, merged in #446): the main site gains a `repos` spec row and its lifecycle step now reads "Repos cloned", and the technical page's runner system map plus a new "Repositories" detail card document the primary-at-root plus `repos/<slug>` layout (with slug collision suffixes), all-or-nothing repository cloning, independent per-repository GitHub App credentialing, the persisted JSON `repos` column, resume layout, and the `repos` array in the execution envelope.
+
 ## 2026-09-25
 
 ### Added
@@ -47,6 +54,7 @@ Detailed per-day history of everything that went into this release is below.
 ### Fixed
 
 - The `harness:claude-code` self-test check was pinned to `hf:zai-org/GLM-5.2`, which Synthetic no longer serves, so the `harnesses` and `full` self-test profiles could no longer pass. It is repinned to `syn:large:text`, a stable alias that always resolves to Synthetic's current large-text model (matching the model catalog's claude-code default) so the pin cannot rot the way the old one did (merged in #449).
+- Task environment variable names were not validated as well-formed identifiers, so a malformed submission could smuggle a managed name past the blocklist (issue #448, merged in #452). The runner hands task env to Docker as `-e "<key>=<value>"` and Docker splits that argument at the first `=`, so a name such as `PATH=/evil` was accepted and interpreted by the container as the managed name `PATH`, bypassing the `PATH`/`HOME`/`LD_PRELOAD` blocklist and the runner-side `IsManagedEnv` guard. Names are now required to match `[A-Za-z_][A-Za-z0-9_]*` before any blocklist comparison and are rejected at submission time with a clear validation error; the same shape check is applied to `CHETTER_ENV_BLOCKED_NAMES` and `CHETTER_ENV_BLOCKED_PREFIXES` at startup, so a mistyped blocklist entry fails closed instead of silently never matching.
 
 ## 2026-09-24
 
