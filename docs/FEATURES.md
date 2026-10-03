@@ -15,7 +15,7 @@ Supported task inputs include:
 - `repos`: optional ordered repository set (`url`, optional `ref`, `primary`) for multi-repository tasks. If `git_url` names a repository absent from the set, it is prepended as primary; otherwise the first explicitly primary entry (or the first entry) is primary. The primary repository is cloned at the workspace root and each additional repository under `repos/<slug>`. See [HARNESSES.md](HARNESSES.md#multi-repository-tasks).
 - `agent_image`: runner image override, falling back to `DEFAULT_AGENT_IMAGE`.
 - `agent`: agent definition name.
-- `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`.
+- `harness`: agent CLI harness, currently `opencode`, `claude-code`, `pi`, `codewhale`, `codex`, or [`niffler`](NIFFLER.md).
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
 - `mcp_endpoints`: global or team-scoped HTTP/SSE MCP endpoint names to mount. Bearer credentials are supplied by runner environment variables.

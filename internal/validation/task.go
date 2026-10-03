@@ -16,6 +16,7 @@ var SupportedHarnesses = []string{
 	"pi",
 	"codewhale",
 	"codex",
+	"niffler",
 }
 
 // SupportedSessionModes is the set of accepted session_mode values. An empty

@@ -104,6 +104,8 @@ export function formatHarness(harness: string): string {
       return "CodeWhale";
     case "codex":
       return "Codex";
+    case "niffler":
+      return "Niffler";
     default:
       return harness || "OpenCode";
   }

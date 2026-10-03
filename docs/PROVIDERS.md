@@ -83,6 +83,17 @@ When `kind` is omitted or empty, it defaults to `native`.
 
 **Current limitation:** All non-Bedrock providers use `wire_api = "responses"`. The harness config always sets `model_provider = "chetter"` (a custom provider entry). Provide `OPENAI_API_KEY` (or the mapped `api_key_env` from the catalog) to authenticate.
 
+### Niffler
+
+| API contract | Supported | Catalog mapping | Notes |
+|---|---|---|---|
+| Completions API | ✓ | `openai_compatible`, `api: openai-completions` | Resolved base URL/key/model become a task-local named Niffler provider. |
+| Anthropic API | ✓ | `harnesses.niffler.api: anthropic-messages` | Set the Anthropic-compatible base URL and API-key environment in the mapping. |
+| API-key Responses / AWS Bedrock | ✗ | — | Explicitly refused; Niffler's ChatGPT OAuth adapter is not a generic Responses provider. |
+
+All standard images include Niffler; see [NIFFLER.md](NIFFLER.md). For example,
+set `providers.anthropic.harnesses.niffler.api: anthropic-messages` explicitly.
+
 ## Quick Reference
 
 ```

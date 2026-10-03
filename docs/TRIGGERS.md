@@ -50,7 +50,7 @@ fire, Chetter:
 | `git_ref` | No | `main` | Branch, tag, or commit to check out. |
 | `agent_image` | Yes | — | Runner Docker image. Falls back to `DEFAULT_AGENT_IMAGE` if omitted and configured. |
 | `agent` | No | — | Agent definition name (e.g. `changelog-maintainer`). |
-| `harness` | No | — | Runner harness: `opencode`, `claude-code`, `pi`, `codewhale`, or `codex`. Defaults to the runner's `execution.harness` config. |
+| `harness` | No | — | Runner harness: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`, or [`niffler`](NIFFLER.md). Defaults to the runner's `execution.harness` config. |
 | `provider_id` | No | — | LLM provider (e.g. \`opencode\`). |
 | `model_id` | No | — | LLM model (e.g. `deepseek-v4-pro`). |
 | `variant_id` | No | — | Model variant (e.g. `high`, `minimal`). |

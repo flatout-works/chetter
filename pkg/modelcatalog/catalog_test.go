@@ -45,6 +45,10 @@ func TestHarnessDefaults(t *testing.T) {
 	if provider != "deepseek" || model != "deepseek-chat" {
 		t.Fatalf("codewhale default = %s/%s", provider, model)
 	}
+	provider, model = catalog.DefaultForHarness("niffler", "fallback", "fallback-model")
+	if provider != "deepseek" || model != "deepseek-chat" {
+		t.Fatalf("niffler default = %s/%s", provider, model)
+	}
 	provider, model = catalog.DefaultForHarness("codex", "fallback", "fallback-model")
 	if provider != "openai" || model != "gpt-5.4" {
 		t.Fatalf("codex default = %s/%s", provider, model)

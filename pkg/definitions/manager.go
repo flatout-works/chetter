@@ -799,7 +799,7 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 
 func isSupportedHarness(harness string) bool {
 	switch harness {
-	case "opencode", "claude-code", "pi", "codewhale", "codex":
+	case "opencode", "claude-code", "pi", "codewhale", "codex", "niffler":
 		return true
 	default:
 		return false

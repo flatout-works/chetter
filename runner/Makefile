@@ -15,6 +15,7 @@ local:
 	go build -o runner ./cmd/runner
 	go build -o mcp-bridge ./harness/mcp-bridge
 	go build -o claude-serve-proxy ./cmd/claude-serve-proxy
+	go build -o niffler-serve-proxy ./cmd/niffler-serve-proxy
 
 build:
 	docker build -f $(CURDIR)/Dockerfile.chetter -t $(IMAGE) $(ROOT)

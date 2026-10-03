@@ -38,6 +38,22 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-02
+
+### Added
+
+- Niffler harness selection across task/trigger APIs, definitions, model catalog,
+  runner configuration and web UI. A Chetter-owned authenticated HTTP proxy
+  drives an isolated Niffler/NATS stack through the existing serve lifecycle,
+  bootstraps task MCP capabilities, injects agent/skill definitions, streams
+  progress and token usage, exports complete transcripts, and resumes persisted
+  native conversations. The full pinned Niffler stack ships in the shared
+  agent base alongside all other harnesses, so every standard agent image
+  supports it. Fleet self-tests include Niffler. Turns, MCP bootstrap,
+  cancellation and canonical export use Niffler's native `cli run` driver;
+  authoritative per-turn usage is deduplicated by turn ID, including reported
+  cache-write and reasoning tokens. See `docs/NIFFLER.md`.
+
 ## 2026-09-25
 
 ### Added

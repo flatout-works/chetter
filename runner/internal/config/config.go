@@ -187,7 +187,7 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("execution.container_pids must be greater than or equal to 0")
 	}
 	if cfg.Execution.Harness != "" && !isSupportedHarness(cfg.Execution.Harness) {
-		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, codewhale, or codex")
+		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, codewhale, codex, or niffler")
 	}
 	switch cfg.Execution.Backend {
 	case "docker", "kubernetes", "local":
@@ -221,7 +221,7 @@ func validate(cfg *Config) error {
 
 func isSupportedHarness(harness string) bool {
 	switch harness {
-	case "opencode", "claude-code", "pi", "codewhale", "codex":
+	case "opencode", "claude-code", "pi", "codewhale", "codex", "niffler":
 		return true
 	default:
 		return false

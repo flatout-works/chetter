@@ -40,7 +40,7 @@ type SubmitTaskInput struct {
 	Skills       []string          `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	McpEndpoints []string          `json:"mcp_endpoints,omitempty" jsonschema:"Global or team-scoped MCP endpoint names to mount"`
 	Env          map[string]string `json:"env,omitempty" jsonschema:"Additional non-secret environment variables"`
-	Harness      string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
+	Harness      string            `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex, niffler; empty = runner default)"`
 	TimeoutSec   int               `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode  string            `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason  string            `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -144,7 +144,7 @@ type CreateTriggerInput struct {
 	ModelID     string   `json:"model_id,omitempty" jsonschema:"OpenCode model id, optionally provider-qualified"`
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
-	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex, niffler; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`
@@ -176,7 +176,7 @@ type UpdateTriggerInput struct {
 	VariantID   string   `json:"variant_id,omitempty" jsonschema:"OpenCode model variant, such as high or minimal"`
 	Skills      []string `json:"skills,omitempty" jsonschema:"Skill names or hints for the runner"`
 	Enabled     *bool    `json:"enabled,omitempty" jsonschema:"Enable or disable the trigger"`
-	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex; empty = runner default)"`
+	Harness     string   `json:"harness,omitempty" jsonschema:"Runner harness to use (opencode, claude-code, pi, codewhale, codex, niffler; empty = runner default)"`
 	TimeoutSec  int      `json:"timeout_sec,omitempty" jsonschema:"Task timeout in seconds"`
 	SessionMode string   `json:"session_mode,omitempty" jsonschema:"Session mode: none (default) or resumable (requires gVisor)"`
 	PauseReason string   `json:"pause_reason,omitempty" jsonschema:"Reason for pausing after run (for resumable sessions)"`

@@ -104,7 +104,7 @@ func TestRunSelfTestProfilesAndAuthorization(t *testing.T) {
 	}
 
 	harnesses, err := svc.selfTestSpecs(context.Background(), "harnesses")
-	if err != nil || len(harnesses) != 5 {
+	if err != nil || len(harnesses) != 6 {
 		t.Fatalf("harness profile = %v, %v", harnesses, err)
 	}
 	for _, spec := range harnesses {

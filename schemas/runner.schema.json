@@ -76,7 +76,7 @@
       "properties": {
         "backend": { "type": "string", "enum": ["docker", "kubernetes", "local"] },
         "runtime": { "type": "string" },
-        "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex"] },
+        "harness": { "type": "string", "enum": ["opencode", "claude-code", "pi", "codewhale", "codex", "niffler"] },
         "use_gvisor": { "type": "boolean" },
         "allow_unisolated": { "type": "boolean" },
         "container_memory": { "type": "string" },

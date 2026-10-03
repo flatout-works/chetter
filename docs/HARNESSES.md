@@ -4,6 +4,14 @@ The Chetter runner drives AI coding agents inside containers. Each agent CLI is
 wrapped by a **harness** - a Go strategy object that knows how to configure,
 start, and communicate with that specific agent.
 
+## Niffler
+
+Niffler is a first-class `ServeHarness`, driven by the Chetter-owned
+`niffler-serve-proxy` using Niffler's native `cli run` driver. Select `harness: niffler`
+and any standard agent image (all inherit the complete Niffler-enabled base). See
+[NIFFLER.md](NIFFLER.md) for provider mapping, isolated runtime ownership, MCP
+bootstrap, native session resume, accounting limits and live contract tests.
+
 ## Completion Detection
 
 Each harness has a different way of knowing when an agent has finished. This is
@@ -18,6 +26,7 @@ to hang until timeout.
 | **Claude Code** | Synchronous HTTP response + successful terminal SSE result | No |
 | **Codex** | Synchronous HTTP response + non-lossy terminal SSE signal | No |
 | **CodeWhale** | Watches `GET /v1/threads/{id}/events` until `turn.completed`, with cursor reconnect | No (no continuation prompts) |
+| **Niffler** | One native `cli run` result; non-success outcome or `turnError` is failure | No polling-based completion heuristic |
 | **Pi** | `agent_settled`/`agent_end` events + guarded final-assistant EOF fallback | No |
 
 ### OpenCode Completion (multi-layered)
@@ -126,6 +135,7 @@ Each harness uses its native environment-variable reference syntax for the Autho
 | Claude Code | `Bearer ${NAME}` | `.mcp.json` `mcpServers` map |
 | CodeWhale | `bearer_token_env_var: NAME` | `.codewhale/mcp.json` `servers` map |
 | Pi | Native `bearerTokenEnv: NAME` | `.mcp.json` `mcpServers` map |
+| Niffler | `Bearer ${NAME}` | Task-owned `.niffler/mcp.json`, bootstrapped through `mcp_add`/`mcp_edit` |
 | Codex | Native `bearer_token_env_var: NAME` | `.codex/config.toml` `[mcp_servers.NAME]` |
 
 CodeWhale and Pi use native fields (`bearer_token_env_var` / `bearerTokenEnv`) instead of header interpolation. OpenCode and Claude Code use their respective env-reference syntaxes in the `Authorization` header value.
@@ -246,7 +256,7 @@ one explicitly:
 ```yaml
 # runner.yaml
 execution:
-  harness: pi                               # opencode (default), claude-code, pi, codewhale, codex
+  harness: pi                               # opencode (default), claude-code, pi, codewhale, codex, niffler
   container_memory: 4g                      # optional Docker memory limit (e.g. 4g, 2048m)
 ```
 

@@ -388,7 +388,7 @@ chetter_mcp:
 | `git.ssh_key_path` | empty | Optional SSH key path for clone operations. |
 | `git.pat` | empty | Optional compatibility PAT for repositories outside the GitHub App installation. GitHub App credentials are preferred for normal deployments. |
 | `execution.runtime` | empty | Reserved runtime selector. Current Docker/local mode is selected by runner mode/env. |
-| `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`. |
+| `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`, `niffler`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
 | `execution.allow_unisolated` | `CHETTER_ALLOW_UNISOLATED=true` env | Escape hatch for trusted single-tenant deployments without gVisor: the runner accepts isolation-requiring tasks even when it cannot enforce a sandbox. See issue #291. |
 | `execution.container_memory` | empty | Optional runner-side Docker memory cap, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Task limits may be stricter but cannot raise this cap. Empty means no runner-imposed cap. OOM-killed tasks report `failure_category=resource_limit`. |
@@ -709,7 +709,7 @@ are documented in [IMAGES.md](IMAGES.md).
 
 ## Harness Interface Support Matrix
 
-Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, `pi`, `codewhale`, or `codex`). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
+Use the `harness` field on tasks and triggers to select the agent runtime (`opencode`, `claude-code`, `pi`, `codewhale`, `codex`, or `niffler`). For Niffler image setup, provider support and session state, see [NIFFLER.md](NIFFLER.md). For the full capability matrix — execution models, config generation, streaming, session export, isolation support, and more — see [HARNESSES.md](HARNESSES.md).
 
 ## Arcane Deployment
 

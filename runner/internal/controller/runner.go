@@ -23,6 +23,7 @@ import (
 	"github.com/flatout-works/chetter/runner/harness/claude"
 	"github.com/flatout-works/chetter/runner/harness/codewhale"
 	"github.com/flatout-works/chetter/runner/harness/codex"
+	"github.com/flatout-works/chetter/runner/harness/niffler"
 	"github.com/flatout-works/chetter/runner/harness/opencode"
 	"github.com/flatout-works/chetter/runner/harness/pi"
 	"github.com/flatout-works/chetter/runner/internal/config"
@@ -166,6 +167,8 @@ func selectHarnessByName(name string) harness.Harness {
 		return pi.New()
 	case "codewhale":
 		return codewhale.New()
+	case "niffler":
+		return niffler.New()
 	case "codex":
 		return codex.New()
 	default:

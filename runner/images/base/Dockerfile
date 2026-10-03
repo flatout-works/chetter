@@ -48,6 +48,45 @@ COPY runner/ ./runner/
 WORKDIR /src/runner
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/claude-serve-proxy ./cmd/claude-serve-proxy
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/codex-serve-proxy ./cmd/codex-serve-proxy
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/niffler-serve-proxy ./cmd/niffler-serve-proxy
+
+# --------------------------------------------------------------------------
+# Niffler: build the pinned complete harness, not just its HTTP proxy.
+# --------------------------------------------------------------------------
+FROM golang:1.26-bookworm AS niffler-builder
+ARG NIF_REV=3f7684bd0dab0b29f59318ad7fe281ea51578bd9
+ARG NIM_VERSION=2.2.12
+ARG NIM_SHA256=7df1611449a6842af69322aa2c1206942982650a5f6bc0d37bc8ec109932f638
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl git make xz-utils pkg-config \
+    libssl-dev liblz4-dev libpcre3-dev libclang-dev clang libicu-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN test "$(uname -m)" = x86_64 \
+    && curl -fsSL -o /opt/nim.tar.xz "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.xz" \
+    && echo "${NIM_SHA256}  /opt/nim.tar.xz" | sha256sum -c - \
+    && mkdir /opt/nim \
+    && tar -C /opt/nim --strip-components=1 -xJf /opt/nim.tar.xz \
+    && rm /opt/nim.tar.xz
+ENV PATH="/opt/nim/bin:${PATH}"
+WORKDIR /opt/niffler
+RUN git init . \
+    && git remote add origin https://github.com/gokr/niffler.git \
+    && git fetch --depth=1 origin "${NIF_REV}" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "${NIF_REV}"
+RUN --mount=type=cache,target=/root/.nimble \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    make install-nim-deps \
+    && make build \
+    && mkdir -p /dist/niffler/var/bin \
+    && git archive HEAD | tar -x -C /dist/niffler \
+    && cp -a var/bin/. /dist/niffler/var/bin/ \
+    && printf '%s\n' "${NIF_REV}" > /dist/niffler/REVISION \
+    && rm -f /dist/niffler/nimble.paths \
+    && cp -a /root/.nimble/pkgs2 /dist/nimble-pkgs2 \
+    && test ! -e /dist/niffler/.env \
+    && test ! -e /dist/niffler/var/store.db
 
 # --------------------------------------------------------------------------
 # Stage 3: Final agent base image
@@ -66,7 +105,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     jq \
     ripgrep \
     xz-utils \
+    build-essential pkg-config libssl-dev liblz4-dev libpcre3-dev \
+    libclang-dev clang libicu-dev util-linux procps \
     && rm -rf /var/lib/apt/lists/*
+
+# Full Niffler distribution and self-extension toolchains are shared by every
+# variant. The proxy creates a private runtime/store; never boot this template.
+ARG NIF_REV=3f7684bd0dab0b29f59318ad7fe281ea51578bd9
+LABEL dev.niffler.revision="${NIF_REV}"
+COPY --from=niffler-builder /usr/local/go /usr/local/go
+COPY --from=niffler-builder /opt/nim /opt/nim
+COPY --from=niffler-builder /dist/nimble-pkgs2 /opt/niffler/nimble-pkgs2
+COPY --from=niffler-builder /dist/niffler /opt/niffler
+ENV PATH="/opt/nim/bin:/usr/local/go/bin:${PATH}"
+RUN chmod -R a-w /opt/niffler \
+    && test -x /opt/niffler/var/bin/niffler \
+    && test -x /opt/niffler/var/bin/session \
+    && test -x /opt/niffler/var/bin/store-sqlite \
+    && test -x /opt/niffler/var/bin/nats-server
 
 # Pi requires Node >= 22.19.0; Claude Code supports >= 18 and works with 22.
 # Download Node.js directly from nodejs.org (with SHA256 verification) instead
@@ -122,6 +178,7 @@ RUN npm install -g @openai/codex@${CODEX_VERSION} \
 # claude-serve-proxy — Go HTTP wrapper for Claude CLI headless mode
 COPY --from=proxy-builder /out/claude-serve-proxy /usr/local/bin/claude-serve-proxy
 COPY --from=proxy-builder /out/codex-serve-proxy /usr/local/bin/codex-serve-proxy
+COPY --from=proxy-builder /out/niffler-serve-proxy /usr/local/bin/niffler-serve-proxy
 
 # Pi coding agent (via npm) + MCP adapter extension.
 ARG PI_AGENT_VERSION=0.84.3

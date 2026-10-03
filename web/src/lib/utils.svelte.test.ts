@@ -3,7 +3,22 @@
 import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { RunnerInfoSchema } from "$gen/proto/api/v1/api_pb";
-import { renderMarkdown, resumeTaskRoute, runnerHasTelemetry } from "./utils.svelte";
+import { formatHarness, renderMarkdown, resumeTaskRoute, runnerHasTelemetry } from "./utils.svelte";
+
+describe("formatHarness", () => {
+  it.each([
+    ["opencode", "OpenCode"],
+    ["claude-code", "Claude Code"],
+    ["pi", "Pi"],
+    ["codewhale", "CodeWhale"],
+    ["codex", "Codex"],
+    ["niffler", "Niffler"],
+    ["", "OpenCode"],
+    ["unknown", "unknown"],
+  ])("formats %s as %s", (harness, label) => {
+    expect(formatHarness(harness)).toBe(label);
+  });
+});
 
 describe("renderMarkdown", () => {
   it("removes executable HTML while preserving safe Markdown", () => {

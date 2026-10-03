@@ -24,6 +24,12 @@ Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, whic
 
 ## Image Resolution
 
+The shared base includes the complete pinned Niffler distribution,
+`niffler-serve-proxy`, and its self-extension toolchains, alongside the other
+harnesses. Every standard variant supports `harness: niffler`; see
+[NIFFLER.md](NIFFLER.md). Its source revision is pinned in
+`runner/images/base/Dockerfile` in the Chetter repository.
+
 Tasks, triggers, and definition YAML can use either fully qualified image refs or short refs:
 
 ```yaml

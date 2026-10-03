@@ -191,6 +191,9 @@ func ProviderCredentialEnv(req task.TaskRequest) []string {
 // IsManagedEnv reports whether key is owned by the runner and must not be
 // overridden by task-provided environment values.
 func IsManagedEnv(key string, req task.TaskRequest) bool {
+	if req.Harness == "niffler" && IsHarnessControlEnv(key) {
+		return true
+	}
 	if IsRunnerOwnedEnv(key) || isRunnerPrivateEnv(key) || key == GitHubCredentialURLEnv || key == GitHubCredentialTokenEnv {
 		return true
 	}
@@ -232,6 +235,9 @@ func ValidateEndpointTokenEnvironment(endpoints []task.MCPEndpoint) error {
 // IsHarnessControlEnv reports whether key controls runner-managed harness
 // behavior and therefore cannot be used for an endpoint token.
 func IsHarnessControlEnv(key string) bool {
+	if strings.HasPrefix(key, "NIF_") || strings.HasPrefix(key, "CHETTER_NIFFLER_") {
+		return true
+	}
 	switch key {
 	case "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_ATTRIBUTION_HEADER", "CLAUDE_SERVE_PROXY_TOKEN",
 		"CODEWHALE_CONFIG_DIR", "CODEWHALE_CONFIG_PATH", "CODEWHALE_OFFLINE", "CODEWHALE_RUNTIME_TOKEN", "CODEWHALE_PROVIDER", "CODEWHALE_MODEL", "DEEPSEEK_MCP_CONFIG",

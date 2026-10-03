@@ -4,6 +4,16 @@ Status: **Working plan - created from docs audit and changelog review**
 
 Last reviewed: 2026-06-21
 
+## Niffler harness integration (2026-10-02)
+
+Implemented first-class Niffler selection, a task-owned NATS-to-HTTP serve
+adapter, MCP/bootstrap and native transcript/resume support. The shared agent
+base includes the full pinned Niffler stack alongside the other harnesses;
+all standard variants inherit it. See [NIFFLER.md](NIFFLER.md). The adapter now
+uses the implemented upstream [#123](https://github.com/gokr/niffler/issues/123)
+authoritative per-turn usage and [#124](https://github.com/gokr/niffler/issues/124)
+native `cli run` driver instead of duplicated turn/MCP/export logic.
+
 ## Inputs
 
 This plan is based on:

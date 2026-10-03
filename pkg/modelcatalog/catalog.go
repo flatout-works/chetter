@@ -113,6 +113,7 @@ func Default() *Catalog {
 			"claude-code": {Provider: "anthropic", Model: "claude-sonnet-4-5"},
 			"codewhale":   {Provider: "deepseek", Model: "deepseek-chat"},
 			"codex":       {Provider: "openai", Model: "gpt-5.4"},
+			"niffler":     {Provider: "deepseek", Model: "deepseek-chat"},
 		},
 		Providers: map[string]Provider{
 			"synthetic": {

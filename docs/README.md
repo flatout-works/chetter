@@ -16,6 +16,7 @@ Use this page to pick the right document. `MANUAL.md` is the canonical operator 
 |---|---|
 | [MANUAL.md](MANUAL.md) | Canonical operations guide: setup, config, deployment overview, MCP tools, env vars. |
 | [FEATURES.md](FEATURES.md) | Quick capability inventory (feature descriptions, no env/tool tables). |
+| [NIFFLER.md](NIFFLER.md) | Niffler images, provider mapping, task runtime, MCP, native resume and contract tests. |
 | [HARNESSES.md](HARNESSES.md) | Runner harness architecture and supported agent CLIs. |
 | [TRIGGERS.md](TRIGGERS.md) | Cron schedules and GitHub PR review automation (merged from SCHEDULES.md + REVIEWS.md). |
 | [SESSIONS.md](SESSIONS.md) | Resumable session model, checkpoint/restore, and remaining work (was PAUSED_SESSIONS.md). |

@@ -167,6 +167,9 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	r.publishActivityEvent("agent", "Task Started", fmt.Sprintf("Task %s started", req.TaskID), "running", "", 0)
 
 	h := r.harnessFor(req.Harness)
+	if h.Name() == "niffler" {
+		req.Harness = "niffler"
+	}
 
 	if err := agentenv.ValidateEndpointTokenEnvironment(req.McpEndpoints); err != nil {
 		message := fmt.Sprintf("prepare MCP endpoints: %v", err)
@@ -197,7 +200,13 @@ func (r *Runner) runTask(req task.TaskRequest) {
 		req.RunnerMCPToken = mcpServer.Token()
 		session.Request = req
 		mcpURL := runnerMCPURL(r, mcpServer)
-		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, false); err != nil {
+		chetterURL, chetterToken, closeRelay, relayErr := r.nifflerLocalRelay(req, h)
+		if relayErr != nil {
+			r.publishStatusForRequest(req, "error", relayErr.Error(), nil)
+			return
+		}
+		defer closeRelay()
+		if err := h.GenerateConfig(req.ResumeWorkspacePath, mcpURL, chetterURL, chetterToken, req, false); err != nil {
 			r.publishStatusForRequest(req, "error", fmt.Sprintf("generate resume harness config: %v", err), nil)
 			return
 		}
@@ -299,7 +308,13 @@ func (r *Runner) runTask(req task.TaskRequest) {
 	session.Request = req
 	mcpURL := runnerMCPURL(r, mcpServer)
 
-	if err := h.GenerateConfig(wsDir, mcpURL, r.taskChetterMCPURL(), r.taskChetterMCPToken(req.RunnerMCPToken), req, isLocal); err != nil {
+	chetterURL, chetterToken, closeRelay, relayErr := r.nifflerLocalRelay(req, h)
+	if relayErr != nil {
+		r.publishStatusForRequest(req, "error", relayErr.Error(), nil)
+		return
+	}
+	defer closeRelay()
+	if err := h.GenerateConfig(wsDir, mcpURL, chetterURL, chetterToken, req, isLocal); err != nil {
 		message := fmt.Sprintf("generate harness config: %v", err)
 		slog.Error("harness config failed", "taskID", req.TaskID, "err", err)
 		r.publishStatusForRequest(req, "error", message, nil)
@@ -869,6 +884,11 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	}
 	serveCmd := exec.CommandContext(ctx, serveCmdParts[0], serveCmdParts[1:]...)
 	configureProcess(serveCmd)
+	if h.Name() == "niffler" && r.executionMode() == "local" {
+		// Keep the proxy alive through cancellation/export; other harnesses
+		// retain their existing CommandContext process-group cancellation.
+		serveCmd.Cancel = nil
+	}
 	serveCmd.Dir = session.WorkspaceDir
 	serveCmd.Env = env
 	stdout, err := serveCmd.StdoutPipe()
@@ -925,6 +945,11 @@ func (r *Runner) runLocalAgent(ctx context.Context, session *task.TaskSession, r
 	defer stopFinalizationHeartbeat()
 	r.publishStatusForRequest(req, "running", "Finalizing task result...", nil)
 	var sessionExport string
+	if err != nil && h.Name() == "niffler" {
+		cleanup, c := context.WithTimeout(context.Background(), dockerAbortTimeout)
+		_ = h.AbortSession(cleanup, baseURL, sid, secret)
+		c()
+	}
 	if sid != "" {
 		sessionExport = r.readSessionExport(req, session.WorkspaceDir, sid, h)
 	}
