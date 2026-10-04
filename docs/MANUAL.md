@@ -162,8 +162,8 @@ Managed Git identities control commit attribution for agent work and are configu
 | `CHETTER_ENV_BLOCKED_NAMES` | No | `PATH,HOME,SHELL,LD_PRELOAD,LD_LIBRARY_PATH` | Comma-separated exact task env var names rejected at task submission (case-insensitive). Each entry must itself be a valid env var name — a malformed entry (for example one containing `=`) fails server startup rather than silently never matching. See issues #80 and #448. |
 | `CHETTER_ENV_BLOCKED_PREFIXES` | No | `CHETTER_,RUNNER_,MCP_AUTH,DATABASE_,GITHUB_APP_,ARCANE_,LLM_` | Comma-separated reserved task env var name prefixes rejected at task submission (case-insensitive). Each entry must itself be a valid env var name; a malformed entry fails server startup. See issues #80 and #448. |
 | `CHETTER_ENV_MAX_COUNT` | No | `64` | Maximum number of task environment variables accepted per task. |
-| `CHETTER_ENV_MAX_NAME_LENGTH` | No | `256` | Maximum task env var name length in characters. |
-| `CHETTER_ENV_MAX_VALUE_LENGTH` | No | `4096` | Maximum task env var value length in characters. |
+| `CHETTER_ENV_MAX_NAME_LENGTH` | No | `256` | Maximum task env var name length in bytes. |
+| `CHETTER_ENV_MAX_VALUE_LENGTH` | No | `4096` | Maximum task env var value length in bytes. |
 | `EVENTS_RETENTION_DAYS` | No | `0` | Retention for `task_events`. A positive value enables reaper pruning; `0` disables it. |
 | `AUDIT_RETENTION_DAYS` | No | `0` | Retention for `audit_log`. A positive value enables reaper pruning; `0` disables it. |
 | `ARTIFACT_RETENTION_DAYS` | No | `0` | Retention for `task_artifacts` and `agent_sessions`. A positive value enables reaper pruning; `0` disables it. |
