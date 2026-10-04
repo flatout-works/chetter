@@ -579,7 +579,8 @@ type containerReapCandidate struct {
 // runners can share one Docker daemon (wowbagger runs two), so the runner
 // cannot distinguish "my orphan" from "my sibling's live sandbox" locally.
 // The control plane answers with container_scope, which protects every live
-// attempt, retained session, and ready checkpoint regardless of owner. See
+// attempt and ready checkpoint regardless of owner. Retained harness sessions
+// protect their bind-mounted workspace, not the disposable container. See
 // issue #418.
 func (r *Runner) sweepOrphanedTaskContainers(ctx context.Context) {
 	if r.executionMode() != "docker" || r.rpcClient == nil || r.runCtx == nil {
@@ -623,9 +624,8 @@ func (r *Runner) sweepOrphanedTaskContainers(ctx context.Context) {
 		return
 	}
 
-	// Drop containers the control plane says may still be needed. A ready
-	// checkpoint or a paused/resumable session must outlive its container's
-	// owning runner, so absence from the DB is not enough to reap. The
+	// Drop containers backing live attempts or ready process checkpoints. A
+	// retained harness workspace alone does not need the old container. The
 	// verdict comes from the shared control plane (not local state) because
 	// two runners can share one Docker daemon.
 	safe, err := r.containerReapVerdict(sweepCtx, verdicts)

@@ -1035,10 +1035,9 @@ func (r *Runner) runDockerAgent(ctx context.Context, session *task.TaskSession, 
 	}
 
 	defer func() {
-		if session.PreserveWorkspace {
-			slog.Info("preserving container for checkpointed session", "taskID", req.TaskID, "container", containerName)
-			return
-		}
+		// PreserveWorkspace retains the bind-mounted directory, not this
+		// container. Harness resume starts a fresh container from that directory;
+		// keeping the stopped container here leaked one on every resumable run.
 		if gvisor {
 			r.recordSandboxTeardown(containerName, sandboxStart)
 		}

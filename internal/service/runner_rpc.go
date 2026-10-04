@@ -709,23 +709,18 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 	if len(req.Msg.Candidates) == 0 {
 		return connect.NewResponse(&runnerv1.PruneWorkspacesResponse{}), nil
 	}
-	// container_scope relaxes the runner-ownership predicates (the runner_id
-	// equalities below) so the container reaper can get a verdict for
-	// containers left behind by a dead runner instance. The liveness
-	// predicates — running attempt, retained session, ready checkpoint — are
-	// never relaxed, so containers for work that is still alive are always
-	// protected. See issue #418.
+	// Container retention is independent of workspace retention: harness resume
+	// creates a fresh container and mounts the preserved workspace. Only a live
+	// attempt or ready process checkpoint needs the old container. Workspace
+	// pruning still protects retained sessions and ready checkpoints. Container
+	// scope also drops runner ownership so dead runners' orphans can be reaped.
 	scopeRunner := true
 	if req.Msg.ContainerScope {
 		scopeRunner = false
 	}
-	// Retained-session and checkpoint protection matches on workspace_path,
-	// which container-scope candidates may not carry (containers created
-	// before the chetter.workspace_path label existed). When the path is
-	// unknown, fall back to task-wide matching so a retained session or ready
-	// checkpoint for the task still protects the container; only the attempt
-	// liveness check stays execution-scoped, because it keys on the immutable
-	// attempt ID. See issue #418.
+	// Checkpoint protection matches on workspace_path. Legacy containers may
+	// not carry that label; an unknown path uses conservative task-wide ready
+	// checkpoint protection. Live attempts always match the immutable attempt ID.
 	candidateQuery := sqlQuery(s.dialect, `SELECT CASE WHEN
 		EXISTS (
 			SELECT 1 FROM execution_attempts attempt
@@ -734,14 +729,14 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 			  AND (? OR attempt.runner_id = ?)
 		) OR EXISTS (
 			SELECT 1 FROM agent_sessions session
-			WHERE session.task_id = ? AND (session.workspace_path = ? OR ?)
+			WHERE NOT ? AND session.task_id = ? AND (session.workspace_path = ? OR ?)
 			  AND session.status IN ('running', 'resuming', 'paused', 'recoverable', 'paused_waiting_review')
 			  AND (? OR session.pinned_runner_id IS NULL OR session.pinned_runner_id = '' OR session.pinned_runner_id = ?)
 		) OR EXISTS (
 			SELECT 1 FROM agent_session_checkpoints checkpoint
 			JOIN agent_sessions session ON session.id = checkpoint.agent_session_id
 			WHERE session.task_id = ? AND (checkpoint.workspace_path = ? OR ?)
-			  AND checkpoint.status = 'ready'
+			  AND checkpoint.status = 'ready' AND checkpoint.checkpoint_path <> ''
 			  AND (? OR checkpoint.runner_id = ?)
 		) THEN 1 ELSE 0 END`)
 	safe := make([]*runnerv1.WorkspaceKey, 0, len(req.Msg.Candidates))
@@ -759,7 +754,7 @@ func (s *RunnerRPCService) PruneWorkspaces(ctx context.Context, req *connect.Req
 		var protected int
 		if err := s.rawDB.QueryRowContext(ctx, candidateQuery,
 			candidate.ExecutionId, candidate.TaskId, !scopeRunner, req.Msg.RunnerId,
-			candidate.TaskId, candidate.WorkspacePath, pathUnknown, !scopeRunner, req.Msg.RunnerId,
+			req.Msg.ContainerScope, candidate.TaskId, candidate.WorkspacePath, pathUnknown, !scopeRunner, req.Msg.RunnerId,
 			candidate.TaskId, candidate.WorkspacePath, pathUnknown, !scopeRunner, req.Msg.RunnerId,
 		).Scan(&protected); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)

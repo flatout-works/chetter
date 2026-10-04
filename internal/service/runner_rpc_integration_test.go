@@ -1608,11 +1608,8 @@ func TestResolveModelForTaskDisabledHarnessCircularGuard(t *testing.T) {
 }
 
 // TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession
-// covers the upgrade path: containers created before the
-// chetter.workspace_path label existed submit candidates with an empty path,
-// so the server must fall back to task-wide protection for retained sessions
-// and ready checkpoints instead of rejecting the request or reporting a
-// resumable session's container as safe. See issue #418.
+// verifies that legacy containers still protect live attempts without a
+// workspace label. Retained workspace protection is tested independently.
 func TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()
@@ -1636,7 +1633,7 @@ func TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession(t *t
 		t.Fatalf("pause session: %v", err)
 	}
 
-	// Empty path: the task-wide fallback must protect the retained session.
+	// Empty path: the live attempt must still protect the container.
 	resp, err := svc.PruneWorkspaces(ctx, connect.NewRequest(&runnerv1.PruneWorkspacesRequest{
 		RunnerId:       "runner_reaper",
 		ContainerScope: true,
@@ -1664,8 +1661,8 @@ func TestRPCPruneWorkspacesContainerScopeWithoutPathProtectsRetainedSession(t *t
 // test for the container reaper. Leaked task containers outlive the runner
 // instance that created them, and two runners can share one Docker daemon, so
 // the reaper asks with container_scope=true: the runner-ownership predicates
-// are dropped, while the liveness predicates (running attempt, retained
-// session, ready checkpoint) still protect work that is alive. See issue #418.
+// are dropped, while running attempts and ready checkpoints still protect
+// containers needed for live work. Retained sessions protect workspaces only.
 func TestRPCPruneWorkspacesContainerScopeIgnoresRunnerOwnership(t *testing.T) {
 	svc, q, _, cleanup := newRPCTestService(t)
 	defer cleanup()

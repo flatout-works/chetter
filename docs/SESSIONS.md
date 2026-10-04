@@ -75,8 +75,18 @@ applies to a session still in `paused`, `recoverable`, or
 the session after resume validation but before the resume commits — an expired
 session is never revived and the resume fails instead.
 
-Pruning protects active attempts and retained session/checkpoint paths. Ordinary
-non-resumable attempts never reuse a Task-level workspace.
+Pruning workspaces protects active attempts and retained session/checkpoint
+paths. Container retention is separate: harness resume creates a fresh container
+and mounts the retained workspace, so ordinary stopped harness containers are
+removed even while their sessions remain resumable. The shared-daemon container
+reaper protects running attempts regardless of runner ownership, ready
+checkpoints with a nonempty checkpoint path, and containers with Docker process
+checkpoints. Artifact GC leaves checkpoint rows marked ready but clears their
+paths; those rows no longer protect containers or terminal-session workspaces.
+For legacy containers without workspace labels, ready checkpoint protection falls back to
+the whole Task. Cleanup never expires sessions or deletes their bind-mounted
+workspaces in container scope. Ordinary non-resumable attempts never reuse a
+Task-level workspace.
 
 ## Expiry And Garbage Collection
 
