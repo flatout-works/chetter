@@ -440,8 +440,12 @@ func taskRepositories(req task.TaskRequest) []task.RepoRef {
 
 // splitTaskRepositories returns the primary repository and the remaining
 // repositories in list order. The first entry flagged primary wins; otherwise
-// the first entry is primary.
+// the first entry is primary. An empty set has no primary or secondaries;
+// repository-less tasks (including diagnostics) are valid.
 func splitTaskRepositories(repos []task.RepoRef) (task.RepoRef, []task.RepoRef) {
+	if len(repos) == 0 {
+		return task.RepoRef{}, nil
+	}
 	primaryIndex := 0
 	for i, repo := range repos {
 		if repo.Primary {

@@ -94,6 +94,7 @@ func TestNativeHelper(t *testing.T) {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGTERM)
 		write(map[string]any{"type": "event", "subject": "ev.session." + id + ".token", "data": map[string]any{"sessionId": id, "content": "waiting"}})
+		write(map[string]any{"type": "event", "subject": "ev.session." + id + ".assistant", "data": map[string]any{"sessionId": id, "content": "waiting"}})
 		<-sig
 	}
 	if flags["mcp-file"] == "" || flags["root"] == "" || flags["bus"] == "" || flags["cwd"] == "" {

@@ -19,7 +19,7 @@ Supported task inputs include:
 - `provider_id`, `model_id`, and `variant_id`: model selection overrides.
 - `skills`: skill names or hints passed to the runner.
 - `mcp_endpoints`: global or team-scoped HTTP/SSE MCP endpoint names to mount. Bearer credentials are supplied by runner environment variables.
-- `env`: non-secret environment variables.
+- `env`: non-secret environment variables, validated server-side at submission. Names must be valid env var identifiers (`[A-Za-z_][A-Za-z0-9_]*`); names and prefixes matching the operator-configured blocklist are rejected, and count/name/value lengths are capped. See [MANUAL.md](MANUAL.md#server) for the `CHETTER_ENV_*` limits and issue #448.
 - `timeout_sec`: per-task timeout.
 - `session_mode`, `pause_reason`, and `ttl_hours`: resumable session controls.
 
@@ -134,7 +134,7 @@ examples and operational guidance.
 
 ## Agent Harnesses
 
-The runner drives agent CLIs through harness implementations. Five harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), Pi (RPC subprocess), CodeWhale (HTTP/SSE runtime API), and Codex (App Server proxy via codex-serve-proxy). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
+The runner drives agent CLIs through harness implementations. Six harnesses are supported: OpenCode (HTTP serve mode, default), Claude Code (serve mode via serve-proxy), Pi (RPC subprocess), CodeWhale (HTTP/SSE runtime API), Codex (App Server proxy via codex-serve-proxy), and [Niffler](NIFFLER.md) (serve mode via `niffler-serve-proxy` driving the native `cli run` driver). Each supports event streaming, session export, and per-task Docker/gVisor containers (except Pi, which runs as a subprocess).
 
 See [HARNESSES.md](HARNESSES.md) for the full capability matrix and guidance on adding new harnesses.
 
