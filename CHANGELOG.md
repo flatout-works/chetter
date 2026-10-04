@@ -54,6 +54,10 @@ Detailed per-day history of everything that went into this release is below.
   authoritative per-turn usage is deduplicated by turn ID, including reported
   cache-write and reasoning tokens. See `docs/NIFFLER.md`.
 
+### Fixed
+
+- Malformed task environment variable names were accepted and could bypass the reserved-name blocklist (issue #448, merged in #452): validation now requires each raw env var name to be a plain identifier (`[A-Za-z_][A-Za-z0-9_]*`) before any blocklist comparison. Docker splits `-e "<key>=<value>"` at the first `=`, so a submitted name like `PATH=/evil` previously reached the container as the managed name `PATH`, defeating the `PATH`/`HOME`/`LD_PRELOAD` blocklist and the runner-side `IsManagedEnv` guard. Malformed names are now rejected at submission with a clear `env[...] invalid environment variable name` error, and the same rule is applied to `CHETTER_ENV_BLOCKED_NAMES` and `CHETTER_ENV_BLOCKED_PREFIXES` at startup so a mistyped blocklist entry fails closed instead of silently never matching.
+
 ## 2026-09-25
 
 ### Added
