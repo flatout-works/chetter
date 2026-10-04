@@ -7,7 +7,9 @@
   import { SessionService, FleetService, TaskService } from "$gen/proto/api/v1/api_pb";
   import type { AgentSession, UserPrompt, Task } from "$gen/proto/api/v1/api_pb";
   import { getTransport } from "$lib/api/client";
-  import { formatHarness, formatResumeMode, formatTime, resumeTaskRoute } from "$lib/utils.svelte";
+  import { formatHarness, formatResumeMode, formatTime, isCancellableStatus, resumeTaskRoute } from "$lib/utils.svelte";
+  import { addToast } from "$lib/stores/toast.svelte";
+  import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import TableCard from "$lib/components/TableCard.svelte";
   import { Alert, Badge, Button, Card, Label, Modal, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Textarea } from "flowbite-svelte";
@@ -27,6 +29,7 @@
   let resumePrompt = $state("");
   let resuming = $state(false);
   let resumeError = $state<string | null>(null);
+  let cancellingTaskId = $state<string | null>(null);
 
   const promptTasks = new SvelteMap<string, Task>();
   let totalSessionTokens = $state<bigint>(0n);
@@ -77,6 +80,41 @@
     resumePrompt = "";
     resumeError = null;
     showResume = true;
+  }
+
+  // A prompt is cancellable while its task attempt is still pending, claimed,
+  // or running. Fall back to the loaded task status when the prompt status is
+  // not populated.
+  function promptCancellable(prompt: UserPrompt): boolean {
+    return (
+      isCancellableStatus(prompt.status) ||
+      isCancellableStatus(promptTasks.get(prompt.taskId)?.status)
+    );
+  }
+
+  async function cancelAttempt(prompt: UserPrompt) {
+    if (cancellingTaskId) return; // guard against duplicate submissions
+    const ok = await confirm({
+      title: "Cancel attempt",
+      message: `Cancel the active attempt for task ${prompt.taskId}?`,
+      confirmLabel: "Cancel attempt",
+      cancelLabel: "Keep running",
+    });
+    if (!ok) return;
+    cancellingTaskId = prompt.taskId;
+    try {
+      const client = createClient(TaskService, getTransport());
+      await client.cancelTask({ taskId: prompt.taskId, reason: "cancelled via session UI" });
+      addToast("Cancellation requested", "success");
+      // Reload so the session and task state reflect the cancellation.
+      await load();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to cancel attempt.";
+      addToast(message, "error");
+      console.error(e);
+    } finally {
+      cancellingTaskId = null;
+    }
   }
 
   async function doResume() {
@@ -263,6 +301,7 @@
         <TableHeadCell>Attempts</TableHeadCell>
         <TableHeadCell>Summary</TableHeadCell>
         <TableHeadCell>Started</TableHeadCell>
+        <TableHeadCell>Actions</TableHeadCell>
       </TableHead>
       <TableBody>
         {#each prompts as prompt (prompt.id)}
@@ -301,10 +340,24 @@
             </TableBodyCell>
             <TableBodyCell class="max-w-xs"><span class="text-gray-500 dark:text-gray-400 truncate block">{prompt.summary || "—"}</span></TableBodyCell>
             <TableBodyCell><span class="text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatTime(prompt.startedAt || "")}</span></TableBodyCell>
+            <TableBodyCell>
+              {#if promptCancellable(prompt)}
+                <Button
+                  color="red"
+                  size="xs"
+                  onclick={() => cancelAttempt(prompt)}
+                  disabled={cancellingTaskId !== null}
+                >
+                  {cancellingTaskId === prompt.taskId ? "Cancelling…" : "Cancel"}
+                </Button>
+              {:else}
+                <span class="text-xs text-gray-400">—</span>
+              {/if}
+            </TableBodyCell>
           </TableBodyRow>
         {:else}
           <TableBodyRow>
-            <TableBodyCell colspan={7}>
+            <TableBodyCell colspan={8}>
               <div class="text-center text-gray-500 dark:text-gray-400 py-8">No prompts recorded</div>
             </TableBodyCell>
           </TableBodyRow>
