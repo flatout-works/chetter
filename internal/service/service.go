@@ -915,7 +915,9 @@ func (s *Service) reapUnavailablePinnedResumeTasks() {
 }
 
 // reapIsolationUnavailableTasks fails pending tasks that require enforced
-// isolation when no live runner advertises isolation_enabled. Server-side
+// isolation when no live runner advertises isolation_enabled. Fresh capable
+// draining/stopping runners keep tasks pending during deploys; claim admission
+// and the durable drain gate are unchanged. Server-side
 // admission already prevents such tasks from ever being claimed by a
 // non-isolated runner (see GetClaimableExecutionAttemptForUpdate); this step
 // turns a permanently unclaimable task into a terminal failure instead of

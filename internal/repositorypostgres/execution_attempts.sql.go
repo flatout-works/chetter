@@ -224,7 +224,7 @@ WHERE prompt.id = attempt.user_prompt_id
   AND NOT EXISTS (
       SELECT 1 FROM runners capable
       WHERE capable.isolation_enabled = true
-        AND capable.status = 'active'
+        AND capable.status IN ('active', 'draining', 'stopping')
         AND capable.last_seen_at > NOW() - ($3 * INTERVAL '1 second')
   )
 `
@@ -236,7 +236,9 @@ type FailPendingIsolationAttemptsWithoutCapableRunnerParams struct {
 }
 
 // Fails pending attempts whose session requires enforced isolation when no
-// live runner advertises isolation_enabled. The task must never run
+// live runner advertises isolation_enabled. Fresh draining/stopping runners
+// still establish capability during deploys, but cannot claim new work.
+// The task must never run
 // unsandboxed; without a capable runner it fails fast with
 // error_category isolation_unavailable instead of waiting forever. See issue
 // #291.

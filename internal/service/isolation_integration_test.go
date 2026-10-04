@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	runnerv1 "github.com/flatout-works/chetter/gen/proto/runner/v1"
 	"github.com/flatout-works/chetter/internal/data"
+	"github.com/flatout-works/chetter/internal/repository"
 )
 
 // TestIsolationAdmissionHardenedMode verifies the P0 isolation gate (issue
@@ -185,6 +189,88 @@ func TestReaperFailsIsolationTasksWithoutCapableRunner(t *testing.T) {
 	attempt := attempts[0]
 	if attempt.Status != "error" || attempt.ErrorCategory.String != "isolation_unavailable" {
 		t.Fatalf("attempt status/error_category = %s/%q, want error/isolation_unavailable", attempt.Status, attempt.ErrorCategory.String)
+	}
+}
+
+// TestIsolationReaperDuringDrain distinguishes temporary claim unavailability
+// from missing isolation capability. All cases use a real database.
+func TestIsolationReaperDuringDrain(t *testing.T) {
+	for _, status := range []string{"draining", "stopping"} {
+		for _, scenario := range []string{"fresh", "stale", "unisolated"} {
+			t.Run(status+"/"+scenario, func(t *testing.T) {
+				svc, tdb, cleanup := newServiceForTestWithIsolation(t, false)
+				defer cleanup()
+				ctx := context.Background()
+				q := data.New(tdb.DB, tdb.Dialect())
+				rpc := NewRunnerRPCService(q, tdb.DB, tdb.Dialect())
+				rec, err := svc.SubmitTask(ctx, SubmitTaskRequest{Prompt: "task during deploy drain", AgentImage: "runner:latest"})
+				if err != nil {
+					t.Fatalf("submit: %v", err)
+				}
+				now := time.Now().UTC()
+				lastSeen := now
+				if scenario == "stale" {
+					lastSeen = now.Add(-time.Duration(runnerPresenceMaxSec+60) * time.Second)
+				}
+				heartbeat := repository.UpsertRunnerHeartbeatParams{
+					ID: "runner_deploy", Status: status, MaxConcurrent: 1,
+					IsolationEnabled: scenario != "unisolated",
+					FirstSeenAt:      lastSeen, LastSeenAt: lastSeen, UpdatedAt: now,
+					Metadata: json.RawMessage("{}"),
+				}
+				if err := q.UpsertRunnerHeartbeat(ctx, heartbeat); err != nil {
+					t.Fatalf("register runner: %v", err)
+				}
+				// Use the existing durable deploy-drain admission gate; runner status
+				// alone does not gate ordinary pending attempts in claimOnce.
+				if err := rpc.RequestDrain(ctx, heartbeat.ID); err != nil {
+					t.Fatalf("request drain: %v", err)
+				}
+				if _, err := rpc.claimOnce(ctx, heartbeat.ID, time.Minute); !errors.Is(err, errNoClaimableTask) {
+					t.Fatalf("claim during %s: %v, want no claimable task", status, err)
+				}
+				svc.reapIsolationUnavailableTasks()
+				task, err := q.GetTaskByID(ctx, rec.ID)
+				if err != nil {
+					t.Fatalf("get task: %v", err)
+				}
+				prompt, err := q.GetUserPromptByTaskID(ctx, rec.ID)
+				if err != nil {
+					t.Fatalf("get prompt: %v", err)
+				}
+				attempts, err := q.ListExecutionAttemptsByPrompt(ctx, prompt.ID)
+				if err != nil || len(attempts) != 1 {
+					t.Fatalf("get attempts: count=%d err=%v", len(attempts), err)
+				}
+				if scenario != "fresh" {
+					if task.Status != "error" || task.ErrorCategory.String != "isolation_unavailable" || task.FailureCategory.String != "harness_error" {
+						t.Fatalf("task status/categories = %s/%q/%q, want error/isolation_unavailable/harness_error", task.Status, task.ErrorCategory.String, task.FailureCategory.String)
+					}
+					if attempts[0].Status != "error" || attempts[0].ErrorCategory.String != "isolation_unavailable" {
+						t.Fatalf("attempt status/category = %s/%q, want error/isolation_unavailable", attempts[0].Status, attempts[0].ErrorCategory.String)
+					}
+					return
+				}
+				if task.Status != "pending" || task.ErrorCategory.Valid || attempts[0].Status != "pending" || attempts[0].ErrorCategory.Valid {
+					t.Fatalf("fresh capable %s runner should preserve pending work: task=%s/%q attempt=%s/%q", status, task.Status, task.ErrorCategory.String, attempts[0].Status, attempts[0].ErrorCategory.String)
+				}
+				// Claim admission must remain closed even after the reaper preserves it.
+				if _, err := rpc.claimOnce(ctx, heartbeat.ID, time.Minute); !errors.Is(err, errNoClaimableTask) {
+					t.Fatalf("claim during %s after reaper: %v, want no claimable task", status, err)
+				}
+				if err := ackRunnerDrainDB(ctx, tdb.DB, tdb.Dialect(), heartbeat.ID); err != nil {
+					t.Fatalf("ack drain: %v", err)
+				}
+				registerIsolationCapableRunner(t, q, heartbeat.ID)
+				claim, err := rpc.ClaimTask(ctx, connect.NewRequest(&runnerv1.ClaimTaskRequest{RunnerId: heartbeat.ID, WaitSeconds: 0}))
+				if err != nil {
+					t.Fatalf("claim after active heartbeat: %v", err)
+				}
+				if claim.Msg.Task == nil || claim.Msg.Task.TaskId != rec.ID || !claim.Msg.Task.IsolationRequired {
+					t.Fatalf("active capable runner should claim isolated task: %+v", claim.Msg.Task)
+				}
+			})
+		}
 	}
 }
 

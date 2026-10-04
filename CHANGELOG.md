@@ -48,6 +48,14 @@ Detailed per-day history of everything that went into this release is below.
   retained for interrupted rounds. Task images must be rebuilt after proxy
   updates, independently of the runner deployment.
 
+- Pending isolated tasks no longer fail with a misleading “no gVisor” error
+  during deployment drains. Fresh draining/stopping runners still establish
+  isolation capability while admission remains closed; stale or unisolated
+  fleets still fail closed.
+
+- Codex progress batches token deltas between structured activity/terminal
+  boundaries instead of persisting one task-progress row per fragment.
+
 - Resumable workspace retention no longer leaks stopped task containers:
   harness resumes keep the bind-mounted state but discard the old container.
   The shared-daemon reaper protects live attempts and real ready checkpoints,

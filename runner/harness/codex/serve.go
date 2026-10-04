@@ -189,6 +189,19 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 	var eventType string
 	var data strings.Builder
 	var observedUsage task.TokenUsage
+	var textBuf strings.Builder
+	lastFlush := time.Now()
+	flushText := func(force bool) {
+		if !force && time.Since(lastFlush) < 3*time.Second && textBuf.Len() < 64<<10 {
+			return
+		}
+		if textBuf.Len() > 0 {
+			publishFn("running", "codex: "+textBuf.String())
+			textBuf.Reset()
+		}
+		lastFlush = time.Now()
+	}
+	defer flushText(true)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -197,6 +210,7 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
 			if eventType == "done" {
+				flushText(true)
 				var terminal struct {
 					Status  string          `json:"status"`
 					Summary string          `json:"summary"`
@@ -224,8 +238,10 @@ func watchEvents(ctx context.Context, taskID, baseURL, secret string, publishFn 
 				}
 				return
 			} else if eventType == "codex.delta" && data.Len() > 0 {
-				publishFn("running", "codex: "+data.String())
+				textBuf.WriteString(data.String())
+				flushText(false)
 			} else if eventType == "codex.activity" && data.Len() > 0 {
+				flushText(true)
 				publishFn("running", "codex: "+data.String())
 			} else if eventType == "codex.usage" && tokenFn != nil {
 				var usage task.TokenUsage
