@@ -38,6 +38,16 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-04
+
+### Fixed
+
+- Repository-less tasks, including every "all harnesses" diagnostics check,
+  no longer panic during shared Git workspace preparation. Splitting an empty
+  repository set returns no primary or secondary checkout, preserving askpass
+  setup and the existing Git identity policy. Regression tests cover all six
+  harnesses reaching configuration and cleaning up their execution state.
+
 ## 2026-10-02
 
 ### Added
