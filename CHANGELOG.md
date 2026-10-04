@@ -42,10 +42,16 @@ Detailed per-day history of everything that went into this release is below.
 
 ### Fixed
 
-- Niffler progress now batches streamed text/thinking deltas instead of storing
-  one timeline entry per token. Assistant, tool and terminal boundaries flush
-  partial output without repeating the full assistant text; long streams still
-  publish progress every three seconds for watchdog activity.
+- Niffler's timeline now uses complete assistant messages, structured tool-call
+  start/done frames and deduplicated terminal outcome/usage. Token activity
+  produces rate-limited liveness rather than fragment rows; partial output is
+  retained for interrupted rounds. Task images must be rebuilt after proxy
+  updates, independently of the runner deployment.
+
+- Resumable workspace retention no longer leaks stopped task containers:
+  harness resumes keep the bind-mounted state but discard the old container.
+  The shared-daemon reaper protects live attempts and real ready checkpoints,
+  not sessions alone or GC-cleared checkpoint records.
 
 - Repository-less tasks, including every "all harnesses" diagnostics check,
   no longer panic during shared Git workspace preparation. Splitting an empty

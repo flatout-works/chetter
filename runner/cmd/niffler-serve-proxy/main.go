@@ -369,7 +369,7 @@ func (b *bridge) runNative(ctx context.Context, id, prompt, model, thinking, exp
 	if result.SessionID != id || result.TurnID == "" || len(result.Usage) == 0 || string(result.Usage) == "null" {
 		return result, errors.New("native driver returned incomplete turn accounting")
 	}
-	b.emit("usage", map[string]any{"turnId": result.TurnID, "outcome": result.Outcome, "usage": result.Usage})
+	b.settleProgress(progress, result.TurnID, result.Outcome, result.TurnError, result.Usage, time.Now())
 	text, e := renderTranscript(transcript)
 	if e != nil {
 		return result, fmt.Errorf("native transcript: %w", e)
@@ -407,14 +407,17 @@ func (b *bridge) observe(subject string, data json.RawMessage, id string) {
 }
 func (b *bridge) observeProgress(subject string, data json.RawMessage, id string, progress *progressBuffer, now time.Time) {
 	var p struct {
-		SessionID string          `json:"sessionId"`
-		TurnID    string          `json:"turnId"`
-		Outcome   string          `json:"outcome"`
-		Phase     string          `json:"phase"`
-		Content   string          `json:"content"`
-		Reasoning string          `json:"reasoning"`
-		Tool      string          `json:"tool"`
-		Usage     json.RawMessage `json:"usage"`
+		SessionID  string          `json:"sessionId"`
+		TurnID     string          `json:"turnId"`
+		Outcome    string          `json:"outcome"`
+		Phase      string          `json:"phase"`
+		Content    string          `json:"content"`
+		Reasoning  string          `json:"reasoning"`
+		Tool       string          `json:"tool"`
+		CallID     string          `json:"callId"`
+		Error      string          `json:"error"`
+		DurationMs *int64          `json:"durationMs"`
+		Usage      json.RawMessage `json:"usage"`
 	}
 	if json.Unmarshal(data, &p) != nil || p.SessionID != id {
 		return
@@ -426,11 +429,29 @@ func (b *bridge) observeProgress(subject string, data json.RawMessage, id string
 		progress.assistant(now, p.Content, b.progressMessage)
 	case strings.HasSuffix(subject, ".toolcall"):
 		progress.flush(now, true, b.progressMessage)
-		b.emit("message", map[string]any{"message": fmt.Sprintf("niffler tool %s: %s", p.Phase, p.Tool)})
+		message := "Using " + p.Tool
+		if p.Phase == "done" {
+			message = "Finished tool call " + p.Tool
+			if p.Error != "" {
+				message = "Tool call failed: " + p.Tool + ": " + p.Error
+			}
+		}
+		b.emit("message", map[string]any{"message": b.redact(message), "kind": "toolcall", "turnId": p.TurnID, "callId": p.CallID, "phase": p.Phase, "tool": p.Tool, "error": b.redact(p.Error), "durationMs": p.DurationMs})
 	case strings.HasSuffix(subject, ".turn") && p.Phase == "done":
-		progress.flush(now, true, b.progressMessage)
-		b.emit("usage", map[string]any{"turnId": p.TurnID, "outcome": p.Outcome, "usage": p.Usage})
+		b.settleProgress(progress, p.TurnID, p.Outcome, p.Error, p.Usage, now)
 	}
+}
+func (b *bridge) settleProgress(progress *progressBuffer, id, outcome, detail string, usage json.RawMessage, now time.Time) {
+	if !progress.settle(id) {
+		return
+	}
+	progress.flush(now, true, b.progressMessage)
+	message := "Niffler turn: " + outcome
+	if detail != "" {
+		message += ": " + detail
+	}
+	b.emit("message", map[string]any{"message": b.redact(message), "kind": "turn", "phase": "done", "turnId": id, "outcome": outcome, "usage": usage})
+	b.emit("usage", map[string]any{"turnId": id, "outcome": outcome, "usage": usage})
 }
 func renderTranscript(path string) (string, error) {
 	f, e := os.Open(path)

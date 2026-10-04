@@ -8,92 +8,64 @@ import (
 	"time"
 )
 
-func TestProgressBatchesDeltasAndDoesNotRepeatAssistant(t *testing.T) {
+func TestTokensAreLivenessNotTimelineFragments(t *testing.T) {
+	p := &progressBuffer{}
 	now := time.Unix(100, 0)
-	p := &progressBuffer{}
 	var got []string
 	emit := func(s string) { got = append(got, s) }
-	for _, s := range []string{"Con", "firmed", " — ", "tool", " was ", "called"} {
-		p.token(now, s, "", emit)
+	for _, s := range []string{"Let", " me", " think", " /b"} {
+		p.token(now, "", s, emit)
 	}
-	if len(got) != 0 {
-		t.Fatalf("token deltas leaked: %v", got)
-	}
-	p.assistant(now, "Confirmed — tool was called", emit)
-	if !reflect.DeepEqual(got, []string{"niffler: Confirmed — tool was called"}) {
-		t.Fatal(got)
-	}
-	p.flush(now, true, emit)
-	if len(got) != 1 {
-		t.Fatal("repeated flush duplicated text", got)
-	}
-}
-func TestProgressHealsMissingLastDeltaWithoutRepeating(t *testing.T) {
-	start := time.Unix(100, 0)
-	p := &progressBuffer{}
-	var got []string
-	emit := func(s string) { got = append(got, s) }
-	p.token(start, "Hel", "", emit)
-	p.token(start.Add(progressFlushInterval), "lo wor", "", emit) // triggers flush of "Hel"+"lo wor"
-	p.token(start.Add(progressFlushInterval), "ld", "", emit)     // buffer now has "ld"
-	p.assistant(start.Add(progressFlushInterval+time.Second), "Hello world", emit)
-	// First flush emitted "Hello wor"; assistant should add only the "ld" suffix
-	if !reflect.DeepEqual(got, []string{"niffler: Hello wor", "niffler: ld"}) {
-		t.Fatal(got)
-	}
-}
-func TestProgressResetsAfterAssistantFrame(t *testing.T) {
-	now := time.Unix(100, 0)
-	p := &progressBuffer{}
-	var got []string
-	emit := func(s string) { got = append(got, s) }
-	p.assistant(now, "first", emit)
-	p.token(now, "second", "", emit)
-	p.assistant(now, "second", emit)
-	if !reflect.DeepEqual(got, []string{"niffler: first", "niffler: second"}) {
-		t.Fatal(got)
-	}
-}
-func TestProgressIntervalKeepsWatchdogActive(t *testing.T) {
-	start := time.Unix(100, 0)
-	p := &progressBuffer{}
-	var got []string
-	emit := func(s string) { got = append(got, s) }
-	p.token(start, "Hello", "", emit)
-	p.token(start.Add(2*time.Second), " world", "", emit)
 	if len(got) != 0 {
 		t.Fatal(got)
 	}
-	p.token(start.Add(3*time.Second), "!", "", emit)
-	p.assistant(start.Add(4*time.Second), "Hello world!", emit)
-	if !reflect.DeepEqual(got, []string{"niffler: Hello world!"}) {
+	p.token(now.Add(progressFlushInterval), "Confirmed", "", emit)
+	if !reflect.DeepEqual(got, []string{"Niffler is generating a response"}) {
 		t.Fatal(got)
 	}
-	p.assistant(start.Add(5*time.Second), "Next answer", emit)
-	if got[len(got)-1] != "niffler: Next answer" {
+	p.assistant(now.Add(16*time.Second), "Confirmed — tool called once", emit)
+	if got[1] != "Niffler: Confirmed — tool called once" {
 		t.Fatal(got)
+	}
+	p.flush(now, true, emit)
+	if len(got) != 2 {
+		t.Fatal("deltas repeated", got)
 	}
 }
-func TestProgressThinkingAndBoundedBuffers(t *testing.T) {
-	now := time.Unix(100, 0)
+func TestCanonicalAssistantFillsMissingDeltas(t *testing.T) {
 	p := &progressBuffer{}
+	now := time.Unix(100, 0)
 	var got []string
 	emit := func(s string) { got = append(got, s) }
-	p.token(now, "", "Think ", emit)
-	p.token(now, "", "carefully.", emit)
-	p.token(now, "Answer", "", emit)
-	p.flush(now, true, emit)
-	if !reflect.DeepEqual(got, []string{"niffler thinking: Think carefully.", "niffler: Answer"}) {
+	p.token(now, "Con", "", emit)
+	p.assistant(now, "Confirmed", emit)
+	p.assistant(now, "Second round", emit)
+	if !reflect.DeepEqual(got, []string{"Niffler: Confirmed", "Niffler: Second round"}) {
 		t.Fatal(got)
 	}
-	p.token(now, strings.Repeat("x", maxProgressBuffer), "", emit)
-	if p.text.Len() != 0 {
-		t.Fatal("buffer not bounded")
+}
+func TestPartialFallbackAndBounds(t *testing.T) {
+	p := &progressBuffer{}
+	now := time.Unix(100, 0)
+	var got []string
+	emit := func(s string) { got = append(got, s) }
+	p.token(now, "partial", "reason", emit)
+	p.flush(now, true, emit)
+	if !reflect.DeepEqual(got, []string{"Niffler partial thinking: reason", "Niffler partial response: partial"}) {
+		t.Fatal(got)
+	}
+	p.flush(now, true, emit)
+	if len(got) != 2 {
+		t.Fatal(got)
+	}
+	p.token(now, strings.Repeat("x", maxProgressBuffer*2), "", emit)
+	if p.text.Len() > maxProgressBuffer {
+		t.Fatal("unbounded")
 	}
 }
-func TestObserveProgressBoundariesAndRedaction(t *testing.T) {
-	for _, boundary := range []string{"assistant", "toolcall", "turn", "driver-exit"} {
-		t.Run(boundary, func(t *testing.T) {
+func TestStructuredTimelineAndTerminalDedupe(t *testing.T) {
+	for _, outcome := range []string{"success", "cancelled", "budget-exhausted", "error"} {
+		t.Run(outcome, func(t *testing.T) {
 			b := &bridge{secrets: []string{"secret"}, listeners: map[chan event]bool{}}
 			p := &progressBuffer{}
 			now := time.Unix(100, 0)
@@ -104,46 +76,36 @@ func TestObserveProgressBoundariesAndRedaction(t *testing.T) {
 			}
 			send("token", map[string]any{"content": "se"})
 			send("token", map[string]any{"content": "cret says hello"})
-			if len(b.history) != 0 {
-				t.Fatal("unbuffered deltas", b.history)
-			}
-			switch boundary {
-			case "assistant":
-				send("assistant", map[string]any{"content": "secret says hello"})
-			case "toolcall":
-				send("toolcall", map[string]any{"phase": "start", "tool": "read"})
-			case "turn":
-				send("turn", map[string]any{"phase": "done", "turnId": "t1", "usage": map[string]any{"promptTokens": 10}})
-			case "driver-exit":
-				p.flush(now, true, b.progressMessage)
+			send("assistant", map[string]any{"content": "secret says hello"})
+			send("toolcall", map[string]any{"turnId": "turn1", "callId": "c1", "phase": "start", "tool": "bash"})
+			send("toolcall", map[string]any{"turnId": "turn1", "callId": "c1", "phase": "done", "tool": "bash", "durationMs": 123})
+			usage := json.RawMessage(`{"promptTokens":10,"reasoningTokens":2}`)
+			send("turn", map[string]any{"turnId": "turn1", "phase": "done", "outcome": outcome, "usage": usage})
+			b.settleProgress(p, "turn1", outcome, "", usage, now)
+			if len(b.history) != 5 {
+				t.Fatalf("expected assistant/tool start/tool done/terminal/usage, got %v", b.history)
 			}
 			var first struct {
 				Message string `json:"message"`
 			}
-			if len(b.history) == 0 {
-				t.Fatal("partial text lost")
+			json.Unmarshal(b.history[0].Data, &first)
+			if first.Message != "Niffler: [REDACTED] says hello" {
+				t.Fatal(first)
 			}
-			if e := json.Unmarshal(b.history[0].Data, &first); e != nil {
-				t.Fatal(e)
+			if !strings.Contains(string(b.history[1].Data), "Using bash") || !strings.Contains(string(b.history[2].Data), "Finished tool call bash") || !strings.Contains(string(b.history[2].Data), `"callId":"c1"`) {
+				t.Fatal(b.history)
 			}
-			if first.Message != "niffler: [REDACTED] says hello" {
-				t.Fatal(first.Message)
-			}
-			if boundary == "toolcall" && !strings.Contains(string(b.history[1].Data), "tool start: read") {
-				t.Fatal("tool event lost")
-			}
-			if boundary == "turn" && b.history[1].Type != "usage" {
-				t.Fatal("accounting changed")
+			if !strings.Contains(string(b.history[3].Data), outcome) || b.history[4].Type != "usage" {
+				t.Fatal(b.history)
 			}
 		})
 	}
 }
-func TestObserveProgressIgnoresOtherConversations(t *testing.T) {
+func TestOtherConversationsDoNotEnterTimeline(t *testing.T) {
 	b := &bridge{listeners: map[chan event]bool{}}
 	p := &progressBuffer{}
 	raw := json.RawMessage(`{"sessionId":"child","content":"unrelated"}`)
-	b.observeProgress("ev.session.child.token", raw, "parent", p, time.Unix(100, 0))
-	p.flush(time.Unix(100, 0), true, b.progressMessage)
+	b.observeProgress("ev.session.child.assistant", raw, "parent", p, time.Unix(100, 0))
 	if len(b.history) != 0 {
 		t.Fatal(b.history)
 	}

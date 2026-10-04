@@ -60,11 +60,13 @@ files are mode `0600`. Local Niffler tasks also use a private claim relay,
 never a persisted runner-wide MCP token. Niffler control variables are reserved
 against task env/endpoint-token overrides.
 
-Live Niffler text and thinking deltas are batched into progress messages
-(up to one batch every three seconds during generation), not individual token
-rows. Assistant, tool, terminal and driver-exit boundaries flush pending text;
-canonical assistant frames fill missing trailing deltas without repeating text.
-Tool-call events remain distinct and usage accounting is unchanged.
+Live progress uses complete assistant messages, structured tool-call start/done
+frames (including call ID, error and duration), and one terminal outcome/usage
+frame per turn. Raw token fragments never become timeline rows. Ongoing token
+activity emits a generic liveness message at most every 15 seconds; bounded
+partial text is flushed only at tool/terminal/driver-exit boundaries if no
+canonical assistant frame arrived. Terminal event/result settlement is
+idempotent by turn ID, and accounting remains unchanged.
 Completion requires exactly one native `result` with a successful outcome;
 non-success outcomes and `turnError` fail the task. Cancellation sends SIGTERM
 to the native driver, which uses the steering control and settles/exports

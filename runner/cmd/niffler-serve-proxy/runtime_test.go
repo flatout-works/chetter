@@ -65,7 +65,7 @@ func TestTerminalEventPreservesUsageAndFiltersChildren(t *testing.T) {
 		t.Fatal("round usage double counted")
 	}
 	send("parent", "ev.session.parent.turn")
-	if len(b.history) != 1 || !strings.Contains(string(b.history[0].Data), "cacheWriteTokens") {
+	if len(b.history) != 2 || !strings.Contains(string(b.history[1].Data), "cacheWriteTokens") {
 		t.Fatal(b.history)
 	}
 	if b.redact("a secret b") != "a [REDACTED] b" {
