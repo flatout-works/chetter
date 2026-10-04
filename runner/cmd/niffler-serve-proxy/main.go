@@ -324,6 +324,8 @@ func (b *bridge) runNative(ctx context.Context, id, prompt, model, thinking, exp
 	var result nativeResult
 	count := 0
 	var protocolErr error
+	progress := &progressBuffer{}
+	defer func() { progress.flush(time.Now(), true, b.progressMessage) }()
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64<<10), 8<<20)
 	for scanner.Scan() {
@@ -340,7 +342,7 @@ func (b *bridge) runNative(ctx context.Context, id, prompt, model, thinking, exp
 		}
 		switch line.Type {
 		case "event":
-			b.observe(line.Subject, line.Data, id)
+			b.observeProgress(line.Subject, line.Data, id, progress, time.Now())
 		case "mcp":
 			b.emit("message", map[string]any{"message": "niffler MCP bootstrap"})
 		case "error":
@@ -397,7 +399,13 @@ func (b *bridge) runNative(ctx context.Context, id, prompt, model, thinking, exp
 	}
 	return result, nil
 }
+func (b *bridge) progressMessage(message string) {
+	b.emit("message", map[string]any{"message": b.redact(message)})
+}
 func (b *bridge) observe(subject string, data json.RawMessage, id string) {
+	b.observeProgress(subject, data, id, &progressBuffer{}, time.Now())
+}
+func (b *bridge) observeProgress(subject string, data json.RawMessage, id string, progress *progressBuffer, now time.Time) {
 	var p struct {
 		SessionID string          `json:"sessionId"`
 		TurnID    string          `json:"turnId"`
@@ -413,15 +421,14 @@ func (b *bridge) observe(subject string, data json.RawMessage, id string) {
 	}
 	switch {
 	case strings.HasSuffix(subject, ".token"):
-		if p.Content != "" {
-			b.emit("message", map[string]any{"message": "niffler: " + b.redact(p.Content)})
-		}
-		if p.Reasoning != "" {
-			b.emit("message", map[string]any{"message": "niffler thinking: " + b.redact(p.Reasoning)})
-		}
+		progress.token(now, p.Content, p.Reasoning, b.progressMessage)
+	case strings.HasSuffix(subject, ".assistant"):
+		progress.assistant(now, p.Content, b.progressMessage)
 	case strings.HasSuffix(subject, ".toolcall"):
+		progress.flush(now, true, b.progressMessage)
 		b.emit("message", map[string]any{"message": fmt.Sprintf("niffler tool %s: %s", p.Phase, p.Tool)})
 	case strings.HasSuffix(subject, ".turn") && p.Phase == "done":
+		progress.flush(now, true, b.progressMessage)
 		b.emit("usage", map[string]any{"turnId": p.TurnID, "outcome": p.Outcome, "usage": p.Usage})
 	}
 }

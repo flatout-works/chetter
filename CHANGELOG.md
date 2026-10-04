@@ -42,6 +42,11 @@ Detailed per-day history of everything that went into this release is below.
 
 ### Fixed
 
+- Niffler progress now batches streamed text/thinking deltas instead of storing
+  one timeline entry per token. Assistant, tool and terminal boundaries flush
+  partial output without repeating the full assistant text; long streams still
+  publish progress every three seconds for watchdog activity.
+
 - Repository-less tasks, including every "all harnesses" diagnostics check,
   no longer panic during shared Git workspace preparation. Splitting an empty
   repository set returns no primary or secondary checkout, preserving askpass
