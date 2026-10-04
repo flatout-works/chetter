@@ -20,7 +20,7 @@ global/images/java-spring/Dockerfile
 
 The `chetter-config` GitHub Actions workflow builds those Dockerfiles and publishes tags as `ghcr.io/flatout-works/chetter-agent:<variant>`, for example `ghcr.io/flatout-works/chetter-agent:golang`.
 
-Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, which is built by the main Chetter CI and contains the shared harness CLIs (`opencode`, `claude-code`, `codewhale`, `pi`, `codex`), `mcp-bridge`, `chetter-entrypoint`, `git`, `gh`, and common runtime tools.
+Each variant inherits from `ghcr.io/flatout-works/chetter-agent-base:main`, which is built by the main Chetter CI and contains the shared harness CLIs (`opencode`, `claude-code`, `codewhale`, `pi`, `codex`, `niffler`), `mcp-bridge`, `chetter-entrypoint`, `git`, `gh`, and common runtime tools.
 
 ## Image Resolution
 
@@ -121,7 +121,7 @@ Today Chetter bakes these into `chetter-agent-base` and derived images:
 | Core CLI tooling | `git`, `curl`, `make`, `jq`, `ripgrep`, Docker CLI, MySQL client. |
 | GitHub CLI wrapper | `/usr/local/bin/gh` permits an explicit read-only command allowlist and obtains repository-scoped credentials from the execution broker. Arbitrary API access and all writes are blocked and must use Chetter MCP tools. The real binary is at `/usr/local/bin/gh-real`. |
 | Language/toolchain packages | Go, buf, sqlc, goose, govulncheck, osv-scanner, hcloud; variant images add Python, Node, or Rust tooling. |
-| Agent harnesses | OpenCode, Claude Code, Pi, CodeWhale, `mcp-bridge`, and `chetter-entrypoint`. |
+| Agent harnesses | OpenCode, Claude Code, Pi, CodeWhale, Codex, Niffler, `mcp-bridge`, and `chetter-entrypoint`. |
 | OpenCode plugin dependencies | npm packages used by built-in OpenCode integrations, including Mem9 support. |
 | Current fallback agents | `.opencode/agent/` is copied into runner images today. These are intended to become fallback defaults once Git-backed runtime injection is complete. |
 

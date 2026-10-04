@@ -8,7 +8,7 @@ is, with code examples that show the mechanisms in action.
 Chetter is a control plane for a fleet of containerized coding agents. A client (an MCP
 consumer such as an editor or CLI, or the web UI) submits a *task*; the server queues it;
 a *runner* claims it, spins up an agent harness (OpenCode, Claude Code, Pi, CodeWhale,
-Codex) inside a sandboxed container, streams events back, and the server records the
+Codex, Niffler) inside a sandboxed container, streams events back, and the server records the
 result.
 
 There are two separately versioned binaries that matter, plus a third CLI:
@@ -555,7 +555,7 @@ sandboxes of it at once. The **execution backend** is pluggable:
 | `kubernetes` + gVisor | Pod + runsc runtime class | userspace kernel sandbox | managed clusters |
 
 The **harness** is selected per task (`opencode`, `claude-code`, `pi`, `codewhale`,
-`codex`). Harnesses implement small interfaces — `ServeHarness` (interactive HTTP API),
+`codex`, `niffler`). Harnesses implement small interfaces — `ServeHarness` (interactive HTTP API),
 `RPCHarness` (subprocess RPC), `SessionContinuable` (resume) — so the controller is
 harness-agnostic:
 

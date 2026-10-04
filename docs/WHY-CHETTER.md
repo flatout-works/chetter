@@ -12,7 +12,7 @@ Chetter is useful when the goal is to operate agents as a shared, observable, se
 
 1. **Use standard agent harnesses without tying the workflow to one CI implementation.**
 
-   Chetter runs standard CLIs including Claude Code, OpenCode, Codex, Pi, and CodeWhale. A review policy can choose the harness, model, variant, image, timeout, and skills independently of a repository workflow file. The same task definition can be used for PR reviews, scheduled work, issue responders, and manually submitted work.
+   Chetter runs standard CLIs including Claude Code, OpenCode, Codex, Pi, CodeWhale, and Niffler. A review policy can choose the harness, model, variant, image, timeout, and skills independently of a repository workflow file. The same task definition can be used for PR reviews, scheduled work, issue responders, and manually submitted work.
 
 2. **Keep agent infrastructure and credentials out of every repository.**
 

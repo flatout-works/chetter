@@ -458,7 +458,7 @@ providers:
 
 `kind: openai_compatible` is enough for OpenCode provider rendering. Native
 providers can still be listed for harnesses such as Claude Code, Pi, CodeWhale,
-or Codex without
+Codex, or Niffler without
 OpenCode trying to render them as OpenAI-compatible endpoints.
 
 Use provider or model `harnesses` overrides when a harness needs a different
@@ -508,8 +508,8 @@ not yet support generic provider credentials.
 
 | Kind | Protocol | Supported harnesses |
 |---|---|---|
-| `openai_compatible` | OpenAI Completions API (`/v1/chat/completions`) | OpenCode, Pi† |
-| `native` | Harness-native (Responses API, Anthropic API, etc.) | Claude Code, Pi, CodeWhale, Codex |
+| `openai_compatible` | OpenAI Completions API (`/v1/chat/completions`) | OpenCode, Pi†, Niffler |
+| `native` | Harness-native (Responses API, Anthropic API, etc.) | Claude Code, Pi, CodeWhale, Codex, Niffler |
 | `aws_bedrock` | Responses API via AWS SigV4 auth | Codex |
 
 † Pi resolves providers through its own catalog; Chetter supplies defaults via env vars.
