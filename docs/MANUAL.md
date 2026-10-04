@@ -190,7 +190,7 @@ Managed Git identities control commit attribution for agent work and are configu
 Administrators can start an end-to-end deployment check from the Diagnostics page or with `chetter_run_self_test`. The command requires one of these profiles:
 
 - `quick` checks the default OpenCode and model path.
-- `harnesses` checks OpenCode, Claude Code, Pi, CodeWhale, and Codex with their configured defaults.
+- `harnesses` checks OpenCode, Claude Code, Pi, CodeWhale, Niffler, and Codex with their configured defaults.
 - `providers` checks each model-catalog provider through OpenCode.
 - `full` combines harness and provider checks and adds the GitHub credential check when `CHETTER_SELF_TEST_GITHUB_REPO` is configured.
 
