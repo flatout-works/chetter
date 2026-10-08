@@ -396,9 +396,10 @@ chetter_mcp:
 | `execution.harness` | empty, falls back to OpenCode | Default harness when a task or trigger does not specify one. Supported: `opencode`, `claude-code`, `pi`, `codewhale`, `codex`, `niffler`. |
 | `execution.use_gvisor` | `USE_GVISOR=true` env | Enables Docker `--runtime=runsc` for task containers. |
 | `execution.allow_unisolated` | `CHETTER_ALLOW_UNISOLATED=true` env | Escape hatch for trusted single-tenant deployments without gVisor: the runner accepts isolation-requiring tasks even when it cannot enforce a sandbox. See issue #291. |
-| `execution.container_memory` | empty | Optional runner-side Docker memory cap, passed as `--memory` and `--memory-swap` (for example `4g`, `8192m`). Task limits may be stricter but cannot raise this cap. Empty means no runner-imposed cap. OOM-killed tasks report `failure_category=resource_limit`. |
+| `execution.container_memory` | empty | Optional runner-side Docker RSS cap, passed as `--memory` (for example `4g`, `8192m`). Task limits may be stricter but cannot raise this cap. Empty means no runner-imposed cap. OOM-killed tasks report `failure_category=resource_limit`. |
 | `execution.container_cpu` | empty | Optional CPU cap in cores, passed as `--cpus` (for example `1.5`). |
 | `execution.container_pids` | empty | Optional PID cap, passed as `--pids-limit` (for example `256`). |
+| `execution.container_swap_mb` | `0` | Swap headroom in MiB added to the resolved memory cap to form `--memory-swap`. Docker OOM-kills at memory+swap, so a transient spike spills to swap instead of dying at the RSS cap; `0` keeps `--memory-swap` equal to `--memory` (no container swap). |
 | `deploy.provider` | `local` | Reserved deployment provider metadata. |
 | `deploy.registry` | empty | Reserved image registry metadata. |
 | `deploy.chetter_url` | `chetter.flatout.works` | Reserved public URL metadata. |

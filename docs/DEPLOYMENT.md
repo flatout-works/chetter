@@ -306,6 +306,8 @@ Every task also carries a container memory limit. The server stamps it into each
 
 Runners gate task claiming on live host pressure so they never admit work into a thrashing host (issue #397). Two settings mirror the `CHETTER_CONTAINER_*` conventions and are read directly from the runner environment (or `runner/*` keys in the runner config):
 
+- `CHETTER_CONTAINER_MEMORY` — runner-side Docker RSS cap (`--memory`); task limits can tighten but never raise it.
+- `CHETTER_CONTAINER_SWAP_MB` (default `0`) — swap headroom in MiB added to the resolved cap to form `--memory-swap`. Docker OOM-kills at memory+swap, so a transient build spike spills to swap instead of dying at the RSS cap. Keep it modest (1–4 GiB): oversized headroom plus concurrent slots recreates the swap-thrash spiral of issue #418.
 - `CHETTER_MIN_FREE_HOST_MEMORY_MB` (default `1024`) — pause claiming while free host memory stays below this floor; `0` disables the memory gate.
 - `CHETTER_MAX_HOST_LOAD` (default `0` = disabled) — optionally pause claiming while the host's 1-minute load average exceeds this value (set it roughly to the host's core count on shared/oversubscribed hosts).
 
