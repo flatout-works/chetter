@@ -67,12 +67,22 @@ services:
       # via the Arcane project env if throughput matters more than headroom.
       RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
       # Runner-level hard caps. These can only tighten the server's per-task
-      # limit, never raise it, so they bound the worst case on a host that
+      # Runner-level limits are hard safety caps: a per-task limit can tighten
+      # this limit, never raise it, so they bound the worst case on a host that
       # cannot hold one full-size task per concurrent slot. Without them two
       # runners on the same box could each start an 8 GB sandbox (16 GB total
       # on a 16 GB host), which is the overcommit that feeds the swap-thrash
       # spiral. See issue #418.
-      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-4g}"
+      #
+      # COMPILER-HEAVY TASKS: Nim/Govulncheck/OSV builds peak well past 4g and
+      # were OOM-killed at the RSS cap. `container_swap_mb` gives each task
+      # bounded swap headroom so a transient spike spills instead of dying (the
+      # kill threshold is memory+swap, not memory), while the RSS cap still
+      # bounds how much resident memory a sandbox may hold. Keep this headroom
+      # modest (1-4g) — large values plus concurrent slots reintroduce the
+      # thrash spiral issue #418 warns about.
+      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-8g}"
+      CHETTER_CONTAINER_SWAP_MB: "${CHETTER_CONTAINER_SWAP_MB:-4096}"
       CHETTER_CONTAINER_CPU: "${CHETTER_CONTAINER_CPU:-2}"
       CHETTER_CONTAINER_PIDS: "${CHETTER_CONTAINER_PIDS:-1024}"
       USE_GVISOR: "true"
@@ -106,7 +116,8 @@ services:
       HOST_WORKSPACE_ROOT: /var/lib/chetter-runner-2/workspaces
       RUNNER_WORKSPACE_ROOT: /var/lib/chetter-runner/workspaces
       RUNNER_MAX_CONCURRENT: "${RUNNER_MAX_CONCURRENT:-1}"
-      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-4g}"
+      CHETTER_CONTAINER_MEMORY: "${CHETTER_CONTAINER_MEMORY:-8g}"
+      CHETTER_CONTAINER_SWAP_MB: "${CHETTER_CONTAINER_SWAP_MB:-4096}"
       CHETTER_CONTAINER_CPU: "${CHETTER_CONTAINER_CPU:-2}"
       CHETTER_CONTAINER_PIDS: "${CHETTER_CONTAINER_PIDS:-1024}"
       USE_GVISOR: "true"
