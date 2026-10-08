@@ -156,7 +156,7 @@ Managed Git identities control commit attribution for agent work and are configu
 | `CHETTER_WEBHOOK_ALLOW_HTTP` | No | `false` | SSRF-safe destination policy for outbound webhook delivery (event-callback `webhook`/`slack` actions today, the unified webhook platform later): when `false` (default), `http://` destinations are rejected and `https://` is required. Set to `true` only for an explicit non-default override (e.g. loopback development mode). See issue #337. |
 | `CHETTER_WEBHOOK_ALLOW_PRIVATE` | No | `false` | SSRF-safe destination policy: when `false` (default), destinations in loopback, link-local (incl. cloud metadata `169.254.169.254`), private (RFC 1918/4193), shared, multicast, and reserved ranges are rejected at callback create/update time and at delivery (every dialed address is checked; no DNS-rebinding window). Set to `true` only for trusted single-tenant deployments or loopback development mode. See issue #337. |
 | `CHETTER_WEBHOOK_ALLOWLIST` | No | empty | SSRF-safe destination policy: comma-separated exemptions to the blocked ranges — CIDRs/literal IPs (e.g. `10.0.0.0/8`, `192.168.1.5`) or hostnames (e.g. `hooks.internal`, `.internal.example` to also match subdomains). Operator-supplied only; a malformed entry fails startup. See issue #337. |
-| `CHETTER_TASK_MAX_MEMORY_MB` | No | `4096` | Per-task container memory limit in MB stamped into every task request (`max_memory_mb`). The runner applies it as `docker --memory`/`--memory-swap`, or as the agent container's memory limit on Kubernetes, and can only tighten it further via its own `CHETTER_CONTAINER_MEMORY` cap. Raise it for memory-heavy tasks (e.g. nightly `govulncheck`/`osv-scanner` scans OOM at the default). Values `<= 0` fall back to the built-in default. |
+| `CHETTER_TASK_MAX_MEMORY_MB` | No | `4096` | Per-task container memory limit in MB stamped into every task request (`max_memory_mb`). The runner applies it as `docker --memory`, or as the agent container's memory limit on Kubernetes, and can only tighten it further via its own `CHETTER_CONTAINER_MEMORY` cap (which also derives `--memory-swap` from `execution.container_swap_mb`). Raise it for memory-heavy tasks (e.g. nightly `govulncheck`/`osv-scanner` scans OOM at the default). Values `<= 0` fall back to the built-in default. |
 | `CHETTER_LOG_LEVEL` | No | `info` | Minimum structured log level: `debug`, `info`, `warn`, or `error` (case-insensitive). Invalid values fail startup with a clear error. See [BACKEND.md](BACKEND.md#11-observability) and issue #87. |
 | `CHETTER_LOG_FORMAT` | No | `text` | Structured log output format: `text` (human-readable key=value) or `json` (one JSON object per record). Invalid values fail startup with a clear error. See [BACKEND.md](BACKEND.md#11-observability) and issue #87. |
 | `CHETTER_ENV_BLOCKED_NAMES` | No | `PATH,HOME,SHELL,LD_PRELOAD,LD_LIBRARY_PATH` | Comma-separated exact task env var names rejected at task submission (case-insensitive). Each entry must itself be a valid env var name — a malformed entry (for example one containing `=`) fails server startup rather than silently never matching. See issues #80 and #448. |
@@ -229,8 +229,8 @@ Every check is a normal runner task. Passing requires a successful terminal task
 | `CHETTER_CLAUDE_MAX_BUDGET_USD` | Optional per-task spend ceiling for the Claude Code harness, passed as `--max-budget-usd`. Subagent spend counts toward it. |
 
 The complete runner environment and `runner.yaml` reference, including
-container resource limits (`CHETTER_CONTAINER_MEMORY`, `CHETTER_CONTAINER_CPU`,
-`CHETTER_CONTAINER_PIDS`), lives in [runner/README.md](../runner/README.md).
+container resource limits (`CHETTER_CONTAINER_MEMORY`, `CHETTER_CONTAINER_SWAP_MB`,
+`CHETTER_CONTAINER_CPU`, `CHETTER_CONTAINER_PIDS`), lives in [runner/README.md](../runner/README.md).
 
 ### Data Retention And Storage Pruning
 
@@ -363,6 +363,7 @@ execution:
   harness: opencode
   use_gvisor: true
   container_memory: 4g
+  container_swap_mb: 2048
   container_cpu: 2
   container_pids: 256
 

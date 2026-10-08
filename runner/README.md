@@ -162,7 +162,8 @@ Configure them in `runner.yaml`:
 
 ```yaml
 execution:
-  container_memory: 512m   # hard cap passed to docker --memory and --memory-swap
+  container_memory: 512m   # hard cap passed to docker --memory
+  container_swap_mb: 1024  # swap headroom in MiB added to --memory to form --memory-swap
   container_cpu: 2          # hard cap passed to docker --cpus (decimal allowed, e.g. 1.5)
   container_pids: 256       # passed to docker --pids-limit
 ```
@@ -172,18 +173,19 @@ Or via environment variables (which override the YAML values when set):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit, e.g. `512m`, `2g` |
+| `CHETTER_CONTAINER_SWAP_MB` | `0` | Swap headroom in MiB added to the resolved `--memory` cap to form `--memory-swap`; `0` keeps them equal |
 | `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores, e.g. `1.5` |
 | `CHETTER_CONTAINER_PIDS` | (unset) | Maximum number of PIDs, e.g. `256` |
 
 Every task also carries a server-assigned memory limit (`max_memory_mb`, configured server-side via `CHETTER_TASK_MAX_MEMORY_MB`, default `4096`). These runner-level limits are hard caps: in Docker mode the effective limit is the smaller of the two, so set `CHETTER_CONTAINER_MEMORY` only to tighten a deployment below the server's value — never to raise it. In Kubernetes mode the pod limit comes from `max_memory_mb` alone. Raise `CHETTER_TASK_MAX_MEMORY_MB` on the server if memory-heavy tasks (e.g. nightly `govulncheck`/`osv-scanner` scans) are OOM-killed.
 
-**Set them on hosts that run more than one runner.** `max_memory_mb` is per task, not per host: with two runners on one Docker daemon and no runner-level cap, two 8 GB tasks can run concurrently on a 16 GB host. gVisor's sentry also lives outside the container cgroup, so the `--memory` cap does not bound total host usage. `deploy/compose.yaml` therefore sets `CHETTER_CONTAINER_MEMORY=4g`, `CHETTER_CONTAINER_CPU=2`, and `CHETTER_CONTAINER_PIDS=1024` (all env-overridable) so a task that exceeds the host's real headroom is OOM-killed inside its sandbox rather than driving the host into swap thrash. See issue #418.
+**Set them on hosts that run more than one runner.** `max_memory_mb` is per task, not per host: with two runners on one Docker daemon and no runner-level cap, two 8 GB tasks can run concurrently on a 16 GB host. gVisor's sentry also lives outside the container cgroup, so the `--memory` cap does not bound total host usage. `deploy/compose.yaml` therefore sets `CHETTER_CONTAINER_MEMORY=8g`, `CHETTER_CONTAINER_SWAP_MB=4096`, `CHETTER_CONTAINER_CPU=2`, and `CHETTER_CONTAINER_PIDS=1024` (all env-overridable) so a task that exceeds the host's real headroom spills into bounded swap and is OOM-killed inside its sandbox rather than driving the host into swap thrash. See issue #418.
 
 **Leaked containers are reaped automatically.** A task container is force-removed when its task ends, and retried on failure or timeout. If teardown still fails (host pressure, runner crash, slow daemon), a periodic reaper (every 5 minutes, minimum container age 10 minutes) asks the control plane whether each `chetter-task-*` container still backs live work — a running attempt, a retained session, or a ready checkpoint — and removes the ones that do not. The reaper fails closed: without a control-plane verdict it removes nothing, so a live sibling runner's sandbox on the same daemon is never touched. See issue #418.
 
 **Requirements:**
 
-- `container_memory`, `container_cpu`, and `container_pids` must be greater than or equal to 0; negative values and unparseable environment overrides fail configuration validation at startup.
+- `container_memory`, `container_cpu`, and `container_pids` must be greater than or equal to 0; `container_swap_mb` must be a non-negative integer. Negative values and unparseable environment overrides fail configuration validation at startup.
 - `--cpus` and `--pids-limit` are supported by the Docker daemon and are compatible with the gVisor (`runsc`) runtime.
 - A `container_cpu` of `0` means "unset" (no `--cpus` flag); use a positive value to enforce a quota.
 
@@ -236,7 +238,8 @@ See [docs/HARNESSES.md](../docs/HARNESSES.md) for the full capability matrix and
 | `MAX_CONCURRENT` | `10` | Max parallel tasks |
 | `CHETTER_MIN_FREE_HOST_MEMORY_MB` | `1024` | Self-preservation: pause claiming while free host memory stays below this many MiB; `0` disables the gate. See the Host-pressure self-preservation section of `docs/MANUAL.md` (issue #397). |
 | `CHETTER_MAX_HOST_LOAD` | `0` | Optional self-preservation: pause claiming while the host's 1-minute load average exceeds this value; opt-in because a useful threshold depends on host core count. See issue #397. |
-| `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit passed to `docker --memory`/`--memory-swap` (see [Container resource limits](#container-resource-limits)) |
+| `CHETTER_CONTAINER_MEMORY` | (unset) | Memory limit passed to `docker --memory` (see [Container resource limits](#container-resource-limits)) |
+| `CHETTER_CONTAINER_SWAP_MB` | `0` | Swap headroom in MiB added to the `--memory` cap to form `docker --memory-swap` |
 | `CHETTER_CONTAINER_CPU` | (unset) | CPU quota in cores passed to `docker --cpus` (decimal allowed) |
 | `CHETTER_CONTAINER_PIDS` | (unset) | PID cap passed to `docker --pids-limit` |
 
