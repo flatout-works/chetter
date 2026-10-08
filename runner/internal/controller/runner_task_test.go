@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1570,6 +1571,37 @@ func TestDockerRPCArgsAppliesContainerLimits(t *testing.T) {
 	}
 	if !hasAdjacentArgs(args, "--pids-limit", "200") {
 		t.Fatalf("expected --pids-limit 200 in args: %v", args)
+	}
+}
+
+func TestDockerRPCArgsSwapHeadroom(t *testing.T) {
+	h := pi.New()
+	req := task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}
+	// 4g + 4096m headroom => --memory-swap is memory+swap in bytes (8 GiB).
+	exec := config.ExecutionConfig{ContainerMemory: "4g", ContainerSwapMB: 4096}
+	args := testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "4g") {
+		t.Fatalf("expected --memory 4g in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", strconv.FormatInt(8<<30, 10)) {
+		t.Fatalf("expected --memory-swap %d in args: %v", int64(8<<30), args)
+	}
+
+	// A stricter task cap tightens --memory, and the headroom still rides on
+	// top of that tighter value rather than the runner cap.
+	req = task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest", MaxMemoryMB: 1024}
+	args = testDockerRPCArgs(t, req, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", exec)
+	if !hasAdjacentArgs(args, "--memory", "1024m") {
+		t.Fatalf("expected --memory 1024m in args: %v", args)
+	}
+	if !hasAdjacentArgs(args, "--memory-swap", strconv.FormatInt(5<<30, 10)) {
+		t.Fatalf("expected --memory-swap %d in args: %v", int64(5<<30), args)
+	}
+
+	// Unset headroom preserves the no-swap contract.
+	args = testDockerRPCArgs(t, task.TaskRequest{TaskID: "task-123", AgentImage: "chetter-agent:latest"}, "runner-test", "/tmp/ws", "chetter-task-task-123", h, h.RpcCommand(req), false, "", "", config.ExecutionConfig{ContainerMemory: "4g"})
+	if !hasAdjacentArgs(args, "--memory-swap", "4g") {
+		t.Fatalf("expected default --memory-swap 4g in args: %v", args)
 	}
 }
 

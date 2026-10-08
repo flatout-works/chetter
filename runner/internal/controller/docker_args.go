@@ -134,7 +134,16 @@ func appendContainerLimits(args []string, exec config.ExecutionConfig, req task.
 		}
 	}
 	if mem != "" {
-		args = append(args, "--memory", mem, "--memory-swap", mem)
+		swap := mem
+		if exec.ContainerSwapMB > 0 {
+			// --memory-swap is memory+swap, so the configured headroom is added
+			// on top of the resolved RSS cap (runner or task, whichever is
+			// stricter). Equal values mean zero swap and an OOM at the RSS cap.
+			if memBytes, err := config.ParseMemoryBytes(mem); err == nil {
+				swap = strconv.FormatInt(memBytes+int64(exec.ContainerSwapMB)<<20, 10)
+			}
+		}
+		args = append(args, "--memory", mem, "--memory-swap", swap)
 	}
 	cpu := exec.ContainerCPU
 	if req.MaxCPU > 0 && (cpu == 0 || float64(req.MaxCPU) < cpu) {

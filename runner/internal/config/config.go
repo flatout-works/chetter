@@ -100,10 +100,16 @@ type ExecutionConfig struct {
 	ContainerMemory string  `yaml:"container_memory"`
 	ContainerCPU    float64 `yaml:"container_cpu"`
 	ContainerPIDs   int     `yaml:"container_pids"`
+	// ContainerSwapMB is swap headroom added on top of ContainerMemory when
+	// building --memory-swap. Docker OOM-kills at memory+swap, so a transient
+	// compiler spike spills to swap instead of dying at the RSS cap. 0 (the
+	// default) keeps --memory-swap equal to --memory, i.e. no container swap.
+	ContainerSwapMB int `yaml:"container_swap_mb"`
 
 	containerMemoryEnvInvalid bool
 	containerCPUEnvInvalid    bool
 	containerPIDsEnvInvalid   bool
+	containerSwapMBEnvInvalid bool
 }
 
 type KubernetesConfig struct {
@@ -175,6 +181,9 @@ func validate(cfg *Config) error {
 	if cfg.Execution.containerPIDsEnvInvalid {
 		return fmt.Errorf("CHETTER_CONTAINER_PIDS must be a positive integer")
 	}
+	if cfg.Execution.containerSwapMBEnvInvalid {
+		return fmt.Errorf("CHETTER_CONTAINER_SWAP_MB must be a non-negative integer number of MiB")
+	}
 	if cfg.Execution.ContainerMemory != "" {
 		if _, err := ParseMemoryBytes(cfg.Execution.ContainerMemory); err != nil {
 			return fmt.Errorf("execution.container_memory: %v", err)
@@ -185,6 +194,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.Execution.ContainerPIDs < 0 {
 		return fmt.Errorf("execution.container_pids must be greater than or equal to 0")
+	}
+	if cfg.Execution.ContainerSwapMB < 0 {
+		return fmt.Errorf("execution.container_swap_mb must be greater than or equal to 0")
 	}
 	if cfg.Execution.Harness != "" && !isSupportedHarness(cfg.Execution.Harness) {
 		return fmt.Errorf("execution.harness must be one of opencode, claude-code, pi, codewhale, codex, or niffler")
@@ -318,6 +330,13 @@ func applyDefaults(cfg *Config) {
 			cfg.Execution.ContainerPIDs = parsed
 		} else {
 			cfg.Execution.containerPIDsEnvInvalid = true
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("CHETTER_CONTAINER_SWAP_MB")); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			cfg.Execution.ContainerSwapMB = parsed
+		} else {
+			cfg.Execution.containerSwapMBEnvInvalid = true
 		}
 	}
 	setStringFromEnv(&cfg.Kubernetes.Namespace, "KUBERNETES_NAMESPACE")

@@ -226,6 +226,9 @@ func TestContainerLimitsValidation(t *testing.T) {
 		{name: "invalid memory negative", yaml: "execution:\n  container_memory: -512m\n", wantErr: true},
 		{name: "negative cpu", yaml: "execution:\n  container_cpu: -1\n", wantErr: true},
 		{name: "negative pids", yaml: "execution:\n  container_pids: -1\n", wantErr: true},
+		{name: "negative swap", yaml: "execution:\n  container_swap_mb: -1\n", wantErr: true},
+		{name: "env swap override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_SWAP_MB": "4096"}},
+		{name: "invalid env swap", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_SWAP_MB": "abc"}, wantErr: true},
 		{name: "env cpu override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_CPU": "1.5"}},
 		{name: "env pids override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_PIDS": "100"}},
 		{name: "env memory override", yaml: `{}`, env: map[string]string{"CHETTER_CONTAINER_MEMORY": "512m"}},
@@ -238,6 +241,7 @@ func TestContainerLimitsValidation(t *testing.T) {
 			t.Setenv("CHETTER_CONTAINER_CPU", "")
 			t.Setenv("CHETTER_CONTAINER_PIDS", "")
 			t.Setenv("CHETTER_CONTAINER_MEMORY", "")
+			t.Setenv("CHETTER_CONTAINER_SWAP_MB", "")
 			for key, value := range tc.env {
 				t.Setenv(key, value)
 			}
@@ -256,6 +260,21 @@ func TestContainerLimitsValidation(t *testing.T) {
 				t.Fatalf("Load: %v", err)
 			}
 		})
+	}
+}
+
+func TestContainerSwapMBEnvOverride(t *testing.T) {
+	t.Setenv("CHETTER_CONTAINER_SWAP_MB", "4096")
+	path := filepath.Join(t.TempDir(), "runner.yaml")
+	if err := os.WriteFile(path, []byte("execution:\n  container_swap_mb: 2048\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Execution.ContainerSwapMB != 4096 {
+		t.Errorf("ContainerSwapMB = %d, want 4096 (env should override YAML)", cfg.Execution.ContainerSwapMB)
 	}
 }
 
