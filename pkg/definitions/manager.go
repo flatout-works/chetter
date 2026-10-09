@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"github.com/flatout-works/chetter/pkg/modelcatalog"
+	"github.com/flatout-works/chetter/pkg/teamname"
 	"gopkg.in/yaml.v3"
 )
 
@@ -205,6 +206,9 @@ func (m *Manager) definitionRoots() ([]definitionRoot, error) {
 		for _, entry := range entries {
 			if entry.IsDir() {
 				teamName := entry.Name()
+				if err := teamname.Validate(teamName); err != nil {
+					return nil, fmt.Errorf("groups/%s: %w", teamName, err)
+				}
 				roots = append(roots, definitionRoot{path: filepath.Join("groups", teamName), scope: DefinitionScopeTeam, teamName: teamName})
 			}
 		}

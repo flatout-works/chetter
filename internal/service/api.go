@@ -15,6 +15,7 @@ import (
 	"github.com/flatout-works/chetter/internal/data"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
+	"github.com/flatout-works/chetter/pkg/teamname"
 )
 
 // --- Task Methods ---
@@ -1177,8 +1178,8 @@ func (s *Service) CreateTeam(ctx context.Context, name string) (CreateTeamOutput
 	if !isAdmin(ctx) {
 		return CreateTeamOutput{}, fmt.Errorf("admin access required")
 	}
-	if name == "" {
-		return CreateTeamOutput{}, fmt.Errorf("name is required")
+	if err := teamname.Validate(name); err != nil {
+		return CreateTeamOutput{}, err
 	}
 	now := time.Now().UTC()
 	teamID, err := randomID("team")
