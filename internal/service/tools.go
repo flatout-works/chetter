@@ -752,6 +752,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_definition_proposal", Description: "Create a GitHub pull request proposing definition file changes."}, svc.createDefinitionProposalTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_definition_proposals", Description: "List definition change proposals created by Chetter."}, svc.listDefinitionProposalsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_get_definition_proposal", Description: "Get a definition change proposal, including live PR status when GitHub is configured."}, svc.getDefinitionProposalTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_promote_trigger", Description: "Promote a database draft trigger to a Git-managed definition by rendering canonical YAML and opening a definition proposal pull request. Use dry_run to preview without opening a PR."}, svc.promoteTriggerTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_trigger_runs", Description: "List trigger runs for the current team, optionally filtered by trigger name."}, svc.listTriggerRunsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_audit_events", Description: "List server-side audit log events with optional filters. Admin only."}, svc.listAuditEventsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_task_artifacts", Description: "List GitHub artifacts (issues, PRs, comments) created by chetter tasks. Admin only."}, svc.listTaskArtifactsTool)

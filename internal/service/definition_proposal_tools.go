@@ -92,14 +92,26 @@ const definitionProposalStatusOpen = "open"
 var safeBranchSegment = regexp.MustCompile(`[^a-zA-Z0-9._/-]+`)
 
 func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallToolRequest, in CreateDefinitionProposalInput) (*mcp.CallToolResult, CreateDefinitionProposalOutput, error) {
+	out, err := s.createDefinitionProposal(ctx, in)
+	if err != nil {
+		return nil, CreateDefinitionProposalOutput{}, err
+	}
+	return nil, out, nil
+}
+
+// createDefinitionProposal is the proposal core shared by the MCP tool and by
+// callers that open a proposal on the user's behalf, such as trigger promotion.
+// Keeping one implementation means promotion inherits the same validation,
+// branch handling, artifact tracking, and error surface.
+func (s *Service) createDefinitionProposal(ctx context.Context, in CreateDefinitionProposalInput) (CreateDefinitionProposalOutput, error) {
 	if s.githubManager() == nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("GitHub App client is not configured")
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("GitHub App client is not configured")
 	}
 	if strings.TrimSpace(in.Title) == "" {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("title is required")
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("title is required")
 	}
 	if len(in.Files) == 0 {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("at least one file is required")
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("at least one file is required")
 	}
 	sourceID := in.SourceID
 	if sourceID == "" {
@@ -107,18 +119,18 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	}
 	source, err := s.repo.GetDefinitionSource(ctx, sourceID)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get definition source: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("get definition source: %w", err)
 	}
 	if err := authorizeDefinitionSourceWrite(ctx, source); err != nil {
-		return nil, CreateDefinitionProposalOutput{}, err
+		return CreateDefinitionProposalOutput{}, err
 	}
 	repo, err := githubRepoFromURL(source.RepoUrl)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, err
+		return CreateDefinitionProposalOutput{}, err
 	}
 	gh, err := s.githubManager().ClientForRepo(ctx, repo)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("resolve definition repository installation: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("resolve definition repository installation: %w", err)
 	}
 	baseBranch := nonEmpty(in.BaseBranch, source.Branch)
 	branch := strings.TrimSpace(in.Branch)
@@ -128,23 +140,23 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	commitMessage := nonEmpty(in.CommitMessage, "chore: propose definition updates")
 	baseSHA, err := gh.GetBranchSHA(ctx, repo, baseBranch)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get base branch sha: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("get base branch sha: %w", err)
 	}
 	if err := gh.CreateBranch(ctx, repo, branch, baseSHA); err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("create proposal branch: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("create proposal branch: %w", err)
 	}
 	files := make([]DefinitionProposalFile, 0, len(in.Files))
 	for _, file := range in.Files {
 		filePath := strings.TrimSpace(file.Path)
 		if filePath == "" {
-			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("file path is required")
+			return CreateDefinitionProposalOutput{}, fmt.Errorf("file path is required")
 		}
 		if strings.HasPrefix(filePath, "/") || strings.Contains(filePath, "..") {
-			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("file path %q must be relative and must not contain '..'", filePath)
+			return CreateDefinitionProposalOutput{}, fmt.Errorf("file path %q must be relative and must not contain '..'", filePath)
 		}
 		fullPath := definitionSourceFilePath(source.Path, filePath)
 		if err := gh.UpsertFile(ctx, repo, branch, fullPath, file.Content, commitMessage); err != nil {
-			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("upsert proposal file %s: %w", fullPath, err)
+			return CreateDefinitionProposalOutput{}, fmt.Errorf("upsert proposal file %s: %w", fullPath, err)
 		}
 		files = append(files, DefinitionProposalFile{Path: fullPath})
 	}
@@ -153,25 +165,25 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 	var userPrompt repository.UserPrompt
 	if strings.TrimSpace(in.TaskID) != "" {
 		if strings.TrimSpace(in.ExecutionAttemptID) == "" {
-			return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("execution_attempt_id is required with task_id")
+			return CreateDefinitionProposalOutput{}, fmt.Errorf("execution_attempt_id is required with task_id")
 		}
 		task, userPrompt, err = s.githubToolTaskContext(ctx, in.TaskID, in.ExecutionAttemptID)
 		if err != nil {
-			return nil, CreateDefinitionProposalOutput{}, err
+			return CreateDefinitionProposalOutput{}, err
 		}
 		body = appendChetterSignature(body, s.githubToolSignature(ctx, task, userPrompt, in.ExecutionAttemptID))
 	}
 	created, err := gh.CreatePullRequest(ctx, repo, in.Title, body, branch, baseBranch, in.Draft)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("create definition proposal PR: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("create definition proposal PR: %w", err)
 	}
 	proposalID, err := randomID("dprop")
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("generate proposal id: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("generate proposal id: %w", err)
 	}
 	filesJSON, err := json.Marshal(files)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("marshal files: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("marshal files: %w", err)
 	}
 	now := time.Now().UTC()
 	params := repository.InsertDefinitionChangeProposalParams{
@@ -191,11 +203,11 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 		UpdatedAt:  now,
 	}
 	if err := s.repo.InsertDefinitionChangeProposal(ctx, params); err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("store definition proposal: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("store definition proposal: %w", err)
 	}
 	row, err := s.repo.GetDefinitionChangeProposal(ctx, proposalID)
 	if err != nil {
-		return nil, CreateDefinitionProposalOutput{}, fmt.Errorf("get stored definition proposal: %w", err)
+		return CreateDefinitionProposalOutput{}, fmt.Errorf("get stored definition proposal: %w", err)
 	}
 	if strings.TrimSpace(in.TaskID) != "" {
 		if _, _, err := s.recordGitHubToolArtifact(ctx, task, userPrompt, in.ExecutionAttemptID, "definition_proposal", repo, created.Number, created.URL, branch, body, map[string]any{
@@ -203,10 +215,10 @@ func (s *Service) createDefinitionProposalTool(ctx context.Context, _ *mcp.CallT
 			"source_id": source.ID,
 			"files":     files,
 		}); err != nil {
-			return nil, CreateDefinitionProposalOutput{}, err
+			return CreateDefinitionProposalOutput{}, err
 		}
 	}
-	return nil, CreateDefinitionProposalOutput{Proposal: definitionProposalToolRecord(row, nil)}, nil
+	return CreateDefinitionProposalOutput{Proposal: definitionProposalToolRecord(row, nil)}, nil
 }
 
 func (s *Service) listDefinitionProposalsTool(ctx context.Context, _ *mcp.CallToolRequest, in ListDefinitionProposalsInput) (*mcp.CallToolResult, ListDefinitionProposalsOutput, error) {
