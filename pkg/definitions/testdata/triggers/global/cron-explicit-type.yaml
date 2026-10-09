@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../../chetter/schemas/trigger.schema.json
+# Trigger: periodically implement one approved GitHub issue
+
+name: chetter-six-hour-approved-issue-implementer
+enabled: true
+trigger_type: cron
+cron_expr: "0 5,11,17,23 * * *"
+repo: flatout-works/chetter
+match_labels:
+  - approved
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+harness: pi
+agent: issue-implementer
+provider_id: deepseek
+model_id: deepseek-v4-flash
+timeout_sec: 14400
+# Resumable (gVisor): a stuck or failed attempt keeps its container, so the
+# session can be resumed with the workspace intact within ttl_hours.
+session_mode: resumable
+ttl_hours: 24
+prompt: |-
+  Implement exactly one approved GitHub issue in flatout-works/chetter.
+
+  ## Issue selection
+
+  1. List open issues with the `approved` label:
+
+     ```bash
+     gh issue list --repo flatout-works/chetter --state open --label approved --limit 50 \
+       --json number,title,url
+     ```
+
+  2. Read the body and all comments for the selected issue.
+  3. Skip any issue that already has an open implementation PR or is already
+     actively being worked on. If no suitable issue remains, exit cleanly.
+  4. Pick the smallest suitable issue that can be completed in one focused PR.
+
+  ## Implementation
+
+  - Make minimal, focused changes that satisfy the issue and its acceptance
+    criteria.
+  - Add or update tests for the behavior.
+  - Run `make check` and fix failures before creating the PR.
+  - Use a branch named `fix/issue-ISSUE_NUMBER-short-description`.
+
+  ## Pull request
+
+  Commit and push the branch, then create the pull request with the runner
+  bridge MCP tool `chetter_create_pr`, using `repo="flatout-works/chetter"`,
+  `head=<branch-name>`, and `base="main"`. Do not use `gh pr create`, direct
+  GitHub API writes, or manually add the Chetter task footer. The runner bridge
+  injects the task metadata and records the artifact.
+
+  The PR description must include `Closes #ISSUE_NUMBER`, a summary, and the
+  verification commands run.

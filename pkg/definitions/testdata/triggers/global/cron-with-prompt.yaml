@@ -1,0 +1,98 @@
+# yaml-language-server: $schema=../../../chetter/schemas/trigger.schema.json
+# Trigger: nightly changelog update
+#
+# Customize before enabling:
+#   git_url      - your repository URL
+#   git_ref      - branch to work from (usually main)
+#   agent_image  - runner image (get from your Chetter admin or build your own)
+#   agent        - optional: custom changelog agent if you have one
+#   timeout_sec  - adjust based on repo size
+#   prompt       - adapt the changelog style to your project conventions
+#
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
+
+name: chetter-nightly-changelog-update
+enabled: true
+cron_expr: "0 0 * * *"
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+harness: claude-code
+agent: changelog-maintainer
+provider_id: synthetic
+model_id: syn:large:text
+timeout_sec: 3600
+# Resumable (gVisor): a stuck or failed attempt keeps its container, so the
+# session can be resumed with the workspace intact within ttl_hours.
+session_mode: resumable
+ttl_hours: 24
+prompt: |-
+  Maintain the repository's root `CHANGELOG.md` from recent changes.
+
+  GITHUB_REPO=flatout-works/chetter
+
+  Establish the changelog watermark before reviewing commits. The watermark is
+  the most recent commit on the checked-out branch that touched the root
+  `CHANGELOG.md`:
+
+      changelog_touch=$(git log -1 --format=%H -- CHANGELOG.md)
+
+  Review **every non-merge commit after that watermark**, oldest first — do not
+  use a fixed `--since`/24-hour window. A fixed window loses history whenever a
+  changelog PR is delayed, conflicts, or is closed. Use this command when the
+  file has history:
+
+      git log --no-merges --reverse --format="%H %ad %s" --date=iso "${changelog_touch}..HEAD"
+
+  If `changelog_touch` is empty because the file has never existed, review all
+  reachable non-merge commits instead:
+
+      git log --no-merges --reverse --format="%H %ad %s" --date=iso HEAD
+
+  Read the existing `CHANGELOG.md` in full and use it as a deduplication check.
+  For every candidate commit, inspect the actual changes, not only the subject;
+  use `git show --stat`, `git show --name-only`, and targeted diffs as needed.
+  Record all user-visible, developer-facing, operational, or documentation
+  changes worth recording from the whole range, including changes older than
+  24 hours. Skip purely mechanical churn unless it affects users, operators,
+  contributors, or release notes. If the range is empty, report that no update
+  was needed.
+
+  ## Reuse the open changelog PR before creating a new one
+
+  An earlier nightly run may still have its changelog PR open. Continue on that
+  branch instead of opening a second PR for the same file:
+
+      gh pr list --state open --limit 30 --json number,headRefName,url,title \
+        --jq '.[] | select(.headRefName | startswith("docs/update-changelog-"))'
+
+  The clone already points at the right repository, so no `--repo` is needed.
+
+  - No match: continue with a fresh branch, below.
+  - One match: reuse it. `git fetch origin <headRefName>`, check that branch
+    out, and rebase it onto the current base (`git rebase origin/main`) before
+    adding this window. Its `CHANGELOG.md` already contains the previous run's
+    entries, so read the file in full and record only what is still missing —
+    a duplicate entry is a defect, not a harmless repeat.
+  - Rebase conflicts: never force. Abort with `git rebase --abort`, keep
+    working from the fetched branch tip, and still push to the same branch.
+  - Several matches: reuse the branch with the newest `YYYY-MM-DD-HHMM`
+    timestamp and mention the others as stale in your final report.
+
+  Commit and push to that same branch. The open PR updates by itself: do not
+  call `chetter_create_pr`, do not rename the branch, and never open a second
+  changelog PR.
+
+  ## Otherwise open a new PR
+
+  With no existing changelog PR, and `CHANGELOG.md` created or modified,
+  create a branch named `docs/update-changelog-YYYY-MM-DD-HHMM` using UTC
+  time, commit with message `docs: update changelog from recent history`,
+  push, and open a pull request against `main` using the `chetter_create_pr`
+  MCP tool.
+
+    Call `chetter_create_pr` with `task_id=$CHETTER_TASK_ID`, `repo="$GITHUB_REPO"`, `head=<branch-name>`, and `base="main"`. Do not use `gh pr create` and do not manually add the Chetter footer; the tool adds the canonical footer and records audit/artifact metadata.
+
+   If there are no changelog-worthy changes, leave files unchanged and report
+   that no update was needed. Do not push directly to `main`.

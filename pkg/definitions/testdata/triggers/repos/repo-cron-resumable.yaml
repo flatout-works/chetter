@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=../../../../../chetter/schemas/trigger.schema.json
+# Trigger: BuddyDrive nightly changelog update
+#
+# Reviews the recent commit history and maintains the root CHANGELOG.md (Keep a
+# Changelog format), reusing a previous nightly's open changelog PR when present
+# and otherwise opening a new one. Creates the changelog on first run.
+
+name: buddydrive-nightly-changelog-update
+enabled: true
+cron_expr: "20 0 * * *"
+git_url: https://github.com/gokr/buddydrive
+git_ref: master
+agent_image: ghcr.io/flatout-works/chetter-agent:nim
+harness: claude-code
+agent: changelog-maintainer
+provider_id: synthetic
+model_id: syn:large:text
+timeout_sec: 3600
+# Resumable (gVisor): a stuck or failed attempt keeps its container, so the
+# session can be resumed with the workspace intact within ttl_hours.
+session_mode: resumable
+ttl_hours: 24
+prompt: |-
+  Maintain the repository's root `CHANGELOG.md` from recent changes.
+
+  GITHUB_REPO=gokr/buddydrive
+
+  First run: this repository does not have a `CHANGELOG.md` yet. Create it
+  with the Keep a Changelog header and a single `[Unreleased]` section
+  summarizing the notable user-visible changes from the last ~90 days of
+  commit history (look further back than 24 hours for this initial entry).
+  Do not attempt a versioned release section; everything goes under
+  `[Unreleased]`.
+
+  Subsequent runs: review the last 24 hours of commit history:
+
+      git log --since="24 hours ago" --no-merges --pretty=format:"%h %ad %s" --date=iso
+
+  Inspect the actual changes, not only commit subjects. Use `git show --stat`,
+  `git show --name-only`, and targeted diffs as needed.
+
+  Update `CHANGELOG.md` only when there are user-visible, developer-facing,
+  operational, or documentation changes worth recording. Use factual entries
+  under the `[Unreleased]` heading with Added/Changed/Fixed categories; do
+  not invent capabilities or add marketing copy. Skip purely mechanical
+  churn unless it affects users, operators, contributors, or release notes.
+
+  ## Reuse the open changelog PR before creating a new one
+
+  An earlier nightly run may still have its changelog PR open. Continue on that
+  branch instead of opening a second PR for the same file:
+
+      gh pr list --state open --limit 30 --json number,headRefName,url,title \
+        --jq '.[] | select(.headRefName | startswith("docs/update-changelog-"))'
+
+  The clone already points at the right repository, so no `--repo` is needed.
+
+  - No match: continue with a fresh branch, below.
+  - One match: reuse it. `git fetch origin <headRefName>`, check that branch
+    out, and rebase it onto the current base (`git rebase origin/master`)
+    before adding this window. Its `CHANGELOG.md` already contains the previous
+    run's entries, so read the file in full and record only what is still
+    missing — a duplicate entry is a defect, not a harmless repeat.
+  - Rebase conflicts: never force. Abort with `git rebase --abort`, keep
+    working from the fetched branch tip, and still push to the same branch.
+  - Several matches: reuse the branch with the newest `YYYY-MM-DD-HHMM`
+    timestamp and mention the others as stale in your final report.
+
+  Commit and push to that same branch. The open PR updates by itself: do not
+  call `chetter_create_pr`, do not rename the branch, and never open a second
+  changelog PR.
+
+  ## Otherwise open a new PR
+
+  With no existing changelog PR, and `CHANGELOG.md` created or modified,
+  create a branch named `docs/update-changelog-YYYY-MM-DD-HHMM` using UTC
+  time, commit with message `docs: update changelog from recent history`,
+  push, and open a pull request against `master` using the `chetter_create_pr`
+  MCP tool.
+
+    Call `chetter_create_pr` with `task_id=$CHETTER_TASK_ID`, `repo="$GITHUB_REPO"`, `head=<branch-name>`, and `base="master"`. Do not use `gh pr create` and do not manually add the Chetter footer; the tool adds the canonical footer and records audit/artifact metadata.
+
+   If there are no changelog-worthy changes, leave files unchanged and report
+   that no update was needed. Do not push directly to `master`.

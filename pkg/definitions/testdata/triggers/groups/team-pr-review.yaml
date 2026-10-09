@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../../../chetter/schemas/trigger.schema.json
+# Trigger: PR review for Chetter
+#
+# Reviews eligible pull-request lifecycle events in flatout-works/chetter.
+# The webhook handler ignores the review label event emitted by Chetter itself,
+# so leaving event unset does not create duplicate review tasks.
+
+name: chetter-pr-review
+enabled: true
+trigger_type: pr_review
+repo: flatout-works/chetter
+git_url: https://github.com/flatout-works/chetter.git
+git_ref: main
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+harness: claude-code
+agent: pr-reviewer
+provider_id: synthetic
+model_id: syn:large:text
+timeout_sec: 3600
+# Override the built-in review template: its "read the full file for each
+# changed file" plus unconditional full-suite verification caused broad
+# exploration and high token use on large or docs-only PRs.
+prompt: |-
+  Review pull request $PR_NUMBER in $GITHUB_REPO. Finish within the task
+  timeout; an unfinished review posts nothing and wastes the run.
+
+  ## Bounded procedure
+
+  1. Run `gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,files,commits`
+     and `gh pr diff $PR_NUMBER` once. Review from the diff.
+  2. Read full files only where the diff lacks context, and then only the
+     regions around the change. Never read every changed file end to end.
+  3. If the PR is documentation-only or a mechanical rename/move across many
+     files, do not review files one by one: spot-check a few representative
+     files and verify with a build instead.
+  4. Verification: skip code checks entirely for docs-only changes. Otherwise
+     run targeted checks for the touched components; run the full `make check`
+     only when the diff broadly touches the build or core packages.
+  5. Post exactly one review with the `chetter_pr_review` MCP tool
+     (task_id=$CHETTER_TASK_ID, repo=$GITHUB_REPO, pr_number=$PR_NUMBER).
+     After it is posted, stop: no re-verification, no further polling.
+
+  Assess correctness, security, error handling, concurrency, and tests. Be
+  specific with file:line citations; skip nitpicks that do not matter.

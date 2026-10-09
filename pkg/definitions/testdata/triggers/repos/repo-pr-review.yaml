@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../../../../chetter/schemas/trigger.schema.json
+# Trigger: PR review for the chetter-config definitions repository
+#
+# Reviews pull-request lifecycle events in flatout-works/chetter-config:
+# the Git-backed definitions repo (agents, triggers, skills, images, model
+# catalog) that this instance syncs. A bad YAML or a broken reference here
+# affects every Chetter task, so reviews are structural and safety-focused.
+
+name: chetter-config-pr-review
+enabled: true
+trigger_type: pr_review
+repo: flatout-works/chetter-config
+git_url: https://github.com/flatout-works/chetter-config.git
+git_ref: main
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+harness: claude-code
+agent: pr-reviewer
+provider_id: synthetic
+model_id: syn:large:text
+timeout_sec: 3600
+prompt: |-
+  Review pull request $PR_NUMBER in $GITHUB_REPO. Finish within the task
+  timeout; an unfinished review posts nothing and wastes the run.
+
+  This repository is the Git-backed definitions source for Chetter: a broken
+  trigger, agent frontmatter, or reference here affects every task the fleet
+  runs. Review for definition correctness, not just code quality.
+
+  ## Bounded procedure
+
+  1. Run `gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,files,commits`
+     and `gh pr diff $PR_NUMBER` once. Review from the diff.
+  2. Read full files only where the diff lacks context, and then only the
+     regions around the change.
+  3. For each changed definition file, check:
+     - **YAML parses** — if `python3 -c "import yaml"` works, parse every
+       changed .yaml file; otherwise eyeball the structure carefully.
+     - **Schema-shape sanity** — triggers need a unique `name` (grep for it
+       across `global/triggers/`, `groups/*/triggers/`, `repos/*/triggers/`
+       to prove uniqueness), a valid `trigger_type` (cron | issue |
+       pr_review), a sane `cron_expr` when `trigger_type` is cron, and
+       fields only from the trigger schema (name, enabled, cron_expr,
+       trigger_type, prompt, git_url, git_ref, agent_image, agent,
+       provider_id, model_id, variant_id, harness, skills, timeout_sec,
+       session_mode, pause_reason, ttl_hours, match_labels, repo, event).
+       Issue triggers need `repo` + `event`; labeled ones need `match_labels`.
+     - **References resolve** — every referenced `agent`, `skills` entry,
+       and `agent_image` variant must exist in an applicable scope
+       (`global/`, `groups/<team>/`, `repos/<owner>/<repo>/`) or as a
+       `global/images/<variant>/` directory. `harness` must be one of
+       opencode, claude-code, pi, codewhale, codex.
+     - **No secrets** — reject any literal token, API key, or credential in
+       the diff; definitions must use env var names (`api_key_env: ...`).
+       Every agent .md frontmatter must declare an `identity`.
+     - **`git diff --check`** passes.
+  4. If a local Chetter checkout is reachable at `../chetter/schemas/`,
+     validate changed files against `trigger.schema.json` /
+     `agent-frontmatter.schema.json` / `model-catalog.schema.json` with
+     python3+jsonschema when available.
+  5. Post exactly one review with the `chetter_pr_review` MCP tool
+     (task_id=$CHETTER_TASK_ID, repo=$GITHUB_REPO, pr_number=$PR_NUMBER).
+     After it is posted, stop: no re-verification, no further polling.
+
+  Assess correctness and safety for the instance that syncs this repo. Be
+  specific with file:line citations; skip nitpicks that do not matter.

@@ -215,19 +215,31 @@ honest:
 
 Phase 1's verification, and the reason to build the renderer first:
 
-> For every trigger definition file in `chetter-config`, assert
-> `render(parse(file)) == file`.
+> For every trigger definition in `chetter-config`, assert that
+> `render(parse(file))` re-parses to a definition deep-equal to
+> `parse(file)`, and that repeated renders are byte-identical.
 
-Byte-identical, for all 31 definitions across the 7 scope roots under
-`global/`, `groups/`, and `repos/` (including the team directory
-`groups/Chetter Core/`, whose name contains a space). Any lossy or reordering
-transform shows up immediately as a diff.
+**Byte-identity with the existing files is not achievable, and an earlier draft
+of this plan was wrong to claim it.** The corpus is not canonically ordered or
+quoted: 31 files use 12 distinct key orders, vary in blank-line and quoting
+style (`enabled: true` is sometimes explicit, sometimes implied), and carry
+free-text header comments that `ParseTriggerYAML` discards entirely. A renderer
+cannot reproduce what the parser never saw.
 
-The test is independently useful — it pins the canonical definition shape — and
-it means a promotion can never silently reformat or corrupt the definitions
-repo. Where a file legitimately cannot round-trip (for example it uses a
-spelling the canonical renderer normalizes), the test carries an explicit,
-reviewed allowlist rather than a blanket tolerance.
+The achievable and still-valuable guarantees are:
+
+1. **Semantic round-trip**: `parse(render(parse(f))) == parse(f)` for every file,
+   compared on the parsed definition. This is what proves no field is lost or
+   altered.
+2. **Byte stability**: rendering the same definition twice yields identical
+   bytes, so a promotion diff reflects only semantic change.
+3. **Fixed canonical order** for newly rendered files, so promoted definitions
+   are consistent with each other even though the existing corpus is not.
+4. **No silent drops**: a guard test fails if `ParseTriggerYAML` learns a flat
+   key that the renderer does not unfold.
+
+Where a fixture cannot round-trip for a legitimate reason, the test carries an
+explicit, reviewed allowlist entry rather than a blanket tolerance.
 
 ## Data Model
 
@@ -351,17 +363,25 @@ Phase 4's tracked state enforces it.
 
 Exit: an operator can list drafts and tell managed triggers apart at a glance.
 
-### Phase 1 — Round-trip renderer and golden test (no new tools)
+### Phase 1 — Round-trip renderer and golden test
 
-- Implement `triggerDefFromRecord` and `renderTriggerYAML`.
-- Add the round-trip golden test over the real `chetter-config` trigger set,
-  with an explicit allowlist for any file that cannot round-trip.
-- Add unit coverage for all three inverse transforms: `AGENT_IMAGE_PREFIX`
-  resolution, flat-key/`trigger_config` flattening, and per-scope schema-comment
-  depth.
+**Status: implemented** in `pkg/definitions/render.go` and its tests.
 
-Exit: `render(parse(file)) == file` holds for every trigger definition, and the
-test fails if any transform drifts.
+- `RenderTriggerYAML(td, scope)` with `triggerDefFromRecord`-equivalent input
+  handling; `TriggerSchemaComment(scope)` for per-scope header depth.
+- Semantic round-trip over the live corpus when a `chetter-config` checkout is
+  reachable (`CHETTER_CONFIG_DIR` or a sibling directory), skipped otherwise.
+- Vendored fixtures under `pkg/definitions/testdata/triggers/` (7 files, one per
+  scope and feature combination) so the guarantees are enforced in CI, where
+  the sibling checkout does not exist.
+- Unit coverage for all three inverse transforms: `AGENT_IMAGE_PREFIX`
+  resolution is the caller's responsibility (documented), flat-key
+  `trigger_config` unfolding, and per-scope schema-comment depth — the last
+  verified against the fixtures' own header lines.
+
+Exit: semantic round-trip and byte stability hold for every definition, and the
+suite fails when any transform drifts (verified by deliberately injecting both
+kinds of bug).
 
 This phase has no user-visible behavior change and is independently valuable: it
 pins the canonical definition shape for the whole repo.
@@ -431,7 +451,8 @@ No migration step is needed for existing rows: drafts already have
 
 | Risk | Mitigation |
 |---|---|
-| Renderer drifts from hand-authored conventions | Round-trip golden test over the real definition set, with an explicit allowlist |
+| Renderer drifts from hand-authored conventions | Semantic round-trip over the live corpus plus vendored CI fixtures; depth and flat-key transforms each verified by injected-bug checks |
+| CI has no corpus to test against | Vendored fixtures under `pkg/definitions/testdata/triggers/` |
 | A promoted draft silently overwrites another draft | Phase 3 collision guard with audit events; refuse by default |
 | Secret material promoted into `chetter-config` | Pre-render secret scan, plus unchanged PR review |
 | Promotion resets run history | Name-keyed upsert preserves `id`; regression test asserts it |
@@ -463,10 +484,10 @@ No migration step is needed for existing rows: drafts already have
 ## Definition Of Done
 
 - `chetter_list_triggers` reports ownership, and drafts are filterable.
-- Every trigger definition in `chetter-config` round-trips byte-identically
-  through parse and render.
+- Every trigger definition round-trips semantically through parse and render,
+  and rendering is byte-stable, enforced in CI by vendored fixtures.
 - A draft created through the API can be promoted to a pull request that
-  contains hand-authored-equivalent YAML.
+  contains canonical, hand-authored-equivalent YAML.
 - Promotion is refused for managed triggers, secret-shaped content, path
   collisions, and duplicate names.
 - A name collision cannot silently overwrite a draft; deliberate adoption is

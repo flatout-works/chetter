@@ -1,0 +1,175 @@
+# yaml-language-server: $schema=../../../chetter/schemas/trigger.schema.json
+# Trigger: nightly issue stale check
+#
+# Reviews 1/7th of open GitHub issues per day (sharded by issue number and
+# weekday, so every issue is reviewed exactly once per week) and validates
+# they are still relevant given ongoing development. Comments with
+# evidence-backed close or description update recommendations.
+#
+# Closing rules:
+#   immediate: issues with conclusive evidence (verifiably implemented,
+#              fixed, or superseded) AND all safety conditions met (no
+#              human comment in 14 days, no open referencing PR, no
+#              assignee, no keep-open label) are closed on the spot with
+#              an evidence comment
+#   ladder:    run 1: "Recommendation: close" comment
+#              run 2 (next week): "Recommendation: close (confirmed)"
+#                                 comment + `stale-candidate` label
+#              daily sweep: issues labeled `stale-candidate` for >= 7 days
+#                           are auto-closed (unless new human comments
+#                           contradict)
+#
+# Closing and labeling use the `chetter_issue_close` and
+# `chetter_issue_add_labels` runner MCP tools (added upstream in
+# flatout-works/chetter#378). When the tools are unavailable in a
+# deployment, the run degrades to comments only and leaves the action to
+# a human maintainer.
+#
+# Customize before enabling:
+#   GITHUB_REPO - set your repo at the top of the prompt (owner/repo)
+#   git_url     - your repository URL
+#   git_ref     - branch to work from (usually main)
+#   agent_image - runner image (get from your Chetter admin or build your own)
+#   timeout_sec - adjust based on number of open issues
+#
+# To create: chetter_create_trigger with these fields.
+# To change later: chetter_update_trigger with changed fields.
+
+name: chetter-nightly-issue-stale-check
+enabled: true
+cron_expr: "30 5 * * *"
+git_url: https://github.com/flatout-works/chetter
+git_ref: main
+agent_image: ghcr.io/flatout-works/chetter-agent:golang
+harness: claude-code
+agent: issue-stale-check
+provider_id: synthetic
+model_id: syn:large:text
+timeout_sec: 3600
+skills:
+  - chetter
+prompt: |-
+  Review open issues in flatout-works/chetter and validate they are still relevant.
+
+  GITHUB_REPO=flatout-works/chetter
+
+  Follow the issue-stale-check agent procedure, substituting $GITHUB_REPO into all
+  `--repo <owner/repo>` arguments. Do not create any branches, commits, or PRs.
+
+  ## Step 0: Shard selection (do this first)
+
+  This trigger reviews one seventh of the open issues per day, selected by
+  issue number so every issue is reviewed exactly once per week:
+
+  ```bash
+  SHARD=$(( $(date -u +%u) % 7 ))   # 0=Sunday, 1=Monday, ... 6=Saturday
+  gh issue list --repo $GITHUB_REPO --state open --json number,title,labels,updatedAt --limit 200 \
+    --jq --arg shard "$SHARD" '.[] | select((.number % 7) == ($shard | tonumber))'
+  ```
+
+  Review ONLY the issues returned by this query. Print the shard number and
+  the issue numbers selected. If the list is empty, report that and exit
+  cleanly (still run Step 2 below).
+
+  ## Step 1: Review each shard issue
+
+  For each issue in today's shard:
+
+  1. Read the issue body and comments with `gh issue view <number> --repo $GITHUB_REPO`.
+  2. Assess relevance:
+     - Is the feature/bug still relevant given the current state of the codebase?
+     - Has the approach changed since the issue was filed?
+     - Has the issue been implicitly resolved by other work?
+  3. Check whether an EARLIER run already left a comment starting with
+     `Recommendation: close` on this issue (a prior comment, not one you are
+     about to post today).
+  4. Take one of:
+     - **Close immediately** (only when the evidence is conclusive): the
+       issue is verifiably implemented, fixed, or superseded, and you can
+       cite the exact merged PRs, commits, or decisions that prove it.
+       ALL of these safety conditions must also hold:
+       a. The newest comment from a human author is at least 14 days old
+          (check `gh issue view <number> --repo $GITHUB_REPO --json
+          comments`; comments by bots — including earlier runs of this
+          checker — do not count and do not block the close).
+       b. No open PR references the issue:
+          `gh pr list --repo $GITHUB_REPO --state open --search "<number>"
+          --json number,title`.
+       c. The issue has no assignees (`gh issue view <number> --repo
+          $GITHUB_REPO --json assignees`).
+       d. The issue carries no keep-open label such as `pinned`.
+       If all hold: post the evidence comment via `chetter_issue_comment`
+       starting with `Auto-closed (stale check)`, then call
+       `chetter_issue_close` with `issue_number=<number>`. If
+       `chetter_issue_close` is unavailable in this deployment, post the
+       evidence starting with `Recommendation: close (conclusive)`
+       instead and let the ladder or a human maintainer apply the close.
+       If ANY condition fails, or the evidence is merely suggestive
+       rather than conclusive, do NOT close immediately — use the
+       recommendation ladder below.
+     - **Recommend close** (no prior close recommendation): call
+       `chetter_issue_comment` with evidence and start the comment with
+       `Recommendation: close`.
+     - **Confirm close** (a prior `Recommendation: close` comment exists):
+       post a short confirming comment starting with
+       `Recommendation: close (confirmed)`, then escalate:
+       a. If the `chetter_issue_add_labels` MCP tool is available, call it
+          with `labels=["stale-candidate"]` for this issue.
+       b. If the issue is ALREADY labeled `stale-candidate`, check the label
+          age:
+          `gh api repos/$GITHUB_REPO/issues/<number>/events --paginate --jq '[.[] | select(.event=="labeled" and .label.name=="stale-candidate") | .created_at] | max'`
+          If the label was applied 7 or more days ago, close the issue with
+          the `chetter_issue_close` MCP tool plus a final evidence comment
+          starting with `Auto-closed (stale-candidate)`.
+       c. If `chetter_issue_add_labels` or `chetter_issue_close` are not
+          available in this deployment, do NOT attempt `gh` writes — the
+          confirming comment is the fallback and a human maintainer applies
+          the action.
+     - **Recommend description update** if the scope shifted. Call
+       `chetter_issue_comment` with the evidence and proposed wording for a
+       human maintainer.
+     - **Comment** if the scope may have shifted but you are not confident
+       enough to recommend an action.
+     - **Skip** if still fully relevant.
+
+  ## Step 2: Daily stale-candidate sweep (not sharded)
+
+  Run this every day regardless of shard:
+
+  ```bash
+  gh issue list --repo $GITHUB_REPO --state open --label stale-candidate --json number --jq '.[].number'
+  ```
+
+  For each returned issue that you did NOT already process in Step 1:
+
+  1. Get the label age (same events API query as in Step 1). If younger than
+     7 days, skip — the weekly shard run will handle it.
+  2. Skim the issue for NEW human comments (after the label was applied) that
+     contradict the close recommendation. If any exist, post a short comment
+     saying the issue was re-validated and will not be auto-closed, and note
+     it in your summary for a maintainer to remove the label.
+  3. Otherwise close the issue with the `chetter_issue_close` MCP tool and a
+     final comment starting with `Auto-closed (stale-candidate)` summarizing
+     the evidence. If `chetter_issue_close` is unavailable, print a report
+     line instead of closing.
+
+  ## Step 3: Report Summary
+
+  Print a summary table of actions taken:
+  ```
+  Shard:            3 (issues #25, #48, #87, ...)
+  Closed immediate: #91 (superseded by merged #371; last human comment 2026-08-10)
+  Recommend close:  #34 (obsolete approach)
+  Confirmed close:  #58 (prior recommendation from 2026-08-20; labeled stale-candidate)
+  Auto-closed:      #42 (stale-candidate since 2026-08-12)
+  Recommend update: #61 (scope shifted)
+  Commented:        #63 (scope concern)
+  Skipped:          #36, #40, #50 (still relevant)
+  Sweep:            #70 too young, #71 reopened by maintainer comment, no close tool available
+  ```
+
+  Do not close or edit issues directly with `gh`. Only the
+  `chetter_issue_close` MCP tool may close issues: immediate closes only
+  with conclusive evidence AND every safety condition in Step 1 met; all
+  other closes only per the escalation ladder above. Do not merge, push,
+  commit, create PRs, or modify files in the repository.

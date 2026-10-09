@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../../../../../chetter/schemas/trigger.schema.json
+name: buddydrive-relay-issue-implementer
+enabled: true
+trigger_type: issue
+repo: gokr/buddydrive-relay
+event: labeled
+match_labels:
+  - approved
+agent_image: ghcr.io/flatout-works/chetter-agent:nim
+harness: pi
+agent: issue-implementer
+git_url: https://github.com/gokr/buddydrive-relay.git
+git_ref: master
+provider_id: deepseek
+model_id: deepseek-v4-flash
+timeout_sec: 14400
+# Resumable (gVisor): a stuck or failed attempt keeps its container, so the
+# session can be resumed with the workspace intact within ttl_hours.
+session_mode: resumable
+ttl_hours: 24
