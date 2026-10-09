@@ -127,6 +127,10 @@ func RenderTriggerYAML(td TriggerDef, scope string) (string, error) {
 	if remaining != "" {
 		writeScalar(&b, "trigger_config", remaining)
 	}
+	// Only emitted when set: `adopt` is an escape hatch, not a routine field.
+	if td.Adopt {
+		b.WriteString("adopt: true\n")
+	}
 	if td.Prompt != "" {
 		b.WriteString("prompt: " + promptScalarHeader(td.Prompt) + "\n")
 		b.WriteString(renderPromptBody(td.Prompt))

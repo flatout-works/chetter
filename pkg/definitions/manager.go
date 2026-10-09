@@ -659,6 +659,11 @@ type TriggerDef struct {
 	Harness     string
 	Skills      []string
 	TimeoutSec  int
+	// Adopt opts this definition in to taking over an existing trigger row of
+	// the same name that was created directly in the database (source_id NULL).
+	// Without it, a name collision fails the sync rather than silently
+	// overwriting a database draft and re-attributing its run history.
+	Adopt bool
 }
 
 type rawTriggerYAML struct {
@@ -684,6 +689,7 @@ type rawTriggerYAML struct {
 	MatchLabels   []string `yaml:"match_labels"`
 	Repo          string   `yaml:"repo"`
 	Event         string   `yaml:"event"`
+	Adopt         bool     `yaml:"adopt"`
 }
 
 func ParseTriggerYAML(content string) (TriggerDef, error) {
@@ -794,6 +800,7 @@ func ParseTriggerYAML(content string) (TriggerDef, error) {
 		Harness:     raw.Harness,
 		Skills:      skills,
 		TimeoutSec:  raw.TimeoutSec,
+		Adopt:       raw.Adopt,
 	}, nil
 }
 

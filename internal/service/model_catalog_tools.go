@@ -465,6 +465,13 @@ func (s *Service) SyncDefinitions(ctx context.Context) (ModelCatalogRecord, erro
 	if err != nil {
 		return ModelCatalogRecord{}, fmt.Errorf("list existing triggers: %w", err)
 	}
+	// A definition whose name matches a trigger created directly in the database
+	// (source_id NULL) would be adopted by the name-keyed upsert, silently
+	// overwriting that draft and re-attributing its run history. Refuse by
+	// default; the definition must opt in with `adopt: true`.
+	if err := s.checkTriggerAdoption(ctx, triggerEntries, existingTriggers); err != nil {
+		return ModelCatalogRecord{}, err
+	}
 	// Triggers the default definition source already owns, captured before the
 	// sync so cron registrations for removed/renamed triggers can be torn down.
 	managedBeforeByName, managedBeforeIDs := syncedTriggersBefore(existingTriggers)
@@ -802,6 +809,59 @@ func definitionsSource(defs interface {
 type triggerSyncEntry struct {
 	def    definitions.TriggerDef
 	params repository.UpsertTriggerParams
+}
+
+// checkTriggerAdoption fails the sync when a definition would take over a
+// trigger that was created directly in the database (source_id NULL) without
+// the definition explicitly opting in with `adopt: true`.
+//
+// The name-keyed UpsertTrigger means a same-named definition is adopted rather
+// than inserted, which preserves the row id and run history - desirable for a
+// deliberate promotion, destructive for an accidental name collision. Every
+// collision is audited so operators can see both refusals and adoptions.
+func (s *Service) checkTriggerAdoption(ctx context.Context, entries []triggerSyncEntry, existing []repository.Trigger) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	byName := make(map[string]repository.Trigger, len(existing))
+	for _, trigger := range existing {
+		byName[trigger.Name] = trigger
+	}
+	for _, entry := range entries {
+		row, ok := byName[entry.def.Name]
+		if !ok || row.SourceID.Valid {
+			// No row, or a row already owned by a definitions source: the normal
+			// upsert path. A definition-vs-definition collision is a separate
+			// concern handled by name uniqueness across scopes.
+			continue
+		}
+		detail := fmt.Sprintf("definition trigger %q collides with database-created trigger %q (source_id NULL)", entry.def.Name, row.ID)
+		if !entry.def.Adopt {
+			s.auditAsync(ctx, AuditEventParams{
+				EventType:  "trigger_sync_collision",
+				SourceType: "definitions",
+				SourceID:   defaultDefinitionSourceID,
+				TargetType: "trigger",
+				TargetID:   entry.def.Name,
+				Detail:     detail + "; refused (set `adopt: true` in the definition to take ownership)",
+			})
+			return fmt.Errorf(
+				"trigger definition %q would overwrite the database-created trigger of the same name; "+
+					"rename one of them, or add `adopt: true` to the definition to take ownership deliberately",
+				entry.def.Name)
+		}
+		slog.WarnContext(ctx, "adopting database-created trigger into definitions source",
+			"trigger", entry.def.Name, "trigger_id", row.ID)
+		s.auditAsync(ctx, AuditEventParams{
+			EventType:  "trigger_sync_collision",
+			SourceType: "definitions",
+			SourceID:   defaultDefinitionSourceID,
+			TargetType: "trigger",
+			TargetID:   entry.def.Name,
+			Detail:     detail + "; adopted (adopt: true)",
+		})
+	}
+	return nil
 }
 
 func (s *Service) parseTriggerDefsForSync(defs []definitions.Definition, now time.Time, teamIDs map[string]string) ([]triggerSyncEntry, error) {

@@ -6,12 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/flatout-works/chetter/internal/auth"
 	"github.com/flatout-works/chetter/internal/repository"
 	"github.com/flatout-works/chetter/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// Source kinds reported by chetter_list_triggers. "config" means the trigger's
+// desired state comes from a definitions source (Git); "database" means it is a
+// hand-created draft that definitions sync never modifies.
+const (
+	sourceKindDatabase = "database"
+	sourceKindConfig   = "config"
 )
 
 // RepoRefInput is one repository in a multi-repo submission. Exactly one
@@ -193,6 +202,7 @@ type UpdateTriggerOutput struct {
 type ListTriggersInput struct {
 	EnabledOnly bool   `json:"enabled_only,omitempty" jsonschema:"Only return enabled triggers"`
 	TriggerType string `json:"trigger_type,omitempty" jsonschema:"Filter by trigger type (cron, pr_review)"`
+	Source      string `json:"source,omitempty" jsonschema:"Filter by ownership: 'database' for hand-created drafts, 'config' for Git-managed triggers, or a definition source ID. Omit for all."`
 }
 
 // ListTriggersOutput is the output for chetter_list_triggers.
@@ -251,28 +261,40 @@ type DeleteEventCallbackOutput struct {
 // TriggerToolRecord is the stable MCP trigger response shape. Store-level
 // trigger records may grow internal fields without breaking MCP clients.
 type TriggerToolRecord struct {
-	ID            string     `json:"id"`
-	TeamID        string     `json:"team_id,omitempty"`
-	Name          string     `json:"name"`
-	TriggerType   string     `json:"trigger_type"`
-	TriggerConfig string     `json:"trigger_config"`
-	CronExpr      string     `json:"cron_expr"`
-	Prompt        string     `json:"prompt"`
-	GitURL        string     `json:"git_url,omitempty"`
-	GitRef        string     `json:"git_ref,omitempty"`
-	AgentImage    string     `json:"agent_image,omitempty"`
-	Agent         string     `json:"agent,omitempty"`
-	ProviderID    string     `json:"provider_id,omitempty"`
-	ModelID       string     `json:"model_id,omitempty"`
-	VariantID     string     `json:"variant_id,omitempty"`
-	Harness       string     `json:"harness,omitempty"`
-	Skills        []string   `json:"skills,omitempty"`
-	TimeoutSec    int        `json:"timeout_sec"`
-	Enabled       bool       `json:"enabled"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
-	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
+	ID            string   `json:"id"`
+	TeamID        string   `json:"team_id,omitempty"`
+	Name          string   `json:"name"`
+	TriggerType   string   `json:"trigger_type"`
+	TriggerConfig string   `json:"trigger_config"`
+	CronExpr      string   `json:"cron_expr"`
+	Prompt        string   `json:"prompt"`
+	GitURL        string   `json:"git_url,omitempty"`
+	GitRef        string   `json:"git_ref,omitempty"`
+	AgentImage    string   `json:"agent_image,omitempty"`
+	Agent         string   `json:"agent,omitempty"`
+	ProviderID    string   `json:"provider_id,omitempty"`
+	ModelID       string   `json:"model_id,omitempty"`
+	VariantID     string   `json:"variant_id,omitempty"`
+	Harness       string   `json:"harness,omitempty"`
+	Skills        []string `json:"skills,omitempty"`
+	TimeoutSec    int      `json:"timeout_sec"`
+	Enabled       bool     `json:"enabled"`
+	// SourceID is the definitions source that owns this trigger, empty for a
+	// hand-created database draft.
+	SourceID string `json:"source_id,omitempty"`
+	// Managed reports whether the trigger's desired state comes from a
+	// definitions source (Git). Unmanaged triggers are database drafts that
+	// sync never modifies.
+	Managed bool `json:"managed"`
+	// Source describes ownership in one word: "config" when Git-managed,
+	// "database" when it is a draft.
+	Source string `json:"source"`
+	// SourcePath is the definition file path, set only for managed triggers.
+	SourcePath string     `json:"source_path,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
 }
 
 // DeleteTriggerInput is the input for chetter_delete_trigger.
@@ -1125,6 +1147,10 @@ func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, ListTriggersOutput{}, err
 	}
+	records, err = filterTriggersBySource(records, in.Source)
+	if err != nil {
+		return nil, ListTriggersOutput{}, err
+	}
 	triggers := make([]TriggerToolRecord, len(records))
 	for i, r := range records {
 		triggers[i] = triggerToolRecord(r)
@@ -1132,7 +1158,46 @@ func (s *Service) listTriggersTool(ctx context.Context, _ *mcp.CallToolRequest, 
 	return nil, ListTriggersOutput{Triggers: triggers}, nil
 }
 
+// filterTriggersBySource narrows a trigger list by ownership. "database"
+// selects hand-created drafts, "config" selects Git-managed triggers, and any
+// other non-empty value is matched against the definition source ID. An empty
+// filter returns the list unchanged.
+func filterTriggersBySource(records []store.TriggerRecord, source string) ([]store.TriggerRecord, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return records, nil
+	}
+	switch source {
+	case sourceKindDatabase, sourceKindConfig:
+	default:
+		if !strings.HasPrefix(source, "defs_") {
+			return nil, fmt.Errorf("invalid source filter %q: use %q, %q, or a definition source ID", source, sourceKindDatabase, sourceKindConfig)
+		}
+	}
+	out := make([]store.TriggerRecord, 0, len(records))
+	for _, r := range records {
+		managed := r.SourceID != ""
+		match := false
+		switch source {
+		case sourceKindDatabase:
+			match = !managed
+		case sourceKindConfig:
+			match = managed
+		default:
+			match = r.SourceID == source
+		}
+		if match {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
+	sourceKind := sourceKindDatabase
+	if s.SourceID != "" {
+		sourceKind = sourceKindConfig
+	}
 	return TriggerToolRecord{
 		ID:            s.ID,
 		TeamID:        s.TeamID,
@@ -1152,6 +1217,10 @@ func triggerToolRecord(s store.TriggerRecord) TriggerToolRecord {
 		Skills:        nonEmptyStrings(s.Skills),
 		TimeoutSec:    s.TimeoutSec,
 		Enabled:       s.Enabled,
+		SourceID:      s.SourceID,
+		Managed:       s.SourceID != "",
+		Source:        sourceKind,
+		SourcePath:    s.SourcePath,
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 		LastRunAt:     s.LastRunAt,

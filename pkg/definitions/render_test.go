@@ -389,6 +389,44 @@ func TestRenderRejectsEmptyName(t *testing.T) {
 	}
 }
 
+// TestRenderAdoptOptIn covers the H1 escape hatch round-tripping: a definition
+// that opts in to adopting a database-created trigger must keep that opt-in
+// through parse and render, and a definition without it must not gain one.
+func TestRenderAdoptOptIn(t *testing.T) {
+	withAdopt := TriggerDef{Name: "adopter", Enabled: true, TimeoutSec: 60, Adopt: true}
+	out, err := RenderTriggerYAML(withAdopt, TriggerScopeGlobal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "adopt: true\n") {
+		t.Errorf("adopt: true was not rendered:\n%s", out)
+	}
+	got, err := ParseTriggerYAML(out)
+	if err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+	if !got.Adopt {
+		t.Error("adopt did not survive the round trip")
+	}
+
+	withoutAdopt := TriggerDef{Name: "plain", Enabled: true, TimeoutSec: 60}
+	out, err = RenderTriggerYAML(withoutAdopt, TriggerScopeGlobal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "adopt") {
+		t.Errorf("adopt must not be emitted when unset:\n%s", out)
+	}
+}
+
+// TestParseTriggerYAMLRejectsUnknownFields guards the KnownFields decoder:
+// a typo in a definition must fail the sync rather than be silently ignored.
+func TestParseTriggerYAMLRejectsUnknownFields(t *testing.T) {
+	if _, err := ParseTriggerYAML("name: x\nadopt_typo: true\n"); err == nil {
+		t.Fatal("an unknown trigger field should be rejected")
+	}
+}
+
 // TestRenderTaskDescriptorMatchesParserConfigKeys fails if ParseTriggerYAML
 // learns a new flat key that the renderer does not unfold, which would silently
 // drop that key on promotion.

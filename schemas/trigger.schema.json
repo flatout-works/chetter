@@ -35,6 +35,10 @@
       "items": { "type": "string" }
     },
     "repo": { "type": "string" },
-    "event": { "type": "string" }
+    "event": { "type": "string" },
+    "adopt": {
+      "type": "boolean",
+      "description": "Opt in to taking over an existing database-created trigger of the same name (source_id NULL). Without this, a name collision fails the definitions sync instead of silently overwriting the draft and re-attributing its run history."
+    }
   }
 }

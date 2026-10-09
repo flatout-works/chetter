@@ -262,6 +262,13 @@ func cronTriggerYAML(name, cronExpr string, enabled bool) string {
 	return fmt.Sprintf("name: %s\ncron_expr: %q\nenabled: %t\n", name, cronExpr, enabled)
 }
 
+// cronTriggerYAMLWithAdopt is cronTriggerYAML plus the `adopt: true` opt-in,
+// which a definition needs to take over a database-created trigger of the same
+// name. See checkTriggerAdoption.
+func cronTriggerYAMLWithAdopt(name, cronExpr string, enabled bool) string {
+	return cronTriggerYAML(name, cronExpr, enabled) + "adopt: true\n"
+}
+
 func createTriggerDefinitionsRepo(t *testing.T, triggers []triggerFile) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

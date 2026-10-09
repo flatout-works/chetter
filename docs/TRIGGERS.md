@@ -167,6 +167,55 @@ Chetter provides automated code review on pull requests via a GitHub webhook
 integration. Reviews use a dedicated `pr-reviewer` agent running in the Chetter
 runner fleet.
 
+## Git-Managed Triggers Versus Database Drafts
+
+A trigger is owned by exactly one of two places, and `chetter_list_triggers`
+reports which via `source` (`config` or `database`), `managed`, and
+`source_path`:
+
+- **Git-managed** (`source: config`) — created from a definition file under
+  `global/triggers/`, `groups/<team>/triggers/`, or `repos/<owner>/<repo>/`.
+  The file is authoritative: every definitions sync overwrites the row from
+  the file, and removing the file deletes the trigger.
+- **Database draft** (`source: database`) — created with
+  `chetter_create_trigger`. It has no definition file, so sync never modifies
+  or deletes it. Use these to experiment at runtime speed without a PR cycle.
+
+Filter with `chetter_list_triggers {"source": "database"}` to see just the
+drafts, or `{"source": "config"}` for the Git-managed set.
+
+### Promoting a draft to Git
+
+To make a draft permanent, commit its definition to the definitions repository
+and open a pull request. Because the sync upserts by trigger `name`, the
+adoption **preserves the existing row id and its run history** — the draft is
+not recreated. Set `adopt: true` in the definition to perform a deliberate
+takeover:
+
+```yaml
+name: nightly-reindex
+enabled: true
+cron_expr: "0 3 * * *"
+adopt: true
+prompt: |-
+  ...
+```
+
+### The `adopt` guard
+
+Without `adopt: true`, a definition whose `name` matches an existing
+**database** draft fails the definitions sync with an error naming the
+collision. This is deliberate: a name collision would otherwise silently
+overwrite the draft's prompt and configuration and re-attribute its entire run
+history to the Git definition, with no diff shown. Every collision — refused or
+adopted — is recorded as a `trigger_sync_collision` audit event.
+
+The guard applies only to database drafts. A definition re-syncing over a row
+the definitions source already owns is the normal path and is not a collision.
+
+Names are instance-wide identifiers, so a definition must not reuse a name
+from another scope.
+
 ## Architecture
 
 ```
