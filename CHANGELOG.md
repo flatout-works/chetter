@@ -38,6 +38,29 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-08
+
+### Added
+
+- Runner container swap headroom for task sandboxes: a new `container_swap_mb`
+  setting (`CHETTER_CONTAINER_SWAP_MB`, default `0`) adds bounded swap on top of
+  the resolved RSS cap when building Docker's `--memory-swap`. Compiler-heavy
+  tasks (Nim, govulncheck, OSV) that peak past the cap now spill to swap instead
+  of being OOM-killed at it, while the RSS cap still bounds resident memory.
+  Because Docker OOM-kills at memory+swap rather than memory, the headroom is
+  recomputed on top of the stricter of the runner and task limits, so a task cap
+  tightens `--memory` only. `0` preserves the previous zero-swap behavior
+  exactly; invalid values are rejected at load time.
+
+### Changed
+
+- Compose runner memory defaults raised from 4 GB to 8 GB RSS with 4096 MiB of
+  swap headroom (`CHETTER_CONTAINER_MEMORY: 8g`, `CHETTER_CONTAINER_SWAP_MB:
+  4096`) on both runner services, so a transient build spike spills instead of
+  dying at the cap. `CHETTER_CONTAINER_MEMORY` is now documented as a plain
+  `--memory` RSS cap rather than being passed as both `--memory` and
+  `--memory-swap`.
+
 ## 2026-10-04
 
 ### Fixed
