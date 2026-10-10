@@ -38,6 +38,60 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-09
+
+### Added
+
+- Trigger promotion from a database draft to a Git-managed definition: the new
+  `chetter_promote_trigger` tool renders a hand-created trigger as canonical
+  definition YAML and opens a definition proposal pull request through the
+  existing proposal path, so an operator can create a trigger directly in the
+  database, iterate on it manually, and then promote it to a reviewed file in
+  the definitions repository. The input takes a scope (`global`, `team`, or
+  `repo`) and derives the definition file path the scanner expects
+  (`global/triggers/*.yaml`, `groups/<team>/triggers/*.yaml`,
+  `repos/<owner>/<repo>/triggers/*.yaml`), rejecting path traversal in the
+  trigger, team, and repo names. `dry_run` renders and validates without opening
+  a PR; a secret scan refuses credential-shaped content in the rendered prompt
+  (exempting the sanctioned `*_env: VAR_NAME` reference convention) unless
+  `allow_secret` overrides it with a recorded warning; promoting a
+  trigger that is already Git-managed is refused. Rendering inverts the sync's
+  write transforms — unfolding the flat `trigger_config` keys, recomputing the
+  per-scope header comment, and stripping the configured `AGENT_IMAGE_PREFIX`
+  from the stored image — via a new `pkg/definitions` renderer whose semantic
+  round-trip is asserted over the live definition corpus and vendored fixtures.
+
+- Trigger ownership visibility in `chetter_list_triggers`: each record now
+  exposes `source_id`, `managed`, `source` (`"config"` for Git-managed triggers,
+  `"database"` for hand-created drafts), and `source_path` (the definition file,
+  for managed triggers), and a new `source` filter accepts `"database"`,
+  `"config"`, or a definition source ID so an operator can list just the drafts.
+
+### Fixed
+
+- Definitions sync could silently overwrite a database-created trigger: the
+  name-keyed upsert assigned `source_id` unconditionally, so a definition
+  landing with the name of a hand-created draft replaced its prompt and
+  configuration and re-attributed its entire run history to Git, with no diff or
+  audit event. The sync now refuses a definition that would take over a row with
+  `source_id` NULL unless it opts in with `adopt: true` (a new trigger schema
+  field), failing the whole sync before any state is written; both refusals and
+  deliberate adoptions are audited as `trigger_sync_collision`. Deliberate
+  adoption preserves the row id and run history.
+
+### Documentation
+
+- `docs/TRIGGERS.md` gains a "Git-Managed Triggers Versus Database Drafts"
+  section covering the draft lifecycle, promotion, and the adopt guard, and
+  `docs/CONFIGURATION.md` notes the guard on trigger definitions.
+- New `docs/plans/2026-10-09-001-feat-trigger-promotion-ux-proposal.md` proposes
+  the user-facing shape of the promotion loop (an MCP `PromoteTrigger` RPC and a
+  Web UI promote panel), noting that the Web UI already badges Git-managed
+  triggers and disables their edit/delete controls.
+- The public site's isolation row now reflects the runner's bounded container
+  swap headroom (`CHETTER_CONTAINER_SWAP_MB`; the supplied runners default to
+  8 GB RSS with swap headroom), matching the technical page.
+
 ## 2026-10-08
 
 ### Added
