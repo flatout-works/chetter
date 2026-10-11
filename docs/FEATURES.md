@@ -223,7 +223,7 @@ Chetter has two listen addresses:
 
 The Compose deployment maps these to host ports `18088` and `18090` respectively.
 
-The web UI includes task views, trigger run history, an agent catalog (list and detail pages for git-managed agent definitions), activity timelines, and an admin artifact browser. The task detail page shows an Execution card with live telemetry from the task's current runner (CPU/memory/disk gauges, sandbox availability and counters, container caps) while the task is running.
+The web UI includes task views, trigger run history, an agent catalog (list and detail pages for git-managed agent definitions), activity timelines, and an admin artifact browser. The triggers list badges each trigger as `git` or `draft` and can filter by ownership or trigger type, and the trigger detail page shows a promotion panel for database drafts that previews the canonical definition YAML and opens a definition-proposal PR. The task detail page shows an Execution card with live telemetry from the task's current runner (CPU/memory/disk gauges, sandbox availability and counters, container caps) while the task is running.
 
 ## Arcane Vulnerability Scanning
 
