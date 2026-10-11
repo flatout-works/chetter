@@ -38,6 +38,51 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-10
+
+### Added
+
+- `TriggerService.PromoteTrigger` over ConnectRPC, so the web UI can reach the
+  same promotion logic the `chetter_promote_trigger` MCP tool uses. It is a thin
+  adapter over the shared `Service.PromoteTrigger`: rendering, validation, the
+  secret scan, and the proposal call live once in the service, and this RPC only
+  exposes them. `PromoteTriggerRequest`/`PromoteTriggerResponse` always return
+  the rendered content so the UI can show the exact bytes before a PR exists,
+  and refusals (already managed, secret-shaped content, name taken) return
+  `FailedPrecondition` so the UI can separate user-correctable errors from a
+  server fault. The registration is guarded by the existing compile-time
+  interface assertion in `server.go`.
+
+- Web UI trigger promotion panel and draft affordance: a draft-only
+  `PromotePanel.svelte` renders a database trigger as canonical definition YAML
+  and opens a definition proposal PR through the new RPC. "Preview YAML" calls
+  the same endpoint with `dry_run` and shows the exact bytes and target path in
+  a modal before any branch exists; "Promote…" confirms and reports the PR link.
+  Scope, repository, and team are selectable because the definition's location
+  in the definitions repository is not derivable from the trigger row, and the
+  panel renders nothing for a Git-managed trigger. The triggers list gains an
+  amber "draft" badge mirroring the existing gray "git" badge plus
+  Git-managed/Drafts toggles backed by URL state (shareable filtered views,
+  mirroring the MCP `source` filter), the trigger detail page gains a "draft"
+  badge, and the ownership/type filter logic is extracted into
+  `triggerFilters.ts` with unit tests.
+
+### Changed
+
+- buf remote plugins are pinned to the versions that produced the committed
+  generated code — protoc-gen-go v1.36.12, connectrpc/go v1.19.2, and
+  protoc-gen-es v2.15.0. They had been unpinned since June 2026, so an
+  unpinned `make generate` pulled the newest plugins and emitted Connect v2
+  while `go.mod` is on connect v1.19.2, rewriting every generated file with
+  imports the code does not build against.
+
+### Documentation
+
+- `docs/plans/2026-10-09-001-feat-trigger-promotion-ux-proposal.md` amended to
+  record that the ConnectRPC `PromoteTrigger` RPC now ships (closing the
+  adapter gap the proposal had flagged as blocking) and to reorder the build
+  order to the remaining frontend work.
+
 ## 2026-10-09
 
 ### Added
