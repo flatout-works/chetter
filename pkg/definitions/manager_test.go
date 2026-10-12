@@ -66,6 +66,22 @@ func TestScanDefinitionsIgnoresRootDefinitionDirectories(t *testing.T) {
 	}
 }
 
+func TestScanDefinitionsRejectsInvalidTeamDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "groups/Chetter Core/triggers/nightly.yaml", "name: nightly\n")
+
+	_, err := New("", "", root).ScanDefinitions()
+	if err == nil {
+		t.Fatal("expected a non-canonical groups/ directory to fail the scan")
+	}
+	if !strings.Contains(err.Error(), "groups/Chetter Core") {
+		t.Fatalf("error %q does not name the offending directory", err)
+	}
+	if !strings.Contains(err.Error(), "lowercase-with-dashes") {
+		t.Fatalf("error %q does not name the rule", err)
+	}
+}
+
 func TestValidateAgentDefinitionFrontmatter(t *testing.T) {
 	valid := `---
 description: Reviews pull requests.

@@ -91,7 +91,7 @@ repos/<owner>/<repo>/triggers/...
 repos/<owner>/<repo>/task-templates/...
 ```
 
-`global/...` definitions are global. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned. Root-level definition directories are ignored; only `model-catalog.yaml` remains at the repository root.
+`global/...` definitions are global. `groups/<team-name>/...` definitions are team-scoped and the team name must already exist in Chetter. Team names are lowercase-with-dashes (`^[a-z0-9]+(-[a-z0-9]+)*$`, at most 128 characters), so a `groups/<team-name>/` directory with uppercase letters, spaces, underscores, or a leading/trailing/doubled dash fails the sync with an actionable error. `chetter_create_team` enforces the same rule, and both paths share one validator (`pkg/teamname`). `repos/<owner>/<repo>/...` definitions are repo-scoped and store `<owner>/<repo>` on the materialized definition. Group-scoped trigger definitions create or update triggers with that group's `team_id`; global and repo-scoped trigger definitions are not team-owned. Root-level definition directories are ignored; only `model-catalog.yaml` remains at the repository root.
 
 Supported YAML formats are:
 

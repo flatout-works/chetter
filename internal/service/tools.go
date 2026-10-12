@@ -476,7 +476,7 @@ type DeleteTokenOutput struct {
 
 // CreateTeamInput is the input for chetter_create_team.
 type CreateTeamInput struct {
-	Name string `json:"name" jsonschema:"Name of the team to create"`
+	Name string `json:"name" jsonschema:"Name of the team to create; lowercase-with-dashes, e.g. chetter-core"`
 }
 
 // CreateTeamOutput is the output for chetter_create_team.
@@ -738,7 +738,7 @@ func RegisterTools(server *mcp.Server, svc *Service) {
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_update_git_identity", Description: "Update a managed Git author identity."}, svc.updateGitIdentityTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_git_identity", Description: "Delete an unused managed Git author identity."}, svc.deleteGitIdentityTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_set_git_identity_default", Description: "Set the team or global default managed Git identity."}, svc.setGitIdentityDefaultTool)
-	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only."}, svc.createTeamTool)
+	mcp.AddTool(server, &mcp.Tool{Name: "chetter_create_team", Description: "Create a new team. Admin only. Team names must be lowercase-with-dashes (e.g. chetter-core)."}, svc.createTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_teams", Description: "List all teams. Admin only."}, svc.listTeamsTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_delete_team", Description: "Delete a team and cascade to its users, tokens, tasks, and triggers. Admin only."}, svc.deleteTeamTool)
 	mcp.AddTool(server, &mcp.Tool{Name: "chetter_list_users", Description: "List all users, optionally filtered by team name. Admin only."}, svc.listUsersTool)
