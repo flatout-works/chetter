@@ -20,6 +20,7 @@ Trigger tools:
 - `chetter_delete_trigger`
 - `chetter_run_trigger`
 - `chetter_list_trigger_runs`
+- `chetter_promote_trigger`
 
 This document covers cron schedules and PR review triggers. Issue triggers use
 the same trigger tools with `trigger_type: issue` and the webhook environment
@@ -186,10 +187,18 @@ drafts, or `{"source": "config"}` for the Git-managed set.
 
 ### Promoting a draft to Git
 
-To make a draft permanent, commit its definition to the definitions repository
-and open a pull request. Because the sync upserts by trigger `name`, the
-adoption **preserves the existing row id and its run history** — the draft is
-not recreated. Set `adopt: true` in the definition to perform a deliberate
+`chetter_promote_trigger` makes a draft permanent: it renders the draft as a
+canonical definition file (`scope` is `global`, `team`, or `repo`, with
+`team_name` or `target_repo` as required) and opens a definition proposal pull
+request through the same path as `chetter_create_definition_proposal`. Pass
+`dry_run: true` to render and validate the exact YAML and path without opening a
+PR. A secret scan refuses credential-shaped content before any PR is opened;
+`allow_secret: true` overrides it only with a recorded warning.
+
+To promote by hand instead, commit the definition to the definitions repository
+and open a pull request yourself. Because the sync upserts by trigger `name`,
+the adoption **preserves the existing row id and its run history** — the draft
+is not recreated. Set `adopt: true` in the definition to perform a deliberate
 takeover:
 
 ```yaml
