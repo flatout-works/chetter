@@ -38,6 +38,23 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-20
+
+### Documentation
+
+- Website updated to surface the trigger experiment-and-promote loop shipped on
+  2026-10-10: the main page's automation row now describes a trigger starting as
+  a runtime database draft that the definitions sync never touches, then being
+  promoted to a reviewed definition file with `chetter_promote_trigger`, and the
+  deliberate, audited `adopt: true` opt-in required to take over a live draft's
+  id and run history (a name collision without it fails the sync instead of
+  overwriting the draft). The technical page gains a Triggers card covering
+  ownership reporting (`source`, `managed`, `source_path` and the `source`
+  filter), the draft-to-promotion path with `dry_run` preview and the
+  credential-shape scan, and the Web UI's draft badge, ownership filters, and
+  promotion panel; its Definitions card notes the database-draft exemption from
+  sync.
+
 ## 2026-10-10
 
 ### Added
