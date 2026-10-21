@@ -9,6 +9,7 @@
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
+  import PromotePanel from "$lib/components/PromotePanel.svelte";
   import { Alert, Badge, Button, Card, Input, Label, Modal, PaginationNav, Select, Spinner, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Toggle } from "flowbite-svelte";
 
   let { params } = $props();
@@ -243,6 +244,8 @@
           {:else}
             <Badge color="gray">git-managed</Badge>
           {/if}
+        {:else}
+          <Badge color="amber">draft</Badge>
         {/if}
       </div>
       <div class="flex items-center gap-2">
@@ -254,6 +257,8 @@
         <Button color="red" size="sm" onclick={deleteTrigger} disabled={isGitManaged()}>Delete</Button>
       </div>
     </div>
+
+    <PromotePanel {trigger} onPromoted={loadTrigger} />
 
     <Card size="xl" shadow="sm" class="w-full !p-4 mb-6">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">

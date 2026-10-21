@@ -9,6 +9,7 @@
   import { getTransport } from "$lib/api/client";
   import { effectiveTeamIDs, effectiveRepos } from "$lib/stores/filter.svelte";
   import { formatTime } from "$lib/utils.svelte";
+  import { filterByOwnership, filterByTriggerType, isGitManaged } from "$lib/triggerFilters";
   import { addToast } from "$lib/stores/toast.svelte";
   import { confirm } from "$lib/stores/confirm.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
@@ -35,20 +36,16 @@
   let showCron = $state(initialBoolParam("cron"));
   let showIssue = $state(initialBoolParam("issue"));
   let showPrReview = $state(initialBoolParam("pr_review"));
+  // Ownership filter: "" shows everything, "database" shows hand-created
+  // drafts, "config" shows Git-managed triggers. Mirrors the MCP source filter.
+  let showDatabase = $state(initialBoolParam("database"));
+  let showConfig = $state(initialBoolParam("config"));
 
-  let filteredTriggers = $derived(triggers);
+  let filteredTriggers = $derived(filterByOwnership(triggers, showConfig, showDatabase));
 
-  let visibleTriggers = $derived.by(() => {
-    if (showCron && showIssue && showPrReview) return filteredTriggers;
-    return filteredTriggers.filter((t) => {
-      switch (t.triggerType) {
-        case "cron": return showCron;
-        case "issue": return showIssue;
-        case "pr_review": return showPrReview;
-        default: return true;
-      }
-    });
-  });
+  let visibleTriggers = $derived(
+    filterByTriggerType(filteredTriggers, showCron, showIssue, showPrReview)
+  );
 
   let page = $state(initialNumberParam("page", 0));
   let pageSize = $state(initialNumberParam("size", 25));
@@ -61,12 +58,14 @@
     s("cron", showCron ? "" : "0");
     s("issue", showIssue ? "" : "0");
     s("pr_review", showPrReview ? "" : "0");
+    s("database", showDatabase ? "" : "0");
+    s("config", showConfig ? "" : "0");
     s("page", String(page), "0");
     s("size", String(pageSize), "25");
     if (next.href !== url.href) goto(`${resolve("/triggers")}${next.search}${next.hash}` as Parameters<typeof goto>[0], { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  $effect(() => { showCron; showIssue; showPrReview; page; pageSize; syncURL(); });
+  $effect(() => { showCron; showIssue; showPrReview; showDatabase; showConfig; page; pageSize; syncURL(); });
 
   function resetFilterPage() {
     page = 0;
@@ -90,10 +89,6 @@
     if (trigger.cronExpr) return trigger.cronExpr;
     try { return JSON.parse(trigger.triggerConfig || "{}").repo || "—"; }
     catch { return "—"; }
-  }
-
-  function isGitManaged(trigger: Trigger): boolean {
-    return !!trigger.sourceId;
   }
 
   function sourceFileUrl(trigger: Trigger): string | null {
@@ -243,6 +238,10 @@
         <Toggle bind:checked={showIssue} onchange={resetFilterPage} color="gray" size="small">Issue</Toggle>
         <Toggle bind:checked={showPrReview} onchange={resetFilterPage} color="gray" size="small">PR Review</Toggle>
       </div>
+      <div class="flex items-center gap-3 mr-2 border-r border-gray-300 dark:border-gray-600 pr-3">
+        <Toggle bind:checked={showConfig} onchange={resetFilterPage} color="gray" size="small">Git-managed</Toggle>
+        <Toggle bind:checked={showDatabase} onchange={resetFilterPage} color="gray" size="small">Drafts</Toggle>
+      </div>
       <Select bind:value={pageSize} onchange={() => { page = 0; }} class="!w-auto">
         <option value={10}>10 / page</option>
         <option value={25}>25 / page</option>
@@ -317,6 +316,8 @@
                 {:else}
                   <Badge color="gray" class="ml-1">git</Badge>
                 {/if}
+              {:else}
+                <Badge color="amber" class="ml-1">draft</Badge>
               {/if}
             </TableBodyCell>
             <TableBodyCell><StatusBadge status={trigger.triggerType} /></TableBodyCell>

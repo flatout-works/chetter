@@ -551,6 +551,7 @@ service TriggerService {
   rpc RunTrigger(RunTriggerRequest) returns (RunTriggerResponse);
   rpc TestTrigger(TestTriggerRequest) returns (TestTriggerResponse);
   rpc ListTriggerRuns(ListTriggerRunsRequest) returns (ListTriggerRunsResponse);
+  rpc PromoteTrigger(PromoteTriggerRequest) returns (PromoteTriggerResponse);
 }
 
 message CreateTriggerRequest {
@@ -669,6 +670,39 @@ message ListTriggerRunsRequest {
 
 message ListTriggerRunsResponse {
   repeated TriggerRun runs = 1;
+}
+
+// PromoteTriggerRequest turns a database draft trigger into a definition file
+// and opens a definition proposal pull request.
+message PromoteTriggerRequest {
+  string name = 1 [(buf.validate.field).string.min_len = 1];
+  // Definition scope: global, team, or repo. Defaults to global.
+  string scope = 2;
+  // Team name; required when scope is team.
+  string team_name = 3;
+  // owner/repo of the target repository; required when scope is repo.
+  string target_repo = 4;
+  // Optional definition file path override, relative to the definitions repo root.
+  string path = 5;
+  string title = 6;
+  string body = 7;
+  string source_id = 8;
+  bool draft_pr = 9;
+  bool dry_run = 10;
+  bool allow_secret = 11;
+}
+
+message PromoteTriggerResponse {
+  // Rendered definition contents, always returned so the caller can review the
+  // exact bytes before a pull request exists.
+  string content = 1;
+  string path = 2;
+  bool dry_run = 3;
+  repeated string warnings = 4;
+  // Set once a pull request exists; absent on a dry run.
+  optional int32 pr_number = 5;
+  optional string pr_url = 6;
+  optional string proposal_id = 7;
 }
 
 // --- FleetService ---

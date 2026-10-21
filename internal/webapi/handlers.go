@@ -706,6 +706,45 @@ func (h *triggerHandler) ListTriggerRuns(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(&apiv1.ListTriggerRunsResponse{Runs: out}), nil
 }
 
+// PromoteTrigger exposes service.PromoteTrigger over ConnectRPC so the Web UI
+// can offer the same promotion flow as the chetter_promote_trigger MCP tool.
+// Like the other trigger handlers it is an adapter: the rendering, validation,
+// secret scan, and proposal logic all live in the service layer, shared with
+// the MCP tool.
+func (h *triggerHandler) PromoteTrigger(ctx context.Context, req *connect.Request[apiv1.PromoteTriggerRequest]) (*connect.Response[apiv1.PromoteTriggerResponse], error) {
+	out, err := h.svc.PromoteTrigger(ctx, service.PromoteTriggerInput{
+		Name:        req.Msg.Name,
+		Scope:       req.Msg.Scope,
+		TeamName:    req.Msg.TeamName,
+		TargetRepo:  req.Msg.TargetRepo,
+		Path:        req.Msg.Path,
+		Title:       req.Msg.Title,
+		Body:        req.Msg.Body,
+		SourceID:    req.Msg.SourceId,
+		DraftPR:     req.Msg.DraftPr,
+		DryRun:      req.Msg.DryRun,
+		AllowSecret: req.Msg.AllowSecret,
+	})
+	if err != nil {
+		// Promotion refusals are user-correctable (already managed, secret-filled,
+		// name taken), so surface them as failed preconditions rather than 500s.
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	resp := &apiv1.PromoteTriggerResponse{
+		Content:  out.Content,
+		Path:     out.Path,
+		DryRun:   out.DryRun,
+		Warnings: out.Warnings,
+	}
+	if out.Proposal != nil {
+		prNumber := int32(out.Proposal.PRNumber)
+		resp.PrNumber = &prNumber
+		resp.PrUrl = optStr(out.Proposal.PRURL)
+		resp.ProposalId = optStr(out.Proposal.ID)
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // --- EventCallbackServiceHandler ---
 
 type eventCallbackHandler struct {

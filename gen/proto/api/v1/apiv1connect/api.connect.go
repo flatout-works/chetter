@@ -111,6 +111,9 @@ const (
 	// TriggerServiceListTriggerRunsProcedure is the fully-qualified name of the TriggerService's
 	// ListTriggerRuns RPC.
 	TriggerServiceListTriggerRunsProcedure = "/api.v1.TriggerService/ListTriggerRuns"
+	// TriggerServicePromoteTriggerProcedure is the fully-qualified name of the TriggerService's
+	// PromoteTrigger RPC.
+	TriggerServicePromoteTriggerProcedure = "/api.v1.TriggerService/PromoteTrigger"
 	// FleetServiceGetRunnerHealthProcedure is the fully-qualified name of the FleetService's
 	// GetRunnerHealth RPC.
 	FleetServiceGetRunnerHealthProcedure = "/api.v1.FleetService/GetRunnerHealth"
@@ -780,6 +783,7 @@ type TriggerServiceClient interface {
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
 	TestTrigger(context.Context, *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error)
 	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
+	PromoteTrigger(context.Context, *connect.Request[v1.PromoteTriggerRequest]) (*connect.Response[v1.PromoteTriggerResponse], error)
 }
 
 // NewTriggerServiceClient constructs a client for the api.v1.TriggerService service. By default, it
@@ -835,6 +839,12 @@ func NewTriggerServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(triggerServiceMethods.ByName("ListTriggerRuns")),
 			connect.WithClientOptions(opts...),
 		),
+		promoteTrigger: connect.NewClient[v1.PromoteTriggerRequest, v1.PromoteTriggerResponse](
+			httpClient,
+			baseURL+TriggerServicePromoteTriggerProcedure,
+			connect.WithSchema(triggerServiceMethods.ByName("PromoteTrigger")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -847,6 +857,7 @@ type triggerServiceClient struct {
 	runTrigger      *connect.Client[v1.RunTriggerRequest, v1.RunTriggerResponse]
 	testTrigger     *connect.Client[v1.TestTriggerRequest, v1.TestTriggerResponse]
 	listTriggerRuns *connect.Client[v1.ListTriggerRunsRequest, v1.ListTriggerRunsResponse]
+	promoteTrigger  *connect.Client[v1.PromoteTriggerRequest, v1.PromoteTriggerResponse]
 }
 
 // CreateTrigger calls api.v1.TriggerService.CreateTrigger.
@@ -884,6 +895,11 @@ func (c *triggerServiceClient) ListTriggerRuns(ctx context.Context, req *connect
 	return c.listTriggerRuns.CallUnary(ctx, req)
 }
 
+// PromoteTrigger calls api.v1.TriggerService.PromoteTrigger.
+func (c *triggerServiceClient) PromoteTrigger(ctx context.Context, req *connect.Request[v1.PromoteTriggerRequest]) (*connect.Response[v1.PromoteTriggerResponse], error) {
+	return c.promoteTrigger.CallUnary(ctx, req)
+}
+
 // TriggerServiceHandler is an implementation of the api.v1.TriggerService service.
 type TriggerServiceHandler interface {
 	CreateTrigger(context.Context, *connect.Request[v1.CreateTriggerRequest]) (*connect.Response[v1.CreateTriggerResponse], error)
@@ -893,6 +909,7 @@ type TriggerServiceHandler interface {
 	RunTrigger(context.Context, *connect.Request[v1.RunTriggerRequest]) (*connect.Response[v1.RunTriggerResponse], error)
 	TestTrigger(context.Context, *connect.Request[v1.TestTriggerRequest]) (*connect.Response[v1.TestTriggerResponse], error)
 	ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error)
+	PromoteTrigger(context.Context, *connect.Request[v1.PromoteTriggerRequest]) (*connect.Response[v1.PromoteTriggerResponse], error)
 }
 
 // NewTriggerServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -944,6 +961,12 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 		connect.WithSchema(triggerServiceMethods.ByName("ListTriggerRuns")),
 		connect.WithHandlerOptions(opts...),
 	)
+	triggerServicePromoteTriggerHandler := connect.NewUnaryHandler(
+		TriggerServicePromoteTriggerProcedure,
+		svc.PromoteTrigger,
+		connect.WithSchema(triggerServiceMethods.ByName("PromoteTrigger")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/api.v1.TriggerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TriggerServiceCreateTriggerProcedure:
@@ -960,6 +983,8 @@ func NewTriggerServiceHandler(svc TriggerServiceHandler, opts ...connect.Handler
 			triggerServiceTestTriggerHandler.ServeHTTP(w, r)
 		case TriggerServiceListTriggerRunsProcedure:
 			triggerServiceListTriggerRunsHandler.ServeHTTP(w, r)
+		case TriggerServicePromoteTriggerProcedure:
+			triggerServicePromoteTriggerHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -995,6 +1020,10 @@ func (UnimplementedTriggerServiceHandler) TestTrigger(context.Context, *connect.
 
 func (UnimplementedTriggerServiceHandler) ListTriggerRuns(context.Context, *connect.Request[v1.ListTriggerRunsRequest]) (*connect.Response[v1.ListTriggerRunsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.ListTriggerRuns is not implemented"))
+}
+
+func (UnimplementedTriggerServiceHandler) PromoteTrigger(context.Context, *connect.Request[v1.PromoteTriggerRequest]) (*connect.Response[v1.PromoteTriggerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("api.v1.TriggerService.PromoteTrigger is not implemented"))
 }
 
 // FleetServiceClient is a client for the api.v1.FleetService service.

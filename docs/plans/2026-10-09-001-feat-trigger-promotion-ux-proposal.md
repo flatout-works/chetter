@@ -46,6 +46,30 @@ enforced in the UI**. What the UI does *not* have is the draft half: no
 - `chetter_promote_trigger` renders canonical YAML and opens a proposal PR,
   with `dry_run` for preview.
 
+**ConnectRPC today**:
+
+- `TriggerService.PromoteTrigger` exists (added alongside this proposal), so the
+  Web UI can reach the same service method. It is a thin adapter: rendering,
+  validation, the secret scan, and the proposal call all live in
+  `Service.PromoteTrigger`, shared with the MCP tool.
+
+### How the two surfaces relate
+
+MCP and ConnectRPC are **two adapters over the same `Service` methods**. Every
+piece of trigger logic lives in `Service`, once: `h.svc.CreateTrigger` and
+`svc.CreateTrigger` are the same function, as are `ListTriggers`,
+`GetTriggerByName`, and now `PromoteTrigger`.
+
+What is not shared is the *exposure*: an MCP tool needs a registration plus a
+`xxxTool` method, and a ConnectRPC RPC needs a proto message pair plus a
+handler. Neither is generated from the other, so a new `Service` method reaches
+MCP only until someone writes the proto and handler. That adapter is small and
+mechanical — but it is real work, and it is why a feature can be MCP-only for a
+while.
+
+That gap is now closed for promotion. The remaining UI work below is purely
+frontend.
+
 ## The Loop, As A User Sees It
 
 ```text
@@ -190,19 +214,21 @@ anyone lands a colliding file. This is a nice-to-have, not a requirement.
 | MCP `source` filter | **shipped** |
 | MCP `chetter_promote_trigger` (+ `dry_run`) | **shipped** |
 | MCP secret scan and refusal messages | **shipped** |
+| ConnectRPC `TriggerService.PromoteTrigger` | **shipped** |
 | UI: `git` badge, disabled toggle/delete for managed | **already existed** |
 | UI: draft badge + `Source` filter | **to build** |
 | UI: promote panel, YAML preview, promotion-open state | **to build** |
-| gRPC `PromoteTrigger` RPC | **to build** — promotion is MCP-only today |
-| Phase 4 promotion state on the trigger row | **to build** — see below |
+| Phase 4 promotion state on the trigger row | **to build** |
 
-### The gRPC gap is the blocking one
+Everything on the server side now exists; the remaining work is frontend, plus
+the Phase 4 schema for authoritative promotion state.
 
-The Web UI talks to the server over ConnectRPC, **not** MCP. So the promote
-panel cannot be built until a `PromoteTrigger` RPC exists on `TriggerService`
-alongside `CreateTrigger`/`UpdateTrigger`, with a corresponding
-`protoTrigger`-style response. That RPC is a thin wrapper over the existing
-`Service.PromoteTrigger`, so the work is mostly proto + handler + regenerate.
+### The one server-side decision worth revisiting
+
+Refusals return `FailedPrecondition`, so the UI can distinguish "you can fix
+this" (already managed, secret-shaped content, name taken) from a genuine
+server fault. If a future refusal is not user-correctable it should not reuse
+that code.
 
 ### Why Phase 4 matters for the UI
 
@@ -215,12 +241,13 @@ already specifies.
 
 ## Proposed Build Order
 
-1. **gRPC `PromoteTrigger`** — unblocks all UI work; thin wrapper, no new logic.
-2. **UI draft badge + `Source` filter** — small, immediately useful, no new RPC.
-3. **UI promote panel with YAML preview** — the core affordance.
-4. **Phase 4 schema + promotion-open state** — makes the panel authoritative.
+1. **UI draft badge + `Source` filter** — small, immediately useful, no new RPC.
+2. **UI promote panel with YAML preview** — the core affordance; the RPC it
+   needs already ships.
+3. **Phase 4 schema + promotion-open state** — makes the panel authoritative
+   rather than inferred.
 
-Steps 1-3 deliver the loop visually end to end. Step 4 improves fidelity.
+Steps 1-2 deliver the loop visually end to end. Step 3 improves fidelity.
 
 ## Deliberate Non-Goals
 
