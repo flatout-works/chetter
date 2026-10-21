@@ -38,6 +38,122 @@ autonomous AI development tasks.
 
 Detailed per-day history of everything that went into this release is below.
 
+## 2026-10-20
+
+### Documentation
+
+- Website updated to surface the trigger experiment-and-promote loop shipped on
+  2026-10-10: the main page's automation row now describes a trigger starting as
+  a runtime database draft that the definitions sync never touches, then being
+  promoted to a reviewed definition file with `chetter_promote_trigger`, and the
+  deliberate, audited `adopt: true` opt-in required to take over a live draft's
+  id and run history (a name collision without it fails the sync instead of
+  overwriting the draft). The technical page gains a Triggers card covering
+  ownership reporting (`source`, `managed`, `source_path` and the `source`
+  filter), the draft-to-promotion path with `dry_run` preview and the
+  credential-shape scan, and the Web UI's draft badge, ownership filters, and
+  promotion panel; its Definitions card notes the database-draft exemption from
+  sync.
+
+## 2026-10-10
+
+### Added
+
+- `TriggerService.PromoteTrigger` over ConnectRPC, so the web UI can reach the
+  same promotion logic the `chetter_promote_trigger` MCP tool uses. It is a thin
+  adapter over the shared `Service.PromoteTrigger`: rendering, validation, the
+  secret scan, and the proposal call live once in the service, and this RPC only
+  exposes them. `PromoteTriggerRequest`/`PromoteTriggerResponse` always return
+  the rendered content so the UI can show the exact bytes before a PR exists,
+  and refusals (already managed, secret-shaped content, name taken) return
+  `FailedPrecondition` so the UI can separate user-correctable errors from a
+  server fault. The registration is guarded by the existing compile-time
+  interface assertion in `server.go`.
+
+- Web UI trigger promotion panel and draft affordance: a draft-only
+  `PromotePanel.svelte` renders a database trigger as canonical definition YAML
+  and opens a definition proposal PR through the new RPC. "Preview YAML" calls
+  the same endpoint with `dry_run` and shows the exact bytes and target path in
+  a modal before any branch exists; "Promote…" confirms and reports the PR link.
+  Scope, repository, and team are selectable because the definition's location
+  in the definitions repository is not derivable from the trigger row, and the
+  panel renders nothing for a Git-managed trigger. The triggers list gains an
+  amber "draft" badge mirroring the existing gray "git" badge plus
+  Git-managed/Drafts toggles backed by URL state (shareable filtered views,
+  mirroring the MCP `source` filter), the trigger detail page gains a "draft"
+  badge, and the ownership/type filter logic is extracted into
+  `triggerFilters.ts` with unit tests.
+
+### Changed
+
+- buf remote plugins are pinned to the versions that produced the committed
+  generated code — protoc-gen-go v1.36.12, connectrpc/go v1.19.2, and
+  protoc-gen-es v2.15.0. They had been unpinned since June 2026, so an
+  unpinned `make generate` pulled the newest plugins and emitted Connect v2
+  while `go.mod` is on connect v1.19.2, rewriting every generated file with
+  imports the code does not build against.
+
+### Documentation
+
+- `docs/plans/2026-10-09-001-feat-trigger-promotion-ux-proposal.md` amended to
+  record that the ConnectRPC `PromoteTrigger` RPC now ships (closing the
+  adapter gap the proposal had flagged as blocking) and to reorder the build
+  order to the remaining frontend work.
+
+## 2026-10-09
+
+### Added
+
+- Trigger promotion from a database draft to a Git-managed definition: the new
+  `chetter_promote_trigger` tool renders a hand-created trigger as canonical
+  definition YAML and opens a definition proposal pull request through the
+  existing proposal path, so an operator can create a trigger directly in the
+  database, iterate on it manually, and then promote it to a reviewed file in
+  the definitions repository. The input takes a scope (`global`, `team`, or
+  `repo`) and derives the definition file path the scanner expects
+  (`global/triggers/*.yaml`, `groups/<team>/triggers/*.yaml`,
+  `repos/<owner>/<repo>/triggers/*.yaml`), rejecting path traversal in the
+  trigger, team, and repo names. `dry_run` renders and validates without opening
+  a PR; a secret scan refuses credential-shaped content in the rendered prompt
+  (exempting the sanctioned `*_env: VAR_NAME` reference convention) unless
+  `allow_secret` overrides it with a recorded warning; promoting a
+  trigger that is already Git-managed is refused. Rendering inverts the sync's
+  write transforms — unfolding the flat `trigger_config` keys, recomputing the
+  per-scope header comment, and stripping the configured `AGENT_IMAGE_PREFIX`
+  from the stored image — via a new `pkg/definitions` renderer whose semantic
+  round-trip is asserted over the live definition corpus and vendored fixtures.
+
+- Trigger ownership visibility in `chetter_list_triggers`: each record now
+  exposes `source_id`, `managed`, `source` (`"config"` for Git-managed triggers,
+  `"database"` for hand-created drafts), and `source_path` (the definition file,
+  for managed triggers), and a new `source` filter accepts `"database"`,
+  `"config"`, or a definition source ID so an operator can list just the drafts.
+
+### Fixed
+
+- Definitions sync could silently overwrite a database-created trigger: the
+  name-keyed upsert assigned `source_id` unconditionally, so a definition
+  landing with the name of a hand-created draft replaced its prompt and
+  configuration and re-attributed its entire run history to Git, with no diff or
+  audit event. The sync now refuses a definition that would take over a row with
+  `source_id` NULL unless it opts in with `adopt: true` (a new trigger schema
+  field), failing the whole sync before any state is written; both refusals and
+  deliberate adoptions are audited as `trigger_sync_collision`. Deliberate
+  adoption preserves the row id and run history.
+
+### Documentation
+
+- `docs/TRIGGERS.md` gains a "Git-Managed Triggers Versus Database Drafts"
+  section covering the draft lifecycle, promotion, and the adopt guard, and
+  `docs/CONFIGURATION.md` notes the guard on trigger definitions.
+- New `docs/plans/2026-10-09-001-feat-trigger-promotion-ux-proposal.md` proposes
+  the user-facing shape of the promotion loop (an MCP `PromoteTrigger` RPC and a
+  Web UI promote panel), noting that the Web UI already badges Git-managed
+  triggers and disables their edit/delete controls.
+- The public site's isolation row now reflects the runner's bounded container
+  swap headroom (`CHETTER_CONTAINER_SWAP_MB`; the supplied runners default to
+  8 GB RSS with swap headroom), matching the technical page.
+
 ## 2026-10-08
 
 ### Added
