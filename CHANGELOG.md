@@ -150,6 +150,13 @@ Detailed per-day history of everything that went into this release is below.
   the user-facing shape of the promotion loop (an MCP `PromoteTrigger` RPC and a
   Web UI promote panel), noting that the Web UI already badges Git-managed
   triggers and disables their edit/delete controls.
+- `docs/plans/2026-10-08-001-feat-trigger-promotion-plan.md` corrected during
+  Phase 1 implementation: byte-identical round-tripping of the existing
+  definition corpus is not achievable (the files use 12 distinct key orders,
+  vary in quoting and blank-line style, and carry free-text comments the parser
+  discards), so the acceptance criteria now specify semantic round-trip, render
+  byte stability, fixed canonical ordering for new files, and a guard against
+  silently dropped flat keys, with vendored fixtures enforcing them in CI.
 - The public site's isolation row now reflects the runner's bounded container
   swap headroom (`CHETTER_CONTAINER_SWAP_MB`; the supplied runners default to
   8 GB RSS with swap headroom), matching the technical page.
